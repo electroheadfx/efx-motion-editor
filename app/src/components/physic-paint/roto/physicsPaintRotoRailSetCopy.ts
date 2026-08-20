@@ -15,10 +15,10 @@
  */
 
 import type { RailSetIdentity } from './physicsPaintRotoRailSetSelection';
+import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   createPhysicPaintRotoKeyId,
-  parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyPayload,
@@ -151,20 +151,437 @@ function rejectPaste(
     : Object.freeze({ ok: false, reason, conflictingAppFrames: Object.freeze([...conflictingAppFrames]) });
 }
 
+function isBoundedKeyId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+function freezePayload(payload: RotoRailSetCopyPayload): RotoRailSetCopyPayload {
+  return Object.freeze({
+    anchorAppFrame: payload.anchorAppFrame,
+    members: Object.freeze([...payload.members]),
+  }) as RotoRailSetCopyPayload;
+}
+
 // ---------------------------------------------------------------------------
-// RED stubs (Task 1): the real signatures above are the intended contract. The
-// bodies land in Task 2 (2a) so the RED gate below fails deterministically.
+// 2a: the shared pure law (copy payload builder + complete paste proposer).
 // ---------------------------------------------------------------------------
+
+function frameOfMember(member: RotoRailSetCopyMember): number {
+  return member.kind === 'key-rail' ? member.firstKeyFrame : member.placementStart;
+}
+
+function idOfMember(member: RotoRailSetCopyMember): string {
+  return member.kind === 'key-rail' ? member.firstKeyId : member.loopId;
+}
+
+/** Canonical order: first frame asc, then 'key-rail' before 'loop', then identity id asc. */
+function orderMembers(members: readonly RotoRailSetCopyMember[]): readonly RotoRailSetCopyMember[] {
+  return Object.freeze([...members].sort((left, right) => {
+    const leftFrame = frameOfMember(left);
+    const rightFrame = frameOfMember(right);
+    if (leftFrame !== rightFrame) return leftFrame - rightFrame;
+    if (left.kind !== right.kind) return left.kind === 'key-rail' ? -1 : 1;
+    return idOfMember(left).localeCompare(idOfMember(right));
+  }));
+}
 
 export function buildRotoRailSetCopyPayload(input: {
   readonly document: PhysicPaintRotoPhysicalDocument;
   readonly members: readonly RailSetIdentity[];
 }): RotoRailSetCopyPayloadResult {
-  // RED stub — Task 2 (2a) fills the body.
-  throw new Error('buildRotoRailSetCopyPayload is not implemented yet (Task 2a).');
+  const { document, members } = input;
+  if (!Array.isArray(members) || members.length === 0) {
+    return Object.freeze({ ok: false, reason: 'empty-set' });
+  }
+
+  const breakOwners = new Set(document.incomingInterpolationBreakKeyIds);
+  const recordByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: document.realKeyRecords,
+    incomingInterpolationBreakKeyIds: breakOwners,
+    groupOwnedKeyIds: new Set(),
+  });
+  const segmentByFirstKeyId = new Map(segments.map((segment) => [segment.firstKeyId, segment]));
+  const clipByLoopId = new Map(document.loopClips.map((clip) => [clip.loopId, clip]));
+
+  const built: RotoRailSetCopyMember[] = [];
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      if (!isBoundedKeyId(member.firstKeyId)) {
+        return Object.freeze({ ok: false, reason: 'malformed-member' });
+      }
+      const segment = segmentByFirstKeyId.get(member.firstKeyId);
+      if (segment === undefined) {
+        return Object.freeze({ ok: false, reason: 'stale-member' });
+      }
+      const entries = segment.keyIds.map((keyId) => {
+        const record = recordByKeyId.get(keyId);
+        if (record === undefined) {
+          throw new Error('physicsPaintRotoRailSetCopy: segment key missing a real-key record.');
+        }
+        return Object.freeze({
+          sourceKeyId: record.keyId,
+          sourceAppFrame: record.appFrame,
+          payload: record.payload,
+          ownsIncomingBreak: breakOwners.has(record.keyId),
+        });
+      });
+      built.push(Object.freeze({
+        kind: 'key-rail',
+        firstKeyId: segment.firstKeyId,
+        firstKeyFrame: segment.firstKeyFrame,
+        entries: Object.freeze(entries),
+        firstKeyOwnsIncomingBreak: breakOwners.has(segment.keyIds[0]),
+      }));
+    } else {
+      // member.kind === 'loop'
+      if (!isBoundedKeyId(member.loopId)) {
+        return Object.freeze({ ok: false, reason: 'malformed-member' });
+      }
+      const clip = clipByLoopId.get(member.loopId);
+      if (clip === undefined) {
+        return Object.freeze({ ok: false, reason: 'stale-member' });
+      }
+      built.push(Object.freeze({
+        kind: 'loop',
+        loopId: member.loopId,
+        placementStart: clip.placementStart,
+        clip: Object.freeze(clip),
+      }));
+    }
+  }
+
+  if (built.length === 0) return Object.freeze({ ok: false, reason: 'empty-set' });
+  const ordered = orderMembers(built);
+  const anchor = Math.min(...ordered.map(frameOfMember));
+  if (!Number.isInteger(anchor) || anchor < 0) {
+    return Object.freeze({ ok: false, reason: 'malformed-member' });
+  }
+  return Object.freeze({ ok: true, payload: freezePayload({ anchorAppFrame: anchor, members: ordered }) });
+}
+
+/** Translate a loop lifecycle by the same signed delta used for the key records. */
+function buildDuplicatedLoopClip(
+  clip: PhysicPaintRotoLoopClip,
+  freshLoopId: string,
+  destinationStart: number,
+  delta: number,
+): PhysicPaintRotoLoopClip {
+  return Object.freeze({
+    loopId: freshLoopId,
+    placementStart: destinationStart,
+    sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
+    repeat: clip.repeat,
+    mode: clip.mode,
+    ...(clip.scriptId !== undefined
+      ? {
+          scriptId: clip.scriptId,
+          motion: clip.motion,
+          overrideColor: clip.overrideColor ?? null,
+        }
+      : {}),
+    ...(clip.syncState !== undefined
+      ? {
+          syncState: clip.syncState,
+          provenanceState: clip.provenanceState!,
+          phaseOrigin: clip.phaseOrigin! + delta,
+          originalEndExclusive: clip.originalEndExclusive! + delta,
+          visibleRanges: Object.freeze(clip.visibleRanges!.map((range) => Object.freeze({
+            start: range.start + delta,
+            endExclusive: range.endExclusive + delta,
+          }))),
+          frameOverrides: Object.freeze(clip.frameOverrides!.map((override) => Object.freeze({
+            appFrame: override.appFrame + delta,
+            keyId: override.keyId,
+          }))),
+        }
+      : {}),
+  }) as PhysicPaintRotoLoopClip;
+}
+
+function buildFreshKeyRecord(
+  sourcePayload: PhysicPaintRotoRealKeyPayload,
+  freshKeyId: string,
+  freshFrame: number,
+): PhysicPaintRotoRealKeyRecord {
+  return Object.freeze({
+    kind: 'real-key',
+    keyId: freshKeyId,
+    appFrame: freshFrame,
+    payload: Object.freeze({
+      frameIndex: sourcePayload.frameIndex,
+      appFrame: freshFrame,
+      dataUrl: sourcePayload.dataUrl,
+      ...(sourcePayload.width !== undefined ? { width: sourcePayload.width } : {}),
+      ...(sourcePayload.height !== undefined ? { height: sourcePayload.height } : {}),
+    }),
+  }) as PhysicPaintRotoRealKeyRecord;
+}
+
+/** Source extent of one copied loop (end-exclusive) for occupancy and scanning. */
+function loopSourceEndExclusive(clip: PhysicPaintRotoLoopClip): number {
+  if (typeof clip.originalEndExclusive === 'number') return clip.originalEndExclusive;
+  const cycleLength = clip.sourceKeyIds.length;
+  const repeats = clip.repeat === 'infinity' ? 1 : clip.repeat;
+  return clip.placementStart + cycleLength * repeats;
+}
+
+interface PastedExtent {
+  readonly keyDestinations: readonly number[];
+  readonly loopEndExclusives: readonly number[];
+  readonly lastFrame: number;
+}
+
+/** Compute every fresh destination frame for one anchor delta (no mutation). */
+function computePastedExtent(
+  members: readonly RotoRailSetCopyMember[],
+  delta: number,
+): PastedExtent {
+  const keyDestinations: number[] = [];
+  const loopEndExclusives: number[] = [];
+  let lastFrame = -1;
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      for (const entry of member.entries) {
+        const destinationFrame = entry.sourceAppFrame + delta;
+        keyDestinations.push(destinationFrame);
+        if (destinationFrame > lastFrame) lastFrame = destinationFrame;
+      }
+    } else {
+      const endExclusive = loopSourceEndExclusive(member.clip) + delta;
+      loopEndExclusives.push(endExclusive);
+      if (endExclusive - 1 > lastFrame) lastFrame = endExclusive - 1;
+    }
+  }
+  return { keyDestinations, loopEndExclusives, lastFrame };
+}
+
+/** Source last frame of the set (for the duplicate scan start). */
+function computeLastSetEnd(members: readonly RotoRailSetCopyMember[]): number {
+  let last = -1;
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      const lastEntry = member.entries[member.entries.length - 1];
+      if (lastEntry && lastEntry.sourceAppFrame > last) last = lastEntry.sourceAppFrame;
+    } else {
+      const end = loopSourceEndExclusive(member.clip) - 1;
+      if (end > last) last = end;
+    }
+  }
+  return last;
+}
+
+/**
+ * Duplicate anchor scan: start at the source set's last frame + 2 (one empty
+ * separation frame so the fresh set never becomes adjacent to the source rail),
+ * then scan forward until the WHOLE set fits on empty frames within capacity.
+ */
+function findDuplicateAnchor(
+  document: PhysicPaintRotoPhysicalDocument,
+  members: readonly RotoRailSetCopyMember[],
+  payloadAnchor: number,
+): number | null {
+  const occupiedFrames = new Set(document.realKeyRecords.map((record) => record.appFrame));
+  const lastSetEnd = computeLastSetEnd(members);
+  for (let candidate = lastSetEnd + 2; candidate < document.capacity; candidate += 1) {
+    const delta = candidate - payloadAnchor;
+    const extent = computePastedExtent(members, delta);
+    if (extent.keyDestinations.some((frame) => frame < 0 || frame >= document.capacity)) continue;
+    if (extent.loopEndExclusives.some((end) => end > document.capacity)) continue;
+    if (extent.keyDestinations.some((frame) => occupiedFrames.has(frame))) continue;
+    return candidate;
+  }
+  return null;
+}
+
+interface FreshAllocation {
+  readonly keyIds: Record<string, string>;
+  readonly loopIds: Record<string, string>;
+}
+
+/** Allocate (or replay) every fresh identity in one pass, in canonical member order. */
+function allocateFreshIdentities(
+  payload: RotoRailSetCopyPayload,
+  prescribed: RotoRailSetFreshIdentityAllocation | undefined,
+): FreshAllocation {
+  const keyIds: Record<string, string> = {};
+  const loopIds: Record<string, string> = {};
+  for (const member of payload.members) {
+    if (member.kind === 'key-rail') {
+      for (const entry of member.entries) {
+        if (keyIds[entry.sourceKeyId] !== undefined) continue;
+        keyIds[entry.sourceKeyId] = prescribed?.keyIds?.[entry.sourceKeyId] ?? createPhysicPaintRotoKeyId();
+      }
+    } else {
+      if (loopIds[member.loopId] !== undefined) continue;
+      loopIds[member.loopId] = prescribed?.loopIds?.[member.loopId] ?? createPhysicPaintRotoKeyId();
+    }
+  }
+  return { keyIds, loopIds };
 }
 
 export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResult {
-  // RED stub — Task 2 (2a) fills the body.
-  throw new Error('proposeRails is not implemented yet (Task 2a).');
+  const { document, payload, placementMode } = input;
+
+  if (!payload || !Array.isArray(payload.members) || payload.members.length === 0) {
+    return rejectPaste('empty-payload');
+  }
+  if (!Number.isInteger(payload.anchorAppFrame) || payload.anchorAppFrame < 0) {
+    return rejectPaste('malformed-payload');
+  }
+  for (const member of payload.members) {
+    if (member.kind === 'key-rail') {
+      if (!isBoundedKeyId(member.firstKeyId)
+        || !Array.isArray(member.entries)
+        || member.entries.length === 0) {
+        return rejectPaste('unknown-member');
+      }
+    } else if (member.kind === 'loop') {
+      if (!isBoundedKeyId(member.loopId) || !member.clip) return rejectPaste('unknown-member');
+    } else {
+      return rejectPaste('unknown-member');
+    }
+  }
+
+  // Destination anchor.
+  const anchor = placementMode === 'paste'
+    ? (() => {
+        if (input.destinationAppFrame === undefined
+          || !Number.isSafeInteger(input.destinationAppFrame)
+          || input.destinationAppFrame < 0) {
+          return null;
+        }
+        return input.destinationAppFrame;
+      })()
+    : findDuplicateAnchor(document, payload.members, payload.anchorAppFrame);
+  if (anchor === null) {
+    return rejectPaste(placementMode === 'paste' ? 'malformed-payload' : 'out-of-range-frame');
+  }
+
+  const delta = anchor - payload.anchorAppFrame;
+  const extent = computePastedExtent(payload.members, delta);
+  const occupiedFrames = new Set(document.realKeyRecords.map((record) => record.appFrame));
+  const conflicts = extent.keyDestinations.filter((frame) => occupiedFrames.has(frame));
+  if (conflicts.length > 0) {
+    return rejectPaste('duplicate-destination-frame', conflicts);
+  }
+  if (extent.keyDestinations.some((frame) => frame < 0 || frame >= document.capacity)
+    || extent.loopEndExclusives.some((end) => end > document.capacity)) {
+    return rejectPaste('out-of-range-frame');
+  }
+
+  // Fresh identities (replay the child allocation on the parent recompute).
+  const allocation = allocateFreshIdentities(payload, input.freshIdentityAllocation);
+
+  // Build fresh records, duplicated loops, breaks.
+  const freshRecords: PhysicPaintRotoRealKeyRecord[] = [];
+  const duplicatedLoopClips: PhysicPaintRotoLoopClip[] = [];
+  const freshBreakOwners = new Set<string>();
+  const copiedSourceKeyIds = new Set<string>();
+  const memberFirstFrames: { readonly freshFirstFrame: number; readonly freshFirstKeyId: string }[] = [];
+  for (const member of payload.members) {
+    if (member.kind === 'key-rail') {
+      let firstFrame: number | null = null;
+      let firstKeyId: string | null = null;
+      for (const entry of member.entries) {
+        const freshKeyId = allocation.keyIds[entry.sourceKeyId] ?? createPhysicPaintRotoKeyId();
+        const freshFrame = entry.sourceAppFrame + delta;
+        copiedSourceKeyIds.add(entry.sourceKeyId);
+        freshRecords.push(buildFreshKeyRecord(entry.payload, freshKeyId, freshFrame));
+        if (entry.ownsIncomingBreak) freshBreakOwners.add(freshKeyId);
+        if (firstFrame === null) {
+          firstFrame = freshFrame;
+          firstKeyId = freshKeyId;
+        }
+      }
+      if (firstFrame !== null && firstKeyId !== null) {
+        memberFirstFrames.push({ freshFirstFrame: firstFrame, freshFirstKeyId: firstKeyId });
+      }
+    } else {
+      const freshLoopId = allocation.loopIds[member.loopId] ?? createPhysicPaintRotoKeyId();
+      const destinationStart = member.placementStart + delta;
+      duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta));
+    }
+  }
+
+  // Break relocation: keep source breaks not part of the copied set; relocate
+  // copied break owners onto the fresh keys; rail-boundary rule: a fresh first
+  // key adjacent (left) to non-set content starts a fresh rail.
+  const nextBreaks = new Set<string>();
+  for (const keyId of document.incomingInterpolationBreakKeyIds) {
+    if (!copiedSourceKeyIds.has(keyId)) nextBreaks.add(keyId);
+  }
+  for (const freshKeyId of freshBreakOwners) nextBreaks.add(freshKeyId);
+  for (const firstOf of memberFirstFrames) {
+    const leftFrame = firstOf.freshFirstFrame - 1;
+    if (leftFrame < 0) continue;
+    const leftRecord = document.realKeyRecords.find((record) => record.appFrame === leftFrame);
+    if (leftRecord && !copiedSourceKeyIds.has(leftRecord.keyId)) {
+      nextBreaks.add(firstOf.freshFirstKeyId);
+    }
+  }
+
+  // Build the complete next document (single immutable proposal).
+  const nextRealKeyRecords = Object.freeze(
+    [...document.realKeyRecords, ...freshRecords].sort((left, right) => left.appFrame - right.appFrame),
+  ) as readonly PhysicPaintRotoRealKeyRecord[];
+  const nextLoopClips = Object.freeze([...document.loopClips, ...duplicatedLoopClips]) as readonly PhysicPaintRotoLoopClip[];
+  const orderedBreaks = Object.freeze([...nextBreaks].sort((a, b) => a.localeCompare(b)));
+  const revision = buildPhysicPaintRotoPhysicalRevision(
+    nextRealKeyRecords,
+    document.interpolation,
+    nextLoopClips,
+    orderedBreaks,
+    document.groupOverrideRecords,
+  );
+  const proposal = Object.freeze({
+    capacity: document.capacity,
+    realKeyRecords: nextRealKeyRecords,
+    groupOverrideRecords: document.groupOverrideRecords,
+    interpolation: document.interpolation,
+    scriptMotion: document.scriptMotion,
+    background: document.background,
+    selectedKeyId: document.selectedKeyId,
+    cursorAppFrame: document.cursorAppFrame,
+    revision,
+    loopClips: nextLoopClips,
+    incomingInterpolationBreakKeyIds: orderedBreaks,
+  }) as PhysicPaintRotoPhysicalDocument;
+
+  // Ordered pasted identities in canonical set order.
+  const identities = payload.members.map((member) => {
+    if (member.kind === 'key-rail') {
+      const firstEntry = member.entries[0];
+      const lastEntry = member.entries[member.entries.length - 1];
+      return Object.freeze({
+        kind: 'key-rail' as const,
+        id: allocation.keyIds[member.firstKeyId] ?? '',
+        firstFrame: firstEntry.sourceAppFrame + delta,
+        effectiveEndExclusive: lastEntry.sourceAppFrame + delta + 1,
+      });
+    }
+    const freshLoopId = allocation.loopIds[member.loopId] ?? '';
+    return Object.freeze({
+      kind: 'loop' as const,
+      id: freshLoopId,
+      firstFrame: member.placementStart + delta,
+      effectiveEndExclusive: loopSourceEndExclusive(member.clip) + delta,
+    });
+  });
+
+  const impact = Object.freeze({
+    kind: 'paste',
+    payload: freezePayload(payload),
+    placementMode,
+    destinationAppFrame: placementMode === 'paste' ? anchor : null,
+    freshIdentityAllocation: Object.freeze({
+      keyIds: Object.freeze({ ...allocation.keyIds }),
+      loopIds: Object.freeze({ ...allocation.loopIds }),
+    }),
+    identities: Object.freeze(identities),
+    previousRevision: document.revision,
+    nextRevision: revision,
+  }) as RotoRailSetPasteImpact;
+
+  return Object.freeze({ ok: true, proposal, impact });
 }

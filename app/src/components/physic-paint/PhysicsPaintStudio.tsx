@@ -44,7 +44,7 @@ import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelec
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
-import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
+import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput, type RotoRailSetPasteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
@@ -65,6 +65,8 @@ import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPain
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
+import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
+import type { RotoRailSetCopyPayload, RotoRailSetCopyPlacementMode, RotoRailSetPasteIdentity } from './roto/physicsPaintRotoRailSetCopy';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
@@ -122,6 +124,25 @@ function reconcileRotoKeyRailSelection(
   )) ? selection : null;
 }
 
+/**
+ * 43.6-08 (quick 260820-bjw): builds the session rail-set selection from the
+ * accepted paste impact's ordered fresh identities — key-rail members keyed by
+ * the fresh firstKeyId, loop members by the fresh loopId, anchor = first pasted
+ * rail (RED 4). The identities are authoritative (fresh, guaranteed present in
+ * the accepted document), so no reconcile is needed here.
+ */
+function buildPastedRailSetFromImpact(identities: readonly RotoRailSetPasteIdentity[]): RailSetSelectionState {
+  const members: RailSetIdentity[] = identities.map((identity) => (
+    identity.kind === 'loop'
+      ? { kind: 'loop', loopId: identity.id }
+      : { kind: 'key-rail', firstKeyId: identity.id }
+  ));
+  return Object.freeze({
+    members: Object.freeze(members),
+    anchor: members[0] ?? null,
+  });
+}
+
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
@@ -176,6 +197,19 @@ export function PhysicsPaintStudio() {
     operationKind: 'delete-rails';
     members: readonly RailSetDeleteMember[];
   }>) => Promise<boolean>>(async () => false);
+  // 43.6-08 (quick 260820-bjw): rail-set Paste/Duplicate execute + session
+  // rail-set clipboard slot. The execute ref mirrors railSetDeleteExecuteRef;
+  // the clipboard read/write refs bridge the timeline-actions input ports to
+  // the session slot (assigned after rotoKeyUtilities exists, since the
+  // session lives there — same deferred-ref pattern as the execute refs).
+  const railSetPasteExecuteRef = useRef<(input: Readonly<{
+    operationKind: 'paste';
+    placementMode: RotoRailSetCopyPlacementMode;
+    destinationAppFrame?: number;
+    payload: RotoRailSetCopyPayload;
+  }>) => Promise<boolean>>(async () => false);
+  const railSetClipboardReadRef = useRef<() => RotoRailSetCopyPayload | null>(() => null);
+  const railSetClipboardWriteRef = useRef<(payload: RotoRailSetCopyPayload | null) => void>(() => {});
   const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
@@ -1039,6 +1073,33 @@ export function PhysicsPaintStudio() {
     );
     return accepted !== null;
   };
+  // 43.6-08 (quick 260820-bjw): the child submits the frozen copy payload via
+  // the SAME coordinator; the shared pure `proposeRails` reproduces the exact
+  // proposal on the child side (and the parent bridge recomputes from the
+  // `paste` semantic delta). 'duplicate' derives its destination from document
+  // facts, so no destination is carried — mirror railSetDeleteExecuteRef.
+  railSetPasteExecuteRef.current = async (input) => {
+    const launch = launchContextRef.current;
+    if (!launch) return false;
+    const executeInput: RotoRailSetPasteExecuteInput = {
+      operationKind: 'paste',
+      expectedLaunch: {
+        operationId: launch.operationId,
+        layerId: launch.layerId,
+      },
+      payload: input.payload,
+      placementMode: input.placementMode,
+      ...(input.destinationAppFrame !== undefined
+        ? { destinationAppFrame: input.destinationAppFrame }
+        : {}),
+    };
+    const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
+      physicalEditCoordinator.pendingOperationId,
+      physicalEditCoordinator.acceptedOutput,
+      () => physicalEditCoordinator.executePhysicalEdit(executeInput),
+    );
+    return accepted !== null;
+  };
 
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
@@ -1099,6 +1160,9 @@ export function PhysicsPaintStudio() {
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     executeGroupLifecycleDelete: (target) => groupLifecycleDeleteExecuteRef.current(target),
     executeRailSetDelete: (target) => railSetDeleteExecuteRef.current(target),
+    getRailSetClipboard: () => railSetClipboardReadRef.current(),
+    setRailSetClipboard: (payload) => railSetClipboardWriteRef.current(payload),
+    executeRailSetPaste: (input) => railSetPasteExecuteRef.current(input),
     requestSoleOccurrenceDeleteWarning: handleRequestSoleOccurrenceDeleteWarning,
     publishStatus: (message) => { setApplyMessage(message); },
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
@@ -1224,8 +1288,40 @@ export function PhysicsPaintStudio() {
   const rotoKeyUtilities = rotoNavigation.keyUtilities;
   const rotoSession = rotoKeyUtilities.session;
   const addRotoKey = rotoKeyUtilities.addKey;
-  const duplicateRotoKey = rotoKeyUtilities.duplicateKey;
-  const copyRotoFrame = rotoKeyUtilities.copyKey;
+  // 43.6-08 (quick 260820-bjw): the rail-set clipboard slot lives in the
+  // session clipboard union (one-slot contract). Wire the timeline-actions
+  // clipboard ports to the session slot once the utilities exist; a null write
+  // clears the slot without publishing (the actions hook only writes real
+  // payloads, null is defensive).
+  railSetClipboardReadRef.current = () => {
+    const copied = rotoSession.copiedKey.value;
+    return isRotoSessionCopiedRailSet(copied) ? copied.payload : null;
+  };
+  railSetClipboardWriteRef.current = (payload) => {
+    if (payload === null) {
+      rotoSession.copiedKey.value = null;
+      return;
+    }
+    rotoKeyUtilities.copyRailSet(payload);
+  };
+  // Routing wrappers (43.6-08): an active rail set routes Copy/Duplicate to
+  // the set actions; Paste routes on the clipboard variant (a copied rail set
+  // pastes as a set even after the set collapses). Without a set / rail
+  // clipboard the single-key and key-group paths stay byte-identical.
+  const duplicateRotoKey = useCallback(() => {
+    if (railSetSelection.value !== null) {
+      void rotoPhysicalActions.duplicateRailSet();
+      return;
+    }
+    rotoKeyUtilities.duplicateKey();
+  }, [railSetSelection, rotoPhysicalActions, rotoKeyUtilities]);
+  const copyRotoFrame = useCallback(() => {
+    if (railSetSelection.value !== null) {
+      void rotoPhysicalActions.copyRailSet();
+      return;
+    }
+    rotoKeyUtilities.copyKey();
+  }, [railSetSelection, rotoPhysicalActions, rotoKeyUtilities]);
   // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
   // availability hold; the delete half is re-checked here so the keyboard
   // entry point enforces the same rule as the strip button.
@@ -1236,7 +1332,14 @@ export function PhysicsPaintStudio() {
     }
     rotoKeyUtilities.cutKey(rotoPhysicalActions.deleteRotoFrame);
   }, [rotoPhysicalActions, rotoKeyUtilities]);
-  const pasteRotoFrame = rotoKeyUtilities.pasteKey;
+  const pasteRotoFrame = useCallback(() => {
+    const copied = rotoSession.copiedKey.value;
+    if (isRotoSessionCopiedRailSet(copied)) {
+      void rotoPhysicalActions.pasteRailSet('paste');
+      return;
+    }
+    rotoKeyUtilities.pasteKey();
+  }, [rotoSession, rotoPhysicalActions, rotoKeyUtilities]);
   const rotoCachedPlayback = rotoNavigation.playback;
   const rotoPlaybackSettingsController = useRotoPlaybackSettingsController({
     initialContext: launchContext ? { context: launchContext, settings: initialRotoPlaybackSettings } : null,
@@ -1916,11 +2019,18 @@ export function PhysicsPaintStudio() {
         // every other kind leaves it unchanged (Pitfall 6 — reconcile stays
         // the stale authority). Undo/redo lookups use the ORIGINAL command id
         // from the replay provenance, never the replay command's own id.
+        // 43.6-08 (quick 260820-bjw): 'paste' records the AFTER set built from
+        // the accepted impact's ordered fresh identities (anchor = first pasted
+        // rail), so undo restores the pre-paste set and redo re-selects the
+        // pasted set.
         const beforeSet = railSetSelection.peek();
+        const pastedSet = accepted.semanticDelta?.kind === 'paste'
+          ? buildPastedRailSetFromImpact(accepted.semanticDelta.identities)
+          : null;
         recordRailSetSnapshot(
           accepted.operationId,
           beforeSet,
-          accepted.operationKind === 'delete-rails' ? null : beforeSet,
+          accepted.operationKind === 'delete-rails' ? null : pastedSet ?? beforeSet,
         );
         railSetSelection.value = resolveRailSetPostAcceptance({
           operationKind: accepted.operationKind,
@@ -2435,6 +2545,25 @@ export function PhysicsPaintStudio() {
     canvasKey,
     mount: canvasMount,
   }));
+  // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active
+  // rail set the strip's Copy/Duplicate/Paste buttons reflect SET scope —
+  // Copy enables on set validity, Duplicate/Paste on a rail-set clipboard — so
+  // the buttons/tooltips stop describing single-key scope. Without a set the
+  // overlay is the exact session availability (byte-identical single-key path).
+  const sessionKeyAvailability = rotoSession.actionAvailability.value;
+  const effectiveRotoKeyState = railSetSelection.value !== null
+    ? {
+        actionAvailability: {
+          ...sessionKeyAvailability,
+          canCopy: rotoPhysicalActions.canCopyRailSet.value,
+          canDuplicate: rotoPhysicalActions.canPasteRailSet.value,
+          canPaste: rotoPhysicalActions.canPasteRailSet.value,
+          pasteDisabledReason: rotoPhysicalActions.pasteRailSetDisabledReason.value
+            ?? sessionKeyAvailability.pasteDisabledReason,
+        },
+        hasCopiedRotoKey: rotoSession.copiedKey.value !== null,
+      }
+    : { actionAvailability: sessionKeyAvailability, hasCopiedRotoKey: rotoSession.copiedKey.value !== null };
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -2460,7 +2589,7 @@ export function PhysicsPaintStudio() {
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId) ?? [], railSetAnchorLoopId: railSetSelection.value?.anchor?.kind === 'loop' ? railSetSelection.value.anchor.loopId : null, railSetMemberKeyRailIds: railSetSelection.value?.members
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId) ?? [], railSetAnchorKeyRailId: railSetSelection.value?.anchor?.kind === 'key-rail' ? railSetSelection.value.anchor.firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+          .map((member) => member.firstKeyId) ?? [], railSetAnchorKeyRailId: railSetSelection.value?.anchor?.kind === 'key-rail' ? railSetSelection.value.anchor.firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

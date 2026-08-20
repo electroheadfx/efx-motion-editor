@@ -3,6 +3,12 @@ import type { FadeCurve } from './audio';
 import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+import type {
+  RotoRailSetCopyPayload,
+  RotoRailSetCopyPlacementMode,
+  RotoRailSetFreshIdentityAllocation,
+  RotoRailSetPasteIdentity,
+} from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import {
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoLoopClip,
@@ -845,6 +851,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'set-interpolation-enabled'
   | 'set-interpolation-mode'
   | 'delete-rails'
+  | 'paste'
   | 'undo'
   | 'redo';
 
@@ -948,6 +955,16 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly kind: 'delete-rails';
       readonly members: readonly RailSetDeleteMember[];
       readonly cleanupKeyIds: readonly string[];
+      readonly previousRevision: string;
+      readonly nextRevision: string;
+    }
+  | {
+      readonly kind: 'paste';
+      readonly payload: RotoRailSetCopyPayload;
+      readonly placementMode: RotoRailSetCopyPlacementMode;
+      readonly destinationAppFrame: number | null;
+      readonly freshIdentityAllocation: RotoRailSetFreshIdentityAllocation;
+      readonly identities: readonly RotoRailSetPasteIdentity[];
       readonly previousRevision: string;
       readonly nextRevision: string;
     }
@@ -1149,6 +1166,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'set-interpolation-enabled'
     || value === 'set-interpolation-mode'
     || value === 'delete-rails'
+    || value === 'paste'
     || value === 'undo'
     || value === 'redo';
 }
@@ -1226,6 +1244,75 @@ function hasValidPhysicalRevisionTransition(value: Record<string, unknown>): boo
   return isNonEmptyString(value.previousRevision)
     && isNonEmptyString(value.nextRevision)
     && value.previousRevision !== value.nextRevision;
+}
+
+function isRotoRailSetCopyEntryValue(value: unknown): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['sourceKeyId', 'sourceAppFrame', 'payload', 'ownsIncomingBreak'])) return false;
+  if (!isBoundedPhysicalKeyId(value.sourceKeyId)) return false;
+  if (!isNonNegativeInteger(value.sourceAppFrame)) return false;
+  if (typeof value.ownsIncomingBreak !== 'boolean') return false;
+  return isPhysicPaintRotoPhysicalEditPayload(value.payload);
+}
+
+function isRotoRailSetCopyMemberValue(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'key-rail') {
+    if (!hasOnlyKeys(value, ['kind', 'firstKeyId', 'firstKeyFrame', 'entries', 'firstKeyOwnsIncomingBreak'])) return false;
+    if (!isBoundedPhysicalKeyId(value.firstKeyId)) return false;
+    if (!isNonNegativeInteger(value.firstKeyFrame)) return false;
+    if (typeof value.firstKeyOwnsIncomingBreak !== 'boolean') return false;
+    if (!Array.isArray(value.entries) || value.entries.length === 0) return false;
+    return value.entries.every(isRotoRailSetCopyEntryValue);
+  }
+  if (value.kind === 'loop') {
+    if (!hasOnlyKeys(value, ['kind', 'loopId', 'placementStart', 'clip'])) return false;
+    if (!isBoundedPhysicalKeyId(value.loopId)) return false;
+    if (!isNonNegativeInteger(value.placementStart)) return false;
+    return isPhysicPaintRotoLoopClip(value.clip);
+  }
+  return false;
+}
+
+function isRotoRailSetCopyPayloadValue(value: unknown): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['anchorAppFrame', 'members'])) return false;
+  if (!isNonNegativeInteger(value.anchorAppFrame)) return false;
+  if (!Array.isArray(value.members) || value.members.length === 0) return false;
+  return value.members.every(isRotoRailSetCopyMemberValue);
+}
+
+function isRotoRailSetFreshIdentityAllocationValue(value: unknown): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['keyIds', 'loopIds'])) return false;
+  if (!isRecord(value.keyIds) || !isRecord(value.loopIds)) return false;
+  const keysValid = Object.entries(value.keyIds).every(([source, fresh]) => (
+    isBoundedPhysicalKeyId(source) && isBoundedPhysicalKeyId(fresh)
+  ));
+  const loopsValid = Object.entries(value.loopIds).every(([source, fresh]) => (
+    isBoundedPhysicalKeyId(source) && isBoundedPhysicalKeyId(fresh)
+  ));
+  return keysValid && loopsValid;
+}
+
+function isRotoRailSetPasteIdentityCollection(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  return value.every((entry) => {
+    if (!isRecord(entry) || !hasOnlyKeys(entry, ['kind', 'id', 'firstFrame', 'effectiveEndExclusive'])) return false;
+    if (entry.kind !== 'key-rail' && entry.kind !== 'loop') return false;
+    if (!isBoundedPhysicalKeyId(entry.id)) return false;
+    if (!isNonNegativeInteger(entry.firstFrame)) return false;
+    if (!isNonNegativeInteger(entry.effectiveEndExclusive)) return false;
+    return entry.effectiveEndExclusive > entry.firstFrame;
+  });
+}
+
+function isRotoRailSetPasteSemanticDelta(value: Record<string, unknown>): boolean {
+  if (!hasOnlyKeys(value, ['kind', 'payload', 'placementMode', 'destinationAppFrame', 'freshIdentityAllocation', 'identities', 'previousRevision', 'nextRevision'])) return false;
+  if (value.placementMode !== 'paste' && value.placementMode !== 'duplicate') return false;
+  if (value.destinationAppFrame !== null && !isNonNegativeInteger(value.destinationAppFrame)) return false;
+  if (value.placementMode === 'paste' && value.destinationAppFrame === null) return false;
+  if (!isRotoRailSetCopyPayloadValue(value.payload)) return false;
+  if (!isRotoRailSetFreshIdentityAllocationValue(value.freshIdentityAllocation)) return false;
+  if (!isRotoRailSetPasteIdentityCollection(value.identities)) return false;
+  return hasValidPhysicalRevisionTransition(value);
 }
 
 export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): value is PhysicPaintRotoPhysicalEditSemanticDelta {
@@ -1340,6 +1427,9 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     return isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
       && hasValidPhysicalRevisionTransition(value);
   }
+  if (value.kind === 'paste') {
+    return isRotoRailSetPasteSemanticDelta(value);
+  }
   if (value.kind === 'regenerate-group') {
     return hasOnlyKeys(value, ['kind', 'groupId', 'expectedActionRevision', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
       && isBoundedPhysicalKeyId(value.groupId)
@@ -1372,6 +1462,7 @@ function operationSemanticDeltaIsValid(
     || operationKind === 'delete-group-frame'
     || operationKind === 'delete-group'
     || operationKind === 'delete-rails'
+    || operationKind === 'paste'
     || operationKind === 'regenerate-group'
     || operationKind === 'detach-action-groups'
     || operationKind === 'delete-action-groups') {

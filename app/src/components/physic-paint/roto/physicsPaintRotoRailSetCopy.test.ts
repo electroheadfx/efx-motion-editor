@@ -17,7 +17,7 @@ import {
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
-const CHANGED_PNG = 'data:image/png;base64,CHANGED';
+const CHANGED_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 function recordKey(keyId: string, appFrame: number, dataUrl = PNG): PhysicPaintRotoRealKeyRecord {
   return Object.freeze({
@@ -131,16 +131,17 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     // The relocated source-owned break lands on the fresh B first key, never on A.
     expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain(freshBFirst);
     expect(pasted.proposal.incomingInterpolationBreakKeyIds).not.toContain(freshAFirst);
-    // deriveKeyRailSegments over the proposal yields A [10,12] and B [16,18] as separate segments.
+    // Locked contract: the relocated break lands on fresh B ONLY, so fresh A
+    // keys continue the source run — the derive projection yields ONE rail from
+    // the source A first key through fresh A (0→12) plus the standalone fresh B
+    // rail [16,18] opened by its break.
     const segments = deriveKeyRailSegments({
       orderedRealKeys: pasted.proposal.realKeyRecords,
       incomingInterpolationBreakKeyIds: new Set(pasted.proposal.incomingInterpolationBreakKeyIds),
       groupOwnedKeyIds: new Set(),
     });
-    const pastedRailFrames = segments
-      .filter((segment) => segment.firstKeyFrame >= 10)
-      .map((segment) => [segment.firstKeyFrame, segment.lastKeyFrame]);
-    expect(pastedRailFrames).toEqual([[10, 12], [16, 18]]);
+    const allRailFrames = segments.map((segment) => [segment.firstKeyFrame, segment.lastKeyFrame]);
+    expect(allRailFrames).toEqual([[0, 12], [16, 18]]);
     // Impact: ordered pasted identities, first pasted rail first.
     expect(pasted.impact.kind).toBe('paste');
     expect(pasted.impact.identities.map((identity) => identity.kind)).toEqual(['key-rail', 'key-rail']);
@@ -214,7 +215,7 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     expect(pasted.reason).toBe('duplicate-destination-frame');
     expect(pasted.conflictingAppFrames).toContain(10);
     // Zero mutation: no proposal, document byte-identical.
-    expect(pasted.proposal).toBeUndefined();
+    expect((pasted as Readonly<{ proposal?: unknown }>).proposal).toBeUndefined();
     expect(document.realKeyRecords).toEqual(records);
     expect(document.loopClips).toEqual([]);
     expect(document.incomingInterpolationBreakKeyIds).toEqual(['k6']);
@@ -257,9 +258,20 @@ describe('physicsPaintRotoRailSetCopy — proposeRails duplicate (quick 260820-b
       recordKey('k0', 0), recordKey('k2', 2), recordKey('k6', 6), recordKey('k8', 8),
       recordKey('blocker', 10),
     ];
-    const document = buildDocument(records, [], ['k6']);
-    const payload = keyRailPayload(document.realKeyRecords);
-    const duplicated = proposeRails({ document, payload, placementMode: 'duplicate' });
+    // The blocker owns its own break so it is a genuine separate rail (the
+    // canonical segmenter merges across empty frames — a breakless key at 10
+    // would join rail B). The copy then excludes it and the duplicate must
+    // scan past its occupied frame.
+    const document = buildDocument(records, [], ['k6', 'blocker']);
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'key-rail', firstKeyId: 'k6' },
+      ],
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const duplicated = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
     expect(duplicated.ok).toBe(true);
     if (!duplicated.ok) throw new Error(`Duplicate must scan forward: ${duplicated.reason}`);
     const sourceIds = new Set(['k0', 'k2', 'k6', 'k8', 'blocker']);

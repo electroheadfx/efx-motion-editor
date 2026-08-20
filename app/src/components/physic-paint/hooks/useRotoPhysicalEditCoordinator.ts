@@ -57,6 +57,8 @@ import type {
   RailSetDeleteMember,
 } from '../../../types/physicPaint';
 import type {
+  PhysicPaintRotoGroupFrameOverride,
+  PhysicPaintRotoGroupVisibleRange,
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoPhysicalDocument,
@@ -78,6 +80,13 @@ import {
   proposePhysicPaintRotoGroupFramePaint,
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../roto/physicsPaintRotoGroupLifecycle';
+import {
+  proposeRails,
+  type RotoRailSetCopyPayload,
+  type RotoRailSetCopyPlacementMode,
+  type RotoRailSetFreshIdentityAllocation,
+  type RotoRailSetPasteIdentity,
+} from '../roto/physicsPaintRotoRailSetCopy';
 import type { PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
@@ -311,6 +320,22 @@ export interface RotoRailSetDeleteExecuteInput {
   readonly members: readonly RailSetDeleteMember[];
 }
 
+/**
+ * 43.6-08 rail-set paste/duplicate input (quick 260820-bjw): the child
+ * coordinator reproduces the exact proposal via the shared `proposeRails`
+ * pure law, carrying the frozen copy payload + placement mode + optional
+ * cursor-frame destination. 'duplicate' derives its anchor from document
+ * facts on BOTH sides (child + parent recompute), so the destination is
+ * absent and the impact's `destinationAppFrame` is null.
+ */
+export interface RotoRailSetPasteExecuteInput {
+  readonly operationKind: 'paste';
+  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
+  readonly payload: RotoRailSetCopyPayload;
+  readonly placementMode: RotoRailSetCopyPlacementMode;
+  readonly destinationAppFrame?: number;
+}
+
 type RotoGroupLifecycleDeleteImpact = Extract<
   PhysicPaintRotoPhysicalEditSemanticDelta,
   { readonly kind: 'delete-group-frame' | 'delete-group' }
@@ -321,6 +346,11 @@ type RotoRailSetDeleteImpact = Extract<
   { readonly kind: 'delete-rails' }
 >;
 
+type RotoRailSetPasteImpact = Extract<
+  PhysicPaintRotoPhysicalEditSemanticDelta,
+  { readonly kind: 'paste' }
+>;
+
 export type RotoPhysicalEditCoordinatorExecuteInput<EngineState = unknown> =
   | RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal, EngineState>
   | RotoInterpolationEnabledExecuteInput
@@ -329,7 +359,8 @@ export type RotoPhysicalEditCoordinatorExecuteInput<EngineState = unknown> =
   | RotoRegenerateGroupExecuteInput
   | RotoGroupFramePaintExecuteInput
   | RotoGroupLifecycleDeleteExecuteInput
-  | RotoRailSetDeleteExecuteInput;
+  | RotoRailSetDeleteExecuteInput
+  | RotoRailSetPasteExecuteInput;
 
 type PhysicalEditPayloadBase = Omit<
   PhysicPaintRotoPhysicalEditApplyPayload,
@@ -386,6 +417,7 @@ function createAuthorizedPhysicalEditPayload(
     case 'delete-group-frame':
     case 'delete-group':
     case 'delete-rails':
+    case 'paste':
     case 'regenerate-group':
     case 'detach-action-groups':
     case 'delete-action-groups':
@@ -447,6 +479,15 @@ function semanticDeltaEquals(
   if (left.kind === 'delete-rails' && right.kind === 'delete-rails') {
     return railSetDeleteMembersEqual(left.members, right.members)
       && stringArraysEqual(left.cleanupKeyIds, right.cleanupKeyIds)
+      && left.previousRevision === right.previousRevision
+      && left.nextRevision === right.nextRevision;
+  }
+  if (left.kind === 'paste' && right.kind === 'paste') {
+    return left.placementMode === right.placementMode
+      && left.destinationAppFrame === right.destinationAppFrame
+      && railSetCopyPayloadEqual(left.payload, right.payload)
+      && railSetFreshIdentityAllocationEqual(left.freshIdentityAllocation, right.freshIdentityAllocation)
+      && railSetPasteIdentitiesEqual(left.identities, right.identities)
       && left.previousRevision === right.previousRevision
       && left.nextRevision === right.nextRevision;
   }
@@ -660,6 +701,127 @@ function railSetDeleteMembersEqual(
       && member.firstKeyId === other.firstKeyId
       && stringArraysEqual(member.keyIds, other.keyIds);
   });
+}
+
+// 43.6-08 paste equality helpers (quick 260820-bjw): the paste semantic delta
+// carries the frozen copy payload + allocation + identities, so equality must
+// compare the member structure (key-rail entries with payloads, loop clips
+// with lifecycle facts) exactly as the parent bridge's stableSerialize does.
+function railSetCopyPayloadEqual(
+  left: RotoRailSetCopyPayload,
+  right: RotoRailSetCopyPayload,
+): boolean {
+  if (left.anchorAppFrame !== right.anchorAppFrame) return false;
+  if (left.members.length !== right.members.length) return false;
+  return left.members.every((member, index) => {
+    const other = right.members[index];
+    if (!other || member.kind !== other.kind) return false;
+    if (member.kind === 'loop') {
+      return other.kind === 'loop' && railSetCopyLoopMemberEqual(member, other);
+    }
+    return other.kind === 'key-rail' && railSetCopyKeyRailMemberEqual(member, other);
+  });
+}
+
+function railSetCopyKeyRailMemberEqual(
+  left: RotoRailSetCopyPayload['members'][number] & { readonly kind: 'key-rail' },
+  right: RotoRailSetCopyPayload['members'][number] & { readonly kind: 'key-rail' },
+): boolean {
+  if (left.firstKeyId !== right.firstKeyId
+    || left.firstKeyFrame !== right.firstKeyFrame
+    || left.firstKeyOwnsIncomingBreak !== right.firstKeyOwnsIncomingBreak) return false;
+  if (left.entries.length !== right.entries.length) return false;
+  return left.entries.every((entry, index) => {
+    const other = right.entries[index];
+    if (!other) return false;
+    if (entry.sourceKeyId !== other.sourceKeyId
+      || entry.sourceAppFrame !== other.sourceAppFrame
+      || entry.ownsIncomingBreak !== other.ownsIncomingBreak) return false;
+    return entry.payload.frameIndex === other.payload.frameIndex
+      && entry.payload.appFrame === other.payload.appFrame
+      && entry.payload.dataUrl === other.payload.dataUrl
+      && entry.payload.width === other.payload.width
+      && entry.payload.height === other.payload.height;
+  });
+}
+
+function railSetCopyLoopMemberEqual(
+  left: RotoRailSetCopyPayload['members'][number] & { readonly kind: 'loop' },
+  right: RotoRailSetCopyPayload['members'][number] & { readonly kind: 'loop' },
+): boolean {
+  if (left.loopId !== right.loopId || left.placementStart !== right.placementStart) return false;
+  const leftClip = left.clip;
+  const rightClip = right.clip;
+  if (leftClip.loopId !== rightClip.loopId
+    || leftClip.placementStart !== rightClip.placementStart
+    || leftClip.repeat !== rightClip.repeat
+    || leftClip.mode !== rightClip.mode
+    || leftClip.scriptId !== rightClip.scriptId
+    || leftClip.overrideColor !== rightClip.overrideColor
+    || leftClip.syncState !== rightClip.syncState
+    || leftClip.provenanceState !== rightClip.provenanceState
+    || leftClip.phaseOrigin !== rightClip.phaseOrigin
+    || leftClip.originalEndExclusive !== rightClip.originalEndExclusive
+    || !stringArraysEqual(leftClip.sourceKeyIds, rightClip.sourceKeyIds)) return false;
+  return railSetCopyVisibleRangesEqual(leftClip.visibleRanges, rightClip.visibleRanges)
+    && railSetCopyFrameOverridesEqual(leftClip.frameOverrides, rightClip.frameOverrides);
+}
+
+function railSetCopyVisibleRangesEqual(
+  left: readonly PhysicPaintRotoGroupVisibleRange[] | undefined,
+  right: readonly PhysicPaintRotoGroupVisibleRange[] | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  if (left.length !== right.length) return false;
+  return left.every((range, index) => {
+    const other = right[index];
+    return !!other
+      && range.start === other.start
+      && range.endExclusive === other.endExclusive;
+  });
+}
+
+function railSetCopyFrameOverridesEqual(
+  left: readonly PhysicPaintRotoGroupFrameOverride[] | undefined,
+  right: readonly PhysicPaintRotoGroupFrameOverride[] | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  if (left.length !== right.length) return false;
+  return left.every((override, index) => {
+    const other = right[index];
+    return !!other
+      && override.keyId === other.keyId
+      && override.appFrame === other.appFrame;
+  });
+}
+
+function railSetPasteIdentitiesEqual(
+  left: readonly RotoRailSetPasteIdentity[],
+  right: readonly RotoRailSetPasteIdentity[],
+): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((identity, index) => {
+    const other = right[index];
+    return !!other
+      && identity.kind === other.kind
+      && identity.id === other.id
+      && identity.firstFrame === other.firstFrame
+      && identity.effectiveEndExclusive === other.effectiveEndExclusive;
+  });
+}
+
+function railSetFreshIdentityAllocationEqual(
+  left: RotoRailSetFreshIdentityAllocation,
+  right: RotoRailSetFreshIdentityAllocation,
+): boolean {
+  const leftKeyIds = Object.keys(left.keyIds);
+  const rightKeyIds = Object.keys(right.keyIds);
+  if (leftKeyIds.length !== rightKeyIds.length
+    || leftKeyIds.some((keyId) => left.keyIds[keyId] !== right.keyIds[keyId])) return false;
+  const leftLoopIds = Object.keys(left.loopIds);
+  const rightLoopIds = Object.keys(right.loopIds);
+  return leftLoopIds.length === rightLoopIds.length
+    && leftLoopIds.every((loopId) => left.loopIds[loopId] === right.loopIds[loopId]);
 }
 
 function validatePlayScriptInput(
@@ -1070,6 +1232,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || pending.operationKind === 'delete-group-frame'
         || pending.operationKind === 'delete-group'
         || pending.operationKind === 'delete-rails'
+        || pending.operationKind === 'paste'
       ) {
         portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
       }
@@ -1080,6 +1243,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         operationId: pending.operationId,
         operationKind: pending.operationKind,
         historyProvenance: detail.historyProvenance ?? null,
+        ...(pending.semanticDelta ? { semanticDelta: pending.semanticDelta } : {}),
       };
       failureSignal.value = null;
       presentationSignal.value = { status: 'accepted', conciseMessage: PHYSICAL_EDIT_ACCEPTED_MESSAGE };
@@ -1296,6 +1460,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const isGroupLifecycleDelete = input.operationKind === 'delete-group-frame'
         || input.operationKind === 'delete-group';
       const isRailSetDelete = input.operationKind === 'delete-rails';
+      const isRailSetPaste = input.operationKind === 'paste';
       const interpolationInput = isInterpolationChange && 'targetInterpolation' in input
         ? input as RotoInterpolationEnabledExecuteInput | RotoInterpolationModeExecuteInput
         : null;
@@ -1310,6 +1475,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         : null;
       const railSetDeleteInput = isRailSetDelete && 'members' in input
         ? input as RotoRailSetDeleteExecuteInput
+        : null;
+      const railSetPasteInput = isRailSetPaste && 'payload' in input
+        ? input as RotoRailSetPasteExecuteInput
         : null;
       const requestedSelectedKeyId = 'selectedKeyId' in input ? input.selectedKeyId : null;
       const requestedSelectedAppFrame = 'selectedAppFrame' in input ? input.selectedAppFrame : null;
@@ -1327,7 +1495,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         && !isGeneratedPublication
         && !isGroupFramePaint
         && !isGroupLifecycleDelete
-        && !isRailSetDelete;
+        && !isRailSetDelete
+        && !isRailSetPaste;
       if (isOrdinary) {
         if (!isPhysicPaintRotoPhysicalEditIntent(intent) || intent.kind !== input.operationKind) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
@@ -1390,6 +1559,22 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           return false;
         }
+      } else if (isRailSetPaste) {
+        if (!railSetPasteInput
+          || proposal
+          || intent !== undefined
+          || historyProvenance !== undefined
+          || replayTarget !== undefined
+          || !railSetPasteInput.payload
+          || !Array.isArray(railSetPasteInput.payload.members)
+          || (railSetPasteInput.placementMode !== 'paste' && railSetPasteInput.placementMode !== 'duplicate')
+          || (railSetPasteInput.placementMode === 'paste'
+            && (railSetPasteInput.destinationAppFrame === undefined
+              || !Number.isSafeInteger(railSetPasteInput.destinationAppFrame)
+              || railSetPasteInput.destinationAppFrame < 0))) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          return false;
+        }
       } else if (!proposal) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
@@ -1402,12 +1587,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      if (!isReplay && !isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete && !isRailSetDelete
+      if (!isReplay && !isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete && !isRailSetDelete && !isRailSetPaste
         && proposal?.status.operationKind !== input.operationKind) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      if (!isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete && !isRailSetDelete
+      if (!isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete && !isRailSetDelete && !isRailSetPaste
         && (proposal?.selectedKeyId !== requestedSelectedKeyId || proposal?.selectedAppFrame !== requestedSelectedAppFrame)) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
@@ -1484,10 +1669,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const capacity = portsRef.current.records.getCapacity(revalidatedLaunch.layerId);
         const currentSelectedKeyIdForEdit = portsRef.current.selection.getSelectedKeyId();
         const currentAppFrameForEdit = portsRef.current.selection.getCurrentAppFrame();
-        let targetSelectedKeyId = isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete
+        let targetSelectedKeyId = isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete || isRailSetPaste
           ? currentSelectedKeyIdForEdit
           : requestedSelectedKeyId;
-        let targetSelectedAppFrame = isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete
+        let targetSelectedAppFrame = isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete || isRailSetPaste
           ? (currentSelectedKeyIdForEdit === null ? null : currentAppFrameForEdit)
           : requestedSelectedAppFrame;
         let targetCursorAppFrame = requestedSelectedAppFrame ?? currentAppFrameForEdit;
@@ -1505,7 +1690,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         let groupLifecycleDeleteImpact: RotoGroupLifecycleDeleteImpact | null = null;
         let railSetDeleteProposal: PhysicPaintRotoPhysicalDocument | null = null;
         let railSetDeleteImpact: RotoRailSetDeleteImpact | null = null;
-        if (isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete) {
+        let railSetPasteProposal: PhysicPaintRotoPhysicalDocument | null = null;
+        let railSetPasteImpact: RotoRailSetPasteImpact | null = null;
+        if (isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete || isRailSetPaste) {
           const documentRevision = buildPhysicPaintRotoPhysicalRevision(
             currentDocument.realKeyRecords,
             currentDocument.interpolation,
@@ -1608,6 +1795,28 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
               ? null
               : proposed.proposal.cursorAppFrame;
             targetCursorAppFrame = proposed.proposal.cursorAppFrame;
+          } else if (railSetPasteInput) {
+            const proposed = proposeRails({
+              document: currentDocument,
+              payload: railSetPasteInput.payload,
+              placementMode: railSetPasteInput.placementMode,
+              ...(railSetPasteInput.destinationAppFrame !== undefined
+                ? { destinationAppFrame: railSetPasteInput.destinationAppFrame }
+                : {}),
+            });
+            if (!proposed.ok) {
+              portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+              portsRef.current.status.logDiagnostic(`Rail-set ${railSetPasteInput.placementMode} physical proposal rejected: ${proposed.reason}`);
+              clearPendingOnce();
+              return false;
+            }
+            railSetPasteProposal = proposed.proposal;
+            railSetPasteImpact = proposed.impact;
+            targetSelectedKeyId = proposed.proposal.selectedKeyId;
+            targetSelectedAppFrame = proposed.proposal.selectedKeyId === null
+              ? null
+              : proposed.proposal.cursorAppFrame;
+            targetCursorAppFrame = proposed.proposal.cursorAppFrame;
           }
         }
         if (isReplay && (
@@ -1682,6 +1891,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                 ? cloneRecords(groupLifecycleDeleteProposal.realKeyRecords)
               : isRailSetDelete && railSetDeleteProposal
                 ? cloneRecords(railSetDeleteProposal.realKeyRecords)
+              : isRailSetPaste && railSetPasteProposal
+                ? cloneRecords(railSetPasteProposal.realKeyRecords)
               : isReplay && replayTarget
                 ? buildReplayRecords(replayTarget.records, capacity)
                 : proposal
@@ -1734,6 +1945,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                     enabled: railSetDeleteProposal.interpolation.enabled,
                     mode: railSetDeleteProposal.interpolation.mode,
                   }
+              : isRailSetPaste && railSetPasteProposal
+                ? {
+                    enabled: railSetPasteProposal.interpolation.enabled,
+                    mode: railSetPasteProposal.interpolation.mode,
+                  }
               : isReplay && replayTarget
                 ? {
                     enabled: replayTarget.interpolation.enabled,
@@ -1764,7 +1980,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         // collection unchanged.
         const stagedLoopClips = isReplay && replayTarget
           ? replayTarget.loopClips
-          : railSetDeleteProposal?.loopClips
+          : railSetPasteProposal?.loopClips
+            ?? railSetDeleteProposal?.loopClips
             ?? groupLifecycleDeleteProposal?.loopClips
             ?? groupFramePaintProposal?.loopClips
             ?? generatedPublicationInput?.loopClips
@@ -1772,7 +1989,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             ?? currentLoopClips;
         const stagedIncomingInterpolationBreakKeyIds = isReplay && replayTarget
           ? replayTarget.incomingInterpolationBreakKeyIds
-          : railSetDeleteProposal?.incomingInterpolationBreakKeyIds
+          : railSetPasteProposal?.incomingInterpolationBreakKeyIds
+            ?? railSetDeleteProposal?.incomingInterpolationBreakKeyIds
             ?? groupLifecycleDeleteProposal?.incomingInterpolationBreakKeyIds
             ?? groupFramePaintProposal?.incomingInterpolationBreakKeyIds
             ?? proposal?.nextIncomingInterpolationBreakKeyIds
@@ -1797,6 +2015,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const stagedGroupOverrideRecords = isReplay && replayTarget
           ? replayTarget.groupOverrideRecords
           : regenerateGroupInput?.groupOverrideRecords
+            ?? railSetPasteProposal?.groupOverrideRecords
             ?? railSetDeleteProposal?.groupOverrideRecords
             ?? groupLifecycleDeleteProposal?.groupOverrideRecords
             ?? groupFramePaintProposal?.groupOverrideRecords
@@ -1853,6 +2072,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           leaseToken,
           startFrame: groupFramePaintInput?.appFrame
             ?? groupLifecycleDeleteInput?.appFrame
+            ?? railSetPasteInput?.destinationAppFrame
             ?? targetSelectedAppFrame
             ?? before.currentAppFrame,
           launchOperationId: revalidatedLaunch.operationId,
@@ -1870,8 +2090,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           selectedKeyId: targetSelectedKeyId,
           selectedAppFrame: targetSelectedAppFrame,
           cursorAppFrame: targetCursorAppFrame,
-          ...(railSetDeleteImpact
-            ? { semanticDelta: railSetDeleteImpact }
+          ...(railSetPasteImpact
+            ? { semanticDelta: railSetPasteImpact }
+            : railSetDeleteImpact
+              ? { semanticDelta: railSetDeleteImpact }
             : groupLifecycleDeleteImpact
               ? { semanticDelta: groupLifecycleDeleteImpact }
             : groupFramePaintImpact

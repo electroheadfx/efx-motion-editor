@@ -7,8 +7,9 @@ import {
   type RotoKeyUtilityTransaction,
 } from '../roto/physicsPaintRotoKeyController';
 import type { PhysicPaintRotoRealKeyPayload } from './physicsPaintRotoPhysicalModel';
+import type { RotoRailSetCopyPayload } from './physicsPaintRotoRailSetCopy';
 
-export type RotoSessionActionName = 'copyKey' | 'copyKeyGroup' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
+export type RotoSessionActionName = 'copyKey' | 'copyKeyGroup' | 'copyRailSet' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
 export interface RotoSessionCopiedKey {
@@ -27,10 +28,24 @@ export interface RotoSessionCopiedKeyGroup {
   readonly entries: readonly RotoSessionCopiedGroupEntry[];
 }
 
-export type RotoSessionCopiedKeyValue = RotoSessionCopiedKey | RotoSessionCopiedKeyGroup;
+/**
+ * Third clipboard variant (quick 260820-bjw): a frozen multi-rail set copy
+ * payload. Shares the single clipboard slot with single-key and group copies —
+ * a rail-set copy overwrites the shared slot (one slot contract).
+ */
+export interface RotoSessionCopiedRailSet {
+  readonly kind: 'rail-set';
+  readonly payload: RotoRailSetCopyPayload;
+}
+
+export type RotoSessionCopiedKeyValue = RotoSessionCopiedKey | RotoSessionCopiedKeyGroup | RotoSessionCopiedRailSet;
 
 export function isRotoSessionCopiedKeyGroup(value: RotoSessionCopiedKeyValue | null): value is RotoSessionCopiedKeyGroup {
   return value !== null && 'kind' in value && value.kind === 'group';
+}
+
+export function isRotoSessionCopiedRailSet(value: RotoSessionCopiedKeyValue | null): value is RotoSessionCopiedRailSet {
+  return value !== null && 'kind' in value && value.kind === 'rail-set';
 }
 
 export type RotoSessionEffect =
@@ -81,6 +96,7 @@ export interface RotoSession {
   actionAvailability: Signal<RotoKeyUtilityActionState>;
   copyKey: () => RotoSessionActionResult;
   copyKeyGroup: (entries: readonly RotoSessionCopiedGroupEntry[]) => RotoSessionActionResult;
+  copyRailSet: (payload: RotoRailSetCopyPayload) => RotoSessionActionResult;
   requestFrame: (frame: number) => RotoSessionActionResult;
   markDirty: (frame?: number) => RotoSessionActionResult;
   markCachedBaseLoaded: (frame?: number) => RotoSessionActionResult;
@@ -178,6 +194,16 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     return { action: 'copyKeyGroup', ok: true, message, effects: [] };
   }
 
+  function copyRailSet(payload: RotoRailSetCopyPayload): RotoSessionActionResult {
+    if (!payload || !Array.isArray(payload.members) || payload.members.length === 0) {
+      return failed('copyRailSet', 'Select a rail set to copy.');
+    }
+    copiedKey.value = Object.freeze({ kind: 'rail-set', payload });
+    const message = 'Copied rail set.';
+    feedback.value = message;
+    return { action: 'copyRailSet', ok: true, message, effects: [] };
+  }
+
   return {
     currentFrame,
     realKeyFrames,
@@ -195,6 +221,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     actionAvailability,
     copyKey,
     copyKeyGroup,
+    copyRailSet,
     requestFrame,
     markDirty,
     markCachedBaseLoaded,
@@ -245,6 +272,12 @@ function normalizeCopiedKey(copiedKey: RotoSessionCopiedKeyValue, canvasSize?: {
   if (isRotoSessionCopiedKeyGroup(copiedKey)) {
     if (copiedKey.entries.length < 2) return null;
     if (!copiedKey.entries.every((entry) => normalizeFrame(entry.sourceAppFrame) !== null)) return null;
+    return copiedKey;
+  }
+  if (isRotoSessionCopiedRailSet(copiedKey)) {
+    if (!copiedKey.payload || !Array.isArray(copiedKey.payload.members) || copiedKey.payload.members.length === 0) {
+      return null;
+    }
     return copiedKey;
   }
   const frame = normalizeFrame(copiedKey.frame);

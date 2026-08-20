@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { createRotoSession, isRotoSessionCopiedKeyGroup, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedGroupEntry, type RotoSessionCopiedKey, type RotoSessionCopiedKeyValue, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
+import { createRotoSession, isRotoSessionCopiedKeyGroup, isRotoSessionCopiedRailSet, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedGroupEntry, type RotoSessionCopiedKey, type RotoSessionCopiedKeyValue, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
 export interface RotoKeyUtilitiesInput {
@@ -41,6 +42,7 @@ export interface RotoKeyUtilities {
   copyKey: () => void;
   cutKey: (deleteSelection: () => Promise<boolean>) => void;
   pasteKey: () => void;
+  copyRailSet: (payload: RotoRailSetCopyPayload) => void;
   addKey: () => void;
 }
 
@@ -203,6 +205,16 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     if (result) void runSessionResult(result);
   }, [blocked, resolveCopySelection, runSessionResult]);
 
+  // Rail-set copy (quick 260820-bjw): the frozen multi-rail payload replaces
+  // the shared clipboard slot (one slot contract); the rebuild-seed ref is
+  // synced immediately so a recreated session preserves the rail copy.
+  const copyRailSet = useCallback((payload: RotoRailSetCopyPayload) => {
+    if (blocked) return;
+    const result = session.copyRailSet(payload);
+    copiedKeyRef.current = session.copiedKey.value;
+    if (result.message) input.setApplyMessage(result.message);
+  }, [blocked, input, session]);
+
   // Cut (quick 260731-9l0): fail-closed copy + delete composition. The
   // pre-cut clipboard is snapshotted before copying; if the delete half
   // resolves false or rejects, BOTH the live session clipboard and the
@@ -250,6 +262,13 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     const copiedKey = session.copiedKey.value;
     if (!copiedKey) {
       input.setApplyMessage('Copy a real Roto key before pasting.');
+      return;
+    }
+    if (isRotoSessionCopiedRailSet(copiedKey)) {
+      // Rail-set paste is a multi-rail operation routed through the timeline
+      // actions, never the single-key physical paste — fail closed here so the
+      // rail-set payload never falls through to the single-key payload cast.
+      input.setApplyMessage('Paste the copied rail set from the timeline rail actions.');
       return;
     }
     if (isRotoSessionCopiedKeyGroup(copiedKey)) {
@@ -318,6 +337,7 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     copyKey,
     cutKey,
     pasteKey,
+    copyRailSet,
     addKey,
   };
 }

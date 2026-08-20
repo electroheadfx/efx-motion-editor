@@ -312,10 +312,13 @@ export interface ResolveRailSetPostAcceptanceInput {
  * D-06 aftermath resolver with EXPLICIT branches: 'move-rails' and
  * 'spacing-on-set' keep the current set (identities are move-stable by
  * construction; respacing never changes rail membership); 'delete-rails'
- * returns null; 'undo'/'redo' with a recorded snapshot restore the before/after
- * set exactly; every other kind (including 'undo'/'redo' without a recorded
- * snapshot) returns the current set unchanged so reconcile-on-revision (Task 2)
- * remains the stale authority — never collapse by default (Pitfall 6).
+ * returns null; 'paste' resolves to the recorded after set (the pasted set
+ * becomes the selection, anchor = first pasted rail) or keeps the current set
+ * when no snapshot was recorded; 'undo'/'redo' with a recorded snapshot restore
+ * the before/after set exactly; every other kind (including 'undo'/'redo'
+ * without a recorded snapshot) returns the current set unchanged so
+ * reconcile-on-revision (Task 2) remains the stale authority — never collapse
+ * by default (Pitfall 6).
  */
 export function resolveRailSetPostAcceptance(
   input: ResolveRailSetPostAcceptanceInput,
@@ -325,6 +328,10 @@ export function resolveRailSetPostAcceptance(
   }
   if (input.operationKind === 'delete-rails') {
     return null;
+  }
+  if (input.operationKind === 'paste') {
+    const snapshot = railSetSnapshots.get(input.operationId);
+    return snapshot ? snapshot.after : input.current;
   }
   if (input.operationKind === 'undo' || input.operationKind === 'redo') {
     const snapshot = railSetSnapshots.get(input.operationId);

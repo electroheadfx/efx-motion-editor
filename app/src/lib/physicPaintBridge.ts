@@ -37,6 +37,7 @@ import {
   type PhysicPaintRotoActionGroupLifecycleImpact,
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
+import { proposeRails } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
@@ -1041,6 +1042,7 @@ const GROUP_LIFECYCLE_OPERATION_KINDS = new Set<PhysicPaintRotoPhysicalEditOpera
   'delete-group-frame',
   'delete-group',
   'delete-rails',
+  'paste',
   'regenerate-group',
   'detach-action-groups',
   'delete-action-groups',
@@ -1212,7 +1214,10 @@ function validateCanonicalGroupLifecycleEdit(input: {
   const { payload, currentDocument } = input;
   if (!GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind)) return null;
   const isDeleteRails = payload.operationKind === 'delete-rails';
-  const operationLabel = isDeleteRails ? 'Delete Rails' : 'Group lifecycle';
+  const isRailSetPaste = payload.operationKind === 'paste';
+  const operationLabel = isDeleteRails ? 'Delete Rails'
+    : isRailSetPaste ? 'Rail-set paste/duplicate'
+    : 'Group lifecycle';
   if (!currentDocument) return `${operationLabel} edit requires one current physical document.`;
   const delta = payload.semanticDelta;
   if (!delta || delta.kind !== payload.operationKind) {
@@ -1232,6 +1237,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     | ReturnType<typeof proposePhysicPaintRotoDeleteGroupFrame>
     | ReturnType<typeof proposePhysicPaintRotoDeleteGroup>
     | ReturnType<typeof proposePhysicPaintRotoDeleteRails>
+    | ReturnType<typeof proposeRails>
     | ReturnType<typeof proposePhysicPaintRotoRegenerateGroup>
     | ReturnType<typeof proposePhysicPaintRotoActionGroupLifecycle>;
   if (delta.kind === 'paint-group-frame') {
@@ -1268,6 +1274,14 @@ function validateCanonicalGroupLifecycleEdit(input: {
     recomputed = proposePhysicPaintRotoDeleteRails({
       document: targetDocument,
       members: delta.members,
+    });
+  } else if (delta.kind === 'paste') {
+    recomputed = proposeRails({
+      document: targetDocument,
+      payload: delta.payload,
+      placementMode: delta.placementMode,
+      ...(delta.destinationAppFrame !== null ? { destinationAppFrame: delta.destinationAppFrame } : {}),
+      freshIdentityAllocation: delta.freshIdentityAllocation,
     });
   } else if (delta.kind === 'regenerate-group') {
     const aggregate = recomputeCanonicalGroupRegenerate({

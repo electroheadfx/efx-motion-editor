@@ -217,6 +217,7 @@ function isOrdinaryOperationKind(
     || kind === 'move-rails'
     || kind === 'spacing-on-set'
     || kind === 'delete-rails'
+    || kind === 'paste'
     || kind === 'play-script'
     || kind === 'paint-group-frame'
     || kind === 'delete-group-frame'

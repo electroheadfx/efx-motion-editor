@@ -9,6 +9,7 @@ import {
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
@@ -17,6 +18,7 @@ import {
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   createPhysicPaintRotoKeyId,
+  parsePhysicPaintRotoPhysicalDocument,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
@@ -53,6 +55,11 @@ import type {
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
+import {
+  buildRotoRailSetCopyPayload,
+  type RotoRailSetCopyPayload,
+  type RotoRailSetCopyPlacementMode,
+} from '../roto/physicsPaintRotoRailSetCopy';
 
 /**
  * Stable physical timeline action bundle exposed by {@link useRotoTimelineActions}.
@@ -1328,6 +1335,28 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canSelectAllKeys: ReadonlySignal<boolean>;
   /** Reactive Select All disabled reason (verbatim controller reason for the 37-04 guarded icon), or null when eligible. */
   readonly selectAllKeysDisabledReason: ReadonlySignal<string | null>;
+  /**
+   * 43.6-08 rail-set Copy (quick 260820-bjw): builds the frozen multi-rail
+   * copy payload from the current session rail-set identities and stores it on
+   * the session rail-set clipboard slot (one slot contract).
+   */
+  readonly copyRailSet: () => Promise<boolean>;
+  /** Reactive rail-set Copy availability from launch/readiness/selection authority. */
+  readonly canCopyRailSet: ReadonlySignal<boolean>;
+  /** Reactive rail-set Copy disabled reason, or null when eligible. */
+  readonly copyRailSetDisabledReason: ReadonlySignal<string | null>;
+  /**
+   * 43.6-08 rail-set Paste/Duplicate: dispatches the clipboard payload through
+   * the acknowledged `executeRailSetPaste` seam. 'paste' anchors at the cursor
+   * frame; 'duplicate' derives its anchor from document facts on both sides.
+   */
+  readonly pasteRailSet: (placementMode: RotoRailSetCopyPlacementMode) => Promise<boolean>;
+  /** Reactive rail-set Paste/Duplicate readiness from clipboard + launch authority. */
+  readonly canPasteRailSet: ReadonlySignal<boolean>;
+  /** Reactive rail-set Paste/Duplicate disabled reason, or null when eligible. */
+  readonly pasteRailSetDisabledReason: ReadonlySignal<string | null>;
+  /** 43.6-08 rail-set Duplicate shorthand for `pasteRailSet('duplicate')`. */
+  readonly duplicateRailSet: () => Promise<boolean>;
 }
 
 export interface RotoTimelineActionsInput {
@@ -1389,6 +1418,17 @@ export interface RotoTimelineActionsInput {
   executeRailSetDelete?: (target: Readonly<{
     operationKind: 'delete-rails';
     members: readonly RailSetDeleteMember[];
+  }>) => Promise<boolean>;
+  /** Session rail-set copy clipboard reader (quick 260820-bjw, 43.6-08). */
+  getRailSetClipboard?: () => RotoRailSetCopyPayload | null;
+  /** Session rail-set copy clipboard writer (quick 260820-bjw, 43.6-08). */
+  setRailSetClipboard?: (payload: RotoRailSetCopyPayload | null) => void;
+  /** Direct acknowledged rail-set Paste/Duplicate seam (43.6-08; parent-authority execute). */
+  executeRailSetPaste?: (input: Readonly<{
+    operationKind: 'paste';
+    placementMode: RotoRailSetCopyPlacementMode;
+    destinationAppFrame?: number;
+    payload: RotoRailSetCopyPayload;
   }>) => Promise<boolean>;
   /** Focused warning request for deleting a Group's sole visible occurrence. */
   requestSoleOccurrenceDeleteWarning?: (target: Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
@@ -1775,6 +1815,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const addEmptyKeyDisabledReason = computed(() => computeAddEmptyKeyAvailability(input).reason);
   const canSelectAllKeys = computed(() => computeSelectAllKeysAvailability(input).eligible);
   const selectAllKeysDisabledReason = computed(() => computeSelectAllKeysAvailability(input).reason);
+  const canCopyRailSet = computed(() => computeRailSetCopyAvailability(input).eligible);
+  const copyRailSetDisabledReason = computed(() => computeRailSetCopyAvailability(input).reason);
+  const canPasteRailSet = computed(() => computeRailSetPasteAvailability(input).eligible);
+  const pasteRailSetDisabledReason = computed(() => computeRailSetPasteAvailability(input).reason);
   const pendingOperationIdSignal = input.pendingOperationId ?? signal<string | null>(null);
 
   const runPhysicalAction = useCallback(async (runnerInput: PhysicalActionRunnerInput): Promise<boolean> => {
@@ -2065,6 +2109,102 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           : failure.text || 'The Roto key group paste is invalid.',
     });
   }, [input, runPhysicalAction]);
+
+  // 43.6-08 rail-set Copy (quick 260820-bjw): the frozen multi-rail payload is
+  // built from the session rail-set identities against one coherent current
+  // document and stored on the session rail-set clipboard slot (one slot
+  // contract). Stale/malformed members and stale documents fail closed with the
+  // locked selection-stale voice — never a fallback scope.
+  const copyRailSet = useCallback((): Promise<boolean> => {
+    const members = input.getRailSetMembers?.() ?? [];
+    if (members.length === 0) {
+      input.publishStatus?.('Select the Rails to copy.');
+      return Promise.resolve(false);
+    }
+    if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+      input.publishStatus?.('Rail set selection is stale. Select the Rails again.');
+      return Promise.resolve(false);
+    }
+    if (!input.setRailSetClipboard) {
+      input.publishStatus?.('Rail set copying is unavailable.');
+      return Promise.resolve(false);
+    }
+    const document = buildRailSetCopyDocument(input);
+    if (document === null) {
+      input.publishStatus?.('Timeline editing is unavailable.');
+      return Promise.resolve(false);
+    }
+    const built = buildRotoRailSetCopyPayload({ document, members });
+    if (!built.ok) {
+      input.publishStatus?.(built.reason === 'empty-set'
+        ? 'Select the Rails to copy.'
+        : built.reason === 'malformed-member'
+          ? 'Rail set selection is stale. Select the Rails again.'
+          : 'The selected Rails are no longer available.');
+      return Promise.resolve(false);
+    }
+    input.setRailSetClipboard(built.payload);
+    input.publishStatus?.('Copied rail set.');
+    return Promise.resolve(true);
+  }, [input]);
+
+  const pasteRailSet = useCallback((placementMode: RotoRailSetCopyPlacementMode): Promise<boolean> => {
+    if (placementMode !== 'paste' && placementMode !== 'duplicate') {
+      input.publishStatus?.('Rail set paste is malformed.');
+      return Promise.resolve(false);
+    }
+    const payload = input.getRailSetClipboard?.() ?? null;
+    if (!payload) {
+      input.publishStatus?.('Copy a rail set before pasting.');
+      return Promise.resolve(false);
+    }
+    if (!input.executeRailSetPaste) {
+      input.publishStatus?.('Rail set pasting is unavailable.');
+      return Promise.resolve(false);
+    }
+    const destinationAppFrame = placementMode === 'paste' ? input.getCurrentAppFrame?.() ?? null : null;
+    if (placementMode === 'paste'
+      && (destinationAppFrame === null || !Number.isInteger(destinationAppFrame) || destinationAppFrame < 0)) {
+      input.publishStatus?.('Select a valid Roto frame before pasting.');
+      return Promise.resolve(false);
+    }
+    // Guard validated: when placementMode is 'paste', destinationAppFrame is a
+    // non-negative integer. TS does not carry the correlated narrowing into the
+    // ternary below, so pin the non-null destination here.
+    const pasteDestination = placementMode === 'paste' ? destinationAppFrame as number : null;
+    input.publishStatus?.(placementMode === 'paste' ? 'Pasting Rails…' : 'Duplicating Rails…');
+    const executeInput: Readonly<{
+      operationKind: 'paste';
+      placementMode: RotoRailSetCopyPlacementMode;
+      destinationAppFrame?: number;
+      payload: RotoRailSetCopyPayload;
+    }> = placementMode === 'paste'
+      ? Object.freeze({
+          operationKind: 'paste',
+          placementMode: 'paste',
+          destinationAppFrame: pasteDestination as number,
+          payload,
+        })
+      : Object.freeze({
+          operationKind: 'paste',
+          placementMode: 'duplicate',
+          payload,
+        });
+    return input.executeRailSetPaste(executeInput).then((accepted) => {
+      if (accepted) {
+        input.publishStatus?.(placementMode === 'paste' ? 'Pasted the copied Rails.' : 'Duplicated the copied Rails.');
+        return true;
+      }
+      input.publishStatus?.(placementMode === 'paste'
+        ? 'Paste rejected — not enough room or the destination is occupied.'
+        : 'Duplicate rejected — not enough room.');
+      return false;
+    });
+  }, [input]);
+
+  const duplicateRailSet = useCallback((): Promise<boolean> => {
+    return pasteRailSet('duplicate');
+  }, [pasteRailSet]);
 
   const addEmptyKey = useCallback((
     destinationAppFrame: number,
@@ -3128,7 +3268,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+    copyRailSet,
+    canCopyRailSet,
+    copyRailSetDisabledReason,
+    pasteRailSet,
+    canPasteRailSet,
+    pasteRailSetDisabledReason,
+    duplicateRailSet,
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -3574,6 +3721,79 @@ function computeSelectAllKeysAvailability(input: RotoTimelineActionsInput): Acti
   }
   // Select All is idempotent: eligible even when every key is already selected.
   return { eligible: true, reason: null };
+}
+
+/**
+ * 43.6-08 copy/paste availability (quick 260820-bjw). Copy requires an active
+ * non-empty session rail-set selection plus a clipboard writer; paste/duplicate
+ * require a stored rail-set payload plus the acknowledged paste seam. Paste at
+ * the cursor additionally requires a valid current frame.
+ */
+function computeRailSetCopyAvailability(input: RotoTimelineActionsInput): ActionAvailability {
+  if (!input.getLaunchContext || !input.getLaunchContext()) {
+    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before copying Rails.' };
+  }
+  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
+  }
+  if (!input.setRailSetClipboard || !input.getRotoKeyRecords) {
+    return { eligible: false, reason: 'Rail set copying is unavailable.' };
+  }
+  const members = input.getRailSetMembers?.() ?? [];
+  if (members.length === 0) {
+    return { eligible: false, reason: 'Select the Rails to copy.' };
+  }
+  if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+    return { eligible: false, reason: 'Rail set selection is stale. Select the Rails again.' };
+  }
+  return { eligible: true, reason: null };
+}
+
+function computeRailSetPasteAvailability(input: RotoTimelineActionsInput): ActionAvailability {
+  if (!input.getLaunchContext || !input.getLaunchContext()) {
+    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before pasting Rails.' };
+  }
+  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
+  }
+  if (!input.executeRailSetPaste) {
+    return { eligible: false, reason: 'Rail set pasting is unavailable.' };
+  }
+  if (!input.getRailSetClipboard || !input.getRailSetClipboard()) {
+    return { eligible: false, reason: 'Copy a rail set before pasting.' };
+  }
+  return { eligible: true, reason: null };
+}
+
+function buildRailSetCopyDocument(input: RotoTimelineActionsInput): PhysicPaintRotoPhysicalDocument | null {
+  const capacity = input.getCapacity?.() ?? null;
+  if (capacity === null) return null;
+  const records = input.getRotoKeyRecords?.() ?? [];
+  const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  const interpolation = input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' };
+  const incomingInterpolationBreakKeyIds = input.getIncomingInterpolationBreakKeyIds?.() ?? [];
+  try {
+    return parsePhysicPaintRotoPhysicalDocument({
+      capacity,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+      background: null,
+      selectedKeyId: input.getSelectedKeyId?.() ?? null,
+      cursorAppFrame: input.getCurrentAppFrame?.() ?? 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        interpolation,
+        loopClips,
+        incomingInterpolationBreakKeyIds,
+      ),
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {  if (!input.getLaunchContext || !input.getLaunchContext()) {

@@ -184,6 +184,14 @@ export interface RotoPhysicalEditAcceptedOutput<EngineState> {
   readonly operationId: string;
   readonly operationKind: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditOperationKind;
   readonly historyProvenance: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null;
+  /**
+   * 43.6-08 (quick 260820-bjw): the authoritative semantic delta when the
+   * accepted command carried one (e.g. the rail-set paste impact with the
+   * ordered pasted identities). Absent for commands without a delta. Consumed
+   * by the Studio to seed the pasted set from the impact (anchor = first
+   * pasted rail).
+   */
+  readonly semanticDelta?: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditSemanticDelta | null;
 }
 
 /**

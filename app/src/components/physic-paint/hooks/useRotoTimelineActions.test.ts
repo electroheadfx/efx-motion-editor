@@ -168,7 +168,7 @@ function createHarness(options: HarnessOptions = {}) {
     requestSoleOccurrenceDeleteWarning: options.requestSoleOccurrenceDeleteWarning,
     requestGroupDeleteChoice: options.requestGroupDeleteChoice,
     executeRailSetDelete: options.executeRailSetDelete,
-    getRailSetClipboard: options.getRailSetClipboard,
+    getRailSetClipboard: options.getRailSetClipboard ?? (() => options.railSetClipboard ?? null),
     setRailSetClipboard: options.setRailSetClipboard,
     executeRailSetPaste: options.executeRailSetPaste,
   } as RotoTimelineActionsInput & {
@@ -3542,7 +3542,7 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       setRailSetClipboard: (payload) => { railClipboard.value = payload; },
     });
 
-    expect(await harness.actions.copyRailSet()).toBe(true);
+    expect(await harness.actions.physicalActions.copyRailSet()).toBe(true);
     expect(railClipboard.value).not.toBeNull();
     expect(railClipboard.value?.anchorAppFrame).toBe(0);
     expect(railClipboard.value?.members).toHaveLength(2);
@@ -3570,7 +3570,7 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       }) as RotoRailSetCopyPayload,
     });
 
-    expect(await harness.actions.pasteRailSet('paste')).toBe(true);
+    expect(await harness.actions.physicalActions.pasteRailSet('paste')).toBe(true);
     expect(executeRailSetPaste).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'paste',
       placementMode: 'paste',
@@ -3594,7 +3594,7 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       }) as RotoRailSetCopyPayload,
     });
 
-    expect(await harness.actions.duplicateRailSet()).toBe(true);
+    expect(await harness.actions.physicalActions.duplicateRailSet()).toBe(true);
     expect(executeRailSetPaste).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'paste',
       placementMode: 'duplicate',
@@ -3617,7 +3617,7 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       }) as RotoRailSetCopyPayload,
     });
 
-    expect(await harness.actions.pasteRailSet('paste')).toBe(false);
+    expect(await harness.actions.physicalActions.pasteRailSet('paste')).toBe(false);
     expect(executeRailSetPaste).toHaveBeenCalledTimes(1);
     expect(harness.publishStatus).toHaveBeenCalled();
   });

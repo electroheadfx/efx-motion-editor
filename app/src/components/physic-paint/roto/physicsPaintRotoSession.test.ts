@@ -3,6 +3,7 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import {
   createRotoSession,
   isRotoSessionCopiedKeyGroup,
+  isRotoSessionCopiedRailSet,
   type RotoSessionCopiedGroupEntry,
   type RotoSessionCopiedKeyGroup,
   type RotoSessionInput,
@@ -174,12 +175,9 @@ describe('actionAvailability — shape-agnostic paste availability', () => {
 });
 
 describe('rail-set clipboard — copyRailSet variant (quick 260820-bjw)', () => {
-  // Structural guard (Task 2 exposes the real isRotoSessionCopiedRailSet export;
-  // RED keeps the file importable with the feature absent).
-  const isRailSetVariant = (value: unknown): boolean => (
-    typeof value === 'object' && value !== null
-    && (value as { kind?: unknown }).kind === 'rail-set'
-  );
+  // Real type-guard export (GREEN Task 2): narrows the clipboard union to the
+  // rail-set variant so the payload reads type-check.
+  const isRailSetVariant = isRotoSessionCopiedRailSet;
 
   const buildRailPayload = () => ({
     anchorAppFrame: 0,
