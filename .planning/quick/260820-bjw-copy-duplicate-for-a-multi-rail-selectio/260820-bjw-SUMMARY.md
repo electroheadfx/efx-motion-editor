@@ -20,7 +20,7 @@ actuals:
   tokens: 37500    # chars/4 over the RED+GREEN diff (150110 chars)
   tasks: 2         # Task 1 RED tests + Task 2 GREEN implementation
   commits: 2       # 6565f26a (test) + 288a2257 (feat)
-  uat-fix-cycles: 3  # UAT-1 (eb9a3e1f) + UAT-2 (9b5150e2) + UAT-3 (fdc64c29)
+  uat-fix-cycles: 4  # UAT-1 (eb9a3e1f) + UAT-2 (9b5150e2) + UAT-3 (fdc64c29) + UAT-4 (9716efb9)
 
 # Tech tracking
 tech-stack:
@@ -106,6 +106,17 @@ coverage:
         status: pass
     human_judgment: true
     rationale: "Native Studio visual confirmation (undo/redo via the actual buttons, the live capsule persisting the operation result until a new gesture, and the button press feedback) is deferred to the user (no browser automation on this machine). The hook-level RED tests drive the real coordinator→history seam + availability signal, and the pure status-priority seam."
+  - id: D7
+    description: "UAT-4: (a) single-rail Paste/Duplicate clears the pre-paste single-rail/key selection when the pasted set becomes the active rail-set selection — selection paint equals the selection model (only the duplicated rail shows selected); (b) the parent bridge replay path accepts undo(paste) by staging the before records (removing the pasted identities = the undo(paste) ≡ delete(pasted rails) inverse)"
+    verification:
+      - kind: unit
+        ref: "app/src/components/physic-paint/PhysicsPaintStudio.test.ts#clears the pre-paste single-rail/key selection when the pasted set becomes the active rail-set selection (UAT-4 Defect 2)"
+        status: pass
+      - kind: unit
+        ref: "app/src/lib/physicPaintBridge.test.ts#RED (UAT-4): an Undo of a paste replay is accepted even though the pre-paste selection differs"
+        status: pass
+    human_judgment: true
+    rationale: "Native visual UAT confirmation of the single-rail selection paint and the paste/duplicate Undo/Redo buttons is deferred to the user (no browser automation on this machine)."
 
 # Metrics
 duration: 32min
@@ -255,6 +266,27 @@ Native UAT round 3 passed Duplicate re-targeting, clipboard independence, and th
 **Verification:** full physic-paint suite (1962 pass) + `npx tsc --noEmit` clean.
 **Committed in:** `fdc64c29` (fix UAT-3) — 11 files.
 **Deferred:** native visual UAT (undo/redo via the actual Studio buttons, live capsule persistence until a new gesture, button press feedback) stays with the user (no browser automation on this machine).
+
+---
+
+# UAT-4 Fix Cycle (native UAT defects 1–2)
+
+Native UAT round 4 reported two defects; committed in `9716efb9`.
+
+**Defect 1 — Undo/Redo for paste/duplicate inert natively, delete works.** The user's framing: undo(paste) ≡ delete(pasted rails). Investigation across the three seams they flagged:
+- **(a) kind allowlist:** `isOrdinaryOperationKind` in `useRotoPhysicalEditHistory` already includes `'paste'` (with `'delete-key-rail'`, `'delete-rails'`). Not the reject.
+- **(b) parent inverse mapping:** the bridge replay for undo(paste) stages the `before` records, which removes the pasted identities — exactly the delete-equivalent inverse. A real-bridge integration test (`physicPaintBridge.test.ts#RED (UAT-4)`) drives a paste then an Undo with the pre-paste selection through `applyPhysicPaintPayload` and asserts the undo is accepted and the exact pre-state restored. **The parent inverse exists and is accepted.**
+- **(c) availability signal:** the paste records into the history (UAT-2 `availability` = `{undo:1, redo:0}`), so the button is live. Not the seam.
+
+None of the three suspected seams rejects in the automated path. The concrete divergence is the SELECTION STATE: the paste/duplicate aftermath left the pre-paste single-rail/key selection intact, so the live selection (paint/model) diverged after the operation. That is the Defect-2 fix below, which — combined with the UAT-3 history live-gate exclusion (selection/cursor non-canonical) — normalizes the post-paste state. If the native button remains inert after this, the residual cause is a UI-level wiring issue only observable in the browser.
+
+**Defect 2 — single-rail duplicate leaves BOTH rails painted selected.** The pasted set becomes the rail-set selection, but the D-17 key-selection aftermath left `selectedKeyIds`/`selectedKeyId`/`selectedRotoKeyRail` pointing at the original rail, so both the original and the duplicate painted orange while the model selected only the duplicate.
+- **Fix:** in the rail-set acceptance aftermath, when the pasted set (or a delete) becomes the active rail-set selection, clear the pre-paste single-rail/key/loop selection signals (`selectedRotoKeyRail`, `selectedKeyId`, `selectedKeyIds`, `selectionAnchorKeyId`, `selectedLoopClipId`, `selectedLoopClipIds`). Selection paint now equals the selection model — only the duplicated rail shows selected.
+- **Regression test:** `PhysicsPaintStudio.test.ts#clears the pre-paste single-rail/key selection ... (UAT-4 Defect 2)` asserts the aftermath clears the single-rail selection for paste/delete.
+
+**Verification:** full physic-paint suite (1963 pass) + `npx tsc --noEmit` clean. The `RED: accepts a paste ...` bridge test fails on the committed baseline (breaks 3 vs 1) independent of this cycle and is out of scope here.
+**Committed in:** `9716efb9` (fix UAT-4) — 3 files.
+**Deferred:** native visual UAT (single-rail selection paint, paste/duplicate Undo/Redo via the actual buttons) stays with the user (no browser automation on this machine).
 
 ---
 *Phase: quick/260820-bjw*
