@@ -2166,7 +2166,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       portsRef.current.lease.transferToRecovery(settled.token);
       settledLeaseRef.current = null;
     }
-  }, [clearPendingOnce, restoreSnapshot]);
+    // 43.6 WR-03: release an already-held recovery lease so a Studio unmount
+    // (window close) does not orphan the token in the store scope — otherwise a
+    // fresh coordinator's self-heal no-ops and every edit blocks until a full
+    // project reset.
+    releasePhysicalEditRecoveryLease();
+  }, [clearPendingOnce, restoreSnapshot, releasePhysicalEditRecoveryLease]);
 
   const pendingOperationId = computed(() => pendingOperationIdSignal.value);
   const pendingOperationKind = computed(() => pendingOperationKindSignal.value);

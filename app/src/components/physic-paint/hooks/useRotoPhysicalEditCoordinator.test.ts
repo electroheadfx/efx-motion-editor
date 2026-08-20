@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
+const { unmountCleanup } = vi.hoisted(() => ({ unmountCleanup: { current: null as (() => void) | null } }));
+
 vi.mock('preact/hooks', () => ({
   useCallback: <Value>(callback: Value) => callback,
-  useEffect: (setup: () => void | (() => void)) => setup(),
+  useEffect: (setup: () => void | (() => void)) => {
+    const cleanup = setup();
+    if (typeof cleanup === 'function') unmountCleanup.current = cleanup;
+  },
   useMemo: <Value>(factory: () => Value) => factory(),
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
@@ -2732,6 +2737,25 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
 
     expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledWith(test.recoveryLeaseToken);
+    expect(test.coordinator.recoveryLease.value).toBeNull();
+  });
+
+  it('releases a held recovery lease on unmount so a remount does not block edits (43.6 WR-03)', async () => {
+    const test = harness({ failFirstLoopReplace: true });
+    const before = groupLifecycleDocument({ gapAt: 4 });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
+    expect(test.releaseLease).not.toHaveBeenCalledWith(test.recoveryLeaseToken);
+
+    // Simulate Studio unmount (window close while a recovery lease is held).
+    unmountCleanup.current?.();
+
+    // The orphaned recovery token must be released so a fresh coordinator's
+    // self-heal is not the only path out of the session-permanent block.
     expect(test.releaseLease).toHaveBeenCalledWith(test.recoveryLeaseToken);
     expect(test.coordinator.recoveryLease.value).toBeNull();
   });
