@@ -359,6 +359,20 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(studio).toContain('const handleClearRotoKeySelection = useCallback(() => {\n    publishOperationResult(null);\n    selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;');
     expect(studio).toContain('onClearRotoKeySelection: handleClearRotoKeySelection');
   });
+
+  it('clears the pre-paste single-rail/key selection when the pasted set becomes the active rail-set selection (UAT-4 Defect 2)', () => {
+    // After a single-rail Paste/Duplicate the pasted set becomes the rail-set
+    // selection. The pre-paste single-rail/key signals must clear so the
+    // selection PAINT equals the selection MODEL — otherwise the original rail
+    // stays painted selected alongside the pasted set.
+    expect(studio).toContain(`if (accepted.operationKind === 'paste' || accepted.operationKind === 'delete-rails') {`);
+    expect(studio).toContain('selectedRotoKeyRail.value = null;');
+    expect(studio).toContain('selectedKeyId.value = null;');
+    expect(studio).toContain('selectedKeyIds.value = [];');
+    expect(studio).toContain('selectionAnchorKeyId.value = null;');
+    expect(studio).toContain('selectedLoopClipId.value = null;');
+    expect(studio).toContain('selectedLoopClipIds.value = [];');
+  });
 });
 
 describe('Physics Paint Key Rail selection authority (43.4-06)', () => {

@@ -2161,26 +2161,39 @@ export function PhysicsPaintStudio() {
           operationId: accepted.historyProvenance?.historyCommandId ?? accepted.operationId,
           current: railSetSelection.peek(),
         });
+        // UAT-4 (Defect 2): the pasted set becomes the ACTIVE selection, so the
+        // pre-paste single-rail/key selection signals must clear. Otherwise the
+        // original rail stays painted selected alongside the pasted set
+        // (selection paint must always equal the selection model), and the live
+        // selection no longer matches the recorded replay snapshot.
+        if (accepted.operationKind === 'paste' || accepted.operationKind === 'delete-rails') {
+          selectedRotoKeyRail.value = null;
+          selectedKeyId.value = null;
+          selectedKeyIds.value = [];
+          selectionAnchorKeyId.value = null;
+          selectedLoopClipId.value = null;
+          selectedLoopClipIds.value = [];
+        }
       }
       const currentLaunch = launchContextRef.current;
       const currentEngine = engineRef.current;
-      const selectedKeyId = accepted?.after.selectedKeyId ?? null;
-      const selectedAppFrame = accepted?.after.selectedAppFrame ?? null;
+      const acceptedSelectedKeyId = accepted?.after.selectedKeyId ?? null;
+      const acceptedSelectedAppFrame = accepted?.after.selectedAppFrame ?? null;
       const createdSelectedDestination = (accepted?.operationKind === 'paste-key' || accepted?.operationKind === 'paste-key-group')
-        && selectedKeyId !== null
-        && selectedAppFrame !== null
-        && !accepted.before.records.some((record) => record.keyId === selectedKeyId)
-        && accepted.after.records.some((record) => record.keyId === selectedKeyId && record.appFrame === selectedAppFrame);
+        && acceptedSelectedKeyId !== null
+        && acceptedSelectedAppFrame !== null
+        && !accepted.before.records.some((record) => record.keyId === acceptedSelectedKeyId)
+        && accepted.after.records.some((record) => record.keyId === acceptedSelectedKeyId && record.appFrame === acceptedSelectedAppFrame);
       if (
         transition === 'accepted'
         && accepted?.operationId === detail?.operationId
         && createdSelectedDestination
         && currentLaunch?.operationId === accepted.after.launchOperationId
         && currentLaunch.layerId === accepted.after.layerId
-        && currentLaunch.startFrame === selectedAppFrame
+        && currentLaunch.startFrame === acceptedSelectedAppFrame
         && currentEngine
       ) {
-        loadCachedRotoReferenceFrame(selectedAppFrame, currentEngine as PreviewBackgroundEngine);
+        loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, currentEngine as PreviewBackgroundEngine);
       }
       if (transition === 'accepted' && accepted && accepted.operationId === detail?.operationId) {
         physicalEditCoordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release');

@@ -4589,6 +4589,143 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 
+  it('RED (UAT-4): an Undo of a paste replay is accepted even though the pre-paste selection differs from the paste’s own payload selection', async () => {
+    // G-43.6-2 class bug: delete-rails records its pre-op selection from the
+    // current document so undo replay-target equality holds; paste must do the
+    // same. Here the source rail is selected ('k0') before the paste, but the
+    // paste payload ships a null selection. The history submitter replays undo
+    // with the PRE-paste selection ('k0', from entry.before). If the parent
+    // recorded paste's before snapshot used the payload selection (null) it
+    // fails replay-target equality and silently no-ops undo.
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    projectStore.projectContextId.value = projectContextId;
+    sequenceStore.add({
+      id: 'bridge-paste-rails-undo-sequence',
+      kind: 'fx',
+      name: 'Bridge paste-rails undo authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('k0', 0),
+      makePhysicalRecord('k2', 2),
+      makePhysicalRecord('k6', 6),
+      makePhysicalRecord('k8', 8),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 100,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'k0',
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], ['k6']),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['k6'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!seededDoc) throw new Error('Expected seeded physical document.');
+    expect(seededDoc.selectedKeyId).toBe('k0');
+
+    const copyPayload = (): RotoRailSetCopyPayload => Object.freeze({
+      anchorAppFrame: 0,
+      members: Object.freeze([
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k0',
+          firstKeyFrame: 0,
+          firstKeyOwnsIncomingBreak: false,
+          entries: Object.freeze([
+            Object.freeze({ sourceKeyId: 'k0', sourceAppFrame: 0, ownsIncomingBreak: false, payload: { frameIndex: 0, appFrame: 0, dataUrl: records[0].payload.dataUrl, width: 1000, height: 650 } }),
+            Object.freeze({ sourceKeyId: 'k2', sourceAppFrame: 2, ownsIncomingBreak: false, payload: { frameIndex: 0, appFrame: 2, dataUrl: records[1].payload.dataUrl, width: 1000, height: 650 } }),
+          ]),
+        }),
+      ]),
+    });
+
+    const proposed = proposeRails({
+      document: seededDoc,
+      payload: copyPayload(),
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) throw new Error(`Paste proposal must resolve: ${proposed.reason}`);
+    const pasteLease = acquirePhysicalLease(layer.id, projectContextId);
+    const paste = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'paste-rails-undo-target',
+      operationKind: 'paste',
+      leaseToken: pasteLease,
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: seededDoc.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
+      semanticDelta: proposed.impact,
+    });
+    expect(paste.ok, paste.ok ? undefined : paste.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!acceptedDocument) throw new Error('Expected accepted paste document.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(pasteLease)).toBe(true);
+
+    // Undo supplies the PRE-paste selection ('k0', from the history entry.before)
+    // exactly as the coordinator/history submits it.
+    const undoLease = acquirePhysicalLease(layer.id, projectContextId);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'paste-rails-undo-target-undo',
+      operationKind: 'undo',
+      leaseToken: undoLease,
+      layerId: layer.id,
+      startFrame: 0,
+      cursorAppFrame: 0,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: acceptedDocument.revision,
+      records: seededDoc.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (seededDoc.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: seededDoc.interpolation.enabled,
+      interpolationMode: seededDoc.interpolation.mode,
+      loopClips: seededDoc.loopClips,
+      incomingInterpolationBreakKeyIds: seededDoc.incomingInterpolationBreakKeyIds,
+      selectedKeyId: 'k0',
+      selectedAppFrame: 0,
+      historyProvenance: {
+        historyCommandId: 'paste-rails-undo-target',
+        historyDirection: 'undo',
+        sourceRevision: acceptedDocument.revision,
+        targetRevision: seededDoc.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(seededDoc);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+  });
+
   it('RED: rejects a paste whose records diverge from the shared recompute with zero publication', async () => {
     const layer = physicLayer();
     mockLayers([layer], null);
