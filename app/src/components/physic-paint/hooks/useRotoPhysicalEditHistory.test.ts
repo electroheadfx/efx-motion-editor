@@ -2081,9 +2081,9 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 10,
-      revision: buildPhysicPaintRotoPhysicalRevision(afterRecords, interpolation, [], ['k16']),
+      revision: buildPhysicPaintRotoPhysicalRevision(afterRecords, interpolation, [], ['k6', 'k10', 'k16']),
       loopClips: [],
-      incomingInterpolationBreakKeyIds: ['k16'],
+      incomingInterpolationBreakKeyIds: ['k6', 'k10', 'k16'],
     });
 
     await expectBatchUndoRedoRoundTrip({

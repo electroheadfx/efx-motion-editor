@@ -148,6 +148,30 @@ export function deriveRailSetOrder(input: DeriveRailSetOrderInput): readonly Rai
 }
 
 /**
+ * 43.6-08 (quick 260820-bjw fix): the ONE shared dynamic-scope classifier for
+ * Copy/Duplicate/Paste. A single rail selected via plain click is a set of one
+ * (43.6 Solo precedent, D-15) — the same derivation the solo window uses. The
+ * active multi-rail set wins; otherwise a single Key Rail or single Loop Rail
+ * becomes a set of one; otherwise no rail scope (frame/key path). Delete's
+ * classifier consumes the same `getRailSetMembers` port, so all four operations
+ * share this single authority — no third fork.
+ */
+export function deriveEffectiveRailSetMembers(
+  railSet: RailSetSelectionState | null,
+  singleKeyRailFirstKeyId: string | null,
+  singleLoopIds: readonly string[],
+): readonly RailSetIdentity[] {
+  if (railSet) return Object.freeze([...railSet.members]);
+  if (isBoundedKeyId(singleKeyRailFirstKeyId)) {
+    return Object.freeze([{ kind: 'key-rail', firstKeyId: singleKeyRailFirstKeyId }]);
+  }
+  if (singleLoopIds.length === 1 && isBoundedKeyId(singleLoopIds[0])) {
+    return Object.freeze([{ kind: 'loop', loopId: singleLoopIds[0] }]);
+  }
+  return Object.freeze([]);
+}
+
+/**
  * D-01/D-03/D-04/D-05 gesture reducer, fail-closed on unknown/malformed
  * identities and non-unique orderings:
  * - 'plain': returns a fresh one-member set with the clicked identity as anchor.

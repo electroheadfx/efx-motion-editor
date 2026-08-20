@@ -19,6 +19,7 @@ import {
 } from './roto/physicsPaintRotoSpacingSelection';
 import {
   clearRailSetSnapshots,
+  deriveEffectiveRailSetMembers,
   deriveRailSetOrder,
   reconcileRailSetSelection,
   recordRailSetSnapshot,
@@ -588,6 +589,19 @@ export function PhysicsPaintStudio() {
   if (railSetSelection.peek() !== null && effectiveRailSetSelection === null) {
     railSetSelection.value = null;
   }
+  // 43.6-08 (quick 260820-bjw fix): the ONE shared dynamic-scope classifier.
+  // A single rail selected via plain click is a set of one (43.6 Solo
+  // precedent); the active multi-rail set wins. Copy/Duplicate/Paste routing,
+  // availability, and the strip overlay all consume this same authority.
+  const effectiveRailSetMembers = useMemo(
+    () => deriveEffectiveRailSetMembers(
+      effectiveRailSetSelection,
+      effectiveSelectedRotoKeyRail?.firstKeyId ?? null,
+      effectiveSelectedLoopClipIds,
+    ),
+    [effectiveRailSetSelection, effectiveSelectedRotoKeyRail, effectiveSelectedLoopClipIds],
+  );
+  const hasEffectiveRailSetScope = effectiveRailSetMembers.length > 0;
   // 43.6-03: the explicit set members in Plan 01 canonical order, resolved to
   // the exact segment keyIds the resolver validates (D-17 — membership is
   // never re-derived in the view; the strip consumes this list opaquely).
@@ -1120,7 +1134,7 @@ export function PhysicsPaintStudio() {
     getSelectedKeyIds: () => selectedKeyIds.value,
     getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,
     getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [],
-    getRailSetMembers: () => railSetSelection.value?.members ?? [],
+    getRailSetMembers: () => effectiveRailSetMembers,
     getSelectedLoopRailDisplayName: (loopId) => {
       const range = rotoTimelineModel.loopResolutionContext.value?.ranges.find((candidate) => candidate.loopId === loopId);
       const clip = rotoLoopClips.find((candidate) => candidate.loopId === loopId);
@@ -1304,24 +1318,25 @@ export function PhysicsPaintStudio() {
     }
     rotoKeyUtilities.copyRailSet(payload);
   };
-  // Routing wrappers (43.6-08): an active rail set routes Copy/Duplicate to
-  // the set actions; Paste routes on the clipboard variant (a copied rail set
-  // pastes as a set even after the set collapses). Without a set / rail
-  // clipboard the single-key and key-group paths stay byte-identical.
+  // Routing wrappers (43.6-08): an active rail-set scope (multi-rail set OR a
+  // single rail as a set of one) routes Copy/Duplicate to the set actions;
+  // Paste routes on the clipboard variant (a copied rail set pastes as a set
+  // even after the set collapses). Without a rail scope / rail clipboard the
+  // single-key and key-group paths stay byte-identical.
   const duplicateRotoKey = useCallback(() => {
-    if (railSetSelection.value !== null) {
+    if (hasEffectiveRailSetScope) {
       void rotoPhysicalActions.duplicateRailSet();
       return;
     }
     rotoKeyUtilities.duplicateKey();
-  }, [railSetSelection, rotoPhysicalActions, rotoKeyUtilities]);
+  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities]);
   const copyRotoFrame = useCallback(() => {
-    if (railSetSelection.value !== null) {
+    if (hasEffectiveRailSetScope) {
       void rotoPhysicalActions.copyRailSet();
       return;
     }
     rotoKeyUtilities.copyKey();
-  }, [railSetSelection, rotoPhysicalActions, rotoKeyUtilities]);
+  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities]);
   // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
   // availability hold; the delete half is re-checked here so the keyboard
   // entry point enforces the same rule as the strip button.
@@ -2551,7 +2566,7 @@ export function PhysicsPaintStudio() {
   // the buttons/tooltips stop describing single-key scope. Without a set the
   // overlay is the exact session availability (byte-identical single-key path).
   const sessionKeyAvailability = rotoSession.actionAvailability.value;
-  const effectiveRotoKeyState = railSetSelection.value !== null
+  const effectiveRotoKeyState = hasEffectiveRailSetScope
     ? {
         actionAvailability: {
           ...sessionKeyAvailability,
@@ -2585,11 +2600,11 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: railSetSelection.value?.members
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
-          .map((member) => member.loopId) ?? [], railSetAnchorLoopId: railSetSelection.value?.anchor?.kind === 'loop' ? railSetSelection.value.anchor.loopId : null, railSetMemberKeyRailIds: railSetSelection.value?.members
+          .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId) ?? [], railSetAnchorKeyRailId: railSetSelection.value?.anchor?.kind === 'key-rail' ? railSetSelection.value.anchor.firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

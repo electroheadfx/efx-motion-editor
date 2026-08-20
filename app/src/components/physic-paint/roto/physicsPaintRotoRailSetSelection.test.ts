@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clearRailSetSnapshots,
+  deriveEffectiveRailSetMembers,
   deriveRailSetOrder,
   reconcileRailSetSelection,
   recordRailSetSnapshot,
@@ -484,5 +485,29 @@ describe('seedRailSetSelection (43.6-08 seed bridge)', () => {
     const next = updatePhysicsPaintRotoRailSetSelection(seeded, ORDERED, loop('loop-b'), 'range');
 
     expect(next).toEqual({ members: [keyRail('key-a'), loop('loop-b')], anchor: keyRail('key-a') });
+  });
+});
+
+describe('deriveEffectiveRailSetMembers (43.6-08 shared dynamic-scope classifier)', () => {
+  it('the active multi-rail set wins over single-rail signals', () => {
+    const set: RailSetSelectionState = { members: [keyRail('key-a'), loop('loop-b')], anchor: keyRail('key-a') };
+    const members = deriveEffectiveRailSetMembers(set, 'key-c', ['loop-d']);
+    expect(members).toEqual([keyRail('key-a'), loop('loop-b')]);
+  });
+
+  it('a single Key Rail selected via plain click is a set of one', () => {
+    const members = deriveEffectiveRailSetMembers(null, 'key-a', []);
+    expect(members).toEqual([keyRail('key-a')]);
+  });
+
+  it('a single Loop Rail selected via plain click is a set of one', () => {
+    const members = deriveEffectiveRailSetMembers(null, null, ['loop-b']);
+    expect(members).toEqual([loop('loop-b')]);
+  });
+
+  it('no rail scope yields an empty set (frame/key path)', () => {
+    expect(deriveEffectiveRailSetMembers(null, null, [])).toEqual([]);
+    expect(deriveEffectiveRailSetMembers(null, null, ['loop-b', 'loop-d'])).toEqual([]);
+    expect(deriveEffectiveRailSetMembers(null, '', [])).toEqual([]);
   });
 });

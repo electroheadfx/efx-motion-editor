@@ -3192,9 +3192,11 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     const freshBFirst = freshByFrame.get(16);
     expect(freshAFirst).toBeDefined();
     expect(freshBFirst).toBeDefined();
-    // Source-owned break relocates onto the fresh B first key, never the fresh A first.
+    // Source-owned break relocates onto the fresh B first key; the rail-boundary
+    // rule also gives the fresh A first key a break (any existing content lies to
+    // its left), so the pasted set never merges into the source run.
     expect(test.getIncomingInterpolationBreakKeyIds()).toContain(freshBFirst);
-    expect(test.getIncomingInterpolationBreakKeyIds()).not.toContain(freshAFirst);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toContain(freshAFirst);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(10);
     expect(acceptedEvents).toHaveLength(1);
     expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);

@@ -477,7 +477,6 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
   const freshRecords: PhysicPaintRotoRealKeyRecord[] = [];
   const duplicatedLoopClips: PhysicPaintRotoLoopClip[] = [];
   const freshBreakOwners = new Set<string>();
-  const copiedSourceKeyIds = new Set<string>();
   const memberFirstFrames: { readonly freshFirstFrame: number; readonly freshFirstKeyId: string }[] = [];
   for (const member of payload.members) {
     if (member.kind === 'key-rail') {
@@ -486,7 +485,6 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
       for (const entry of member.entries) {
         const freshKeyId = allocation.keyIds[entry.sourceKeyId] ?? createPhysicPaintRotoKeyId();
         const freshFrame = entry.sourceAppFrame + delta;
-        copiedSourceKeyIds.add(entry.sourceKeyId);
         freshRecords.push(buildFreshKeyRecord(entry.payload, freshKeyId, freshFrame));
         if (entry.ownsIncomingBreak) freshBreakOwners.add(freshKeyId);
         if (firstFrame === null) {
@@ -504,20 +502,31 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     }
   }
 
-  // Break relocation: keep source breaks not part of the copied set; relocate
-  // copied break owners onto the fresh keys; rail-boundary rule: a fresh first
-  // key adjacent (left) to non-set content starts a fresh rail.
+  // Break relocation: keep ALL source breaks (the original set is unchanged by
+  // the paste — its keys remain in the document, so their breaks stay); relocate
+  // copied break owners onto the fresh keys; rail-boundary rule: the FIRST
+  // pasted rail's first key owns a break whenever any existing content lies to
+  // its left (the segmenter merges across empty frames, so a break is required
+  // even when the paste is not immediately adjacent) — a pasted set never
+  // silently merges into a neighbor's segment, whether that neighbor is
+  // unrelated content or the original set the copy was taken from. Subsequent
+  // pasted rails keep the immediate-adjacency rule (internal gaps are preserved
+  // by their relocated source breaks).
   const nextBreaks = new Set<string>();
   for (const keyId of document.incomingInterpolationBreakKeyIds) {
-    if (!copiedSourceKeyIds.has(keyId)) nextBreaks.add(keyId);
+    nextBreaks.add(keyId);
   }
   for (const freshKeyId of freshBreakOwners) nextBreaks.add(freshKeyId);
-  for (const firstOf of memberFirstFrames) {
-    const leftFrame = firstOf.freshFirstFrame - 1;
-    if (leftFrame < 0) continue;
-    const leftRecord = document.realKeyRecords.find((record) => record.appFrame === leftFrame);
-    if (leftRecord && !copiedSourceKeyIds.has(leftRecord.keyId)) {
-      nextBreaks.add(firstOf.freshFirstKeyId);
+  for (let index = 0; index < memberFirstFrames.length; index += 1) {
+    const firstOf = memberFirstFrames[index];
+    if (index === 0) {
+      const hasLeftContent = document.realKeyRecords.some((record) => record.appFrame < firstOf.freshFirstFrame);
+      if (hasLeftContent) nextBreaks.add(firstOf.freshFirstKeyId);
+    } else {
+      const leftFrame = firstOf.freshFirstFrame - 1;
+      if (leftFrame < 0) continue;
+      const leftRecord = document.realKeyRecords.find((record) => record.appFrame === leftFrame);
+      if (leftRecord) nextBreaks.add(firstOf.freshFirstKeyId);
     }
   }
 

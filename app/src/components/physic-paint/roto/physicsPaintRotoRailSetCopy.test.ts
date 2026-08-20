@@ -128,20 +128,21 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const freshByFrame = new Map(fresh.map((record) => [record.appFrame, record.keyId]));
     const freshAFirst = freshByFrame.get(10) as string;
     const freshBFirst = freshByFrame.get(16) as string;
-    // The relocated source-owned break lands on the fresh B first key, never on A.
+    // The relocated source-owned break lands on the fresh B first key; the
+    // rail-boundary rule also gives the fresh A first key a break (any existing
+    // content lies to its left), so the pasted set never merges into the source
+    // run — a pasted set never silently merges into a neighbor's segment.
     expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain(freshBFirst);
-    expect(pasted.proposal.incomingInterpolationBreakKeyIds).not.toContain(freshAFirst);
-    // Locked contract: the relocated break lands on fresh B ONLY, so fresh A
-    // keys continue the source run — the derive projection yields ONE rail from
-    // the source A first key through fresh A (0→12) plus the standalone fresh B
-    // rail [16,18] opened by its break.
+    expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain(freshAFirst);
+    // The original set's break on k6 is preserved, so the source [0,2] and [6,8]
+    // stay separate; the pasted set [10,12] and [16,18] are separate too.
     const segments = deriveKeyRailSegments({
       orderedRealKeys: pasted.proposal.realKeyRecords,
       incomingInterpolationBreakKeyIds: new Set(pasted.proposal.incomingInterpolationBreakKeyIds),
       groupOwnedKeyIds: new Set(),
     });
     const allRailFrames = segments.map((segment) => [segment.firstKeyFrame, segment.lastKeyFrame]);
-    expect(allRailFrames).toEqual([[0, 12], [16, 18]]);
+    expect(allRailFrames).toEqual([[0, 2], [6, 8], [10, 12], [16, 18]]);
     // Impact: ordered pasted identities, first pasted rail first.
     expect(pasted.impact.kind).toBe('paste');
     expect(pasted.impact.identities.map((identity) => identity.kind)).toEqual(['key-rail', 'key-rail']);
