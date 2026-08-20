@@ -1350,7 +1350,7 @@ export function PhysicsPaintStudio() {
   const pasteRotoFrame = useCallback(() => {
     const copied = rotoSession.copiedKey.value;
     if (isRotoSessionCopiedRailSet(copied)) {
-      void rotoPhysicalActions.pasteRailSet('paste');
+      void rotoPhysicalActions.pasteRailSet();
       return;
     }
     rotoKeyUtilities.pasteKey();
@@ -2562,16 +2562,18 @@ export function PhysicsPaintStudio() {
   }));
   // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active
   // rail set the strip's Copy/Duplicate/Paste buttons reflect SET scope —
-  // Copy enables on set validity, Duplicate/Paste on a rail-set clipboard — so
-  // the buttons/tooltips stop describing single-key scope. Without a set the
-  // overlay is the exact session availability (byte-identical single-key path).
+  // Copy and Duplicate enable on the EFFECTIVE rail-set scope (a single rail is
+  // a set of one, 43.6 Solo; Duplicate builds its payload fresh at click time and
+  // is never clipboard-gated), Paste enables on the rail-set clipboard — so the
+  // buttons/tooltips stop describing single-key scope. Without a set the overlay
+  // is the exact session availability (byte-identical single-key path).
   const sessionKeyAvailability = rotoSession.actionAvailability.value;
   const effectiveRotoKeyState = hasEffectiveRailSetScope
     ? {
         actionAvailability: {
           ...sessionKeyAvailability,
           canCopy: rotoPhysicalActions.canCopyRailSet.value,
-          canDuplicate: rotoPhysicalActions.canPasteRailSet.value,
+          canDuplicate: rotoPhysicalActions.canDuplicateRailSet.value,
           canPaste: rotoPhysicalActions.canPasteRailSet.value,
           pasteDisabledReason: rotoPhysicalActions.pasteRailSetDisabledReason.value
             ?? sessionKeyAvailability.pasteDisabledReason,

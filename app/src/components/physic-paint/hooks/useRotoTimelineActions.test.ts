@@ -3570,7 +3570,7 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       }) as RotoRailSetCopyPayload,
     });
 
-    expect(await harness.actions.physicalActions.pasteRailSet('paste')).toBe(true);
+    expect(await harness.actions.physicalActions.pasteRailSet()).toBe(true);
     expect(executeRailSetPaste).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'paste',
       placementMode: 'paste',
@@ -3579,8 +3579,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     }));
   });
 
-  it('RED: duplicateRailSet dispatches through executeRailSetPaste with placementMode duplicate and no destination', async () => {
-    const executeRailSetPaste = vi.fn(async () => true);
+  it('RED: duplicateRailSet builds a FRESH payload from the current members and dispatches with placementMode duplicate and no destination', async () => {
+    const executeRailSetPaste = vi.fn(async (_input: unknown) => true);
     const harness = createHarness({
       records: setRecords,
       incomingInterpolationBreakKeyIds: ['k6'],
@@ -3588,6 +3588,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       currentAppFrame: 3,
       capacity: 80,
       executeRailSetPaste,
+      // A stale set-A clipboard is PRESENT but must be ignored: Duplicate builds
+      // its own payload at click time and never reads the clipboard (UAT-2).
       railSetClipboard: Object.freeze({
         anchorAppFrame: 0,
         members: Object.freeze([]),
@@ -3595,11 +3597,87 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     });
 
     expect(await harness.actions.physicalActions.duplicateRailSet()).toBe(true);
-    expect(executeRailSetPaste).toHaveBeenCalledWith(expect.objectContaining({
-      operationKind: 'paste',
-      placementMode: 'duplicate',
-      payload: expect.objectContaining({ anchorAppFrame: 0 }),
-    }));
+    const call = executeRailSetPaste.mock.calls[0][0] as Readonly<{
+      placementMode?: string;
+      destinationAppFrame?: number;
+      payload?: RotoRailSetCopyPayload;
+    }>;
+    expect(call).toMatchObject({ operationKind: 'paste', placementMode: 'duplicate' });
+    expect(call.destinationAppFrame).toBeUndefined();
+    // The payload is built from the CURRENT effective members (k0+k6 = 2 rails),
+    // not the stub clipboard payload whose members were empty.
+    expect(call.payload?.members).toHaveLength(2);
+    expect(call.payload?.anchorAppFrame).toBe(0);
+  });
+
+  it('RED (UAT-2): Copying set A to the clipboard never changes what a later Duplicate targets', async () => {
+    // A stale 2-rail set-A payload sits on the clipboard.
+    const staleSetAClone = Object.freeze({
+      anchorAppFrame: 0,
+      members: Object.freeze([
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k0',
+          firstKeyFrame: 0,
+          firstKeyOwnsIncomingBreak: false,
+          entries: Object.freeze([]),
+        }),
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k6',
+          firstKeyFrame: 6,
+          firstKeyOwnsIncomingBreak: true,
+          entries: Object.freeze([]),
+        }),
+      ]),
+    }) as RotoRailSetCopyPayload;
+    const executeRailSetPaste = vi.fn(async (_input: unknown) => true);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      // Current effective selection is a SINGLE rail B (k6/k8), not set A.
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'k6' }],
+      currentAppFrame: 3,
+      capacity: 80,
+      executeRailSetPaste,
+      railSetClipboard: staleSetAClone,
+    });
+
+    expect(await harness.actions.physicalActions.duplicateRailSet()).toBe(true);
+    const call = executeRailSetPaste.mock.calls[0][0] as Readonly<{ payload?: RotoRailSetCopyPayload }>;
+    // Duplicate targets the CURRENT single rail B, never the stale set-A copy.
+    expect(call.payload?.members).toHaveLength(1);
+    const sole = call.payload?.members[0];
+    if (!sole || sole.kind !== 'key-rail') throw new Error('Expected one key-rail member.');
+    expect(sole.firstKeyId).toBe('k6');
+    expect(sole.entries.map((entry) => entry.sourceAppFrame)).toEqual([6, 8]);
+  });
+
+  it('RED (UAT-2): a new selection fully re-targets the next Duplicate', async () => {
+    const executeRailSetPaste = vi.fn(async (_input: unknown) => true);
+    const options = {
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      capacity: 80,
+      executeRailSetPaste,
+    };
+    const harness = createHarness(options);
+
+    // Duplicate set A (k0 + k6 = 2 rails).
+    expect(await harness.actions.physicalActions.duplicateRailSet()).toBe(true);
+    const firstCall = executeRailSetPaste.mock.calls[0][0] as Readonly<{ payload?: RotoRailSetCopyPayload }>;
+    expect(firstCall.payload?.members).toHaveLength(2);
+
+    // The user re-selects B ONLY; the next Duplicate targets B alone.
+    options.railSetMembers = [{ kind: 'key-rail', firstKeyId: 'k6' }];
+    expect(await harness.actions.physicalActions.duplicateRailSet()).toBe(true);
+    const call = executeRailSetPaste.mock.calls[1][0] as Readonly<{ payload?: RotoRailSetCopyPayload }>;
+    expect(call.payload?.members).toHaveLength(1);
+    const sole = call.payload?.members[0];
+    if (!sole || sole.kind !== 'key-rail') throw new Error('Expected one B-rail member.');
+    expect(sole.firstKeyId).toBe('k6');
   });
 
   it('RED: pasteRailSet maps a rejected execute to the locked Paste-rejected family with zero mutation', async () => {
@@ -3617,7 +3695,7 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       }) as RotoRailSetCopyPayload,
     });
 
-    expect(await harness.actions.physicalActions.pasteRailSet('paste')).toBe(false);
+    expect(await harness.actions.physicalActions.pasteRailSet()).toBe(false);
     expect(executeRailSetPaste).toHaveBeenCalledTimes(1);
     expect(harness.publishStatus).toHaveBeenCalled();
   });

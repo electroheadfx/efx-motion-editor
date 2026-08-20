@@ -3099,10 +3099,10 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     payload: { frameIndex: 0, appFrame, dataUrl: pastePng(keyId), width: 100, height: 80 },
   });
 
-  function twoKeyRailDocument() {
+  function twoKeyRailDocument(capacity = 100) {
     const records = [pasteRecord('k0', 0), pasteRecord('k2', 2), pasteRecord('k6', 6), pasteRecord('k8', 8)];
     return parsePhysicPaintRotoPhysicalDocument({
-      capacity: 100,
+      capacity,
       realKeyRecords: records,
       interpolation: INTERPOLATION,
       scriptMotion: { deformation: 0, position: 0 },
@@ -3221,5 +3221,79 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     expect(test.releaseLease).toHaveBeenCalledTimes(1);
     expect(test.coordinator.pendingOperationId.value).toBeNull();
     expect(test.coordinator.failureOutput.value).toBeNull();
+  });
+
+  it('RED (UAT-2): a duplicate-set commit records ONE history command and round-trips Undo/Redo through the real coordinator→history path', async () => {
+    const test = harness();
+    const before = twoKeyRailDocument(30);
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    // Duplicate derives its destination from document facts (last set end 8 →
+    // first fitting anchor 10), so no destinationAppFrame is supplied.
+    expect(await test.executePasteRails({ payload: copyPayload(), placementMode: 'duplicate' })).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted duplicate-set operation.');
+    const after = test.getCanonicalDocument();
+    // The original set is unchanged; exactly four fresh identities land at 10/12/16/18.
+    const sourceIds = new Set(['k0', 'k2', 'k6', 'k8']);
+    const freshIds = after.realKeyRecords.map((entry) => entry.keyId).filter((keyId) => !sourceIds.has(keyId));
+    expect(freshIds).toHaveLength(4);
+    expect(accepted.operationKind).toBe('paste');
+    expect(test.historyCommands).toEqual([accepted.operationId]);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    // Undo restores the exact pre-state.
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected duplicate-set Undo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // Redo re-applies the exact post-state (fresh identities preserved).
+    expect(await history.redo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const redoOperationId = test.getPayload()?.operationId;
+    if (!redoOperationId) throw new Error('Expected duplicate-set Redo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(redoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(after);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('RED (UAT-2): a Paste commit records as one command and round-trips Undo/Redo through the real coordinator→history path', async () => {
+    const test = harness();
+    const before = twoKeyRailDocument(30);
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    expect(await test.executePasteRails({ payload: copyPayload(), placementMode: 'paste', destinationAppFrame: 10 })).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted Paste operation.');
+    const after = test.getCanonicalDocument();
+    expect(accepted.operationKind).toBe('paste');
+    expect(test.historyCommands).toEqual([accepted.operationId]);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected Paste Undo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const redoOperationId = test.getPayload()?.operationId;
+    if (!redoOperationId) throw new Error('Expected Paste Redo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(redoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(after);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 });
