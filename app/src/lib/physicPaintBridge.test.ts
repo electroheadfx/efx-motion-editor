@@ -4585,7 +4585,19 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
     if (!acceptedDocument) throw new Error('Expected accepted paste document.');
     // Four fresh identities land at the preserved relative layout.
     expect(acceptedDocument.realKeyRecords).toHaveLength(8);
-    expect(acceptedDocument.incomingInterpolationBreakKeyIds).toHaveLength(1);
+    // Break contract after the 260820-bjw UAT-1 boundary rules: the original
+    // k6 break survives; the first pasted rail's fresh first key owns the
+    // boundary break (content lies to its left); the second pasted rail's
+    // fresh first key keeps the break it owned in the source set.
+    const frameByKeyId = new Map(acceptedDocument.realKeyRecords.map((record) => [record.keyId, record.appFrame] as const));
+    const orderedFresh = acceptedDocument.realKeyRecords
+      .map((record) => record.keyId)
+      .filter((keyId) => !['k0', 'k2', 'k6', 'k8'].includes(keyId))
+      .sort((left, right) => frameByKeyId.get(left)! - frameByKeyId.get(right)!);
+    expect(orderedFresh).toHaveLength(4);
+    const orderedBreaks = [...acceptedDocument.incomingInterpolationBreakKeyIds]
+      .sort((left, right) => (frameByKeyId.get(left) ?? 0) - (frameByKeyId.get(right) ?? 0));
+    expect(orderedBreaks).toEqual(['k6', orderedFresh[0], orderedFresh[2]]);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 
