@@ -299,11 +299,16 @@ describe('PhysicsPaintKeyRail', () => {
     expect(edge.props.style).toEqual({ left: '124px' });
   });
 
-  // 43.6-03 D-08: a set member hands its pointer-down to the batch session
-  // (never the own 43.3/43.4 drag); a non-member runs its own drag unchanged.
-  // The batch session's own hook guard (L140 verbatim) rejects modifier
-  // pointer-downs, so selection gestures keep working during an active set.
-  it('routes set-member pointer-down to the batch session and keeps the own drag for non-members (D-08)', () => {
+  // 43.6-03 D-08 split (quick 260820-lwd): drag-routing membership is derived
+  // from the explicit MOVABLE set (railSetMoveMemberKeyRailIds), NOT the
+  // set-of-one paint classifier (railSetMemberKeyRailIds). A plain-selected
+  // single rail is a paint member (orange line + set tooltip sentence +
+  // Copy/Duplicate scope) but NOT a move member — so it runs its own 43.3/43.4
+  // drag. Only genuine explicit move members hand the pointer-down (and
+  // trailing-click suppression) to the batch session.
+  // RED 1: a single set-of-one paint member (no move membership) runs its OWN
+  // drag. Fails against current HEAD (routes to the batch session).
+  it('runs the own drag for a single Key Rail that is a set-of-one paint member but not a move member (RED 1)', () => {
     const onRailSetDragPointerDown = vi.fn();
     const onRailSetDragClickSuppressed = vi.fn(() => true);
     const tree = render({
@@ -314,7 +319,35 @@ describe('PhysicsPaintKeyRail', () => {
     const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
     const pointerDown = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
 
-    // Set member (A): the pointer-down routes to the batch session, never the
+    // A is a paint-only member (set-of-one): the own 43.3/43.4 drag runs,
+    // never the batch session.
+    (targets[0].props.onPointerDown as (event: typeof pointerDown) => void)(pointerDown);
+    expect(drag.onPointerDown).toHaveBeenCalledWith(pointerDown);
+    expect(onRailSetDragPointerDown).not.toHaveBeenCalled();
+
+    // The paint-only member's trailing click consumes its OWN suppression —
+    // the batch suppression is only consulted for genuine move members.
+    const click = { stopPropagation: vi.fn(), preventDefault: vi.fn(), shiftKey: false, metaKey: false, ctrlKey: false };
+    (targets[0].props.onClick as (event: typeof click) => void)(click);
+    expect(onRailSetDragClickSuppressed).not.toHaveBeenCalled();
+    expect(drag.consumeClickSuppression).toHaveBeenCalledOnce();
+  });
+
+  // RED 3: a genuine explicit move member hands the pointer-down to the batch
+  // session (never the own drag); a non-member always runs its own drag. The
+  // trailing-click suppression follows the move-member scope.
+  it('routes explicit move members to the batch session and keeps the own drag for non-members (RED 3)', () => {
+    const onRailSetDragPointerDown = vi.fn();
+    const onRailSetDragClickSuppressed = vi.fn(() => true);
+    const tree = render({
+      railSetMoveMemberKeyRailIds: ['A'],
+      onRailSetDragPointerDown,
+      onRailSetDragClickSuppressed,
+    });
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
+    const pointerDown = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+
+    // Move member (A): the pointer-down routes to the batch session, never the
     // own drag hook.
     (targets[0].props.onPointerDown as (event: typeof pointerDown) => void)(pointerDown);
     expect(onRailSetDragPointerDown).toHaveBeenCalledWith(pointerDown);
@@ -325,12 +358,36 @@ describe('PhysicsPaintKeyRail', () => {
     expect(drag.onPointerDown).toHaveBeenCalledWith(pointerDown);
     expect(onRailSetDragPointerDown).toHaveBeenCalledTimes(1);
 
-    // A set member's trailing click consumes the batch suppression first —
-    // never the own-drag suppression, which is never armed for set members.
+    // A move member's trailing click consumes the batch suppression first —
+    // never the own-drag suppression, which is never armed for move members.
     const click = { stopPropagation: vi.fn(), preventDefault: vi.fn(), shiftKey: false, metaKey: false, ctrlKey: false };
     (targets[0].props.onClick as (event: typeof click) => void)(click);
     expect(onRailSetDragClickSuppressed).toHaveBeenCalledOnce();
     expect(drag.consumeClickSuppression).not.toHaveBeenCalled();
+  });
+
+  // RED 4: drag from a rail that is NOT in an active move set keeps its own
+  // single-rail drag (the unselected-rail gesture collapses the set at click
+  // time). Pinned as a no-regression assertion.
+  it('runs the own drag from a rail not in an active move set (RED 4)', () => {
+    const onRailSetDragPointerDown = vi.fn();
+    const tree = render({
+      segments: [
+        { firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 2, lastKeyFrame: 5 },
+        { firstKeyId: 'C', keyIds: ['C'], firstKeyFrame: 6, lastKeyFrame: 6 },
+        { firstKeyId: 'D', keyIds: ['D'], firstKeyFrame: 8, lastKeyFrame: 8 },
+      ],
+      railSetMoveMemberKeyRailIds: ['A', 'C'],
+      onRailSetDragPointerDown,
+    });
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
+    const pointerDown = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+
+    // D is NOT a move member: the own drag runs even while a move set is
+    // active on the other rails.
+    (targets[2].props.onPointerDown as (event: typeof pointerDown) => void)(pointerDown);
+    expect(drag.onPointerDown).toHaveBeenCalledWith(pointerDown);
+    expect(onRailSetDragPointerDown).not.toHaveBeenCalled();
   });
 
   // 43.6-03 UI-SPEC M3: batch Move ghosts carry exactly 55% opacity kind

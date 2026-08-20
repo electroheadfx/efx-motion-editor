@@ -1027,7 +1027,64 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
-  it('registers its click-sequence canceller with the batch registry (WR-01) and clears the pending single-click timer on drag begin', () => {
+  // RED 2: a single Motion/Static Rail that is a set-of-one paint member but
+  // NOT a move member runs its OWN 43.3/43.4 Group drag (never the batch
+  // session). Fails against current HEAD (routes to the batch session).
+  it('runs the own Group drag for a single Motion/Static Rail that is a set-of-one paint member but not a move member (RED 2)', () => {
+    const clips: PhysicPaintRotoLoopClip[] = [
+      {
+        loopId: 'loop-a',
+        placementStart: 0,
+        sourceKeyIds: ['A1', 'A2', 'A3'],
+        repeat: 1,
+        mode: 'progressive',
+      },
+    ];
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clips.flatMap((clip) => clip.sourceKeyIds.map((keyId, index) => ({
+        keyId,
+        appFrame: clip.placementStart + index,
+      }))),
+      loopClips: clips,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map(context.ranges.map((range) => {
+      const clip = clips.find((candidate) => candidate.loopId === range.loopId)!;
+      return [range.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, null)] as const;
+    }));
+    const onSelectLoopClip = vi.fn();
+    const onOpenLoopEdit = vi.fn(async () => {});
+    const onRailSetDragPointerDown = vi.fn();
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      railSetMemberLoopIds: ['loop-a'],
+      onSelectLoopClip,
+      onOpenLoopEdit,
+      onRailSetDragPointerDown,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    // loop-a is a paint-only member (set-of-one): the own Group drag hook
+    // takes the pointer-down (it calls stopPropagation), never the batch
+    // session.
+    const pointerEvent = { pointerId: 1, clientX: 0, clientY: 0, stopPropagation: vi.fn() };
+    (target.props.onPointerDown as (event: unknown) => void)(pointerEvent);
+    expect(onRailSetDragPointerDown).not.toHaveBeenCalled();
+    expect(pointerEvent.stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  // RED 3: a genuine explicit move member (railSetMoveMemberLoopIds) still
+  // routes its pointer-down to the batch session and keeps the
+  // registerClickSequenceCanceller 250ms-timer cancellation behavior.
+  // Fails against current HEAD because the gate is isSetMember today.
+  it('registers its click-sequence canceller with the batch registry (WR-01) and clears the pending single-click timer on drag begin (RED 3)', () => {
     vi.useFakeTimers();
     const clips: PhysicPaintRotoLoopClip[] = [
       {
@@ -1063,7 +1120,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
       framePitch: 18,
       selectedLoopClipIds: [],
-      railSetMemberLoopIds: ['loop-a'],
+      railSetMoveMemberLoopIds: ['loop-a'],
       onSelectLoopClip,
       onOpenLoopEdit,
       onRailSetDragPointerDown,
@@ -1072,7 +1129,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(registerClickSequenceCanceller).toHaveBeenCalledOnce();
 
-    // A set member's pointer-down routes to the batch session (D-08), so the
+    // A move member's pointer-down routes to the batch session (D-08), so the
     // rail's own drag hook never starts and never clears the timer itself.
     const pointerEvent = { pointerId: 1, clientX: 0, clientY: 0 };
     (target.props.onPointerDown as (event: unknown) => void)(pointerEvent);
@@ -1103,7 +1160,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
       framePitch: 18,
       selectedLoopClipIds: [],
-      railSetMemberLoopIds: ['loop-a'],
+      railSetMoveMemberLoopIds: ['loop-a'],
       onSelectLoopClip,
       onOpenLoopEdit,
       onRailSetDragPointerDown,
