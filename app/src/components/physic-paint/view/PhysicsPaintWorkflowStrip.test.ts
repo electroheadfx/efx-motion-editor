@@ -1755,6 +1755,35 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
   });
 });
 
+describe('PhysicsPaintWorkflowStrip single-rail drag-routing split (quick 260820-lwd)', () => {
+  it('derives drag-routing membership from the explicit movable set, not the set-of-one paint classifier', () => {
+    const code = source();
+    // The fix lives in the strip: railSetMoveMemberKeyRailIds and
+    // railSetMoveMemberLoopIds are derived ONLY from railSetMoveMembers (the
+    // explicit, actually-movable set). A plain-selected single rail is a paint
+    // member (effectiveRailSetMembers) but NOT a move member, so its drag must
+    // fall back to its own 43.3/43.4 path.
+    expect(code).toContain('const railSetMoveMemberKeyRailIds = useMemo(');
+    expect(code).toContain('.filter((member): member is Extract<PhysicPaintRailSetMoveMember, { kind: \'key-rail\' }> => member.kind === \'key-rail\')');
+    expect(code).toContain('.map((member) => member.firstKeyId)');
+    expect(code).toContain('const railSetMoveMemberLoopIds = useMemo(');
+    expect(code).toContain('.filter((member): member is Extract<PhysicPaintRailSetMoveMember, { kind: \'loop\' }> => member.kind === \'loop\')');
+    expect(code).toContain('.map((member) => member.loopId)');
+    expect(code).toContain('[railSetMoveMembers],');
+  });
+
+  it('passes the movable membership to both rail hosts for batch pointer-down routing', () => {
+    const code = source();
+    const keyRailStart = code.indexOf('<PhysicsPaintKeyRail');
+    const keyRail = code.slice(keyRailStart, code.indexOf('/>', keyRailStart));
+    expect(keyRail).toContain('railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}');
+
+    const loopRailStart = code.indexOf('<PhysicsPaintLoopClipRail');
+    const loopRail = code.slice(loopRailStart, code.indexOf('/>', loopRailStart));
+    expect(loopRail).toContain('railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}');
+  });
+});
+
 describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push tool, anchor resolved per-drag)', () => {
   it('A1: gates the Push tool on busy/lock state ONLY — arming needs no selection (mode toggle)', () => {
     const code = source();
