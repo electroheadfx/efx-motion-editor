@@ -172,3 +172,56 @@ describe('actionAvailability — shape-agnostic paste availability', () => {
       .toBe(singleSession.actionAvailability.value.pasteDisabledReason);
   });
 });
+
+describe('rail-set clipboard — copyRailSet variant (quick 260820-bjw)', () => {
+  // Structural guard (Task 2 exposes the real isRotoSessionCopiedRailSet export;
+  // RED keeps the file importable with the feature absent).
+  const isRailSetVariant = (value: unknown): boolean => (
+    typeof value === 'object' && value !== null
+    && (value as { kind?: unknown }).kind === 'rail-set'
+  );
+
+  const buildRailPayload = () => ({
+    anchorAppFrame: 0,
+    members: [{
+      kind: 'key-rail' as const,
+      firstKeyId: 'k0',
+      firstKeyFrame: 0,
+      firstKeyOwnsIncomingBreak: false,
+      entries: [{
+        sourceKeyId: 'k0',
+        sourceAppFrame: 0,
+        ownsIncomingBreak: false,
+        payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      }],
+    }],
+  });
+
+  it('RED: copyRailSet stores the rail-set payload as a third clipboard variant', () => {
+    const session = buildSession();
+    const payload = buildRailPayload();
+    const result = session.copyRailSet(payload);
+    expect(result.ok).toBe(true);
+    const copied = session.copiedKey.value;
+    expect(copied).not.toBeNull();
+    expect(isRailSetVariant(copied)).toBe(true);
+    if (!isRailSetVariant(copied)) throw new Error('rail-set copy must populate the rail variant');
+    expect(copied.payload).toEqual(payload);
+  });
+
+  it('RED: a rail-set copy overwrites the shared clipboard slot (one slot contract)', () => {
+    const session = buildSession();
+    session.copyKey();
+    expect(session.copyRailSet(buildRailPayload()).ok).toBe(true);
+    expect(isRailSetVariant(session.copiedKey.value)).toBe(true);
+  });
+
+  it('RED: the rail-set clipboard survives normalization (normalizeCopiedKey rail branch)', () => {
+    const payload = buildRailPayload();
+    const rebuilt = buildSession({ copiedKey: { kind: 'rail-set', payload } });
+    const copied = rebuilt.copiedKey.value;
+    expect(isRailSetVariant(copied)).toBe(true);
+    if (!isRailSetVariant(copied)) throw new Error('rail clipboard must survive normalization');
+    expect(copied.payload).toEqual(payload);
+  });
+});

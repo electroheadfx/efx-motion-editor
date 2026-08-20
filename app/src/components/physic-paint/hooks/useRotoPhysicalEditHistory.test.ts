@@ -2043,4 +2043,54 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
       after: pushSnapshot(afterRecords, [], afterBreaks, proposal.selectedKeyId, proposal.selectedAppFrame, 40),
     });
   });
+
+  it("RED: records one accepted 'paste' command on a copied rail set and replays the exact before/after documents", async () => {
+    // Copy of rail A [0,2] + rail B [6,8] (break on k6) pasted at frame 10:
+    // fresh keys land 10/12 and 16/18 with the relocated break on the fresh
+    // B first key. The history module must treat 'paste' as an ordinary
+    // history-bearing command (like 'delete-rails') so the batch round-trip
+    // above works unchanged.
+    const beforeRecords = [
+      record('k0', 0), record('k2', 2),
+      record('k6', 6), record('k8', 8),
+    ];
+    const afterRecords = [
+      record('k0', 0), record('k2', 2),
+      record('k6', 6), record('k8', 8),
+      record('k10', 10), record('k12', 12),
+      record('k16', 16), record('k18', 18),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const beforeDocument = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 100,
+      realKeyRecords: beforeRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(beforeRecords, interpolation, [], ['k6']),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['k6'],
+    });
+    const afterDocument = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 100,
+      realKeyRecords: afterRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(afterRecords, interpolation, [], ['k16']),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['k16'],
+    });
+
+    await expectBatchUndoRedoRoundTrip({
+      operationKind: 'paste' as never,
+      operationId: 'paste-accepted',
+      before: snapshotFromDocument(beforeDocument),
+      after: snapshotFromDocument(afterDocument),
+    });
+  });
 });

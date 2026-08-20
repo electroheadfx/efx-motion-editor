@@ -40,6 +40,7 @@ import {
 } from '../roto/physicsPaintRotoPlayScriptController';
 import { resolvePostAcceptanceRotoStudioSelection } from '../roto/physicsPaintRotoMultiSelection';
 import { createRotoLivePixelCacheTransactions } from '../roto/rotoLivePixelCacheTransactions';
+import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
 import {
   executePhysicPaintRotoGroupFramePaintTransaction,
@@ -528,6 +529,17 @@ function harness(options: {
     expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
     members,
   });
+  const executePasteRails = (input: {
+    payload: RotoRailSetCopyPayload;
+    placementMode: 'paste' | 'duplicate';
+    destinationAppFrame?: number;
+  }) => coordinator.executePhysicalEdit({
+    operationKind: 'paste',
+    expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+    payload: input.payload,
+    placementMode: input.placementMode,
+    ...(input.destinationAppFrame !== undefined ? { destinationAppFrame: input.destinationAppFrame } : {}),
+  });
   const executeMoveGroup = (loopId: string, destinationPlacementStart: number) => {
     const intent = { kind: 'move-group', loopId, destinationPlacementStart } as const;
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
@@ -688,6 +700,7 @@ function harness(options: {
     executeDeleteGroupFrame,
     executeDeleteGroup,
     executeDeleteRails,
+    executePasteRails,
     executeMoveGroup,
     executeRegenerateGroup,
     executePlayScript,
@@ -3075,4 +3088,136 @@ describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
       expect(releaseLease).toHaveBeenCalledTimes(1);
     },
   );
+});
+
+describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () => {
+  const pastePng = (label: string) => `data:image/png;base64,${btoa(`paste-${label}`)}`;
+  const pasteRecord = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
+    kind: 'real-key',
+    keyId,
+    appFrame,
+    payload: { frameIndex: 0, appFrame, dataUrl: pastePng(keyId), width: 100, height: 80 },
+  });
+
+  function twoKeyRailDocument() {
+    const records = [pasteRecord('k0', 0), pasteRecord('k2', 2), pasteRecord('k6', 6), pasteRecord('k8', 8)];
+    return parsePhysicPaintRotoPhysicalDocument({
+      capacity: 100,
+      realKeyRecords: records,
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, [], ['k6']),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['k6'],
+    });
+  }
+
+  function copyPayload(): RotoRailSetCopyPayload {
+    return Object.freeze({
+      anchorAppFrame: 0,
+      members: Object.freeze([
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k0',
+          firstKeyFrame: 0,
+          firstKeyOwnsIncomingBreak: false,
+          entries: Object.freeze([
+            Object.freeze({
+              sourceKeyId: 'k0',
+              sourceAppFrame: 0,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 0, dataUrl: pastePng('k0'), width: 100, height: 80 },
+            }),
+            Object.freeze({
+              sourceKeyId: 'k2',
+              sourceAppFrame: 2,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 2, dataUrl: pastePng('k2'), width: 100, height: 80 },
+            }),
+          ]),
+        }),
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k6',
+          firstKeyFrame: 6,
+          firstKeyOwnsIncomingBreak: true,
+          entries: Object.freeze([
+            Object.freeze({
+              sourceKeyId: 'k6',
+              sourceAppFrame: 6,
+              ownsIncomingBreak: true,
+              payload: { frameIndex: 0, appFrame: 6, dataUrl: pastePng('k6'), width: 100, height: 80 },
+            }),
+            Object.freeze({
+              sourceKeyId: 'k8',
+              sourceAppFrame: 8,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 8, dataUrl: pastePng('k8'), width: 100, height: 80 },
+            }),
+          ]),
+        }),
+      ]),
+    });
+  }
+
+  it('RED: accepts Paste Rails as one parent-authority command with no child intent', async () => {
+    const test = harness();
+    const before = twoKeyRailDocument();
+    test.seedGroupDocument(before);
+    const acceptedEvents: unknown[] = [];
+    const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
+      if (value) acceptedEvents.push(value);
+    });
+
+    expect(await test.executePasteRails({ payload: copyPayload(), placementMode: 'paste', destinationAppFrame: 10 })).toBe(true);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'paste',
+      startFrame: 10,
+      selectedKeyId: null,
+      selectedAppFrame: null,
+    });
+    expect(test.accept()).toBe('accepted');
+    // Sources stay; four fresh identities land at the preserved relative layout.
+    const sourceIds = new Set(['k0', 'k2', 'k6', 'k8']);
+    const freshIds = test.getRecords()
+      .map((entry) => entry.keyId)
+      .filter((keyId) => !sourceIds.has(keyId));
+    expect(freshIds).toHaveLength(4);
+    expect(new Set(freshIds).size).toBe(4);
+    const freshByFrame = new Map(test.getRecords().map((entry) => [entry.appFrame, entry.keyId]));
+    const freshAFirst = freshByFrame.get(10);
+    const freshBFirst = freshByFrame.get(16);
+    expect(freshAFirst).toBeDefined();
+    expect(freshBFirst).toBeDefined();
+    // Source-owned break relocates onto the fresh B first key, never the fresh A first.
+    expect(test.getIncomingInterpolationBreakKeyIds()).toContain(freshBFirst);
+    expect(test.getIncomingInterpolationBreakKeyIds()).not.toContain(freshAFirst);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(10);
+    expect(acceptedEvents).toHaveLength(1);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('RED: rejects an empty Paste Rails payload fail-closed before staging or transport', async () => {
+    const test = harness();
+    const before = twoKeyRailDocument();
+    test.seedGroupDocument(before);
+
+    expect(await test.executePasteRails({
+      payload: Object.freeze({ anchorAppFrame: 0, members: Object.freeze([]) }) as RotoRailSetCopyPayload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    })).toBe(false);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['k6']);
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
+    expect(test.coordinator.pendingOperationId.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+  });
 });

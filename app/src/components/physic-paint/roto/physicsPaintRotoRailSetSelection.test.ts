@@ -412,6 +412,32 @@ describe('rail-set post-acceptance snapshot side-channel (43.6-01 Task 3, D-06 c
       current,
     })).toBe(current);
   });
+
+  it('RED: paste returns the recorded after set — the pasted set becomes the selection (anchor = first pasted rail)', () => {
+    clearRailSetSnapshots();
+    const pastedSet: RailSetSelectionState = {
+      members: Object.freeze([keyRail('pasted-a'), keyRail('pasted-b')]),
+      anchor: keyRail('pasted-a'),
+    };
+    recordRailSetSnapshot('paste-op-1', beforeSet(), pastedSet);
+    const resolved = resolveRailSetPostAcceptance({
+      operationKind: 'paste',
+      operationId: 'paste-op-1',
+      current: beforeSet(),
+    });
+    // The current code has no 'paste' branch and falls through to `current`.
+    expect(resolved).toEqual(pastedSet);
+  });
+
+  it('RED: paste without a recorded snapshot keeps the current set (reconcile stays the stale authority)', () => {
+    clearRailSetSnapshots();
+    const current = afterSet();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'paste',
+      operationId: 'unrecorded-paste',
+      current,
+    })).toBe(current);
+  });
 });
 
 describe('seedRailSetSelection (43.6-08 seed bridge)', () => {

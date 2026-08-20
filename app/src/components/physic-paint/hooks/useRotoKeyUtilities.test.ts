@@ -296,3 +296,51 @@ describe('useRotoKeyUtilities copyKey regression (shared selection resolution)',
     expect(utils.session.actionAvailability.value.canPaste).toBe(true);
   });
 });
+
+describe('useRotoKeyUtilities rail-set clipboard (quick 260820-bjw)', () => {
+  const railPayload = () => ({
+    anchorAppFrame: 0,
+    members: [{
+      kind: 'key-rail' as const,
+      firstKeyId: 'k0',
+      firstKeyFrame: 0,
+      firstKeyOwnsIncomingBreak: false,
+      entries: [{
+        sourceKeyId: 'k0',
+        sourceAppFrame: 0,
+        ownsIncomingBreak: false,
+        payload: {
+          frameIndex: 0,
+          appFrame: 0,
+          dataUrl: BLANK_PNG_DATA_URL,
+          width: 100,
+          height: 80,
+        } as PhysicPaintRotoRealKeyPayload,
+      }],
+    }],
+  });
+
+  it('RED: copyRailSet stores the rail-set clipboard on the session slot and the rebuild ref', () => {
+    const { utils, copiedKeyRef } = createHarness({ currentFrame: 3, realKeyFrames: [realKeyFrame(3)] });
+    const payload = railPayload();
+
+    utils.copyRailSet(payload);
+
+    const copied = utils.session.copiedKey.value;
+    expect(copied).not.toBeNull();
+    expect((copied as { kind?: unknown }).kind).toBe('rail-set');
+    expect((copied as { payload?: unknown }).payload).toEqual(payload);
+    expect(copiedKeyRef.current).toEqual(copied);
+  });
+
+  it('RED: pasteKey fails closed on a rail-set clipboard — never the single-key payload cast', () => {
+    const harness = createHarness({ currentFrame: 3, realKeyFrames: [realKeyFrame(3)] });
+    harness.utils.session.copiedKey.value = { kind: 'rail-set', payload: railPayload() };
+
+    harness.utils.pasteKey();
+
+    expect(harness.input.physicalKeyUtilities.pasteKey).not.toHaveBeenCalled();
+    expect(harness.input.physicalKeyUtilities.pasteKeyGroup).not.toHaveBeenCalled();
+    expect(harness.setApplyMessage).toHaveBeenCalled();
+  });
+});

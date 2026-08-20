@@ -14,6 +14,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
+import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import {
   derivePhysicPaintRotoLoopRanges,
   type PhysicPaintRotoFrameResolution,
@@ -113,6 +114,10 @@ interface HarnessOptions {
     operationKind: 'delete-rails';
     members: readonly RailSetDeleteMember[];
   }>) => Promise<boolean>;
+  railSetClipboard?: RotoRailSetCopyPayload | null;
+  getRailSetClipboard?: () => RotoRailSetCopyPayload | null;
+  setRailSetClipboard?: (payload: RotoRailSetCopyPayload | null) => void;
+  executeRailSetPaste?: (input: unknown) => Promise<boolean>;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -163,6 +168,9 @@ function createHarness(options: HarnessOptions = {}) {
     requestSoleOccurrenceDeleteWarning: options.requestSoleOccurrenceDeleteWarning,
     requestGroupDeleteChoice: options.requestGroupDeleteChoice,
     executeRailSetDelete: options.executeRailSetDelete,
+    getRailSetClipboard: options.getRailSetClipboard,
+    setRailSetClipboard: options.setRailSetClipboard,
+    executeRailSetPaste: options.executeRailSetPaste,
   } as RotoTimelineActionsInput & {
     executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
     requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
@@ -3510,5 +3518,107 @@ describe('useRotoTimelineActions solo capsule mapper (43.6-06 Task 3, D-20/D-27)
 
   it('produces no solo line for the empty set', () => {
     expect(buildRailSetSoloCopy([])).toBeNull();
+  });
+});
+
+describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw)', () => {
+  const setRecords = [
+    realKeyRecord('k0', 0), realKeyRecord('k2', 2),
+    realKeyRecord('k6', 6), realKeyRecord('k8', 8),
+  ];
+  const setMembers: readonly RailSetIdentity[] = [
+    { kind: 'key-rail', firstKeyId: 'k0' },
+    { kind: 'key-rail', firstKeyId: 'k6' },
+  ];
+
+  it('RED: copyRailSet builds the frozen set payload and stores it on the rail-set clipboard', async () => {
+    const railClipboard = signal<RotoRailSetCopyPayload | null>(null);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      getRailSetClipboard: () => railClipboard.value,
+      setRailSetClipboard: (payload) => { railClipboard.value = payload; },
+    });
+
+    expect(await harness.actions.copyRailSet()).toBe(true);
+    expect(railClipboard.value).not.toBeNull();
+    expect(railClipboard.value?.anchorAppFrame).toBe(0);
+    expect(railClipboard.value?.members).toHaveLength(2);
+    const keyRailA = railClipboard.value!.members[0];
+    const keyRailB = railClipboard.value!.members[1];
+    if (keyRailA.kind !== 'key-rail' || keyRailB.kind !== 'key-rail') throw new Error('expected key-rail members');
+    expect(keyRailA.entries.map((entry) => entry.sourceAppFrame)).toEqual([0, 2]);
+    expect(keyRailB.entries.map((entry) => entry.sourceAppFrame)).toEqual([6, 8]);
+    expect(keyRailB.firstKeyOwnsIncomingBreak).toBe(true);
+    expect(harness.publishStatus).toHaveBeenCalled();
+  });
+
+  it('RED: pasteRailSet dispatches through executeRailSetPaste with placementMode paste at the cursor frame', async () => {
+    const executeRailSetPaste = vi.fn(async () => true);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 10,
+      capacity: 100,
+      executeRailSetPaste,
+      railSetClipboard: Object.freeze({
+        anchorAppFrame: 0,
+        members: Object.freeze([]),
+      }) as RotoRailSetCopyPayload,
+    });
+
+    expect(await harness.actions.pasteRailSet('paste')).toBe(true);
+    expect(executeRailSetPaste).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'paste',
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      payload: expect.objectContaining({ anchorAppFrame: 0 }),
+    }));
+  });
+
+  it('RED: duplicateRailSet dispatches through executeRailSetPaste with placementMode duplicate and no destination', async () => {
+    const executeRailSetPaste = vi.fn(async () => true);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      capacity: 80,
+      executeRailSetPaste,
+      railSetClipboard: Object.freeze({
+        anchorAppFrame: 0,
+        members: Object.freeze([]),
+      }) as RotoRailSetCopyPayload,
+    });
+
+    expect(await harness.actions.duplicateRailSet()).toBe(true);
+    expect(executeRailSetPaste).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'paste',
+      placementMode: 'duplicate',
+      payload: expect.objectContaining({ anchorAppFrame: 0 }),
+    }));
+  });
+
+  it('RED: pasteRailSet maps a rejected execute to the locked Paste-rejected family with zero mutation', async () => {
+    const executeRailSetPaste = vi.fn(async () => false);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 10,
+      capacity: 80,
+      executeRailSetPaste,
+      railSetClipboard: Object.freeze({
+        anchorAppFrame: 0,
+        members: Object.freeze([]),
+      }) as RotoRailSetCopyPayload,
+    });
+
+    expect(await harness.actions.pasteRailSet('paste')).toBe(false);
+    expect(executeRailSetPaste).toHaveBeenCalledTimes(1);
+    expect(harness.publishStatus).toHaveBeenCalled();
   });
 });

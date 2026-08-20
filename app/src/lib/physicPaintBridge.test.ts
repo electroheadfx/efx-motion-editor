@@ -33,6 +33,7 @@ import {
   proposePhysicPaintRotoGroupFramePaint,
   proposePhysicPaintRotoRegenerateGroup,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
+import { proposeRails, type RotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import {
@@ -4422,6 +4423,275 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () => {
+  const projectContextId = 'abababab-abab-4bab-8bab-abababababab';
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('RED: accepts a paste whose proposal + impact come from the shared pure proposer (one recompute law)', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    projectStore.projectContextId.value = projectContextId;
+    sequenceStore.add({
+      id: 'bridge-paste-rails-sequence',
+      kind: 'fx',
+      name: 'Bridge paste-rails authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('k0', 0),
+      makePhysicalRecord('k2', 2),
+      makePhysicalRecord('k6', 6),
+      makePhysicalRecord('k8', 8),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 100,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], ['k6']),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['k6'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
+    if (!launch.ok) throw new Error(launch.error);
+    const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!seededDoc) throw new Error('Expected seeded physical document.');
+
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+
+    const copyPayload = (): RotoRailSetCopyPayload => Object.freeze({
+      anchorAppFrame: 0,
+      members: Object.freeze([
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k0',
+          firstKeyFrame: 0,
+          firstKeyOwnsIncomingBreak: false,
+          entries: Object.freeze([
+            Object.freeze({
+              sourceKeyId: 'k0',
+              sourceAppFrame: 0,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 0, dataUrl: records[0].payload.dataUrl, width: 1000, height: 650 },
+            }),
+            Object.freeze({
+              sourceKeyId: 'k2',
+              sourceAppFrame: 2,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 2, dataUrl: records[1].payload.dataUrl, width: 1000, height: 650 },
+            }),
+          ]),
+        }),
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k6',
+          firstKeyFrame: 6,
+          firstKeyOwnsIncomingBreak: true,
+          entries: Object.freeze([
+            Object.freeze({
+              sourceKeyId: 'k6',
+              sourceAppFrame: 6,
+              ownsIncomingBreak: true,
+              payload: { frameIndex: 0, appFrame: 6, dataUrl: records[2].payload.dataUrl, width: 1000, height: 650 },
+            }),
+            Object.freeze({
+              sourceKeyId: 'k8',
+              sourceAppFrame: 8,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 8, dataUrl: records[3].payload.dataUrl, width: 1000, height: 650 },
+            }),
+          ]),
+        }),
+      ]),
+    });
+
+    // The child proposal comes from the pure shared proposer — the SAME law the
+    // parent recompute branch runs. Ship the proposal records + the impact
+    // (which carries the frozen payload, placement facts, and the fresh
+    // identity allocation) through the real bridge.
+    const proposed = proposeRails({
+      document: seededDoc,
+      payload: copyPayload(),
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) throw new Error(`Paste proposal must resolve: ${proposed.reason}`);
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'paste-rails-accepted',
+      operationKind: 'paste',
+      leaseToken,
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: seededDoc.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
+      semanticDelta: proposed.impact,
+    });
+
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!acceptedDocument) throw new Error('Expected accepted paste document.');
+    // Four fresh identities land at the preserved relative layout.
+    expect(acceptedDocument.realKeyRecords).toHaveLength(8);
+    expect(acceptedDocument.incomingInterpolationBreakKeyIds).toHaveLength(1);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
+  });
+
+  it('RED: rejects a paste whose records diverge from the shared recompute with zero publication', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    projectStore.projectContextId.value = projectContextId;
+    sequenceStore.add({
+      id: 'bridge-paste-rails-reject-sequence',
+      kind: 'fx',
+      name: 'Bridge paste-rails reject',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('k0', 0),
+      makePhysicalRecord('k2', 2),
+      makePhysicalRecord('k6', 6),
+      makePhysicalRecord('k8', 8),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 100,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], ['k6']),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['k6'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
+    if (!launch.ok) throw new Error(launch.error);
+    const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!seededDoc) throw new Error('Expected seeded physical document.');
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+    const beforeVersion = physicPaintVersion.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+    const payload: RotoRailSetCopyPayload = Object.freeze({
+      anchorAppFrame: 0,
+      members: Object.freeze([
+        Object.freeze({
+          kind: 'key-rail' as const,
+          firstKeyId: 'k0',
+          firstKeyFrame: 0,
+          firstKeyOwnsIncomingBreak: false,
+          entries: Object.freeze([
+            Object.freeze({
+              sourceKeyId: 'k0',
+              sourceAppFrame: 0,
+              ownsIncomingBreak: false,
+              payload: { frameIndex: 0, appFrame: 0, dataUrl: records[0].payload.dataUrl, width: 1000, height: 650 },
+            }),
+          ]),
+        }),
+      ]),
+    });
+    const proposed = proposeRails({
+      document: seededDoc,
+      payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) throw new Error(`Paste proposal must resolve: ${proposed.reason}`);
+    // Ship the real proposal records but a delta that claims a stale
+    // previousRevision — the parent authority must reject the WHOLE paste.
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'paste-rails-divergent-delta',
+      operationKind: 'paste',
+      leaseToken,
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: seededDoc.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
+      semanticDelta: { ...proposed.impact, previousRevision: 'revision-other' },
+    });
+
+    expect(result.ok, result.ok ? 'accepted' : result.error).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(seededDoc);
+    expect(physicPaintVersion.peek()).toBe(beforeVersion);
+    expect(replace).not.toHaveBeenCalled();
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 });
 
