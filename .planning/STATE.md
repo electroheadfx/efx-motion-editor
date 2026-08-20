@@ -28,7 +28,7 @@ status: Ready to plan
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-20
-last_activity_desc: "Completed quick task 260820-hq9: addEmptyKey inside an interpolated segment must clear to empty payload on commit"
+last_activity_desc: "Completed quick task 260820-lwd: restore native single-rail drag (43.3/43.4) by splitting rail-set move-membership from paint-membership"
 progress:[██████████] 100%
   total_phases: 10
   completed_phases: 7
@@ -598,6 +598,7 @@ None yet.
 | 260820-bjw | Copy / Duplicate for a multi-rail selection set (43.6 extension) | 2026-08-20 | 288a2257 | Verified | [260820-bjw-copy-duplicate-for-a-multi-rail-selectio](./quick/260820-bjw-copy-duplicate-for-a-multi-rail-selectio/) |
 | 260820-hq9 | addEmptyKey inside an interpolated segment: force the empty payload to own the display (paste-key reconcile) | 2026-08-20 | 076ddc67 | Verified | [260820-hq9-addemptykey-inside-interpolated-segment-](./quick/260820-hq9-addemptykey-inside-interpolated-segment-/) |
 | 260820-kta | Pre-release review-warning disposition batch (v0.9.0 final HEAD) | 2026-08-20 | cc9ff0e7 | Verified | [260820-kta-pre-release-review-warning-disposition-b](./quick/260820-kta-pre-release-review-warning-disposition-b/) |
+| 260820-lwd | Regression: single-rail drag'drop no longer works. Multi-rail set drag (2+ selected rails) WORKS. Push works. Dragging ONE selected rail is inert. | 2026-08-20 | ebae0827 |  | [260820-lwd-regression-single-rail-drag-drop-no-long](./quick/260820-lwd-regression-single-rail-drag-drop-no-long/) |
 
 ### Roadmap Evolution
 
