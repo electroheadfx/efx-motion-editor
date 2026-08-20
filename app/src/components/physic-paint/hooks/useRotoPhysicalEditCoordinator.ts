@@ -1228,6 +1228,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || pending.operationKind === 'play-script'
         || pending.operationKind === 'regenerate-group'
         || pending.operationKind === 'insert-empty-segment'
+        || pending.operationKind === 'paste-key'
         || pending.operationKind === 'paint-group-frame'
         || pending.operationKind === 'delete-group-frame'
         || pending.operationKind === 'delete-group'
