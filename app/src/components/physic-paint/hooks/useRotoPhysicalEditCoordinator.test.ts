@@ -474,6 +474,41 @@ function harness(options: {
       selectedAppFrame: destinationAppFrame,
     });
   };
+  const executePasteKey = (destinationAppFrame: number) => {
+    const intent = {
+      kind: 'paste-key',
+      destinationAppFrame,
+      destinationKeyId: null,
+      newKeyId: 'hq9-6',
+      clipboardPayload: {
+        frameIndex: 0,
+        appFrame: destinationAppFrame,
+        dataUrl: 'data:image/png;base64,AAAA',
+        width: 2,
+        height: 2,
+      },
+      startsNewSegment: true,
+    } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      loopClips,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: interpolation.enabled,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    return coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'paste-key',
+      intent,
+      selectedKeyId: 'hq9-6',
+      selectedAppFrame: destinationAppFrame,
+    });
+  };
   const seedGroupDocument = (document: ReturnType<typeof parsePhysicPaintRotoPhysicalDocument>) => {
     records = document.realKeyRecords;
     groupOverrideRecords = document.groupOverrideRecords ?? [];
@@ -696,6 +731,7 @@ function harness(options: {
     coordinator,
     execute,
     executeEmptySegment,
+    executePasteKey,
     executeGroupPaint,
     executeDeleteGroupFrame,
     executeDeleteGroup,
@@ -1041,6 +1077,43 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getCurrentFrame()).toBe(14);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(14);
+  });
+
+  it('reconciles the accepted EMPTY real key when paste-key lands inside an interpolated span', async () => {
+    const test = harness();
+    const records = [record('A', 0), record('B', 4), record('C', 8)];
+    const interpolationOn = { enabled: true as const, mode: 'duplicate' as const };
+    const doc = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation: interpolationOn,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 6,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolationOn, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(doc);
+
+    // 6 is strictly inside the B(4)–C(8) interpolated span; the destination is
+    // genuinely empty, so the paste-to-empty physical edit is accepted.
+    expect(await test.executePasteKey(6)).toBe(true);
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 4],
+      ['C', 8],
+    ]);
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['hq9-6', 6]);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(6);
+    expect(test.getCanonicalSelection().cursorAppFrame).toBe(6);
   });
 
   it('sends and accepts one empty key with its complete cloned incoming-break collection', async () => {
