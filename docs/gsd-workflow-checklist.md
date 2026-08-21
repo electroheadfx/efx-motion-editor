@@ -9,13 +9,14 @@ Canonical journey for every milestone, learned from the v0.9.0 cycle. The mid-mi
 
 ## 2. Per phase (repeat for each phase)
 
-1. [ ] `/gsd-discuss-phase N` — lock the gray-area decisions (Kimi K3)
-2. [ ] `/gsd-ui-phase N` — frontend phases only (UI-SPEC contract)
-3. [ ] `/gsd-plan-phase N` — research → plan → plan-check
-4. [ ] `/gsd-execute-phase N` — waves with tracer checkpoints
-5. [ ] `/gsd-verify-work N` — **native UAT, user oracle** — nothing is "done" until it passes (say "automated-ready")
-6. [ ] `/gsd-secure-phase N` — threat verification ⚠ often forgotten
-7. [ ] `/gsd-validate-phase N` — Nyquist coverage audit ⚠ often forgotten
+1. [ ] `/gsd-phase --insert N` — create/insert the phase in the ROADMAP (skip if it already exists)
+2. [ ] `/gsd-discuss-phase N` — lock the gray-area decisions (Kimi K3)
+3. [ ] `/gsd-ui-phase N` — frontend phases only (UI-SPEC contract)
+4. [ ] `/gsd-plan-phase N` — research → plan → plan-check
+5. [ ] `/gsd-execute-phase N` — waves with tracer checkpoints
+6. [ ] `/gsd-verify-work N` — **native UAT, user oracle** — nothing is "done" until it passes (say "automated-ready")
+7. [ ] `/gsd-secure-phase N` — threat verification ⚠ often forgotten
+8. [ ] `/gsd-validate-phase N` — Nyquist coverage audit ⚠ often forgotten
 
 ## 3. Quick work (any time)
 

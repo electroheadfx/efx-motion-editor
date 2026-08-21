@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="corporate">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parcours GSD — guide générique / The GSD Journey</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex, .layout-grid, .layout-flex) > *,
+  :where([style*="display: grid"], [style*="display:grid"], [style*="display: flex"], [style*="display:flex"]) > * {
+    min-width: 0;
+  }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) {
+    overflow-wrap: anywhere;
+  }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .gsd-step { transition: transform .15s ease, box-shadow .15s ease; }
+  .gsd-step:hover { transform: translateY(-2px); box-shadow: 0 8px 24px oklch(0 0 0 / .25); }
+  .badge { white-space: nowrap; }
+</style>
+</head>
+<body class="bg-base-200 text-base-content min-h-screen">
+
+<header class="hero bg-base-100 border-b border-base-content/10 py-10">
+  <div class="hero-content text-center">
+    <div class="max-w-2xl">
+      <div class="join mb-6">
+        <button id="btn-fr" class="btn btn-sm join-item btn-primary" onclick="setLang('fr')">Français</button>
+        <button id="btn-en" class="btn btn-sm join-item" onclick="setLang('en')">English</button>
+      </div>
+      <div lang="fr" class="i18n-fr">
+        <div class="flex justify-center gap-2 mb-4">
+          <span class="badge badge-primary badge-lg">GSD</span>
+          <span class="badge badge-outline badge-lg">guide générique — tout projet</span>
+        </div>
+        <h1 class="text-4xl font-bold">Le parcours GSD complet</h1>
+        <p class="py-4 text-base-content/70">Du nouveau milestone à l'archive — avec les étapes qu'on oublie en pratique :
+          <span class="badge badge-warning badge-sm">secure-phase</span>
+          <span class="badge badge-warning badge-sm">validate-phase</span>
+          <span class="badge badge-warning badge-sm">audit + summary de fin</span>
+        </p>
+      </div>
+      <div lang="en" class="i18n-en" hidden>
+        <div class="flex justify-center gap-2 mb-4">
+          <span class="badge badge-primary badge-lg">GSD</span>
+          <span class="badge badge-outline badge-lg">generic guide — any project</span>
+        </div>
+        <h1 class="text-4xl font-bold">The complete GSD journey</h1>
+        <p class="py-4 text-base-content/70">From new milestone to archive — including the steps that get forgotten in practice:
+          <span class="badge badge-warning badge-sm">secure-phase</span>
+          <span class="badge badge-warning badge-sm">validate-phase</span>
+          <span class="badge badge-warning badge-sm">end-of-milestone audit + summary</span>
+        </p>
+      </div>
+      <div class="flex justify-center gap-4 text-sm i18n-fr" lang="fr">
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-info"></span> automatisé</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-warning"></span> oracle utilisateur</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-secondary"></span> décision</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-error"></span> souvent oublié</span>
+      </div>
+      <div class="flex justify-center gap-4 text-sm i18n-en" lang="en" hidden>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-info"></span> automated</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-warning"></span> user oracle</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-secondary"></span> decision</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-error"></span> often forgotten</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= FRANCAIS ================= -->
+<main class="i18n-fr max-w-5xl mx-auto px-4 py-10 space-y-14" lang="fr">
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">Vue d'ensemble</h2>
+    <p class="text-base-content/60 mb-6">Trois mouvements : la boucle de phase, les quicks/debugs (même discipline UAT), et la clôture de milestone.</p>
+    <div class="grid grid-cols-1 gap-6">
+      <div class="card bg-base-100 card-border">
+        <div class="card-body">
+          <h3 class="card-title text-lg">La boucle de phase</h3>
+          <ul class="steps steps-horizontal w-full overflow-x-auto">
+            <li class="step step-info"><span class="text-xs mt-1">phase<br>--insert</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">discuss</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">plan</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">execute</span></li>
+            <li class="step step-warning"><span class="text-xs mt-1">verify-work<br>UAT</span></li>
+            <li class="step step-error"><span class="text-xs mt-1">secure ⚠</span></li>
+            <li class="step step-error"><span class="text-xs mt-1">validate ⚠</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border">
+        <div class="card-body">
+          <h3 class="card-title text-lg">La clôture du milestone</h3>
+          <ul class="steps steps-horizontal w-full overflow-x-auto">
+            <li class="step step-info"><span class="text-xs mt-1">audit</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">fix gaps</span></li>
+            <li class="step step-secondary"><span class="text-xs mt-1">release<br>finale</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">re-audit</span></li>
+            <li class="step step-error"><span class="text-xs mt-1">summary ⚠</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">complete</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">1 · La boucle de phase</h2>
+    <p class="text-base-content/60 mb-6">Huit étapes, dans l'ordre. Rien n'est « done » avant l'UAT native — on dit « automated-ready ».</p>
+    <ul class="steps steps-vertical w-full">
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-phase --insert N <span class="badge badge-ghost badge-sm ml-1">création</span></div>
+          <div class="text-sm text-base-content/60">Créer ou insérer la phase dans le ROADMAP avant tout travail (ex. --insert 43 pour les 43.x). Déjà présente ? passer à discuss.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-discuss-phase <span class="badge badge-secondary badge-sm ml-1">décision</span></div>
+          <div class="text-sm text-base-content/60">Verrouiller uniquement les zones grises. Sortie : N-CONTEXT.md.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-ui-phase <span class="badge badge-ghost badge-sm ml-1">frontend seulement</span></div>
+          <div class="text-sm text-base-content/60">Contrat UI-SPEC si la phase touche l'interface.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-plan-phase</div>
+          <div class="text-sm text-base-content/60">Research → plan → plan-check. Couverture des décisions D-01..D-n vérifiée.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-execute-phase</div>
+          <div class="text-sm text-base-content/60">Waves, commits atomiques. Checkpoints tracer = internes.</div>
+        </div>
+      </li>
+      <li class="step step-warning">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-verify-work <span class="badge badge-warning badge-sm ml-1">oracle utilisateur</span></div>
+          <div class="text-sm text-base-content/60">UAT native sur l'app réelle. Seuil résumé + confirmation visuelle = evidence suffisante.</div>
+        </div>
+      </li>
+      <li class="step step-error">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-secure-phase <span class="badge badge-error badge-sm ml-1">oublié en pratique</span></div>
+          <div class="text-sm text-base-content/60">Vérification des threats du register. L1 grep short-circuit si ASVS-1 + register plan-time + 0 open.</div>
+        </div>
+      </li>
+      <li class="step step-error">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-validate-phase <span class="badge badge-error badge-sm ml-1">oublié en pratique</span></div>
+          <div class="text-sm text-base-content/60">Audit Nyquist : chaque exigence a une vérification automatisée ou un manual-only assumé.</div>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">2 · Quicks & debugs — à tout moment</h2>
+    <div class="grid md:grid-cols-2 gap-4 mt-6">
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <h3 class="card-title">/gsd-quick <span class="badge badge-info badge-sm">automatisé + UAT</span></h3>
+          <p class="text-sm text-base-content/70">Tâche bornée (fix, petit comportement). Même discipline : commits atomiques, UAT native avant de dire « closed ». Pas de récupération d'un quick isolé échoué en exécutant sur main.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <h3 class="card-title">/gsd-debug <span class="badge badge-info badge-sm">systématique</span></h3>
+          <p class="text-sm text-base-content/70">Bug dur : méthode scientifique, instrumentation avant fix. <strong>Jamais de pivot</strong> debug → phase en cours de route, sauf demande explicite.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">3 · Clôture du milestone — dans l'ordre strict</h2>
+    <p class="text-base-content/60 mb-6">La phase release suit le skill release du projet (gates → release signée → UAT → publish).</p>
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="card bg-base-100 card-border gsd-step md:col-span-1">
+        <div class="card-body">
+          <div class="text-3xl font-black text-info">1</div>
+          <h3 class="card-title text-lg">/gsd-audit-milestone</h3>
+          <p class="text-sm text-base-content/70">Exigences, seams d'intégration, couverture Nyquist. Tant qu'il reste des gaps → corriger (validate-phase, UAT re-runs) puis re-auditer.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step md:col-span-2">
+        <div class="card-body">
+          <div class="text-3xl font-black text-secondary">2</div>
+          <h3 class="card-title text-lg">Phase release finale <span class="badge badge-secondary badge-sm">checkpoints utilisateur</span></h3>
+          <ol class="text-sm text-base-content/70 list-decimal list-inside space-y-1">
+            <li>Docs + bump de version sur toutes les surfaces</li>
+            <li>Gates automatisés verts</li>
+            <li>Release signée/notarisée — étape crédentielle utilisateur</li>
+            <li>UAT sur l'artefact signé — une passe complète</li>
+            <li>Draft GitHub + <strong>notes avant publish</strong></li>
+            <li>Vérification de l'artefact téléchargé + install + lancement normal</li>
+            <li>Stop conditions = hard gate → publish Latest</li>
+            <li><strong>Contrôle du tag post-publish</strong> — le tag doit pointer sur le commit de release (main pushé d'abord)</li>
+          </ol>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <div class="text-3xl font-black text-info">3</div>
+          <h3 class="card-title text-lg">Re-audit</h3>
+          <p class="text-sm text-base-content/70">Score plein exigé. Sinon retour à l'étape 1.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step border-error/40">
+        <div class="card-body">
+          <div class="text-3xl font-black text-error">4</div>
+          <h3 class="card-title text-lg">/gsd-milestone-summary <span class="badge badge-error badge-sm">oublié</span></h3>
+          <p class="text-sm text-base-content/70">Bilan consolidé du cycle — référence pour le milestone suivant.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <div class="text-3xl font-black text-info">5</div>
+          <h3 class="card-title text-lg">/gsd-complete-milestone</h3>
+          <p class="text-sm text-base-content/70">Archive officielle. Le tag existe déjà et pointe correctement — vérifier que GSD ne le déplace pas.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-6">4 · Règles transverses</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div role="alert" class="alert alert-warning text-black">
+        <span><strong>Push main régulièrement.</strong> GitHub crée les tags de release sur la branche distante — un main non pushé = tag sur un commit périmé.</span>
+      </div>
+      <div role="alert" class="alert alert-info text-white">
+        <span><strong>« Automated-ready », jamais « done »</strong> avant l'UAT native. L'utilisateur est l'oracle final.</span>
+      </div>
+      <div role="alert" class="alert alert-info text-white">
+        <span><strong>Bug GSD ≠ bug projet.</strong> Défaut de guard/sentinel/état avec reproduction indépendante → issue open-gsd via le pipeline du skill <code>gsd-guide</code> (doublons d'abord, redaction, autorisation séparée).</span>
+      </div>
+      <div role="alert" class="alert alert-info text-white">
+        <span><strong>Skills compagnons :</strong> <code>gsd-guide</code> (global, ~/.agents/skills) pour l'assistance au quotidien ; le skill release du projet pour la phase release.</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-sm text-base-content/50 pb-8">
+    <p>Skill gsd-guide (~/.agents/skills) · le checklist markdown vit dans le repo du projet</p>
+    <p class="mt-2 font-semibold">© @electroheadfx - Laurent Marques 2026</p>
+  </footer>
+</main>
+
+<!-- ================= ENGLISH ================= -->
+<main class="i18n-en max-w-5xl mx-auto px-4 py-10 space-y-14" lang="en" hidden>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">Overview</h2>
+    <p class="text-base-content/60 mb-6">Three movements: the phase loop, quicks/debugs (same UAT discipline), and milestone closure.</p>
+    <div class="grid grid-cols-1 gap-6">
+      <div class="card bg-base-100 card-border">
+        <div class="card-body">
+          <h3 class="card-title text-lg">The phase loop</h3>
+          <ul class="steps steps-horizontal w-full overflow-x-auto">
+            <li class="step step-info"><span class="text-xs mt-1">phase<br>--insert</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">discuss</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">plan</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">execute</span></li>
+            <li class="step step-warning"><span class="text-xs mt-1">verify-work<br>UAT</span></li>
+            <li class="step step-error"><span class="text-xs mt-1">secure ⚠</span></li>
+            <li class="step step-error"><span class="text-xs mt-1">validate ⚠</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border">
+        <div class="card-body">
+          <h3 class="card-title text-lg">Milestone closure</h3>
+          <ul class="steps steps-horizontal w-full overflow-x-auto">
+            <li class="step step-info"><span class="text-xs mt-1">audit</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">fix gaps</span></li>
+            <li class="step step-secondary"><span class="text-xs mt-1">final<br>release</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">re-audit</span></li>
+            <li class="step step-error"><span class="text-xs mt-1">summary ⚠</span></li>
+            <li class="step step-info"><span class="text-xs mt-1">complete</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">1 · The phase loop</h2>
+    <p class="text-base-content/60 mb-6">Eight steps, in order. Nothing is "done" before native UAT — say "automated-ready".</p>
+    <ul class="steps steps-vertical w-full">
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-phase --insert N <span class="badge badge-ghost badge-sm ml-1">creation</span></div>
+          <div class="text-sm text-base-content/60">Create or insert the phase in the ROADMAP before any work (e.g. --insert 43 for the 43.x series). Already there? Move to discuss.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-discuss-phase <span class="badge badge-secondary badge-sm ml-1">decision</span></div>
+          <div class="text-sm text-base-content/60">Lock only the gray areas. Output: N-CONTEXT.md.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-ui-phase <span class="badge badge-ghost badge-sm ml-1">frontend only</span></div>
+          <div class="text-sm text-base-content/60">UI-SPEC contract when the phase touches the interface.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-plan-phase</div>
+          <div class="text-sm text-base-content/60">Research → plan → plan-check. D-01..D-n decision coverage verified.</div>
+        </div>
+      </li>
+      <li class="step step-info">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-execute-phase</div>
+          <div class="text-sm text-base-content/60">Waves, atomic commits. Tracer checkpoints are internal.</div>
+        </div>
+      </li>
+      <li class="step step-warning">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-verify-work <span class="badge badge-warning badge-sm ml-1">user oracle</span></div>
+          <div class="text-sm text-base-content/60">Native UAT on the real app. Summarized thresholds + visual confirmation are sufficient evidence.</div>
+        </div>
+      </li>
+      <li class="step step-error">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-secure-phase <span class="badge badge-error badge-sm ml-1">often forgotten</span></div>
+          <div class="text-sm text-base-content/60">Threat register verification. L1 grep short-circuit with ASVS-1 + plan-time register + 0 open.</div>
+        </div>
+      </li>
+      <li class="step step-error">
+        <div class="text-left py-2">
+          <div class="font-bold">/gsd-validate-phase <span class="badge badge-error badge-sm ml-1">often forgotten</span></div>
+          <div class="text-sm text-base-content/60">Nyquist audit: every requirement has automated verification or an accepted manual-only.</div>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">2 · Quicks & debugs — anytime</h2>
+    <div class="grid md:grid-cols-2 gap-4 mt-6">
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <h3 class="card-title">/gsd-quick <span class="badge badge-info badge-sm">automated + UAT</span></h3>
+          <p class="text-sm text-base-content/70">Bounded task (fix, small behavior). Same discipline: atomic commits, native UAT before saying "closed". Never recover a failed isolated quick by executing on main.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <h3 class="card-title">/gsd-debug <span class="badge badge-info badge-sm">systematic</span></h3>
+          <p class="text-sm text-base-content/70">Hard bug: scientific method, instrumentation before fix. <strong>Never pivot</strong> a debug into a phase midstream unless explicitly asked.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-2">3 · Milestone closure — strict order</h2>
+    <p class="text-base-content/60 mb-6">The release phase follows the project's release skill (gates → signed release → UAT → publish).</p>
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="card bg-base-100 card-border gsd-step md:col-span-1">
+        <div class="card-body">
+          <div class="text-3xl font-black text-info">1</div>
+          <h3 class="card-title text-lg">/gsd-audit-milestone</h3>
+          <p class="text-sm text-base-content/70">Requirements, integration seams, Nyquist coverage. While gaps remain → fix them (validate-phase, UAT re-runs) then re-audit.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step md:col-span-2">
+        <div class="card-body">
+          <div class="text-3xl font-black text-secondary">2</div>
+          <h3 class="card-title text-lg">Final release phase <span class="badge badge-secondary badge-sm">user checkpoints</span></h3>
+          <ol class="text-sm text-base-content/70 list-decimal list-inside space-y-1">
+            <li>Docs + version bump across every surface</li>
+            <li>Automated gates green</li>
+            <li>Signed/notarized release — user-run credentialed step</li>
+            <li>UAT on the signed artifact — one comprehensive pass</li>
+            <li>GitHub draft + <strong>notes before publish</strong></li>
+            <li>Downloaded-artifact verification + install + normal launch</li>
+            <li>Stop conditions = hard gate → publish Latest</li>
+            <li><strong>Post-publish tag check</strong> — the tag must point at the release commit (push main first)</li>
+          </ol>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <div class="text-3xl font-black text-info">3</div>
+          <h3 class="card-title text-lg">Re-audit</h3>
+          <p class="text-sm text-base-content/70">Full score required. Otherwise back to step 1.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step border-error/40">
+        <div class="card-body">
+          <div class="text-3xl font-black text-error">4</div>
+          <h3 class="card-title text-lg">/gsd-milestone-summary <span class="badge badge-error badge-sm">forgotten</span></h3>
+          <p class="text-sm text-base-content/70">Consolidated record of the cycle — reference for the next milestone.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 card-border gsd-step">
+        <div class="card-body">
+          <div class="text-3xl font-black text-info">5</div>
+          <h3 class="card-title text-lg">/gsd-complete-milestone</h3>
+          <p class="text-sm text-base-content/70">Official archive. The tag already exists and points correctly — make sure GSD doesn't move it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-bold mb-6">4 · Standing rules</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div role="alert" class="alert alert-warning text-black">
+        <span><strong>Push main regularly.</strong> GitHub creates release tags on the remote branch — an unpushed main means a tag on a stale commit.</span>
+      </div>
+      <div role="alert" class="alert alert-info text-white">
+        <span><strong>"Automated-ready", never "done"</strong> before native UAT. The user is the final oracle.</span>
+      </div>
+      <div role="alert" class="alert alert-info text-white">
+        <span><strong>GSD bug ≠ project bug.</strong> A guard/sentinel/state defect with an independent reproduction → open-gsd issue via the <code>gsd-guide</code> skill pipeline (duplicates first, redaction, separate authorization).</span>
+      </div>
+      <div role="alert" class="alert alert-info text-white">
+        <span><strong>Companion skills:</strong> <code>gsd-guide</code> (global, ~/.agents/skills) for daily assistance; the project's release skill for the release phase.</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-sm text-base-content/50 pb-8">
+    <p>gsd-guide skill (~/.agents/skills) · the markdown checklist lives in the project repo</p>
+    <p class="mt-2 font-semibold">© @electroheadfx - Laurent Marques 2026</p>
+  </footer>
+</main>
+
+<script>
+  function setLang(lang) {
+    document.documentElement.lang = lang;
+    for (const el of document.querySelectorAll('.i18n-fr')) el.hidden = lang !== 'fr';
+    for (const el of document.querySelectorAll('.i18n-en')) el.hidden = lang !== 'en';
+    document.getElementById('btn-fr').classList.toggle('btn-primary', lang === 'fr');
+    document.getElementById('btn-en').classList.toggle('btn-primary', lang === 'en');
+  }
+</script>
+</body>
+</html>
