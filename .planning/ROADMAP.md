@@ -474,8 +474,16 @@ Plans:
   3. Signed/notarized downloaded-artifact verification and visible launch complete before publication (icon verified on the downloaded artifact, not the dev machine, since icon caches lie)
 
 **Plans**: 3 plans
+**Wave 1**
+
 - [ ] 44-01-PLAN.md — v0.9.0 5-surface version bump + archive stale bundles + six REL-01 gates in D-03 order
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 44-02-PLAN.md — user-run credentialed signed release (D-04 wrapper) + comprehensive signed packaged-app UAT (spec steps 1-17 + Phase 43 boundary)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 44-03-PLAN.md — draft release + verify-downloaded + install/launch + stop-condition checklist + publish as GitHub Latest
 
 ---
