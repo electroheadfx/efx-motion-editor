@@ -24,6 +24,17 @@ packages/*/demo/dist/
 app/src-tauri/target/
 app/src-tauri/gen/
 
+# Tauri icon generation extras — regenerable via `pnpm --dir app tauri icon`.
+# Only the 5 canonical desktop icons stay tracked (32x32, 128x128, 128x128@2x,
+# icon.icns, icon.ico); the 1024x1024 source stays outside Git per release contract.
+app/src-tauri/app-icon.png
+app/src-tauri/icons/64x64.png
+app/src-tauri/icons/Square*Logo.png
+app/src-tauri/icons/StoreLogo.png
+app/src-tauri/icons/icon.png
+app/src-tauri/icons/android/
+app/src-tauri/icons/ios/
+
 # OS
 .DS_Store
 
