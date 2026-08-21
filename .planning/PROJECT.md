@@ -281,4 +281,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-19 after Phase 43.6 completion — G-43.6-2 closed (delete-rails before-snapshot selection authority + recovery-lease self-heal), native UAT passed 4/4, phase marked complete; milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-21 after Phase 44 completion — v0.9.0 released: signed/notarized/stapled macOS artifact published as GitHub Latest (ahead of the 2026-08-31 target); all six REL-01 gates green, native packaged-app UAT 17/17 passed (incl. Phase 43 signed-artifact boundary), downloaded-artifact verification + 15-item stop-condition checklist zero-active. Milestone v0.9.0 is 100% complete (Phases 39-44). Code-review warnings (WR-01 codesign `--entitlements :-` deprecation, WR-02 unbounded worktree scan) deferred — frozen release-script concerns out of phase scope.*
