@@ -723,7 +723,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ### Open artifacts acknowledged at v0.9.0 close (2026-08-21)
 
-161 items from `audit-open` acknowledged via override_closeout (57 debug sessions, 46 quick tasks, 28 UAT gaps, 22 verification gaps, 8 new deferred-item entries). Mostly legacy from earlier milestones (v0.1.0–v0.8.0); the v0.9.0 scope itself was clean per the passed milestone audit (38/38 requirements, 12/12 phases). closeout_type = override_closeout; Known verification overrides: 161 newly acknowledged, 0 carried forward from a prior close.
+171 pre-close items from `audit-open` acknowledged via override_closeout (57 debug sessions, 46 quick tasks, 28 UAT gaps, 22 verification gaps, 18 deferred-item entries — the 16 heading-delimited 36.14 entries reconciled to 6 acknowledged sections, so 161 rows remain suppressed). Mostly legacy from earlier milestones (v0.1.0–v0.8.0); the v0.9.0 scope itself was clean (38/38 requirements, 12/12 phases). closeout_type = override_closeout; Known verification overrides: 171 newly acknowledged, 0 carried forward from a prior close.
 
 | Category | Item | Status |
 |----------|------|--------|

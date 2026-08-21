@@ -2,7 +2,7 @@
 
 ## v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (Shipped: 2026-08-21)
 
-**Phases completed:** 11 phases, 100 plans, 218 tasks
+**Phases completed:** 12/12 phases (11 phase directories + Phase 39 verified via quick 260804-f2q), 100 plans, 218 tasks
 
 **Key accomplishments:**
 
@@ -102,6 +102,10 @@
 - Five-surface 0.9.0 version bump (atomic), stale v0.8.1 bundle archival, and all six REL-01 gates green in locked D-03 order with recorded per-gate exit-status evidence
 - User-run credentialed v0.9.0 release (RELEASE PASS, notarization Accepted, stapler PASS) and comprehensive signed packaged-app UAT — all 17 spec steps pass in the packaged app, including the Phase 43 signed-artifact boundary, with the two spec divergences recorded, not fixed
 - v0.9.0 published as GitHub Latest: draft release created with the DMG, downloaded-artifact verification PASS on a separate download (REL-03), normal install/launch confirmed without Gatekeeper bypass, all 15 stop conditions recorded NOT ACTIVE (D-07), then `gh release edit` published as Latest with the DMG attached and v0.8.1 superseded
+
+**Closeout type:** override_closeout — Known verification overrides: 171 newly acknowledged, 0 carried forward from a prior close (see STATE.md Deferred Items); Phase 39 verified via quick task 260804-f2q (no phase directory) per the passed milestone audit (12/12 phases)
+**Timeline:** 2026-08-04 → 2026-08-21 (17 days) | **Commits:** 962 (git range 1efe7b34 → HEAD) | **Files changed:** 929 (+207,015 / −13,064)
+**Requirements:** 38/38 satisfied | **Audit:** passed (12/12 phases, integration PASS, E2E flows PASS, Nyquist fully compliant)
 
 ---
 
