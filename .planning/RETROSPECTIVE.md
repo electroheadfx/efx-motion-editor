@@ -2,6 +2,62 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.9.0 — PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
+
+**Shipped:** 2026-08-21
+**Phases:** 12 (39-44, incl. inserted 43.1-43.6) | **Plans:** 100 | **Quick tasks:** several (incl. 260804-f2q Phase 39 hydration)
+
+### What Was Built
+- Scripts auto-hydration (Phase 39, quick 260804-f2q): saved-project scripts and Save Script appear without manual Refresh
+- macOS identity + build hygiene (40): 5 release icons regenerated from the approved artwork; `chunkSizeWarningLimit` 1100 documented and test-pinned
+- EFX Paint audio preview + monitoring toggle (41): read-only main-editor audio in the child, frame-synchronized (anchor model, silent scrub, loop-wrap re-seek, 40ms drift corrector), revisioned launch payload + push, doubled-audio guard, D-04 single-token CSP grant
+- PlayScript application modes + color override (42): progressive vs static/hold schedule (progressive byte-untouched), application-time color-only override, Hold Loop intent (Repeat/Infinity) surfaced read-only
+- Hold Loop Clips + Integrated Loop Rail (43): persistent loop clips on one compact derived interval record (no virtual materialization), linked preview/export parity, unresolved-loop export fail-fast, filmstrip capsule
+- Intentional Gap Insert + local interpolation breaks (43.1): stable-key incoming-break ownership, atomic empty-segment insert
+- Motion/Static Group stabilization + Action lifecycle (43.2): leased parent-authoritative transactions, durable Rust Action recovery, exact-frame COW
+- Group drag (43.3), Derived Key Rails + Scissor (43.4), Timeline Toolbox + directional Push (43.5), session-only multi-rail selection + batch ops (43.6)
+- Signed/notarized/stapled release (44): five-surface version single-source (REL-01), 17-step packaged-app UAT (REL-02), downloaded-artifact verification (REL-03) — published as GitHub Latest ahead of the 2026-08-31 target
+
+### What Worked
+
+- **Release as a first-class phase (44):** REL-01/02/03 got their own dedicated phase with explicit gates instead of being improvised at the end — the release ran without improvisation
+- **Loop Clip unified architecture (43):** one compact derived interval record + a single typed `real/linked/linked-unresolved/empty` contract let resolution, preview, playback, and export share one authority with compile-time exhaustiveness
+- **43.2 recovery discipline:** the largest phase (25 plans) was carried through frozen-session native UAT with the D-30-style bounded recovery track — acceptance stayed the only oracle and every mandatory row carried evidence
+- **Stable-key identity generalized (43.1-43.6):** incoming-break ownership, Scissor breaks, Loop Clip ownership all reuse the canonical stable-key/loopId identity — no new authority per feature
+- **Five-surface version single-source (REL-01):** one atomic bump across 5 surfaces removed the version-drift failure class
+- **Snapshot-deferred items:** the deferred artifacts (161 open) were acknowledged at close via the audit seam, keeping the release unpolluted
+
+### What Was Inefficient
+
+- **Stale artifact accumulation again:** 161 open debug/quick/UAT/verification items at close — mostly legacy carried from v0.8.0 and earlier. Intermediate cleanup between milestones would keep the audit signal clean (same lesson as v0.8.0, unaddressed)
+- **Quick-task verification invisible to init.manager:** Phase 39 closed via quick (no phase directory), so the canonical readiness projection read `not started`; the close required an override + audit interpretation
+- **Heading-delimited deferred items not CLI-acknowledgeable:** the 36.14/15.2 `deferred-items.md` files use the heading-delimited shape, which the CLI writer refuses; table-form rows are permanently un-suppressible — required direct file edits (and the historical tables had to be converted to status-bearing bullets)
+- **A few inserted-phase states needed close-time reconciliation** (requirement caveats, `[SAVE-REOPEN]` staging permission, remaining 43.2 native rows) — earlier frozen-session evidence per phase would have closed them in-phase
+
+### Patterns Established
+
+- Verification-by-quick as a legitimate phase-close path (Phase 39) — needs explicit audit/init-flag reconciliation at close
+- Leased, parent-authoritative transactions for durability (Groups, Actions, rail-sets) — child publishes one complete canonical document only after exact correlated acceptance
+- One shared pure proposer per operation (group delete, push, rails move) recomputed by BOTH coordinator and parent bridge, then exact-match complete-state — fail-closed on any drift
+- Stable-key/loopId identity as the single ownership authority for breaks, gaps, Groups, and loop clips
+- Signed release published as an atomic, auditable, one-way act with a 15-item stop-condition checklist
+
+### Key Lessons
+
+1. **Ship the release phase like any other feature phase** — REL gates planned, executed, and verified beat improvisation at the deadline (v0.9.0 published 10 days early)
+2. **A derived-interval single contract beats materialization** — Loop Clips became a non-issue across preview/export because the domain model (not the UI) was the authority
+3. **Stable-key identity pays forward** — owning breaks, gaps, Groups, and loops by the same stable identity meant each new feature (Scissor, Push, multi-rail) reused existing authority instead of adding a fork
+4. **Prevent artifact debt between milestones** — 161 open items at close is the same failure v0.8.0 recorded (103); sweep stale debug sessions/quicks as you go, not at the archive gate
+5. **Init canonical projections need quick-verification awareness** — a phase satisfied by quick must be recognized as verified by the readiness oracle, or every close needs an override
+
+### Cost Observations
+
+- Model mix: predominantly opus for planning/cutover/release work, sonnet for execution waves, haiku for extraction/summaries (mirrors v0.8.0)
+- Sessions: ~10+ over 17 days (2026-08-04 → 2026-08-21)
+- Notable: 962 commits for 100 plans (~10 commits/plan), reflecting the UAT-gated iterate-in-place style; the 43.2 acceptance loop and signed-release verification were the largest single-effort blocks
+
+---
+
 ## Milestone: v0.8.0 — Standalone Physics Paint
 
 **Shipped:** 2026-08-01
