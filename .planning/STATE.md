@@ -4,17 +4,17 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
-status: executing
-stopped_at: Completed 44-02-PLAN.md (signed packaged-app UAT + credentialed release)
-last_updated: "2026-08-21T10:51:27.908Z"
+status: verifying
+stopped_at: Completed 44-03-PLAN.md (v0.9.0 published as GitHub Latest)
+last_updated: "2026-08-21T11:47:32.280Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 44 execution started
-state_head: d92a3ebd0ab8cbfb49c3d9b5285a4f8c9e933dc4
+state_head: c9726c6c0ff57ddd7dd698f910761b419d9f5cf0
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 100
-  completed_plans: 99
+  completed_plans: 100
   percent: 83
 ---
 
@@ -25,7 +25,7 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
-status: Ready to execute
+status: Phase complete — ready for verification
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-20
@@ -51,7 +51,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 44 (Integrated UAT + Signed Release) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-21 — Phase 44 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
@@ -273,6 +273,7 @@ Progress: [██████████] 99%
 | Phase 43.6 P13 | 4min | 2 tasks | 2 files |
 | Phase 44-integrated-uat-signed-release P01 | 12min | 2 tasks | 6 files |
 | Phase 44-integrated-uat-signed-release P02 | 50min | 2 tasks | 2 files |
+| Phase 44-integrated-uat-signed-release P03 | 40min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -551,6 +552,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 44-integrated-uat-signed-release]: Truncation label judged against the shipped English copy in plan 02's signed-app UAT; French spec label recorded as known divergence, no code change (D-09)
 - [Phase 44-integrated-uat-signed-release]: Archive (not delete) stale v0.8.1 bundles per RESEARCH Open Question 3; keep the old DMG locally
 - [Phase 44-integrated-uat-signed-release]: Vitest gate invocations use src/... paths (app workspace root), not app/src/... (the plan's app/-prefixed path resolves to no files)
+- [Phase 44]: Publish v0.9.0 as GitHub Latest — explicit user decision ("publish") after DOWNLOADED ARTIFACT PASS on a separate download (REL-03), normal install/launch without Gatekeeper bypass, and all 15 stop conditions recorded NOT ACTIVE (D-07). Publish sequence adjusted: gh release edit v0.9.0 --draft=false then --latest (GitHub API rejects make_latest on a draft with HTTP 422); Latest verified via API /releases/latest -> v0.9.0 and gh release list v0.9.0 latest=true (gh 2.97.0 lacks the isLatest JSON field). v0.8.1 superseded (A4). — Publication is public and one-way (REVERSIBILITY: one-way); the stop-condition checklist (D-07) is the audit trail separate from the UAT pass, and the one-way publish required the user's explicit decision.
 
 ### Pending Todos
 
@@ -760,9 +762,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-21T10:51:26.739Z
-Stopped at: Completed 44-02-PLAN.md (signed packaged-app UAT + credentialed release)
-Resume file: .planning/phases/44-integrated-uat-signed-release/44-02-SUMMARY.md
+Last session: 2026-08-21T11:47:25.272Z
+Stopped at: Completed 44-03-PLAN.md (v0.9.0 published as GitHub Latest)
+Resume file: None
 
 ## Operator Next Steps
 

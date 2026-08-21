@@ -484,7 +484,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 44-03-PLAN.md — draft release + verify-downloaded + install/launch + stop-condition checklist + publish as GitHub Latest
+- [x] 44-03-PLAN.md — draft release + verify-downloaded + install/launch + stop-condition checklist + publish as GitHub Latest
 
 ---
 
@@ -642,4 +642,4 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
 | 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 25/25 | Complete    | 2026-08-13 |
-| 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
+| 44. Integrated UAT + Signed Release | v0.9.0 | 3/3 | In Progress|  |

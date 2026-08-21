@@ -69,7 +69,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **REL-01**: All automated gates pass: `pnpm --dir app exec vitest run`, typecheck, `pnpm build`, cargo tests, release script syntax check and preflight
 - [x] **REL-02**: Native packaged-app UAT passes all spec steps (icon surfaces, hydration without Refresh, audio sync/seek/loop/stop without drift or doubling, toggle isolation, progressive apply, 5-frame cycle × 5 repeat badge and resolution, infinity to next clip, partial-cycle truncation label, next-clip move/remove re-expansion, color override with unchanged source, save/reopen/export)
-- [ ] **REL-03**: Signed/notarized downloaded-artifact verification and visible launch complete before publication; no release stop condition is active
+- [x] **REL-03**: Signed/notarized downloaded-artifact verification and visible launch complete before publication; no release stop condition is active
 
 ## Future Requirements (deferred)
 
@@ -145,7 +145,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GAP-06 | Phase 43.1 | Complete |
 | REL-01 | Phase 44 | Complete |
 | REL-02 | Phase 44 | Complete |
-| REL-03 | Phase 44 | Pending |
+| REL-03 | Phase 44 | Complete |
 
 **Coverage:**
 
