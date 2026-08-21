@@ -1,8 +1,9 @@
 # Phase 44: Signed Release Ledger (v0.9.0)
 
 **Plan:** 44-02 — user-run credentialed release (D-04) via `efx-release-efx-motion` wrapper
-**Status:** AWAITING USER RELEASE RUN
+**Status:** RELEASE PASS RECORDED (user-reported ledger + agent-verified freshness/notarization evidence)
 **Recorded:** 2026-08-21
+**Release run:** 2026-08-21 (user terminal, repo root)
 
 ## Pre-conditions (agent-verified before the user release run)
 
@@ -28,24 +29,54 @@ trap-unsets every variable. Credentials never enter the repo, project files, or 
 Fallback if the wrapper is unavailable: the documented manual 4-export flow in
 `docs/macos-signed-release.md` (also user-run).
 
-## Release ledger (user-reported — pending)
+## Release ledger (user-reported — RECORDED 2026-08-21)
+
+The user ran `~/.config/efx/scripts/efx-release-efx-motion` from a terminal at the repo root and
+reported the wrapper output verbatim. The wrapper sourced the trusted Apple environment file,
+validated the four credential vars, ran `bash scripts/macos-release.sh release`, and trap-unset
+every variable on exit. Credentials never entered the repo, project files, or agent context.
 
 | Ledger item | Value |
 |-------------|-------|
-| Local release ledger | **PENDING** |
-| app notarization status | **PENDING** |
-| DMG notarization status | **PENDING** |
-| app stapler validation | **PENDING** |
-| DMG stapler validation | **PENDING** |
+| Local release ledger | **RELEASE PASS** |
+| app notarization status | **Accepted** (`source=Notarized Developer ID`) |
+| DMG notarization status | **Accepted** (`source=Notarized Developer ID`) |
+| app stapler validation | **PASS** |
+| DMG stapler validation | **PASS** |
 
-## Freshness evidence (agent-verified after the user reports back — D-05, Pitfall 3)
+User-reported output (verbatim):
+
+```
+The validate action worked!
+/Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release/bundle/dmg/EFX Motion Editor_0.9.0_aarch64.dmg: accepted
+source=Notarized Developer ID
+RELEASE PASS
+- app: /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app
+- dmg: /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release/bundle/dmg/EFX Motion Editor_0.9.0_aarch64.dmg
+- app signature, Developer ID team, Hardened Runtime, no-custom-entitlements, Gatekeeper, and stapler checks passed
+- DMG integrity, signature, Developer ID team, notarization, stapler, and Gatekeeper checks passed
+```
+
+## Freshness evidence (agent-verified after the user reported back — D-05, Pitfall 3)
 
 | Artifact | Path | mtime (must be ≥ release run) |
 |----------|------|-------------------------------|
-| inner binary | `app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app/Contents/MacOS/efx-motion-editor` | **PENDING** |
-| `.app` directory | `app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app` | **PENDING** |
-| built DMG | `app/src-tauri/target/release/bundle/dmg/EFX Motion Editor_0.9.0_aarch64.dmg` | **PENDING** (exactly one, `_0.9.0_` glob) |
-| notarization evidence | `app/src-tauri/target/dmg/notarization-evidence/` | **PENDING** |
+| inner binary | `app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app/Contents/MacOS/efx-motion-editor` | **Aug 21 12:30:58 2026** — fresh, postdates release run |
+| `.app` directory | `app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app` | **Aug 21 12:30:57 2026** — fresh, postdates release run |
+| built DMG | `app/src-tauri/target/release/bundle/dmg/EFX Motion Editor_0.9.0_aarch64.dmg` | **Aug 21 12:32 2026** — exactly one `_0.9.0_` DMG (15.7 MB); `_0.8.1_` glob empty |
+| notarization evidence | `app/src-tauri/target/release/bundle/dmg/notarization-evidence/` | **Aug 21 12:32 2026** — `dmg-log.json` + `dmg-submit.json` present |
 
 > Freshness is judged by the `.app` + inner-binary mtime, NEVER by `bundle/dmg/` timestamps
 > (the DMG folder can hold stale artifacts — Pitfall 3).
+
+### Notarization evidence (agent-verified)
+
+- `dmg-log.json`: `status` **Accepted**, `statusSummary` **Ready for distribution**, `statusCode` **0**,
+  `archiveFilename` `EFX Motion Editor_0.9.0_aarch64.dmg`, `uploadDate` `2026-08-21T10:32:03.903Z`,
+  `sha256` `71ea46c3f183e872469761737761ed5413b8a27b7cba897f7e4e03ea90b8e076`, `issues` null.
+- `dmg-submit.json`: `status` **Accepted**, `id` `2b2a37f1-108f-4daa-8be6-02322fe63d61`.
+
+> **Path discrepancy (noted, not a defect):** the plan and RESEARCH.md state the evidence lives at
+> `app/src-tauri/target/dmg/notarization-evidence/`; the actual evidence is at
+> `app/src-tauri/target/release/bundle/dmg/notarization-evidence/` (the release script writes it
+> beside the built DMG). The evidence exists and is complete — only the documented path differs.
