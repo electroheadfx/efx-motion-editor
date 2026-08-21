@@ -41,10 +41,10 @@ progress:[████████░░] 83%
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
+See: .planning/PROJECT.md (updated 2026-08-21 after v0.9.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 44 — Integrated UAT + Signed Release
+**Current focus:** Planning next milestone (v1.0 multi-track) via /gsd-new-milestone
 
 ## Current Position
 
