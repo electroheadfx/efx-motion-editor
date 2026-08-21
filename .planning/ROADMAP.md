@@ -476,7 +476,7 @@ Plans:
 **Plans**: 3 plans
 **Wave 1**
 
-- [ ] 44-01-PLAN.md — v0.9.0 5-surface version bump + archive stale bundles + six REL-01 gates in D-03 order
+- [x] 44-01-PLAN.md — v0.9.0 5-surface version bump + archive stale bundles + six REL-01 gates in D-03 order
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
