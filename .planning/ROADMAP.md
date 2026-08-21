@@ -480,7 +480,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 44-02-PLAN.md — user-run credentialed signed release (D-04 wrapper) + comprehensive signed packaged-app UAT (spec steps 1-17 + Phase 43 boundary)
+- [x] 44-02-PLAN.md — user-run credentialed signed release (D-04 wrapper) + comprehensive signed packaged-app UAT (spec steps 1-17 + Phase 43 boundary)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
