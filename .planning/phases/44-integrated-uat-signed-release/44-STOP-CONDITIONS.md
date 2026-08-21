@@ -33,7 +33,33 @@ The publish decision itself remains a **human decision** (REL-03 edge — the ch
 
 ## Publish confirmation (filled in after the user's decision)
 
-- [ ] User decision: publish / hold
-- [ ] `gh release edit v0.9.0 --latest` run
-- [ ] `gh release view v0.9.0 --json isLatest --jq .isLatest` → `true`
-- [ ] DMG asset attached to the published release
+- [x] User decision: **publish** (user typed "publish" — approve publication of EFX Motion Editor v0.9.0 as GitHub Latest)
+- [x] `gh release edit v0.9.0 --latest` run — after lifting draft state (see sequencing note below)
+- [x] v0.9.0 verified as GitHub Latest
+- [x] DMG asset attached to the published release
+
+**Published:** 2026-08-21
+**Publish URL:** https://github.com/electroheadfx/efx-motion-editor/releases/tag/v0.9.0
+
+### Verification ledger (post-publish)
+
+| Check | Command | Result |
+|-------|---------|--------|
+| GitHub API Latest endpoint | `gh api repos/electroheadfx/efx-motion-editor/releases/latest --jq .tag_name` | `v0.9.0` |
+| Release list Latest flag | `gh release list --limit 3 --json tagName,isLatest` | `v0.9.0 latest=true` (v0.8.1 latest=false — A4 supersede confirmed) |
+| Draft state | `gh release view v0.9.0 --json isDraft --jq .isDraft` | `false` |
+| Prerelease state | `gh release view v0.9.0 --json isPrerelease --jq .isPrerelease` | `false` |
+| DMG asset | `gh release view v0.9.0 --json assets --jq '.assets[].name'` | `EFX.Motion.Editor_0.9.0_aarch64.dmg` |
+
+### Sequencing note (deviation from the plan's literal command)
+
+The plan's exact command `gh release edit v0.9.0 --latest` was rejected by the GitHub API with
+`HTTP 422: Latest release cannot be draft or prerelease.` because the release was still a draft.
+GitHub only allows `make_latest` on a published (non-draft) release. The same intent was achieved
+with the documented two-step flow:
+
+1. `gh release edit v0.9.0 --draft=false` — publish (lift draft) → verified `isDraft: false`
+2. `gh release edit v0.9.0 --latest` — mark as Latest → verified Latest via the API endpoint + release list
+
+The resulting state matches the plan's acceptance criteria exactly: v0.9.0 is Latest with the DMG
+attached, and the draft→published→latest transition was verified after every state change (T-44-12).
