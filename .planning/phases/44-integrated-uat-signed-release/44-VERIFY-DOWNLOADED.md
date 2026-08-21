@@ -1,7 +1,7 @@
 # Phase 44: Downloaded-Artifact Verification Evidence (REL-03)
 
 **Plan:** 44-03 (release + publish)
-**Status:** DRAFT CREATED — awaiting user download + verify-downloaded + install/launch
+**Status:** DOWNLOADED ARTIFACT PASS + INSTALL/LAUNCH CONFIRMED — ready for stop-condition checklist + publish decision (Task 3)
 
 ## 1. Draft release creation (Task 1)
 
@@ -42,6 +42,48 @@ DOWNLOADED ARTIFACT PASS
 
 ## 5. Results (filled in after user download + agent verify)
 
-- [ ] verify-downloaded → `DOWNLOADED ARTIFACT PASS`
-- [ ] App launched normally from Applications without Gatekeeper bypass
-- [ ] Icon verified on the downloaded artifact
+- [x] verify-downloaded → `DOWNLOADED ARTIFACT PASS`
+- [x] App launched normally from Applications without Gatekeeper bypass
+- [x] Icon verified on the downloaded artifact
+
+### 5.1 verify-downloaded output (agent-run, credential-free — 2026-08-21)
+
+**Downloaded DMG path:** `/Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg` (15,704,448 bytes, mtime Aug 21 12:58 — a SEPARATE download from the draft release, not the local bundle path; D-05)
+
+**Command:**
+```bash
+bash scripts/macos-release.sh verify-downloaded "/Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg"
+```
+
+**Output (verbatim):**
+```text
+PREFLIGHT PASS: release configuration, Apple CLI capabilities, resources, and private-asset guards
+hdiutil: verify: checksum of "/Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg" is VALID
+/Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg: valid on disk
+/Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg: satisfies its Designated Requirement
+The validate action worked!
+/Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg: accepted
+source=Notarized Developer ID
+/var/folders/.../EFX Motion Editor.app: valid on disk
+/var/folders/.../EFX Motion Editor.app: satisfies its Designated Requirement
+/var/folders/.../EFX Motion Editor.app: accepted
+source=Notarized Developer ID
+The validate action worked!
+DOWNLOADED ARTIFACT PASS
+- dmg: /Volumes/T7/Téléchargements/EFX.Motion.Editor_0.9.0_aarch64.dmg
+- DMG integrity/signature/ticket/Gatekeeper checks passed
+- contained app signature/team/Hardened Runtime/no-custom-entitlements/ticket/Gatekeeper checks passed
+- normal visible launch remains a required user-owned check
+```
+
+### 5.2 Install + normal launch (user-owned — confirmed 2026-08-21)
+
+The user confirmed **"all work"**:
+
+- Downloaded the DMG from the draft release URL in a clean session.
+- Opened the downloaded DMG and dragged **EFX Motion Editor.app** into **Applications**.
+- Launched the installed app **normally** (double-click; NO Control-click/Open, NO Gatekeeper bypass).
+- The app launched visibly and ran; macOS reported no unidentified-developer or damaged-application warning.
+- Icon confirmed on the downloaded/launched app surface (not the dev machine — icon caches lie per D-05).
+
+**Result: install + normal launch PASS.** Distribution acceptance is now proven on the downloaded artifact (REL-03). The remaining gate before publication is the stop-condition checklist (Task 3, D-07).
