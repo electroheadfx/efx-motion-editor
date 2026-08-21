@@ -31,7 +31,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 43.4: Derived Key Groups and Scissor Breaks** — Ordinary real keys derive gray Key Rails with explicit Scissor breaks, selection-scoped Delete Key Rail, collision-limited local drag, and atomic Undo/Redo (completed 2026-08-16)
 - [x] **Phase 43.5: Timeline Toolbox and Directional Push Tools** — Compact toolbox button relocating Interpolation/Key Spacing into a Studio-local surface, plus Push Right/Push Left tools translating the selected Group and its directional side as one rigid atomic set with persistent intentional gaps (INSERTED; spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md) (completed 2026-08-18)
 - [x] **Phase 43.6: Multi-Rail Selection and Batch Operations** — Cross-type multi-rail selection (Key/Motion/Static) with batch Move, Delete, Key Spacing, and selection-scoped solo playback (completed 2026-08-19)
-- [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
+- [x] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31 (completed 2026-08-21)
 
 ## Phase Details
 
@@ -642,4 +642,4 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
 | 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 25/25 | Complete    | 2026-08-13 |
-| 44. Integrated UAT + Signed Release | v0.9.0 | 3/3 | In Progress|  |
+| 44. Integrated UAT + Signed Release | v0.9.0 | 3/3 | Complete    | 2026-08-21 |
