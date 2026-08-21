@@ -473,11 +473,12 @@ Plans:
   2. User-run packaged-app UAT passes every spec step: icon surfaces, hydration without Refresh, audio sync/seek/loop/stop without drift or doubling, toggle isolation, progressive apply, 5-frame cycle × 5 integrated-rail Cycle/Effective display and resolution, infinity to next clip, partial-cycle truncation label, next-clip move/remove re-expansion, color override with unchanged source, save/reopen/export — Phase 43 handoff: the signed packaged UAT explicitly covers valid linked-loop preview/export parity and the unresolved-loop export block (the unsigned packaged smoke runs earlier in Phase 43-10; the signed-artifact boundary is verified here, never silently dropped)
   3. Signed/notarized downloaded-artifact verification and visible launch complete before publication (icon verified on the downloaded artifact, not the dev machine, since icon caches lie)
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 44-01-PLAN.md — v0.9.0 5-surface version bump + archive stale bundles + six REL-01 gates in D-03 order
+- [ ] 44-02-PLAN.md — user-run credentialed signed release (D-04 wrapper) + comprehensive signed packaged-app UAT (spec steps 1-17 + Phase 43 boundary)
+- [ ] 44-03-PLAN.md — draft release + verify-downloaded + install/launch + stop-condition checklist + publish as GitHub Latest
 
 ---
-
-### Archived Milestones
 
 <details>
 <summary>v0.1.0 (Phases 1-7) — SHIPPED 2019-03-11</summary>
