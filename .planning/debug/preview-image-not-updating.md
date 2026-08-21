@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "Playback shows only last key image per sequence. All preceding keys ignored."
 created: 2026-03-09T15:00:00Z
 updated: 2026-03-09T16:50:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: awaiting_human_verify
 ---
 
 ## Current Focus
@@ -84,4 +88,5 @@ root_cause: CSP in tauri.conf.json missing 'blob:' in img-src directive. Commit 
 fix: Add blob: to CSP img-src directive in tauri.conf.json. The readFile+blob URL approach introduced in commit b78cdc9 requires blob: in CSP to allow Image elements to load blob URLs.
 verification: pending user test
 files_changed:
+
   - Application/src-tauri/tauri.conf.json (added blob: to img-src CSP)

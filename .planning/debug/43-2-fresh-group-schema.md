@@ -3,6 +3,10 @@ status: verifying
 trigger: "Diagnose and fix the Phase 43.2 Wave 2 full-suite regression on the current branch. Failing test: app/src/lib/physicPaintBridge.test.ts — physicPaintBridge accepts the first Progressive Play Script and Loop Clip on a fresh layer — assertion near line 1549 expected null but received Invalid physics paint apply payload. Preserve the clean-break policy and correct the fresh-layer producer or fixture boundary so newly generated payloads are canonical."
 created: 2026-08-11T05:58:28Z
 updated: 2026-08-11T05:58:28Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: verifying
 ---
 
 ## Current Focus
@@ -11,6 +15,7 @@ bug_class: Bohrbug
 reasoning_checkpoint:
   hypothesis: "Plan 43.2-05 made finite Group transport lifecycle-complete, but the physical-edit coordinator's cloneLoopClips producer strips all six lifecycle fields and the direct fresh-layer bridge fixture still constructs the same pre-cutover five-field record, so isPhysicPaintRotoPhysicalEditApplyPayload rejects the payload before application."
   confirming_evidence:
+
     - "The failing run deterministically returns the top-level Invalid physics paint apply payload error before semantic application."
     - "isLifecycleCompletePhysicPaintRotoLoopClip requires syncState, provenanceState, phaseOrigin, originalEndExclusive, visibleRanges, and frameOverrides; the failing fixture supplies none."
     - "Production cloneLoopClips copies only loopId, placementStart, sourceKeyIds, repeat, mode, and provenance, dropping lifecycle fields even when canonical input carries them."
@@ -18,6 +23,7 @@ reasoning_checkpoint:
   fix_rationale: "Canonicalize finite Groups at the outbound coordinator clone boundary and preserve every lifecycle member, then align the direct bridge payload fixture with the same canonical contract; this fixes producers without weakening validation or adding compatibility migration."
   blind_spots: "Infinity Groups cannot synthesize a finite originalEndExclusive and are intentionally outside this reported finite Progressive repeat=2 regression; no server/native UI is run."
   candidate_causes:
+
     - "code: cloneLoopClips drops lifecycle fields at the real producer boundary"
     - "data: the existing direct bridge fixture constructs a partial finite Group"
   and_gate: "yes — the regression requires both the intentional strict transport cutover and a producer/fixture path that bypasses or erases canonical finite lifecycle hydration"

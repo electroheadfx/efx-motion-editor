@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "PNG Export with Audio Hangs - export doesn't work and can't be cancelled when Include Audio is checked"
 created: 2026-03-23T00:00:00Z
 updated: 2026-03-23T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus
@@ -54,6 +58,7 @@ started: Likely since audio export feature was added
 - timestamp: 2026-03-23T00:06:00Z
   checked: exportEngine.ts lines 182-203 - the full audio pre-render block structure
   found: THREE distinct issues identified:
+
     1. NO CANCEL CHECK before entering renderMixedAudio (line 186-190)
     2. renderMixedAudio is not abortable - no AbortSignal support
     3. Even the try/catch on line 198 only catches errors, not hangs

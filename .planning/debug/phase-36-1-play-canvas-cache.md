@@ -3,6 +3,10 @@ status: testing
 trigger: "Phase 36.1 final human visual verification reported Play canvas cache, timeline, render preview, and stroke-width issues."
 created: "2026-06-13T22:20:00.000Z"
 updated: "2026-06-13T23:37:30.000Z"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: testing
 ---
 
 # Debug Session: Phase 36.1 Play Canvas Cache and Timeline Issues
@@ -12,6 +16,7 @@ updated: "2026-06-13T23:37:30.000Z"
 ### Expected behavior
 
 Phase 36.1 final visual verification should pass:
+
 - Saved Play cache should be used for Play preview after Save play.
 - Play canvas timeline should show a vertical current-frame position marker, support navigation between frames, and default to first frame rather than final frame.
 - Play canvas timeline should fit the available width even with many frames; start/end animation visuals should remain proportional across the timeline width.
@@ -25,6 +30,7 @@ Phase 36.1 final visual verification should pass:
 ### Actual behavior
 
 User reports during final human visual verification checkpoint:
+
 - Cache seems not working: render Save play does not use cache for Play preview.
 - Timeline shows a bullet rather than a vertical current-frame position bar.
 - User cannot navigate between frames and cannot go to the start of animation; default seems to show final frame instead of first frame.
@@ -47,6 +53,7 @@ Started during Phase 36.1 final human visual verification checkpoint after plan 
 ### Reproduction
 
 From the user:
+
 1. Open final Phase 36.1 Play canvas workflow.
 2. Use Play canvas tab with saved Play scripts and Save play/render behavior.
 3. Observe cache preview, timeline markers/current-frame indicator/navigation/fitting, Play button behavior, in-between preview, append-paint behavior, stroke wiggle request, and stroke-width mismatch.
@@ -54,6 +61,7 @@ From the user:
 ### Screenshot notes
 
 Attached screenshot shows:
+
 - Roto canvas and Play canvas tabs, with Play canvas active.
 - Duration control set to 10.
 - Previous/start-like icons, Play triangle, Stop square, Save play button, Save state, Load state.
@@ -74,8 +82,10 @@ tdd_checkpoint: "Existing commits already added tests; new fixes should add focu
 
 - timestamp: 2026-06-13T23:29:48.000Z
   observation: Interrupted debug agent left a partial Play canvas patch touching WorkflowStrip, Studio, CSS, and source-contract tests. Focused tests passed, but review found unsafe gaps: Play navigation still used synced editor callbacks, append-only editing used launch currentFrame rather than local preview frame, cached preview attempted a non-existent engine.loadImage API, and CSS still inherited the 1800px lane grid.
+
 - timestamp: 2026-06-13T23:37:15.000Z
   observation: Corrected patch passes `pnpm --dir app test --run src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts` with 28 tests passing.
+
 - timestamp: 2026-06-13T23:37:20.000Z
   observation: Corrected patch passes `pnpm build`.
 
@@ -83,6 +93,7 @@ tdd_checkpoint: "Existing commits already added tests; new fixes should add focu
 
 - hypothesis: "The Play canvas cached preview can be fixed by loading PNG frames directly into EfxPaintEngine."
   reason: EfxPaintEngine exposes export/get/load project APIs, not loadImage; cached frame preview must render as an overlay or use a new engine API outside this fix scope.
+
 - hypothesis: "Play transport first/previous buttons can reuse editor synced navigation."
   reason: User explicitly reported main/play frame navigation confusion; Phase 36.1 requires local Play scrub not moving the editor playhead.
 

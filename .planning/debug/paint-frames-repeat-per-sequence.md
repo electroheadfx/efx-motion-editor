@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "Paint applied to first N frames repeats at the start of every sequence instead of playing only on the absolute timeline frames where it was painted."
 created: 2026-03-25T10:00:00Z
 updated: 2026-03-25T10:10:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: awaiting_human_verify
 ---
 
 ## Current Focus

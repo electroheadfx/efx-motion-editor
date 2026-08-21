@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "HQ Blur Toggle Causes Visual Corruption - blur disappears on HQ enable, zoomed/cropped on disable"
 created: 2026-03-13T15:00:00Z
 updated: 2026-03-13T15:45:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

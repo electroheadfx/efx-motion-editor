@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Investigate why videos don't appear in the IMPORTED assets window alongside images after being added as a video layer."
 created: 2026-03-10T00:00:00Z
 updated: 2026-03-10T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

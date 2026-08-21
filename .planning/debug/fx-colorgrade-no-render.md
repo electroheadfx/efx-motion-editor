@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Color Grade FX sequence does not render on canvas - no tonal shift visible on content"
 created: 2026-03-10T14:00:00Z
 updated: 2026-03-10T14:15:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

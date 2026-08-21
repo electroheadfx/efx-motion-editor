@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
 status: completed
 stopped_at: Phase 44 complete — all phases complete
-last_updated: "2026-08-21T12:07:47.629Z"
+last_updated: "2026-08-21T13:31:19.634Z"
 last_activity: 2026-08-21
-last_activity_desc: Phase 44 complete
-state_head: 3edf0771885e5507ae01a727a4be9d3e034c2c85
+last_activity_desc: Milestone v0.9.0 completed and archived
+state_head: 831b32d3f1d2818ceabca058589593476eb0f058
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 100
   completed_plans: 100
   percent: 92
+current_phase: 44
 ---
 
 Total Phases: 8
@@ -24,7 +24,7 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
-status: All phases complete
+status: v0.9.0 milestone complete
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-20
@@ -48,14 +48,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 44
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-08-21 — Phase 44 complete
-
-**Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
-
-Progress: [██████████] 99%
+Phase: Milestone v0.9.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-21 — Milestone v0.9.0 completed and archived
 
 ## Performance Metrics
 
@@ -573,41 +569,6 @@ None yet.
 
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
-| 260614-ujc | Phase 36.1 script play canvas update options | 2026-06-14 | 34fd228 |  | [260614-ujc-phase-36-1-i-would-like-to-be-able-with-](./quick/260614-ujc-phase-36-1-i-would-like-to-be-able-with-/) |
-| 260615-c4t | solidify phase 36.1 | 2026-06-15 | 29969ee |  | [260615-c4t-solidify-phase-36-1-fix-the-version-numb](./quick/260615-c4t-solidify-phase-36-1-fix-the-version-numb/) |
-| 260615-dpz | Phase 36.1 consolidation naming fix | 2026-06-15 | 410ac50 |  | [260615-dpz-phase-36-1-consolidation-image-9-there-i](./quick/260615-dpz-phase-36-1-consolidation-image-9-there-i/) |
-| 260615-iui | Phase 36.1 Consolidation play canvas brush cache fix | 2026-06-15 | be8f6e8 |  | [260615-iui-phase-36-1-consolidation-when-i-add-brus](./quick/260615-iui-phase-36-1-consolidation-when-i-add-brus/) |
-| 260626-dja | Set up Vitest coverage for app tests and run the coverage report | 2026-06-26 | 966c76ec |  | [260626-dja-set-up-vitest-coverage-for-app-tests-and](./quick/260626-dja-set-up-vitest-coverage-for-app-tests-and/) |
-| 260714-9es | Fix Clear current Roto frame cache reset | 2026-07-14 | 82ebc620 |  | [260714-9es-fix-the-clear-current-roto-frame-button-](./quick/260714-9es-fix-the-clear-current-roto-frame-button-/) |
-| 260714-ail | Replace manual Roto save with automatic live pixel caching | 2026-07-14 | f5ad4212 |  | [260714-ail-replace-manual-save-on-leave-rendering-w](./quick/260714-ail-replace-manual-save-on-leave-rendering-w/) |
-| 260715-j3q | Add exact 10-level Physics Paint per-brush Undo/Redo | 2026-07-15 | cf0a336f |  | [260715-j3q-add-exact-10-level-physics-paint-per-bru](./quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/) |
-| 260715-kgf | Implement reusable Physics Paint Roto Copy Script / Apply Script | 2026-07-16 | 543780bf |  | [260715-kgf-implement-functional-physics-paint-roto-](./quick/260715-kgf-implement-functional-physics-paint-roto-/) |
-| 260716-dby | Implement durable project-scoped Physics Paint Roto script library | 2026-07-16 | f92366bb |  | [260716-dby-implement-durable-project-scoped-physics](./quick/260716-dby-implement-durable-project-scoped-physics/) |
-| 260717-9hw | Polish Physics Paint right sidebar tabs and Scripts interactions | 2026-07-17 | 96ee16df |  | [260717-9hw-polish-physics-paint-right-sidebar-tabs-](./quick/260717-9hw-polish-physics-paint-right-sidebar-tabs-/) |
-| 260717-m9k | Merge Physics Paint Play into Roto SCRIPTS and implement multi-frame Play Script | 2026-07-18 | cbe38e5a |  | [260717-m9k-merge-physics-paint-play-into-the-roto-s](./quick/260717-m9k-merge-physics-paint-play-into-the-roto-s/) |
-| 260718-fp9 | Derive dynamic Physics Paint track labels and standalone identity | 2026-07-18 | b1ad99c4 |  | [260718-fp9-rename-the-visible-physics-paint-standal](./quick/260718-fp9-rename-the-visible-physics-paint-standal/) |
-| 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede |  | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
-| 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
-| 260804-f2q | Fix Phase 39 EFX Paint Scripts auto-hydration regression | 2026-08-04 | d6b68fdc | Verified | [260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-](./quick/260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-/) |
-| 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
-| 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
-| 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d | Verified | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
-| 260819-wzi | Fix addEmptyKey to join an existing Key Rail when destination is strictly inside a derived Key Rail segment span | 2026-08-19 | 3dd70c05 | Verified | [260819-wzi-fix-addemptykey-to-join-an-existing-key-](./quick/260819-wzi-fix-addemptykey-to-join-an-existing-key-/) |
-| 260813-ibo | Paint layer visible in Studio without Timeline key photos (incl. after reopen) | 2026-08-13 | e071775c | Verified | [260813-ibo-paint-layer-invisible-in-studio-without-](./quick/260813-ibo-paint-layer-invisible-in-studio-without-/) |
-| 260801-jun | Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs) | 2026-08-01 | 7a2ad433 | Verified | [260801-jun-create-the-v0-8-1-macos-packaging-hotfix](./quick/260801-jun-create-the-v0-8-1-macos-packaging-hotfix/) |
-| 260801-azb | Close G-01: add Tauri listen branch to installPhysicPaintFrameSyncListener for physic-paint:seek-frame | 2026-08-01 | 8c9defa1 |  | [260801-azb-close-g-01-add-tauri-listen-branch-to-in](./quick/260801-azb-close-g-01-add-tauri-listen-branch-to-in/) |
-| 260801-o30 | Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs) | 2026-08-01 | 65e86af2 | Verified | [260801-o30-fix-v0-8-1-production-tauri-csp-regressi](./quick/260801-o30-fix-v0-8-1-production-tauri-csp-regressi/) |
-| 260801-sp2 | Refresh README.md for v0.8.1 Standalone Physics Paint release | 2026-08-01 | 821daff3 | Verified | [260801-sp2-refresh-readme-md-for-v0-8-1-standalone-](./quick/260801-sp2-refresh-readme-md-for-v0-8-1-standalone-/) |
-| 260805-ht3 | Phase 41 remediation: CR-01 orphaned audio guard, WR-07 efxasset range underflow, WR-08 efxasset path scoping | 2026-08-05 | b3a83841 | Verified | [260805-ht3-phase-41-remediation-cr-01-orphaned-audi](./quick/260805-ht3-phase-41-remediation-cr-01-orphaned-audi/) |
-| 260809-aac | Make Select All clear prior real/empty frame highlights without breaking normal empty-frame Add key targeting | 2026-08-09 | 39fe1895 | Verified | [260809-aac-when-select-all-keyframes-is-used-clear-](./quick/260809-aac-when-select-all-keyframes-is-used-clear-/) |
-| 260815-ala | In paint app, make Group Edit timing default to 3 frames and expose Max as an unchecked Infinity-style checkbox | 2026-08-15 | 4aa958a4 | Verified | [260815-ala-in-paint-app-make-group-edit-with-timing](./quick/260815-ala-in-paint-app-make-group-edit-with-timing/) |
-| 260815-bmg | Remove numeric Undo/Redo counts from Paint and Physics Paint Studio controls | 2026-08-15 | 357965a1 | Verified | [260815-bmg-remove-numeric-undo-redo-counts-from-pai](./quick/260815-bmg-remove-numeric-undo-redo-counts-from-pai/) |
-| 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 | Verified | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
-| 260820-0kg | Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec) | 2026-08-20 | ed1332e8 | Verified | [260820-0kg-scissor-on-generated-frames-split-a-key-](./quick/260820-0kg-scissor-on-generated-frames-split-a-key-/) |
-| 260820-bjw | Copy / Duplicate for a multi-rail selection set (43.6 extension) | 2026-08-20 | 288a2257 | Verified | [260820-bjw-copy-duplicate-for-a-multi-rail-selectio](./quick/260820-bjw-copy-duplicate-for-a-multi-rail-selectio/) |
-| 260820-hq9 | addEmptyKey inside an interpolated segment: force the empty payload to own the display (paste-key reconcile) | 2026-08-20 | 076ddc67 | Verified | [260820-hq9-addemptykey-inside-interpolated-segment-](./quick/260820-hq9-addemptykey-inside-interpolated-segment-/) |
-| 260820-kta | Pre-release review-warning disposition batch (v0.9.0 final HEAD) | 2026-08-20 | cc9ff0e7 | Verified | [260820-kta-pre-release-review-warning-disposition-b](./quick/260820-kta-pre-release-review-warning-disposition-b/) |
-| 260820-lwd | Regression: single-rail drag'drop no longer works. Multi-rail set drag (2+ selected rails) WORKS. Push works. Dragging ONE selected rail is inert. | 2026-08-20 | ebae0827 |  | [260820-lwd-regression-single-rail-drag-drop-no-long](./quick/260820-lwd-regression-single-rail-drag-drop-no-long/) |
 
 ### Roadmap Evolution
 
@@ -760,6 +721,174 @@ Items acknowledged and carried forward from previous milestone close:
 | quick_task | 8-theme-aware-background-color-for-outside | unknown |
 | quick_task | 9-fix-layer-deselection-when-dragging-slid | unknown |
 
+### Open artifacts acknowledged at v0.9.0 close (2026-08-21)
+
+161 items from `audit-open` acknowledged via override_closeout (57 debug sessions, 46 quick tasks, 28 UAT gaps, 22 verification gaps, 8 new deferred-item entries). Mostly legacy from earlier milestones (v0.1.0–v0.8.0); the v0.9.0 scope itself was clean per the passed milestone audit (38/38 requirements, 12/12 phases). closeout_type = override_closeout; Known verification overrides: 161 newly acknowledged, 0 carried forward from a prior close.
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | 24-strokes-ordering | investigating |
+| debug | 24-strokes-padding | investigating |
+| debug | 24-undo-refresh | investigating |
+| debug | 43-2-fresh-group-schema | verifying |
+| debug | 43-6-delete-rails-multi-member | diagnosed |
+| debug | 43-6-set-seed-drops-first | diagnosed |
+| debug | 43-6-shift-range-gesture | diagnosed |
+| debug | audio-export-infinite-hang | investigating |
+| debug | blur-radius-persistence | diagnosed |
+| debug | blur-settings-persistence-and-quality | diagnosed |
+| debug | blur-toolbar-controls | diagnosed |
+| debug | bpm-persistence-lost | investigating |
+| debug | canvas-no-live-update | diagnosed |
+| debug | colorpicker-drag-propagation | diagnosed |
+| debug | export-hang-cors-404 | awaiting_human_verify |
+| debug | fit-to-window-zoom-cap | investigating |
+| debug | fx-colorgrade-no-render | diagnosed |
+| debug | fx-layer-selection-broken | diagnosed |
+| debug | fx-timeline-interaction-gaps | diagnosed |
+| debug | fx-wrong-architectural-level | diagnosed |
+| debug | gradient-stop-missing-input-modes | diagnosed |
+| debug | gradient-timeline-thumbnails | diagnosed |
+| debug | hq-blur-corruption | diagnosed |
+| debug | keyframe-diamonds-disappear | investigating |
+| debug | keyphoto-frame-popup-zindex | awaiting_human_verify |
+| debug | knowledge-base | unknown |
+| debug | paint-export-scaling | awaiting_human_verify |
+| debug | paint-frames-repeat-per-sequence | awaiting_human_verify |
+| debug | paint-overlay-phase23-bugs | diagnosed |
+| debug | per-layer-blur-persistence | diagnosed |
+| debug | phase-35-uat-blockers | investigating |
+| debug | phase-35-uat-physic-paint-compositing-controls | unknown |
+| debug | phase-35-uat-save-button | diagnosed |
+| debug | phase-36-1-play-canvas-cache | testing |
+| debug | phase-36-1-regression-triage | checkpoint |
+| debug | phase-36-10-uat-gap | diagnosed |
+| debug | phase-36-13-roto-model | awaiting_human_verify |
+| debug | phase-36-onion-overlay | investigating |
+| debug | phase-36-uat-gap-test-4 | investigating |
+| debug | phase-36-uat-gap-test-5 | investigating |
+| debug | phase-36-uat-gap-test-6 | investigating |
+| debug | phase-36-uat-gap-test-7 | investigating |
+| debug | phase-3610-uat-roto-paper | diagnosed |
+| debug | phase-3610-uat-save-slowdown | diagnosed |
+| debug | phase-3612-uat-blocker | investigating |
+| debug | physics-paint-slow-strokes | investigating |
+| debug | play-canvas-insertion-order | investigating |
+| debug | png-export-audio-hang | diagnosed |
+| debug | preview-image-not-updating | awaiting_human_verify |
+| debug | properties-panel-stacking | diagnosed |
+| debug | timeline-mouse-wheel-scroll | awaiting_human_verify |
+| debug | uat-36-14-play-script | diagnosed |
+| debug | video-blend-mode-broken | investigating |
+| debug | video-layer-no-asset-picker | diagnosed |
+| debug | videos-not-in-imported-panel | diagnosed |
+| debug | zoom-pan-bounds | investigating |
+| debug | zoom-shortcuts-reversed | diagnosed |
+| quick_task | 1-save-theme-preference-to-config-efx-moti | unknown |
+| quick_task | 10-defer-canvas-re-render-during-timeline-d | unknown |
+| quick_task | 11-fix-interpolation-menu-z-index-and-trans | unknown |
+| quick_task | 2-move-zoom-controls-from-toolbar-to-botto | unknown |
+| quick_task | 260317-k5n-from-sidebar-properties-a-simple-click-o | unknown |
+| quick_task | 260317-kko-playback-in-canvas-timeline-animate-too- | unknown |
+| quick_task | 260317-krf-add-a-key-photo-from-importer-do-not-wor | unknown |
+| quick_task | 260317-l8o-fix-sequence-key-photo-ux-restore-delete | unknown |
+| quick_task | 260317-m1x-sidebar-resize-grabber-too-small-vertica | unknown |
+| quick_task | 260317-mqr-sequence-and-layer-names-hover-effect-ma | unknown |
+| quick_task | 260317-n0w-smooth-slide-animations-on-sidebar-colla | unknown |
+| quick_task | 260317-nvg-fix-timeline-in-out-point-desync-on-scro | unknown |
+| quick_task | 260318-as5-fix-z-index-issue-where-sequence-thumbna | unknown |
+| quick_task | 260318-kn8-fix-arrow-key-scrubbing-arrows-should-on | unknown |
+| quick_task | 260318-l3c-timeline-zoom-remove-slider-add-icon-but | unknown |
+| quick_task | 260318-lgi-small-fixes-add-shortcut-to-help-menu-re | unknown |
+| quick_task | 260318-lwe-add-more-contrast-to-grab-icon-in-sequen | unknown |
+| quick_task | 260318-m2m-enhance-contrast-for-sequence-border-for | missing |
+| quick_task | 260318-m9x-help-menu-verify-shift-scroll-and-cmd-sc | unknown |
+| quick_task | 260319-f18-set-mouse-wheel-scroll-for-horizontal-sc | unknown |
+| quick_task | 260319-k9h-re-enable-realtime-canvas-update-during- | unknown |
+| quick_task | 260319-pov-fx-layer-enhancement-fix-all-fx-properti | unknown |
+| quick_task | 260319-q5i-fix-layer-panel-scroll-natural-trackpad- | unknown |
+| quick_task | 260319-qga-add-cmd-arrows-for-sequence-navigation-a | unknown |
+| quick_task | 260319-qmy-add-properties-animation-to-fx-layers-li | unknown |
+| quick_task | 260319-u8t-add-cmd-arrowup-down-shortcuts-to-naviga | unknown |
+| quick_task | 260320-kn9-add-close-project-to-return-to-homepage- | unknown |
+| quick_task | 260322-cwc-add-reference-to-canvas-motion-because-i | unknown |
+| quick_task | 260322-d9q-in-import-media-can-t-be-suppressed-i- | unknown |
+| quick_task | 260323-fsg-timeline-buttons-remove-color-grade-from | unknown |
+| quick_task | 260323-g4n-remove-duplicate-playback-controls-from- | unknown |
+| quick_task | 260323-h1o-replace-timeline-playback-controls-with- | unknown |
+| quick_task | 260324-ju7-move-canvas-zoom-controls-from-bottom-to | unknown |
+| quick_task | 260324-k49-move-the-shader-button-from-timeline-hea | unknown |
+| quick_task | 260325-db2-perfect-freehand-doesn-t-support-pressur | unknown |
+| quick_task | 260327-p4e-i-can-t-change-object-color-rectangle-el | unknown |
+| quick_task | 260615-dpz-phase-36-1-consolidation-image-9-there-i | unknown |
+| quick_task | 260719-gmn-new-deterministic-physical-frame-roto-in | missing |
+| quick_task | 260819-wzi-fix-addemptykey-to-join-an-existing-key- | unknown |
+| quick_task | 3-change-command-and-command-for-zoom-to-s | unknown |
+| quick_task | 4-create-a-lock-button-for-fit-to-have-res | unknown |
+| quick_task | 5-make-fx-blur-affect-all-layers-beneath-i | unknown |
+| quick_task | 6-add-blend-mode-to-fx-blur-on-timeline | unknown |
+| quick_task | 7-add-deselect-layer-when-clicking-outside | unknown |
+| quick_task | 8-theme-aware-background-color-for-outside | unknown |
+| quick_task | 9-fix-layer-deselection-when-dragging-slid | unknown |
+| uat_gap | 42 (0 pending scenarios) | approved |
+| uat_gap | 43 (0 pending scenarios) | approved |
+| uat_gap | 43.1 (0 pending scenarios) | approved |
+| uat_gap | 43.2 (0 pending scenarios) | unknown |
+| uat_gap | 43.3 (0 pending scenarios) | approved |
+| uat_gap | 43.4 (0 pending scenarios) | unknown |
+| uat_gap | 43.5 (0 pending scenarios) | unknown |
+| uat_gap | 43.6 (0 pending scenarios) | passed |
+| uat_gap | 44 (0 pending scenarios) | unknown |
+| uat_gap | 35 (archived v0.8.0) | diagnosed |
+| uat_gap | 36 (archived v0.8.0) | diagnosed |
+| uat_gap | 36.2 (archived v0.8.0) | failed_superseded |
+| uat_gap | 36.10 (archived v0.8.0) | passed |
+| uat_gap | 22 (archived v0.6.0) | passed |
+| uat_gap | 23 (archived v0.6.0) | diagnosed |
+| uat_gap | 24 (archived v0.6.0) | diagnosed |
+| uat_gap | 15.1 (archived v0.3.0) | partial |
+| uat_gap | 15.2 (archived v0.3.0) | partial |
+| uat_gap | 16 (archived v0.3.0) | partial |
+| uat_gap | 16 (archived v0.3.0) | diagnosed |
+| uat_gap | 17 (archived v0.3.0) | partial |
+| uat_gap | 17 (archived v0.3.0) | diagnosed |
+| uat_gap | 09 (archived v0.2.0) | diagnosed |
+| uat_gap | 10 (archived v0.2.0) | passed |
+| uat_gap | 03 (archived v0.1.0) | diagnosed |
+| uat_gap | 04 (archived v0.1.0) | diagnosed |
+| uat_gap | 06 (archived v0.1.0) | diagnosed |
+| uat_gap | 07 (archived v0.1.0) | passed |
+| verification_gap | 36.6 (archived v0.8.0) | human_needed |
+| verification_gap | 20 (archived v0.5.0) | gaps_found |
+| verification_gap | 21 (archived v0.5.0) | gaps_found |
+| verification_gap | 19 (archived v0.4.0) | human_needed |
+| verification_gap | 15.1 (archived v0.3.0) | human_needed |
+| verification_gap | 15.2 (archived v0.3.0) | human_needed |
+| verification_gap | 16 (archived v0.3.0) | human_needed |
+| verification_gap | 17.1 (archived v0.3.0) | human_needed |
+| verification_gap | 09 (archived v0.2.0) | human_needed |
+| verification_gap | 12 (archived v0.2.0) | human_needed |
+| verification_gap | 12.5 (archived v0.2.0) | human_needed |
+| verification_gap | 12.7 (archived v0.2.0) | human_needed |
+| verification_gap | 12.8 (archived v0.2.0) | human_needed |
+| verification_gap | 12.9 (archived v0.2.0) | human_needed |
+| verification_gap | 12.10 (archived v0.2.0) | human_needed |
+| verification_gap | 12.12 (archived v0.2.0) | human_needed |
+| verification_gap | 12.13 (archived v0.2.0) | human_needed |
+| verification_gap | 12.15 (archived v0.2.0) | human_needed |
+| verification_gap | 13 (archived v0.2.0) | human_needed |
+| verification_gap | 02 (archived v0.1.0) | human_needed |
+| verification_gap | 04 (archived v0.1.0) | human_needed |
+| verification_gap | 06 (archived v0.1.0) | human_needed |
+| deferred_item | 36.14 (archived v0.8.0): Deleted test files — Plan 36.14-13 must recreate from scratch | acknowledged |
+| deferred_item | 36.14 (archived v0.8.0): Inlined legacy helpers — Plans 36.14-06 through 36.14-08 must remove | acknowledged |
+| deferred_item | 36.14 (archived v0.8.0): Retained legacy seams — Plan 36.14-06 must remove | acknowledged |
+| deferred_item | 36.14 (archived v0.8.0): Known stubs — Plans 36.14-04/06 must wire | acknowledged |
+| deferred_item | 36.14 (archived v0.8.0): State file corrections applied after merge | acknowledged |
+| deferred_item | 36.14 (archived v0.8.0): Requirement status caveat | acknowledged |
+| deferred_item | 38 (archived v0.8.0): [38-04] REQUIREMENTS.md contains no phase-38 requirement IDs | acknowledged |
+| deferred_item | 15.2 (archived v0.3.0): Pre-existing Test Failures (audioWaveform.test.ts) | acknowledged |
+
 ## Session Continuity
 
 Last session: 2026-08-21T11:47:25.272Z
@@ -768,9 +897,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Preserve the confirmed frozen-native passes: Create/Edit Group, Repeat forward/Undo/Redo/usability, and Delete Frame structural Undo/Redo.
-- Build separate red loops for the narrow project-local Tauri staging permission and for the shared deleted-position ownership / exact-frame Paint COW / original-extent Regenerate boundary.
-- Repair without broad filesystem scope, Insert workarounds, forced CSS state, optimistic cache publication, local lifecycle overrides, restart/reload, silent revision refresh, modal dismissal, or longer timeout.
-- Run complete automated gates, freeze a new implementation commit, then request the eight native retests recorded in `43.2-UAT.md`.
-- Keep Plan 43.2-17 and phase completion blocked, and keep `[SAVE-REOPEN]` separate from Group Paint and Regenerate.
-- Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.
+- Start the next milestone with /gsd-new-milestone

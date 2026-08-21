@@ -3,6 +3,10 @@ status: investigating
 trigger: "fitToWindow() caps zoom at 1.0, canvas never scales beyond CSS natural size"
 created: 2026-03-12T00:00:00Z
 updated: 2026-03-12T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 ## Current Focus

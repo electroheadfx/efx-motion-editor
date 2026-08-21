@@ -3,6 +3,10 @@ status: investigating
 trigger: "Investigate why blend mode doesn't work on video layers but works on image layers"
 created: 2026-03-10T00:00:00Z
 updated: 2026-03-10T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 ## Current Focus

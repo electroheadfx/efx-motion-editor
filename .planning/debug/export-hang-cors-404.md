@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "Export is completely broken. Hangs indefinitely, progress never advances, cancel doesn't work. CORS 404 on efxasset:// protocol."
 created: 2026-03-23T00:00:00Z
 updated: 2026-03-23T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: awaiting_human_verify
 ---
 
 ## Current Focus
@@ -84,26 +88,36 @@ started: After phase 16 changes (audio export features)
 
 root_cause: |
   Three interacting bugs:
+
   1. efxasset:// protocol 404 responses lack CORS headers (lib.rs lines 201-204, 234-238, 270-273).
      Browser reports "Origin not allowed" instead of "404 Not Found".
+
   2. previewRenderer.ts img.onerror (line 377-379) does NOT call onImageLoaded and does NOT
      mark image as failed in cache. preloadExportImages creates a Promise that waits for ALL
      images to resolve but never gets notified of failures -> hangs forever.
+
   3. Cancel check only runs inside the render loop (exportEngine.ts line 118), which is AFTER
      the preloadExportImages await (line 110). Since preload hangs, cancel is never checked.
 fix: |
+
   1. Add Access-Control-Allow-Origin: * header to all 404 responses in lib.rs
   2. In previewRenderer.ts img.onerror: call onImageLoaded callback so preload can detect failures.
      Add failed images to a failedImages set so getImageSource can return a sentinel/skip them.
+
   3. In preloadExportImages: treat failed images as "loaded" (skip them) so the promise resolves.
      Add timeout + cancel signal support to preloadExportImages.
+
   4. Pass cancel signal through to preloadExportImages in exportEngine.ts.
+
 verification: |
+
   - Rust: cargo check passes cleanly
   - TypeScript: tsc --noEmit passes (only pre-existing unused import warning in glslRuntime.test.ts)
   - Vitest: 152 tests pass, 3 pre-existing failures in audioWaveform.test.ts (unrelated)
   - No regressions introduced
+
 files_changed:
+
   - Application/src-tauri/src/lib.rs
   - Application/src/lib/previewRenderer.ts
   - Application/src/lib/exportRenderer.ts

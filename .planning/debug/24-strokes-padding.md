@@ -3,9 +3,14 @@ status: investigating
 trigger: "STROKES section has left padding misalignment with other sections like SELECTION, BRUSH, ONION"
 created: 2026-03-27T16:35:00Z
 updated: 2026-03-27T16:35:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 ## Current Focus
+
 <!-- OVERWRITE on each update - reflects NOW -->
 
 hypothesis: "CollapsibleSection header has `px-3` left padding causing 12px indentation vs SectionLabel at 0px"
@@ -14,6 +19,7 @@ expecting: "If SectionLabel has no container (0px left) but CollapsibleSection h
 next_action: "Confirm by comparing rendered structure in browser"
 
 ## Symptoms
+
 <!-- Written during gathering, then IMMUTABLE -->
 
 expected: STROKES section header aligns left padding with SELECTION, BRUSH, ONION section labels
@@ -23,9 +29,11 @@ reproduction: Draw strokes, switch to select mode (S key), observe STROKES secti
 started: Discovered during UAT Test 1
 
 ## Eliminated
+
 <!-- APPEND only - prevents re-investigating -->
 
 ## Evidence
+
 <!-- APPEND only - facts discovered -->
 
 - timestamp: 2026-03-27T16:35:00Z
@@ -49,6 +57,7 @@ started: Discovered during UAT Test 1
   implication: "ONION also at 0px left, confirms pattern: only STROKES (via CollapsibleSection) has 12px indentation"
 
 ## Resolution
+
 <!-- OVERWRITE as understanding evolves -->
 
 root_cause: "CollapsibleSection.tsx header div applies `px-3` (12px left padding) while SectionLabel has no container (0px padding). This causes STROKES section header to appear indented 12px from the left edge while SELECTION, BRUSH, ONION labels appear at the left edge."

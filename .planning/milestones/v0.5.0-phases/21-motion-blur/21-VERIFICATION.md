@@ -4,47 +4,66 @@ verified: 2026-03-26T17:30:07Z
 status: gaps_found
 score: 4/5 success criteria verified (1 partial; human verification pending for visual criteria)
 gaps:
+
   - truth: "User can export with motion blur enabled and the output uses combined GLSL velocity blur + sub-frame accumulation for higher quality than preview"
     status: partial
     reason: "glMotionBlur.ts applies the motion blur shader TWICE per applyMotionBlur() call: once to render source into the FBO, and a second time when drawing the FBO texture back to the default framebuffer (lines 343-346). The second drawArrays uses the same program with velocity/strength/samples uniforms still set, so the blurred FBO output is blurred again before being read back via drawImage. This over-blurs the result."
     artifacts:
+
       - path: "Application/src/lib/glMotionBlur.ts"
         issue: "Lines 342-346: second drawArrays reads texFBO through the motion blur shader again. Should draw a passthrough quad or use gl.blitFramebuffer instead."
     missing:
+
       - "Fix the FBO readback in applyMotionBlur(): either (a) set uStrength=0 and uSamples=1 before the second draw, or (b) use a separate passthrough shader/blitFramebuffer, or (c) use gl.readPixels instead of a second shader draw"
   - truth: "MBLR-05 spec compliance: sub-frame count selector offers (4/8/16)"
     status: partial
     reason: "REQUIREMENTS.md MBLR-05 specifies '(4/8/16)' as the sub-frame options. The implementation provides [8, 16, 32, 64, 128] in FormatSelector. The minimum (4) is absent; the range extends far beyond spec. The GLSL comment in glMotionBlur.ts and the applyMotionBlur JSDoc still reference '4, 8, or 16'. This is an internal documentation inconsistency plus a spec deviation."
     artifacts:
+
       - path: "Application/src/components/export/FormatSelector.tsx"
         issue: "Line 279: sub-frame options are [8, 16, 32, 64, 128] instead of [4, 8, 16]"
+
       - path: "Application/src/lib/glMotionBlur.ts"
         issue: "Line 31 and line 289: comments reference '4, 8, or 16' but store/UI uses 8-128"
+
       - path: "Application/src/stores/exportStore.ts"
         issue: "Line 28: motionBlurSubFrames defaults to 32, not 8 as plan specified"
+
       - path: "Application/src/stores/motionBlurStore.ts"
         issue: "Line 44: getSamples() returns 16 for 'low' and 32 for 'medium', not 4 and 8 as plan specified. Tests were rewritten to match the implementation (not the plan spec)."
     missing:
+
       - "Decision: either update REQUIREMENTS.md MBLR-05 to reflect the actual range (8-128), or revert to the spec values (4/8/16) and update comments, defaults, and tests consistently"
+
 human_verification:
+
   - test: "Toggle motion blur on/off during preview playback"
     expected: "Pressing M or clicking Zap icon toggles motion blur; moving layers show directional blur streaks during playback; stationary layers remain sharp"
     why_human: "WebGL2 rendering cannot be validated without a live browser environment"
+
   - test: "Shutter angle slider changes blur intensity in real time"
     expected: "Dragging slider from 0 to 360 shows proportional blur increase; 0 = no blur, 180 = half strength, 360 = full"
     why_human: "Requires visual inspection of canvas rendering"
+
   - test: "Preview quality tier selector changes sample count"
     expected: "Off = no blur, Low (16) = 16 samples (coarser), Med (32) = 32 samples (smoother)"
     why_human: "Requires visual quality comparison"
+
   - test: "Export with motion blur produces blurred frames"
     expected: "Exported PNG frames show motion blur; more sub-frames = smoother blur appearance"
     why_human: "Requires actual export to file and visual review of output frames"
+
   - test: "Save/load cycle preserves all motion blur settings"
     expected: "After save + close + reopen: enabled state, shutter angle, preview quality, and export sub-frame count all match what was set before saving"
     why_human: "Requires file I/O via Tauri which is unavailable in test environment"
+
   - test: "Playback with motion blur maintains smooth fps"
     expected: "No major frame drops when motion blur is enabled during preview playback at target fps"
     why_human: "Performance measurement requires running application"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: gaps_found
 ---
 
 # Phase 21: Motion Blur Verification Report

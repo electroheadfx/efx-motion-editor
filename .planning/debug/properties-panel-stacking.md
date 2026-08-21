@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "selecting different layers in the timeline stacks multiple property bars at the bottom instead of replacing"
 created: 2026-03-13T00:00:00Z
 updated: 2026-03-13T00:05:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus
@@ -105,10 +109,13 @@ root_cause: |
   different sequence's base layer.
 
 fix: |
+
   1. In SequenceList.tsx handleSelect (line 111-116), add layerStore.setSelected(null) and
      uiStore.selectLayer(null) to clear the FX layer selection when switching content sequences.
+
   2. Optionally add a key prop to the PropertiesPanel root divs (e.g., key={selectedId ?? 'none'})
      to force Preact to unmount/remount rather than patch, eliminating any reconciliation artifacts.
+
   3. In types/layer.ts createBaseLayer(), generate a unique ID (crypto.randomUUID()) instead of
      hardcoded "base" to prevent cross-sequence ID collisions.
 

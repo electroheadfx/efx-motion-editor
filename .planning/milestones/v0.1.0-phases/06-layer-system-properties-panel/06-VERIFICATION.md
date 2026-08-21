@@ -7,24 +7,33 @@ re_verification:
   previous_status: passed
   previous_score: 4/4
   gaps_closed:
+
     - "Video picker popover -- clicking Video in Add Layer now opens asset picker popover instead of file dialog"
     - "Video asset re-discovery -- opening saved projects with video layers populates IMPORTED panel"
     - "Video blend mode -- loadeddata/seeked event listeners trigger re-render when video is ready"
   gaps_remaining: []
   regressions: []
 human_verification:
+
   - test: "Add a video layer via picker popover, change blend mode to Multiply, set opacity to 50%"
     expected: "Video picker popover opens with existing videos listed. After adding, video renders with Multiply blend and 50% opacity in preview."
     why_human: "Video readyState transitions, Canvas 2D blend mode rendering, and popover interaction are runtime behaviors that grep confirms but cannot execute."
+
   - test: "Save a project with video layers, close, reopen -- verify videos appear in IMPORTED panel"
     expected: "Videos appear in IMPORTED section alongside images after project reload."
     why_human: "Full save/load cycle with Tauri backend required to confirm hydration re-discovery works end-to-end."
+
   - test: "Drag-and-drop layer reorder with 3+ layers"
     expected: "Layer list order updates smoothly. Preview compositing order reflects the change. Base layer remains locked at bottom."
     why_human: "SortableJS DOM revert fix and forceFallback are runtime browser behaviors."
+
   - test: "Type multi-digit values into NumericInput fields (e.g., 150, 0.75)"
     expected: "Values persist after Enter, revert after Escape, no reset while typing."
     why_human: "DOM focus/input lifecycle behavior with local editing state."
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 6: Layer System & Properties Panel Verification Report

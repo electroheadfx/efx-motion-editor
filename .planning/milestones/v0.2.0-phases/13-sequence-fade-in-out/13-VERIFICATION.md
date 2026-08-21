@@ -5,24 +5,34 @@ status: human_needed
 score: 14/15 must-haves verified
 re_verification: false
 human_verification:
+
   - test: "Preview playback shows fade in: scrub through first frames of a sequence with fade-in applied — content should fade from transparent/black to fully visible"
     expected: "Content smoothly transitions from 0 to 100% opacity over the configured duration"
     why_human: "Cannot verify animation/opacity behavior programmatically without running the renderer"
+
   - test: "Preview playback shows fade out: scrub through last frames — content should fade to transparent/black"
     expected: "Content smoothly transitions from 100% to 0% opacity over the configured duration"
     why_human: "Visual verification of canvas compositing required"
+
   - test: "Solid color mode: set mode to Solid Color, set a color (e.g. red), scrub through fade zone"
     expected: "A red overlay fades IN over the content during a fade-out, or fades AWAY during a fade-in"
     why_human: "Solid color overlay via fillRect requires visual confirmation"
+
   - test: "Cross dissolve: add cross dissolve between two sequences, scrub through the boundary zone"
     expected: "Sequence 1 fades out while Sequence 2 simultaneously fades in, both visible during the overlap zone"
     why_human: "Dual-sequence rendering with opacity ramps requires visual confirmation"
+
   - test: "Timeline overlay rendering: after adding fade-in to a sequence, check the timeline canvas"
     expected: "Purple bar appears at the top 30% of the content track at the start of the sequence, with a diagonal line and black border; white border when selected"
     why_human: "Canvas 2D rendering cannot be verified without visual inspection"
+
   - test: "PNG export compatibility (partial scope note)"
     expected: "Success criterion 3 mentions PNG export — Phase 17 (PNG Export) is not yet implemented. Fade opacity via sequenceOpacity parameter IS wired in previewRenderer.ts. Verify when Phase 17 lands."
     why_human: "PNG export (Phase 17) has not been implemented yet; this criterion is partially out of scope"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 13: Sequence Fade In/Out Verification Report

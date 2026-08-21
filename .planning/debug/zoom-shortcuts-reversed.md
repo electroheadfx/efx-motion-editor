@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Cmd+- zooms IN instead of OUT (reversed), Cmd+= does not work at all. Cmd+0 works fine."
 created: 2026-03-12T00:00:00Z
 updated: 2026-03-12T00:10:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

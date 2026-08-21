@@ -6,24 +6,34 @@ score: 4/4 success criteria verified
 re_verification: null
 gaps: []
 human_verification:
+
   - test: "Add keyframe and verify diamond appears on timeline at correct frame position"
     expected: "Gold diamond appears at the selected frame on the content layer track when the layer is selected"
     why_human: "Diamond rendering depends on canvas draw state; cannot verify pixel output programmatically"
+
   - test: "Preview playback smooth animation between two keyframes with different positions"
     expected: "Layer animates smoothly from keyframe A values to keyframe B values during playback; no jumps or stutters"
     why_human: "Visual smoothness and real-time animation quality require runtime observation"
+
   - test: "Double-click diamond to open interpolation popover, change easing, verify animation curve changes"
     expected: "Popover shows 4 options (Linear, Ease In, Ease Out, Ease In-Out), selection applies new curve, replay shows different easing"
     why_human: "Popover trigger and visual result are runtime behaviors"
+
   - test: "Save project with keyframes, close, reopen — keyframes persist with correct values and easing"
     expected: "Diamonds reappear, interpolated values match saved state, easing options preserved"
     why_human: "File I/O round-trip requires actual Tauri runtime; cannot simulate programmatically"
+
   - test: "Drag a keyframe diamond to a new frame position"
     expected: "Diamond moves to new frame, keyframe data updated, undo (Cmd+Z) restores original position"
     why_human: "Pointer event drag interaction requires running app"
+
   - test: "Shift-click two diamonds — both show gold highlight simultaneously"
     expected: "Multi-selection state with both diamonds highlighted, Delete removes both"
     why_human: "Canvas selection highlight state requires visual inspection"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 12: Layer Keyframe Animation Verification Report

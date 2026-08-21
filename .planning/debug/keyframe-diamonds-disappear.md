@@ -3,6 +3,10 @@ status: investigating
 trigger: "Keyframe diamonds and properties disappear on timeline interaction"
 created: 2026-03-15T00:00:00Z
 updated: 2026-03-15T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 ## Current Focus
@@ -48,6 +52,7 @@ root_cause: In TimelineInteraction.ts onPointerDown, two code paths unconditiona
 2. **Content track header click** (lines 384-410): Lines 388-390 do the same clearing when clicking on track headers.
 
 The signal chain that breaks:
+
 - `layerStore.selectedLayerId` -> null
 - `keyframeStore.getSelectedContentLayer()` returns null
 - `keyframeStore.activeLayerKeyframes` computed returns []

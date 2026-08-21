@@ -4,6 +4,10 @@ phase: 20-paint-brush-fx
 verified: 2026-03-25
 verifier: manual
 score: 3/13
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: gaps_found
 ---
 
 # Phase 20 Verification: Paint Brush FX
@@ -21,24 +25,28 @@ Phase 20 attempted a custom WebGL2 brush rendering pipeline (stamp-based, spectr
 ## What Failed (Gaps)
 
 ### GAP-1: Brush stroke rendering quality (PAINT-03, PAINT-05, PAINT-06, PAINT-07, PAINT-08)
+
 **Severity:** critical
 **Description:** Custom WebGL stamp renderer produces visible individual stamps, wrong colors, broken blending. Quality is unacceptable compared to reference (p5.brush). All non-flat brush styles (ink, charcoal, pencil, marker, watercolor) fail to render at acceptable quality.
 **Root cause:** Custom reimplementation of brush rendering from scratch instead of using p5.brush library.
 **Fix:** Replace custom rendering files (brushFxShaders.ts, brushFxRenderer.ts, brushFlowField.ts, brushWatercolor.ts) with p5.brush standalone integration.
 
 ### GAP-2: Spectral color mixing broken (PAINT-09)
+
 **Severity:** critical
 **Description:** Spectral compositing shader produces muddy/wrong colors. hexToGLColor gamma decompression darkens colors incorrectly.
 **Root cause:** Complex GLSL spectral mixing implementation is incorrect.
 **Fix:** Use p5.brush's built-in blend mode (which handles color mixing correctly).
 
 ### GAP-3: Watercolor rendering oversized and wrong (PAINT-10)
+
 **Severity:** critical
 **Description:** Watercolor polygon deformation creates blobs much larger than the original stroke. No resemblance to natural watercolor.
 **Root cause:** Custom Tyler Hobbs implementation with wrong variance scaling.
 **Fix:** Use p5.brush's fill/bleed system for watercolor effects.
 
 ### GAP-4: Integration wiring incomplete (PAINT-11, PAINT-12, PAINT-13)
+
 **Severity:** major
 **Description:** paintRenderer.ts wiring to custom renderer needs replacement. Export parity not verified.
 **Fix:** Wire paintRenderer.ts to p5.brush standalone output canvas instead.
@@ -46,6 +54,7 @@ Phase 20 attempted a custom WebGL2 brush rendering pipeline (stamp-based, spectr
 ## Files to Replace
 
 These files contain the broken custom rendering and should be deleted/replaced:
+
 - `Application/src/lib/brushFxShaders.ts` — custom GLSL shaders
 - `Application/src/lib/brushFxRenderer.ts` — custom WebGL2 pipeline
 - `Application/src/lib/brushFlowField.ts` — custom flow field

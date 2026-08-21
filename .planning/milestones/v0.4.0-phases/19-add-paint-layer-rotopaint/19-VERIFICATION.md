@@ -4,18 +4,26 @@ verified: 2026-03-24T21:38:06Z
 status: human_needed
 score: 8/8 must-haves verified
 human_verification:
+
   - test: "Draw brush strokes on a paint layer and verify pressure-sensitive, smooth variable-width strokes appear in real-time on the canvas"
     expected: "Strokes render immediately with width variation driven by pointer pressure; stroke is committed and visible on mouse/pointer release"
     why_human: "Requires live pointer input and visual inspection of stroke quality — cannot be verified by static code analysis"
+
   - test: "Toggle onion skinning on, paint on frame 1, advance to frame 2, paint, navigate back to frame 1 — verify ghost frame from frame 2 is visible with reduced opacity"
     expected: "Ghost frame renders at reduced opacity behind the current frame's paint; opacity falls off with frame distance"
     why_human: "Requires multi-frame interactive workflow; visual appearance of ghost frames needs human confirmation"
+
   - test: "Save a project with paint strokes, close, and reopen — verify paint data persists"
     expected: "All paint strokes visible on the correct frames after project reload"
     why_human: "Requires Tauri FS sidecar file I/O to actually execute; file system operations are not testable statically"
+
   - test: "Export a project containing a paint layer to video — verify paint strokes appear in the exported frames"
     expected: "Paint strokes composite correctly in exported frames with correct blend mode and opacity"
     why_human: "Requires running the export pipeline end-to-end with actual video output"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 19: Add Paint Layer Rotopaint — Verification Report
@@ -151,6 +159,7 @@ All 13 requirements satisfied. No orphaned requirements.
 No anti-patterns found in phase 19 files. No TODOs, FIXMEs, placeholder returns, or empty implementations in any of the 9 created files or the 10 modified files.
 
 The TypeScript compiler reports 2 pre-existing warnings in files not created or significantly modified by this phase:
+
 - `src/components/sidebar/SidebarProperties.tsx:32` — unused `isOnKf` variable (pre-existing)
 - `src/lib/glslRuntime.test.ts:1` — unused `expect` import (pre-existing)
 
@@ -193,6 +202,7 @@ No gaps found. All 8 observable truths are satisfied by code evidence. All 13 re
 The 4 human verification items are confirmations of runtime behavior (stroke quality, onion skin visuals, file I/O round-trip, export output) — they are not blockers based on code analysis, but require interactive testing to fully confirm the goal is achieved end-to-end.
 
 Notable implementation decisions from Plan 06 that went beyond the original spec:
+
 - `paintVersion` signal added to `paintStore` as a reactive bridge (Map storage is not reactive; bumping the signal on every mutation triggers Preact re-renders in `Preview.tsx`)
 - Offscreen canvas compositing pattern used for eraser (`destination-out`) and onion skin rendering to correctly isolate composite operations
 - Paint mode auto-deactivates when a non-paint layer is selected

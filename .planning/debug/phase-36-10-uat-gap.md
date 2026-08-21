@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Investigate the Phase 36.10 UAT gap: when rendering/exporting, the Physics Paint layer is not removed on the video."
 created: 2026-06-27T00:00:00Z
 updated: 2026-06-27T18:54:52Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

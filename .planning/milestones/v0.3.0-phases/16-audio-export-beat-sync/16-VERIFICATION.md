@@ -7,27 +7,38 @@ re_verification: true
 previous_status: gaps_found
 previous_score: 3/4
 gaps_closed:
+
   - "Export hangs indefinitely when audio is included — fixed via async spawn_blocking in Rust + AbortSignal timeout in TS (Plan 04)"
   - "BPM data lost on project save/reload — fixed by adding 5 missing BPM fields to Rust MceAudioTrack struct (Plan 05)"
   - "User can snap key photo hold-duration handles to nearest beat marker — snapHoldFramesToBeat added to beatMarkerEngine.ts and Snap-to-beat button wired in FramesPopover (Plan 06)"
+
 gaps_remaining: []
 regressions: []
 human_verification:
+
   - test: "Verify audio export produces video with audible audio and does not hang"
     expected: "Exported ProRes/H.264 video file contains synchronized audio track with fade-in/fade-out. Export completes within expected time. Cancel button works during audio pre-render."
     why_human: "OfflineAudioContext pre-render and FFmpeg muxing require running actual export with real audio file"
+
   - test: "Verify beat markers render on timeline during playback"
     expected: "Amber vertical lines appear on timeline when audio with detected BPM is selected, with downbeats visually distinct"
     why_human: "Canvas rendering requires visual inspection"
+
   - test: "Verify BPM persists across project save and reload"
     expected: "After closing and reopening a project with detected BPM, beat markers reappear and AudioProperties shows the saved BPM value"
     why_human: "Requires running the full Tauri app with file save/load cycle"
+
   - test: "Verify playhead snaps to beat during scrub"
     expected: "When Snap-to-beats is enabled (Magnet button), dragging the playhead snaps to nearby beat marker positions"
     why_human: "Requires interactive timeline drag"
+
   - test: "Verify Snap-to-beat button appears in FramesPopover when audio with BPM is selected and snaps correctly"
     expected: "When an audio track with detected BPM is selected, the hold-frames popover shows a Music-icon Snap-to-beat button. Clicking it adjusts holdFrames so the key photo's end frame aligns with the nearest beat marker."
     why_human: "Requires interactive UI testing with a running audio track that has BPM data"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 16: Audio Export & Beat Sync Verification Report

@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "FX layers built at wrong architectural level - per-sequence layers instead of timeline-level sequences"
 created: 2026-03-10T12:00:00Z
 updated: 2026-03-10T12:30:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

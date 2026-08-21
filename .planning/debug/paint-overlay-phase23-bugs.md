@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Phase 23 UAT bugs: handle offset, bbox undo, edge scale, small handles"
 created: 2026-03-27T00:00:00Z
 updated: 2026-03-27T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

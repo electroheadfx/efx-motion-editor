@@ -5,18 +5,26 @@ status: human_needed
 score: 5/5 must-haves verified
 re_verification: false
 human_verification:
+
   - test: "Verify all editor panels render in the correct layout with dark theme on macOS"
     expected: "Full-window editor layout: Toolbar on top, LeftPanel on left, CanvasArea + TimelinePanel on right, PropertiesPanel at bottom — dark background #151515, all panels visible and correctly positioned"
     why_human: "Visual appearance and layout correctness cannot be verified programmatically — requires running the app"
+
   - test: "Verify drag-and-drop import shows overlay and thumbnails appear"
     expected: "Dragging image files from Finder onto the app shows the DropZone overlay (blue-bordered box with camera icon), and after drop the thumbnails appear in the IMPORTED section of LeftPanel"
     why_human: "Drag-and-drop event handling is a runtime behavior that cannot be simulated with grep/file checks"
+
   - test: "Verify file dialog opens and HEIC shows graceful error"
     expected: "Clicking '+ Import' opens native macOS file picker filtered to JPEG/PNG/TIFF/HEIC; JPEG/PNG/TIFF import successfully with thumbnails; HEIC files show 'HEIC is not yet supported' error message in the import errors area"
     why_human: "Native dialog interaction and per-format error message display require runtime verification"
+
   - test: "Verify FPS toggle in Toolbar is reactive"
     expected: "Clicking 15fps and 24fps buttons highlights the active one with blue accent; the state persists (signal is reactive)"
     why_human: "Signal reactivity is a runtime behavior — requires actually clicking in the running app"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 02: UI Shell + Image Pipeline Verification Report
@@ -148,6 +156,7 @@ No blockers found. All anti-patterns are intentional, documented deferrals.
 ### 1. Editor Layout Dark Theme
 
 **Test:** Run `cd Application && pnpm tauri dev`. When the app launches, confirm the full editor layout renders:
+
 - Toolbar at top with FPS toggle buttons and Export button
 - LeftPanel (268px wide) on left showing SEQUENCES, LAYERS, and IMPORTED sections
 - CanvasArea (main content area) with Motion Canvas preview
@@ -166,6 +175,7 @@ No blockers found. All anti-patterns are intentional, documented deferrals.
 **Test:** With the app running, drag 2-3 JPEG or PNG files from Finder onto the app window.
 
 **Expected:**
+
 - A blue-bordered overlay appears ("Drop images to import") while dragging
 - After dropping, overlay disappears; a brief spinner shows in the IMPORTED section
 - Thumbnails appear in the IMPORTED grid in LeftPanel
@@ -180,6 +190,7 @@ No blockers found. All anti-patterns are intentional, documented deferrals.
 **Test:** Click the "+ Import" button in the LeftPanel's IMPORTED section.
 
 **Expected:**
+
 - Native macOS file picker opens filtered to image files (JPEG, PNG, TIFF, HEIC, HEIF)
 - Selecting JPEG/PNG/TIFF files imports successfully — thumbnails appear
 - Selecting a HEIC file: it is accepted in the picker, then after processing the error area shows a red message containing "HEIC is not yet supported"

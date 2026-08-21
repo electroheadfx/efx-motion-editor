@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "FX sequence layers cannot be selected in the UI. Only the last added layer shows properties. Users can't select FX layers for delete, visibility toggle, or settings."
 created: 2026-03-10T14:00:00Z
 updated: 2026-03-10T14:30:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

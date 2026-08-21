@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Dragging inside ColorPickerModal propagates to elements beneath, causing key solid cards to drag in background"
 created: 2026-03-24T00:00:00Z
 updated: 2026-03-24T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

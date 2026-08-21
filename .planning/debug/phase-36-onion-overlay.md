@@ -3,6 +3,10 @@ status: investigating
 trigger: "Phase 36 Physics Paint onion overlay bug: after Save roto frame, onion preview appears as a yellow/white full-window/UI overlay instead of being clipped to the canvas and transparent over only strokes."
 created: 2026-06-13T00:00:00Z
 updated: 2026-06-13T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 # Debug Session: Phase 36 Onion Overlay
@@ -34,9 +38,11 @@ tdd_checkpoint: null
 - timestamp: 2026-06-13T14:00:00Z
   source: app/src/components/physic-paint/PhysicsPaintStudio.tsx
   observation: buildRotoPreviewFrame used engine.exportCompositeCanvas().toDataURL('image/png'), which captures the paper/background along with strokes.
+
 - timestamp: 2026-06-13T14:00:00Z
   source: app/src/components/physic-paint/physicsPaintStudio.css
   observation: .physics-paint-onion-overlay was absolutely positioned over the canvas stack with inset-based sizing rather than measured canvas bounds.
+
 - timestamp: 2026-06-13T14:00:00Z
   source: specialist review
   observation: typescript-expert review agreed with exporting a transparent-background preview and restoring engine state in finally; noted mutation/flicker is acceptable for Save/navigate path.
@@ -55,6 +61,7 @@ root_cause: Roto onion previews captured full composite canvases including paper
 fix: Roto preview export now temporarily switches the engine to transparent background, exports the composite stroke canvas, restores the saved engine state, and clips the onion overlay to measured canvas bounds.
 verification: pnpm --dir app exec vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts passed; earlier pnpm --dir app test -- PhysicsPaintStudio.test.ts --run also reported all tests passing before entering watch mode.
 files_changed:
+
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/physicsPaintStudio.css
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts

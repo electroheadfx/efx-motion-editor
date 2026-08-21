@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Investigate why timeline thumbnails don't show gradient previews for gradient key photos, while solid color thumbnails work fine."
 created: 2026-03-24T00:00:00Z
 updated: 2026-03-24T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

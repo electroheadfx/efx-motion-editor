@@ -3,9 +3,14 @@ status: investigating
 trigger: "Undo delete restores stroke but StrokeList and canvas don't refresh properly after undo"
 created: 2026-03-27T16:35:00Z
 updated: 2026-03-27T16:35:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 ## Current Focus
+
 <!-- OVERWRITE on each update - reflects NOW -->
 
 hypothesis: "The undo closure in `removeElement` does not call `_notifyVisualChange`, so `paintVersion` is not bumped and no re-render is triggered"
@@ -14,6 +19,7 @@ expecting: "All methods that mutate elements should call `_notifyVisualChange` i
 next_action: "Confirm pattern and document root cause"
 
 ## Symptoms
+
 <!-- Written during gathering, then IMMUTABLE -->
 
 expected: After deleting a stroke and pressing Ctrl+Z to undo, the stroke should reappear in both the canvas and the StrokeList
@@ -23,6 +29,7 @@ reproduction: Test 12 in UAT - delete a stroke then press Ctrl+Z
 started: Discovered during UAT
 
 ## Eliminated
+
 <!-- APPEND only - prevents re-investigating -->
 
 - hypothesis: "paintVersion is not subscribed to in StrokeList"
@@ -30,6 +37,7 @@ started: Discovered during UAT
   timestamp: 2026-03-27T16:35:00Z
 
 ## Evidence
+
 <!-- APPEND only - facts discovered -->
 
 - timestamp: 2026-03-27T16:35:00Z
@@ -63,6 +71,7 @@ started: Discovered during UAT
   implication: "The undo closure itself is responsible for triggering any re-renders"
 
 ## Resolution
+
 <!-- OVERWRITE as understanding evolves -->
 
 root_cause: "The `removeElement` undo closure does not call `_notifyVisualChange(layerId, frame)`, so `paintVersion` is not bumped after undo. Since `StrokeList` subscribes to `paintVersion` for reactivity, and the canvas rendering likely also depends on it, the restored stroke is not visually shown."

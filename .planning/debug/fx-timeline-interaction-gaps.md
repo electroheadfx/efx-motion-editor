@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Three UAT issues: FX dot not clickable for visibility toggle, FX bars not reorderable, no vertical scroll for many FX layers"
 created: 2026-03-10T14:00:00Z
 updated: 2026-03-10T14:30:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

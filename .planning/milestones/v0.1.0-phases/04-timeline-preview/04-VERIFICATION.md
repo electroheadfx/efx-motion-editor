@@ -8,6 +8,7 @@ re_verification:
   previous_score: 11/11
   uat_result: 5/10 passed, 5 issues
   gaps_closed:
+
     - "Preview image visually changes when stepping forward/backward through frames"
     - "Preview image updates in real-time during playback at project fps"
     - "Click-to-seek on timeline updates preview to show the correct frame image"
@@ -18,21 +19,30 @@ re_verification:
   regressions: []
 gaps: []
 human_verification:
+
   - test: "Preview image changes when stepping through frames (UAT Test 3 re-test)"
     expected: "Click step forward/backward. Each step shows a different key photo image in the preview canvas. Not stuck on one image."
     why_human: "Cache-busting fix is structurally correct (unique URLs per imageId), but requires visual confirmation that WebKit actually fetches fresh image data."
+
   - test: "Playback shows different images at project fps (UAT Test 2 re-test)"
     expected: "Click play. The preview animates through key photo images at the project frame rate. Different key photos display their corresponding images."
     why_human: "rAF tick + cache-busted image loading must produce visual frame changes; requires runtime visual verification."
+
   - test: "Click-to-seek updates preview to correct image (UAT Test 5 re-test)"
     expected: "Click different positions on the timeline. The playhead jumps and the preview shows the correct image for that frame position."
     why_human: "Seek correctly updates currentFrame signal, but visual result depends on cache-busted image loading working end-to-end."
+
   - test: "Playhead drag scrubbing works (UAT Test 6 re-test)"
     expected: "Click near the playhead vertical line and drag. The playhead follows the cursor and the preview updates in real-time as you scrub."
     why_human: "PointerEvent fix is structurally correct, but playhead hit area and pointer capture behavior require interactive testing."
+
   - test: "Middle-click pan works on preview (UAT Test 8 re-test)"
     expected: "Middle-click and drag on the preview area. The preview pans following the cursor. Release stops panning."
     why_human: "PointerEvent fix is structurally correct, but middle-click pan with pointer capture requires interactive testing in WebKit WebView."
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 4: Timeline & Preview - Gap Closure Verification Report
@@ -45,6 +55,7 @@ human_verification:
 ## Context
 
 The initial verification (2026-03-03) passed 11/11 truths. UAT testing (2026-03-09) then revealed 5 issues:
+
 - **Tests 2, 3, 5:** Preview image not updating when frame changes (caching issue)
 - **Test 6:** Playhead drag scrubbing broken (pointer events)
 - **Test 8:** Middle-click pan broken (pointer events)
@@ -214,6 +225,7 @@ No code-level gaps found. All 6 gap-closure must-haves are verified in the codeb
 - **Plan 04-05 (Pointer Events Fix):** All mouse events converted to pointer events in both TimelineInteraction.ts and CanvasArea.tsx. Unsafe `pointerId ?? 0` casts eliminated. Playhead hit area widened from 5px to 10px. All 2 artifacts verified.
 
 The fixes address the exact root causes diagnosed in the UAT:
+
 - WebKit URL-level caching broken by both headers and query param
 - DOMException: InvalidPointerId from setPointerCapture(0) fixed by using real PointerEvent.pointerId
 

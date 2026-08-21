@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "When exporting video at half size (0.5x), paint layers are not resized — they render at full 100% size on the half-size video output."
 created: 2026-03-25T00:00:00Z
 updated: 2026-03-25T00:02:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: awaiting_human_verify
 ---
 
 ## Current Focus

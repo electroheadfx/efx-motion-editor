@@ -3,6 +3,10 @@ status: investigating
 trigger: "Phase 36.1 Play canvas insertion-order bug"
 created: "2026-06-15"
 updated: "2026-06-15"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: investigating
 ---
 
 # Debug Session: Play canvas insertion-order bug
@@ -18,18 +22,21 @@ updated: "2026-06-15"
 ## Context
 
 Recent commits on main:
+
 - `1a92a29 fix(260615-iui): order play insertions by frame anchors`
 - `57957da fix(260615-iui): insert play frame edits sequentially`
 - `bbbb97e fix(260615-iui): isolate play brush preview background`
 - `be8f6e8 fix(260615-iui): preserve play frame preview during brush edits`
 
 Files likely involved:
+
 - `packages/efx-physic-paint/src/animation/AnimationPlayer.ts`
 - `packages/efx-physic-paint/src/animation/AnimationPlayer.test.ts`
 - `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
 - `packages/efx-physic-paint/src/engine/EfxPaintEngine.ts`
 
 Already attempted:
+
 1. Preview fix:
    - `beginPlayFrameEdit` now uses current cached Play frame as temporary engine background.
    - Play preview/save reset the temporary background before rendering.
@@ -40,6 +47,7 @@ Already attempted:
    - Therefore the test likely does not match real runtime stroke data, or wrong metadata/order reaches `AnimationPlayer`.
 
 Hypotheses to investigate:
+
 1. Existing saved strokes may have wrong/missing `playFrame` metadata before they reach `AnimationPlayer`.
 2. `annotatePlayFrameStrokes()` may only annotate newly edited strokes and not normalize/reorder older saved strokes.
 3. `engine.save()` / `engine.load()` may preserve raw `allActions` order where `C` is last, and `AnimationPlayer.getStrokes()` receives that order without enough reliable `playFrame` metadata.
@@ -48,6 +56,7 @@ Hypotheses to investigate:
 
 Debug goal:
 Find the actual stroke array passed into `AnimationPlayer.distributeStrokes()` during Play render:
+
 - stroke order
 - stroke color/id if visible
 - each stroke’s `playFrame`
@@ -56,6 +65,7 @@ Find the actual stroke array passed into `AnimationPlayer.distributeStrokes()` d
 Then fix scheduler or annotation path so actual runtime sequence becomes `C -> h -> l -> x -> o -> e`. Do not just make tests pass; live behavior must be corrected.
 
 Verification constraints:
+
 - Do not run the dev server; user runs it manually.
 - Automated checks that previously passed: `AnimationPlayer.test.ts`, `PhysicsPaintStudio.test.ts`, app typecheck.
 - Add/adjust tests so they reflect real failing runtime data shape, especially the case where existing saved sequence renders as `h -> l -> o -> e -> C`.
@@ -74,18 +84,23 @@ Verification constraints:
 - timestamp: 2026-06-15T00:00:00Z
   source: code inspection
   finding: `AnimationPlayer.play()` receives `engine.getStrokes()` in raw `allActions` order and only `orderStrokesForPlayback()` can correct playback order before frame distribution.
+
 - timestamp: 2026-06-15T00:00:00Z
   source: code inspection
   finding: `EfxPaintEngine.save()` / `load()` preserve serialized stroke order and timestamps; no normalization occurs in the save/load path.
+
 - timestamp: 2026-06-15T00:00:00Z
   source: code inspection
   finding: `annotatePlayFrameStrokes()` only annotates indices captured after the Play-frame edit baseline; it does not annotate or reorder older saved strokes.
+
 - timestamp: 2026-06-15T00:00:00Z
   source: browser diagnostics
   finding: Runtime fresh Play strokes were saved in draw order with every stroke stamped `playFrame: 0`; scheduler treated `sourceIndex > playFrame` as insertion, so all strokes after `C` were moved ahead of `C`.
+
 - timestamp: 2026-06-15T00:00:00Z
   source: user verification
   finding: After requiring `playFrame > 0` for insertion detection, fresh `chloe` rendered with `C` first.
+
 - timestamp: 2026-06-15T00:00:00Z
   source: user verification
   finding: Inserted Play-frame edits then appended at the end until appended strokes were sorted by `playFrame` before timestamp during insertion scheduling; after that, `x` inserted between `l` and `o` correctly.

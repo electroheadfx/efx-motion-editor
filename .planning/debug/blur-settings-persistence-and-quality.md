@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "blur radius lost after close/reopen; blur quality bad at radius 1.0"
 created: 2026-03-13T00:00:00Z
 updated: 2026-03-13T00:01:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus

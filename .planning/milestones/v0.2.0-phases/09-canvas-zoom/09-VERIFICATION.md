@@ -4,33 +4,46 @@ verified: 2026-03-12T18:00:00Z
 status: human_needed
 score: 16/16 must-haves verified
 human_verification:
+
   - test: "Toolbar +/- zoom buttons with preset snapping"
     expected: "Clicking + steps through 10%/25%/50%/75%/100%/150%/200%/300%/400% presets. Clicking - steps down. Percent display updates reactively. Buttons gray out at min/max."
     why_human: "Requires running Tauri app to exercise Preact signal reactivity and DOM interaction"
+
   - test: "Cmd+= zooms in, Cmd+- zooms out, Cmd+0 fits to window"
     expected: "On macOS, these shortcuts route through Tauri View menu -> menu:zoom-* events -> canvasStore. Cmd+= snaps to next preset up. Cmd+- snaps to next preset down. Cmd+0 fits canvas to fill available container space."
     why_human: "Requires running macOS Tauri app to verify native menu interception of WKWebView accelerators"
+
   - test: "Cmd+scroll wheel zooms from canvas center"
     expected: "Hold Cmd and scroll -- smooth continuous zoom, always stays centered (center-anchored, not cursor-anchored). Canvas never escapes viewport bounds."
     why_human: "Requires trackpad hardware and running app to verify clampPan behavior"
+
   - test: "Trackpad pinch-to-zoom works and stays in bounds"
     expected: "Pinch gesture smoothly zooms from canvas center. Canvas cannot be panned off-screen."
     why_human: "Requires macOS trackpad hardware and running Tauri app (GestureEvent is Safari/WebKit-only)"
+
   - test: "Fit-to-window fills available space above 100% for large screens"
     expected: "A 1920x1080 project on a fullscreen window should zoom to fill the canvas container (e.g. zoom > 1.0 when window is larger than project). Fit button and Cmd+0 both trigger this. Resizing window then pressing Fit recalculates."
     why_human: "Requires running app at various window sizes to verify fitToWindow math with no 1.0 cap"
+
   - test: "Left-click drag panning with grab cursor when zoomed in"
     expected: "When zoom > fit level, cursor shows hand/grab. Click-drag moves the canvas. Grabbing cursor shows while dragging. Middle-click still works as fallback."
     why_human: "Requires DOM interaction and visual cursor inspection in running app"
+
   - test: "Project open/create auto-fits canvas"
     expected: "Opening or creating a project automatically calls fitToWindow() and fills available window space (not stuck at 100%)."
     why_human: "Requires opening an actual .mce project file in running app"
+
   - test: "Zoom persistence across navigation and playback"
     expected: "Zoom level does NOT reset when navigating frames, playing/pausing, or switching sequences."
     why_human: "Requires playback engine running in Tauri app"
+
   - test: "Shortcuts overlay shows Canvas group"
     expected: "Press Shift+? -- a Canvas group appears with: Cmd= (Zoom in), Cmd- (Zoom out), Cmd0 (Fit to window)."
     why_human: "Requires running app to verify overlay rendering"
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: human_needed
 ---
 
 # Phase 9: Canvas Zoom Verification Report

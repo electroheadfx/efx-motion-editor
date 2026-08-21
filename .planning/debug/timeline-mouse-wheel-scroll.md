@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "Mouse wheel scroll stopped working in the timeline (both bare scroll for horizontal and Cmd+scroll for vertical). Trackpad scroll and scrollbar UI dragging still work fine. Likely regressed after phase 12.15 (sequence-playback)."
 created: 2026-03-20T00:00:00Z
 updated: 2026-03-20T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: awaiting_human_verify
 ---
 
 ## Current Focus

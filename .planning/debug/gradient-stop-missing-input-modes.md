@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "gradient stop color editing only shows HSV picker, not hex/rgba/hsl input modes"
 created: 2026-03-24T00:00:00Z
 updated: 2026-03-24T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus
@@ -60,6 +64,7 @@ root_cause: |
 
 fix: |
   Remove the `{!isGradientMode && (...)}` guard around the mode tabs and input fields (lines 614 and 692). This will make the HEX/RGBA/HSL mode selector and their text inputs render in both solid and gradient modes. The existing wiring already handles gradient mode correctly:
+
   - Lines 166-176: HSV state syncs from selected gradient stop
   - Lines 179-191: HSV changes propagate back to the selected gradient stop's color
   - The commitHex, commitRgba, and commitHsl callbacks (lines 259-286) all update HSV state, which will naturally flow through to the gradient stop via the existing useEffect

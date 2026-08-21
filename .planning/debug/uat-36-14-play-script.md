@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "Diagnose only Phase 36.14 UAT gap G-36.14-13. User correction: the paint mode under test is Physics Paint, not p5.brush. Copy/Apply Script works. Play Script regressed: its UI is constrained inside a short-height dark panel instead of the previous full-height light presentation, and generated Play Script caches no longer work. Screenshot evidence is /Users/lmarques/.claude/image-cache/3737de95-687f-47d7-b37e-690c2e3f9391/19.png. Console also logs an unhandled rejection: notification.is_permission_granted not allowed on window efx-physic-paint; allowed on windows: main. Determine whether notification rejection is unrelated console noise or contributes to Play Script failure. Compare current implementation with the prior accepted Play Script behavior using git history if useful. Inspect current working tree including uncommitted production fixes. Do not modify production code or tests. Do not run tests, typecheck, build, server, browser, or native app. You may write only .planning/debug/uat-36-14-play-script.md. Read the UAT and relevant code. Report separate root causes for UI layout and cache failure, evidence with file:line references, files involved, and minimal fix direction."
 created: 2026-07-23T00:00:00Z
 updated: 2026-07-23T23:45:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: diagnosed
 ---
 
 ## Current Focus
@@ -15,6 +19,7 @@ bug_class: Bohrbug — deterministic structural/data-authority mismatch visible 
 reasoning_checkpoint:
   hypothesis: "UI layout fails because the Play dialog is an absolutely positioned child of the split secondary Scripts pane; cache persistence fails because Play Script commits and mirrors replace-roto-key-frames while save/reopen/render consume rotoPhysical real-key records."
   confirming_evidence:
+
     - "PhysicsPaintScriptsPanel.tsx:108-133 mounts Play Script under .physics-paint-scripts-panel; physicsPaintStudio.css:1132-1141 and 1207-1208 constrain it and paint it #292b2d."
     - "useRotoPlayScriptController.ts:44-47 sends replace-roto-key-frames; physicPaintStore.ts:930-964 updates legacy frame/cache maps only, while physicPaintStore.ts:653-677 serializes frames: [] when physical records exist."
     - "physicPaintStore.ts:1275-1345 and rotoLaunchHydration.ts:33-78 consume only the physical record document for projection/render/reopen."
@@ -22,6 +27,7 @@ reasoning_checkpoint:
   fix_rationale: "Move only the Play dialog surface to a Studio-level full-height light host, and migrate Play publication to the authoritative physical-map transaction so generated PNG payloads belong to stable keyId/appFrame records used by render, save, and reopen."
   blind_spots: "No runtime execution was permitted. Static evidence identifies deterministic divergence points but does not measure whether an additional renderer defect exists after the authority mismatch is corrected."
   candidate_causes:
+
     - "code: wrong UI mount/style boundary and legacy replace-roto-key-frames publication"
     - "config: child Tauri capability omits notification permission, producing an independent rejection"
     - "data: coexistence of legacy cachedRotoFrames and canonical rotoPhysical fields allows stale writes to compile but not persist"
@@ -154,6 +160,7 @@ verification: >-
   Static diagnose-only verification under explicit user constraints. The screenshot symptom matches the inspected DOM/CSS constraints; the cache data-flow was traced from renderer output through commit/mirror to serialization, physical rendering, persistence, and hydration; Git history and the current uncommitted cutover were compared; notification was traced to a separate export-only capability path. No tests, typecheck, build, server, browser, or native app were run. Runtime verification remains required after implementation.
 oracle_type: specified — Phase 36.14 UAT Test 13 and user-provided screenshot/report.
 files_involved:
+
   - /Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx
   - /Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/PhysicsPaintRightPanel.tsx
   - /Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
@@ -169,5 +176,7 @@ files_involved:
   - /Users/lmarques/Dev/efx-motion-editor/app/src/lib/exportEngine.ts
   - /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/capabilities/default.json
   - /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/capabilities/physics-paint.json
+
 files_changed:
+
   - /Users/lmarques/Dev/efx-motion-editor/.planning/debug/uat-36-14-play-script.md

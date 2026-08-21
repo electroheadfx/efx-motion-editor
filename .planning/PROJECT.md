@@ -132,9 +132,13 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
-## Current Milestone: v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
+## Latest Milestone: v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (Shipped 2026-08-21)
 
-**Goal:** Improve the EFX Paint workflow for one parent Paint layer — restore automatic Scripts hydration, add PlayScript static/hold mode with linked repeat loops and color override, preview main-editor audio read-only inside EFX Paint, and ship a legible macOS identity with explicit desktop build hygiene. Target release 2026-08-31.
+12 phases (39-44, incl. inserted 43.1-43.6), 100 plans, 962 commits over 17 days. Audit verdict `passed`: 38/38 requirements satisfied, 12/12 phases verified, integration + E2E flows wired (43→44 signed-artifact boundary not dropped), Nyquist fully compliant. Shipped as a signed/notarized/stapled macOS release published as GitHub **Latest** on 2026-08-21 (ahead of the 2026-08-31 target) with all six REL-01 gates green, the 17-step packaged-app UAT approved, downloaded-artifact verification passed, and all 15 stop conditions recorded not active. See `.planning/MILESTONES.md`, `milestones/v0.9.0-MILESTONE-AUDIT.md`, and `milestones/v0.9.0-ROADMAP.md`.
+
+## Next Milestone: v1.0 (multi-track — in planning)
+
+**Direction:** expand the EFX Paint workflow beyond the single parent Paint layer toward multi-track timeline work, per the v1.0/v1.1 roadmap (v1.0 multi-track; v1.1 Codex+MMX AI). New requirements land under `### Active` below and are sharpened via `/gsd-new-milestone`.
 
 **Target features:**
 - Blocking prerequisite: Scripts auto-hydration fix — saved-project scripts and Save Script appear without manual Refresh (no delays/polling hacks)
@@ -146,7 +150,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 **Source spec:** `SPECS/milestone-v0.9.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio; EFX Paint edits one parent Paint layer)
 
-## Latest Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
+## Previous Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
 
 21 phases (34, 35, 36, 36.1–36.15, 37, 38, 38.1), 170 plans, 1,347 commits over 54 days. Audit verdict `tech_debt`: 56/56 requirements satisfied, all integration and E2E flows wired, zero blockers; deferred items recorded in STATE.md and the milestone audit. Phase 36.2 intentionally failed/superseded. See `.planning/MILESTONES.md` and `.planning/reports/MILESTONE_SUMMARY-v0.8.0.md` for details.
 
@@ -172,9 +176,9 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ## Context
 
-Shipped v0.8.0 with 1,347 commits across 2,094 files (+363,768 / −152,899) over 54 days. Current codebase ~93k LOC TS/TSX across app/src and packages/. pnpm monorepo with app/ + packages/efx-physic-paint/ (now a proven standalone interactive physics paint app/window with Tauri-native frame sync).
+Shipped v0.9.0 with 962 commits over 17 days (cumulative repo spans 2,094+ files). pnpm monorepo with app/ + packages/efx-physic-paint/ (a proven standalone interactive physics paint app/window with Tauri-native frame sync). Current codebase runs ~100k+ LOC TS/TSX across app/src and packages/.
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm workspaces, p5.brush (standalone), perfect-freehand, fit-curve, bezier-js.
-Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur/GLSL runtime/motion blur, 3-mode paint system, efx-physic-paint standalone window with deterministic physical-frame Roto timeline (canonical keyId/appFrame model, atomic transactions, generated interpolation, multi-select group operations via finalizeProposal single authority, Roto Script Play fusion, durable script library), signals-backed Roto session boundary, structural/frame-split render-path signal graph with canvas-first navigation paint.
+Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur/GLSL runtime/motion blur, 3-mode paint system, efx-physic-paint standalone window with deterministic physical-frame Roto timeline (canonical keyId/appFrame model, atomic transactions, generated interpolation, multi-select group operations via finalizeProposal single authority, Roto Script Play fusion, durable script library), signals-backed Roto session boundary, structural/frame-split render-path signal graph with canvas-first navigation paint, plus v0.9.0: Loop Clip Hold rails (one compact derived interval record, linked preview/export parity, one-Undo/Redo), stable-key incoming-break ownership for intentional gaps, Motion/Static Group stabilization + retained-Action lifecycle (leased parent-authoritative transactions, durable Rust Action recovery), Group/Key Rail drag, Timeline Toolbox + directional Push, and session-only multi-rail selection with batch operations.
 Project format: .mce v15 with backward compatibility (v1 through v15).
 
 Known technical debt:
@@ -189,6 +193,10 @@ Known technical debt:
 - Legacy source/display model still feeds useRotoTimelineActions.getModel (inert dual-model seam); legacy optional fallbacks in rotoOnionPreview/applyCanvas/deleteRotoFrame — v0.8.0
 - Dead playScriptMarkers field (no producer) and misleading physicPaintPlayScriptBridge.test.ts filename — v0.8.0 integration check I-01/I-02
 - macOS Developer ID credentialed signed release intentionally deferred post-close (prep complete, docs/macos-signed-release.md) — v0.8.0
+- Phase 43.1 DF-01..04 deferred (non-blocking persistence/security hardening; NEW_SCOPE_FROM_VERIFIER) — cross-resource save transaction, directory sync on cache publication, provenance-only Loop Clip no-op, postMessage origin authentication — v0.9.0
+- Release-script warnings (frozen, pre-existing): `codesign --entitlements :-` deprecation and ~21 GB worktree preflight walk — v0.9.0 Phase 44 (WR-01/WR-02)
+- Spec-vs-implementation divergences recorded (judged against shipped): truncation label French-spec vs English shipped; chunk budget spec-1100 vs shipped-1120 — v0.9.0 Phase 44 (D-09)
+- State bookkeeping: `init.milestone-op` `completed_phases` 11 vs all-phases-complete — reconciled at v0.9.0 close
 
 ## Constraints
 
@@ -262,6 +270,15 @@ Known technical debt:
 | Phase 38.1 canvas-first navigation paint before Preact propagation | Child windows must never present provisional state as accepted | ✓ Good — navigation paints engine canvas in the same synchronous tick; structural/frame-split signal graph makes frame writes O(find) |
 | Tauri listen branch for physic-paint:seek-frame (G-01, quick 260801-azb) | Standalone window must track editor timeline seeks natively, not only via browser fallback | ✓ Good — regression-locked RED/GREEN coverage; native Tauri UAT approved |
 | Bounded recovery track D-30: bounded-static fixes → read-only review → user-owned native UAT gate | Exact native approval is the only oracle for Roto/Studio behavior | ✓ Good — carried the 36.14 cutover and Phase 38/38.1 to green |
+| Phase 41 D-04 one-way asset-transport boundary (single-token efxasset CSP grant, contract-tested) | Audio asset transport from main editor to EFX Paint must stay read-only and provenance-locked | ✓ Good — connect-src grant pinned by contract test; native packaged UAT (8 steps) approved |
+| Phase 42 static/hold + color override as one renderer entry point, additive to progressive | Static/hold must not fork or regress the progressive module | ✓ Good — progressive byte-untouched; one source cycle per Apply |
+| Phase 43 Loop Clip persistence joins the single canonical revision fingerprint + Undo/Redo snapshot | Loop-only edits must be revision-visible and undoable; v0.8.1 documents must load unchanged | ✓ Good — four-allowlist gauntlet passed; loop-only edits are revision-visible and undoable |
+| Phase 43 one compact derived interval record per Loop Clip, lazy per-frame query | No virtual occurrence is ever materialized; consumers guard the typed union exhaustively | ✓ Good — resolution, preview, playback, and export share one store authority |
+| Phase 43.1 stable-key incoming-break ownership as a complete persisted collection | Interpolation breaks are canonical facts owned by stable real-key identity, never a mask | ✓ Good — malformed/stale proposals fail closed; empty-segment insert is one atomic transaction |
+| Phase 43.2 Group lifecycle + Action retention as leased, parent-authoritative transactions | Exact frame COW, no optimistic publication, durable Rust Action transactions | ✓ Good — canonical lease ownership; committed-only settlement ledgers |
+| Phase 43.5 Timeline Toolbox + Push as one rigid atomic multi-object translation | Push is the exclusive multi-object movement owner; Group drag stays local | ✓ Good — persistent 43.1 gap breaks; one Undo/Redo; native UAT approved |
+| Phase 43.6 rail-set selection as a session-only explicit selection scope | Cross-type batch ops need one shared selection with fail-closed reconcile | ✓ Good — pure reducer, batch Move/Delete/Key Spacing/Solo, exact selection restore on Undo |
+| Phase 44 five-surface version single-source (REL-01) + credentialed signed release | Version must never drift across surfaces; publication is one-way and auditable | ✓ Good — signed/notarized/stapled, published as GitHub Latest, 15-item stop-condition checklist |
 
 ## Evolution
 
@@ -281,4 +298,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-21 after Phase 44 completion — v0.9.0 released: signed/notarized/stapled macOS artifact published as GitHub Latest (ahead of the 2026-08-31 target); all six REL-01 gates green, native packaged-app UAT 17/17 passed (incl. Phase 43 signed-artifact boundary), downloaded-artifact verification + 15-item stop-condition checklist zero-active. Milestone v0.9.0 is 100% complete (Phases 39-44). Code-review warnings (WR-01 codesign `--entitlements :-` deprecation, WR-02 unbounded worktree scan) deferred — frozen release-script concerns out of phase scope.*
+*Last updated: 2026-08-21 after v0.9.0 milestone close — v0.9.0 shipped (signed/notarized/stapled macOS artifact published as GitHub Latest ahead of the 2026-08-31 target; 38/38 requirements, 12/12 phases, six REL-01 gates green, 17-step packaged-app UAT approved, downloaded-artifact verification + 15-item stop-condition checklist zero-active). Milestone archived to `milestones/v0.9.0-ROADMAP.md` / `v0.9.0-REQUIREMENTS.md`. Next milestone: v1.0 multi-track (via `/gsd-new-milestone`).*

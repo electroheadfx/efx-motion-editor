@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "keyphoto-frame-popup-zindex"
 created: 2026-03-25T00:00:00Z
 updated: 2026-03-25T00:00:00Z
+audit_acknowledged:
+  milestone: v0.9.0
+  at: 2026-08-21
+  status: awaiting_human_verify
 ---
 
 ## Current Focus
