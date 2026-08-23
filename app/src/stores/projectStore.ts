@@ -795,6 +795,13 @@ export const projectStore = {
         isDirty.value = false;
       });
       await bindScriptLibraryAuthority(newFilePath);
+      // Update recent projects: a fresh/renamed v1.0 project must surface in Recents
+      await addRecentProject({
+        name: name.value,
+        path: newFilePath,
+        lastOpened: new Date().toISOString(),
+      });
+      await setLastProjectPath(newFilePath);
     } catch (error) {
       dirPath.value = previousDirPath;
       filePath.value = previousFilePath;

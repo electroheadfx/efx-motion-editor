@@ -350,6 +350,10 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(transactionId).toBe('txn-45-05');
     expect(projectForSave.efx_paint_documents?.['layer-1']).toBeDefined();
     expect(('physic_paint_' + 'outputs') in projectForSave).toBe(false);
+    // A freshly saved v1.0 project must surface in Recents (R4).
+    expect(addRecentProject).toHaveBeenCalledTimes(1);
+    expect(addRecentProject).toHaveBeenCalledWith(expect.objectContaining({ path: '/project/new.mce' }));
+    expect(setLastProjectPath).toHaveBeenCalledWith('/project/new.mce');
   });
 
   it('buildMceProject writes version 16', () => {
