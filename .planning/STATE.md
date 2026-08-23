@@ -6,15 +6,15 @@ current_phase: 46
 current_phase_name: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 status: executing
 stopped_at: Phase 46 context gathered
-last_updated: "2026-08-23T19:20:31.091Z"
+last_updated: "2026-08-23T23:10:00.000Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 46 execution started
-state_head: 65e7757b8262f326e0f17bb2a883441a81ba7702
+last_activity_desc: Phase 46 plan 01 complete (track-addressed runtime, per-track revisions, track-scoped leases)
+state_head: 110d51d046b1590451e21bf7eac025ccff330803
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 8
+  completed_plans: 9
   percent: 11
 ---
 
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 46 (Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches) — EXECUTING
-Plan: 1 of 6
+Plan: 1 of 6 complete (46-01); next 46-02
 Status: Executing Phase 46
-Last activity: 2026-08-23 — Phase 46 execution started
+Last activity: 2026-08-23 — Phase 46 plan 01 complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 16%
 
 ## Performance Metrics
 
@@ -49,7 +49,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
-| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 0 | TBD | - |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 1 | TBD | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 0 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 45-new-efx-paint-document-and-clean-cutover P05 | 30 | 3 tasks | 8 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P06 | 55 | 4 tasks | 42 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P07 | 25 | 2 tasks | 18 files |
+| Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P01 | 120 | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,12 @@ Recent decisions affecting current work:
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: physic_paint_outputs survives only as the OPAQUE presence carrier for the gate (45-02 design): declared in models/project.rs and types/project.ts, named by the Rust carrier mechanics, confined by a dedicated carrier allowlist — never interpreted by a reader/renderer/serializer
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: The legacy one-track surface is hard-deleted: physicPaintPersistence.ts + its test are gone (replaced by efxPaintPersistence.ts in 45-04), the McePhysicPaint* output types are removed from types/project.ts, and toMceOutputs/loadFromMceOutputs + their serialization cache are gone from physicPaintStore.ts — the v1.0 document projection (extractRuntimeStateForDocument + installRuntimeStateFromDocument) is the only save/load seam; git history is the only archive (D-02), deletion is code-only (D-04)
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: D-10 four-part native UAT PASSED (45-08): document creation on a v1.0 document with stroke on the default track, save/reopen identity persistence verified via on-disk .mce (version 1, parentLayerId, documentRevision, activeTrackId = default track, one Paint + one transparent-fallback Background track, no legacy keys), explicit no-recourse rejection on a real v0.9 project copy (D-12), and main-editor parity (DOC-06). Three regressions (R1/R2/R3) shared one root cause — Rust PhysicsPaintLaunchContext lacked the v1.0 document field so serde dropped the carrier (fixed b6629984); R4 was saveProjectAs not registering Recents for a fresh project (2c949f18); a save-block was the 45-02 capability fs scope not covering cache/efx-paint (10da700a). Phase 45 is fully verified
+- [Phase 46 P01]: The runtime store is addressed layerId -> trackId -> value with 16 per-track maps; trackId is the stable UUID identity from the document, never an array index (TRK-01 base law, Pitfall 1); editing one internal track never changes another track's real keys, frames, or caches
+- [Phase 46 P01]: Per-track revision signals (getTrackPaintVersion/getTrackRotorRevision) plus the global physicPaintVersion clock; bumpTrackRevision bumps the track signal AND the global clock; one mutation fires the injected dirty callback exactly once (Pitfall 4 closed)
+- [Phase 46 P01]: Lease scope/identity embed trackId — a layer holds one exclusive lease per track; _validateRotorPhysicalLayerPublication checks token.trackId against the claimed track before any write (T-46-03); removeTrackRuntime settles the track's leases with the established settle pattern (replayed-token after teardown)
+- [Phase 46 P01]: mountTrackRuntime/removeTrackRuntime are the lifecycle primitives later plans call: teardown deletes the full 16-map inventory, the structural memo composite key, the trackRevisions entry, settles/expires the track's leases, and prunes alpha canvases only when unreferenced; returns true only when something changed
+- [Phase 46 P01]: Spelling convention locked byte-exactly: all method names use 'Roto' (acquireRotorPhysicalOperationLease); the ONLY 'Rotor' symbol is getTrackRotorRevision — verified with ord-level dumps to kill the Roto/Rotor typo hazard
+- [Phase 46 P01]: The bridge apply-side resolves the document's ACTIVE track for the parent tracer (launch IS the document — D-03); a carried request carries no trackId of its own, and a missing token yields 'missing-token' (not a throw) via `?.trackId ?? ''`
 
 ### Pending Todos
 

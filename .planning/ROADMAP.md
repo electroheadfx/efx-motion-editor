@@ -245,7 +245,32 @@ Plans:
   4. Copy/cut/paste/duplicate/clear/undo/redo operations target the exact internal track.
   5. Editing one Hold source frame updates every linked occurrence without duplicating assets.
 
-**Plans**: 46-01 (wave 1), 46-02 (wave 2), 46-03 (wave 3), 46-04 (wave 4), 46-05 (wave 5), 46-06 (wave 6)
+**Plans**: 1/6 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 46-01-PLAN.md — Track-addressed runtime, per-track revisions, track-scoped leases, track lifecycle primitives (TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 46-02-PLAN.md
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 46-03-PLAN.md
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 46-04-PLAN.md
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 46-05-PLAN.md
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 46-06-PLAN.md
 
 ### Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
 
