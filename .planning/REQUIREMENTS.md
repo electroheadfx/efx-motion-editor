@@ -24,7 +24,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **TRK-04**: Copy/cut/paste/duplicate/clear/undo/redo operations are track-aware
 - [x] **TRK-05**: Async PlayScript/Reveal operations revalidate parent, document, and track revision before commit
 - [x] **TRK-06**: Editing one track never changes another track's real keys or caches; stale async work cannot commit to another selected track
-- [ ] **TRK-07**: Track deletion cannot orphan accepted assets silently
+- [x] **TRK-07**: Track deletion cannot orphan accepted assets silently
 - [ ] **TRK-08**: Editing one Hold source frame updates every linked occurrence without duplicating assets
 
 ### TML — Multi-track Timeline (Phase 3)
@@ -140,7 +140,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRK-04 | Phase 46 | Complete |
 | TRK-05 | Phase 46 | Complete |
 | TRK-06 | Phase 46 | Complete |
-| TRK-07 | Phase 46 | Pending |
+| TRK-07 | Phase 46 | Complete |
 | TRK-08 | Phase 46 | Pending |
 | TML-01 | Phase 47 | Pending |
 | TML-02 | Phase 47 | Pending |
@@ -192,4 +192,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-08-23*
-*Last updated: 2026-08-23 after initial definition*
+*Last updated: 2026-08-24 (TRK-07 complete via 46-05)*

@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 46
 current_phase_name: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 status: executing
-stopped_at: Completed 46-04-PLAN.md
-last_updated: "2026-08-23T22:38:51.099Z"
+stopped_at: Completed 46-05-PLAN.md
+last_updated: "2026-08-24T01:05:00.000Z"
 last_activity: 2026-08-24
-last_activity_desc: Phase 46 plan 04 complete (three-dimensional async authority, capture-then-revalidate commit gate, per-track stale-async laws)
-state_head: 8e347722b746f3c4373ba9eb4d9dc1f70262a5c9
+last_activity_desc: Phase 46 plan 05 complete (acknowledged track deletion: closed preview, teardown, hold severing, nearest-adjacent activation, transactional sidecar removal)
+state_head: 4aef89ae939004c60a7f21b5f8cd1f60ccb022b3
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
   percent: 11
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 46 (Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches) — EXECUTING
-Plan: 4 of 6 complete (46-04); next 46-05
+Plan: 5 of 6 complete (46-05); next 46-06
 Status: Ready to execute
-Last activity: 2026-08-24 — Phase 46 plan 04 complete (three-dimensional async authority, capture-then-revalidate commit gate, per-track stale-async laws)
+Last activity: 2026-08-24 — Phase 46 plan 05 complete (acknowledged track deletion: closed preview, teardown, hold severing, nearest-adjacent activation, transactional sidecar removal)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -78,6 +78,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P02 | 35 | 3 tasks | 10 files |
 | Phase 46 P03 | 33 | 3 tasks | 13 files |
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P04 | 25 | 3 tasks | 10 files |
+| Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P05 | 35 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -139,7 +140,10 @@ Recent decisions affecting current work:
 - [Phase 46 P03]: The undo/redo ledger is one document-wide stack; each physical command carries the accepted edit's trackId; recordAcceptedEdit dedupes on operationId+trackId so one cross-track operation's per-track acceptances all record and same-opId/same-track duplicates still collapse (D-01)
 - [Phase 46 P03]: Stored history snapshots are sanitized at record time: the cached repaint base is nulled and the four per-frame raster maps are emptied — records + refs + the prior deterministic revision hash only, never raster bytes (D-03); the undo/redo recompute path stays the single source of raster truth
 - [Phase 46 P03]: undo()/redo() validate the live source against the entry's snapshot (existing snapshotReplayAuthorityEqual path) and, when the entry's trackId is not the document's active track, call the new efxPaintStore.setActiveTrackId FIRST so replay targets the live document (D-04); setActiveTrackId validates the track exists (fail closed) and bumps documentRevision via the 45-01 builders since activeTrackId is a docrev term
-- [Phase 46]: .planning/phases/46-track-local-paint-roto-playscript-state-loop-clips-and-cache/46-04-SUMMARY.md
+- [Phase 46 P05]: Track deletion is acknowledge-and-delete (TRK-07, D-14): requestDeleteTrack returns a closed TrackDeletePreview (frames, loop clips, Hold references to sever, isLastTrack) before any mutation; commitDeleteTrack refuses without the acknowledgement, for an unknown track, and for the last surviving Paint track (D-17) — a refused delete writes nothing and the active track never moves (ASVS V4)
+- [Phase 46 P05]: The committed deletion runs severTrackHoldReferences → removeTrackRuntime (46-01 sweep: frames, records, loopClips, caches, selection/cursor, leases settled to 'replayed-token', structural memo composite key) then rebuilds the document re-projecting every survivor from the runtime (the runtime is the authority; severed Hold refs stay verbatim, D-31) and re-points activeTrackId directly in the rebuilt document (never setActiveTrackId — the single dirty-callback law); nearest-adjacent is next-first (D-18 executable test contract)
+- [Phase 46 P05]: Sidecar deletion rides the tracked save transaction (D-15): EfxPaintDocumentSaveInput.deletions (validated by isSafeEfxPaintCachePath, ASVS V12) ride PreparedSave and are removed only in the settle commit arm — after the canonical publication settles, before the cache record; rollback never touches them; commitDeleteTrack registers the deleted track's cache/efx-paint/<stableSegment>/<trackId> dir in a pending list (takePendingTrackDeletions clears on read) that projectStore merges into the next save input
+- [Phase 46]: .planning/phases/46-track-local-paint-roto-playscript-state-loop-clips-and-cache/46-05-SUMMARY.md
 
 ### Pending Todos
 
@@ -165,6 +169,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T22:38:51.025Z
-Stopped at: Completed 46-04-PLAN.md
+Last session: 2026-08-24T01:05:00.000Z
+Stopped at: Completed 46-05-PLAN.md
 Resume file: None
