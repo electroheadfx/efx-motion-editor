@@ -160,7 +160,8 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     };
     const frames = new Map<number, PhysicPaintRenderedFrame>([[0, makeFrame(0, 0)]]);
 
-    hydrateRuntimeFromDocument(withPayload, frames);
+    // 46-02: the hydrate carrier is per-track (trackId → appFrame → frame).
+    hydrateRuntimeFromDocument(withPayload, new Map([[TEST_TRACK_ID, frames]]));
 
     expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
     expect(physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID).map((record) => record.keyId)).toEqual(['key-1']);
@@ -182,7 +183,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     const originalRoto = physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID);
 
     const projected = serializeRuntimeIntoDocument('layer-L');
-    hydrateRuntimeFromDocument(projected, originalFrames);
+    hydrateRuntimeFromDocument(projected, new Map([[TEST_TRACK_ID, originalFrames]]));
 
     const restoredFrames = physicPaintStore.getFrames('layer-L', TEST_TRACK_ID);
     expect(Array.from(restoredFrames.keys()).sort()).toEqual([0, 3]);
@@ -215,16 +216,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
 
     expect(Object.keys(projected.tracks[0].frames).map(Number)).toEqual([0]);
     expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
-    hydrateRuntimeFromDocument(projected, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID));
+    hydrateRuntimeFromDocument(projected, new Map([[TEST_TRACK_ID, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID)]]));
     expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
-  });
-
-  it('throws on outbound projection when the document has more than one Paint track', () => {
-    const document = makeTrackDocument('layer-L');
-    const secondTrack = { ...document.tracks[0], id: 'track-2' };
-    const multiTrack = { ...document, tracks: [document.tracks[0], secondTrack] };
-    registerDocument(multiTrack);
-
-    expect(() => serializeRuntimeIntoDocument('layer-L')).toThrow(/exactly one default Paint track/);
   });
 });

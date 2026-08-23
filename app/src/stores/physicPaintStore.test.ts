@@ -188,7 +188,7 @@ describe('physicPaintStore', () => {
     expect(result).toMatchObject({ ok: true, kind: 'delete-roto-frame', appliedFrameCount: 0 });
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 8)).toBeNull();
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([]);
-    expect(physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID)).toEqual({ frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
   });
 
 
@@ -929,7 +929,7 @@ describe('physicPaintStore', () => {
     try {
       physicPaintStore.clearLayer('target-layer');
 
-      expect(physicPaintStore.extractRuntimeStateForDocument('target-layer', TEST_TRACK_ID)).toEqual({ frames: new Map(), rotoPhysical: null });
+      expect(physicPaintStore.extractRuntimeStateForDocument('target-layer', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
       expect(physicPaintStore.getRotoCacheFrames('target-layer', TEST_TRACK_ID)).toEqual([]);
       drawCalls.length = 0;
       expect(renderBlendedRotoInterpolationFrame(shared, survivorOnly, 3, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.dataUrl).toBe('data:image/png;base64,restored-alpha-blend');

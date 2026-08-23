@@ -243,11 +243,14 @@ export type PhysicPaintRotoPhysicalUnresolvedLoop = {
 };
 
 /**
- * One layer's runtime state projected into the v1.0 document shape (Phase
- * 45-04 Task 2). `rotoPhysical` is null when the layer has no physical Roto
- * state; frames are the runtime rendered frames keyed by application frame.
+ * One track's runtime state projected into the v1.0 document shape (Phase
+ * 45-04 Task 2, 46-02 trackId). `trackId` is the stable document identity the
+ * payload belongs to; `rotoPhysical` is null when the track has no physical
+ * Roto state; frames are the runtime rendered frames keyed by application
+ * frame.
  */
 export interface EfxPaintRuntimeProjection {
+  readonly trackId: string;
   readonly frames: ReadonlyMap<number, PhysicPaintRenderedFrame>;
   readonly rotoPhysical: PhysicPaintRotoPhysicalDocument | null;
 }
@@ -1165,7 +1168,7 @@ export const physicPaintStore = {
    */
   extractRuntimeStateForDocument(layerId: string, trackId: string): EfxPaintRuntimeProjection {
     const frames = new Map(_frames.get(layerId)?.get(trackId) ?? []);
-    return { frames, rotoPhysical: _buildRotoPhysicalDocumentForLayer(layerId, trackId) };
+    return { trackId, frames, rotoPhysical: _buildRotoPhysicalDocumentForLayer(layerId, trackId) };
   },
 
   /**
@@ -1177,6 +1180,9 @@ export const physicPaintStore = {
    * signaling). Other tracks of the same layer are untouched.
    */
   installRuntimeStateFromDocument(layerId: string, trackId: string, payload: EfxPaintRuntimeProjection): void {
+    if (payload.trackId !== trackId) {
+      throw new Error(`EFX Paint runtime projection track "${payload.trackId}" does not match install target "${trackId}".`);
+    }
     const layerFrames = _frames.get(layerId);
     layerFrames?.delete(trackId);
     const backgroundTracks = _rotoBackgroundMetadata.get(layerId);

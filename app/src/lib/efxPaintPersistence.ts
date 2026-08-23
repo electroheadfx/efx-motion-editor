@@ -82,13 +82,18 @@ function frameFileName(frame: Pick<PhysicPaintRenderedFrame, 'appFrame' | 'frame
  * Deterministic canonical sidecar path for one runtime frame. The projection
  * writes these into the document's CachedFrameReference records; the save
  * path stages the bytes at the matching staging path and the loader reads
- * them back from the canonical path after publication.
+ * them back from the canonical path after publication. The trackId segment
+ * (a raw UUID — safe charset) sits between the stable layer segment and the
+ * file name so track deletion can address exactly its own sidecars (D-15);
+ * every emitted path continues to pass `isSafeEfxPaintCachePath` (T-46-04,
+ * ASVS V12).
  */
 export function buildEfxPaintFrameCachePath(
   layerId: string,
+  trackId: string,
   frame: Pick<PhysicPaintRenderedFrame, 'appFrame' | 'frameIndex'>,
 ): string {
-  return `${EFX_PAINT_CACHE_DIR}/${stableSegment(layerId)}/${frameFileName(frame)}`;
+  return `${EFX_PAINT_CACHE_DIR}/${stableSegment(layerId)}/${trackId}/${frameFileName(frame)}`;
 }
 
 function decodePngDataUrl(dataUrl: string): Uint8Array | null {

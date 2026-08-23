@@ -251,7 +251,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     sequenceStore.removeLayerFromSequence('timeline-target');
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
-    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
     expect(physicPaintStore.getRotoCacheFrames('canonical-target', TEST_TRACK_ID)).toEqual([]);
     expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
 
@@ -265,7 +265,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     redo();
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
-    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
     expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
   });
 
@@ -304,13 +304,13 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     const outputBefore = physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID);
 
     remove();
-    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
 
     undo();
     expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual(outputBefore);
 
     redo();
-    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
   });
 
   it('keeps shared canonical state until the final timeline owner is removed', () => {

@@ -70,34 +70,29 @@ export function reset(): void {
 
 /**
  * Project one layer's runtime state into its v1.0 document (Phase 45-04
- * Task 2). The document must own exactly one default Paint track; runtime
- * frames become deterministic CachedFrameReference sidecar refs and the
- * physical Roto state is carried as-is. `documentRevision` bumps by one only
+ * Task 2, 46-02 multi-track). Every Paint track of the document is projected
+ * by its stable track id — never tracks[0] by index (TRK-01 base law, Pitfall
+ * 1): runtime frames become CachedFrameReference sidecar refs and the physical
+ * Roto state is carried as-is per track. `documentRevision` bumps by one only
  * when the projected content actually changed (the fingerprint includes the
  * current docrev, so the comparison is made on the same revision).
  */
 export function serializeRuntimeIntoDocument(layerId: string): EfxPaintDocument {
   const document = getDocument(layerId);
   if (!document) throw new Error(`No EFX Paint document for layer "${layerId}".`);
-  if (document.tracks.length !== 1 || document.tracks[0].id !== document.activeTrackId) {
-    throw new Error(`EFX Paint document for layer "${layerId}" must have exactly one default Paint track.`);
-  }
-  const track = document.tracks[0];
-  // 46-01: serialize the ACTIVE track's runtime (single-track document guard
-  // above makes track[0] the active track).
-  const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, document.activeTrackId);
-  const frames: Record<number, CachedFrameReference> = {};
-  for (const [appFrame, frame] of runtime.frames) {
-    frames[appFrame] = {
-      cachePath: buildEfxPaintFrameCachePath(layerId, frame),
-      width: frame.width ?? 0,
-      height: frame.height ?? 0,
-    };
-  }
-  const candidate: EfxPaintDocument = {
-    ...document,
-    tracks: [{ ...track, frames, rotoPhysical: runtime.rotoPhysical }],
-  };
+  const tracks = document.tracks.map((track) => {
+    const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+    const frames: Record<number, CachedFrameReference> = {};
+    for (const [appFrame, frame] of runtime.frames) {
+      frames[appFrame] = {
+        cachePath: buildEfxPaintFrameCachePath(layerId, track.id, frame),
+        width: frame.width ?? 0,
+        height: frame.height ?? 0,
+      };
+    }
+    return { ...track, frames, rotoPhysical: runtime.rotoPhysical };
+  });
+  const candidate: EfxPaintDocument = { ...document, tracks };
   if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
     return candidate;
   }
@@ -109,20 +104,21 @@ export function serializeRuntimeIntoDocument(layerId: string): EfxPaintDocument 
 
 /**
  * Install a v1.0 document's runtime state into the physicPaintStore runtime
- * maps (Phase 45-04 Task 2). The document must own exactly one default Paint
- * track; the caller supplies the hydrated runtime frame bytes (from the
- * persistence loader) alongside the document.
+ * maps (Phase 45-04 Task 2, 46-02 multi-track). Every Paint track of the
+ * document is installed into its own runtime maps keyed by the track's stable
+ * id; the caller supplies the hydrated runtime frame bytes per track (the
+ * persistence loader's per-track carrier) alongside the document. Tracks with
+ * no supplied frames hydrate as empty.
  */
 export function hydrateRuntimeFromDocument(
   document: EfxPaintDocument,
-  frames: ReadonlyMap<number, PhysicPaintRenderedFrame>,
+  frames: ReadonlyMap<string, ReadonlyMap<number, PhysicPaintRenderedFrame>>,
 ): void {
-  if (document.tracks.length !== 1 || document.tracks[0].id !== document.activeTrackId) {
-    throw new Error(`EFX Paint document for layer "${document.parentLayerId}" must have exactly one default Paint track.`);
+  for (const track of document.tracks) {
+    physicPaintStore.installRuntimeStateFromDocument(document.parentLayerId, track.id, {
+      trackId: track.id,
+      frames: frames.get(track.id) ?? new Map(),
+      rotoPhysical: track.rotoPhysical,
+    });
   }
-  // 46-01: hydrate into the ACTIVE track's runtime maps.
-  physicPaintStore.installRuntimeStateFromDocument(document.parentLayerId, document.activeTrackId, {
-    frames,
-    rotoPhysical: document.tracks[0].rotoPhysical,
-  });
 }

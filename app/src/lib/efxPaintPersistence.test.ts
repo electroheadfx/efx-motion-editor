@@ -106,7 +106,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('round-trips a document through staging/commit and restores identity on load', async () => {
     const document = createEfxPaintDocument('layer-x');
-    const frameRef = buildEfxPaintFrameCachePath('layer-x', { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildEfxPaintFrameCachePath('layer-x', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
     const track = document.tracks[0];
     const withFrame = {
       ...document,
@@ -163,7 +163,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
   });
 
   it('isSafeEfxPaintCachePath accepts canonical sidecar paths and rejects traversal', () => {
-    const good = buildEfxPaintFrameCachePath('layer-x', { appFrame: 0, frameIndex: 0 });
+    const good = buildEfxPaintFrameCachePath('layer-x', 'track-1', { appFrame: 0, frameIndex: 0 });
     expect(isSafeEfxPaintCachePath(good)).toBe(true);
     expect(isSafeEfxPaintCachePath('/cache/efx-paint/layer-x/frame-000000-0000.png')).toBe(false);
     expect(isSafeEfxPaintCachePath('cache/efx-paint/../frame.png')).toBe(false);
@@ -181,7 +181,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('saving the same unchanged document twice skips sidecar staging on the second save', async () => {
     const document = createEfxPaintDocument('layer-idem');
-    const frameRef = buildEfxPaintFrameCachePath('layer-idem', { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildEfxPaintFrameCachePath('layer-idem', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
     const track = document.tracks[0];
     const withFrame = {
       ...document,
@@ -206,7 +206,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('rolls back the staged generation and keeps the prior committed generation when the project write throws', async () => {
     const document = createEfxPaintDocument('layer-rollback');
-    const frameRef = buildEfxPaintFrameCachePath('layer-rollback', { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildEfxPaintFrameCachePath('layer-rollback', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
     const track = document.tracks[0];
     const withFrame = {
       ...document,

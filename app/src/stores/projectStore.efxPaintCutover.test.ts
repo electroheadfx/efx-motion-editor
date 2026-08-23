@@ -298,13 +298,15 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
       },
     );
     loadEfxPaintDocuments.mockImplementation(
-      async (_projectRoot: string, persistedMap: Record<string, unknown> | undefined) => {
+      async (_projectId: string, persistedMap: Record<string, unknown> | undefined) => {
         const loaded = new Map<string, EfxPaintLoadedDocument>();
         if (!persistedMap) return loaded;
         for (const [layerId, value] of Object.entries(persistedMap)) {
+          const document = value as EfxPaintDocument;
           loaded.set(layerId, {
-            document: value as EfxPaintDocument,
-            frames: new Map([[0, makeFrame(0, 0)]]),
+            document,
+            // 46-02: the load carrier is per-track (trackId → appFrame → frame).
+            frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]),
           });
         }
         return loaded;
