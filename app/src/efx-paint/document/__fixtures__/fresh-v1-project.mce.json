@@ -1,0 +1,77 @@
+{
+  "version": 16,
+  "name": "Fresh v1.0 Project",
+  "fps": 24,
+  "width": 1920,
+  "height": 1080,
+  "created_at": "2026-08-23T10:00:00.000Z",
+  "modified_at": "2026-08-23T10:00:00.000Z",
+  "sequences": [
+    {
+      "id": "seq-1",
+      "name": "Sequence 1",
+      "fps": 24,
+      "width": 1920,
+      "height": 1080,
+      "order": 0,
+      "key_photos": [],
+      "layers": [
+        {
+          "id": "layer-v1-1",
+          "name": "Physic Paint",
+          "type": "physic-paint",
+          "visible": true,
+          "opacity": 1,
+          "blend_mode": "normal",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale_x": 1,
+            "scale_y": 1,
+            "rotation": 0,
+            "crop_top": 0,
+            "crop_right": 0,
+            "crop_bottom": 0,
+            "crop_left": 0
+          },
+          "source": { "type": "physic-paint", "layer_id": "layer-v1-1" },
+          "is_base": false,
+          "order": 0
+        }
+      ]
+    }
+  ],
+  "images": [],
+  "efx_paint_documents": {
+    "layer-v1-1": {
+      "version": 1,
+      "parentLayerId": "layer-v1-1",
+      "documentRevision": 0,
+      "activeTrackId": "track-v1-1",
+      "tracks": [
+        {
+          "id": "track-v1-1",
+          "name": "Track 1",
+          "order": 0,
+          "visible": true,
+          "solo": false,
+          "opacity": 1,
+          "blendMode": "normal",
+          "revision": 0,
+          "frames": {},
+          "rotoPhysical": null,
+          "loopClips": []
+        }
+      ],
+      "background": {
+        "id": "bg-v1-1",
+        "clips": [],
+        "fallback": { "mode": "transparent" },
+        "visible": true,
+        "revision": 0
+      },
+      "photoReference": null,
+      "compositeRevision": 0
+    }
+  }
+}
