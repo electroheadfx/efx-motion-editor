@@ -522,19 +522,19 @@ export function isSafeEfxPaintCachePath(cachePath: unknown): cachePath is string
 | A4 | Phase 45 keeps the existing layerId-keyed runtime maps and projects them into the default track at the persistence boundary; track-local re-addressing lands in Phase 46 | Open Question Q1 | Medium — if the planner chooses full re-addressing in Phase 45, phase scope grows significantly |
 | A5 | The rejection gate lives in TS only; Rust `open_project` stays format-agnostic | Pattern 3 | Low — defense-in-depth Rust check is additive, not conflicting |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Runtime seam for Phase 45 UAT (paint a stroke on the default track)**
+1. **Runtime seam for Phase 45 UAT (paint a stroke on the default track)** — RESOLVED: option A (projection at the boundary, assumption A4) adopted in 45-04; the runtime ↔ default-track projection is implemented in both directions at the persistence boundary, and Phase 46 keeps full track-local re-addressing.
    - What we know: D-10 UAT part 1 requires Studio to open on a v1.0 document and paint a stroke; Phase 46 owns track-local (`layerId → trackId → frame`) re-addressing; D-02 deletes legacy *persisted* paths, not the in-memory runtime model (`physicsPaintRotoPhysicalModel.ts` stays as the per-track model).
    - What's unclear: whether Phase 45 keeps the runtime one-track maps keyed by layerId and projects them into the document's single default track at save/load (recommended, A4), or pulls track addressing forward.
    - Recommendation: option A (projection at the boundary). It satisfies D-02 (legacy reader/renderer/cache code gone), keeps Phase 46's scope intact, and is the smallest change that passes D-10.
 
-2. **Exact v1.0 document field-level schema**
+2. **Exact v1.0 document field-level schema** — RESOLVED: schema locked in 45-01 (`EfxPaintDocument`, `InternalPaintTrack`, `BackgroundTrack`, `FrameLoopClip`, `BackgroundFallback`, `EFX_PAINT_DOCUMENT_VERSION = 1`; frames/rotoPhysical empty and loopClips [] at factory, per-track payload minimized to UAT parts 1/2).
    - What we know: spec sketch is illustrative; identity rules are locked (stable IDs, revisions, active track, fallback persisted).
    - What's unclear: final field names/nesting; per-track content payload shape for the default track (how much of the current runtime document is embedded in Phase 45 vs Phase 46).
    - Recommendation: planner locks the schema in the first plan, minimizing per-track payload to what UAT part 1/2 needs (one Paint track's frames + identity), leaving Loop Clip/source-asset fields as schema-validated empty collections.
 
-3. **Bridge launch-context contract shape**
+3. **Bridge launch-context contract shape** — RESOLVED: carry the document, adopted in 45-06 (Task 2); `PhysicPaintLaunchContext` gains a serialized v1.0 document carrier populated from `efxPaintStore.getDocument(parentLayerId)` with no fetch round-trip, and the 4 legacy launch-payload fields are removed.
    - What we know: legacy fields (`editableState`, `rotoPhysical`, `cachedRotoFrames`, `rotoInterpolationSettings`) are on the deletion list; the spec requires updating session-file and parent bridge contracts "for the new format only."
    - What's unclear: whether the launch context carries the full v1.0 document or a reference + revision with a fetch round-trip.
    - Recommendation: carry the document (matches current editableState behavior; avoids a new round-trip); finalize in planning.
