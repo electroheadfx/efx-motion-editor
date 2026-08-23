@@ -29,6 +29,8 @@ import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
+const TRACK_A = 'track-a';
+const TRACK_B = 'track-b';
 
 function makeTrackDocument(layerId: string): EfxPaintDocument {
   const document = createEfxPaintDocument(layerId);
@@ -37,6 +39,19 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
     ...document,
     activeTrackId: TEST_TRACK_ID,
     tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
+
+function makeMultiTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const base = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TRACK_A,
+    tracks: [
+      { ...base, id: TRACK_A, frames: {}, rotoPhysical: null, loopClips: [] },
+      { ...base, id: TRACK_B, order: 1, frames: {}, rotoPhysical: null, loopClips: [] },
+    ],
   };
 }
 
@@ -421,6 +436,136 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
     expect(savedProject.efx_paint_documents).toEqual({});
     expect(transactionId).toBeNull();
+  });
+});
+
+describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectStore.reset();
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    efxPaintStoreModule.reset();
+    projectStore.filePath.value = null;
+    projectStore.dirPath.value = null;
+    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
+    ipcProjectSave.mockResolvedValue({ ok: true, data: null });
+    ipcProjectSaveAsWithScriptLibrary.mockResolvedValue({ ok: true, data: { diagnostics: [] } });
+    ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
+    ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
+    addRecentProject.mockResolvedValue(undefined);
+    setLastProjectPath.mockResolvedValue(undefined);
+    savePaintData.mockResolvedValue(undefined);
+    cleanupOrphanedPaintFiles.mockResolvedValue(undefined);
+    loadPhysicPaintData.mockResolvedValue([]);
+    prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
+    saveEfxPaintDocumentsWithProjectWrite.mockImplementation(
+      async (
+        _projectDir: string,
+        documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+        writeProject: (payload: Record<string, unknown>, transactionId: string | null) => Promise<void>,
+      ) => {
+        const persisted: Record<string, unknown> = {};
+        for (const [layerId, input] of documents) persisted[layerId] = input.document;
+        await writeProject(persisted, documents.size === 0 ? null : 'txn-46-02');
+        return persisted;
+      },
+    );
+    loadEfxPaintDocuments.mockImplementation(
+      async (_projectId: string, persistedMap: Record<string, unknown> | undefined) => {
+        const loaded = new Map<string, EfxPaintLoadedDocument>();
+        if (!persistedMap) return loaded;
+        for (const [layerId, value] of Object.entries(persistedMap)) {
+          const document = value as EfxPaintDocument;
+          loaded.set(layerId, { document, frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]) });
+        }
+        return loaded;
+      },
+    );
+    vi.spyOn(projectStore, 'closeProject');
+  });
+
+  it('builds per-track save input frames for a multi-track document (TRK-03)', async () => {
+    addPhysicPaintLayer('layer-2t');
+    efxPaintStoreModule.registerDocument(makeMultiTrackDocument('layer-2t'));
+    const frameA = makeFrame(0, 1);
+    const frameB = { ...makeFrame(0, 1), dataUrl: `data:image/png;base64,${btoa('track-b-bytes')}` };
+    physicPaintStore.setFrame('layer-2t', TRACK_A, 1, frameA);
+    physicPaintStore.setFrame('layer-2t', TRACK_B, 1, frameB);
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+
+    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
+    const [, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
+      string,
+      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+    ];
+    const input = documents.get('layer-2t');
+    expect(input).toBeDefined();
+    // 46-02: the frame carrier is per-track (trackId → appFrame → frame);
+    // both tracks own a frame at the same appFrame without collision.
+    expect(input!.frames.size).toBe(2);
+    expect(input!.frames.get(TRACK_A)?.get(1)?.dataUrl).toBe(frameA.dataUrl);
+    expect(input!.frames.get(TRACK_B)?.get(1)?.dataUrl).toBe(frameB.dataUrl);
+  });
+
+  it('hydrates per-track frames into their own runtime maps on open', async () => {
+    const document = makeMultiTrackDocument('layer-h');
+    const trackA = document.tracks[0];
+    const trackB = document.tracks[1];
+    const withFrames = {
+      ...document,
+      tracks: [
+        {
+          ...trackA,
+          frames: { 5: { cachePath: `cache/efx-paint/seg-a/${TRACK_A}/frame-000005-0000.png`, width: 10, height: 10 } },
+        },
+        {
+          ...trackB,
+          frames: { 5: { cachePath: `cache/efx-paint/seg-b/${TRACK_B}/frame-000005-0000.png`, width: 20, height: 20 } },
+        },
+      ],
+    };
+    const frameA = { ...makeFrame(0, 5), dataUrl: `data:image/png;base64,${btoa('hydrate-a')}` };
+    const frameB = { ...makeFrame(0, 5), dataUrl: `data:image/png;base64,${btoa('hydrate-b')}` };
+    loadEfxPaintDocuments.mockResolvedValue(new Map([['layer-h', {
+      document: withFrames,
+      frames: new Map([
+        [TRACK_A, new Map([[5, frameA]])],
+        [TRACK_B, new Map([[5, frameB]])],
+      ]),
+    }]]));
+    ipcProjectOpen.mockResolvedValue({
+      ok: true,
+      data: { ...makeCleanProject(), efx_paint_documents: { 'layer-h': withFrames } },
+    });
+
+    await projectStore.openProject('/project/multi.mce');
+
+    expect(efxPaintStoreModule.getDocument('layer-h')).toBeDefined();
+    expect(physicPaintStore.getFrames('layer-h', TRACK_A).get(5)?.dataUrl).toBe(frameA.dataUrl);
+    expect(physicPaintStore.getFrames('layer-h', TRACK_B).get(5)?.dataUrl).toBe(frameB.dataUrl);
+  });
+
+  it('regression: a single-track document keys the save input frames under the single track id', async () => {
+    addPhysicPaintLayer('layer-s');
+    efxPaintStoreModule.registerDocument(makeTrackDocument('layer-s'));
+    physicPaintStore.setFrame('layer-s', TEST_TRACK_ID, 3, makeFrame(1, 3));
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+
+    const [, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
+      string,
+      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+    ];
+    const input = documents.get('layer-s');
+    expect(input).toBeDefined();
+    expect(input!.frames.size).toBe(1);
+    expect(input!.frames.get(TEST_TRACK_ID)?.get(3)?.dataUrl).toBe(makeFrame(1, 3).dataUrl);
   });
 });
 
