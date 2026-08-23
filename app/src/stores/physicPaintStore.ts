@@ -2190,6 +2190,22 @@ export const physicPaintStore = {
   },
 
   /**
+   * Track-local Hold resolution context (46-06 Task 1 — TRK-02): the
+   * provenance pair for one track's Loop Clip resolution — the trackId it was
+   * assembled from and the memoized per-track context built exclusively from
+   * that track's own maps. Never a context assembled from two tracks: the
+   * shared resolver answers with this context alone.
+   */
+  getTrackRotoResolutionContext(
+    layerId: string,
+    trackId: string,
+  ): { readonly trackId: string; readonly context: PhysicPaintRotoLoopResolutionContext } | null {
+    const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+    if (!structural) return null;
+    return { trackId, context: structural.loopResolution };
+  },
+
+  /**
    * Resolve one exact runtime paint source. Real and generated projection
    * cells stay the projection's authority; frames the projection reports
    * empty (or does not cover) consult the Phase 43 lazy per-frame loop query
