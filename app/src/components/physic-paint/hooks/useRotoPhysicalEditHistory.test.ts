@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
 vi.mock('preact/hooks', () => ({
@@ -7,11 +7,33 @@ vi.mock('preact/hooks', () => ({
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
+// 46-03 Task 3: spy the efxPaintStore track-activation seam (D-04) while
+// keeping the real document store behavior — setActiveTrackId must really
+// write the document and bump documentRevision; the tests only observe the
+// call order around the coordinator replay.
+vi.mock('../../../stores/efxPaintStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../stores/efxPaintStore')>();
+  return {
+    ...actual,
+    getActiveTrackId: vi.fn((layerId: string) => actual.getActiveTrackId(layerId)),
+    setActiveTrackId: vi.fn((layerId: string, trackId: string) => actual.setActiveTrackId(layerId, trackId)),
+  };
+});
+
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import {
+  _setEfxPaintMarkDirtyCallback,
+  getActiveTrackId,
+  getDocument,
+  registerDocument,
+  reset as resetEfxPaintDocumentStore,
+  setActiveTrackId,
+} from '../../../stores/efxPaintStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -2096,5 +2118,269 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
       before: snapshotFromDocument(beforeDocument),
       after: snapshotFromDocument(afterDocument),
     });
+  });
+});
+
+describe('useRotoPhysicalEditHistory track-tagged undo/redo (46-03 Task 3 — D-01..D-04)', () => {
+  const TRACK_A = 'track-a';
+  const TRACK_B = 'track-b';
+
+  /** Two-track v1.0 document: A (with optional seeded records) and B. */
+  function registerTwoTrackDocument(activeTrackId: string, aRecords: readonly PhysicPaintRotoRealKeyRecord[] = []): void {
+    const base = createEfxPaintDocument('layer-1');
+    const trackA: EfxPaintDocument['tracks'][number] = Object.freeze({
+      ...base.tracks[0],
+      id: TRACK_A,
+      name: 'Track A',
+      order: 0,
+      rotoPhysical: Object.freeze({
+        capacity: 100,
+        realKeyRecords: Object.freeze([...aRecords]),
+        interpolation: Object.freeze({ enabled: false, mode: 'duplicate' as const }),
+        scriptMotion: Object.freeze({ deformation: 0, position: 0 }),
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        revision: 'seed-a',
+        loopClips: Object.freeze([]),
+        incomingInterpolationBreakKeyIds: Object.freeze([]),
+      }) as PhysicPaintRotoPhysicalDocument,
+    });
+    const trackB: EfxPaintDocument['tracks'][number] = Object.freeze({
+      ...base.tracks[0],
+      id: TRACK_B,
+      name: 'Track B',
+      order: 1,
+    });
+    registerDocument(Object.freeze({
+      ...base,
+      activeTrackId,
+      tracks: Object.freeze([trackA, trackB]),
+    }));
+  }
+
+  /**
+   * Track-aware history harness: one identity whose trackId is LIVE (the test
+   * mutates it between acceptances), a coordinator replay seam that swaps
+   * `state.current` to the exact replay target, and the efxPaintStore
+   * document store behind the real setActiveTrackId/getActiveTrackId.
+   */
+  function createTrackHarness(options: { trackId: string; current?: RotoPhysicalEditSnapshot<null> }) {
+    const { trackId } = options;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const state = { current: options.current ?? snapshot([record('B', 0)], 'B', 0) };
+    const identity = { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId };
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = state.current;
+      state.current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity,
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        getLoopClips: () => state.current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+    return { acceptedOutput, availability, executePhysicalEdit, history, identity, state };
+  }
+
+  /** Collect every path whose value is a data:image/png raster (deep walk, Maps included). */
+  function collectRasterPaths(value: unknown, path = 'snapshot', out: string[] = []): string[] {
+    if (typeof value === 'string') {
+      if (value.startsWith('data:image/png')) out.push(path);
+    } else if (Array.isArray(value)) {
+      value.forEach((item, index) => collectRasterPaths(item, `${path}[${index}]`, out));
+    } else if (value && typeof value === 'object') {
+      if (value instanceof Map) {
+        for (const [key, entry] of value) collectRasterPaths(entry, `${path}.map(${String(key)})`, out);
+      } else if (value instanceof Set) {
+        for (const entry of value) collectRasterPaths(entry, `${path}.set`, out);
+      } else {
+        for (const [key, entry] of Object.entries(value)) collectRasterPaths(entry, `${path}.${key}`, out);
+      }
+    }
+    return out;
+  }
+
+  beforeEach(() => {
+    _setEfxPaintMarkDirtyCallback(() => {});
+    resetEfxPaintDocumentStore();
+    vi.mocked(setActiveTrackId).mockClear();
+    vi.mocked(getActiveTrackId).mockClear();
+  });
+
+  it('RED: the applied-stack top entry carries trackId B; undoing it replays B\'s before-state and leaves A\'s records untouched', async () => {
+    registerTwoTrackDocument(TRACK_A, [record('A', 0)]);
+    const beforeB = snapshot([record('B', 1)], 'B', 1);
+    const afterB = snapshot([record('B', 1), record('B2', 2)], 'B', 1);
+    const harness = createTrackHarness({ trackId: TRACK_B, current: afterB });
+
+    // One accepted edit on track B.
+    harness.acceptedOutput.value = {
+      before: beforeB,
+      after: afterB,
+      acceptedRevision: afterB.stagedRevision,
+      operationId: 'op-b',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // Undo auto-activates the entry's track BEFORE the coordinator replay —
+    // the observable proof that the entry was tagged with trackId B.
+    expect(await harness.history.undo()).toBe(true);
+    expect(vi.mocked(setActiveTrackId)).toHaveBeenCalledWith('layer-1', TRACK_B);
+    expect(vi.mocked(setActiveTrackId).mock.invocationCallOrder[0])
+      .toBeLessThan(harness.executePhysicalEdit.mock.invocationCallOrder[0]);
+    // B's before-state was replayed.
+    expect(harness.state.current).toEqual(beforeB);
+    // A's records in the document store are untouched.
+    const trackA = getDocument('layer-1')!.tracks.find((track) => track.id === TRACK_A)!;
+    expect(trackA.rotoPhysical!.realKeyRecords.map((entry) => entry.keyId)).toEqual(['A']);
+  });
+
+  it('RED: 12 ordinary edits (6 cross-track operations) on mixed tracks trim to the 10-level cap', () => {
+    const harness = createTrackHarness({ trackId: TRACK_A });
+    let records: readonly PhysicPaintRotoRealKeyRecord[] = [];
+    for (let operation = 0; operation < 6; operation += 1) {
+      // One cross-track operation emits one acceptance PER track with the
+      // same operationId (the 46-03 move primitive's paste+delete halves).
+      for (const trackId of [TRACK_A, TRACK_B]) {
+        harness.identity.trackId = trackId;
+        const before = snapshot(records, 'A', 0);
+        records = [...records, record(`k${operation}-${trackId === TRACK_A ? 'a' : 'b'}`, records.length)];
+        const after = snapshot(records, 'A', 0);
+        harness.acceptedOutput.value = {
+          before,
+          after,
+          acceptedRevision: after.stagedRevision,
+          operationId: `op-${operation}`,
+          operationKind: 'insert-slot',
+          historyProvenance: null,
+        };
+      }
+    }
+    // 12 track-tagged acceptances recorded (trackId breaks the same-op
+    // dedupe), then the existing 10-level trim holds.
+    expect(harness.availability.value).toEqual({ undo: 10, redo: 0 });
+  });
+
+  it('RED: undoing a B-tagged entry with track A active sets the document activeTrackId to B and bumps documentRevision', async () => {
+    registerTwoTrackDocument(TRACK_A);
+    const beforeRevision = getDocument('layer-1')!.documentRevision;
+    const before = snapshot([record('B', 1)], 'B', 1);
+    const after = snapshot([record('B', 1), record('B2', 2)], 'B', 1);
+    const harness = createTrackHarness({ trackId: TRACK_B, current: after });
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'op-b',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+
+    expect(await harness.history.undo()).toBe(true);
+
+    expect(getActiveTrackId('layer-1')).toBe(TRACK_B);
+    const document = getDocument('layer-1')!;
+    expect(document.activeTrackId).toBe(TRACK_B);
+    expect(document.documentRevision).toBe(beforeRevision + 1);
+  });
+
+  it('RED: two accepted edits with the same operationId on different tracks both record; same track still dedupes', () => {
+    const harness = createTrackHarness({ trackId: TRACK_A });
+    harness.identity.trackId = TRACK_A;
+    harness.acceptedOutput.value = {
+      before: snapshot([], 'A', 0),
+      after: snapshot([record('k0', 0)], 'A', 0),
+      acceptedRevision: 'rev-1',
+      operationId: 'op-shared',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    harness.identity.trackId = TRACK_B;
+    harness.acceptedOutput.value = {
+      before: snapshot([], 'B', 0),
+      after: snapshot([record('b0', 0)], 'B', 0),
+      acceptedRevision: 'rev-2',
+      operationId: 'op-shared',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 2, redo: 0 });
+    // Same operationId on the SAME track is still one command (dedupe key
+    // includes the track).
+    harness.acceptedOutput.value = {
+      before: snapshot([], 'B', 0),
+      after: snapshot([record('b0', 0)], 'B', 0),
+      acceptedRevision: 'rev-2',
+      operationId: 'op-shared',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 2, redo: 0 });
+  });
+
+  it('RED: no stored snapshot field holds a dataUrl raster (D-03 — records + refs + revision hash only)', async () => {
+    // A pre-D-03-style snapshot carrying a raster in the cached repaint base —
+    // the coordinator captures it, the HISTORY ENTRY must not.
+    const raster = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const after: RotoPhysicalEditSnapshot<null> = {
+      ...snapshot([record('k0', 0)], 'k0', 0),
+      cachedReference: {
+        url: '/cache/track-a/frame-0.png',
+        cachedRepaintBase: { dataUrl: raster } as never,
+      },
+    };
+    const harness = createTrackHarness({ trackId: TRACK_A, current: after });
+    const before = snapshot([], 'k0', 0);
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'op-bytes',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+
+    // Undo then Redo so the STORED after entry (not just the fixture) crosses
+    // the replay seam as the redo target.
+    expect(await harness.history.undo()).toBe(true);
+    expect(await harness.history.redo()).toBe(true);
+    const storedAfter = harness.executePhysicalEdit.mock.calls[1][0].replayTargetSnapshot as unknown;
+    const rasterPaths = collectRasterPaths(storedAfter);
+    // The canonical record dataUrls (reference to the cached sidecar) are the
+    // only data: rasters allowed in the entry — never a frame-map or repaint base.
+    const outsideRecords = rasterPaths.filter((path) => (
+      !path.startsWith('snapshot.records[') && !path.startsWith('snapshot.groupOverrideRecords[')
+    ));
+    expect(outsideRecords).toEqual([]);
   });
 });
