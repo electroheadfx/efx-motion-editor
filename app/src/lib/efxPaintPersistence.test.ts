@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
-import { loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite } from './efxPaintPersistence';
+import { buildEfxPaintFrameCachePath, loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite } from './efxPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -107,13 +107,28 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('round-trips a document through staging/commit and restores identity on load', async () => {
     const document = createEfxPaintDocument('layer-x');
-    const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-x', { document, frames: new Map() }]]);
+    const frameRef = buildEfxPaintFrameCachePath('layer-x', { appFrame: 0, frameIndex: 0 });
+    const track = document.tracks[0];
+    const withFrame = {
+      ...document,
+      tracks: [{
+        ...track,
+        frames: { 0: { cachePath: frameRef, width: 100, height: 50 } },
+      }],
+    };
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-x', {
+      document: withFrame,
+      frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]]),
+    }]]);
     const writeProject = vi.fn(async () => {});
 
     const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
 
-    // Staging writes occur under cache/.efx-paint-staging-<uuid>.
-    expect(Array.from(dirs).some((path) => path.includes('/cache/.efx-paint-staging-'))).toBe(true);
+    // Sidecar writes occur under cache/.efx-paint-staging-<uuid>.
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    expect(vi.mocked(writeFile).mock.calls.every(([path]) => String(path).startsWith('/project/cache/.efx-paint-staging-'))).toBe(true);
+    // After publication the canonical path holds the staged bytes.
+    expect(files.has(`/project/${frameRef}`)).toBe(true);
     // writeProject receives the efx_paint_documents payload + transaction id.
     expect(writeProject).toHaveBeenCalledOnce();
     const [payload, transactionId] = writeProject.mock.calls[0] as [Record<string, unknown>, string | null];
@@ -124,7 +139,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     // The persisted payload is the document payload.
     expect(persisted['layer-x']).toBeDefined();
 
-    // Load restores a document deep-equal on identity fields.
+    // Load restores a document deep-equal on identity fields and the frame bytes.
     const loaded = await loadEfxPaintDocuments('/project', payload);
     const restored = loaded.get('layer-x')!.document;
     expect(restored.version).toBe(document.version);
@@ -133,6 +148,9 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(restored.activeTrackId).toBe(document.activeTrackId);
     expect(restored.tracks.map((track) => track.id)).toEqual(document.tracks.map((track) => track.id));
     expect(restored.background).toEqual(document.background);
+    const restoredFrame = loaded.get('layer-x')!.frames.get(0);
+    expect(restoredFrame?.appFrame).toBe(0);
+    expect(restoredFrame?.dataUrl).toBe('data:image/png;base64,AQID');
   });
 
   it('fails closed when the persisted document has unknown members', async () => {
