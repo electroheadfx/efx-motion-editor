@@ -137,8 +137,8 @@ export function drawBg(
 
 /**
  * Draw brush cursor on the display canvas.
- * Outer white dashed ring + inner dark dashed ring + center dot.
- * From v3.html drawBrushCursor() line 2107
+ * Solid dual-stroke ring (dark under, white over) for radius >= 4, or a fixed
+ * crosshair for smaller radii. Never dashed, no blend modes, no sampling.
  *
  * @param displayCtx - Display canvas context
  * @param cursorX - Cursor X in canvas space
@@ -160,31 +160,68 @@ export function drawBrushCursor(
   if (cursorX < 0) return
 
   displayCtx.save()
+  // Guarantee solid strokes regardless of any dash state left by the caller.
+  displayCtx.setLineDash([])
 
-  // Outer white ring
-  displayCtx.beginPath()
-  displayCtx.arc(cursorX, cursorY, radius, 0, Math.PI * 2)
-  displayCtx.strokeStyle = 'rgba(255,255,255,0.85)'
-  displayCtx.lineWidth = 2.5
-  displayCtx.setLineDash([4, 3])
-  displayCtx.stroke()
-
-  // Inner dark ring
-  displayCtx.beginPath()
-  displayCtx.arc(cursorX, cursorY, radius, 0, Math.PI * 2)
-  displayCtx.strokeStyle = 'rgba(0,0,0,0.5)'
-  displayCtx.lineWidth = 1
-  displayCtx.setLineDash([4, 3])
-  displayCtx.lineDashOffset = 4
-  displayCtx.stroke()
-
-  // Center dot
-  displayCtx.beginPath()
-  displayCtx.arc(cursorX, cursorY, 1.5, 0, Math.PI * 2)
-  displayCtx.fillStyle = 'rgba(255,255,255,0.9)'
-  displayCtx.fill()
+  if (radius >= 4) {
+    // True-size ring: dark under-stroke + white over-stroke on the same arc.
+    // The white hairline flanked by black reads on light AND dark backgrounds.
+    strokeDualRing(displayCtx, cursorX, cursorY, radius)
+  } else {
+    // A ring this small is physically unreadable — draw a fixed crosshair
+    // (6px arms, 1px center gap) with the same dual-stroke per axis.
+    const arm = 6
+    const halfGap = 0.5
+    strokeDualLine(displayCtx, cursorX - arm, cursorY, cursorX - halfGap, cursorY)
+    strokeDualLine(displayCtx, cursorX + halfGap, cursorY, cursorX + arm, cursorY)
+    strokeDualLine(displayCtx, cursorX, cursorY - arm, cursorX, cursorY - halfGap)
+    strokeDualLine(displayCtx, cursorX, cursorY + halfGap, cursorX, cursorY + arm)
+  }
 
   displayCtx.restore()
+}
+
+/** Solid ring: dark under-stroke (width 3) + white over-stroke (width 1). */
+function strokeDualRing(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+): void {
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(17,17,17,0.9)'
+  ctx.lineWidth = 3
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+}
+
+/** Solid line segment: dark under-stroke (width 3) + white over-stroke (width 1). */
+function strokeDualLine(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): void {
+  ctx.beginPath()
+  ctx.moveTo(x1, y1)
+  ctx.lineTo(x2, y2)
+  ctx.strokeStyle = 'rgba(17,17,17,0.9)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(x1, y1)
+  ctx.lineTo(x2, y2)
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+  ctx.lineWidth = 1
+  ctx.stroke()
 }
 
 /** Stroke preview data for display overlay */
