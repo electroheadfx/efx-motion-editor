@@ -13,6 +13,8 @@
  * stores run so hydration effects are observable.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -406,5 +408,54 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
     expect(savedProject.efx_paint_documents).toEqual({});
     expect(transactionId).toBeNull();
+  });
+});
+
+describe('45-05 Task 3: AddFxMenu registers the v1.0 document at layer creation', () => {
+  const addFxMenuSource = () => readFileSync(
+    fileURLToPath(new URL('../components/timeline/AddFxMenu.tsx', import.meta.url)),
+    'utf8',
+  );
+  const handlerSource = () => {
+    const source = addFxMenuSource();
+    const start = source.indexOf('const handleAddPhysicPaintLayer = () => {');
+    return source.slice(start, source.indexOf('return (', start));
+  };
+
+  it('handleAddPhysicPaintLayer registers exactly one document keyed by the new layer id', () => {
+    const source = handlerSource();
+    const registrations = source.match(/registerDocument\(createEfxPaintDocument\(layerId\)\)/g) ?? [];
+    expect(registrations).toHaveLength(1);
+    // The registration follows both layer-creation branches (isolated-range
+    // and standard), so every creation path registers the document.
+    const registration = source.indexOf('registerDocument(createEfxPaintDocument(layerId))');
+    const isolatedBranch = source.indexOf("createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame })");
+    const standardBranch = source.indexOf("createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek())");
+    expect(registration).toBeGreaterThan(isolatedBranch);
+    expect(registration).toBeGreaterThan(standardBranch);
+  });
+
+  it('the registered document has the DOC-02 shape: one default Paint track, fixed Background fallback, version 1, revision 0', () => {
+    const document = createEfxPaintDocument('layer-new');
+    expect(document.version).toBe(1);
+    expect(document.documentRevision).toBe(0);
+    expect(document.parentLayerId).toBe('layer-new');
+    expect(document.activeTrackId).toBe(document.tracks[0].id);
+    expect(document.tracks).toHaveLength(1);
+    expect(document.tracks[0].id).toBe(document.activeTrackId);
+    expect(document.background.fallback).toEqual({ mode: 'transparent' });
+    expect(document.background.clips).toEqual([]);
+    // registerDocument keys the store by parentLayerId (DOC-01: one parent
+    // layer owns exactly one document).
+    efxPaintStoreModule.registerDocument(document);
+    expect(efxPaintStoreModule.getDocument('layer-new')).toBe(document);
+  });
+
+  it('the layer object itself is unchanged: type physic-paint, source.layerId === layer id, defaultTransform', () => {
+    const source = handlerSource();
+    expect(source).toContain("type: 'physic-paint'");
+    expect(source).toContain("source: { type: 'physic-paint', layerId } as LayerSourceData");
+    expect(source).toContain('transform: defaultTransform()');
+    expect(source).toContain("name: 'Physic Paint'");
   });
 });
