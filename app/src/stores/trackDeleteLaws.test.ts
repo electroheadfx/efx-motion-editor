@@ -3,11 +3,19 @@ import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/docu
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
+  EFX_PAINT_CACHE_DIR,
+  saveEfxPaintDocumentsWithProjectWrite,
+  stableSegment,
+  type EfxPaintDocumentSaveInput,
+} from '../lib/efxPaintPersistence';
+import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import {
   commitDeleteTrack,
   getDocument,
   registerDocument,
   requestDeleteTrack,
   reset as resetEfxPaintStore,
+  takePendingTrackDeletions,
   _setEfxPaintMarkDirtyCallback,
 } from './efxPaintStore';
 import {
@@ -24,6 +32,61 @@ import {
 // severing (D-16), nearest-adjacent active-track re-point (D-18), and sidecar
 // removal inside the save cache transaction (D-15).
 // Node env, vitest run only; no jsdom, no config changes.
+
+// Task 3 (D-15) needs the same in-memory fs/ipc doubles as
+// efxPaintPersistence.test.ts — the sidecar transaction is asserted through
+// the actual `remove` calls, never through on-disk state.
+const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const files = new Map<string, Uint8Array>();
+const dirs = new Set<string>();
+const PROJECT_DIR = '/project/root';
+
+function exchangeGeneration(projectDir: string, stagingBasename: string): void {
+  const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+  const canonicalRoot = `${projectDir}/cache/efx-paint`;
+  const stagingFiles = Array.from(files.entries())
+    .filter(([key]) => key.startsWith(`${stagingRoot}/`))
+    .map(([key, value]) => [`${canonicalRoot}${key.slice(stagingRoot.length)}`, value] as const);
+  const canonicalFiles = Array.from(files.entries())
+    .filter(([key]) => key.startsWith(`${canonicalRoot}/`))
+    .map(([key, value]) => [`${stagingRoot}${key.slice(canonicalRoot.length)}`, value] as const);
+  const stagingDirs = Array.from(dirs)
+    .filter((key) => key === stagingRoot || key.startsWith(`${stagingRoot}/`))
+    .map((key) => `${canonicalRoot}${key.slice(stagingRoot.length)}`);
+  const canonicalDirs = Array.from(dirs)
+    .filter((key) => key === canonicalRoot || key.startsWith(`${canonicalRoot}/`))
+    .map((key) => `${stagingRoot}${key.slice(canonicalRoot.length)}`);
+  for (const key of Array.from(files.keys())) {
+    if (key.startsWith(`${stagingRoot}/`) || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
+  }
+  for (const key of Array.from(dirs)) {
+    if (key === stagingRoot || key.startsWith(`${stagingRoot}/`) || key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) dirs.delete(key);
+  }
+  for (const [key, value] of [...stagingFiles, ...canonicalFiles]) files.set(key, value);
+  for (const key of [...stagingDirs, ...canonicalDirs]) dirs.add(key);
+}
+
+vi.mock('./ipc', () => ({
+  publishPhysicPaintCacheGeneration,
+  settlePhysicPaintCacheGeneration,
+}));
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+  exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
+  mkdir: vi.fn(async (path: string) => { dirs.add(path); }),
+  remove: vi.fn(async (path: string) => {
+    for (const key of Array.from(files.keys())) {
+      if (key === path || key.startsWith(`${path}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs.keys())) {
+      if (key === path || key.startsWith(`${path}/`)) dirs.delete(key);
+    }
+  }),
+  writeFile: vi.fn(async (path: string, contents: Uint8Array) => {
+    files.set(path, contents);
+  }),
+}));
 
 const LAYER = 'layer-delete-laws';
 const TRACK_A = 'track-a';
@@ -355,5 +418,119 @@ describe('commitDeleteTrack revision and dirty signaling (46-05)', () => {
     expect(committed).toEqual({ ok: true });
     expect(buildEfxPaintDocumentRevision(getDocument(LAYER)!)).not.toBe(revisionBefore);
     expect(dirty).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('commitDeleteTrack sidecar deletion through the cache transaction (46-05 D-15)', () => {
+  beforeEach(() => {
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    files.clear();
+    dirs.clear();
+    vi.clearAllMocks();
+    const activeTransactions = new Map<string, string>();
+    publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
+      const transactionId = crypto.randomUUID();
+      activeTransactions.set(transactionId, stagingBasename);
+      exchangeGeneration(projectDir, stagingBasename);
+      return { ok: true, data: { accepted: true, transactionId, replacedExisting: true } };
+    });
+    settlePhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, transactionId: string, action: 'commit' | 'rollback') => {
+      const stagingBasename = activeTransactions.get(transactionId);
+      if (!stagingBasename) return { ok: false, error: 'inactive transaction' };
+      if (action === 'rollback') exchangeGeneration(projectDir, stagingBasename);
+      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      for (const key of Array.from(dirs)) {
+        if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
+      }
+      activeTransactions.delete(transactionId);
+      return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
+    });
+  });
+
+  /** The post-delete save input the way projectStore.buildEfxPaintDocuments merges it. */
+  function buildSaveInput(): Map<string, EfxPaintDocumentSaveInput> {
+    const document = getDocument(LAYER)!;
+    const framesPerTrack = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
+    for (const track of document.tracks) {
+      framesPerTrack.set(track.id, physicPaintStore.getFrames(LAYER, track.id));
+    }
+    return new Map([[LAYER, { document, frames: framesPerTrack, deletions: takePendingTrackDeletions(LAYER) }]]);
+  }
+
+  it('removes the deleted track sidecar directory at commit; no survivor directory is touched', async () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+      else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+    const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
+    const survivorDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_A}`;
+    dirs.add(`${PROJECT_DIR}/${deletedDir}`);
+    dirs.add(`${PROJECT_DIR}/${survivorDir}`);
+    files.set(`${PROJECT_DIR}/${deletedDir}/frame-000010-0000.png`, new Uint8Array([1]));
+
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    const { remove } = await import('@tauri-apps/plugin-fs');
+    const removeMock = vi.mocked(remove);
+    removeMock.mockClear();
+
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {});
+    expect(persisted).toBeDefined();
+    expect(removeMock).toHaveBeenCalledWith(`${PROJECT_DIR}/${deletedDir}`, { recursive: true });
+    expect(removeMock).not.toHaveBeenCalledWith(`${PROJECT_DIR}/${survivorDir}`, { recursive: true });
+    expect(dirs.has(`${PROJECT_DIR}/${deletedDir}`)).toBe(false);
+    expect(files.has(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`)).toBe(false);
+    expect(dirs.has(`${PROJECT_DIR}/${survivorDir}`)).toBe(true);
+  });
+
+  it('rollback keeps the deleted track sidecar directory (nothing removed outside the committed transaction)', async () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+      else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+    const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
+    dirs.add(`${PROJECT_DIR}/${deletedDir}`);
+    files.set(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`, new Uint8Array([1]));
+
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    const { remove } = await import('@tauri-apps/plugin-fs');
+    const removeMock = vi.mocked(remove);
+    removeMock.mockClear();
+
+    await expect(
+      saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
+        throw new Error('write failed');
+      }),
+    ).rejects.toThrow('write failed');
+    expect(removeMock).not.toHaveBeenCalledWith(`${PROJECT_DIR}/${deletedDir}`, { recursive: true });
+    expect(dirs.has(`${PROJECT_DIR}/${deletedDir}`)).toBe(true);
+    expect(files.has(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`)).toBe(true);
+  });
+
+  it('clears the pending deletion list on read — a second save is a no-op deletion-wise', async () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+      else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+    const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
+    dirs.add(`${PROJECT_DIR}/${deletedDir}`);
+
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    expect(takePendingTrackDeletions(LAYER)).toEqual([deletedDir]);
+    // Cleared on read; the committed save's input is built before it runs.
+    expect(takePendingTrackDeletions(LAYER)).toEqual([]);
+
+    const { remove } = await import('@tauri-apps/plugin-fs');
+    const removeMock = vi.mocked(remove);
+    removeMock.mockClear();
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {});
+    expect(persisted).toBeDefined();
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(takePendingTrackDeletions(LAYER)).toEqual([]);
   });
 });
