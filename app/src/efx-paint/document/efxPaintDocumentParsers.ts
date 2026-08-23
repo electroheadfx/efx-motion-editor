@@ -41,9 +41,22 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
+const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'compositeRevision']);
+const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity', 'blendMode', 'revision', 'frames', 'rotoPhysical', 'loopClips']);
+const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision']);
+const FALLBACK_TRANSPARENT_KEYS = new Set(['mode']);
+const FALLBACK_SOLID_KEYS = new Set(['mode', 'color']);
+const LOOP_CLIP_KEYS = new Set(['id', 'startFrame', 'sourceFrameRefs', 'repeat', 'sourceKind', 'revision']);
+const REPEAT_FINITE_KEYS = new Set(['mode', 'count']);
+const REPEAT_INFINITE_KEYS = new Set(['mode']);
+const CACHED_FRAME_REF_KEYS = new Set(['cachePath', 'width', 'height']);
+
 function parseCachedFrameReference(value: unknown): CachedFrameReference {
   if (!isPlainRecord(value)) {
     throw new Error('CachedFrameReference: expected a record.');
+  }
+  if (!hasOnlyKeys(value, CACHED_FRAME_REF_KEYS)) {
+    throw new Error('CachedFrameReference: unknown members; expected exactly cachePath, width, height.');
   }
   if (!isNonEmptyString(value.cachePath)) {
     throw new Error('CachedFrameReference: cachePath must be a non-empty string.');
@@ -80,6 +93,9 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
   if (!isPlainRecord(value)) {
     throw new Error('FrameLoopClip: expected a record.');
   }
+  if (!hasOnlyKeys(value, LOOP_CLIP_KEYS)) {
+    throw new Error('FrameLoopClip: unknown members; expected exactly id, startFrame, sourceFrameRefs, repeat, sourceKind, revision.');
+  }
   if (!isNonEmptyString(value.id)) {
     throw new Error('FrameLoopClip: id must be a non-empty string.');
   }
@@ -93,10 +109,17 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
     throw new Error('FrameLoopClip: repeat must be a record.');
   }
   if (value.repeat.mode === 'finite') {
+    if (!hasOnlyKeys(value.repeat, REPEAT_FINITE_KEYS)) {
+      throw new Error('FrameLoopClip: finite repeat must contain exactly mode, count.');
+    }
     if (!isNonNegativeInteger(value.repeat.count)) {
       throw new Error('FrameLoopClip: finite repeat requires a non-negative integer count.');
     }
-  } else if (value.repeat.mode !== 'infinite') {
+  } else if (value.repeat.mode === 'infinite') {
+    if (!hasOnlyKeys(value.repeat, REPEAT_INFINITE_KEYS)) {
+      throw new Error('FrameLoopClip: infinite repeat must contain exactly mode.');
+    }
+  } else {
     throw new Error('FrameLoopClip: repeat.mode must be finite or infinite.');
   }
   if (value.sourceKind !== 'playscript-hold' && value.sourceKind !== 'imported-background') {
@@ -125,6 +148,9 @@ function parseLoopClips(value: unknown): readonly FrameLoopClip[] {
 function parseInternalPaintTrack(value: unknown): InternalPaintTrack {
   if (!isPlainRecord(value)) {
     throw new Error('InternalPaintTrack: expected a record.');
+  }
+  if (!hasOnlyKeys(value, TRACK_KEYS)) {
+    throw new Error('InternalPaintTrack: unknown members; expected exactly id, name, order, visible, solo, opacity, blendMode, revision, frames, rotoPhysical, loopClips.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('InternalPaintTrack: id must be a non-empty string.');
@@ -173,17 +199,29 @@ function parseBackgroundFallback(value: unknown): BackgroundFallback {
     throw new Error('BackgroundTrack: fallback must be a record.');
   }
   if (value.mode === 'transparent') {
+    if (!hasOnlyKeys(value, FALLBACK_TRANSPARENT_KEYS)) {
+      throw new Error('BackgroundTrack: transparent fallback must contain exactly mode.');
+    }
     return Object.freeze({ mode: 'transparent' as const });
   }
-  if (value.mode === 'solid' && isNonEmptyString(value.color)) {
+  if (value.mode === 'solid') {
+    if (!hasOnlyKeys(value, FALLBACK_SOLID_KEYS)) {
+      throw new Error('BackgroundTrack: solid fallback must contain exactly mode, color.');
+    }
+    if (!isNonEmptyString(value.color)) {
+      throw new Error('BackgroundTrack: solid fallback requires a color string.');
+    }
     return Object.freeze({ mode: 'solid' as const, color: value.color });
   }
-  throw new Error('BackgroundTrack: invalid fallback.');
+  throw new Error('BackgroundTrack: fallback.mode must be transparent or solid.');
 }
 
 function parseBackgroundTrack(value: unknown): BackgroundTrack {
   if (!isPlainRecord(value)) {
     throw new Error('BackgroundTrack: expected a record.');
+  }
+  if (!hasOnlyKeys(value, BACKGROUND_KEYS)) {
+    throw new Error('BackgroundTrack: unknown members; expected exactly id, clips, fallback, visible, revision.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('BackgroundTrack: id must be a non-empty string.');
@@ -216,6 +254,12 @@ export function parseEfxPaintDocument(value: unknown): EfxPaintDocument {
   if (!isPlainRecord(value)) {
     throw new Error('EfxPaintDocument: expected a record.');
   }
+  if (!hasOnlyKeys(value, DOCUMENT_KEYS)) {
+    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision.');
+  }
+  if (value.version !== EFX_PAINT_DOCUMENT_VERSION) {
+    throw new Error(`EfxPaintDocument: unsupported version ${String(value.version)}; expected ${EFX_PAINT_DOCUMENT_VERSION}.`);
+  }
   if (!isNonEmptyString(value.parentLayerId)) {
     throw new Error('EfxPaintDocument: parentLayerId must be a non-empty string.');
   }
@@ -235,6 +279,16 @@ export function parseEfxPaintDocument(value: unknown): EfxPaintDocument {
     throw new Error('EfxPaintDocument: activeTrackId must be a non-empty string.');
   }
   const tracks = Object.freeze(value.tracks.map(parseInternalPaintTrack));
+  const seenTrackIds = new Set<string>();
+  for (const track of tracks) {
+    if (seenTrackIds.has(track.id)) {
+      throw new Error(`EfxPaintDocument: duplicate track id "${track.id}".`);
+    }
+    seenTrackIds.add(track.id);
+  }
+  if (!tracks.some((track) => track.id === value.activeTrackId)) {
+    throw new Error(`EfxPaintDocument: activeTrackId "${value.activeTrackId}" does not match any track id.`);
+  }
   return Object.freeze({
     version: EFX_PAINT_DOCUMENT_VERSION,
     parentLayerId: value.parentLayerId,

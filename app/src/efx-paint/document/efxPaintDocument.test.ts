@@ -75,7 +75,7 @@ describe('parseEfxPaintDocument fail-closed behavior', () => {
 
     const withFallbackMember = validDocumentJson();
     withFallbackMember.background.fallback.extra = 1;
-    expect(() => parseEfxPaintDocument(withFallbackMember)).toThrow(/BackgroundTrack: unknown members/);
+    expect(() => parseEfxPaintDocument(withFallbackMember)).toThrow(/BackgroundTrack: transparent fallback must contain exactly mode/);
 
     const withLoopClipMember = validDocumentJson();
     withLoopClipMember.background.clips.push({
