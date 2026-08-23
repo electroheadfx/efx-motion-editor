@@ -23,12 +23,12 @@ export function PaintCursor({ screenX, screenY, visible }: PaintCursorProps) {
         top: `${screenY - displayDiameter / 2}px`,
         width: `${displayDiameter}px`,
         height: `${displayDiameter}px`,
-        border: '1.5px solid white',
+        border: '1.5px solid rgba(255, 255, 255, 0.95)',
         borderRadius: '50%',
         pointerEvents: 'none',
-        boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.3)',
+        boxShadow:
+          '0 0 0 1.5px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(0, 0, 0, 0.85)',
         zIndex: 50,
-        mixBlendMode: 'difference',
       }}
     />
   );
