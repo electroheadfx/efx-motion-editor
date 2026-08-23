@@ -182,7 +182,30 @@ mod tests {
         assert!(test_dir.join("images").exists());
         assert!(test_dir.join("images/.thumbs").exists());
         assert!(test_dir.join("paint").exists());
-        assert!(test_dir.join("cache/physic-paint").exists());
+        // The v1.0 cache directory is created for new projects...
+        assert!(test_dir.join("cache/efx-paint").exists());
+        // ...and the legacy cache directory is never created (DOC-04).
+        assert!(!test_dir.join("cache/physic-paint").exists());
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_create_project_dir_leaves_legacy_cache_untouched() {
+        let test_dir = std::env::temp_dir().join("efx_test_proj_legacy_cache");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(test_dir.join("cache/physic-paint")).unwrap();
+        std::fs::write(test_dir.join("cache/physic-paint/old.png"), b"legacy").unwrap();
+
+        create_project_dir(test_dir.to_str().unwrap()).unwrap();
+
+        // D-04: a pre-existing legacy cache directory is never read, moved, or
+        // deleted — it stays byte-untouched with its prior contents.
+        assert!(test_dir.join("cache/physic-paint/old.png").exists());
+        assert_eq!(
+            std::fs::read(test_dir.join("cache/physic-paint/old.png")).unwrap(),
+            b"legacy"
+        );
+        assert!(test_dir.join("cache/efx-paint").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
