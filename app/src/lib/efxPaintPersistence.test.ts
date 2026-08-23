@@ -117,7 +117,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     };
     const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-x', {
       document: withFrame,
-      frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]]),
+      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]])]]),
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
@@ -147,7 +147,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(restored.activeTrackId).toBe(document.activeTrackId);
     expect(restored.tracks.map((track) => track.id)).toEqual(document.tracks.map((track) => track.id));
     expect(restored.background).toEqual(document.background);
-    const restoredFrame = loaded.get('layer-x')!.frames.get(0);
+    const restoredFrame = loaded.get('layer-x')!.frames.get(document.tracks[0].id)?.get(0);
     expect(restoredFrame?.appFrame).toBe(0);
     expect(restoredFrame?.dataUrl).toBe('data:image/png;base64,AQID');
   });
@@ -189,7 +189,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     };
     const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-idem', {
       document: withFrame,
-      frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]]),
+      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]])]]),
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
@@ -214,7 +214,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     };
     const makeDocuments = (dataUrl: string) => new Map<string, EfxPaintDocumentSaveInput>([['layer-rollback', {
       document: withFrame,
-      frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl, width: 100, height: 50 }]]),
+      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl, width: 100, height: 50 }]])]]),
     }]]);
 
     // First save commits a generation.

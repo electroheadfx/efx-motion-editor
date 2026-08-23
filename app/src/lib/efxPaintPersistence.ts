@@ -30,16 +30,24 @@ export const EFX_PAINT_CACHE_PARENT_DIR = 'cache';
 export const EFX_PAINT_STAGING_PREFIX = '.efx-paint-staging-';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
 
-/** One layer's save input: the document plus the runtime frame bytes to stage. */
+/**
+ * One layer's save input: the document plus the runtime frame bytes to stage.
+ * Frames are carried per track (trackId → appFrame → frame) so two tracks may
+ * persist frames at the same appFrame without collision (46-02, edge TRK-03
+ * ordering resolved explicit).
+ */
 export interface EfxPaintDocumentSaveInput {
   readonly document: EfxPaintDocument;
-  readonly frames: ReadonlyMap<number, PhysicPaintRenderedFrame>;
+  readonly frames: ReadonlyMap<string, ReadonlyMap<number, PhysicPaintRenderedFrame>>;
 }
 
-/** One layer's load result: the validated document plus hydrated runtime frames. */
+/**
+ * One layer's load result: the validated document plus hydrated runtime
+ * frames keyed per track (trackId → appFrame → frame, 46-02).
+ */
 export interface EfxPaintLoadedDocument {
   readonly document: EfxPaintDocument;
-  readonly frames: ReadonlyMap<number, PhysicPaintRenderedFrame>;
+  readonly frames: ReadonlyMap<string, ReadonlyMap<number, PhysicPaintRenderedFrame>>;
 }
 
 type PendingWrite = { readonly path: string; readonly bytes: Uint8Array };
@@ -158,8 +166,10 @@ interface PreparedEfxPaintSave {
 /**
  * Deterministic save fingerprint: the 45-01 document revision per layer plus
  * the runtime frame byte terms (dataUrls). The byte terms are required — a
- * repaint changes the bytes while the deterministic cachePath refs stay the
- * same, so a document-only fingerprint would wrongly skip re-staging.
+ * repaint changes the bytes while the document cachePath refs stay the same,
+ * so a document-only fingerprint would wrongly skip re-staging. Every term
+ * includes the trackId (trackId:appFrame:dataUrl) so identical bytes on
+ * distinct tracks stay distinct terms (T-46-06).
  */
 function buildEfxPaintSaveFingerprint(
   projectDir: string,
@@ -169,8 +179,12 @@ function buildEfxPaintSaveFingerprint(
   for (const [layerId, input] of documents) {
     const document = parseEfxPaintDocument(input.document);
     terms.push(`${layerId.length}:${layerId}:${buildEfxPaintDocumentRevision(document)}`);
-    for (const [appFrame, frame] of input.frames) {
-      terms.push(`${appFrame}:${frame.dataUrl.length}:${frame.dataUrl}`);
+    for (const track of document.tracks) {
+      const trackFrames = input.frames.get(track.id);
+      if (!trackFrames) continue;
+      for (const [appFrame, frame] of trackFrames) {
+        terms.push(`${track.id}:${appFrame}:${frame.dataUrl.length}:${frame.dataUrl}`);
+      }
     }
   }
   return `${projectDir}\0${terms.sort().join('\0')}`;
@@ -206,15 +220,16 @@ async function prepareEfxPaintSave(
   for (const [layerId, input] of documents) {
     const document = parseEfxPaintDocument(input.document);
     for (const track of document.tracks) {
+      const trackFrames = input.frames.get(track.id);
       for (const [frameNumber, ref] of Object.entries(track.frames)) {
         const appFrame = Number(frameNumber);
-        const runtimeFrame = input.frames.get(appFrame);
+        const runtimeFrame = trackFrames?.get(appFrame);
         if (!runtimeFrame) {
-          throw new Error(`EFX Paint frame ${layerId}:${appFrame} has no runtime frame bytes.`);
+          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
         }
         const bytes = decodePngDataUrl(runtimeFrame.dataUrl);
         if (!bytes) {
-          throw new Error(`EFX Paint frame ${layerId}:${appFrame} is not a canonical PNG data URL.`);
+          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} is not a canonical PNG data URL.`);
         }
         pendingWrites.push({ path: ref.cachePath, bytes });
       }
@@ -312,8 +327,10 @@ export async function saveEfxPaintDocumentsWithProjectWrite(
  * Load the persisted layerId → document map. Every document passes the
  * fail-closed parser before any store hydration (T-45-13); sidecar PNGs are
  * read back through the plugin-fs idiom with every path guarded by
- * `isSafeEfxPaintCachePath` (T-45-11). Returns an empty map when the key is
- * absent.
+ * `isSafeEfxPaintCachePath` (T-45-11, T-46-04). Frame bytes are carried per
+ * track (trackId → appFrame → frame) so two tracks may own frames at the same
+ * appFrame without collision (46-02, TRK-03). Returns an empty map when the
+ * key is absent.
  */
 export async function loadEfxPaintDocuments(
   projectRoot: string,
@@ -326,21 +343,19 @@ export async function loadEfxPaintDocuments(
   }
   for (const [layerId, value] of Object.entries(persistedMap)) {
     const document = parseEfxPaintDocument(value);
-    const frames = new Map<number, PhysicPaintRenderedFrame>();
+    const frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
     for (const track of document.tracks) {
+      const trackFrames = new Map<number, PhysicPaintRenderedFrame>();
       for (const [frameNumber, ref] of Object.entries(track.frames)) {
         const appFrame = Number(frameNumber);
-        if (frames.has(appFrame)) {
-          throw new Error(`EFX Paint document "${layerId}" claims frame ${appFrame} on multiple tracks.`);
-        }
         if (!isSafeEfxPaintCachePath(ref.cachePath)) {
-          throw new Error(`EFX Paint frame ${layerId}:${appFrame} has an unsafe sidecar path.`);
+          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has an unsafe sidecar path.`);
         }
         const bytes = await readFile(`${projectRoot}/${ref.cachePath}`);
         if (bytes.length === 0) {
           throw new Error(`EFX Paint sidecar is empty: ${ref.cachePath}`);
         }
-        frames.set(appFrame, {
+        trackFrames.set(appFrame, {
           frameIndex: 0,
           appFrame,
           dataUrl: encodePngDataUrl(bytes),
@@ -348,6 +363,7 @@ export async function loadEfxPaintDocuments(
           height: ref.height,
         });
       }
+      frames.set(track.id, trackFrames);
     }
     loaded.set(layerId, { document, frames });
   }
