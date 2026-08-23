@@ -15,7 +15,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-const STAGING_BASENAME: &str = ".physic-paint-staging-test";
+const STAGING_BASENAME: &str = ".efx-paint-staging-test";
 const TRANSACTION_MARKER: &str = "cache/.physic-paint-transaction.json";
 
 fn fixture_dir(tag: &str) -> PathBuf {
@@ -32,7 +32,7 @@ fn fixture_dir(tag: &str) -> PathBuf {
 }
 
 fn canonical_dir(project_dir: &Path) -> PathBuf {
-    project_dir.join("cache/physic-paint")
+    project_dir.join("cache/efx-paint")
 }
 
 fn staging_dir(project_dir: &Path) -> PathBuf {
@@ -211,8 +211,8 @@ fn rollback_replay_after_commit_is_rejected_without_mutating_canonical() {
 #[test]
 fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
     let project = fixture_dir("delayed-rollback");
-    let first_staging = ".physic-paint-staging-first";
-    let second_staging = ".physic-paint-staging-second";
+    let first_staging = ".efx-paint-staging-first";
+    let second_staging = ".efx-paint-staging-second";
     write_generation(&project.join("cache").join(first_staging), "g1");
 
     let first = publish_physic_paint_cache_generation(
@@ -495,12 +495,12 @@ fn invoke_handler_registers_publish_and_settle_commands() {
 #[test]
 fn invalid_staging_authority_rejects_before_any_mutation() {
     let invalid_names = [
-        "physic-paint-staging-test",
-        ".physic-paint-staging-",
-        ".physic-paint-staging-../escape",
-        ".physic-paint-staging-child/path",
-        "/tmp/.physic-paint-staging-absolute",
-        ".physic-paint-staging-child\\path",
+        "efx-paint-staging-test",
+        ".efx-paint-staging-",
+        ".efx-paint-staging-../escape",
+        ".efx-paint-staging-child/path",
+        "/tmp/.efx-paint-staging-absolute",
+        ".efx-paint-staging-child\\path",
     ];
 
     for (index, invalid) in invalid_names.into_iter().enumerate() {

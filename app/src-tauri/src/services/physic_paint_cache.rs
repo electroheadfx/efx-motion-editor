@@ -5,8 +5,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-const CANONICAL_CACHE_BASENAME: &str = "physic-paint";
-const STAGING_PREFIX: &str = ".physic-paint-staging-";
+const CANONICAL_CACHE_BASENAME: &str = "efx-paint";
+const STAGING_PREFIX: &str = ".efx-paint-staging-";
 const ACTIVE_TRANSACTION_BASENAME: &str = ".physic-paint-transaction.json";
 const TRANSACTION_VERSION: u32 = 1;
 
@@ -748,16 +748,28 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn settle_commit_swaps_and_rollback_restores_previous_generation() {
-        // First generation committed into cache/efx-paint.
         let test_dir =
             std::env::temp_dir().join(format!("efx_test_cache_settle_{}", Uuid::new_v4()));
         std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
+        let project_bytes = b"{\"version\":1,\"name\":\"settle\"}";
+        let project_path = test_dir.join("project.mce");
+        std::fs::write(&project_path, project_bytes).expect("project file");
+
+        // First generation committed into cache/efx-paint (bound to the
+        // project write, matching the durable project bytes).
         let first_staging = format!(".efx-paint-staging-{}", Uuid::new_v4());
         let first_dir = test_dir.join("cache").join(&first_staging);
         std::fs::create_dir_all(&first_dir).expect("staging cache");
         std::fs::write(first_dir.join("old.png"), b"old").expect("staged frame");
         let first =
             publish_cache_generation(&test_dir, &first_staging).expect("first publication");
+        bind_cache_transaction_to_project_write(
+            &test_dir,
+            &project_path,
+            project_bytes,
+            &first.transaction_id,
+        )
+        .expect("bind first");
         settle_cache_generation(&test_dir, &first.transaction_id, CacheSettlementAction::Commit)
             .expect("first commit");
         assert!(test_dir.join("cache/efx-paint/old.png").exists());
