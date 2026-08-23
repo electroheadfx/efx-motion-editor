@@ -1,6 +1,19 @@
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
+/**
+ * v1.0 EFX Paint session-file contract (Phase 45-06 Task 1).
+ *
+ * The session payload IS the 45-01 EfxPaintDocument: save serializes the
+ * document (fetched from efxPaintStore by the session controller) and load
+ * validates inbound payloads fail-closed through parseEfxPaintDocument.
+ * Recognized legacy pre-v1.0 session files (version: 2 or the old
+ * strokes/settings top-level shape) reject with the distinct
+ * LOAD_STATE_UNSUPPORTED_VERSION_COPY (Pitfall F5, D-03 clean break); genuinely
+ * malformed files keep the generic LOAD_STATE_INVALID_COPY. No legacy field is
+ * ever converted or partially read.
+ */
+
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { parseEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocumentParsers';
 import type { PhysicPaintStateSaveResult } from '../../../types/physicPaint';
-import { isSerializedProject } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT, PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export const SAVE_STATE_SUCCESS_COPY = 'Saved editable JSON state.';
@@ -8,6 +21,7 @@ export const SAVE_STATE_CANCELLED_COPY = 'Save state cancelled.';
 export const SAVE_STATE_UNAVAILABLE_COPY = 'Save state is unavailable because the native file dialog could not be opened.';
 export const LOAD_STATE_SUCCESS_COPY = 'Loaded editable JSON state.';
 export const LOAD_STATE_INVALID_COPY = 'This file is not a valid Physics Paint state JSON. Choose a state file exported from Physics Paint.';
+export const LOAD_STATE_UNSUPPORTED_VERSION_COPY = 'This file is a pre-v1.0 Physics Paint session, which v1.0.0 does not support. Choose a state file exported from the current version of Physics Paint.';
 
 export interface PhysicsPaintStateDownloadRequest {
   filename: string;
@@ -39,26 +53,50 @@ export type PhysicsPaintStateDownloadResult = {
   message: string;
 };
 
-export function serializePhysicsPaintState(state: SerializedProject): string {
-  return JSON.stringify(state, null, 2);
+export function serializePhysicsPaintState(document: EfxPaintDocument): string {
+  return JSON.stringify(document, null, 2);
 }
 
-export function parsePhysicsPaintStateFile(contents: string): SerializedProject {
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Recognized legacy pre-v1.0 session shape: version: 2 or the old
+ * strokes/settings top-level members. Detection only — no legacy field is
+ * read for conversion or partial hydration (Pitfall F5).
+ */
+function isLegacySerializedProjectShape(value: unknown): boolean {
+  if (!isPlainRecord(value)) return false;
+  if (value.version === 2) return true;
+  return Array.isArray(value.strokes) && isPlainRecord(value.settings);
+}
+
+export function parsePhysicsPaintStateFile(contents: string): EfxPaintDocument {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(contents);
-    if (!isSerializedProject(parsed)) throw new Error(LOAD_STATE_INVALID_COPY);
-    return parsed;
+    parsed = JSON.parse(contents);
+  } catch {
+    throw new Error(LOAD_STATE_INVALID_COPY);
+  }
+  if (isLegacySerializedProjectShape(parsed)) {
+    throw new Error(LOAD_STATE_UNSUPPORTED_VERSION_COPY);
+  }
+  try {
+    return parseEfxPaintDocument(parsed);
   } catch {
     throw new Error(LOAD_STATE_INVALID_COPY);
   }
 }
 
 export async function downloadPhysicsPaintState(
-  state: SerializedProject,
+  document: EfxPaintDocument,
   adapter?: PhysicsPaintStateDownloadAdapter,
 ): Promise<PhysicsPaintStateDownloadResult> {
   const filename = makePhysicsPaintStateFilename();
-  const contents = serializePhysicsPaintState(state);
+  const contents = serializePhysicsPaintState(document);
   const resolvedAdapter = adapter ?? await createDefaultPhysicsPaintStateDownloadAdapter(contents);
 
   if ('browser' in resolvedAdapter) {
@@ -82,7 +120,7 @@ export async function downloadPhysicsPaintState(
 }
 
 function makePhysicsPaintStateFilename(): string {
-  return `efx-paint-state-${Date.now()}.json`;
+  return `efx-paint-doc-${Date.now()}.json`;
 }
 
 async function createDefaultPhysicsPaintStateDownloadAdapter(contents: string): Promise<PhysicsPaintStateDownloadAdapter> {

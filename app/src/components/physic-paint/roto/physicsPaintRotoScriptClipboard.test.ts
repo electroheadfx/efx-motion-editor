@@ -4,6 +4,10 @@ import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardControl
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from '../hooks/usePhysicsPaintSessionController';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
+
+vi.mock('@tauri-apps/plugin-fs', () => ({}));
 
 function stroke(mutationId: number, x = 10): PaintStroke {
   return {
@@ -611,13 +615,16 @@ describe('Roto script clipboard controller', () => {
     const test = harness([stroke(1)]);
     await copyCompletedSource(test, [1]);
     test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('layer-1'));
     const save = vi.fn(() => ({ version: 1, strokes: [] }));
     const load = vi.fn();
     const downloadState = vi.fn(async () => ({ status: 'saved' as const, message: 'Saved editable JSON state.' }));
     const reader = { readAsText: vi.fn(), onload: null, onerror: null, result: '' } as unknown as FileReader;
     const session = createPhysicsPaintSessionController({
       engine: { save, load }, framesToApply: 1, canvasSize: { width: 800, height: 520 },
-      launchContext: null, currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
+      launchContext: { operationId: 'operation-1', layerId: 'layer-1', startFrame: 8, width: 1000, height: 650, cachedRotoFrames: [] },
+      currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
       annotatePlayState: vi.fn((state) => state), restorePlayFrameEdits: vi.fn(), clearLatestPlayFrames: vi.fn(),
       setCachedPlayPreviewUrl: vi.fn(), setSavedPlayCacheDirty: vi.fn(), setLocalPlayPreviewFrame: vi.fn(),
       setFramesToApply: vi.fn(), bumpPlayFramesVersion: vi.fn(), setLaunchContext: vi.fn(), setApplyStatus: vi.fn(),
@@ -639,7 +646,7 @@ describe('Roto script clipboard controller', () => {
     await expect(applying).resolves.toBe(false);
     await session.saveEditableState();
     session.loadEditableState({ target } as unknown as Event);
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
     expect(downloadState).toHaveBeenCalledTimes(1);
     expect(reader.readAsText).toHaveBeenCalledTimes(1);
   });

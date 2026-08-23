@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { getDocument, registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
 import { buildPhysicsPaintDebugProof, createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from './usePhysicsPaintSessionController';
+
+vi.mock('@tauri-apps/plugin-fs', () => ({}));
 
 function makeContext(): PhysicPaintLaunchContext {
   return { operationId: 'operation-1', layerId: 'layer-1', startFrame: 4, width: 1000, height: 650, cachedRotoFrames: [] };
@@ -26,6 +30,8 @@ function sessionHarness() {
 
 describe('usePhysicsPaintSessionController helpers', () => {
   it('blocks Save and Load while mutation-locked and resumes immediately', async () => {
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('layer-1'));
     const test = sessionHarness();
     const target = { files: [{ name: 'state.json' }], value: 'state.json' } as unknown as HTMLInputElement;
     await test.controller.saveEditableState();
@@ -35,8 +41,9 @@ describe('usePhysicsPaintSessionController helpers', () => {
     expect(test.reader.readAsText).not.toHaveBeenCalled();
     test.unlock();
     await test.controller.saveEditableState();
-    expect(test.engine.save).toHaveBeenCalledTimes(1);
+    expect(test.engine.save).not.toHaveBeenCalled();
     expect(test.downloadState).toHaveBeenCalledTimes(1);
+    expect(test.downloadState).toHaveBeenCalledWith(getDocument('layer-1'));
     test.controller.loadEditableState({ target } as unknown as Event);
     expect(test.reader.readAsText).toHaveBeenCalledTimes(1);
   });

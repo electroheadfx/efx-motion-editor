@@ -3,8 +3,8 @@ import type { Dispatch, StateUpdater } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../engine/physicsPaintDevExport';
-import { resizePhysicsPaintState } from '../engine/physicsPaintCanvasSizing';
-import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
+import { downloadPhysicsPaintState, LOAD_STATE_SUCCESS_COPY, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
+import { getDocument, registerDocument } from '../../../stores/efxPaintStore';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 
@@ -69,8 +69,10 @@ export function createPhysicsPaintSessionController(
     const engine = input.engine;
     if (!engine || mutationLocked()) return;
     try {
-      const editableState = engine.save();
-      const result = await (dependencies.downloadState ?? downloadPhysicsPaintState)(editableState);
+      const layerId = input.launchContext?.layerId;
+      const document = layerId ? getDocument(layerId) : null;
+      if (!document) return;
+      const result = await (dependencies.downloadState ?? downloadPhysicsPaintState)(document);
       if (result.status === 'cancelled') {
         input.setApplyStatus('idle');
         input.setApplyMessage(result.message);
@@ -87,13 +89,12 @@ export function createPhysicsPaintSessionController(
     const engine = input.engine;
     if (!engine || mutationLocked()) return;
     try {
-      const state = resizePhysicsPaintState(
-        parsePhysicsPaintStateFile(contents),
-        input.canvasSize.width,
-        input.canvasSize.height,
-      );
-      engine.load(state);
-      setSuccess('Loaded editable JSON state.');
+      const document = parsePhysicsPaintStateFile(contents);
+      // The v1.0 session file IS the document. Install it into the store so
+      // the Studio runtime reflects the loaded session; the engine load
+      // re-wire lands in Task 3 of plan 45-06.
+      registerDocument(document);
+      setSuccess(LOAD_STATE_SUCCESS_COPY);
     } catch (error) {
       setFailure(error);
     }
