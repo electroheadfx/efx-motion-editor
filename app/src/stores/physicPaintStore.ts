@@ -96,9 +96,90 @@ export function bumpTrackRevision(
   }
 }
 
-/** Ensure the per-track revision entry exists for a mounted track (46-01 TRK-03). */
-export function mountTrackRuntime(_layerId: string, trackId: string): void {
+/**
+ * Mount a track's runtime baseline (46-01 TRK-03 Task 3): seeds every
+ * per-track runtime map with the track's empty baseline and ensures the
+ * per-track revision entry exists at 0. Deletion and authority plans call
+ * this when a track enters the document. It never bumps revisions and never
+ * fires the dirty callback. Background metadata, playback settings, and
+ * interpolation failure status stay absent (their getters fall back to
+ * null / absent semantics).
+ */
+export function mountTrackRuntime(layerId: string, trackId: string): void {
+  if (!layerId || !trackId) return;
+  const frames = _getOrCreateLayerTrackMap(_frames, layerId);
+  if (!frames.has(trackId)) frames.set(trackId, new Map());
+  const cache = _getOrCreateLayerTrackMap(_rotoCacheMetadata, layerId);
+  if (!cache.has(trackId)) cache.set(trackId, new Map());
+  const generatedCache = _getOrCreateLayerTrackMap(_rotoGeneratedCacheMetadata, layerId);
+  if (!generatedCache.has(trackId)) generatedCache.set(trackId, new Map());
+  const records = _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId);
+  if (!records.has(trackId)) records.set(trackId, new Map());
+  const groupOverrides = _getOrCreateLayerTrackMap(_rotoGroupOverrideRecords, layerId);
+  if (!groupOverrides.has(trackId)) groupOverrides.set(trackId, new Map());
+  _getOrCreateLayerTrackMap(_rotoInterpolationSettings, layerId).set(trackId, { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS });
+  _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED);
+  _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO);
+  _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, null);
+  _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, 0);
+  _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+  _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY);
+  _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, Object.freeze([]));
   _getOrCreateTrackRevisions(trackId);
+}
+
+/**
+ * Tear down one track's complete runtime state (46-01 TRK-03 Task 3):
+ * deletes every per-track map entry (including selection/cursor), prunes
+ * alpha canvases no other track still references, deletes the structural
+ * memo composite key, deletes the trackRevisions entry, and settles the
+ * track's operation leases with the established settle pattern. Returns
+ * true only when something changed; a never-mounted track is a no-op.
+ */
+export function removeTrackRuntime(layerId: string, trackId: string): boolean {
+  if (!layerId || !trackId) return false;
+  let changed = false;
+  const dataUrls = _getTrackDataUrls(layerId, trackId);
+  for (const map of [
+    _frames,
+    _rotoBackgroundMetadata,
+    _rotoCacheMetadata,
+    _rotoGeneratedCacheMetadata,
+    _rotoInterpolationSettings,
+    _rotoInterpolationFailureStatus,
+    _rotoRealKeyRecords,
+    _rotoGroupOverrideRecords,
+    _rotoPhysicalInterpolationState,
+    _rotoPhysicalScriptMotion,
+    _rotoPhysicalSelectedKeyId,
+    _rotoPhysicalCursorAppFrame,
+    _rotoPhysicalCapacity,
+    _rotoPhysicalLoopClips,
+    _rotoPhysicalIncomingInterpolationBreakKeyIds,
+    _rotoPlaybackSettings,
+  ]) {
+    const layerTracks = map.get(layerId);
+    if (!layerTracks) continue;
+    if (layerTracks.delete(trackId)) changed = true;
+    if (layerTracks.size === 0) map.delete(layerId);
+  }
+  changed = _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId)) || changed;
+  changed = trackRevisions.delete(trackId) || changed;
+  let settledTrackLease = false;
+  for (const [scope, lease] of _rotoPhysicalOperationLeases) {
+    if (lease.layerId !== layerId || lease.trackId !== trackId) continue;
+    _rotoPhysicalOperationLeases.delete(scope);
+    _settledRotoPhysicalOperationLeases.add(_rotoPhysicalOperationLeaseIdentity(lease));
+    settledTrackLease = true;
+  }
+  if (settledTrackLease) {
+    changed = true;
+    _notifyRotoPhysicalOperationLeaseChange();
+  }
+  for (const dataUrl of dataUrls) {
+    if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
+  }
+  return changed;
 }
 
 export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery';
@@ -106,6 +187,8 @@ export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery
 export interface PhysicPaintRotoPhysicalOperationLeaseToken {
   readonly projectContextId: string;
   readonly layerId: string;
+  /** 46-01 TRK-03: stable UUID of the internal track this lease guards (never an array index). */
+  readonly trackId: string;
   readonly generation: number;
   readonly owner: PhysicPaintRotoPhysicalOperationLeaseOwner;
 }
@@ -113,6 +196,8 @@ export interface PhysicPaintRotoPhysicalOperationLeaseToken {
 export interface PhysicPaintRotoPhysicalRecoveryLeaseDescriptor {
   readonly projectContextId: string;
   readonly layerId: string;
+  /** 46-01 TRK-03: the guarded track identity, captured with the original lease. */
+  readonly trackId: string;
   readonly generation: number;
 }
 
@@ -248,12 +333,12 @@ function _notifyRotoPhysicalOperationLeaseChange(): void {
   physicPaintRotoPhysicalOperationLeaseVersion.value += 1;
 }
 
-function _rotoPhysicalOperationLeaseScope(projectContextId: string, layerId: string): string {
-  return `${projectContextId.length}:${projectContextId}${layerId.length}:${layerId}`;
+function _rotoPhysicalOperationLeaseScope(projectContextId: string, layerId: string, trackId: string): string {
+  return `${projectContextId.length}:${projectContextId}${layerId.length}:${layerId}${trackId.length}:${trackId}`;
 }
 
 function _rotoPhysicalOperationLeaseIdentity(token: PhysicPaintRotoPhysicalOperationLeaseToken): string {
-  return `${_rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId)}:${token.generation}`;
+  return `${_rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId, token.trackId)}:${token.generation}`;
 }
 
 function _sameRotoPhysicalOperationLease(
@@ -262,16 +347,19 @@ function _sameRotoPhysicalOperationLease(
 ): boolean {
   return left.projectContextId === right.projectContextId
     && left.layerId === right.layerId
+    && left.trackId === right.trackId
     && left.generation === right.generation
     && left.owner === right.owner;
 }
 
 function _validateRotoPhysicalLayerPublication(
   layerId: string,
+  trackId: string,
   token: PhysicPaintRotoPhysicalOperationLeaseToken | null | undefined,
 ): { ok: true } | { ok: false; reason: PhysicPaintRotoPhysicalOperationLeaseFailureReason } {
-  const activeForLayer = [..._rotoPhysicalOperationLeases.values()].filter((lease) => lease.layerId === layerId);
-  if (activeForLayer.length === 0) {
+  const activeForTrack = [..._rotoPhysicalOperationLeases.values()]
+    .filter((lease) => lease.layerId === layerId && lease.trackId === trackId);
+  if (activeForTrack.length === 0) {
     return token
       ? { ok: false, reason: _settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))
         ? 'replayed-token'
@@ -279,8 +367,8 @@ function _validateRotoPhysicalLayerPublication(
       : { ok: true };
   }
   if (!token) return { ok: false, reason: 'missing-token' };
-  if (activeForLayer.length !== 1) return { ok: false, reason: 'mismatched-token' };
-  const active = activeForLayer[0];
+  if (activeForTrack.length !== 1) return { ok: false, reason: 'mismatched-token' };
+  const active = activeForTrack[0];
   if (_settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))) {
     return { ok: false, reason: 'replayed-token' };
   }
@@ -1586,17 +1674,19 @@ export const physicPaintStore = {
     return { ok: true };
   },
 
-  /** Acquire the sole project/layer authority token for one physical operation. */
+  /** Acquire the sole project/layer/track authority token for one physical operation. */
   acquireRotoPhysicalOperationLease(
     projectContextId: string,
     layerId: string,
+    trackId: string,
   ): PhysicPaintRotoPhysicalOperationLeaseToken | null {
-    if (!projectContextId || !layerId) return null;
-    const scope = _rotoPhysicalOperationLeaseScope(projectContextId, layerId);
+    if (!projectContextId || !layerId || !trackId) return null;
+    const scope = _rotoPhysicalOperationLeaseScope(projectContextId, layerId, trackId);
     if (_rotoPhysicalOperationLeases.has(scope)) return null;
     const token = Object.freeze({
       projectContextId,
       layerId,
+      trackId,
       generation: ++_rotoPhysicalOperationLeaseGeneration,
       owner: 'exclusive' as const,
     });
@@ -1605,20 +1695,20 @@ export const physicPaintStore = {
     return token;
   },
 
-  /** Whether the project/layer scope currently accepts a new physical mutator. */
-  isRotoPhysicalOperationAvailable(projectContextId: string, layerId: string): boolean {
-    if (!projectContextId || !layerId) return false;
+  /** Whether the project/layer/track scope currently accepts a new physical mutator. */
+  isRotoPhysicalOperationAvailable(projectContextId: string, layerId: string, trackId: string): boolean {
+    if (!projectContextId || !layerId || !trackId) return false;
     return !_rotoPhysicalOperationLeases.has(
-      _rotoPhysicalOperationLeaseScope(projectContextId, layerId),
+      _rotoPhysicalOperationLeaseScope(projectContextId, layerId, trackId),
     );
   },
 
-  /** Atomically transfer an exact exclusive token to cleanup/recovery ownership. */
+  /** Atomically transfer an exact exclusive to cleanup/recovery ownership. */
   transferRotoPhysicalOperationLeaseToRecovery(
     token: PhysicPaintRotoPhysicalOperationLeaseToken,
   ): PhysicPaintRotoPhysicalOperationLeaseToken | null {
     if (token.owner !== 'exclusive') return null;
-    const scope = _rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId);
+    const scope = _rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId, token.trackId);
     const active = _rotoPhysicalOperationLeases.get(scope);
     if (!active || !_sameRotoPhysicalOperationLease(active, token)) return null;
     const recoveryToken = Object.freeze({ ...token, owner: 'recovery' as const });
@@ -1631,9 +1721,9 @@ export const physicPaintStore = {
   acquireRotoPhysicalRecoveryLease(
     descriptor: PhysicPaintRotoPhysicalRecoveryLeaseDescriptor,
   ): PhysicPaintRotoPhysicalOperationLeaseToken | null {
-    if (!descriptor.projectContextId || !descriptor.layerId
+    if (!descriptor.projectContextId || !descriptor.layerId || !descriptor.trackId
       || !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 1) return null;
-    const scope = _rotoPhysicalOperationLeaseScope(descriptor.projectContextId, descriptor.layerId);
+    const scope = _rotoPhysicalOperationLeaseScope(descriptor.projectContextId, descriptor.layerId, descriptor.trackId);
     if (_rotoPhysicalOperationLeases.has(scope)) return null;
     const token = Object.freeze({
       ...descriptor,
@@ -1645,17 +1735,18 @@ export const physicPaintStore = {
     return token;
   },
 
-  /** Validate exact active-token identity without mutating lease state. */
+  /** Validate a exact active-token identity without mutating lease state. */
   validateRotoPhysicalOperationLease(
     projectContextId: string,
     layerId: string,
+    trackId: string,
     token: PhysicPaintRotoPhysicalOperationLeaseToken | null | undefined,
   ): { ok: true } | { ok: false; reason: PhysicPaintRotoPhysicalOperationLeaseFailureReason } {
     if (!token) return { ok: false, reason: 'missing-token' };
     if (_settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))) {
       return { ok: false, reason: 'replayed-token' };
     }
-    const active = _rotoPhysicalOperationLeases.get(_rotoPhysicalOperationLeaseScope(projectContextId, layerId));
+    const active = _rotoPhysicalOperationLeases.get(_rotoPhysicalOperationLeaseScope(projectContextId, layerId, trackId));
     if (!active || !_sameRotoPhysicalOperationLease(active, token)) {
       return { ok: false, reason: 'mismatched-token' };
     }
@@ -1664,7 +1755,7 @@ export const physicPaintStore = {
 
   /** Release one exact active token after terminal settlement. */
   releaseRotoPhysicalOperationLease(token: PhysicPaintRotoPhysicalOperationLeaseToken): boolean {
-    const scope = _rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId);
+    const scope = _rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId, token.trackId);
     const active = _rotoPhysicalOperationLeases.get(scope);
     if (!active || !_sameRotoPhysicalOperationLease(active, token)) return false;
     _rotoPhysicalOperationLeases.delete(scope);
@@ -1681,7 +1772,7 @@ export const physicPaintStore = {
     leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
   ): { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string } {
     if (!layerId || typeof layerId !== 'string') return { ok: false, error: 'Layer ID must be a non-empty string.' };
-    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, leaseToken);
+    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, trackId, leaseToken);
     if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
     let document: PhysicPaintRotoPhysicalDocument;
     try {
@@ -2262,7 +2353,7 @@ export const physicPaintStore = {
     diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void },
     leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
   ): { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string } {
-    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, leaseToken);
+    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, trackId, leaseToken);
     if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
     const currentRevision = this.getRotoPhysicalContentRevision(layerId, trackId);
     const current = _rotoRealKeyRecords.get(layerId)?.get(trackId)?.get(keyId) ?? null;

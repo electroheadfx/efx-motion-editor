@@ -777,6 +777,7 @@ export function PhysicsPaintStudio() {
       && physicPaintStore.isRotoPhysicalOperationAvailable(
         projectContextId,
         launchContext.layerId,
+        studioActiveTrackId(),
       )
     );
   });
@@ -1097,7 +1098,7 @@ export function PhysicsPaintStudio() {
     },
     lease: {
       acquire: (projectContextId, layerId) => (
-        physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId)
+        physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId, studioActiveTrackId())
       ),
       release: (token) => physicPaintStore.releaseRotoPhysicalOperationLease(token),
       transferToRecovery: (token) => (

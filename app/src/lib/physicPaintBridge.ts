@@ -418,6 +418,7 @@ async function applyTransportedPhysicPaintPayload(
     payload.projectContextId !== projectStore.projectContextId.peek()
     || submittedLeaseToken.projectContextId !== payload.projectContextId
     || submittedLeaseToken.layerId !== payload.layerId
+    || submittedLeaseToken.trackId !== payload.trackId
   ) {
     return applyPreparedPhysicPaintPayload(payload);
   }
@@ -426,6 +427,7 @@ async function applyTransportedPhysicPaintPayload(
     physicPaintStore.acquireRotoPhysicalOperationLease(
       payload.projectContextId,
       payload.layerId,
+      payload.trackId,
     )
     ?? submittedLeaseToken;
 
@@ -1358,13 +1360,14 @@ function applyPhysicPaintRotoPhysicalMap(
   if (submittedLeaseToken.projectContextId !== projectStore.projectContextId.peek()) {
     return reject('Project context changed after the physical-operation lease was acquired.');
   }
-  if (publicationLeaseToken && submittedLeaseToken.layerId !== payload.layerId) {
+  if (publicationLeaseToken && (submittedLeaseToken.layerId !== payload.layerId || submittedLeaseToken.trackId !== payload.trackId)) {
     return reject('Roto physical operation lease rejected: mismatched-token.');
   }
   const leaseToken = publicationLeaseToken ?? submittedLeaseToken;
   const leaseValidation = physicPaintStore.validateRotoPhysicalOperationLease(
     leaseToken.projectContextId,
     payload.layerId,
+    leaseToken.trackId,
     leaseToken,
   );
   if (!leaseValidation.ok) {
@@ -1731,6 +1734,7 @@ const PHYSIC_PAINT_ROTO_GROUP_FRAME_PAINT_REQUEST_KEYS = new Set([
 const PHYSIC_PAINT_ROTO_OPERATION_LEASE_TOKEN_KEYS = new Set([
   'projectContextId',
   'layerId',
+  'trackId',
   'generation',
   'owner',
 ]);
@@ -1752,6 +1756,7 @@ function parsePhysicPaintRotoGroupFramePaintApplyRequest(
     if (Object.keys(tokenRecord).some((key) => !PHYSIC_PAINT_ROTO_OPERATION_LEASE_TOKEN_KEYS.has(key))
       || typeof tokenRecord.projectContextId !== 'string'
       || typeof tokenRecord.layerId !== 'string'
+      || typeof tokenRecord.trackId !== 'string' || (tokenRecord.trackId as string).length === 0
       || !Number.isSafeInteger(tokenRecord.generation)
       || (tokenRecord.generation as number) < 1
       || (tokenRecord.owner !== 'exclusive' && tokenRecord.owner !== 'recovery')) return null;
@@ -1828,6 +1833,7 @@ export function applyPhysicPaintRotoGroupFramePaint(
   const leaseValidation = physicPaintStore.validateRotoPhysicalOperationLease(
     request.projectContextId,
     request.layerId,
+    request.leaseToken?.trackId ?? '',
     request.leaseToken,
   );
   if (!leaseValidation.ok) return Object.freeze({ ok: false, reason: leaseValidation.reason });
@@ -1996,6 +2002,7 @@ export function applyCommittedReferencedActionDeletion(
   const lease = physicPaintStore.validateRotoPhysicalOperationLease(
     authority.projectContextId,
     authority.layerId,
+    input.leaseToken?.trackId ?? '',
     input.leaseToken,
   );
   if (!lease.ok) return { ok: false, reason: lease.reason };

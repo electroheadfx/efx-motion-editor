@@ -1031,6 +1031,8 @@ export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery
 export interface PhysicPaintRotoPhysicalOperationLeaseToken {
   readonly projectContextId: string;
   readonly layerId: string;
+  /** 46-01 TRK-03: stable UUID of the internal track the lease guards (never an array index). */
+  readonly trackId: string;
   readonly generation: number;
   readonly owner: PhysicPaintRotoPhysicalOperationLeaseOwner;
 }
@@ -1205,9 +1207,10 @@ export function isPhysicPaintRotoPhysicalOperationLeaseToken(
   value: unknown,
 ): value is PhysicPaintRotoPhysicalOperationLeaseToken {
   return isRecord(value)
-    && hasOnlyKeys(value, ['projectContextId', 'layerId', 'generation', 'owner'])
+    && hasOnlyKeys(value, ['projectContextId', 'layerId', 'trackId', 'generation', 'owner'])
     && isNonEmptyString(value.projectContextId)
     && isNonEmptyString(value.layerId)
+    && isNonEmptyString(value.trackId)
     && Number.isSafeInteger(value.generation)
     && (value.generation as number) >= 1
     && (value.owner === 'exclusive' || value.owner === 'recovery');
@@ -1519,6 +1522,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isPhysicPaintRotoPhysicalOperationLeaseToken(value.leaseToken)) return false;
   if (value.leaseToken.layerId !== value.layerId) return false;
+  if (value.leaseToken.trackId !== value.trackId) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
   if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return false;
