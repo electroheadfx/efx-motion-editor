@@ -203,7 +203,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
   4. Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity.
   5. Main-editor sequence timing and outer layer composition remain unchanged.
 
-**Plans**: 3/8 plans executed
+**Plans**: 5/8 plans executed
 
 Plans:
 **Wave 1**
@@ -221,7 +221,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 45-05-PLAN.md — Open/save funnel cutover: gate + blocking dialog, save-path switch, version 16, AddFxMenu registration
+- [x] 45-05-PLAN.md — Open/save funnel cutover: gate + blocking dialog, save-path switch, version 16, AddFxMenu registration
 - [ ] 45-06-PLAN.md — v1.0 session-file format, bridge launch-context swap, standalone engine re-wire (D-03)
 
 **Wave 5** *(blocked on Wave 4 completion)*
@@ -363,7 +363,7 @@ Plans:
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
-| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 3/8 | In Progress|  |
+| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 5/8 | In Progress|  |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 0/TBD | Not started | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 0/TBD | Not started | - |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |

@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Completed 45-04-PLAN.md
-last_updated: "2026-08-23T14:37:03.595Z"
+stopped_at: Completed 45-05-PLAN.md
+last_updated: "2026-08-23T14:55:00.000Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 45 plan 02 (Rust+TS serde co-change, cache re-point) complete
-state_head: 503f9c59a691ee738ea42974997c71c5bae92be2
+last_activity_desc: Phase 45 plan 05 (open/save funnel cutover) complete
+state_head: e565526b
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 4 of 8
-Status: Ready to execute
-Last activity: 2026-08-23 — Phase 45 plan 02 complete
+Plan: 5 of 8
+Status: Ready to execute (next: 45-06)
+Last activity: 2026-08-23 — Phase 45 plan 05 (open/save funnel cutover) complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -48,7 +48,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 45. New EFX Paint Document and Clean Cutover | 2 | TBD | - |
+| 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 0 | TBD | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 0 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 45 P02 | 110 | 3 tasks | 6 files |
 | Phase 45 P03 | 5 | 2 tasks | 7 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P04 | 25 | 3 tasks | 5 files |
+| Phase 45-new-efx-paint-document-and-clean-cutover P05 | 30 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,12 @@ Recent decisions affecting current work:
 - [Phase 45 P04]: installRuntimeStateFromDocument replaces the layer's runtime maps wholesale (delete-then-install), mirrors loadFromMceOutputs validation (canonical parse + timeline projection) and publication (bump rotoPhysicalRevision + physicPaintVersion, no dirty callback), and clears the per-layer _rotoPhysicalStructuralCache
 - [Phase 45 P04]: hydrateRuntimeFromDocument takes (document, frames) — the loader supplies the hydrated frame bytes; registerDocument stays a separate call (45-05 open path: loadEfxPaintDocuments + registerDocument + hydrateRuntimeFromDocument)
 - [Phase 45 P04]: The dedup cache is populated only after a successful commit and cleared on every commit, mirroring savedOutputCache; a rollback never touches the cache so the prior committed fingerprint stays reusable
+- [Phase 45 P05]: The rejection gate runs immediately after the result.ok check in openProject — before any sidecar IO, closeProject, hydration, or startAutoSave — and on rejection shows a blocking no-recourse native error dialog (single OK) then returns with zero store mutation (D-05/D-07, Pitfall F4); the gate is stateless
+- [Phase 45 P05]: The rejection dialog copy is an exported constant (LEGACY_PHYSIC_PAINT_REJECTED_COPY) naming EFX Physic Paint, pre-v1.0, and the impossibility of opening — no partial open, no continue-anyway, no converter offer
+- [Phase 45 P05]: There is exactly one save path after this plan: saveProject and saveProjectAs both call saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, writeProject) with the bound cache transaction; physic_paint_outputs is never emitted (explicit undefined override in the spread); version 16
+- [Phase 45 P05]: openProject hydrates documents via loadEfxPaintDocuments + registerDocument + hydrateRuntimeFromDocument per document; closeProject calls efxPaintStore.reset() alongside physicPaintStore.reset so no document leaks across projects; the dirty callback is wired at module bottom
+- [Phase 45 P05]: AddFxMenu registers exactly one v1.0 document per physic-paint layer at creation (registerDocument(createEfxPaintDocument(layerId)) after both creation branches)
+- [Phase 45 P05]: The 45-05 wiring pulled efxPaintStore + efxPaintPersistence + the document model into the main chunk (1124.96 kB measured); the V09-C04 desktop budget was raised 1120 → 1130 with documented measurement (established pattern)
 
 ### Pending Todos
 
@@ -123,6 +130,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T14:37:03.581Z
-Stopped at: Completed 45-04-PLAN.md
+Last session: 2026-08-23T14:55:00.000Z
+Stopped at: Completed 45-05-PLAN.md
 Resume file: None
