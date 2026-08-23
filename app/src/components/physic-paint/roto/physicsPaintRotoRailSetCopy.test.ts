@@ -291,15 +291,137 @@ describe('physicsPaintRotoRailSetCopy — proposeRails duplicate (quick 260820-b
       ],
     });
     if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
-    const duplicated = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
-    expect(duplicated.ok).toBe(true);
-    if (!duplicated.ok) throw new Error(`Duplicate must scan forward: ${duplicated.reason}`);
+    const duplicate = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
+    expect(duplicate.ok).toBe(true);
+    if (!duplicate.ok) throw new Error(`Duplicate must scan forward: ${duplicate.reason}`);
     const sourceIds = new Set(['k0', 'k2', 'k6', 'k8', 'blocker']);
-    const freshFrames = duplicated.proposal.realKeyRecords
+    const freshFrames = duplicate.proposal.realKeyRecords
       .filter((record) => !sourceIds.has(record.keyId))
       .map((record) => record.appFrame)
       .sort((a, b) => a - b);
     // Frame 10 occupied → scan to anchor 11 → A 11/13, B 17/19.
     expect(freshFrames).toEqual([11, 13, 17, 19]);
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cross-track re-pointing (D-06)', () => {
+  it('payload builder records the source track identity when the copy supplies one', () => {
+    const document = twoKeyRailDocument();
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [{ kind: 'key-rail', firstKeyId: 'k0' }],
+      trackId: 'track-a',
+    });
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    expect(built.payload.sourceTrackId).toBe('track-a');
+    // Legacy payloads (no track context) keep the empty source identity so
+    // pre-46-03 callers never trigger cross-track re-pointing.
+    const legacy = buildRotoRailSetCopyPayload({
+      document,
+      members: [{ kind: 'key-rail', firstKeyId: 'k0' }],
+    });
+    expect(legacy.ok).toBe(true);
+    if (!legacy.ok) throw new Error(`Payload must build: ${legacy.reason}`);
+    expect(legacy.payload.sourceTrackId).toBe('');
+  });
+
+  it('cross-track paste re-points a Hold Loop Clip source onto the destination track\'s copied frames (D-06: fresh loopId, never a foreign key id)', () => {
+    const sourceDocument = buildDocument(
+      [recordKey('k0', 0)],
+      [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k0'], repeat: 1, mode: 'static' }],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document: sourceDocument,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'loop', loopId: 'hold1' },
+      ],
+      trackId: 'track-a',
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const targetDocument = buildDocument([recordKey('kb0', 0)], []);
+    const pasted = proposeRails({
+      document: targetDocument,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      targetTrackId: 'track-b',
+    });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Cross-track paste must resolve: ${pasted.reason}`);
+    const freshKeyId = pasted.proposal.realKeyRecords.find((record) => record.appFrame === 10)?.keyId;
+    expect(freshKeyId).toBeDefined();
+    expect(freshKeyId).not.toBe('k0');
+    const newClips = pasted.proposal.loopClips.filter((clip) => clip.loopId !== 'hold1');
+    expect(newClips).toHaveLength(1);
+    expect(newClips[0].loopId).not.toBe('hold1');
+    // The reference points at the destination track's copied frame — never back into the source.
+    expect(newClips[0].sourceKeyIds).toEqual([freshKeyId]);
+    expect(newClips[0].sourceKeyIds).not.toContain('k0');
+    // The source document is untouched by the proposal.
+    expect(sourceDocument.loopClips[0].sourceKeyIds).toEqual(['k0']);
+  });
+
+  it('rejects a cross-track paste whose Hold source frames are NOT part of the pasted set (ok:false, zero mutation)', () => {
+    // The loop references k9, which is not among the pasted key rails — the
+    // paste must fail closed rather than produce a dangling/foreign reference.
+    const sourceDocument = buildDocument(
+      [recordKey('k0', 0)],
+      [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k9'], repeat: 1, mode: 'static' }],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document: sourceDocument,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'loop', loopId: 'hold1' },
+      ],
+      trackId: 'track-a',
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const targetDocument = buildDocument([recordKey('kb0', 0)], []);
+    const pasted = proposeRails({
+      document: targetDocument,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      targetTrackId: 'track-b',
+    });
+    expect(pasted.ok).toBe(false);
+    if (pasted.ok) throw new Error('Un-re-pointable paste must reject');
+    expect(pasted.reason).toBe('loop-source-outside-pasted-set');
+    // Zero mutation: no proposal, target byte-identical.
+    expect((pasted as Readonly<{ proposal?: unknown }>).proposal).toBeUndefined();
+    expect(targetDocument.realKeyRecords).toEqual([recordKey('kb0', 0)]);
+    expect(targetDocument.loopClips).toEqual([]);
+  });
+
+  it('same-track paste keeps the loop source references verbatim (shared-source placement, D-07)', () => {
+    const document = buildDocument(
+      [recordKey('k0', 0)],
+      [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k0'], repeat: 1, mode: 'static' }],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'loop', loopId: 'hold1' },
+      ],
+      trackId: 'track-a',
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const pasted = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      targetTrackId: 'track-a',
+    });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Same-track paste must resolve: ${pasted.reason}`);
+    const newClips = pasted.proposal.loopClips.filter((clip) => clip.loopId !== 'hold1');
+    expect(newClips).toHaveLength(1);
+    expect(newClips[0].loopId).not.toBe('hold1');
+    expect(newClips[0].sourceKeyIds).toEqual(['k0']);
   });
 });
