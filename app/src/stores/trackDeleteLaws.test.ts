@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
-import { derivePhysicPaintRotoLoopRanges } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   commitDeleteTrack,
@@ -9,15 +8,11 @@ import {
   registerDocument,
   requestDeleteTrack,
   reset as resetEfxPaintStore,
-  takePendingTrackDeletions,
   _setEfxPaintMarkDirtyCallback,
 } from './efxPaintStore';
 import {
-  getTrackPaintVersion,
   mountTrackRuntime,
   physicPaintStore,
-  removeTrackRuntime,
-  severTrackHoldReferences,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
 
@@ -31,7 +26,6 @@ import {
 const LAYER = 'layer-delete-laws';
 const TRACK_A = 'track-a';
 const TRACK_B = 'track-b';
-const TRACK_C = 'track-c';
 const CAPACITY = 24;
 const INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 

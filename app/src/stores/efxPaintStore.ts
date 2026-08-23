@@ -18,7 +18,7 @@ import type { CachedFrameReference, EfxPaintDocument } from '../efx-paint/docume
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildEfxPaintFrameCachePath } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { physicPaintStore } from './physicPaintStore';
+import { physicPaintStore, removeTrackRuntime } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -85,6 +85,103 @@ export function setActiveTrackId(layerId: string, trackId: string): boolean {
   _documents.set(layerId, next);
   _notifyChange();
   return true;
+}
+
+/**
+ * Acknowledged track-deletion surface (46-05 TRK-07, D-14/D-17): the preview
+ * reports the full destruction surface (frames, clips, Hold references to
+ * sever, last-track flag) BEFORE any mutation; the commit refuses without the
+ * explicit acknowledgement, refuses the last surviving Paint track, and
+ * otherwise performs the exact per-track teardown through 46-01's
+ * `removeTrackRuntime` plus a rebuilt document.
+ */
+export interface TrackDeletePreview {
+  readonly layerId: string;
+  readonly trackId: string;
+  /** Real-key runtime frame count of the deleted track (D-14 dialog surface). */
+  readonly frameCount: number;
+  /** Loop Clip record count owned by the deleted track. */
+  readonly loopClipCount: number;
+  /** Number of Hold Loop Clips on surviving tracks referencing the deleted track's keyIds (D-16). */
+  readonly holdReferenceCount: number;
+  readonly isLastTrack: boolean;
+}
+
+/** Count every surviving track's Hold clips referencing the deleted track's keyIds. */
+function _countHoldReferencesToTrack(layerId: string, trackId: string, document: EfxPaintDocument): number {
+  const deletedKeyIds = new Set(
+    physicPaintStore.getRotoRealKeyRecords(layerId, trackId).map((record) => record.keyId),
+  );
+  if (deletedKeyIds.size === 0) return 0;
+  let count = 0;
+  for (const survivor of document.tracks) {
+    if (survivor.id === trackId) continue;
+    for (const clip of physicPaintStore.getRotoPhysicalLoopClips(layerId, survivor.id)) {
+      if (clip.sourceKeyIds.some((keyId) => deletedKeyIds.has(keyId))) count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Compute the acknowledged-deletion preview for one internal track, or null
+ * when the document or the track is absent. Pure read — never mutates the
+ * document or the runtime (D-14: the destruction surface is known before any
+ * mutation; ASVS V4).
+ */
+export function requestDeleteTrack(layerId: string, trackId: string): TrackDeletePreview | null {
+  const document = getDocument(layerId);
+  if (!document) return null;
+  if (!document.tracks.some((track) => track.id === trackId)) return null;
+  return {
+    layerId,
+    trackId,
+    frameCount: physicPaintStore.getFrames(layerId, trackId).size,
+    loopClipCount: physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId).length,
+    holdReferenceCount: _countHoldReferencesToTrack(layerId, trackId, document),
+    isLastTrack: document.tracks.length === 1,
+  };
+}
+
+/**
+ * Commit the acknowledged deletion of exactly one internal track (46-05
+ * TRK-07). Refuses fail-closed without `acknowledged`, for an unknown track,
+ * and for the last surviving Paint track (D-17 — the document always keeps at
+ * least one Paint track; a refused delete writes nothing and the active track
+ * never moves). A committed delete tears down the track's complete runtime
+ * through 46-01 `removeTrackRuntime` (frames, records, loopClips, caches,
+ * selection/cursor, leases, structural memo), rebuilds the document without
+ * the track, re-points `activeTrackId` to the nearest adjacent survivor by
+ * document order (the next track if any, else the previous — D-18), and fires
+ * the dirty callback exactly once.
+ */
+export function commitDeleteTrack(
+  layerId: string,
+  trackId: string,
+  acknowledged: boolean,
+): { ok: true } | { ok: false; error: string } {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  if (!document.tracks.some((track) => track.id === trackId)) return { ok: false, error: 'unknown track' };
+  if (!acknowledged) return { ok: false, error: 'delete not acknowledged' };
+  if (document.tracks.length === 1) return { ok: false, error: 'last-track' };
+
+  removeTrackRuntime(layerId, trackId);
+
+  const deletedIndex = document.tracks.findIndex((track) => track.id === trackId);
+  const remainingTracks = document.tracks.filter((track) => track.id !== trackId);
+  const nextActiveTrackId = document.activeTrackId === trackId
+    ? remainingTracks[deletedIndex]?.id ?? remainingTracks[deletedIndex - 1]?.id ?? document.activeTrackId
+    : document.activeTrackId;
+  const next: EfxPaintDocument = {
+    ...document,
+    activeTrackId: nextActiveTrackId,
+    tracks: remainingTracks,
+    documentRevision: document.documentRevision + 1,
+  };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true };
 }
 
 /** Empty the store and bump the version signal (project close hook). */
