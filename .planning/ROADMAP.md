@@ -200,7 +200,17 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
   3. No legacy one-track schema reader, converter, renderer, cache path, or compatibility branch remains reachable.
   4. Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity.
   5. Main-editor sequence timing and outer layer composition remain unchanged.
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+- [ ] 45-01-PLAN.md — v1.0 document model: types, factory, fail-closed parsers, deterministic revisions (TDD)
+- [ ] 45-02-PLAN.md — Rust+TS serde co-change (efx_paint_documents), v1.0 cache dir + native cache service re-point
+- [ ] 45-03-PLAN.md — Clean-break rejection gate predicate + fixture truth table (TDD)
+- [ ] 45-04-PLAN.md — efxPaintStore + efxPaintPersistence: staging/commit save, runtime↔default-track projection, path safety
+- [ ] 45-05-PLAN.md — Open/save funnel cutover: gate + blocking dialog, save-path switch, version 16, AddFxMenu registration
+- [ ] 45-06-PLAN.md — v1.0 session-file format, bridge launch-context swap, standalone engine re-wire (D-03)
+- [ ] 45-07-PLAN.md — Legacy hard deletion + DOC-04 grep contract audit + full gates
+- [ ] 45-08-PLAN.md — D-10 four-part native UAT (blocking checkpoint)
 
 ### Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 **Goal**: Move editable and generated state from parent-layer/frame addressing to parent-document/internal-track/frame addressing.
@@ -309,7 +319,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
-| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 0/TBD | Not started | - |
+| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 0/8 | Planned | - |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 0/TBD | Not started | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 0/TBD | Not started | - |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |
