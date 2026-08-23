@@ -22,7 +22,6 @@ import type { PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { _setPhysicPaintMarkDirtyCallback, physicPaintStore } from '../../stores/physicPaintStore';
 import {
   _setEfxPaintMarkDirtyCallback,
-  getDocument,
   hydrateRuntimeFromDocument,
   registerDocument,
   reset,
