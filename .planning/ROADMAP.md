@@ -191,119 +191,163 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 ## Phase Details
 
 ### Phase 45: New EFX Paint Document and Clean Cutover
+
 **Goal**: Introduce the new parent-owned EFX Paint document as the only supported Paint runtime and persistence format, with explicit pre-v1.0 rejection.
 **Depends on**: Nothing (first phase of v1.0.0)
 **Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
 **Success Criteria** (what must be TRUE):
+
   1. Creating a new v1.0 parent Paint layer produces exactly one EFX Paint document with one default Paint track and one fixed Background track with the configured fallback.
   2. Opening a pre-v1.0 Paint project fails explicitly as unsupported with no partial mutation or fallback rendering.
   3. No legacy one-track schema reader, converter, renderer, cache path, or compatibility branch remains reachable.
   4. Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity.
   5. Main-editor sequence timing and outer layer composition remain unchanged.
+
 **Plans**: 8 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 45-01-PLAN.md — v1.0 document model: types, factory, fail-closed parsers, deterministic revisions (TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 45-02-PLAN.md — Rust+TS serde co-change (efx_paint_documents), v1.0 cache dir + native cache service re-point
 - [ ] 45-03-PLAN.md — Clean-break rejection gate predicate + fixture truth table (TDD)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 45-04-PLAN.md — efxPaintStore + efxPaintPersistence: staging/commit save, runtime↔default-track projection, path safety
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 45-05-PLAN.md — Open/save funnel cutover: gate + blocking dialog, save-path switch, version 16, AddFxMenu registration
 - [ ] 45-06-PLAN.md — v1.0 session-file format, bridge launch-context swap, standalone engine re-wire (D-03)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 45-07-PLAN.md — Legacy hard deletion + DOC-04 grep contract audit + full gates
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 45-08-PLAN.md — D-10 four-part native UAT (blocking checkpoint)
 
 ### Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
+
 **Goal**: Move editable and generated state from parent-layer/frame addressing to parent-document/internal-track/frame addressing.
 **Depends on**: Phase 45
 **Requirements**: TRK-01, TRK-02, TRK-03, TRK-04, TRK-05, TRK-06, TRK-07, TRK-08
 **Success Criteria** (what must be TRUE):
+
   1. Editing one internal track never changes another track's real keys or caches.
   2. Stale async PlayScript/Reveal work cannot commit to another selected track (fail-closed on parent/document/track revision mismatch).
   3. Track deletion cannot orphan accepted assets silently (acknowledged/fail-closed deletion).
   4. Copy/cut/paste/duplicate/clear/undo/redo operations target the exact internal track.
   5. Editing one Hold source frame updates every linked occurrence without duplicating assets.
+
 **Plans**: TBD
 
 ### Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
+
 **Goal**: Provide a vertically scrollable multi-row Paint timeline inside EFX Paint Studio with track CRUD, active selection, hide/solo, opacity/blend, and filmstrip capsules.
 **Depends on**: Phase 46
 **Requirements**: TML-01, TML-02, TML-03, TML-04, TML-05, TML-06, TML-07, TML-08
 **Success Criteria** (what must be TRUE):
+
   1. User can add, rename, duplicate, delete, and reorder internal Paint tracks in a vertically scrollable multi-row timeline; track CRUD survives save/reopen.
   2. The active Paint track is always visually unambiguous; Paint/Roto/PlayScript/Cut/Copy/Paste/drag route to the active track.
   3. User can hide/solo Paint tracks and set internal track opacity and blend mode; hide/solo is immediately reflected in the Studio composite.
   4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
   5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 48: Internal Compositor and Flattened Parent Result
+
 **Goal**: Resolve all internal Paint tracks into one deterministic per-frame raster consumed by the unchanged main-editor parent-layer compositor.
 **Depends on**: Phase 47
 **Requirements**: CMP-01, CMP-02, CMP-03, CMP-04, CMP-05, CMP-06
 **Success Criteria** (what must be TRUE):
+
   1. All internal Paint tracks resolve through one shared composition path into one deterministic flattened parent raster per frame, identical in Studio preview, main preview, and export.
   2. The hide/solo truth table is applied (no solo → all visible; solo → visible+soloed only; hide wins over solo).
   3. Internal track opacity and blend mode are applied once inside EFX Paint; parent opacity/blend is applied once by the main editor (never double-applied).
   4. Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes.
   5. The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend).
+
 **Plans**: TBD
 
 ### Phase 49: Fixed Background Track and Imported Loop Clips
+
 **Goal**: Add one fixed Background row beneath all internal Paint tracks with imported still/sequence Loop Clips, finite/infinite repeat, gaps, and fallback.
 **Depends on**: Phase 48
 **Requirements**: BKG-01, BKG-02, BKG-03, BKG-04, BKG-05, BKG-06, BKG-07, BKG-08, BKG-09
 **Success Criteria** (what must be TRUE):
+
   1. User can import one still image or an ordered image sequence as a Background clip on the single fixed Background track beneath all Paint tracks.
   2. A five-image cycle repeated three times resolves 15 frames while storing only five linked source images; a ten-image cycle repeated twice starting at 15 resolves frames 15-34 ending at exclusive frame 35.
   3. Finite and infinite loops stop cleanly at the next clip or parent end; a next clip can shorten a loop to a partial cycle without overlap or asset duplication, and moving/removing it recalculates the previous loop deterministically.
   4. Gaps reveal the document fallback (solid color or transparency) identically in Studio, flattened parent output, main preview, and export.
   5. Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen.
+
 **Plans**: TBD
 
 ### Phase 50: Photo/Reference Track
+
 **Goal**: Add one durable source track used for painting reference, Reveal source, and accepted masked-transform workflows without turning it into a main-editor content track.
 **Depends on**: Phase 49
 **Requirements**: REF-01, REF-02, REF-03, REF-04, REF-05
 **Success Criteria** (what must be TRUE):
+
   1. User can add one photo/reference track with stable source identity and revision.
   2. User can switch the photo/reference track between reference-only, reveal-source, and masked-transform-source modes.
   3. Toggling reference-only visibility never alters ordinary flattened Paint output.
   4. Missing source is visible and recoverable; source revision invalidates dependent Reveal/transformation results.
   5. Save/reopen preserves source identity and mode.
+
 **Plans**: TBD
 
 ### Phase 51: Read-only Audio Preview
+
 **Goal**: Preserve synchronized listening to main-editor audio while playing the EFX Paint multi-track frame document.
 **Depends on**: Phase 47 (shared application-frame cursor)
 **Requirements**: AUD-01, AUD-02, AUD-03, AUD-04
 **Success Criteria** (what must be TRUE):
+
   1. Main-editor audio remains authoritative and read-only during EFX Paint playback.
   2. All internal Paint tracks share one application-frame playback cursor; audio monitoring follows it.
   3. Local monitoring On/Off does not mutate source audio; closing Studio releases audio resources.
   4. Multi-track Paint playback remains synchronized with main-editor audio across seek, loop, pause, resume, and stop.
+
 **Plans**: TBD
 
 ### Phase 52: Shared Mask Compositor and Reveal
+
 **Goal**: Reveal the photo/reference source through animated coverage from one or more internal Paint tracks.
 **Depends on**: Phase 50
 **Requirements**: RVL-01, RVL-02, RVL-03, RVL-04, RVL-05, RVL-06
 **Success Criteria** (what must be TRUE):
+
   1. One offscreen source-plus-mask compositor shared by Studio and flattened output reveals the photo source through internal Paint/PlayScript coverage.
   2. Empty mask reveals nothing; full mask reveals the entire source; partial alpha produces soft edges; eraser removes coverage.
   3. Progressive PlayScript reveals progressively; static/hold PlayScript preserves the completed reveal.
   4. Reveal result is written to or represented by an internal Paint/result track and included in flattened output; photo reference visibility alone never leaks into output.
   5. Undo/redo by reference (not raster-byte snapshots); save/reopen and export preserve the result.
+
 **Plans**: TBD
 
 ### Phase 53: Integrated v1.0.0 Acceptance
+
 **Goal**: The enforcement backstop for all stop conditions — automated gates, native UAT, and signed/notarized release.
 **Depends on**: Phase 52
 **Requirements**: ACC-01, ACC-02, ACC-03
 **Success Criteria** (what must be TRUE):
+
   1. All automated gates pass (vitest, typecheck, build, cargo test, release script preflight).
   2. Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity).
   3. Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication.
+
 **Plans**: TBD
 
 ## Progress
