@@ -18,7 +18,7 @@ import type { CachedFrameReference, EfxPaintDocument } from '../efx-paint/docume
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildEfxPaintFrameCachePath } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { physicPaintStore, removeTrackRuntime } from './physicPaintStore';
+import { physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -148,12 +148,16 @@ export function requestDeleteTrack(layerId: string, trackId: string): TrackDelet
  * TRK-07). Refuses fail-closed without `acknowledged`, for an unknown track,
  * and for the last surviving Paint track (D-17 — the document always keeps at
  * least one Paint track; a refused delete writes nothing and the active track
- * never moves). A committed delete tears down the track's complete runtime
+ * never moves). A committed delete severs every surviving Hold Loop Clip
+ * referencing the deleted track's keyIds (D-16, resolver answers
+ * 'linked-unresolved' afterwards), tears down the track's complete runtime
  * through 46-01 `removeTrackRuntime` (frames, records, loopClips, caches,
  * selection/cursor, leases, structural memo), rebuilds the document without
- * the track, re-points `activeTrackId` to the nearest adjacent survivor by
- * document order (the next track if any, else the previous — D-18), and fires
- * the dirty callback exactly once.
+ * the track re-projecting every surviving track from the runtime (the
+ * runtime is the authority; the severed Hold refs stay verbatim, D-31),
+ * re-points `activeTrackId` to the nearest adjacent survivor by document
+ * order (the next track if any, else the previous — D-18), and fires the
+ * dirty callback exactly once.
  */
 export function commitDeleteTrack(
   layerId: string,
@@ -166,17 +170,31 @@ export function commitDeleteTrack(
   if (!acknowledged) return { ok: false, error: 'delete not acknowledged' };
   if (document.tracks.length === 1) return { ok: false, error: 'last-track' };
 
+  severTrackHoldReferences(layerId, trackId);
   removeTrackRuntime(layerId, trackId);
 
   const deletedIndex = document.tracks.findIndex((track) => track.id === trackId);
   const remainingTracks = document.tracks.filter((track) => track.id !== trackId);
+  const projectedTracks = remainingTracks.map((track) => {
+    if (!physicPaintStore.hasTrackRuntime(layerId, track.id)) return track;
+    const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+    const frames: Record<number, CachedFrameReference> = {};
+    for (const [appFrame, frame] of runtime.frames) {
+      frames[appFrame] = {
+        cachePath: buildEfxPaintFrameCachePath(layerId, track.id, frame),
+        width: frame.width ?? 0,
+        height: frame.height ?? 0,
+      };
+    }
+    return { ...track, frames, rotoPhysical: runtime.rotoPhysical };
+  });
   const nextActiveTrackId = document.activeTrackId === trackId
-    ? remainingTracks[deletedIndex]?.id ?? remainingTracks[deletedIndex - 1]?.id ?? document.activeTrackId
+    ? projectedTracks[deletedIndex]?.id ?? projectedTracks[deletedIndex - 1]?.id ?? document.activeTrackId
     : document.activeTrackId;
   const next: EfxPaintDocument = {
     ...document,
     activeTrackId: nextActiveTrackId,
-    tracks: remainingTracks,
+    tracks: projectedTracks,
     documentRevision: document.documentRevision + 1,
   };
   _documents.set(layerId, next);

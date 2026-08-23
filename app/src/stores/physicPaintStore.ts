@@ -191,6 +191,35 @@ export function removeTrackRuntime(layerId: string, trackId: string): boolean {
   return changed;
 }
 
+/**
+ * Sever every surviving track's Hold Loop Clip that references the deleted
+ * track's keyIds (46-05 TRK-07 D-16 / T-46-14). Returns the number of Hold
+ * clips severed. The clip records keep their sourceKeyIds verbatim — the
+ * canonical clip guard rejects the empty-refs form, and dangling refs are
+ * legal and repairable (D-31); the resolver's 'linked-unresolved' path is
+ * the only answer the severed cells can produce (D-13 fail-closed). The
+ * affected tracks' loop-clip arrays are replaced (identity change) so their
+ * structural memo recomputes the loop ranges against the post-delete world.
+ * Must run BEFORE the deleted track's records are torn down (it reads the
+ * deleted track's keyIds to know what to sever).
+ */
+export function severTrackHoldReferences(layerId: string, deletedTrackId: string): number {
+  const deletedKeyIds = new Set(_rotoRealKeyRecords.get(layerId)?.get(deletedTrackId)?.keys() ?? []);
+  if (deletedKeyIds.size === 0) return 0;
+  const loopClipTracks = _rotoPhysicalLoopClips.get(layerId);
+  if (!loopClipTracks) return 0;
+  let severed = 0;
+  for (const [trackId, clips] of loopClipTracks) {
+    if (trackId === deletedTrackId) continue;
+    const affected = clips.some((clip) => clip.sourceKeyIds.some((keyId) => deletedKeyIds.has(keyId)));
+    if (!affected) continue;
+    severed += 1;
+    loopClipTracks.set(trackId, clips.map((clip) => ({ ...clip })));
+    _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
+  }
+  return severed;
+}
+
 export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery';
 
 export interface PhysicPaintRotoPhysicalOperationLeaseToken {
