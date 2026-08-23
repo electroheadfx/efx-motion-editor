@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   EFX_PAINT_CACHE_DIR,
@@ -156,11 +157,24 @@ function seedTrack(
 
 /** Install loop clips directly through the document-install port (bypasses the
  *  46-06 Task 3 creation gate — legitimate for D-31 dangling/cross-track
- *  fixtures; the same seam hydration and Hold severing use). */
+ *  fixtures; the same seam hydration and Hold severing use). The canonical
+ *  revision is recomputed for the replaced loop collection (the parse port
+ *  rejects a stale revision fingerprint). */
 function installTrackLoops(trackId: string, loops: readonly PhysicPaintRotoLoopClip[]): void {
   const current = physicPaintStore.getRotoPhysicalDocument(LAYER, trackId);
   if (!current) throw new Error(`No runtime for ${trackId}`);
-  const installed = physicPaintStore.replaceRotoPhysicalDocument(LAYER, trackId, { ...current, loopClips: loops });
+  const revision = buildPhysicPaintRotoPhysicalRevision(
+    current.realKeyRecords,
+    current.interpolation,
+    loops,
+    current.incomingInterpolationBreakKeyIds,
+    current.groupOverrideRecords ?? [],
+  );
+  const installed = physicPaintStore.replaceRotoPhysicalDocument(LAYER, trackId, {
+    ...current,
+    loopClips: loops,
+    revision,
+  });
   if (!installed.ok) throw new Error(`Install loops failed for ${trackId}: ${installed.error}`);
 }
 

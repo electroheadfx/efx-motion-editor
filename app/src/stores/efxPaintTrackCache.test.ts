@@ -3,11 +3,9 @@ import {
   physicPaintStore,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
-import * as physicalModelModule from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import * as physicalResolverModule from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { resolvePhysicPaintRotoLoopFrame } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type {
-  PhysicPaintRotoInterpolationState,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';

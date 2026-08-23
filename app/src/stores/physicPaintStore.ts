@@ -2025,6 +2025,30 @@ export const physicPaintStore = {
   },
 
   /**
+   * 46-06 Task 3 (TRK-08 / D-13, T-46-16): fail-closed Hold clip refs
+   * validation. A Hold clip's source refs are validated against the OWNING
+   * track's real-key map only — never a cross-track lookup. An empty ref
+   * list closes 'empty-source-refs'; any ref whose keyId is absent from the
+   * track's own real-key map closes 'foreign-source-refs'. Callers (the
+   * clip-replacement surface, 46-03 re-pointing as its second gate after
+   * fresh-identity allocation) gate on this before any persist.
+   */
+  validateTrackHoldLoopClipRefs(
+    layerId: string,
+    trackId: string,
+    clip: { readonly sourceFrameRefs: readonly string[]; readonly sourceKind: string },
+  ): { ok: true } | { ok: false; error: 'empty-source-refs' | 'foreign-source-refs' } {
+    if (!Array.isArray(clip.sourceFrameRefs) || clip.sourceFrameRefs.length === 0) {
+      return { ok: false, error: 'empty-source-refs' };
+    }
+    const recordMap = _rotoRealKeyRecords.get(layerId)?.get(trackId);
+    for (const keyId of clip.sourceFrameRefs) {
+      if (!recordMap?.has(keyId)) return { ok: false, error: 'foreign-source-refs' };
+    }
+    return { ok: true };
+  },
+
+  /**
    * Validate and atomically replace the complete per-track Loop Clip
    * collection (Phase 43, D-29). Records and interpolation are untouched.
    * Failure changes nothing; an accepted change publishes one visible change
@@ -2043,6 +2067,23 @@ export const physicPaintStore = {
     }
     if (!_rotoRealKeyRecords.get(layerId)?.has(trackId)) {
       return { ok: false, error: 'Physical Roto layer does not exist.' };
+    }
+    // 46-06 Task 3 (D-13, T-46-16): a Hold (static-mode) clip creation with
+    // empty or foreign refs fails closed BEFORE parse-persist with the typed
+    // reason — the owning track's own real-key map is the only authority
+    // (ASVS V5). Only record-shaped elements are scanned; malformed elements
+    // fall through to the parse's own error.
+    if (Array.isArray(value)) {
+      for (const candidate of value) {
+        if (typeof candidate !== 'object' || candidate === null || candidate.mode !== 'static') continue;
+        if (Array.isArray(candidate.sourceKeyIds)) {
+          const refsCheck = this.validateTrackHoldLoopClipRefs(layerId, trackId, {
+            sourceFrameRefs: candidate.sourceKeyIds,
+            sourceKind: 'playscript-hold',
+          });
+          if (!refsCheck.ok) return { ok: false, error: refsCheck.error };
+        }
+      }
     }
     let validated: readonly PhysicPaintRotoLoopClip[];
     try {
