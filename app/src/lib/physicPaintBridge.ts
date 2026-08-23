@@ -355,7 +355,19 @@ function applyPhysicPaintPayloadWithPublicationLease(
           trackId: payload.trackId,
         });
         if (!authority.ok) return applyFailureResult(payload, authority.error ?? 'Roto authority rejected the batch.');
-        if (authority.layerEndExclusive !== payload.expectedLayerEndExclusive || authority.rotoRevision !== payload.expectedRotoRevision) return applyFailureResult(payload, 'Roto authority became stale before commit.');
+        // 46-04 Task 2: capture-then-revalidate commit gate (T-46-10) — the
+        // commit lands on the captured payload.trackId, never the live active
+        // track; every captured deterministic term (trackId, trackRevision,
+        // documentRevision) must revalidate against the current authority.
+        if (
+          authority.layerEndExclusive !== payload.expectedLayerEndExclusive ||
+          authority.rotoRevision !== payload.expectedRotoRevision ||
+          authority.trackId !== payload.trackId ||
+          (payload.expectedTrackRevision !== undefined && authority.trackRevision !== payload.expectedTrackRevision) ||
+          (payload.expectedDocumentRevision !== undefined && authority.documentRevision !== payload.expectedDocumentRevision)
+        ) {
+          return applyFailureResult(payload, 'Roto authority became stale before commit.');
+        }
         if (payload.frameCount <= 0 || payload.frameCount > authority.capacity) return applyFailureResult(payload, 'Play Script exceeds the current layer capacity.');
         const incomingSources = payload.frames.map((frame) => frame.sourceFrame ?? frame.appFrame);
         if (new Set(incomingSources).size !== incomingSources.length) return applyFailureResult(payload, 'Play Script batch contains duplicate real keys.');

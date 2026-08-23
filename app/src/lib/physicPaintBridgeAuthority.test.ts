@@ -11,7 +11,7 @@ import {
   buildEfxPaintDocumentRevision,
   buildEfxPaintTrackRevision,
 } from '../efx-paint/document/efxPaintDocumentRevision';
-import { isPhysicPaintRotoAuthorityRequest } from '../types/physicPaint';
+import { isPhysicPaintRotoAuthorityRequest, type PhysicPaintRotoAuthorityResult } from '../types/physicPaint';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoPhysicalDocument,

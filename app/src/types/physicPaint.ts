@@ -1803,6 +1803,10 @@ export interface PhysicPaintReplaceRotoKeyFramesPayload {
   frameCount?: number;
   expectedLayerEndExclusive?: number;
   expectedRotoRevision?: string;
+  /** 46-04: captured deterministic track revision the commit gate revalidates (capture-then-revalidate, T-46-10). */
+  expectedTrackRevision?: string;
+  /** 46-04: captured deterministic document revision the commit gate revalidates (capture-then-revalidate). */
+  expectedDocumentRevision?: string;
   frames: PhysicPaintRotoCacheFrame[];
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
@@ -2019,6 +2023,8 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       (value.frameCount === undefined || optionalFrameCount(value.frameCount)) &&
       optionalNonNegativeInteger(value.expectedLayerEndExclusive) &&
       (value.expectedRotoRevision === undefined || isNonEmptyString(value.expectedRotoRevision)) &&
+      (value.expectedTrackRevision === undefined || isNonEmptyString(value.expectedTrackRevision)) &&
+      (value.expectedDocumentRevision === undefined || isNonEmptyString(value.expectedDocumentRevision)) &&
       optionalRotoBackgroundMetadata(value.rotoBackground) &&
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings);
   }
