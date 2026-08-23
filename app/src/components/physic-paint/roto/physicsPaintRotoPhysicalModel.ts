@@ -39,6 +39,13 @@ import type {
   PhysicPaintRenderedFrame,
   PhysicPaintRotoBackgroundMetadata,
 } from '../../../types/physicPaint';
+import {
+  encodeCanonicalNumber,
+  encodeCanonicalOptionalNumber,
+  encodeCanonicalString,
+  hashCanonicalPhysicalValue,
+  validatedBoolean,
+} from '../../../efx-paint/document/efxPaintCanonicalEncoder';
 
 /**
  * Stable durable real-key identity.
@@ -1237,22 +1244,6 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   });
 }
 
-function encodeCanonicalString(value: string): string {
-  return `s${value.length}:${value};`;
-}
-
-function encodeCanonicalNumber(value: number): string {
-  return `n${String(value)};`;
-}
-
-function encodeCanonicalOptionalNumber(value: number | undefined): string {
-  return value === undefined ? 'u;' : encodeCanonicalNumber(value);
-}
-
-function validatedBoolean(value: boolean): string {
-  return value ? '1;' : '0;';
-}
-
 function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | null): string {
   if (value === null) return 'null;';
   return [
@@ -1261,13 +1252,4 @@ function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | nu
     encodeCanonicalNumber(value.grainStrength),
     value.color === undefined ? 'u;' : encodeCanonicalString(value.color),
   ].join('');
-}
-
-function hashCanonicalPhysicalValue(source: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `${source.length}-${(hash >>> 0).toString(16)}`;
 }

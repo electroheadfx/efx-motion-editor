@@ -1,0 +1,157 @@
+/**
+ * Deterministic document/track/composite revision builders (Phase 45-01
+ * Task 3).
+ *
+ * Mirrors the canonical encoding of `buildPhysicPaintRotoPhysicalRevision`:
+ * validate-then-hash; records sorted by stable identity (track id
+ * localeCompare); strings length-prefixed to prevent delimiter collisions;
+ * empty additive collections (frames, loopClips, background clips)
+ * contribute NO term (D-29 idiom). The fingerprint is a non-cryptographic
+ * change-detection lease, not a security boundary.
+ */
+
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+} from '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  encodeCanonicalNumber,
+  encodeCanonicalString,
+  hashCanonicalPhysicalValue,
+  validatedBoolean,
+} from './efxPaintCanonicalEncoder';
+import type {
+  BackgroundFallback,
+  EfxPaintDocument,
+  FrameLoopClip,
+  InternalPaintTrack,
+} from './efxPaintDocument';
+import { parseEfxPaintDocument, parseInternalPaintTrack } from './efxPaintDocumentParsers';
+
+function encodeCanonicalBackgroundFallback(fallback: BackgroundFallback): string {
+  if (fallback.mode === 'transparent') return 'transparent;';
+  return `solid:${encodeCanonicalString(fallback.color)}`;
+}
+
+function encodeCanonicalLoopClips(clips: readonly FrameLoopClip[]): string {
+  const ordered = [...clips].sort((a, b) => a.id.localeCompare(b.id));
+  return `${ordered.length}:${ordered.map((clip) => [
+    encodeCanonicalString(clip.id),
+    encodeCanonicalNumber(clip.startFrame),
+    `${clip.sourceFrameRefs.length}:${clip.sourceFrameRefs.map(encodeCanonicalString).join('')}`,
+    clip.repeat.mode === 'finite'
+      ? `finite:${encodeCanonicalNumber(clip.repeat.count)}`
+      : 'infinite;',
+    encodeCanonicalString(clip.sourceKind),
+    encodeCanonicalNumber(clip.revision),
+  ].join('')).join('')}`;
+}
+
+function encodeValidatedEfxPaintTrackContent(track: InternalPaintTrack): string {
+  const frameNumbers = Object.keys(track.frames).map(Number).sort((a, b) => a - b);
+  const framesTerm = frameNumbers.length > 0
+    ? `frames:${frameNumbers.length}:${frameNumbers.map((frame) => {
+        const ref = track.frames[frame];
+        return [
+          encodeCanonicalNumber(frame),
+          encodeCanonicalString(ref.cachePath),
+          encodeCanonicalNumber(ref.width),
+          encodeCanonicalNumber(ref.height),
+        ].join('');
+      }).join('')}`
+    : '';
+  const loopsTerm = track.loopClips.length > 0
+    ? `loops:${encodeCanonicalLoopClips(track.loopClips)}`
+    : '';
+  const rotoTerm = track.rotoPhysical === null
+    ? 'roto:null;'
+    : `roto:${buildPhysicPaintRotoPhysicalRevision(
+        track.rotoPhysical.realKeyRecords,
+        track.rotoPhysical.interpolation,
+        track.rotoPhysical.loopClips,
+        track.rotoPhysical.incomingInterpolationBreakKeyIds,
+        track.rotoPhysical.groupOverrideRecords,
+      )}`;
+  return [
+    `id:${encodeCanonicalString(track.id)}`,
+    `name:${encodeCanonicalString(track.name)}`,
+    `order:${encodeCanonicalNumber(track.order)}`,
+    `visible:${validatedBoolean(track.visible)}`,
+    `solo:${validatedBoolean(track.solo)}`,
+    `opacity:${encodeCanonicalNumber(track.opacity)}`,
+    `blend:${encodeCanonicalString(track.blendMode)}`,
+    `revision:${encodeCanonicalNumber(track.revision)}`,
+    framesTerm,
+    loopsTerm,
+    rotoTerm,
+  ].join('');
+}
+
+function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): string {
+  const orderedTracks = [...document.tracks].sort((a, b) => a.id.localeCompare(b.id));
+  const tracksTerm = `tracks:${orderedTracks.length}:${orderedTracks.map(encodeValidatedEfxPaintTrackContent).join('')}`;
+  const clipsTerm = document.background.clips.length > 0
+    ? `clips:${encodeCanonicalLoopClips(document.background.clips)}`
+    : '';
+  return [
+    `version:${encodeCanonicalNumber(document.version)}`,
+    `parent:${encodeCanonicalString(document.parentLayerId)}`,
+    `docrev:${encodeCanonicalNumber(document.documentRevision)}`,
+    `active:${encodeCanonicalString(document.activeTrackId)}`,
+    tracksTerm,
+    `bg:${encodeCanonicalString(document.background.id)}`,
+    clipsTerm,
+    `fallback:${encodeCanonicalBackgroundFallback(document.background.fallback)}`,
+    `bgvisible:${validatedBoolean(document.background.visible)}`,
+    `bgrevision:${encodeCanonicalNumber(document.background.revision)}`,
+    'photo:null;',
+    `composite:${encodeCanonicalNumber(document.compositeRevision)}`,
+  ].join('');
+}
+
+/**
+ * Compute the deterministic document revision for a validated
+ * {@link EfxPaintDocument}. Equal content yields equal revisions regardless
+ * of JSON member insertion order; empty additive collections contribute no
+ * term. Throws a closed validation failure on any invalid input.
+ */
+export function buildEfxPaintDocumentRevision(value: unknown): string {
+  const document = parseEfxPaintDocument(value);
+  const source = encodeValidatedEfxPaintDocumentContent(document);
+  return `efxdoc-${hashCanonicalPhysicalValue(source)}`;
+}
+
+/**
+ * Compute the deterministic revision of one internal Paint track. Equal
+ * track content yields equal revisions regardless of member order.
+ */
+export function buildEfxPaintTrackRevision(value: unknown): string {
+  const track = parseInternalPaintTrack(value);
+  const source = encodeValidatedEfxPaintTrackContent(track);
+  return `track-${hashCanonicalPhysicalValue(source)}`;
+}
+
+/**
+ * Compute the deterministic composite revision of a document: the
+ * compositor-relevant configuration (track order, visibility, solo, opacity,
+ * blend mode, background visibility and fallback). Equal configuration
+ * yields equal revisions regardless of member order.
+ */
+export function buildEfxPaintCompositeRevision(value: unknown): string {
+  const document = parseEfxPaintDocument(value);
+  const orderedTracks = [...document.tracks].sort((a, b) => a.id.localeCompare(b.id));
+  const tracksTerm = orderedTracks.map((track) => [
+    encodeCanonicalString(track.id),
+    encodeCanonicalNumber(track.order),
+    validatedBoolean(track.visible),
+    validatedBoolean(track.solo),
+    encodeCanonicalNumber(track.opacity),
+    encodeCanonicalString(track.blendMode),
+  ].join('')).join('');
+  const backgroundTerm = [
+    encodeCanonicalString(document.background.id),
+    validatedBoolean(document.background.visible),
+    encodeCanonicalBackgroundFallback(document.background.fallback),
+  ].join('');
+  const source = `tracks:${orderedTracks.length}:${tracksTerm}bg:${backgroundTerm}`;
+  return `composite-${hashCanonicalPhysicalValue(source)}`;
+}

@@ -145,7 +145,7 @@ function parseLoopClips(value: unknown): readonly FrameLoopClip[] {
   return Object.freeze(value.map(parseFrameLoopClip));
 }
 
-function parseInternalPaintTrack(value: unknown): InternalPaintTrack {
+export function parseInternalPaintTrack(value: unknown): InternalPaintTrack {
   if (!isPlainRecord(value)) {
     throw new Error('InternalPaintTrack: expected a record.');
   }
