@@ -178,7 +178,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 
 **Milestone Goal:** Allow one parent Paint layer to contain a complete multi-track frame animation document inside EFX Paint — multiple internal Paint frame tracks composited into one flattened parent-layer result. Clean format break; pre-v1.0 Paint data rejected explicitly. Source spec: `SPECS/milestone-v1.0.0-plan.md` (locked).
 
-- [ ] **Phase 45: New EFX Paint Document and Clean Cutover** - Versioned v1.0 document owned by one parent layer, clean-break creation, explicit pre-v1.0 rejection
+- [x] **Phase 45: New EFX Paint Document and Clean Cutover** - Versioned v1.0 document owned by one parent layer, clean-break creation, explicit pre-v1.0 rejection (completed 2026-08-23)
 - [ ] **Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches** - Track-local addressing, revisions, dirty state, and async authority
 - [ ] **Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls** - Multi-row Paint timeline with track CRUD, active selection, hide/solo, opacity/blend
 - [ ] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster
@@ -363,7 +363,7 @@ Plans:
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
-| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 6/8 | In Progress|  |
+| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 0/TBD | Not started | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 0/TBD | Not started | - |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |
