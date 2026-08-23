@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { EFX_PAINT_DOCUMENT_VERSION, createEfxPaintDocument } from './efxPaintDocument';
 import { parseEfxPaintDocument } from './efxPaintDocumentParsers';
+import {
+  buildEfxPaintCompositeRevision,
+  buildEfxPaintDocumentRevision,
+  buildEfxPaintTrackRevision,
+} from './efxPaintDocumentRevision';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -156,5 +161,100 @@ describe('parseEfxPaintDocument fail-closed behavior', () => {
       version: 1,
     }));
     expect(parseEfxPaintDocument(reordered)).toEqual(canonical);
+  });
+});
+
+describe('revision builders', () => {
+  it('buildEfxPaintDocumentRevision returns a prefixed string and is pure', () => {
+    const document = createEfxPaintDocument('layer-abc');
+    const revision = buildEfxPaintDocumentRevision(document);
+    expect(revision).toMatch(/^efxdoc-\d+-[0-9a-f]+$/);
+    expect(buildEfxPaintDocumentRevision(document)).toBe(revision);
+  });
+
+  it('produces identical revisions for identical content with different member order', () => {
+    const document = createEfxPaintDocument('layer-abc');
+    const canonical = JSON.parse(JSON.stringify(document));
+    const reordered = JSON.parse(JSON.stringify({
+      compositeRevision: 0,
+      photoReference: null,
+      background: {
+        revision: 0,
+        visible: true,
+        fallback: { mode: 'transparent' },
+        clips: [],
+        id: canonical.background.id,
+      },
+      tracks: [{
+        loopClips: [],
+        rotoPhysical: null,
+        frames: {},
+        revision: 0,
+        blendMode: 'normal',
+        opacity: 1,
+        solo: false,
+        visible: true,
+        order: 0,
+        name: 'Track 1',
+        id: canonical.tracks[0].id,
+      }],
+      activeTrackId: canonical.activeTrackId,
+      documentRevision: 0,
+      parentLayerId: 'layer-abc',
+      version: 1,
+    }));
+    expect(buildEfxPaintDocumentRevision(reordered)).toBe(buildEfxPaintDocumentRevision(canonical));
+  });
+
+  it('is sensitive to track id, track revision, fallback mode, and activeTrackId', () => {
+    const base = createEfxPaintDocument('layer-abc');
+    const baseRevision = buildEfxPaintDocumentRevision(base);
+
+    const withNewTrackId = JSON.parse(JSON.stringify(base));
+    withNewTrackId.tracks[0].id = 'track-2';
+    withNewTrackId.activeTrackId = 'track-2';
+    expect(buildEfxPaintDocumentRevision(withNewTrackId)).not.toBe(baseRevision);
+
+    const withTrackRevision = JSON.parse(JSON.stringify(base));
+    withTrackRevision.tracks[0].revision = 1;
+    expect(buildEfxPaintDocumentRevision(withTrackRevision)).not.toBe(baseRevision);
+
+    const withSolidFallback = JSON.parse(JSON.stringify(base));
+    withSolidFallback.background.fallback = { mode: 'solid', color: '#ff0000' };
+    expect(buildEfxPaintDocumentRevision(withSolidFallback)).not.toBe(baseRevision);
+
+    const twoTrack = JSON.parse(JSON.stringify(base));
+    const secondTrack = JSON.parse(JSON.stringify(base.tracks[0]));
+    secondTrack.id = 'track-2';
+    twoTrack.tracks.push(secondTrack);
+    const withActiveA = buildEfxPaintDocumentRevision(twoTrack);
+    twoTrack.activeTrackId = 'track-2';
+    expect(buildEfxPaintDocumentRevision(twoTrack)).not.toBe(withActiveA);
+  });
+
+  it('treats empty loopClips and frames as contributing no term', () => {
+    const withEmpty = createEfxPaintDocument('layer-abc');
+    const without = JSON.parse(JSON.stringify(withEmpty));
+    delete without.tracks[0].frames;
+    delete without.tracks[0].loopClips;
+    expect(buildEfxPaintDocumentRevision(without)).toBe(buildEfxPaintDocumentRevision(withEmpty));
+  });
+
+  it('builds deterministic, sensitive track and composite revisions', () => {
+    const document = createEfxPaintDocument('layer-abc');
+    const track = document.tracks[0];
+
+    const trackRevision = buildEfxPaintTrackRevision(track);
+    expect(trackRevision).toMatch(/^track-\d+-[0-9a-f]+$/);
+    expect(buildEfxPaintTrackRevision(track)).toBe(trackRevision);
+    const changedTrack = { ...track, revision: 1 };
+    expect(buildEfxPaintTrackRevision(changedTrack)).not.toBe(trackRevision);
+
+    const compositeRevision = buildEfxPaintCompositeRevision(document);
+    expect(compositeRevision).toMatch(/^composite-\d+-[0-9a-f]+$/);
+    expect(buildEfxPaintCompositeRevision(document)).toBe(compositeRevision);
+    const changedComposite = JSON.parse(JSON.stringify(document));
+    changedComposite.tracks[0].opacity = 0.5;
+    expect(buildEfxPaintCompositeRevision(changedComposite)).not.toBe(compositeRevision);
   });
 });
