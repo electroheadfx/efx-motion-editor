@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Phase 45 plan 02 complete
-last_updated: "2026-08-23T17:50:00.000Z"
+stopped_at: Completed 45-03-PLAN.md
+last_updated: "2026-08-23T14:18:17.437Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 45 plan 02 (Rust+TS serde co-change, cache re-point) complete
-state_head: 2f3ec7fc
+state_head: 36d055ada5088f72bb0d989f119e63e289e5bf57
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 2 of 8
-Status: Executing Phase 45
+Plan: 3 of 8
+Status: Ready to execute
 Last activity: 2026-08-23 — Phase 45 plan 02 complete
 
 Progress: [░░░░░░░░░░] 0%
@@ -68,6 +68,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 45 P01 | 135 | 3 tasks | 6 files |
 | Phase 45 P02 | 110 | 3 tasks | 6 files |
+| Phase 45 P03 | 5 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,7 @@ Recent decisions affecting current work:
 - Reveal uses photo source plus internal Paint coverage through one shared mask compositor.
 - [Phase 45]: EfxPaintDocument is the v1.0 identity root: one versioned document per parent layer, stable UUID track IDs, one default Paint track, one fixed Background track with transparent fallback (D-08); shared canonical encoder extracted to efxPaintCanonicalEncoder.ts and re-pointed from the roto physical model
 - [Phase 45 P02]: efx_paint_documents lands in BOTH models/project.rs and types/project.ts in the same commit (F1 co-change, proven by Rust round-trip test); physic_paint_outputs demoted to an opaque Vec<serde_json::Value> presence carrier (D-02/D-06); legacy Rust output structs deleted (DOC-04); create_project_dir creates cache/efx-paint and never cache/physic-paint, legacy dirs byte-untouched (D-04); native cache transaction service re-pointed to cache/efx-paint with .efx-paint-staging- prefix, command surface unchanged (T-45-06)
+- [Phase 45]: The rejection gate is a pure scan over raw parsed .mce JSON: no filesystem, no IPC, no mutation, no throwing on unexpected shapes; fixed precedence outputs → cache-reference → documentless-layer, first match only, reasons terminal (D-07) — Pitfall F2 closed by structure discrimination: a 'physic-paint' layer is a trigger only when the top-level efx_paint_documents map has no entry for its layer id (source.layer_id, falling back to layer.id)
 
 ### Pending Todos
 
@@ -113,6 +115,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T14:01:14.383Z
-Stopped at: Phase 45 context gathered
-Resume file: .planning/phases/45-new-efx-paint-document-and-clean-cutover/45-CONTEXT.md
+Last session: 2026-08-23T14:18:17.424Z
+Stopped at: Completed 45-03-PLAN.md
+Resume file: None
