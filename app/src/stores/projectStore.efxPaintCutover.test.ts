@@ -17,10 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { findLegacyPhysicPaintRejection } from '../efx-paint/document/efxPaintCleanBreak';
-import {
-  LEGACY_PHYSIC_PAINT_REJECTED_COPY,
-  showLegacyPhysicPaintRejectionDialog,
-} from '../lib/efxPaintRejectionDialog';
+import { LEGACY_PHYSIC_PAINT_REJECTED_COPY } from '../lib/efxPaintRejectionDialog';
 import type { EfxPaintDocumentSaveInput, EfxPaintLoadedDocument } from '../lib/efxPaintPersistence';
 import type { MceProject } from '../types/project';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
@@ -148,6 +145,7 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
     sequenceStore.reset();
     ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
     loadPhysicPaintData.mockResolvedValue([]);
+    loadEfxPaintDocuments.mockResolvedValue(new Map());
     prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
     ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
     ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
@@ -186,7 +184,7 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
 
     expect(dialogMessage).not.toHaveBeenCalled();
     expect(projectStore.closeProject).toHaveBeenCalledTimes(1);
-    expect(loadPhysicPaintData).toHaveBeenCalledTimes(1);
+    expect(loadEfxPaintDocuments).toHaveBeenCalledTimes(1);
     expect(startAutoSave).toHaveBeenCalledTimes(1);
     expect(ipcScriptLibraryBindSavedProject).toHaveBeenCalledTimes(1);
     expect(addRecentProject).toHaveBeenCalledTimes(1);

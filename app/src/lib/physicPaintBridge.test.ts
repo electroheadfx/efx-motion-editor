@@ -12,6 +12,11 @@ import {
 } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import {
+  registerDocument,
+  serializeRuntimeIntoDocument,
+} from '../stores/efxPaintStore';
 import { timelineStore } from '../stores/timelineStore';
 import type { PhysicPaintApplyPayload, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
@@ -2872,6 +2877,8 @@ describe('physicPaintBridge', () => {
       inFrame: 0,
       outFrame: 24,
     });
+    // v1.0: layer creation registers exactly one document (AddFxMenu hook).
+    registerDocument(createEfxPaintDocument('hydrated-phys-layer'));
 
     physicPaintStore.applyCanvas(applyCanvasPayload({ layerId: 'hydrated-phys-layer', startFrame: 12, renderedFrame: makeFrame(0, 12) }) as Extract<PhysicPaintApplyPayload, { kind: 'apply-canvas' }>);
 
@@ -2881,15 +2888,17 @@ describe('physicPaintBridge', () => {
       type: 'physic-paint',
       layer_id: 'hydrated-phys-layer',
     });
-    expect(serialized.physic_paint_outputs).toEqual([
-      expect.objectContaining({
-        layer_id: 'hydrated-phys-layer',
-        frames: [expect.objectContaining({ appFrame: 12 })],
-          }),
-    ]);
+    // v1.0: the legacy carrier is gone; the runtime frame travels through the document.
+    expect(serialized.physic_paint_outputs).toBeUndefined();
+
+    // v1.0 round-trip: project runtime → document (before closeProject wipes
+    // the stores), then hydrate document → runtime after open.
+    const document = serializeRuntimeIntoDocument('hydrated-phys-layer');
+    const frames = physicPaintStore.getFrames('hydrated-phys-layer');
+    const loadedDocuments = new Map([['hydrated-phys-layer', { document, frames }]]);
 
     projectStore.closeProject();
-    projectStore.hydrateFromMce(serialized, '/tmp/efx-physic-paint-test');
+    projectStore.hydrateFromMce(serialized, '/tmp/efx-physic-paint-test', loadedDocuments);
     const hydratedLayer = sequenceStore.sequences.peek()[0]?.layers[0];
     expect(hydratedLayer?.source).toEqual({ type: 'physic-paint', layerId: 'hydrated-phys-layer' });
     expect(physicPaintStore.getFrame('hydrated-phys-layer', 12)?.dataUrl).toContain('data:image/png');

@@ -9,19 +9,21 @@ import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
 
 /** Create a minimal AudioTrack for testing */
-describe('Physics Paint project/cache save transaction', () => {
-  it('keeps Save and Save As project writes inside the rollback-capable cache callback', () => {
+describe('EFX Paint project/cache save transaction (45-05)', () => {
+  it('keeps Save and Save As project writes inside the v1.0 document cache callback', () => {
     const source = readFileSync(fileURLToPath(new URL('./projectStore.ts', import.meta.url)), 'utf8');
     const saveStart = source.indexOf('async saveProject(options?');
     const saveAsStart = source.indexOf('async saveProjectAs(newFilePath');
     const saveSource = source.slice(saveStart, saveAsStart);
     const saveAsSource = source.slice(saveAsStart, source.indexOf('/** Open a project', saveAsStart));
 
-    expect(saveSource).toContain('await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {');
+    expect(saveSource).toContain('await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {');
     expect(saveSource).toContain('}, currentFilePath, cacheTransactionId);');
-    expect(saveAsSource).toContain('await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {');
+    expect(saveAsSource).toContain('await saveEfxPaintDocumentsWithProjectWrite(parentDir, documents, async (persistedDocuments, cacheTransactionId) => {');
     expect(saveAsSource).toContain('newFilePath,\n            cacheTransactionId,');
     expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);');
+    // One save path only: no legacy physic-paint persistence remains in projectStore.
+    expect(source).not.toContain('savePhysicPaintDataWithProjectWrite');
     expect(source).not.toContain('physic_paint_outputs: await savePhysicPaintData(');
   });
 });
@@ -99,9 +101,9 @@ describe('projectStore audio persistence', () => {
       expect(mat.slip_offset).toBe(3);
     });
 
-    it('sets version to 15', () => {
+    it('sets version to 16', () => {
       const project = projectStore.buildMceProject();
-      expect(project.version).toBe(15);
+      expect(project.version).toBe(16);
     });
 
     it('outputs empty audio_tracks when none exist', () => {
@@ -109,7 +111,7 @@ describe('projectStore audio persistence', () => {
       expect(project.audio_tracks).toEqual([]);
     });
 
-    it('omits cached physics paint outputs for deleted layer ids', () => {
+    it('never emits the legacy physic_paint_outputs carrier (v1.0 one save path)', () => {
       sequenceStore.add({
         id: 'seq-1',
         kind: 'fx',
@@ -138,13 +140,6 @@ describe('projectStore audio persistence', () => {
         width: 100,
         height: 50,
       });
-      physicPaintStore.setFrame('active-layer', 1, {
-        frameIndex: 0,
-        appFrame: 1,
-        dataUrl: 'data:image/png;base64,AwQF',
-        width: 100,
-        height: 50,
-      });
       physicPaintStore.setFrame('deleted-cache', 1, {
         frameIndex: 0,
         appFrame: 1,
@@ -153,7 +148,8 @@ describe('projectStore audio persistence', () => {
         height: 50,
       });
 
-      expect(projectStore.buildMceProject().physic_paint_outputs?.map(output => output.layer_id)).toEqual(['active-cache']);
+      const project = projectStore.buildMceProject();
+      expect(project.physic_paint_outputs).toBeUndefined();
     });
   });
 

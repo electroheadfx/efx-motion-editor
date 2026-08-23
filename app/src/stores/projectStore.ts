@@ -26,10 +26,17 @@ import {physicPaintStore, _setPhysicPaintMarkDirtyCallback} from './physicPaintS
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
-import {loadPhysicPaintData, savePhysicPaintDataWithProjectWrite} from '../lib/physicPaintPersistence';
-import {prepareRotoPhysicalDocumentPngs} from '../components/physic-paint/roto/rotoCanvasFrames';
+import {loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite} from '../lib/efxPaintPersistence';
+import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
 import {findLegacyPhysicPaintRejection} from '../efx-paint/document/efxPaintCleanBreak';
 import {showLegacyPhysicPaintRejectionDialog} from '../lib/efxPaintRejectionDialog';
+import {
+  registerDocument as registerEfxPaintDocument,
+  hydrateRuntimeFromDocument as hydrateEfxPaintRuntimeFromDocument,
+  serializeRuntimeIntoDocument as serializeEfxPaintDocument,
+  reset as resetEfxPaintStore,
+  _setEfxPaintMarkDirtyCallback,
+} from './efxPaintStore';
 import {readFile} from '@tauri-apps/plugin-fs';
 
 // --- Signals ---
@@ -90,9 +97,24 @@ function getActivePhysicPaintLayerIds(): Set<string> {
   return ids;
 }
 
+/**
+ * Build the v1.0 save input: one serialized document per active physic-paint
+ * layer plus its runtime frame bytes (staged as sidecars by the persistence
+ * service). Fail-closed: a layer without a registered document throws
+ * (creation always registers one — Task 3 — and the open gate rejects
+ * documentless layers, so this only fires on internal inconsistency).
+ */
+function buildEfxPaintDocuments(): Map<string, EfxPaintDocumentSaveInput> {
+  const documents = new Map<string, EfxPaintDocumentSaveInput>();
+  for (const layerId of getActivePhysicPaintLayerIds()) {
+    const document = serializeEfxPaintDocument(layerId);
+    documents.set(layerId, { document, frames: physicPaintStore.getFrames(layerId) });
+  }
+  return documents;
+}
+
 function buildMceProject(): RuntimeMceProject {
   const projectRoot = dirPath.value ?? '';
-  const activePhysicPaintLayerIds = getActivePhysicPaintLayerIds();
 
   // Convert sequences to MceSequence format
   const mceSequences: MceSequence[] = sequenceStore.sequences.value.map(
@@ -265,7 +287,7 @@ function buildMceProject(): RuntimeMceProject {
   );
 
   return {
-    version: 15,
+    version: 16,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -307,12 +329,23 @@ function buildMceProject(): RuntimeMceProject {
       preview_quality: motionBlurStore.previewQuality.peek(),
       export_sub_frames: exportStore.motionBlurSubFrames.peek(),
     },
-    physic_paint_outputs: physicPaintStore.toMceOutputs().filter(output => activePhysicPaintLayerIds.has(output.layer_id)),
+    // v1.0: EFX Paint documents are persisted by the save funnel through
+    // saveEfxPaintDocumentsWithProjectWrite; buildMceProject never emits the
+    // legacy physic_paint_outputs carrier (T-45-18, one save path only).
   };
 }
 
-/** Load MceProject data into all stores */
-function hydrateFromMce(project: RuntimeMceProject, projectRoot: string) {
+/**
+ * Load MceProject data into all stores. `loadedDocuments` carries the v1.0
+ * EFX Paint documents (with hydrated runtime frame bytes) loaded by the
+ * persistence loader; each is registered into efxPaintStore and its default
+ * track is projected into the physicPaintStore runtime maps (DOC-05).
+ */
+function hydrateFromMce(
+  project: RuntimeMceProject,
+  projectRoot: string,
+  loadedDocuments: ReadonlyMap<string, EfxPaintLoadedDocument> = new Map(),
+) {
   batch(() => {
     // 1. Set projectStore signals
     name.value = project.name;
@@ -542,9 +575,17 @@ function hydrateFromMce(project: RuntimeMceProject, projectRoot: string) {
     exportStore.setMotionBlurSubFrames(mb?.export_sub_frames ?? 8);
 
     // 6. Rendered physics paint outputs (inline PNG frames keyed by layer/frame)
+    //    v1.0 projects carry no physic_paint_outputs (no-op for undefined).
     physicPaintStore.loadFromMceOutputs(project.physic_paint_outputs);
 
-    // 7. Clear dirty flag (just loaded)
+    // 7. v1.0 EFX Paint documents: register each into efxPaintStore and
+    //    project its default track into the runtime maps (DOC-05).
+    for (const [, loaded] of loadedDocuments) {
+      registerEfxPaintDocument(loaded.document);
+      hydrateEfxPaintRuntimeFromDocument(loaded.document, loaded.frames);
+    }
+
+    // 8. Clear dirty flag (just loaded)
     isDirty.value = false;
   });
 
@@ -684,10 +725,12 @@ export const projectStore = {
       }
 
       const projectDir = currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
-      await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {
+      const documents = buildEfxPaintDocuments();
+      await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const result = await ipcProjectSave({
           ...project,
-          physic_paint_outputs: physicPaintOutputs,
+          physic_paint_outputs: undefined,
+          efx_paint_documents: persistedDocuments,
         }, currentFilePath, cacheTransactionId);
         if (!result.ok) throw new Error(result.error);
       });
@@ -726,10 +769,12 @@ export const projectStore = {
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     try {
       const project = buildMceProject();
-      await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {
+      const documents = buildEfxPaintDocuments();
+      await saveEfxPaintDocumentsWithProjectWrite(parentDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const projectForSave: MceProject = {
           ...project,
-          physic_paint_outputs: physicPaintOutputs,
+          physic_paint_outputs: undefined,
+          efx_paint_documents: persistedDocuments,
         };
         if (previousFilePath && previousFilePath !== newFilePath) {
           const transaction = await projectSaveAsWithScriptLibrary(
@@ -778,18 +823,14 @@ export const projectStore = {
       return;
     }
 
-    // Decode every required Physics Paint sidecar and validate the complete
-    // physical candidates before replacing the currently open project.
+    // Load the v1.0 EFX Paint documents (validated by the fail-closed parser,
+    // sidecar PNGs read back through the guarded plugin-fs idiom) before
+    // replacing the currently open project.
     const projectRoot = openFilePath.substring(0, openFilePath.lastIndexOf('/'));
-    const decodedPhysicPaintOutputs = await loadPhysicPaintData(projectRoot, result.data.physic_paint_outputs) ?? [];
-    const preparedPhysicPaintOutputs = await Promise.all(decodedPhysicPaintOutputs.map(async (output) => (
-      output.roto_physical
-        ? { ...output, roto_physical: await prepareRotoPhysicalDocumentPngs(output.roto_physical) }
-        : output
-    )));
+    const loadedDocuments = await loadEfxPaintDocuments(projectRoot, result.data.efx_paint_documents);
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
-      physic_paint_outputs: preparedPhysicPaintOutputs,
+      physic_paint_outputs: undefined,
     };
 
     projectStore.closeProject({ preservePreparedRotoCanvases: true });
@@ -798,7 +839,7 @@ export const projectStore = {
       dirPath.value = projectRoot;
     });
 
-    hydrateFromMce(runtimeProject, projectRoot);
+    hydrateFromMce(runtimeProject, projectRoot, loadedDocuments);
     await bindScriptLibraryAuthority(openFilePath);
 
     // Update recent projects
@@ -841,6 +882,7 @@ export const projectStore = {
     audioStore.reset();
     paintStore.reset();
     physicPaintStore.reset({ preserveRotoAlphaCanvases: options?.preservePreparedRotoCanvases });
+    resetEfxPaintStore();
     motionBlurStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();
@@ -879,3 +921,7 @@ _setPaintMarkDirtyCallback(() => projectStore.markDirty());
 // Wire physicPaintStore's markDirty callback to projectStore
 // This ensures auto-save notices rendered physics paint output changes
 _setPhysicPaintMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire efxPaintStore's markDirty callback to projectStore
+// This ensures auto-save notices v1.0 document mutations
+_setEfxPaintMarkDirtyCallback(() => projectStore.markDirty());

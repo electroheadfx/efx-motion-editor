@@ -196,7 +196,11 @@ export default defineConfig({
     // the 260819/260820 quicks, and the warning-disposition fixes added
     // +9.8 kB, measured 1117.4 kB. Budget raised to 1120 (measured value +
     // ~2.6 kB headroom).
-    chunkSizeWarningLimit: 1120,
+    // Measurement note (2026-08-23): the 45-05 v1.0 document funnel pulled
+    // efxPaintStore + efxPaintPersistence + the document model into the main
+    // chunk, measured 1124.96 kB. Budget raised to 1130 (measured value +
+    // ~5 kB headroom).
+    chunkSizeWarningLimit: 1130,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
