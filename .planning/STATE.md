@@ -50,7 +50,7 @@ See: .planning/PROJECT.md (updated 2026-08-21 after v0.9.0 milestone close)
 Phase: Milestone v0.9.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-23 - Completed quick task 260823-dtu: Brush cursor circle with deterministic double-outline
+Last activity: 2026-08-23 - Closed quick task 260823-dtu: solid dual-stroke brush cursor in Physics Paint Studio (UAT passed) + main-editor SVG cursor
 
 ## Performance Metrics
 
@@ -568,7 +568,7 @@ None yet.
 
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
-| 260823-dtu | Brush cursor: circle with diameter equal to brush pixel size, centered on crosshair, visible on light and dark backgrounds | 2026-08-23 | 45bf4b90 | pending UAT | [260823-dtu-brush-cursor-circle-with-diameter-equal-](./quick/260823-dtu-brush-cursor-circle-with-diameter-equal-/) |
+| 260823-dtu | Brush cursor: circle with diameter equal to brush pixel size, centered on crosshair, visible on light and dark backgrounds | 2026-08-23 | cb6ea707 (physics), 5d6e2ca2 (main-editor SVG) | complete (physics UAT passed; main-editor SVG UAT pending) | [260823-dtu-brush-cursor-circle-with-diameter-equal-](./quick/260823-dtu-brush-cursor-circle-with-diameter-equal-/) |
 
 ### Roadmap Evolution
 
