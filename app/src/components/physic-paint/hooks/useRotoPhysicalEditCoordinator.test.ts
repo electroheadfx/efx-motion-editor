@@ -1811,6 +1811,7 @@ function attachGroupReplayHistory(test: ReturnType<typeof harness>) {
   const availability = signal({ undo: 0, redo: 0 });
   const history = useRotoPhysicalEditHistory({
     identity: {
+      trackId: 'track-a',
       launchOperationId: 'launch-1',
       layerId: 'layer-1',
       projectContextId: 'project-1',
@@ -1985,7 +1986,7 @@ describe('Phase 43.4 Key Rail actions-hook → coordinator → history full path
 
     const availability = signal({ undo: 0, redo: 0 });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30, trackId: 'track-a' },
       availability,
       coordinator: test.coordinator,
       recordsPort: {
@@ -2332,6 +2333,7 @@ describe('Phase 43.3 Group Rail drag canonical history controls', () => {
     };
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',

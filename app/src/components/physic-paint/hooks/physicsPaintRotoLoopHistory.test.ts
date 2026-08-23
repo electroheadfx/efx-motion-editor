@@ -111,6 +111,7 @@ function harness(
       layerId: 'layer-1',
       projectContextId: 'project-1',
       capacity: 10,
+      trackId: 'track-a',
     },
     availability,
     coordinator: {

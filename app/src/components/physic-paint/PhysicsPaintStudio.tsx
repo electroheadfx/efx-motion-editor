@@ -1983,6 +1983,7 @@ export function PhysicsPaintStudio() {
       layerId: launchContext.layerId,
       projectContextId: launchContext.project?.contextId ?? null,
       capacity: rotoPhysicalCapacity,
+      trackId: trackIdOfLaunch(launchContext),
     } : null,
     availability: historyAvailability,
     coordinator: {

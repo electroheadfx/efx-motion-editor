@@ -77,12 +77,15 @@ import type {
   RotoPhysicalEditRecordsPort,
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
+import { getActiveTrackId, setActiveTrackId } from '../../../stores/efxPaintStore';
 
 export interface RotoPhysicalEditHistoryIdentity {
   launchOperationId: string;
   layerId: string;
   projectContextId: string | null;
   capacity: number;
+  /** 46-03 (TRK-01): the v1.0 document track the launch operates on (stable id, never index). */
+  trackId: string;
 }
 
 export type RotoPhysicalEditReplaySourceSnapshot = Pick<
@@ -110,6 +113,8 @@ interface RotoPhysicalEditCommand<EngineState> {
   readonly kind: 'physical';
   readonly operationId: string;
   readonly operationKind: RotoPhysicalEditOrdinaryOperationKind;
+  /** 46-03 (D-01..D-04): the document track the accepted edit targeted (undo/redo auto-activates it). */
+  readonly trackId: string;
   readonly before: RotoPhysicalEditSnapshot<EngineState>;
   readonly after: RotoPhysicalEditSnapshot<EngineState>;
   readonly acceptedRevision: string;
@@ -317,6 +322,29 @@ function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot): strin
     snapshot.incomingInterpolationBreakKeyIds,
     snapshot.groupOverrideRecords,
   );
+}
+
+/**
+ * 46-03 D-03: stored history commands carry records + refs + the prior
+ * deterministic revision hash ONLY — never raster bytes. The coordinator's
+ * captured snapshot rides a cached repaint base plus per-frame raster maps
+ * (frameStates/previewFrames/capturedFrames/confirmedFrames); the history
+ * entry strips them (frames empty, repaint base null) so the undo/redo
+ * recompute path stays the single source of raster truth and the 10-entry
+ * ledger never multiplies frame-by-frame raster weight. The canonical
+ * record dataUrls (references to the cached sidecar) are untouched.
+ */
+function withoutRasterBytes<EngineState>(
+  snapshot: RotoPhysicalEditSnapshot<EngineState>,
+): RotoPhysicalEditSnapshot<EngineState> {
+  return {
+    ...snapshot,
+    frameStates: new Map(),
+    previewFrames: new Map(),
+    capturedFrames: new Map(),
+    confirmedFrames: new Map(),
+    cachedReference: { url: snapshot.cachedReference.url, cachedRepaintBase: null },
+  };
 }
 
 /**
@@ -566,8 +594,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       || accepted.after.layerId !== identity.layerId
       || accepted.after.projectContextId !== identity.projectContextId
       || accepted.after.capacity !== identity.capacity) return;
-    if (lastAcceptedOperationIdRef.current === accepted.operationId) return;
-    lastAcceptedOperationIdRef.current = accepted.operationId;
+    // 46-03 (D-01): dedupe on operationId + trackId — one cross-track
+    // operation emits one acceptance PER track under the same operationId,
+    // so the track tag is part of the dedupe identity (never collide).
+    const dedupeKey = `${accepted.operationId}:${identity.trackId}`;
+    if (lastAcceptedOperationIdRef.current === dedupeKey) return;
+    lastAcceptedOperationIdRef.current = dedupeKey;
 
     if (!isOrdinaryOperationKind(accepted.operationKind)) {
       // Replay acceptance — move the pending replay command between stacks
@@ -601,8 +633,9 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       kind: 'physical',
       operationId: accepted.operationId,
       operationKind: accepted.operationKind,
-      before: accepted.before,
-      after: accepted.after,
+      trackId: identity.trackId,
+      before: withoutRasterBytes(accepted.before),
+      after: withoutRasterBytes(accepted.after),
       acceptedRevision: accepted.acceptedRevision,
       selectedKeyId: accepted.after.selectedKeyId,
       selectedAppFrame: accepted.after.selectedAppFrame,
@@ -699,6 +732,9 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
     if (typeof getLiveSourceSnapshot !== 'function'
       || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) return false;
+    // 46-03 (D-04): auto-activate the command's track BEFORE the replay seam
+    // when another track is active — replay then targets the live document.
+    if (getActiveTrackId(identity.layerId) !== entry.trackId) setActiveTrackId(identity.layerId, entry.trackId);
     pendingReplayRef.current = { direction: 'undo', command: entry };
     const proposal = buildReplayProposal(entry.before);
     const beforeTargetRevision = snapshotRevision(entry.before);
@@ -759,6 +795,9 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
     if (typeof getLiveSourceSnapshot !== 'function'
       || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.before)) return false;
+    // 46-03 (D-04): redo is symmetric — auto-activate the command's track
+    // BEFORE the replay seam when another track is active.
+    if (getActiveTrackId(identity.layerId) !== entry.trackId) setActiveTrackId(identity.layerId, entry.trackId);
     pendingReplayRef.current = { direction: 'redo', command: entry };
     const proposal = buildReplayProposal(entry.after);
     const afterTargetRevision = snapshotRevision(entry.after);

@@ -273,6 +273,7 @@ describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -382,6 +383,7 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -459,6 +461,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
 
     useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -517,6 +520,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
 
     useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -609,6 +613,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -741,6 +746,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -871,6 +877,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -984,6 +991,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -1076,6 +1084,7 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -1216,7 +1225,7 @@ describe('useRotoPhysicalEditHistory referenced Action replay', () => {
     });
     const executePhysicalEdit = vi.fn(async () => true);
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId: signal(null), acceptedOutput: signal(null) },
       recordsPort: {
@@ -1299,7 +1308,7 @@ describe('useRotoPhysicalEditHistory retained Action ownership', () => {
     const availability = signal({ undo: 0, redo: 0 });
     const release = vi.fn(async () => true);
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: vi.fn() as never, pendingOperationId: signal(null), acceptedOutput },
       recordsPort: {
@@ -1399,7 +1408,7 @@ describe('useRotoPhysicalEditHistory Key Rail atomic commands (43.4-08)', () => 
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -1460,7 +1469,7 @@ describe('useRotoPhysicalEditHistory Key Rail atomic commands (43.4-08)', () => 
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId: signal(null), acceptedOutput },
       recordsPort: {
@@ -1538,6 +1547,7 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -1594,6 +1604,7 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
 
     useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-2',
@@ -1703,7 +1714,7 @@ describe('useRotoPhysicalEditHistory push atomic command (43.5-03 Task 2)', () =
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -1828,7 +1839,7 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -2141,7 +2152,10 @@ describe('useRotoPhysicalEditHistory track-tagged undo/redo (46-03 Task 3 — D-
         background: null,
         selectedKeyId: null,
         cursorAppFrame: 0,
-        revision: 'seed-a',
+        // Canonical revision of the seeded records — the 45-01 docrev
+        // builders re-parse fail-closed, so a non-canonical fixture revision
+        // (like a bare 'seed-a') is rejected by setActiveTrackId.
+        revision: buildPhysicPaintRotoPhysicalRevision(aRecords, { enabled: false, mode: 'duplicate' }, [], []),
         loopClips: Object.freeze([]),
         incomingInterpolationBreakKeyIds: Object.freeze([]),
       }) as PhysicPaintRotoPhysicalDocument,

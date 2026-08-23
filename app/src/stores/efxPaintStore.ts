@@ -61,6 +61,32 @@ export function removeDocument(layerId: string): boolean {
   return removed;
 }
 
+/** Read the document's active track id, or null when the document is absent. */
+export function getActiveTrackId(layerId: string): string | null {
+  return getDocument(layerId)?.activeTrackId ?? null;
+}
+
+/**
+ * Switch the document's active track (46-03 D-04 auto-activation). Validates
+ * the trackId exists in the document (fail closed otherwise — never activates
+ * a foreign/unknown track), writes activeTrackId, and bumps documentRevision
+ * via the 45-01 builders (activeTrackId is a docrev term, so the fingerprint
+ * changes exactly when the active track does). A no-op when the track is
+ * already active. Returns false when the document or track is absent.
+ */
+export function setActiveTrackId(layerId: string, trackId: string): boolean {
+  const document = getDocument(layerId);
+  if (!document) return false;
+  if (!document.tracks.some((track) => track.id === trackId)) return false;
+  if (document.activeTrackId === trackId) return true;
+  const candidate: EfxPaintDocument = { ...document, activeTrackId: trackId };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) return true;
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return true;
+}
+
 /** Empty the store and bump the version signal (project close hook). */
 export function reset(): void {
   if (_documents.size === 0) return;

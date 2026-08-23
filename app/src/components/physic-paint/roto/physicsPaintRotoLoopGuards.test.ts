@@ -898,6 +898,7 @@ function historyHarness(initial: RotoPhysicalEditSnapshot<null>) {
 
   const history = useRotoPhysicalEditHistory({
     identity: {
+      trackId: 'track-a',
       launchOperationId: 'launch-1',
       layerId: 'layer-1',
       projectContextId: 'project-1',

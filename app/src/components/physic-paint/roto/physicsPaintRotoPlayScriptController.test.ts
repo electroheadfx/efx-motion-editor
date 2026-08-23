@@ -843,6 +843,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch',
         layerId: 'layer-1',
         projectContextId: 'context-1',
@@ -1118,6 +1119,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch',
         layerId: 'layer-1',
         projectContextId: 'context-1',
@@ -1314,6 +1316,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch',
         layerId: 'layer-1',
         projectContextId: 'context-1',
