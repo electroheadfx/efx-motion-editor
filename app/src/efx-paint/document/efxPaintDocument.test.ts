@@ -9,7 +9,26 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-function validDocumentJson(): Record<string, unknown> {
+interface MutableDocumentJson {
+  version: number;
+  parentLayerId: string;
+  documentRevision: number;
+  activeTrackId: string;
+  tracks: Array<Record<string, unknown>>;
+  background: {
+    id: string;
+    clips: Array<Record<string, unknown>>;
+    fallback: Record<string, unknown>;
+    visible: boolean;
+    revision: number;
+    [key: string]: unknown;
+  };
+  photoReference: null;
+  compositeRevision: number;
+  [key: string]: unknown;
+}
+
+function validDocumentJson(): MutableDocumentJson {
   return JSON.parse(JSON.stringify(createEfxPaintDocument('layer-abc')));
 }
 

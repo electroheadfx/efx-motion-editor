@@ -17,9 +17,11 @@ import {
   EFX_PAINT_DOCUMENT_VERSION,
   type BackgroundFallback,
   type BackgroundTrack,
+  type BlendMode,
   type CachedFrameReference,
   type EfxPaintDocument,
   type FrameLoopClip,
+  type FrameLoopClipRepeat,
   type InternalPaintTrack,
 } from './efxPaintDocument';
 
@@ -50,6 +52,11 @@ const LOOP_CLIP_KEYS = new Set(['id', 'startFrame', 'sourceFrameRefs', 'repeat',
 const REPEAT_FINITE_KEYS = new Set(['mode', 'count']);
 const REPEAT_INFINITE_KEYS = new Set(['mode']);
 const CACHED_FRAME_REF_KEYS = new Set(['cachePath', 'width', 'height']);
+const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
+
+function isBlendMode(value: unknown): value is BlendMode {
+  return typeof value === 'string' && BLEND_MODES.has(value);
+}
 
 function parseCachedFrameReference(value: unknown): CachedFrameReference {
   if (!isPlainRecord(value)) {
@@ -108,6 +115,7 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
   if (!isPlainRecord(value.repeat)) {
     throw new Error('FrameLoopClip: repeat must be a record.');
   }
+  let repeat: FrameLoopClipRepeat;
   if (value.repeat.mode === 'finite') {
     if (!hasOnlyKeys(value.repeat, REPEAT_FINITE_KEYS)) {
       throw new Error('FrameLoopClip: finite repeat must contain exactly mode, count.');
@@ -115,10 +123,12 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
     if (!isNonNegativeInteger(value.repeat.count)) {
       throw new Error('FrameLoopClip: finite repeat requires a non-negative integer count.');
     }
+    repeat = Object.freeze({ mode: 'finite' as const, count: value.repeat.count });
   } else if (value.repeat.mode === 'infinite') {
     if (!hasOnlyKeys(value.repeat, REPEAT_INFINITE_KEYS)) {
       throw new Error('FrameLoopClip: infinite repeat must contain exactly mode.');
     }
+    repeat = Object.freeze({ mode: 'infinite' as const });
   } else {
     throw new Error('FrameLoopClip: repeat.mode must be finite or infinite.');
   }
@@ -132,7 +142,7 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
     id: value.id,
     startFrame: value.startFrame,
     sourceFrameRefs: Object.freeze([...value.sourceFrameRefs]),
-    repeat: Object.freeze({ ...value.repeat }),
+    repeat,
     sourceKind: value.sourceKind,
     revision: value.revision,
   });
@@ -170,8 +180,8 @@ export function parseInternalPaintTrack(value: unknown): InternalPaintTrack {
   if (typeof value.opacity !== 'number' || !Number.isFinite(value.opacity)) {
     throw new Error('InternalPaintTrack: opacity must be a finite number.');
   }
-  if (typeof value.blendMode !== 'string' || value.blendMode.length === 0) {
-    throw new Error('InternalPaintTrack: blendMode must be a non-empty string.');
+  if (!isBlendMode(value.blendMode)) {
+    throw new Error('InternalPaintTrack: blendMode must be one of normal, screen, multiply, overlay, add.');
   }
   if (!isNonNegativeInteger(value.revision)) {
     throw new Error('InternalPaintTrack: revision must be a non-negative integer.');
