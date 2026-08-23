@@ -6,15 +6,15 @@ current_phase: 46
 current_phase_name: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 status: executing
 stopped_at: Phase 46 context gathered
-last_updated: "2026-08-23T23:10:00.000Z"
+last_updated: "2026-08-23T23:20:00.000Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 46 plan 01 complete (track-addressed runtime, per-track revisions, track-scoped leases)
-state_head: 110d51d046b1590451e21bf7eac025ccff330803
+last_activity_desc: Phase 46 plan 02 complete (multi-track projection, trackId cache paths, per-track save/load)
+state_head: 1832cdf121853e01cee00f3347607795de72f2c7
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 9
+  completed_plans: 10
   percent: 11
 ---
 
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 46 (Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches) — EXECUTING
-Plan: 1 of 6 complete (46-01); next 46-02
-Status: Executing Phase 46
-Last activity: 2026-08-23 — Phase 46 plan 01 complete
+Plan: 2 of 6 complete (46-02); next 46-03
+Status: Ready to execute
+Last activity: 2026-08-23 — Phase 46 plan 02 complete (multi-track projection, trackId cache paths, per-track save/load)
 
-Progress: [██░░░░░░░░] 16%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -49,7 +49,7 @@ Progress: [██░░░░░░░░] 16%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
-| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 1 | TBD | - |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 2 | TBD | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 0 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
@@ -75,6 +75,7 @@ Progress: [██░░░░░░░░] 16%
 | Phase 45-new-efx-paint-document-and-clean-cutover P06 | 55 | 4 tasks | 42 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P07 | 25 | 2 tasks | 18 files |
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P01 | 120 | 3 tasks | 13 files |
+| Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P02 | 35 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,10 @@ Recent decisions affecting current work:
 - [Phase 46 P01]: mountTrackRuntime/removeTrackRuntime are the lifecycle primitives later plans call: teardown deletes the full 16-map inventory, the structural memo composite key, the trackRevisions entry, settles/expires the track's leases, and prunes alpha canvases only when unreferenced; returns true only when something changed
 - [Phase 46 P01]: Spelling convention locked byte-exactly: all method names use 'Roto' (acquireRotorPhysicalOperationLease); the ONLY 'Rotor' symbol is getTrackRotorRevision — verified with ord-level dumps to kill the Roto/Rotor typo hazard
 - [Phase 46 P01]: The bridge apply-side resolves the document's ACTIVE track for the parent tracer (launch IS the document — D-03); a carried request carries no trackId of its own, and a missing token yields 'missing-token' (not a throw) via `?.trackId ?? ''`
+- [Phase 46 P02]: The projection boundary is multi-track: serializeRuntimeIntoDocument / hydrateRuntimeFromDocument iterate document.tracks by stable id — never tracks[0] (Pitfall 1); each track's runtime payload (frames via buildEfxPaintFrameCachePath(layerId, track.id, frame) + rotoPhysical) projects into that exact track; installRuntimeStateFromDocument fails closed when payload.trackId does not match the claimed trackId
+- [Phase 46 P02]: Cache paths embed the raw UUID trackId between the stable layer segment and the file name (cache/efx-paint/<stableSegment>/<trackId>/frame-NNNNNN-NNNN.png, D-15 foundation) so track deletion can address exactly its own sidecars; every emitted path still passes isSafeEfxPaintCachePath (T-46-04, ASVS V12); no back-migration of legacy track-less sidecar paths (Phase 45 no-compat)
+- [Phase 46 P02]: The save input / load output carry per-track frame maps (trackId → appFrame → frame); two tracks persist frames at the same appFrame without collision (edge TRK-03 ordering resolved explicit) and the loader's cross-track same-appFrame throw is gone; the save fingerprint byte terms include trackId (trackId:appFrame:dataUrl) so identical bytes on distinct tracks never dedupe incorrectly (T-46-06)
+- [Phase 46 P02]: buildEfxPaintDocuments collects one per-track frame map per document.tracks entry keyed by trackId; the project-store hydrate seam passes per-track frames through unchanged; the save orchestrator shape (saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, writeProject)) is untouched
 
 ### Pending Todos
 
