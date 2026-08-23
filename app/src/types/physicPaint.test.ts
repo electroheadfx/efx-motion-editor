@@ -26,6 +26,8 @@ import {
   buildPhysicPaintRotoProjectEquality,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
@@ -72,6 +74,7 @@ const completeTransportGroup = () => ({
 function groupLifecycleApplyPayload(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'replace-roto-physical-map',
+    trackId: TEST_TRACK_ID,
     operationId: 'group-paint-1',
     operationKind: 'paint-group-frame',
     layerId: 'layer-1',
@@ -136,10 +139,10 @@ describe('physic paint payload contracts', () => {
   });
 
   it('accepts still, interpolation, deletion, and authoritative real-key replacement payloads only', () => {
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'update-roto-interpolation-settings', operationId: 'op-2', layerId: 'layer-1', startFrame: 12, settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 } })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'delete-roto-frame', operationId: 'op-3', layerId: 'layer-1', startFrame: 12 })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', operationId: 'op-4', layerId: 'layer-1', startFrame: 12, frames: [{ ...renderedFrame, source: 'real-key', sourceFrame: 12 }], rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'update-roto-interpolation-settings', trackId: TEST_TRACK_ID, operationId: 'op-2', layerId: 'layer-1', startFrame: 12, settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'delete-roto-frame', trackId: TEST_TRACK_ID, operationId: 'op-3', layerId: 'layer-1', startFrame: 12 })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', trackId: TEST_TRACK_ID, operationId: 'op-4', layerId: 'layer-1', startFrame: 12, frames: [{ ...renderedFrame, source: 'real-key', sourceFrame: 12 }], rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
@@ -153,9 +156,9 @@ describe('physic paint payload contracts', () => {
         settings: { bgMode: 'transparent', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
       })),
     };
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: document })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: engineCarrierDocument })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: { version: 2, width: 1000, height: 650, strokes: [], settings: { bgMode: 'transparent' } } })).toBe(false);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: document })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: engineCarrierDocument })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: { version: 2, width: 1000, height: 650, strokes: [], settings: { bgMode: 'transparent' } } })).toBe(false);
   });
 
   it('accepts only the insert-empty-segment transport contract', () => {
@@ -166,6 +169,7 @@ describe('physic paint payload contracts', () => {
     }];
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: 'insert-empty-segment-1',
       operationKind: 'insert-empty-segment',
       intent: {
@@ -421,6 +425,7 @@ describe('physic paint payload contracts', () => {
     }];
     const playScript = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: 'play-script-1',
       operationKind: 'play-script',
       layerId: 'layer-1',

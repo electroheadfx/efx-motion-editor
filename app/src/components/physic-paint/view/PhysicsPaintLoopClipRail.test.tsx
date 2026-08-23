@@ -63,6 +63,8 @@ import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { frameMap, fxTrackLayouts } from '../../../lib/frameMap';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
+import { registerDocument } from '../../../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -97,6 +99,8 @@ import {
   projectPhysicsPaintLoopClipPresentation,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 const physicsPaintStudioCss = readFileSync(
   fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
@@ -1426,6 +1430,15 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(onCloseLoopClip).toHaveBeenCalledOnce();
 
     const layerId = 'loop-tracer-layer';
+    // 46-01: fxTrackLayouts resolves the ACTIVE track of a registered document;
+    // register the launch document with the fixed track so production reads land here.
+    const document = createEfxPaintDocument(layerId);
+    const track = document.tracks[0];
+    registerDocument({
+      ...document,
+      activeTrackId: TEST_TRACK_ID,
+      tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    });
     const records: PhysicPaintRotoRealKeyRecord[] = sourceKeyIds.map((keyId, appFrame) => ({
       keyId,
       appFrame,
@@ -1433,7 +1446,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,YQ==' },
     }));
     const loopClips = [clip];
-    physicPaintStore.clearRotoPhysicalRecords(layerId);
+    physicPaintStore.clearRotoPhysicalRecords(layerId, TEST_TRACK_ID);
     sequenceStore.reset();
     const layer: Layer = {
       id: layerId,
@@ -1459,7 +1472,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     };
     sequenceStore.sequences.value = [fxSequence];
     const interpolation = { enabled: false, mode: 'duplicate' as const };
-    const installed = physicPaintStore.replaceRotoPhysicalDocument(layerId, {
+    const installed = physicPaintStore.replaceRotoPhysicalDocument(layerId, TEST_TRACK_ID, {
       capacity: 120,
       realKeyRecords: records,
       interpolation,
@@ -1492,7 +1505,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopCapsules');
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopClips');
 
-    physicPaintStore.clearRotoPhysicalRecords(layerId);
+    physicPaintStore.clearRotoPhysicalRecords(layerId, TEST_TRACK_ID);
     sequenceStore.reset();
     await Promise.resolve();
     vi.useRealTimers();

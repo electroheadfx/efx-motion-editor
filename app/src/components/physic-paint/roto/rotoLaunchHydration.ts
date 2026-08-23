@@ -14,6 +14,7 @@ import { prepareRotoPhysicalRealKeyPngs } from './rotoCanvasFrames';
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
     layerId: string,
+    trackId: string,
     value: unknown,
   ): { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string };
 }
@@ -87,7 +88,9 @@ export async function hydrateRotoPhysicalLaunchContext(
     return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
   }
 
-  const replacement = store.replaceRotoPhysicalDocument(context.layerId, prepared.document);
+  // 46-01: install into the launch document's ACTIVE track (the launch IS the
+  // document — D-03 — so the carried activeTrackId is the identity authority).
+  const replacement = store.replaceRotoPhysicalDocument(context.layerId, context.document?.activeTrackId ?? '', prepared.document);
   if (!replacement.ok) return replacement;
   return { ok: true, context, document: replacement.document };
 }

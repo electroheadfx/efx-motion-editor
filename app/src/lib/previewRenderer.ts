@@ -14,6 +14,7 @@ import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
+import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
 import type {PhysicPaintRotoPhysicalRenderSource} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {projectStore} from '../stores/projectStore';
@@ -89,9 +90,14 @@ function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
   }
 }
 
+/** 46-01: runtime state is per-track; preview resolves the ACTIVE track. */
+function getActiveTrackId(layerId: string): string {
+  return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+}
+
 function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackgroundState {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const metadata = physicPaintStore.getRotoBackgroundMetadata(paintLayerId);
+  const metadata = physicPaintStore.getRotoBackgroundMetadata(paintLayerId, getActiveTrackId(paintLayerId));
   if (metadata) return { mode: 'paper', metadata };
   const color = layer.paintBgColor;
   if (!color || color === 'transparent') return { mode: 'transparent' };
@@ -99,14 +105,14 @@ function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackground
 }
 
 function isPhysicalRotoWorkflowLayer(layerId: string): boolean {
-  return physicPaintStore.getRotoPhysicalContentRevision(layerId) !== null;
+  return physicPaintStore.getRotoPhysicalContentRevision(layerId, getActiveTrackId(layerId)) !== null;
 }
 
 function resolveMissingRotoFrameDrawForLayer(layer: Layer, frame: number) {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   return resolveMissingRotoFrameDraw(paintLayerId, frame, {
     backgroundState: getMissingRotoBackgroundState(layer),
-    realKeyRecords: physicPaintStore.getRotoRealKeyRecords(paintLayerId),
+    realKeyRecords: physicPaintStore.getRotoRealKeyRecords(paintLayerId, getActiveTrackId(paintLayerId)),
   });
 }
 
@@ -125,7 +131,7 @@ export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFra
 /** Resolve one exact physical Roto cell, or preserve the non-Roto Physics Paint lookup. */
 function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewPhysicPaintFrameSource | null {
   if (isPhysicalRotoWorkflowLayer(layerId)) {
-    const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, frame);
+    const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame);
     // Phase 43 (D-28): the 'loop-placeholder' variant carries no payload — it
     // renders through the marked placeholder path below, and export blocks the
     // range in its preflight before any frame renders (43-09).
@@ -137,7 +143,7 @@ function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewP
       renderedFrame: source.renderedFrame,
     };
   }
-  const renderedFrame = physicPaintStore.getFrame(layerId, frame);
+  const renderedFrame = physicPaintStore.getFrame(layerId, getActiveTrackId(layerId), frame);
   if (!renderedFrame) return null;
   return {
     layerId,
@@ -157,7 +163,7 @@ type PhysicPaintLoopPlaceholderSource = Extract<PhysicPaintRotoPhysicalRenderSou
  */
 function resolvePhysicPaintLoopPlaceholder(layerId: string, frame: number): PhysicPaintLoopPlaceholderSource | null {
   if (!isPhysicalRotoWorkflowLayer(layerId)) return null;
-  const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, frame);
+  const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame);
   return source && source.kind === 'loop-placeholder' && source.layerId === layerId && source.appFrame === frame
     ? source
     : null;
@@ -273,7 +279,7 @@ export class PreviewRenderer {
       for (const layer of seq.layers) {
         if (layer.type !== 'physic-paint') continue;
         const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-        const background = physicPaintStore.getRotoBackgroundMetadata(layerId)?.background;
+        const background = physicPaintStore.getRotoBackgroundMetadata(layerId, getActiveTrackId(layerId))?.background;
         if (background?.startsWith('canvas')) paperTextures.add(background);
       }
     }

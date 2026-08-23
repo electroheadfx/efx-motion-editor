@@ -339,7 +339,11 @@ function createNativeReferencedActionDeletionPorts(
   const encodeLease = (lease: PhysicPaintRotoPhysicalOperationLeaseToken) =>
     `${lease.projectContextId}:${lease.layerId}:${lease.generation}:${lease.owner}`;
   const deletionPorts: ReferencedActionDeletionPorts = {
-    getPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
+    getPhysicalDocument: (layerId) => {
+      // 46-01: read the ACTIVE track's physical document.
+      const trackId = getPorts().getLaunchContext()?.document?.activeTrackId ?? '';
+      return physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
+    },
     getAuthority: () => getPorts().getLaunchContext()?.project?.scriptLibraryAuthority ?? null,
     acquireLease: (projectContextId, layerId) => {
       const lease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId);
@@ -448,7 +452,7 @@ function createNativeReferencedActionDeletionPorts(
       if (recovered.state !== 'recovery-required') {
         return { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Committed Action recovery failed.' };
       }
-      const current = physicPaintStore.getRotoPhysicalDocument(discovered.authority.layerId);
+      const current = physicPaintStore.getRotoPhysicalDocument(discovered.authority.layerId, getPorts().getLaunchContext()?.document?.activeTrackId ?? '');
       if (!current) {
         return { ok: false, error: 'Recovery physical authority is unavailable.' };
       }

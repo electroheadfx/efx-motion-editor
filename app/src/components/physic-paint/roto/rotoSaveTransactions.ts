@@ -78,6 +78,8 @@ export function buildDeleteRotoFramePayload(input: {
     operationId: `${input.launchContext.operationId}:delete-roto:${input.frame}:${input.now}`,
     kind: 'delete-roto-frame',
     layerId: input.launchContext.layerId,
+    // 46-01: apply payloads carry the target trackId (the launch IS the document).
+    trackId: input.launchContext.document?.activeTrackId ?? '',
     startFrame: input.frame,
     sourceFrame: input.sourceFrame,
   };
@@ -99,6 +101,8 @@ export function buildApplyCanvasPayload(input: {
     operationId: `${input.launchContext.operationId}:canvas:${input.frame}:${input.now}`,
     kind: 'apply-canvas',
     layerId: input.launchContext.layerId,
+    // 46-01: apply payloads carry the target trackId (the launch IS the document).
+    trackId: input.launchContext.document?.activeTrackId ?? '',
     startFrame: input.frame,
     sourceFrame: input.sourceFrame,
     editableState: input.editableState,

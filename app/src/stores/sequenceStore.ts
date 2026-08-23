@@ -5,6 +5,7 @@ import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
 import {isolationStore} from './isolationStore';
 import {physicPaintStore, type PhysicPaintLayerSnapshot} from './physicPaintStore';
+import {getDocument as getEfxPaintDocument} from './efxPaintStore';
 
 const sequences = signal<Sequence[]>([]);
 const activeSequenceId = signal<string | null>(null);
@@ -62,7 +63,11 @@ function capturePhysicPaintDeletionState(layers: readonly Layer[]): PhysicPaintD
   const layerIds = getCanonicalPhysicPaintLayerIds(layers);
   const snapshots = new Map<string, PhysicPaintLayerSnapshot>();
   for (const layerId of layerIds) {
-    const layerSnapshot = physicPaintStore.snapshotLayer(layerId);
+    // 46-01: snapshot the ACTIVE track of each layer (single-track documents
+    // this wave; the snapshot carries its own trackId so restore targets the
+    // exact track).
+    const trackId = getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+    const layerSnapshot = physicPaintStore.snapshotLayer(layerId, trackId);
     if (layerSnapshot) snapshots.set(layerId, layerSnapshot);
   }
   return { layerIds, snapshots };

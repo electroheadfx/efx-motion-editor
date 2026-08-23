@@ -217,7 +217,7 @@ const deliveredGroupFramePaintOperations = new Map<string, Readonly<{
 function activatePhysicalLaunchAuthority(context: PhysicPaintLaunchContext): void {
   const projectContextId = context.project?.contextId ?? projectStore.projectContextId.peek();
   const capacity = getCarriedRotoPhysical(context)?.capacity
-    ?? physicPaintStore.getRotoPhysicalCapacity(context.layerId);
+    ?? physicPaintStore.getRotoPhysicalCapacity(context.layerId, context.document?.activeTrackId ?? '');
   for (const [operationId, entry] of acceptedPhysicalCommands) {
     if (entry.projectContextId !== projectContextId
       || (entry.layerId === context.layerId
@@ -334,10 +334,10 @@ function applyPhysicPaintPayloadWithPublicationLease(
     if (payload.kind === 'apply-canvas') {
       result = physicPaintStore.applyCanvas(payload);
     } else if (payload.kind === 'update-roto-interpolation-settings') {
-      const generatedFrames = physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.settings);
+      const generatedFrames = physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);
       result = successResult(payload, generatedFrames.length);
     } else if (payload.kind === 'update-roto-playback-settings') {
-      const changed = physicPaintStore.setRotoPlaybackSettings(payload.layerId, payload.settings);
+      const changed = physicPaintStore.setRotoPlaybackSettings(payload.layerId, payload.trackId, payload.settings);
       result = successResult(payload, changed ? 1 : 0);
     } else if (payload.kind === 'delete-roto-frame') {
       result = physicPaintStore.deleteRotoFrame(payload);
@@ -457,14 +457,17 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     interpolationEnabled: false,
     interpolationMode: 'duplicate',
     frames: [],
-    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
+    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId, getEfxPaintDocument(request.layerId)?.activeTrackId ?? ''),
     error,
   });
   if (request.projectContextId !== projectStore.projectContextId.peek()) return failure('Project context changed.');
   const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
-  const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(request.layerId);
+  // 46-01: authority reads resolve the document's ACTIVE track (the launch IS
+  // the document — D-03).
+  const trackId = getEfxPaintDocument(request.layerId)?.activeTrackId ?? '';
+  const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(request.layerId, trackId);
   // The child document's single end authority is the physical capacity
   // (43.4 defect 1): the stale main-editor display outFrame never clamps
   // physics-paint content, so the authority remaining is capacity-based.
@@ -472,14 +475,14 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const physicalRemaining = physicalCapacity - request.canonicalStart;
   if (parentTimelineRange === null || physicalRemaining <= 0) return failure('No remaining Physics Paint sequence capacity is available.');
   const capacity = Math.min(physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
-  const records = physicPaintStore.getRotoRealKeyRecords(request.layerId);
-  const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId);
-  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId);
+  const records = physicPaintStore.getRotoRealKeyRecords(request.layerId, trackId);
+  const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId, trackId);
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId, trackId);
   const physicalRevision = buildPhysicPaintRotoPhysicalRevision(
     records,
     interpolation,
-    physicPaintStore.getRotoPhysicalLoopClips(request.layerId),
-    physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId),
+    physicPaintStore.getRotoPhysicalLoopClips(request.layerId, trackId),
+    physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId, trackId),
     groupOverrideRecords,
   );
   const physicalRecords = records.map((record) => ({
@@ -503,7 +506,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     interpolationEnabled: interpolation.enabled,
     interpolationMode: interpolation.mode,
     frames,
-    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
+    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId, trackId),
   };
 }
 
@@ -858,7 +861,7 @@ function validateInsertEmptySegmentPhysicalDelta(input: {
     || proposedIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== currentIncomingInterpolationBreakKeyIds[index])) {
     return 'Empty-segment insert must preserve incoming interpolation breaks exactly.';
   }
-  const projectedTarget = physicPaintStore.getRotoCacheFrames(payload.layerId)
+  const projectedTarget = physicPaintStore.getRotoCacheFrames(payload.layerId, payload.trackId)
     .find((frame) => frame.appFrame === delta.destinationAppFrame);
   if (projectedTarget && projectedTarget.source !== 'real-key') {
     return 'Empty-segment destination became generated or linked before commit.';
@@ -991,14 +994,14 @@ function physicalEditResult(
     try {
       const records = payload.records.map((record) => ({ kind: 'real-key' as const, ...record }));
       const groupOverrideRecords = payload.groupOverrideRecords === undefined
-        ? physicPaintStore.getRotoGroupOverrideRecords(payload.layerId)
+        ? physicPaintStore.getRotoGroupOverrideRecords(payload.layerId, payload.trackId)
         : payload.groupOverrideRecords.map((record) => ({ kind: 'real-key' as const, ...record }));
       stagedRevision = buildPhysicPaintRotoPhysicalRevision(records, {
         enabled: payload.interpolationEnabled,
         mode: payload.interpolationMode,
-      }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId),
+      }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId, payload.trackId),
       payload.incomingInterpolationBreakKeyIds
-        ?? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId),
+        ?? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId, payload.trackId),
       groupOverrideRecords);
     } catch {
       stagedRevision = 'invalid-physical-revision';
@@ -1367,12 +1370,12 @@ function applyPhysicPaintRotoPhysicalMap(
   if (!leaseValidation.ok) {
     return reject(`Roto physical operation lease rejected: ${leaseValidation.reason}.`);
   }
-  const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
-  const currentGroupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(payload.layerId);
-  const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
-  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId);
-  const currentIncomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId);
-  const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
+  const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId, payload.trackId);
+  const currentGroupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(payload.layerId, payload.trackId);
+  const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId, payload.trackId);
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId, payload.trackId);
+  const currentIncomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId, payload.trackId);
+  const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId, payload.trackId);
   const currentRevision = buildPhysicPaintRotoPhysicalRevision(
     currentRecords,
     currentInterpolation,
@@ -1380,7 +1383,7 @@ function applyPhysicPaintRotoPhysicalMap(
     currentIncomingInterpolationBreakKeyIds,
     currentGroupOverrideRecords,
   );
-  const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId);
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId, payload.trackId);
   const parentEndExclusive = getTimelineRangeEndExclusive(layer);
   if (payload.intent !== undefined && parentEndExclusive === null) {
     return reject('Physics Paint layer has no authoritative parent timeline range.');
@@ -1455,7 +1458,7 @@ function applyPhysicPaintRotoPhysicalMap(
   let proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
   try {
     proposedLoopClips = payload.loopClips === undefined
-      ? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId)
+      ? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId, payload.trackId)
       : parsePhysicPaintRotoLoopClips(payload.loopClips);
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical Loop Clips are malformed.');
@@ -1630,7 +1633,7 @@ function applyPhysicPaintRotoPhysicalMap(
     scriptMotion: currentDocument?.scriptMotion ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
     background: isPlayScript
       ? payload.rotoBackground!
-      : currentDocument?.background ?? physicPaintStore.getRotoBackgroundMetadata(payload.layerId),
+      : currentDocument?.background ?? physicPaintStore.getRotoBackgroundMetadata(payload.layerId, payload.trackId),
     selectedKeyId: payload.selectedKeyId,
     cursorAppFrame,
     revision: stagedRevision,
@@ -1639,6 +1642,7 @@ function applyPhysicPaintRotoPhysicalMap(
   });
   const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(
     payload.layerId,
+    payload.trackId,
     stagedDocument,
     leaseToken,
   );
@@ -1812,7 +1816,10 @@ export function applyPhysicPaintRotoGroupFramePaint(
     return Object.freeze({ ok: false, reason: 'stale' });
   }
 
-  const currentDocument = physicPaintStore.getRotoPhysicalDocument(request.layerId);
+  // 46-01: the validation/apply side resolves the document's ACTIVE track (the
+  // launch IS the document — D-03); the carried request carries no trackId.
+  const requestTrackId = getEfxPaintDocument(request.layerId)?.activeTrackId ?? '';
+  const currentDocument = physicPaintStore.getRotoPhysicalDocument(request.layerId, requestTrackId);
   if (!currentDocument
     || currentDocument.revision !== request.expectedRevision
     || buildPhysicPaintRotoProjectEquality(currentDocument) !== request.expectedProjectEquality) {
@@ -1858,6 +1865,7 @@ export function applyPhysicPaintRotoGroupFramePaint(
 
   const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(
     request.layerId,
+    requestTrackId,
     recomputed.proposal,
     request.leaseToken,
   );
@@ -2069,7 +2077,10 @@ export function applyCommittedReferencedActionDeletion(
 
   const source = committed.direction === 'undo' ? history.after : history.before;
   const directionTarget = committed.direction === 'undo' ? history.before : history.after;
-  const current = physicPaintStore.getRotoPhysicalDocument(authority.layerId);
+  // 46-01: the history authority carries no trackId; resolve the ACTIVE track
+  // (the launch IS the document — D-03).
+  const authorityTrackId = getEfxPaintDocument(authority.layerId)?.activeTrackId ?? '';
+  const current = physicPaintStore.getRotoPhysicalDocument(authority.layerId, authorityTrackId);
   if (!current
     || current.revision !== authority.expectedPhysicalRevision
     || buildPhysicPaintRotoProjectEquality(current) !== authority.expectedPhysicalHash
@@ -2105,7 +2116,7 @@ export function applyCommittedReferencedActionDeletion(
     return { ok: false, reason: 'cleanup-reference-mismatch' };
   }
 
-  const replacement = physicPaintStore.replaceRotoPhysicalDocument(authority.layerId, target, input.leaseToken);
+  const replacement = physicPaintStore.replaceRotoPhysicalDocument(authority.layerId, authorityTrackId, target, input.leaseToken);
   if (!replacement.ok) return { ok: false, reason: replacement.error as 'mismatched-token' | 'missing-token' | 'replayed-token' };
   acceptedPhysicalCommands.set(committed.commandId, Object.freeze({
     operationId: committed.commandId,
@@ -2540,7 +2551,7 @@ function getGeneratedRotoRenderOnlyStatus(frame: number): string {
 }
 
 function getGeneratedRotoDisplayMutationGuard(layerId: string, displayFrame: number): string | null {
-  const target = physicPaintStore.getRotoCacheFrames(layerId).find((candidate) => candidate.appFrame === displayFrame);
+  const target = physicPaintStore.getRotoCacheFrames(layerId, getEfxPaintDocument(layerId)?.activeTrackId ?? '').find((candidate) => candidate.appFrame === displayFrame);
   if (target?.source !== 'generated-interpolation') return null;
   return getGeneratedRotoRenderOnlyStatus(displayFrame);
 }
@@ -2584,7 +2595,10 @@ export function createPhysicPaintLaunchContext(
   workflowLabel?: string,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId);
+  // 46-01: the launch IS the document (D-03) — the launch is created against
+  // the document's ACTIVE track, and every runtime read below is track-scoped.
+  const trackId = getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, trackId);
   const timelineRange = getLayerLocalTimelineRange(layer);
   if (timelineRange === null) {
     throw new Error('Physics Paint layer has no authoritative parent timeline range.');
@@ -2593,11 +2607,11 @@ export function createPhysicPaintLaunchContext(
   // D-25/Q4 fold: the parent store capacity is the same parent-end bound the
   // carried document carries, so the parent authority and the child document
   // agree on one capacity for semantic-delta validation.
-  physicPaintStore.setRotoPhysicalCapacity(layerId, layerEndExclusive);
+  physicPaintStore.setRotoPhysicalCapacity(layerId, trackId, layerEndExclusive);
   const localFrame = Math.trunc(frame) - timelineRange.globalStart;
   const requestedFrame = Math.max(0, Math.min(layerEndExclusive - 1, localFrame));
-  const storedDocument = physicPaintStore.getRotoPhysicalDocument(layerId);
-  const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, requestedFrame);
+  const storedDocument = physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
+  const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, requestedFrame);
   // The carried document's ACTIVE track rotoPhysical is the launch authority:
   // the runtime document (cursor/selection overridden to the requested frame)
   // when one exists, otherwise an injected empty physical document so a fresh
@@ -2616,12 +2630,12 @@ export function createPhysicPaintLaunchContext(
         realKeyRecords: [],
         interpolation: PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
         scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
-        background: physicPaintStore.getRotoBackgroundMetadata(layerId),
+        background: physicPaintStore.getRotoBackgroundMetadata(layerId, trackId),
         selectedKeyId: null,
         cursorAppFrame: requestedFrame,
         revision: buildPhysicPaintRotoPhysicalRevision([], PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, []),
       });
-  if (storedDocument) physicPaintStore.setRotoPhysicalSelection(layerId, physical.selectedKeyId, physical.cursorAppFrame);
+  if (storedDocument) physicPaintStore.setRotoPhysicalSelection(layerId, trackId, physical.selectedKeyId, physical.cursorAppFrame);
   const baseDocument = getEfxPaintDocument(layerId);
   if (!baseDocument) {
     throw new Error(`No EFX Paint document for layer "${layerId}".`);
@@ -2632,7 +2646,7 @@ export function createPhysicPaintLaunchContext(
       ? { ...track, rotoPhysical: physical }
       : track),
   };
-  const playbackSettings = physicPaintStore.getRotoPlaybackSettings(layerId) ?? {
+  const playbackSettings = physicPaintStore.getRotoPlaybackSettings(layerId, trackId) ?? {
     loop: false,
     fps: Math.max(1, Math.min(60, isFinitePositiveNumber(fps) ? fps : 12)),
   };

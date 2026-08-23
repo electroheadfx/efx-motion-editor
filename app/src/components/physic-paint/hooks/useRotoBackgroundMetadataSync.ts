@@ -9,7 +9,8 @@ export function persistRotoBackgroundMetadata(
   settings: PhysicsPaintStudioSettings,
 ): void {
   if (!launchContext) return;
-  physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings));
+  // 46-01: background metadata is per-track; write the launch's ACTIVE track.
+  physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, launchContext.document?.activeTrackId ?? '', buildRotoBackgroundMetadata(settings));
 }
 
 export function useRotoBackgroundMetadataSync(input: {

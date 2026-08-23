@@ -9,6 +9,8 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 // 43-04 Task 2 (HOLD-04): one-resolved-raster-per-frame compositing proof for a
 // committed static/hold generation. The generated keys are paint content of the
@@ -47,7 +49,7 @@ function committedHoldRecords(): PhysicPaintRotoRealKeyRecord[] {
 }
 
 function installCommittedGeneration(): void {
-  const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, committedHoldRecords(), INTERPOLATION, CAPACITY);
+  const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, committedHoldRecords(), INTERPOLATION, CAPACITY);
   expect(result.ok).toBe(true);
 }
 
@@ -59,11 +61,11 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
 
   it('every destination frame resolves via getRotoPhysicalRenderSource to exactly one rendered raster owned by the parent Paint layer', () => {
     installCommittedGeneration();
-    const contentRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER);
+    const contentRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID);
     expect(contentRevision).toEqual(expect.stringMatching(/^physical-/));
 
     for (const appFrame of [4, 5, 6]) {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, appFrame);
+      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, appFrame);
       expect(source, `frame ${appFrame} resolves`).not.toBeNull();
       expect(source?.kind).toBe('real');
       if (source?.kind !== 'real') throw new Error(`frame ${appFrame} must resolve to a real render source`);
@@ -74,7 +76,7 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
       expect(source.cacheRevision).toBe(`${contentRevision}:real:key-hold-${appFrame}`);
       // Exactly one resolved raster per frame — the canonical committed payload
       // itself, not a copy or a second composite.
-      const stored = physicPaintStore.getRotoRealKeyRecord(LAYER, `key-hold-${appFrame}`);
+      const stored = physicPaintStore.getRotoRealKeyRecord(LAYER, TEST_TRACK_ID, `key-hold-${appFrame}`);
       expect(stored).not.toBeNull();
       expect(source.renderedFrame).toBe(stored?.payload);
       expect(source?.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
@@ -85,34 +87,34 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
   it('frames outside the committed hold range resolve to no raster', () => {
     installCommittedGeneration();
     for (const appFrame of [1, 2, 3, 7, 8, 11]) {
-      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, appFrame), `frame ${appFrame} is empty`).toBeNull();
+      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, appFrame), `frame ${appFrame} is empty`).toBeNull();
     }
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, -1)).toBeNull();
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 4.5)).toBeNull();
-    expect(physicPaintStore.getRotoPhysicalRenderSource('absent-layer', 4)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, -1)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 4.5)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource('absent-layer', TEST_TRACK_ID, 4)).toBeNull();
     // The pre-existing source key still resolves as its own single raster.
-    const preexisting = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 0);
+    const preexisting = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 0);
     if (preexisting?.kind !== 'real') throw new Error('pre-existing source key must resolve to a real render source');
     expect(preexisting.keyId).toBe('key-source');
   });
 
   it('re-committing the identical static/hold record set is a byte-identical no-op (idempotent re-application)', () => {
     installCommittedGeneration();
-    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER);
-    const projectionBefore = physicPaintStore.getRotoPhysicalProjection(LAYER);
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID);
+    const projectionBefore = physicPaintStore.getRotoPhysicalProjection(LAYER, TEST_TRACK_ID);
     const physicalRevisionBefore = rotoPhysicalRevision.value;
     const visualVersionBefore = physicPaintVersion.value;
 
-    const reapplied = physicPaintStore.replaceRotoPhysicalRecords(LAYER, committedHoldRecords(), INTERPOLATION, CAPACITY);
+    const reapplied = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, committedHoldRecords(), INTERPOLATION, CAPACITY);
     expect(reapplied.ok).toBe(true);
 
-    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER)).toBe(revisionBefore);
-    expect(physicPaintStore.getRotoPhysicalProjection(LAYER)).toBe(projectionBefore);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)).toBe(revisionBefore);
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER, TEST_TRACK_ID)).toBe(projectionBefore);
     expect(rotoPhysicalRevision.value).toBe(physicalRevisionBefore);
     expect(physicPaintVersion.value).toBe(visualVersionBefore);
     // Every destination frame still resolves to the same single raster.
     for (const appFrame of [4, 5, 6]) {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, appFrame);
+      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, appFrame);
       if (source?.kind !== 'real') throw new Error(`Expected a real render source at frame ${appFrame}.`);
       expect(source.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
     }
@@ -126,8 +128,8 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
       record('key-source', 0, 'source'),
       record('key-hold-5', 5, 'hold-5'),
     ];
-    const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, shuffled, INTERPOLATION, CAPACITY);
+    const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, shuffled, INTERPOLATION, CAPACITY);
     expect(result.ok).toBe(true);
-    expect(physicPaintStore.getRotoRealKeyRecords(LAYER).map((entry) => entry.appFrame)).toEqual([0, 4, 5, 6]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID).map((entry) => entry.appFrame)).toEqual([0, 4, 5, 6]);
   });
 });

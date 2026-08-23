@@ -105,18 +105,18 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
   const applyKeyFrames = useCallback((transaction: RotoKeyUtilityTransaction) => {
     if (!input.launchContext) return [];
     const rotoInterpolationSettings = {
-      ...physicPaintStore.getRotoInterpolationSettings(input.launchContext.layerId),
+      ...physicPaintStore.getRotoInterpolationSettings(input.launchContext.layerId, input.launchContext.document?.activeTrackId ?? ''),
       segmentSpacingOverrides: [...transaction.segmentSpacingOverrides],
     };
-    physicPaintStore.replaceRotoKeyFrames({ operationId: `${input.launchContext.operationId}:local-roto-keys:${Date.now()}`, kind: 'replace-roto-key-frames', layerId: input.launchContext.layerId, startFrame: transaction.activeFrame, frames: transaction.realKeyFrames, rotoInterpolationSettings });
-    return physicPaintStore.getRotoCacheFrames(input.launchContext.layerId);
+    physicPaintStore.replaceRotoKeyFrames({ operationId: `${input.launchContext.operationId}:local-roto-keys:${Date.now()}`, kind: 'replace-roto-key-frames', layerId: input.launchContext.layerId, trackId: input.launchContext.document?.activeTrackId ?? '', startFrame: transaction.activeFrame, frames: transaction.realKeyFrames, rotoInterpolationSettings });
+    return physicPaintStore.getRotoCacheFrames(input.launchContext.layerId, input.launchContext.document?.activeTrackId ?? '');
   }, [input.launchContext]);
 
   const persistKeyFrameTransaction = useCallback(async (transaction: RotoKeyUtilityTransaction) => {
     if (!input.launchContext || input.action.bridgeMode === 'Unavailable') throw new Error('App bridge is not connected.');
     if (transaction.realKeyFrames.length !== transaction.realKeyFrameNumbers.length) throw new Error('Roto key cache is incomplete after the action.');
     const operationId = `${input.launchContext.operationId}:roto-keys:${Date.now()}`;
-    const payload: PhysicPaintApplyPayload & { rotoInterpolationSettings: PhysicPaintRotoInterpolationSettings } = { operationId, kind: 'replace-roto-key-frames', layerId: input.launchContext.layerId, startFrame: transaction.activeFrame, frames: transaction.realKeyFrames, rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(input.launchContext.layerId) };
+    const payload: PhysicPaintApplyPayload & { rotoInterpolationSettings: PhysicPaintRotoInterpolationSettings } = { operationId, kind: 'replace-roto-key-frames', layerId: input.launchContext.layerId, trackId: input.launchContext.document?.activeTrackId ?? '', startFrame: transaction.activeFrame, frames: transaction.realKeyFrames, rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(input.launchContext.layerId, input.launchContext.document?.activeTrackId ?? '') };
     input.lifecycle.activeOperationIdRef.current = operationId;
     input.action.registerPendingApply(payload);
     input.lifecycle.pendingKeyActionMessageRef.current = transaction.successMessage;

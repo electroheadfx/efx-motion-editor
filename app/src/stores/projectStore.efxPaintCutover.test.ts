@@ -27,6 +27,18 @@ import * as efxPaintStoreModule from './efxPaintStore';
 import { physicPaintStore } from './physicPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 // --- Hoisted mocks (module graph is imported before the test body runs) ---
 
@@ -303,8 +315,8 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
 
   it('saveProject persists efx_paint_documents keyed by layer id and never emits the legacy outputs field', async () => {
     addPhysicPaintLayer('layer-1');
-    efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
-    physicPaintStore.setFrame('layer-1', 0, makeFrame(0, 0));
+    efxPaintStoreModule.registerDocument(makeTrackDocument('layer-1'));
+    physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
     projectStore.filePath.value = '/project/file.mce';
     projectStore.dirPath.value = '/project';
 
@@ -330,8 +342,8 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
 
   it('saveProjectAs performs the identical v1.0 switch on its call path', async () => {
     addPhysicPaintLayer('layer-1');
-    efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
-    physicPaintStore.setFrame('layer-1', 0, makeFrame(0, 0));
+    efxPaintStoreModule.registerDocument(makeTrackDocument('layer-1'));
+    physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
     projectStore.filePath.value = '/project/old.mce';
     projectStore.dirPath.value = '/project';
 
@@ -361,7 +373,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
   });
 
   it('openProject hydrates efxPaintStore and projects the default track into the runtime', async () => {
-    const document = createEfxPaintDocument('layer-1');
+    const document = makeTrackDocument('layer-1');
     const track = document.tracks[0];
     const withFrame = {
       ...document,
@@ -379,11 +391,11 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
 
     expect(loadEfxPaintDocuments).toHaveBeenCalledTimes(1);
     expect(efxPaintStoreModule.getDocument('layer-1')).toBeDefined();
-    expect(physicPaintStore.getFrames('layer-1').get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
+    expect(physicPaintStore.getFrames('layer-1', TEST_TRACK_ID).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
   });
 
   it('closeProject resets efxPaintStore so no document leaks across projects', () => {
-    efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
+    efxPaintStoreModule.registerDocument(makeTrackDocument('layer-1'));
     const resetSpy = vi.spyOn(efxPaintStoreModule, 'reset');
 
     projectStore.closeProject();
@@ -435,7 +447,7 @@ describe('45-05 Task 3: AddFxMenu registers the v1.0 document at layer creation'
   });
 
   it('the registered document has the DOC-02 shape: one default Paint track, fixed Background fallback, version 1, revision 0', () => {
-    const document = createEfxPaintDocument('layer-new');
+    const document = makeTrackDocument('layer-new');
     expect(document.version).toBe(1);
     expect(document.documentRevision).toBe(0);
     expect(document.parentLayerId).toBe('layer-new');

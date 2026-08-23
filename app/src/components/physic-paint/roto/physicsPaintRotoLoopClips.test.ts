@@ -222,6 +222,7 @@ const runtimeOutput = (document: ReturnType<typeof baseDocument>): Map<string, E
 
 const applyPayload = (loopClips?: unknown) => ({
   kind: 'replace-roto-physical-map' as const,
+  trackId: 'track-1',
   operationId: 'op-1',
   operationKind: 'move-key' as const,
   leaseToken: {

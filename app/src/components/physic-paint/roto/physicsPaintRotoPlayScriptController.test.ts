@@ -57,6 +57,8 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { layerStore } from '../../../stores/layerStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import { projectStore } from '../../../stores/projectStore';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
 const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
@@ -3094,7 +3096,7 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
       [],
       PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
     );
-    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, {
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID, {
       capacity: 600,
       realKeyRecords,
       interpolation: { enabled: false, mode: 'duplicate' },
@@ -3111,8 +3113,8 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
   it('stays available and opens its modal on a real key past the stale display outFrame (pre-33f4beeb behavior)', async () => {
     seedStoreWithKeys();
     const test = harness({
-      getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID),
-      getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID),
+      getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID, TEST_TRACK_ID),
+      getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID),
       requestAuthority: vi.fn(async (operationId: string, start: number) => (
         getPhysicPaintRotoAuthority({ operationId, projectContextId: CONTEXT_ID, layerId: LAYER_ID, canonicalStart: start })
       )),

@@ -1,11 +1,26 @@
-import {describe, it, expect, beforeEach} from 'vitest';
+import {describe,it, expect, beforeEach} from 'vitest';
 import {sequenceStore} from '../stores/sequenceStore';
 import {defaultTransform, type Layer} from '../types/layer';
 import {frameMap, fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
+import {registerDocument, reset as resetEfxPaintStore} from '../stores/efxPaintStore';
+import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
+import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
 import {buildPhysicPaintRotoPhysicalRevision} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {Sequence} from '../types/sequence';
 import type {PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 /** Build a test sequence with `as any` for solidColor/isTransparent fields
  *  that don't exist on KeyPhoto yet (Plan 01 will add them). */
@@ -97,9 +112,10 @@ function installRotoDocument(
   recordFrames: readonly number[],
   loopClips: readonly PhysicPaintRotoLoopClip[],
 ): void {
+  registerDocument(makeTrackDocument(layerId));
   const records = recordFrames.map((appFrame) => makeRotoRecord(`key-${appFrame}`, appFrame));
   const interpolation = { enabled: false, mode: 'duplicate' as const };
-  const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, {
+  const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, TEST_TRACK_ID, {
     capacity: 120,
     realKeyRecords: records,
     interpolation,
@@ -117,6 +133,8 @@ describe('frameMap solid/transparent entries', () => {
   beforeEach(() => {
     sequenceStore.reset();
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument('roto-layer'));
   });
 
   it('resolves a 30-frame content Sequence at global F100 from one validated track layout', () => {
@@ -307,7 +325,7 @@ describe('frameMap solid/transparent entries', () => {
       payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
     }));
     const interpolation = { enabled: true, mode: 'duplicate' as const };
-    const seeded = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', {
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', TEST_TRACK_ID, {
       capacity: 600,
       realKeyRecords: records,
       interpolation,
@@ -428,7 +446,7 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
       { startFrame: 16, frameCount: 14, mode: 'progressive' },
     ]);
 
-    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, [makeLifecycleGroup([
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, TEST_TRACK_ID, [makeLifecycleGroup([
       { start: 10, endExclusive: 30 },
     ])]);
     if (!regenerated.ok) throw new Error(regenerated.error);

@@ -83,7 +83,9 @@ export function serializeRuntimeIntoDocument(layerId: string): EfxPaintDocument 
     throw new Error(`EFX Paint document for layer "${layerId}" must have exactly one default Paint track.`);
   }
   const track = document.tracks[0];
-  const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId);
+  // 46-01: serialize the ACTIVE track's runtime (single-track document guard
+  // above makes track[0] the active track).
+  const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, document.activeTrackId);
   const frames: Record<number, CachedFrameReference> = {};
   for (const [appFrame, frame] of runtime.frames) {
     frames[appFrame] = {
@@ -118,7 +120,8 @@ export function hydrateRuntimeFromDocument(
   if (document.tracks.length !== 1 || document.tracks[0].id !== document.activeTrackId) {
     throw new Error(`EFX Paint document for layer "${document.parentLayerId}" must have exactly one default Paint track.`);
   }
-  physicPaintStore.installRuntimeStateFromDocument(document.parentLayerId, {
+  // 46-01: hydrate into the ACTIVE track's runtime maps.
+  physicPaintStore.installRuntimeStateFromDocument(document.parentLayerId, document.activeTrackId, {
     frames,
     rotoPhysical: document.tracks[0].rotoPhysical,
   });

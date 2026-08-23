@@ -7,6 +7,8 @@ import {sequenceStore} from './sequenceStore';
 import {physicPaintStore} from './physicPaintStore';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 /** Create a minimal AudioTrack for testing */
 describe('EFX Paint project/cache save transaction (45-05)', () => {
@@ -133,14 +135,14 @@ describe('projectStore audio persistence', () => {
         inFrame: 0,
         outFrame: 24,
       });
-      physicPaintStore.setFrame('active-cache', 1, {
+      physicPaintStore.setFrame('active-cache', TEST_TRACK_ID, 1, {
         frameIndex: 0,
         appFrame: 1,
         dataUrl: 'data:image/png;base64,AQID',
         width: 100,
         height: 50,
       });
-      physicPaintStore.setFrame('deleted-cache', 1, {
+      physicPaintStore.setFrame('deleted-cache', TEST_TRACK_ID, 1, {
         frameIndex: 0,
         appFrame: 1,
         dataUrl: 'data:image/png;base64,BAUG',

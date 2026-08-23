@@ -12,6 +12,8 @@ import {
   sortedDirtyRotoFrames,
   type RotoEditableState,
 } from './rotoSaveTransactions';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 const state = (strokes: unknown[] = [], bgMode = 'transparent'): RotoEditableState => ({
   version: 1,
@@ -41,6 +43,8 @@ const state = (strokes: unknown[] = [], bgMode = 'transparent'): RotoEditableSta
 const launchContext = {
   operationId: 'launch-1',
   layerId: 'layer-1',
+  // 46-01: the launch IS the document — builders read the active track from it.
+  document: { activeTrackId: TEST_TRACK_ID },
 } as PhysicPaintLaunchContext;
 
 const renderedFrame = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,frame', width: 100, height: 80 };
@@ -79,6 +83,7 @@ describe('rotoSaveTransactions', () => {
     expect(buildDeleteRotoFramePayload({ launchContext, frame: 8, sourceFrame: 3, now: 42 })).toEqual({
       operationId: 'launch-1:delete-roto:8:42',
       kind: 'delete-roto-frame',
+      trackId: TEST_TRACK_ID,
       layerId: 'layer-1',
       startFrame: 8,
       sourceFrame: 3,
@@ -100,6 +105,7 @@ describe('rotoSaveTransactions', () => {
     })).toMatchObject({
       operationId: 'launch-1:canvas:8:42',
       kind: 'apply-canvas',
+      trackId: TEST_TRACK_ID,
       layerId: 'layer-1',
       startFrame: 8,
       sourceFrame: 3,

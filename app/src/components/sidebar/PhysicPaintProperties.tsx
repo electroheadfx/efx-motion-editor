@@ -4,6 +4,7 @@ import type { BlendMode, Layer } from '../../types/layer';
 import type { PhysicPaintApplyResult } from '../../types/physicPaint';
 import { layerStore } from '../../stores/layerStore';
 import { sequenceStore } from '../../stores/sequenceStore';
+import { getDocument as getEfxPaintDocument } from '../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { timelineStore } from '../../stores/timelineStore';
@@ -33,8 +34,12 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   const currentFrame = timelineStore.currentFrame.value;
   const sourceLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const validContext = layer.type === 'physic-paint' && layer.source.type === 'physic-paint' && Number.isInteger(currentFrame) && currentFrame >= 0;
-  const hasCurrentRotoFrame = validContext ? Boolean(physicPaintStore.getFrame(sourceLayerId, currentFrame)) : false;
-  const hasOutput = validContext ? physicPaintStore.hasOutput(sourceLayerId) : false;
+  // 46-01: runtime state is per-track; this sidebar reads the document's ACTIVE track.
+  const activeTrackId = layer.type === 'physic-paint' && layer.source.type === 'physic-paint'
+    ? (getEfxPaintDocument(sourceLayerId)?.activeTrackId ?? '')
+    : '';
+  const hasCurrentRotoFrame = validContext ? Boolean(physicPaintStore.getFrame(sourceLayerId, activeTrackId, currentFrame)) : false;
+  const hasOutput = validContext ? physicPaintStore.hasOutput(sourceLayerId, activeTrackId) : false;
   useEffect(() => {
     const handleApplyResult = (event: Event) => {
       const result = (event as CustomEvent<PhysicPaintApplyResult>).detail;
@@ -93,7 +98,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
   const deleteCurrentRotoFrame = () => {
     if (!validContext || !hasCurrentRotoFrame) return;
-    physicPaintStore.removeFrameRange(sourceLayerId, currentFrame, 1);
+    physicPaintStore.removeFrameRange(sourceLayerId, activeTrackId, currentFrame, 1);
     setErrorMessage(null);
     setStatusMessage(`Deleted Roto paint frame ${currentFrame}.`);
   };

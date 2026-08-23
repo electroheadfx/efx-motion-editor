@@ -108,7 +108,11 @@ function buildEfxPaintDocuments(): Map<string, EfxPaintDocumentSaveInput> {
   const documents = new Map<string, EfxPaintDocumentSaveInput>();
   for (const layerId of getActivePhysicPaintLayerIds()) {
     const document = serializeEfxPaintDocument(layerId);
-    documents.set(layerId, { document, frames: physicPaintStore.getFrames(layerId) });
+    // 46-01: serialize the ACTIVE track's runtime frames (single-track
+    // documents this wave; multi-track frame collection lands with the
+    // timeline wave).
+    const trackId = document.activeTrackId;
+    documents.set(layerId, { document, frames: physicPaintStore.getFrames(layerId, trackId) });
   }
   return documents;
 }

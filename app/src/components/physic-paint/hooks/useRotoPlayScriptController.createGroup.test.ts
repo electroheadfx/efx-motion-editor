@@ -43,6 +43,8 @@ import {
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 type HookPorts = Parameters<typeof useRotoPlayScriptController>[0];
 
@@ -87,7 +89,7 @@ function seedStoreWithKeys(): void {
     realKeyRecords.push({ kind: 'real-key', keyId: `k${frame}`, appFrame: frame, payload: blankPayload(frame) });
   }
   const revision = buildPhysicPaintRotoPhysicalRevision(realKeyRecords, { enabled: false, mode: 'duplicate' }, [], []);
-  const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, {
+  const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID, {
     capacity: 600,
     realKeyRecords,
     interpolation: { enabled: false, mode: 'duplicate' },
@@ -124,9 +126,9 @@ function ports(): HookPorts {
     getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }),
     getOperationLocked: () => false,
     getSize: () => ({ width: 1920, height: 1080 }),
-    getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID),
+    getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID, TEST_TRACK_ID),
     getLoopEditSnapshot: (placementStart) => {
-      const document = physicPaintStore.getRotoPhysicalDocument(LAYER_ID);
+      const document = physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID);
       if (!document) return null;
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -136,7 +138,7 @@ function ports(): HookPorts {
         interpolationEnabled: document.interpolation.enabled,
       };
     },
-    getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID),
+    getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID),
     stopPlayback: vi.fn(),
     log: vi.fn(),
     executePhysicalEdit: vi.fn(async () => true),

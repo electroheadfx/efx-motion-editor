@@ -9,10 +9,25 @@ import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import type { Sequence } from '../types/sequence';
 import { physicPaintStore } from '../stores/physicPaintStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PreviewPhysicPaintFrameSource, PreviewRenderer } from './previewRenderer';
 import { preloadExportImages, renderGlobalFrame } from './exportRenderer';
 import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 const root = resolve(__dirname, '../..');
 const readSource = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -54,7 +69,7 @@ function seedPhysicalRoto(
     payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
   }));
   const interpolation = { enabled: options.interpolationEnabled ?? false, mode: 'duplicate' as const };
-  const result = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', {
+  const result = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', TEST_TRACK_ID, {
     capacity: 600,
     realKeyRecords: records,
     interpolation,
@@ -71,13 +86,15 @@ function seedPhysicalRoto(
 function collectPhysicalFrameSources(layers: readonly Layer[], frame: number): PreviewPhysicPaintFrameSource[] {
   const paintLayer = layers.find((candidate) => candidate.type === 'physic-paint');
   const layerId = paintLayer?.source.type === 'physic-paint' ? paintLayer.source.layerId : null;
-  const source = layerId ? physicPaintStore.getRotoPhysicalRenderSource(layerId, frame) : null;
+  const source = layerId ? physicPaintStore.getRotoPhysicalRenderSource(layerId, TEST_TRACK_ID, frame) : null;
   return source && source.kind !== 'loop-placeholder' && layerId ? [{ layerId, frame, renderedFrame: source.renderedFrame }] : [];
 }
 
 beforeEach(() => {
   sequenceStore.reset();
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument('roto-layer'));
 });
 
 afterEach(() => {
@@ -91,9 +108,9 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(source).toContain('void physicPaintVersion.value');
     expect(source).toContain('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)');
-    expect(source).toContain('physicPaintStore.getRotoPhysicalRenderSource(layerId, frame)');
+    expect(source).toContain('physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame)');
     expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)');
-    expect(source).toContain('physicPaintStore.getRotoRealKeyRecords(paintLayerId)');
+    expect(source).toContain('physicPaintStore.getRotoRealKeyRecords(paintLayerId, getActiveTrackId(paintLayerId))');
     expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source)');
     expect(source).not.toMatch(/renderFromStrokes/);
   });
@@ -132,7 +149,7 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(setFrame).not.toHaveBeenCalled();
     expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
     expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
-    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1', TEST_TRACK_ID)).toEqual([]);
   });
 
   it('resolves missing background Roto frames as virtual background-only draw without store mutation', () => {
@@ -146,7 +163,7 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(setFrame).not.toHaveBeenCalled();
     expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
     expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
-    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1', TEST_TRACK_ID)).toEqual([]);
   });
 
   it('resolves persisted paper and canvas grain metadata for missing Roto frames without store mutation', () => {
@@ -156,7 +173,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
-    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1', TEST_TRACK_ID)).toEqual([]);
   });
 
   it('collects generated interpolation cache frames for export through the preview renderer source contract', () => {
@@ -198,8 +215,8 @@ describe('physics paint cache-first preview/export contract', () => {
         }),
       }),
     ]));
-    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2' });
+    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2' });
   });
 
   it('36.13-PREVIEW-EXPORT-PARITY preloads store-regenerated 2 -> 6 span output at direct physical appFrame positions', () => {
@@ -211,9 +228,9 @@ describe('physics paint cache-first preview/export contract', () => {
       { keyId: 'key-2', appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' },
       { keyId: 'key-6', appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' },
     ], { interpolationEnabled: true });
-    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer');
+    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer', TEST_TRACK_ID);
     physicPaintStore.reset();
-    physicPaintStore.installRuntimeStateFromDocument('roto-layer', projection);
+    physicPaintStore.installRuntimeStateFromDocument('roto-layer', TEST_TRACK_ID, projection);
     const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
     const renderer = {
       onImageLoaded: null,
@@ -322,9 +339,9 @@ describe('physics paint cache-first preview/export contract', () => {
       { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' },
       { keyId: 'key-2', appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' },
     ], { interpolationEnabled: true });
-    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer');
+    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer', TEST_TRACK_ID);
     physicPaintStore.reset();
-    physicPaintStore.installRuntimeStateFromDocument('roto-layer', projection);
+    physicPaintStore.installRuntimeStateFromDocument('roto-layer', TEST_TRACK_ID, projection);
     const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
     const renderer = {
       onImageLoaded: null,
@@ -356,22 +373,22 @@ describe('physics paint cache-first preview/export contract', () => {
         }),
       }),
     ]));
-    expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2' });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2' });
   });
 
   it('keeps trailing background-only export resolution dynamic without serialized cache growth', () => {
-    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
-    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 6, { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' });
-    const before = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1');
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', TEST_TRACK_ID, 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', TEST_TRACK_ID, 6, { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' });
+    const before = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID);
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 9, {
       backgroundState: { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } },
-      realKeyFrames: physicPaintStore.getRealRotoKeyFrames('phys-layer-1'),
+      realKeyFrames: physicPaintStore.getRealRotoKeyFrames('phys-layer-1', TEST_TRACK_ID),
     });
 
     expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
-    expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
-    expect(physicPaintStore.extractRuntimeStateForDocument('phys-layer-1')).toEqual(before);
+    expect(physicPaintStore.getFrame('phys-layer-1', TEST_TRACK_ID, 9)).toBeNull();
+    expect(physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID)).toEqual(before);
   });
 });
 
@@ -430,7 +447,7 @@ describe('exportRenderer', () => {
         { keyId: 'key-47', appFrame: 47, dataUrl: 'data:image/png;base64,cGFpbnQtNDc=' },
       ]);
 
-      const source = physicPaintStore.getRotoPhysicalRenderSource('roto-layer', 41);
+      const source = physicPaintStore.getRotoPhysicalRenderSource('roto-layer', TEST_TRACK_ID, 41);
       expect(source).not.toBeNull();
       expect(source?.kind).not.toBe('loop-placeholder');
 

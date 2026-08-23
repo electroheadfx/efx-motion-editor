@@ -12,6 +12,7 @@ type PlaybackSettingsItem = {
   operationId: string;
   generation: number;
   layerId: string;
+  trackId: string;
   startFrame: number;
   settings: PhysicPaintRotoPlaybackSettings;
 };
@@ -38,9 +39,11 @@ export function useRotoPlaybackSettingsController(input: {
   inputRef.current = input;
   const initialContextRef = useRef(input.initialContext);
   const generationRef = useRef(initialContextRef.current ? 1 : 0);
-  const launchRef = useRef<{ generation: number; layerId: string; startFrame: number } | null>(initialContextRef.current ? {
+  const launchRef = useRef<{ generation: number; layerId: string; trackId: string; startFrame: number } | null>(initialContextRef.current ? {
     generation: 1,
     layerId: initialContextRef.current.context.layerId,
+    // 46-01: playback settings are per-track; carry the ACTIVE track identity.
+    trackId: initialContextRef.current.context.document?.activeTrackId ?? '',
     startFrame: initialContextRef.current.context.startFrame,
   } : null);
   const acknowledgedRef = useRef<PhysicPaintRotoPlaybackSettings | null>(initialContextRef.current ? { ...initialContextRef.current.settings } : null);
@@ -95,6 +98,7 @@ export function useRotoPlaybackSettingsController(input: {
       kind: 'update-roto-playback-settings',
       operationId: item.operationId,
       layerId: item.layerId,
+      trackId: item.trackId,
       startFrame: item.startFrame,
       settings: { ...item.settings },
     };
@@ -117,7 +121,7 @@ export function useRotoPlaybackSettingsController(input: {
   ) => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
-    launchRef.current = { generation, layerId: context.layerId, startFrame: context.startFrame };
+    launchRef.current = { generation, layerId: context.layerId, trackId: context.document?.activeTrackId ?? '', startFrame: context.startFrame };
     acknowledgedRef.current = { ...settings };
     desiredRef.current = { ...settings };
     queuedRef.current = null;
@@ -141,6 +145,7 @@ export function useRotoPlaybackSettingsController(input: {
       operationId: `physics-paint-playback-${Date.now()}-${crypto.randomUUID()}`,
       generation: launch.generation,
       layerId: launch.layerId,
+      trackId: launch.trackId,
       startFrame: launch.startFrame,
       settings: nextSettings,
     };

@@ -1039,6 +1039,8 @@ interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   readonly kind: 'replace-roto-physical-map';
   readonly operationId: string;
   readonly layerId: string;
+  /** 46-01: stable UUID of the target internal track (never an array index). */
+  readonly trackId: string;
   /** Required by runtime validation; optional in construction-only test fixtures. */
   readonly leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken;
   readonly startFrame: number;
@@ -1504,9 +1506,10 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
+  if (!isNonEmptyString(value.trackId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
   const intent = value.intent;
   const isOrdinary = isPhysicPaintRotoPhysicalEditIntent(intent);
@@ -1758,6 +1761,8 @@ export interface PhysicPaintApplyCanvasPayload {
   kind: 'apply-canvas';
   operationId: string;
   layerId: string;
+  /** 46-01: stable UUID of the target internal track (never an array index). */
+  trackId: string;
   startFrame: number;
   sourceFrame?: number;
   displayFrame?: number;
@@ -1774,6 +1779,8 @@ export interface PhysicPaintDeleteRotoFramePayload {
   kind: 'delete-roto-frame';
   operationId: string;
   layerId: string;
+  /** 46-01: stable UUID of the target internal track (never an array index). */
+  trackId: string;
   startFrame: number;
   sourceFrame?: number;
 }
@@ -1782,6 +1789,8 @@ export interface PhysicPaintReplaceRotoKeyFramesPayload {
   kind: 'replace-roto-key-frames';
   operationId: string;
   layerId: string;
+  /** 46-01: stable UUID of the target internal track (never an array index). */
+  trackId: string;
   startFrame: number;
   projectContextId?: string;
   frameCount?: number;
@@ -1832,6 +1841,8 @@ export interface PhysicPaintUpdateRotoInterpolationSettingsPayload {
   kind: 'update-roto-interpolation-settings';
   operationId: string;
   layerId: string;
+  /** 46-01: stable UUID of the target internal track (never an array index). */
+  trackId: string;
   startFrame: number;
   settings: PhysicPaintRotoInterpolationSettings;
 }
@@ -1840,6 +1851,8 @@ export interface PhysicPaintUpdateRotoPlaybackSettingsPayload {
   kind: 'update-roto-playback-settings';
   operationId: string;
   layerId: string;
+  /** 46-01: stable UUID of the target internal track (never an array index). */
+  trackId: string;
   startFrame: number;
   settings: PhysicPaintRotoPlaybackSettings;
 }
@@ -1978,7 +1991,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   }
 
   if (value.kind === 'update-roto-playback-settings') {
-    return hasOnlyKeys(value, ['kind', 'operationId', 'layerId', 'startFrame', 'settings'])
+    return hasOnlyKeys(value, ['kind', 'operationId', 'layerId', 'trackId', 'startFrame', 'settings'])
       && isPhysicPaintRotoPlaybackSettings(value.settings);
   }
 
@@ -2217,12 +2230,15 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   kind: PhysicPaintApplyKind;
   operationId: string;
   layerId: string;
+  trackId: string;
   startFrame: number;
 } {
   return (
     (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'replace-roto-physical-map' || value.kind === 'update-roto-interpolation-settings' || value.kind === 'update-roto-playback-settings') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
+    // 46-01: every apply targets one internal track by stable UUID (T-46-01/02).
+    isNonEmptyString(value.trackId) &&
     isNonNegativeInteger(value.startFrame) &&
     optionalNonEmptyString(value.playScriptId) &&
     true

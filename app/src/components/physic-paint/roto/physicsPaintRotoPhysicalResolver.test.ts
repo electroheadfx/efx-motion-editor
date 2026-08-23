@@ -47,6 +47,8 @@ import {
 } from '../../../types/physicPaint';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 /**
  * Group-operation regression anchors. Group Drag uses the current rigid
@@ -250,6 +252,7 @@ describe('transport-safe physical edit intent tracer', () => {
   it('accepts move-group as an ordinary physical-edit operation kind', () => {
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: 'move-group-1',
       operationKind: 'move-group',
       intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 7 },
@@ -289,6 +292,7 @@ describe('transport-safe physical edit intent tracer', () => {
 
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: 'scissor-1',
       operationKind: 'scissor-key-rail',
       intent,
@@ -367,6 +371,7 @@ describe('transport-safe physical edit intent tracer', () => {
   ])('admits $operationKind as an ordinary physical-edit operation kind', ({ operationKind, intent }) => {
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: `${operationKind}-1`,
       operationKind,
       intent,

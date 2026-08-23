@@ -21,7 +21,34 @@ import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/rot
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { registerDocument, reset as resetEfxPaintStore } from './efxPaintStore';
-import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  return {
+    version: 1,
+    parentLayerId: layerId,
+    documentRevision: 0,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{
+      id: TEST_TRACK_ID,
+      name: 'Paint',
+      order: 0,
+      visible: true,
+      solo: false,
+      opacity: 1,
+      blendMode: 'normal',
+      revision: 0,
+      frames: {},
+      rotoPhysical: null,
+      loopClips: [],
+    }],
+    background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
+    photoReference: null,
+    compositeRevision: 0,
+  } as unknown as EfxPaintDocument;
+}
 
 // Phase 43 Plan 03: store-level linked Loop Clip resolution. The canonical
 // getRotoPhysicalRenderSource seam resolves linked repetition frames to the
@@ -83,18 +110,18 @@ function installRecords(
   capacity = CAPACITY,
   interpolation: { readonly enabled: boolean; readonly mode: 'duplicate' | 'blend' } = INTERPOLATION,
 ): void {
-  const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, interpolation, capacity);
+  const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, records, interpolation, capacity);
   if (!result.ok) throw new Error(result.error);
 }
 
 function installLoops(loops: readonly PhysicPaintRotoLoopClip[]): void {
-  const result = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, loops);
+  const result = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, loops);
   if (!result.ok) throw new Error(result.error);
 }
 
 /** Narrowed 'real' render-source read — throws on null or any other kind. */
 function expectRealSource(layerId: string, appFrame: number) {
-  const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame);
+  const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, TEST_TRACK_ID, appFrame);
   if (!source || source.kind !== 'real') {
     throw new Error(`Expected a real render source at frame ${appFrame}, got ${source?.kind ?? 'null'}.`);
   }
@@ -110,7 +137,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
   it('resolves 25 timeline frames from a 5-frame cycle repeated 5 times with exactly 5 source-scoped cache identities', () => {
     installRecords(cycleRecords());
     installLoops([loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 5)]);
-    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER);
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID);
     expect(revision).toBeTruthy();
 
     const keyIds = ['A', 'B', 'C', 'D', 'E'];
@@ -127,9 +154,9 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
 
     // Reference identity with the stored source record payload (HOLD-04 pattern
     // extended to linked occurrences) — no per-occurrence copy or raster.
-    expect(expectRealSource(LAYER, 7).renderedFrame).toBe(physicPaintStore.getRotoRealKeyRecord(LAYER, 'C')?.payload);
+    expect(expectRealSource(LAYER, 7).renderedFrame).toBe(physicPaintStore.getRotoRealKeyRecord(LAYER, TEST_TRACK_ID, 'C')?.payload);
     // Frames beyond the effective range stay empty.
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 25)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 25)).toBeNull();
   });
 
   it('resolves one Group-local phase override through every matching repeated occurrence', () => {
@@ -141,7 +168,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       frameOverrides: [{ appFrame: 11, keyId: override.keyId }],
     };
     const interpolation = { enabled: true, mode: 'duplicate' as const };
-    const installed = physicPaintStore.replaceRotoPhysicalDocument(LAYER, {
+    const installed = physicPaintStore.replaceRotoPhysicalDocument(LAYER, TEST_TRACK_ID, {
       capacity: 40,
       realKeyRecords: records,
       groupOverrideRecords: [override],
@@ -155,7 +182,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [loop], [], [override]),
     });
     expect(installed.ok).toBe(true);
-    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER)!;
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
 
     for (const appFrame of [11, 18, 25]) {
       const source = expectRealSource(LAYER, appFrame);
@@ -170,17 +197,17 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
   it('one source-key paint edit invalidates the single source cache entry so every occurrence reflects it', () => {
     installRecords(cycleRecords());
     installLoops([loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 5)]);
-    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER)!;
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
     const occurrences = [3, 8, 13, 18, 23]; // all resolve to source key D
     for (const frame of occurrences) {
       expect(expectRealSource(LAYER, frame).cacheRevision).toBe(`${revisionBefore}:real:D`);
     }
 
-    const update = physicPaintStore.updateRotoPhysicalRealKeyPayload(LAYER, 'D', revisionBefore, payload(3, 'repainted'));
+    const update = physicPaintStore.updateRotoPhysicalRealKeyPayload(LAYER, TEST_TRACK_ID, 'D', revisionBefore, payload(3, 'repainted'));
     expect(update.ok).toBe(true);
     if (update.ok) expect(update.changed).toBe(true);
 
-    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(LAYER)!;
+    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
     expect(revisionAfter).not.toBe(revisionBefore);
     for (const frame of occurrences) {
       const source = expectRealSource(LAYER, frame);
@@ -195,7 +222,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 1),
       loopClip('loop-2', 15, ['A', 'B', 'C', 'D', 'E'], 1),
     ]);
-    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER)!;
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
 
     const identities = new Set<string>();
     for (let frame = 0; frame < 5; frame += 1) identities.add(expectRealSource(LAYER, frame).cacheRevision);
@@ -207,7 +234,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     }
     expect(identities.size, 'duplicate occurrences share the source cache entries').toBe(5);
     // The gap between the two placements is empty.
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 10)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 10)).toBeNull();
   });
 
   it('renders spaced linked interiors with duplicate/blend semantics and one cycle-local cache identity across repeats and shared loops', () => {
@@ -218,7 +245,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       loopClip('loop-2', 24, ['A', 'B', 'C'], 1, 24, 7),
     ]);
 
-    const duplicateSources = [11, 18, 25].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
+    const duplicateSources = [11, 18, 25].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame));
     const sourceCycleId = getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']);
     for (const source of duplicateSources) {
       expect(source).toMatchObject({
@@ -235,8 +262,8 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     expect(new Set(duplicateSources.map((source) => source && 'cacheRevision' in source ? source.cacheRevision : null)).size).toBe(1);
     const linkedCacheRevision = duplicateSources[0]?.kind === 'generated' ? duplicateSources[0].cacheRevision : null;
     expect(linkedCacheRevision).toContain(`:linked-generated:duplicate:${sourceCycleId}:A:B:1`);
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toMatchObject({ kind: 'generated', appFrame: 12 });
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 17)).toMatchObject({ kind: 'real', keyId: 'A', appFrame: 17 });
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 12)).toMatchObject({ kind: 'generated', appFrame: 12 });
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 17)).toMatchObject({ kind: 'real', keyId: 'A', appFrame: 17 });
 
     const originalDocument = globalThis.document;
     const outputCanvas = {
@@ -254,7 +281,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     try {
       installRecords(spaced, CAPACITY, { enabled: true, mode: 'blend' });
       installLoops([loopClip('loop-blend', 10, ['A', 'B', 'C'], 2, 10, 7)]);
-      const blend = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12);
+      const blend = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 12);
       expect(blend).toMatchObject({
         kind: 'generated',
         appFrame: 12,
@@ -276,8 +303,8 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       loopClip('loop-abd', 30, ['A', 'B', 'D'], 1, 30, 10),
     ]);
 
-    const abc = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 13);
-    const abd = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 31);
+    const abc = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 13);
+    const abd = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 31);
     expect(abc).toMatchObject({
       kind: 'generated',
       sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
@@ -301,15 +328,15 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     installLoops([loopClip('loop-gap', 10, ['A', 'B', 'C'], 2)]);
 
     expect(expectRealSource(LAYER, 10).keyId).toBe('A');
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 11)).toBeNull();
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 11)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 12)).toBeNull();
     expect(expectRealSource(LAYER, 13).keyId).toBe('B');
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 18)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 18)).toBeNull();
   });
 
   it('keeps projection real/generated authority inside keyed spans while loops resolve empty frames', () => {
     const result = physicPaintStore.replaceRotoPhysicalRecords(
-      LAYER,
+      LAYER, TEST_TRACK_ID,
       [record('A', 0), record('B', 4)],
       { enabled: true, mode: 'duplicate' },
       CAPACITY,
@@ -318,17 +345,17 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     installLoops([loopClip('loop-1', 10, ['A', 'B'], 1, 10, 5)]);
 
     for (const frame of [1, 2, 3]) {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame);
+      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame);
       if (!source || source.kind !== 'generated') {
         throw new Error(`Expected a generated render source at frame ${frame}, got ${source?.kind ?? 'null'}.`);
       }
     }
     expect(expectRealSource(LAYER, 10).keyId).toBe('A');
     for (const frame of [11, 12, 13]) {
-      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame)).toMatchObject({ kind: 'generated', appFrame: frame });
+      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame)).toMatchObject({ kind: 'generated', appFrame: frame });
     }
     expect(expectRealSource(LAYER, 14).keyId).toBe('B');
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 15)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 15)).toBeNull();
   });
 });
 
@@ -345,7 +372,7 @@ describe('typed linked-unresolved surfacing as the loop-placeholder variant (aud
     installLoops([loopClip('loop-x', 0, ['A', 'missing-1'], 3)]);
 
     for (const frame of [1, 2, 3, 4, 5]) {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame);
+      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame);
       if (!source || source.kind !== 'loop-placeholder') {
         throw new Error(`Expected the loop-placeholder variant at frame ${frame}, got ${source?.kind ?? 'null'}.`);
       }
@@ -364,8 +391,8 @@ describe('typed linked-unresolved surfacing as the loop-placeholder variant (aud
     // boundary key at 10; frames outside every range stay empty (null).
     expect(expectRealSource(LAYER, 0).keyId).toBe('A');
     expect(expectRealSource(LAYER, 10).keyId).toBe('C');
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 6)).toBeNull();
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 6)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 12)).toBeNull();
   });
 });
 
@@ -376,14 +403,14 @@ describe('loop-aware end frame (Pitfall 3, D-25/Q4)', () => {
   });
 
   it('returns null with no loops and no keys, and for absent layers (existing behavior preserved)', () => {
-    expect(physicPaintStore.getRotoPhysicalEndFrame('absent-layer')).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalEndFrame('absent-layer', TEST_TRACK_ID)).toBeNull();
     installRecords([]);
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBeNull();
   });
 
   it('returns last real key + 1 when no loops exist (existing behavior preserved)', () => {
     installRecords([record('A', 0), record('B', 9)]);
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER)).toBe(10);
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(10);
   });
 
   it('an infinity loop extends the end to its capacity-bounded effective end, not last real key + 1', () => {
@@ -391,25 +418,25 @@ describe('loop-aware end frame (Pitfall 3, D-25/Q4)', () => {
     installLoops([loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 'infinity')]);
     // Effective end: min(parent end, capacity). The store's parent-end bound is
     // the physical capacity, so the infinity loop ends exactly at capacity.
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER)).toBe(CAPACITY);
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(CAPACITY);
   });
 
   it('a finite loop repeated past the last real key extends the end to the loop effective end', () => {
     installRecords(cycleRecords());
     installLoops([loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 3)]);
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER)).toBe(15);
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(15);
   });
 
   it('the last real key wins when it extends past every loop effective end', () => {
     installRecords([...cycleRecords(), record('F', 20)]);
     installLoops([loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 2)]);
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER)).toBe(21);
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(21);
   });
 
   it('an unresolved loop still occupies its effective range on the timeline', () => {
     installRecords([]);
     installLoops([loopClip('loop-1', 3, ['missing-1'], 2)]);
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER)).toBe(5);
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(5);
   });
 });
 
@@ -431,7 +458,7 @@ describe('unresolved-loop query (D-28 wiring)', () => {
 
   it('returns each unresolvable loop intersecting the window with placement and missing source key ids', () => {
     installMixedLoops();
-    const unresolved = physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 0, 30);
+    const unresolved = physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 0, 30);
     expect(unresolved).toHaveLength(1);
     expect(unresolved[0]).toEqual({
       loopId: 'loop-1',
@@ -445,7 +472,7 @@ describe('unresolved-loop query (D-28 wiring)', () => {
     installRecords([record('A', 0), record('B', 3), record('C', 6)]);
     installLoops([loopClip('loop-invalid-order', 10, ['A', 'C', 'B'], 2)]);
 
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 10, 16)).toEqual([{
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 10, 16)).toEqual([{
       loopId: 'loop-invalid-order',
       placementStart: 10,
       effectiveEnd: 16,
@@ -456,24 +483,24 @@ describe('unresolved-loop query (D-28 wiring)', () => {
 
   it('uses half-open intersection against the effective range', () => {
     installMixedLoops();
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 2, 3)).toHaveLength(1);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 0, 4)).toHaveLength(1);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 4, 10)).toHaveLength(0);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 4, 5)).toHaveLength(0);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 2, 3)).toHaveLength(1);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 0, 4)).toHaveLength(1);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 4, 10)).toHaveLength(0);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 4, 5)).toHaveLength(0);
   });
 
   it('is empty when every loop resolves over the window', () => {
     installMixedLoops();
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 10, 14)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 10, 14)).toEqual([]);
   });
 
   it('fails closed to an empty result for absent layers and invalid windows', () => {
     installMixedLoops();
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops('absent-layer', 0, 30)).toEqual([]);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 5, 5)).toEqual([]);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 6, 2)).toEqual([]);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, -1, 5)).toEqual([]);
-    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 0, Number.NaN)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops('absent-layer', TEST_TRACK_ID, 0, 30)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 5, 5)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 6, 2)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, -1, 5)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TEST_TRACK_ID, 0, Number.NaN)).toEqual([]);
   });
 });
 
@@ -510,7 +537,7 @@ function seedBridgeDocument(
 ): void {
   const records = cycleRecords();
   const incomingInterpolationBreakKeyIds = options.incomingInterpolationBreakKeyIds ?? [];
-  const result = physicPaintStore.replaceRotoPhysicalDocument(BRIDGE_LAYER, {
+  const result = physicPaintStore.replaceRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID, {
     capacity: 600,
     realKeyRecords: records,
     interpolation: INTERPOLATION,
@@ -542,6 +569,7 @@ function bridgePayload(launchOperationId: string, overrides: Record<string, unkn
   if (!leaseToken) throw new Error('Expected canonical bridge physical-operation lease.');
   return {
     kind: 'replace-roto-physical-map' as const,
+    trackId: TEST_TRACK_ID,
     operationId: `op-${crypto.randomUUID()}`,
     operationKind: overrides.operationKind ?? 'move-key',
     layerId: BRIDGE_LAYER,
@@ -549,14 +577,14 @@ function bridgePayload(launchOperationId: string, overrides: Record<string, unkn
     projectContextId,
     startFrame: 0,
     launchOperationId,
-    expectedRevision: physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!,
-    records: bridgeRecordEntries(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER)),
+    expectedRevision: physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!,
+    records: bridgeRecordEntries(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID)),
     interpolationEnabled: false,
     interpolationMode: 'duplicate' as const,
     selectedKeyId: null,
     selectedAppFrame: null,
     cursorAppFrame:
-      physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)?.cursorAppFrame ?? 0,
+      physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID)?.cursorAppFrame ?? 0,
     ...overrides,
   };
 }
@@ -574,15 +602,15 @@ function canonicalBridgePayload(
   intent: PhysicPaintRotoPhysicalEditIntent,
   options: { readonly omitLoopClips?: boolean } = {},
 ) {
-  const currentRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
-  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER);
-  const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(BRIDGE_LAYER);
+  const currentRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID);
+  const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(BRIDGE_LAYER, TEST_TRACK_ID);
   const resolution = resolvePhysicPaintRotoPhysicalEdit({
     identities: currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
     records: currentRecords,
     intent,
-    parentEndExclusive: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER),
-    capacity: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER),
+    parentEndExclusive: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER, TEST_TRACK_ID),
+    capacity: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER, TEST_TRACK_ID),
     interpolationEnabled: false,
     loopClips: currentLoopClips,
     incomingInterpolationBreakKeyIds: currentBreaks,
@@ -609,7 +637,7 @@ function canonicalBridgePayload(
     selectedAppFrame: proposal.selectedAppFrame,
     cursorAppFrame:
       proposal.selectedAppFrame
-      ?? physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)?.cursorAppFrame
+      ?? physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID)?.cursorAppFrame
       ?? 0,
     ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
   });
@@ -626,7 +654,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     // The v1.0 launch contract carries the document from efxPaintStore (45-06
     // Task 2): the bridge launch path requires a registered document.
     resetEfxPaintStore();
-    registerDocument(createEfxPaintDocument(BRIDGE_LAYER));
+    registerDocument(makeTrackDocument(BRIDGE_LAYER));
     const layer = bridgeLayer();
     sequenceStore.sequences.value = [{
       id: 'store-loop-bridge-parent-sequence',
@@ -670,7 +698,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     const loopBefore = loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 3);
     seedBridgeDocument([loopBefore]);
     const launchOperationId = await launchBridge();
-    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
     const physicalRevisionBefore = rotoPhysicalRevision.value;
     const visualVersionBefore = physicPaintVersion.value;
     const command = canonicalBridgePayload(launchOperationId, {
@@ -689,12 +717,12 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(rotoPhysicalRevision.value).toBe(physicalRevisionBefore + 1);
     expect(physicPaintVersion.value).toBe(visualVersionBefore + 1);
     const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
-    const recordsAfter = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loopAfter]);
+    const recordsAfter = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
     expect(recordsAfter.map((entry) => [entry.keyId, entry.appFrame])).toEqual([
       ['A', 1], ['B', 2], ['C', 3], ['D', 4], ['E', 5],
     ]);
-    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(revisionAfter).not.toBe(revisionBefore);
     expect(revisionAfter).toBe(buildPhysicPaintRotoPhysicalRevision(recordsAfter, INTERPOLATION, [loopAfter]));
     expect('acceptedRevision' in result ? result.acceptedRevision : null).toBe(revisionAfter);
@@ -703,13 +731,13 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
   it('rejects a payload whose expectedRevision went stale through a loop-only change', async () => {
     seedBridgeDocument([loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3)]);
     const launchOperationId = await launchBridge();
-    const staleRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const staleRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
 
     // A loop-only change lands through the store mutation seam: the canonical
     // revision moves even though no record changed (43-01 fingerprint).
-    const loopOnly = physicPaintStore.replaceRotoPhysicalLoopClips(BRIDGE_LAYER, [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 5)]);
+    const loopOnly = physicPaintStore.replaceRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID, [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 5)]);
     expect(loopOnly.ok).toBe(true);
-    const currentRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const currentRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(currentRevision).not.toBe(staleRevision);
 
     const result = applyBridgePayload(bridgePayload(launchOperationId, {
@@ -725,9 +753,9 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('stale');
     // Rejection mutates nothing: the loop-only state is byte-preserved.
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 5)]);
-    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => entry.appFrame)).toEqual([0, 1, 2, 3, 4]);
-    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(currentRevision);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 5)]);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID).map((entry) => entry.appFrame)).toEqual([0, 1, 2, 3, 4]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)).toBe(currentRevision);
   });
 
   it('undo and redo atomically restore records, breaks, selection/cursor, and loopClips', async () => {
@@ -737,9 +765,9 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       incomingInterpolationBreakKeyIds: stableBreaks,
     });
     const launchOperationId = await launchBridge();
-    expect(physicPaintStore.setRotoPhysicalSelection(BRIDGE_LAYER, 'C', 2).ok).toBe(true);
-    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
-    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    expect(physicPaintStore.setRotoPhysicalSelection(BRIDGE_LAYER, TEST_TRACK_ID, 'C', 2).ok).toBe(true);
+    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
 
     // Original command: rigidly moves the complete source cycle, preserves the
     // stable incoming-break owner, moves selection/cursor to the grabbed key,
@@ -752,10 +780,10 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     });
     const accepted = applyBridgePayload(command);
     expect(accepted.ok).toBe(true);
-    const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+    const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
     const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
-    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
-    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)!;
+    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(afterRevision).not.toBe(beforeRevision);
     expect(acceptedDocument.incomingInterpolationBreakKeyIds).toEqual(stableBreaks);
     expect(acceptedDocument.selectedKeyId).toBe('A');
@@ -779,14 +807,14 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       },
     }));
     expect(undo.ok).toBe(true);
-    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => [entry.keyId, entry.appFrame]))
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID).map((entry) => [entry.keyId, entry.appFrame]))
       .toEqual([['A', 0], ['B', 1], ['C', 2], ['D', 3], ['E', 4]]);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopBefore]);
-    const undoneDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)!;
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loopBefore]);
+    const undoneDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(undoneDocument.incomingInterpolationBreakKeyIds).toEqual(stableBreaks);
     expect(undoneDocument.selectedKeyId).toBe('C');
     expect(undoneDocument.cursorAppFrame).toBe(2);
-    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(beforeRevision);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)).toBe(beforeRevision);
 
     // Redo replay reapplies every side of the accepted command atomically.
     const redo = applyBridgePayload(bridgePayload(launchOperationId, {
@@ -805,14 +833,14 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       },
     }));
     expect(redo.ok).toBe(true);
-    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => [entry.keyId, entry.appFrame]))
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID).map((entry) => [entry.keyId, entry.appFrame]))
       .toEqual([['A', 1], ['B', 2], ['C', 3], ['D', 4], ['E', 5]]);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
-    const redoneDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)!;
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loopAfter]);
+    const redoneDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(redoneDocument.incomingInterpolationBreakKeyIds).toEqual(stableBreaks);
     expect(redoneDocument.selectedKeyId).toBe('A');
     expect(redoneDocument.cursorAppFrame).toBe(1);
-    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)).toBe(afterRevision);
   });
 
   it('applies linked source spacing to every shared loop and one Undo/Redo restores complete lifecycle extents', async () => {
@@ -827,7 +855,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     seedBridgeDocument(loops);
     const launchOperationId = await launchBridge();
     const beforeRecords = cycleRecords();
-    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(expectRealSource(BRIDGE_LAYER, 11).keyId).toBe('B');
     expect(expectRealSource(BRIDGE_LAYER, 41).keyId).toBe('B');
 
@@ -843,11 +871,11 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       }],
     });
     expect(applyBridgePayload(command).ok).toBe(true);
-    const spacedRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
-    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const spacedRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
+    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(expectRealSource(BRIDGE_LAYER, 12).keyId).toBe('B');
     expect(expectRealSource(BRIDGE_LAYER, 42).keyId).toBe('B');
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual(spacedLoops);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual(spacedLoops);
 
     const undo = applyBridgePayload(bridgePayload(launchOperationId, {
       operationKind: 'undo',
@@ -865,7 +893,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(undo.ok).toBe(true);
     expect(expectRealSource(BRIDGE_LAYER, 11).keyId).toBe('B');
     expect(expectRealSource(BRIDGE_LAYER, 41).keyId).toBe('B');
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual(loops);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual(loops);
 
     const redo = applyBridgePayload(bridgePayload(launchOperationId, {
       operationKind: 'redo',
@@ -883,14 +911,14 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(redo.ok).toBe(true);
     expect(expectRealSource(BRIDGE_LAYER, 12).keyId).toBe('B');
     expect(expectRealSource(BRIDGE_LAYER, 42).keyId).toBe('B');
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual(spacedLoops);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual(spacedLoops);
   });
 
   it('rejects a replay whose staged state does not match the provenance target revision', async () => {
     const loopBefore = loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 3);
     seedBridgeDocument([loopBefore]);
     const launchOperationId = await launchBridge();
-    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
 
     const command = canonicalBridgePayload(launchOperationId, {
       kind: 'move-key-group',
@@ -899,9 +927,9 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       target: { kind: 'physical-cell', appFrame: 1 },
     });
     expect(applyBridgePayload(command).ok).toBe(true);
-    const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+    const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
     const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
-    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
 
     // The staged undo state carries a Loop Clip the target revision does not
     // cover, so replay rejects before mutating records or Loop Clips.
@@ -917,9 +945,9 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       },
     }));
     expect(forged.ok).toBe(false);
-    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER)).toEqual(afterRecords);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
-    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual(afterRecords);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loopAfter]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)).toBe(afterRevision);
   });
 
   it('a commit without the loopClips member preserves the current collection', async () => {
@@ -934,7 +962,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     }, { omitLoopClips: true }));
 
     expect(result.ok).toBe(true);
-    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).find((entry) => entry.keyId === 'E')?.appFrame).toBe(6);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID).find((entry) => entry.keyId === 'E')?.appFrame).toBe(6);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loop]);
   });
 });

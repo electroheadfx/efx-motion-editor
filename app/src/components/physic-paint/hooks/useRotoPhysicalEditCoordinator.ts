@@ -2071,6 +2071,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           kind: 'replace-roto-physical-map',
           operationId,
           layerId: revalidatedLaunch.layerId,
+          // 46-01: the launch IS the document (D-03); commit to the launch's
+          // ACTIVE track so the apply path never resolves track by frame.
+          trackId: revalidatedLaunch.document?.activeTrackId ?? '',
           leaseToken,
           startFrame: groupFramePaintInput?.appFrame
             ?? groupLifecycleDeleteInput?.appFrame

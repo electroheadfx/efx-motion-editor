@@ -8,6 +8,7 @@ import { audioStore } from '../stores/audioStore';
 import { soloStore } from '../stores/soloStore';
 import { audioEngine } from './audioEngine';
 import { physicPaintStore } from '../stores/physicPaintStore';
+import { getDocument as getEfxPaintDocument } from '../stores/efxPaintStore';
 import type { PhysicPaintRotoPhysicalUnresolvedLoop } from '../stores/physicPaintStore';
 import type { Sequence } from '../types/sequence';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
@@ -83,7 +84,9 @@ function findUnresolvedExportLoop(
     for (const layer of seq.layers) {
       if (layer.type !== 'physic-paint') continue;
       const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-      for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, localFrom, localTo)) {
+      // 46-01: loop runtime is per-track; resolve the layer's ACTIVE track.
+      const trackId = getEfxPaintDocument(paintLayerId)?.activeTrackId ?? '';
+      for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, trackId, localFrom, localTo)) {
         hits.push({ layerId: paintLayerId, seqStart, loop });
       }
     }
@@ -99,7 +102,7 @@ function findUnresolvedExportLoop(
   if (first.loop.invalidSourceTiming) {
     return `Export blocked — Group at frame ${globalPlacement} has invalid source timing. Repair or unlink the Group, then export again.`;
   }
-  const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId)
+  const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId, getEfxPaintDocument(first.layerId)?.activeTrackId ?? '')
     .find((candidate) => candidate.loopId === first.loop.loopId);
   const firstMissingKeyId = first.loop.missingSourceKeyIds[0];
   const sourceIndex = clip && firstMissingKeyId !== undefined

@@ -8,6 +8,7 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { _setPhysicPaintMarkDirtyCallback, physicPaintStore } from './physicPaintStore';
 import {
@@ -21,6 +22,18 @@ import {
   reset,
   serializeRuntimeIntoDocument,
 } from './efxPaintStore';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
@@ -46,7 +59,7 @@ describe('efxPaintStore', () => {
   });
 
   it('registers a document and returns it by layer id', () => {
-    const document = createEfxPaintDocument('layer-x');
+    const document = makeTrackDocument('layer-x');
     registerDocument(document);
     expect(getDocument('layer-x')).toBe(document);
     expect(hasDocument('layer-x')).toBe(true);
@@ -57,10 +70,10 @@ describe('efxPaintStore', () => {
     const dirty = vi.fn();
     _setEfxPaintMarkDirtyCallback(dirty);
     const before = efxPaintVersion.value;
-    registerDocument(createEfxPaintDocument('layer-x'));
+    registerDocument(makeTrackDocument('layer-x'));
     expect(efxPaintVersion.value).toBe(before + 1);
     expect(dirty).toHaveBeenCalledTimes(1);
-    registerDocument(createEfxPaintDocument('layer-y'));
+    registerDocument(makeTrackDocument('layer-y'));
     expect(efxPaintVersion.value).toBe(before + 2);
     expect(dirty).toHaveBeenCalledTimes(2);
     expect(removeDocument('layer-x')).toBe(true);
@@ -71,8 +84,8 @@ describe('efxPaintStore', () => {
   });
 
   it('reset empties the map and bumps the version signal', () => {
-    registerDocument(createEfxPaintDocument('layer-x'));
-    registerDocument(createEfxPaintDocument('layer-y'));
+    registerDocument(makeTrackDocument('layer-x'));
+    registerDocument(makeTrackDocument('layer-y'));
     const before = efxPaintVersion.value;
     reset();
     expect(hasDocument('layer-x')).toBe(false);
@@ -90,12 +103,12 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
   });
 
   it('projects runtime state into the single default track and increments documentRevision', () => {
-    const document = createEfxPaintDocument('layer-L');
+    const document = makeTrackDocument('layer-L');
     registerDocument(document);
-    physicPaintStore.setFrame('layer-L', 0, makeFrame(0, 0));
-    physicPaintStore.setFrame('layer-L', 3, makeFrame(1, 3));
+    physicPaintStore.setFrame('layer-L', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    physicPaintStore.setFrame('layer-L', TEST_TRACK_ID, 3, makeFrame(1, 3));
     const result = physicPaintStore.replaceRotoPhysicalRecords(
-      'layer-L',
+      'layer-L', TEST_TRACK_ID,
       [rotoRecord('key-1', 0)],
       { enabled: false, mode: 'duplicate' },
       10,
@@ -117,7 +130,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
   });
 
   it('hydrates a document whose default track carries frames/rotoPhysical into the runtime maps', () => {
-    const document = createEfxPaintDocument('layer-L');
+    const document = makeTrackDocument('layer-L');
     const track = document.tracks[0];
     const records = [rotoRecord('key-1', 0)];
     const withPayload = {
@@ -149,39 +162,39 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
 
     hydrateRuntimeFromDocument(withPayload, frames);
 
-    expect(physicPaintStore.getFrames('layer-L').get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
-    expect(physicPaintStore.getRotoRealKeyRecords('layer-L').map((record) => record.keyId)).toEqual(['key-1']);
+    expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID).map((record) => record.keyId)).toEqual(['key-1']);
   });
 
   it('round-trips runtime → document → runtime with reference-stable identity', () => {
-    const document = createEfxPaintDocument('layer-L');
+    const document = makeTrackDocument('layer-L');
     registerDocument(document);
-    physicPaintStore.setFrame('layer-L', 0, makeFrame(0, 0));
-    physicPaintStore.setFrame('layer-L', 3, makeFrame(1, 3));
+    physicPaintStore.setFrame('layer-L', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    physicPaintStore.setFrame('layer-L', TEST_TRACK_ID, 3, makeFrame(1, 3));
     const result = physicPaintStore.replaceRotoPhysicalRecords(
-      'layer-L',
+      'layer-L', TEST_TRACK_ID,
       [rotoRecord('key-1', 0)],
       { enabled: false, mode: 'duplicate' },
       10,
     );
     expect(result.ok).toBe(true);
-    const originalFrames = physicPaintStore.getFrames('layer-L');
-    const originalRoto = physicPaintStore.getRotoRealKeyRecords('layer-L');
+    const originalFrames = physicPaintStore.getFrames('layer-L', TEST_TRACK_ID);
+    const originalRoto = physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID);
 
     const projected = serializeRuntimeIntoDocument('layer-L');
     hydrateRuntimeFromDocument(projected, originalFrames);
 
-    const restoredFrames = physicPaintStore.getFrames('layer-L');
+    const restoredFrames = physicPaintStore.getFrames('layer-L', TEST_TRACK_ID);
     expect(Array.from(restoredFrames.keys()).sort()).toEqual([0, 3]);
     expect(restoredFrames.get(0)?.dataUrl).toBe(originalFrames.get(0)?.dataUrl);
     expect(restoredFrames.get(3)?.dataUrl).toBe(originalFrames.get(3)?.dataUrl);
-    const restoredRoto = physicPaintStore.getRotoRealKeyRecords('layer-L');
+    const restoredRoto = physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID);
     expect(restoredRoto.map((record) => record.keyId)).toEqual(originalRoto.map((record) => record.keyId));
     expect(restoredRoto[0]?.payload.dataUrl).toBe(originalRoto[0]?.payload.dataUrl);
   });
 
   it('projects an empty runtime into a schema-valid document with an empty default-track payload', () => {
-    const document = createEfxPaintDocument('layer-L');
+    const document = makeTrackDocument('layer-L');
     registerDocument(document);
 
     const projected = serializeRuntimeIntoDocument('layer-L');
@@ -193,21 +206,21 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
   });
 
   it('never reads or writes another layer runtime maps when projecting layer A', () => {
-    const documentA = createEfxPaintDocument('layer-A');
+    const documentA = makeTrackDocument('layer-A');
     registerDocument(documentA);
-    physicPaintStore.setFrame('layer-A', 0, makeFrame(0, 0));
-    physicPaintStore.setFrame('layer-B', 7, makeFrame(0, 7));
+    physicPaintStore.setFrame('layer-A', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    physicPaintStore.setFrame('layer-B', TEST_TRACK_ID, 7, makeFrame(0, 7));
 
     const projected = serializeRuntimeIntoDocument('layer-A');
 
     expect(Object.keys(projected.tracks[0].frames).map(Number)).toEqual([0]);
-    expect(physicPaintStore.getFrames('layer-B').get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
-    hydrateRuntimeFromDocument(projected, physicPaintStore.getFrames('layer-A'));
-    expect(physicPaintStore.getFrames('layer-B').get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
+    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
+    hydrateRuntimeFromDocument(projected, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID));
+    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
   });
 
   it('throws on outbound projection when the document has more than one Paint track', () => {
-    const document = createEfxPaintDocument('layer-L');
+    const document = makeTrackDocument('layer-L');
     const secondTrack = { ...document.tracks[0], id: 'track-2' };
     const multiTrack = { ...document, tracks: [document.tracks[0], secondTrack] };
     registerDocument(multiTrack);

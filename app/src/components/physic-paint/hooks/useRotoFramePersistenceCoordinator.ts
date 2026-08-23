@@ -25,16 +25,18 @@ export function shouldReloadRotoFrameAfterFailedCapture(): boolean {
 }
 
 interface RotoPersistenceStorePort {
-  getRotoPhysicalDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
-  getRotoPhysicalContentRevision: (layerId: string) => string | null;
+  // 46-01: all store ports are track-scoped; callers pass the launch's ACTIVE
+  // track identity.
+  getRotoPhysicalDocument: (layerId: string, trackId: string) => PhysicPaintRotoPhysicalDocument | null;
+  getRotoPhysicalContentRevision: (layerId: string, trackId: string) => string | null;
   /** regression-refresh-multi-paint Layer 2: resolve the monotonic CONTENT token
    * of a content revision. Threaded into every reference load so the engine's
    * preview-base seam orders paints by CONTENT newness, never issue order. */
   resolveContentToken: (contentRevision: string | null | undefined) => number;
-  getRotoRealKeyRecord: (layerId: string, keyId: string) => PhysicPaintRotoRealKeyRecord | null;
-  getRotoRealKeyRecordByAppFrame: (layerId: string, appFrame: number) => PhysicPaintRotoRealKeyRecord | null;
-  getRotoPhysicalRenderSource: (layerId: string, appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
-  updateRotoPhysicalRealKeyPayload: (layerId: string, keyId: string, expectedContentRevision: string, payload: PhysicPaintRotoRealKeyPayload, diagnostics?: { mutationId?: number; record: typeof recordPhysicsPaintPerformance }) => { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string };
+  getRotoRealKeyRecord: (layerId: string, trackId: string, keyId: string) => PhysicPaintRotoRealKeyRecord | null;
+  getRotoRealKeyRecordByAppFrame: (layerId: string, trackId: string, appFrame: number) => PhysicPaintRotoRealKeyRecord | null;
+  getRotoPhysicalRenderSource: (layerId: string, trackId: string, appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
+  updateRotoPhysicalRealKeyPayload: (layerId: string, trackId: string, keyId: string, expectedContentRevision: string, payload: PhysicPaintRotoRealKeyPayload, diagnostics?: { mutationId?: number; record: typeof recordPhysicsPaintPerformance }) => { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string };
 }
 
 export interface RotoPhysicalPaintRouteInput {
@@ -281,8 +283,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       const deliveryStartedAt = profiling ? performance.now() : 0;
       if (profiling) recordPhysicsPaintPerformance({ stage: 'bridge-queue-wait', category: 'scheduled-wait', durationMs: deliveryStartedAt - queuedAt, timestamp: deliveryStartedAt, mutationId, sourceFrame: identity.appFrame });
       const launch = inputRef.current.launchContext;
-      const currentRecord = inputRef.current.store.getRotoRealKeyRecord(identity.layerId, identity.keyId);
-      const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(identity.layerId);
+      const trackId = launch?.document?.activeTrackId ?? '';
+      const currentRecord = inputRef.current.store.getRotoRealKeyRecord(identity.layerId, trackId, identity.keyId);
+      const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(identity.layerId, trackId);
       if (!launch
         || launch.operationId !== identity.launchId
         || launch.layerId !== identity.layerId
@@ -307,8 +310,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const getCurrentIdentity = useCallback((layerId: string, launchId: string, keyId: string): RotoLivePixelIdentity | null => {
     const launch = inputRef.current.launchContext;
     if (!launch || launch.operationId !== launchId || launch.layerId !== layerId) return null;
-    const record = inputRef.current.store.getRotoRealKeyRecord(layerId, keyId);
-    const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(layerId);
+    const trackId = launch.document?.activeTrackId ?? '';
+    const record = inputRef.current.store.getRotoRealKeyRecord(layerId, trackId, keyId);
+    const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(layerId, trackId);
     if (!record || !contentRevision) return null;
     return { launchId, layerId, keyId, contentRevision, appFrame: record.appFrame };
   }, []);
@@ -318,7 +322,11 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     launchId: string,
     options?: { preserveRuntimeCaches?: boolean },
   ) => {
-    const document = inputRef.current.store.getRotoPhysicalDocument(layerId);
+    // 46-01: the launch IS the document (D-03); the store is track-scoped, so
+    // resolve the launch's ACTIVE track before reading the physical document.
+    const launch = inputRef.current.launchContext;
+    const trackId = launch?.layerId === layerId ? launch.document?.activeTrackId ?? '' : '';
+    const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     if (!document) return;
     const frames = recordsAsRuntimeFrames(document);
     inputRef.current.latestFramesRef.current = frames;
@@ -339,7 +347,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     // placeholder rejection arm — a placeholder frame can never become a
     // cached reference, a repaint base, or a durable-cache write.
     getPhysicalRenderSource: (appFrame) => rejectRotoLoopPlaceholderSource(inputRef.current.launchContext
-      ? inputRef.current.store.getRotoPhysicalRenderSource(inputRef.current.launchContext.layerId, appFrame)
+      ? inputRef.current.store.getRotoPhysicalRenderSource(inputRef.current.launchContext.layerId, inputRef.current.launchContext.document?.activeTrackId ?? '', appFrame)
       : null),
     getPreviewFrames: () => editBuffer.bufferRef.current.previewFrames,
     getDirtyFrames: () => editBuffer.bufferRef.current.dirtyFrames,
@@ -355,8 +363,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const launchId = expectedOperationId ?? launch?.operationId;
     const projectContextId = launch?.project?.contextId;
     if (!layerId || !launchId || !projectContextId) return false;
-    const document = inputRef.current.store.getRotoPhysicalDocument(layerId);
-    const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId);
+    const trackId = launch?.document?.activeTrackId ?? '';
+    const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
+    const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId, trackId);
     if (!document || !contentRevision || document.revision !== contentRevision) return false;
     const route = await routeRotoPhysicalPaintFrame({
       document,
@@ -375,7 +384,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       createOverrideKeyId: inputRef.current.createOverrideKeyId ?? (() => crypto.randomUUID()),
       diagnostics: isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined,
     }, {
-      updateOrdinaryKey: inputRef.current.store.updateRotoPhysicalRealKeyPayload,
+      updateOrdinaryKey: (updateLayerId, keyId, expectedContentRevision, payload, diagnostics) => inputRef.current.store.updateRotoPhysicalRealKeyPayload(updateLayerId, trackId, keyId, expectedContentRevision, payload, diagnostics),
       executePhysicalEdit: inputRef.current.executePhysicalEdit,
     });
     if (!route.ok) return false;
@@ -398,6 +407,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       operationId: `${launchId}:live-pixels:${route.keyId}:${++parentOperationRevisionRef.current}`,
       kind: 'apply-canvas',
       layerId,
+      trackId,
       startFrame: renderedFrame.appFrame,
       renderedFrame: accepted,
       ...(backgroundOnly ? { backgroundOnly: true } : {}),
@@ -422,8 +432,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const launch = inputRef.current.launchContext;
     const launchId = capture.operationId ?? launch?.operationId;
     if (!launchId) return Promise.resolve(false);
-    const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId);
-    const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId);
+    const trackId = launch?.document?.activeTrackId ?? '';
+    const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
+    const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
     if (!document || !contentRevision || document.revision !== contentRevision) return Promise.resolve(false);
     const identityKey = resolveRotoLivePixelIdentityKey(document, capture.appFrame);
     if (identityKey === null) return Promise.resolve(false);
@@ -438,8 +449,8 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       identity,
       mutationId: capture.mutationId,
       resolveCurrent: () => {
-        const currentDocument = inputRef.current.store.getRotoPhysicalDocument(capture.layerId);
-        const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId);
+        const currentDocument = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
+        const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
         if (!currentDocument || currentRevision !== contentRevision) return null;
         const currentIdentityKey = resolveRotoLivePixelIdentityKey(currentDocument, capture.appFrame);
         return currentIdentityKey === identityKey ? identity : null;
@@ -466,7 +477,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const resolveFrameIdentityInput = useCallback((appFrame: number) => {
     const launch = inputRef.current.launchContext;
     if (!launch) return null;
-    const document = inputRef.current.store.getRotoPhysicalDocument(launch.layerId);
+    const document = inputRef.current.store.getRotoPhysicalDocument(launch.layerId, launch.document?.activeTrackId ?? '');
     if (!document) return null;
     const keyId = resolveRotoLivePixelIdentityKey(document, appFrame);
     return keyId === null
@@ -489,8 +500,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const clearCurrentFrame = useCallback((keyId: string, appFrame: number, size: { width: number; height: number }) => {
     const launch = inputRef.current.launchContext;
     if (!launch) return false;
-    const record = inputRef.current.store.getRotoRealKeyRecord(launch.layerId, keyId);
-    const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId);
+    const trackId = launch.document?.activeTrackId ?? '';
+    const record = inputRef.current.store.getRotoRealKeyRecord(launch.layerId, trackId, keyId);
+    const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId, trackId);
     if (!record || record.appFrame !== appFrame || !contentRevision) return false;
     livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
     const blank = buildBlankRotoFrame(size.width, size.height, appFrame);

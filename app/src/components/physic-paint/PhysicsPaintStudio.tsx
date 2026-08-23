@@ -235,7 +235,14 @@ export function PhysicsPaintStudio() {
   // Navigation still supersedes by clearing the base first, and the reconcile
   // itself always paints: max(acceptedToken, applied) is never below the applied
   // gate, and the accepted token is the newest content-derived token assigned.
-  const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '');
+  // 46-01: the ACTIVE track identity for a launch (the launch IS the document —
+  // D-03 — so the carried activeTrackId is the identity authority). The
+  // document field is typed optional for legacy parsing tolerance; at runtime
+  // every v1.0 launch carries it, and the store rejects writes to unknown
+  // tracks, so a missing document fails closed.
+  const trackIdOfLaunch = (lc: PhysicPaintLaunchContext | null | undefined): string => lc?.document?.activeTrackId ?? '';
+  const studioActiveTrackId = () => trackIdOfLaunch(launchContextRef.current);
+  const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '', studioActiveTrackId());
   const selectedKeyId = useSignal<string | null>(getCarriedRotoPhysical(launchContext)?.selectedKeyId ?? null);
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
@@ -305,8 +312,8 @@ export function PhysicsPaintStudio() {
         loopSelectionAnchorId.value = null;
         activeLinkedLoopClipId.value = null;
       } else if (next && next.startFrame !== current?.startFrame) {
-        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, next.startFrame)?.keyId ?? null;
-        physicPaintStore.setRotoPhysicalSelection(next.layerId, selectedKeyId.value, next.startFrame);
+        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, trackIdOfLaunch(next), next.startFrame)?.keyId ?? null;
+        physicPaintStore.setRotoPhysicalSelection(next.layerId, trackIdOfLaunch(next), selectedKeyId.value, next.startFrame);
         const spacingSelection = rotoSpacingSelection.peek();
         selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
           ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
@@ -417,13 +424,13 @@ export function PhysicsPaintStudio() {
   // Physical selection state (D-01/D-10): selectedKeyId is the stable real-key
   // identity, rotoKeyRecords and rotoInterpolationState are derived from the
   // store's validated physical records and canonical interpolation state.
-  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [], [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, trackIdOfLaunch(launchContext)) : [], [launchContext?.layerId, physicPaintVersion.value]);
   const rotoIncomingInterpolationBreakKeyIds = useMemo(
-    () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId) : [],
+    () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
     [launchContext?.layerId, physicPaintVersion.value],
   );
-  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
-  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, trackIdOfLaunch(launchContext)) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, trackIdOfLaunch(launchContext)) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);
   const keyRailGroupOwnedKeyIds = useMemo(() => {
     const owned = new Set<string>();
     for (const clip of rotoLoopClips) {
@@ -472,7 +479,7 @@ export function PhysicsPaintStudio() {
   // above — the store getter returns a fresh clone per call, and an unstable
   // identity here defeats the useRotoTimelineModel structural memo, forcing a
   // full signal-graph rebuild on every Studio render.
-  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
   const currentFrame = launchContext?.startFrame ?? 0;
   // UAT-3: persisted operation-result capsule line. An operation publishes its
   // outcome here (survives the operation's own selection aftermath); only a NEW
@@ -492,6 +499,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
+        trackIdOfLaunch(launchContext),
         null,
         currentFrame,
       );
@@ -549,13 +557,15 @@ export function PhysicsPaintStudio() {
     latestFramesRef: latestRotoFramesRef,
     setLaunchContext,
     store: {
-      getRotoPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
-      getRotoPhysicalContentRevision: (layerId) => physicPaintStore.getRotoPhysicalContentRevision(layerId),
+      // 46-01: the persistence port is track-scoped; the coordinator resolves
+      // the launch's ACTIVE track itself, so the port passes it straight through.
+      getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),
+      getRotoPhysicalContentRevision: (layerId, trackId) => physicPaintStore.getRotoPhysicalContentRevision(layerId, trackId),
       resolveContentToken: (contentRevision) => resolveContentToken(contentRevision),
-      getRotoRealKeyRecord: (layerId, keyId) => physicPaintStore.getRotoRealKeyRecord(layerId, keyId),
-      getRotoRealKeyRecordByAppFrame: (layerId, appFrame) => physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, appFrame),
-      getRotoPhysicalRenderSource: (layerId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame),
-      updateRotoPhysicalRealKeyPayload: (layerId, keyId, revision, payload, diagnostics) => physicPaintStore.updateRotoPhysicalRealKeyPayload(layerId, keyId, revision, payload, diagnostics),
+      getRotoRealKeyRecord: (layerId, trackId, keyId) => physicPaintStore.getRotoRealKeyRecord(layerId, trackId, keyId),
+      getRotoRealKeyRecordByAppFrame: (layerId, trackId, appFrame) => physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, appFrame),
+      getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),
+      updateRotoPhysicalRealKeyPayload: (layerId, trackId, keyId, revision, payload, diagnostics) => physicPaintStore.updateRotoPhysicalRealKeyPayload(layerId, trackId, keyId, revision, payload, diagnostics),
     },
     syncPending: () => resetRotoKeySessionRef.current(),
     getBackgroundMetadata: () => buildRotoBackgroundMetadata(settings),
@@ -629,7 +639,7 @@ export function PhysicsPaintStudio() {
     loop: false,
     fps: Math.max(1, Math.min(60, previewFps)),
   };
-  const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1;
+  const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 1;
   const rotoTimelineModel = useRotoTimelineModel({
     cachedRotoFrames: latestRotoFramesRef.current,
     interpolationSettings: rotoLegacyInterpolationSettings,
@@ -640,7 +650,7 @@ export function PhysicsPaintStudio() {
     selectedKeyId: selectedKeyId.value,
     incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
-    rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 0,
+    rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0,
   });
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   // The single canonical cross-type rail ordering authority (D-01): gestures,
@@ -721,8 +731,8 @@ export function PhysicsPaintStudio() {
       appFrame: currentFrame,
     }),
     getMotion: () => ({
-      deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform : 0,
-      position: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position : 0,
+      deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).deform : 0,
+      position: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).position : 0,
     }),
     getPublicationIdentity: () => launchContext ? {
       operationId: launchContext.operationId,
@@ -847,10 +857,10 @@ export function PhysicsPaintStudio() {
     records: readonly PhysicPaintRotoRealKeyRecord[],
     interpolation: PhysicPaintRotoInterpolationState,
   ) => {
-    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId);
-    const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId);
-    const currentIncomingBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId);
-    const currentGroupOverrides = physicPaintStore.getRotoGroupOverrideRecords(layerId);
+    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId());
+    const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId());
+    const currentIncomingBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId());
+    const currentGroupOverrides = physicPaintStore.getRotoGroupOverrideRecords(layerId, studioActiveTrackId());
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(
       records,
       interpolation,
@@ -860,12 +870,12 @@ export function PhysicsPaintStudio() {
     );
     if (buildPhysicPaintRotoPhysicalRevision(
       beforeRecords,
-      physicPaintStore.getRotoPhysicalInterpolationState(layerId),
+      physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
       currentLoopClips,
       currentIncomingBreaks,
       currentGroupOverrides,
     ) === nextRevision) {
-      return physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
+      return physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     }
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
     const realKeyOwnedReference = repaintBase && beforeRecords.some((record) => record.appFrame === repaintBase.appFrame)
@@ -887,7 +897,7 @@ export function PhysicsPaintStudio() {
       },
     });
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
-    const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
+    const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     if (!result.ok) return result;
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
@@ -909,8 +919,8 @@ export function PhysicsPaintStudio() {
     document: PhysicPaintRotoPhysicalDocument,
     leaseToken: PhysicPaintRotoPhysicalOperationLeaseToken,
   ) => {
-    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layerId);
-    const beforeRecords = beforeDocument?.realKeyRecords ?? physicPaintStore.getRotoRealKeyRecords(layerId);
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layerId, studioActiveTrackId());
+    const beforeRecords = beforeDocument?.realKeyRecords ?? physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId());
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
     const realKeyOwnedReference = repaintBase && beforeRecords.some((record) => record.appFrame === repaintBase.appFrame)
       ? { url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: repaintBase }
@@ -948,7 +958,7 @@ export function PhysicsPaintStudio() {
       },
     });
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
-    const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, document, leaseToken);
+    const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, studioActiveTrackId(), document, leaseToken);
     if (!result.ok) return result;
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
@@ -968,17 +978,17 @@ export function PhysicsPaintStudio() {
   const physicalEditCoordinator = useRotoPhysicalEditCoordinator<EfxPaintDocument>({
     engine,
     records: {
-      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
-      getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
+      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()),
+      getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId, studioActiveTrackId()),
       replaceDocument: replacePhysicalDocumentWithOwnership,
-      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
-      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
-      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
-      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
+      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()),
+      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
+      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
-        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, keyIds)
+        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId(), keyIds)
       ),
-      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
+      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, studioActiveTrackId(), loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
     buffer: {
@@ -1016,7 +1026,7 @@ export function PhysicsPaintStudio() {
       getCurrentAppFrame: () => currentFrame,
       setCurrentAppFrame: (frame) => {
         const launch = launchContextRef.current;
-        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, selectedKeyId.value, frame);
+        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, trackIdOfLaunch(launch), selectedKeyId.value, frame);
         setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
       },
     },
@@ -1193,17 +1203,17 @@ export function PhysicsPaintStudio() {
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
     getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
-    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
     setInterpolationSettings: (settings) => {
       if (!launchContext) return settings;
-      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings);
-      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
+      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext), settings);
+      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext));
     },
-    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : [],
-    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null,
+    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
+    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
-    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : [],
+    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
@@ -1221,21 +1231,21 @@ export function PhysicsPaintStudio() {
     },
     getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
       rotoSpacingSelection.peek(),
-      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId) : [])
+      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, trackIdOfLaunch(launchContextRef.current)) : [])
         .filter((loopClip) => {
-          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId).map((record) => record.keyId) : []);
+          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId, trackIdOfLaunch(launchContextRef.current)).map((record) => record.keyId) : []);
           return loopClip.sourceKeyIds.every((keyId) => currentKeyIds.has(keyId));
         })
         .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
     ),
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
-    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
+    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 1,
     getParentEndExclusive: () => launchContext
-      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId)
+      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext))
       : 0,
     getIncomingInterpolationBreakKeyIds: () => launchContext
-      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId)
+      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, trackIdOfLaunch(launchContext))
       : [],
     buildBlankRotoFrame: (frame) => ({
       ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
@@ -1264,7 +1274,7 @@ export function PhysicsPaintStudio() {
 
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
-      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, source.keyId);
+      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, trackIdOfLaunch(launch), source.keyId);
       return record?.appFrame === source.appFrame
         ? { keyId: record.keyId, appFrame: record.appFrame }
         : null;
@@ -1295,7 +1305,7 @@ export function PhysicsPaintStudio() {
       || accepted.after.selectedAppFrame !== source.appFrame
       || !accepted.after.selectedKeyId
     ) return null;
-    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, accepted.after.selectedKeyId);
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, trackIdOfLaunch(launch), accepted.after.selectedKeyId);
     return record?.appFrame === source.appFrame
       ? { keyId: record.keyId, appFrame: record.appFrame }
       : null;
@@ -1310,7 +1320,7 @@ export function PhysicsPaintStudio() {
       currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       physicalKeyUtilities: rotoTimelineActions.physicalKeyUtilities,
       getSelectedKeyIds: () => selectedKeyIds.value,
-      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [],
+      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
       canvasSize: { width: canvasWidth, height: canvasHeight },
       realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
         ...record.payload,
@@ -1324,15 +1334,15 @@ export function PhysicsPaintStudio() {
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
       showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),
-      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, frame, 1); },
-      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, frame); },
+      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, trackIdOfLaunch(launchContext), frame, 1); },
+      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, trackIdOfLaunch(launchContext), frame); },
       setApplyMessage,
       setApplyStatus,
       setLastError,
     },
     playback: {
       initialSettings: initialRotoPlaybackSettings,
-      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId) : null,
+      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,
       getFrame: findCachedRotoDisplayFrame,
       // 43.6-06 (D-19): the solo window derives from the Plan 01 set, or the
       // single-rail selection as a set of one (D-15), through the Task 1 pure
@@ -1496,8 +1506,8 @@ export function PhysicsPaintStudio() {
       appFrame: currentFrame,
     }),
     getMotion: () => launchContext ? {
-      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform,
-      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position,
+      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).deform,
+      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).position,
     } : { deformation: 0, position: 0 },
     // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
     // the controller only observes and snapshots settings.color at confirm time.
@@ -1507,13 +1517,13 @@ export function PhysicsPaintStudio() {
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
     // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
     // and the atomic loop ops operate on (43-05 port, wired here).
-    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
+    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, trackIdOfLaunch(launchContext)) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
     // 43-11: opening Loop Edit reads the already-accepted child document
     // synchronously. Mutation commits still request fresh parent authority.
     getLoopEditSnapshot: (placementStart) => {
       if (!launchContext) return null;
-      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
-      const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);
+      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext));
+      const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext));
       if (!document) return null;
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -1525,7 +1535,7 @@ export function PhysicsPaintStudio() {
     },
     getPhysicalDocument: () => (
       launchContext
-        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)
+        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext))
         : null
     ),
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
@@ -1583,6 +1593,7 @@ export function PhysicsPaintStudio() {
       if (launchContext) {
         physicPaintStore.setRotoPhysicalSelection(
           launchContext.layerId,
+          trackIdOfLaunch(launchContext),
           null,
           currentFrame,
         );
@@ -1600,6 +1611,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
+        trackIdOfLaunch(launchContext),
         null,
         currentFrame,
       );
@@ -1650,6 +1662,7 @@ export function PhysicsPaintStudio() {
       if (launchContext) {
         physicPaintStore.setRotoPhysicalSelection(
           launchContext.layerId,
+          trackIdOfLaunch(launchContext),
           null,
           currentFrame,
         );
@@ -1691,6 +1704,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
+        trackIdOfLaunch(launchContext),
         null,
         currentFrame,
       );
@@ -1775,7 +1789,7 @@ export function PhysicsPaintStudio() {
   const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
   beginRotoFrameEditImplRef.current = () => {
     const launch = launchContextRef.current;
-    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId) : null;
+    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, trackIdOfLaunch(launch)) : null;
     const paintTarget = document
       ? resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)
       : null;
@@ -1834,7 +1848,7 @@ export function PhysicsPaintStudio() {
   const rotoCachedPlaybackAvailableFrames = useMemo(() => {
     if (rotoPlaybackLayerId === null) return [];
     return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, appFrame);
+      const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, trackIdOfLaunch(launchContext), appFrame);
       if (!source) return [];
       // Phase 43 (D-28, audit finding 6): the loop placeholder never
       // contributes playback payload — the preview surface renders it as the
@@ -1917,7 +1931,7 @@ export function PhysicsPaintStudio() {
       // once so it picks up the just-flushed neighbor key pixels. The kind
       // check reads the O(1) cached projection — never
       // getRotoPhysicalRenderSource, which would run the interpolation render.
-      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId)?.cells[frame]?.kind === 'generated') {
+      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, trackIdOfLaunch(launchContext))?.cells[frame]?.kind === 'generated') {
         setCachedRotoReferenceUrl(null);
         engine.clearPreviewBaseImage();
         (engine as PreviewBackgroundEngine).resetBackground();
@@ -1926,10 +1940,10 @@ export function PhysicsPaintStudio() {
       }
     }
     if (launchContext) {
-      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, frame);
+      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, trackIdOfLaunch(launchContext), frame);
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
-      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, selectedKeyId.value, frame);
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackIdOfLaunch(launchContext), selectedKeyId.value, frame);
     }
     // 38.1 D-04: the startFrame update — the full-Studio-render driver via
     // currentFrame — is rAF-batched so a click burst coalesces to at most one
@@ -1976,21 +1990,21 @@ export function PhysicsPaintStudio() {
       acceptedOutput: physicalEditCoordinator.acceptedOutput,
     },
     recordsPort: {
-      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
-      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
-      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
-      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
-      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()),
+      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
+      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()),
+      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
+      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
-        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, keyIds)
+        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId(), keyIds)
       ),
-      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
+      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, studioActiveTrackId(), loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
     getLiveSourceSnapshot: () => {
       const liveLaunch = launchContextRef.current;
       const layerId = liveLaunch?.layerId ?? '';
-      const records = layerId ? physicPaintStore.getRotoRealKeyRecords(layerId) : [];
+      const records = layerId ? physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()) : [];
       const liveSelectedKeyId = selectedKeyId.peek();
       const selectedRecord = liveSelectedKeyId === null
         ? null
@@ -2001,18 +2015,18 @@ export function PhysicsPaintStudio() {
         projectContextId: liveLaunch?.project?.contextId ?? null,
         records,
         groupOverrideRecords: layerId
-          ? physicPaintStore.getRotoGroupOverrideRecords(layerId)
+          ? physicPaintStore.getRotoGroupOverrideRecords(layerId, studioActiveTrackId())
           : [],
         interpolation: layerId
-          ? physicPaintStore.getRotoPhysicalInterpolationState(layerId)
+          ? physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId())
           : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
         loopClips: layerId
-          ? physicPaintStore.getRotoPhysicalLoopClips(layerId)
+          ? physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId())
           : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
         incomingInterpolationBreakKeyIds: layerId
-          ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)
+          ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId())
           : [],
-        capacity: layerId ? physicPaintStore.getRotoPhysicalCapacity(layerId) : 0,
+        capacity: layerId ? physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()) : 0,
         selectedKeyId: selectedRecord?.keyId ?? null,
         selectedAppFrame: selectedRecord?.appFrame ?? null,
         currentAppFrame: liveLaunch?.startFrame ?? 0,
@@ -2216,10 +2230,10 @@ export function PhysicsPaintStudio() {
         const layerId = launchContext?.layerId;
         const currentKeyId = selectedKeyId.peek();
         if (!layerId || currentKeyId === null) return;
-        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, currentKeyId);
+        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, trackIdOfLaunch(launchContext), currentKeyId);
         if (!currentRecord) return;
         const adjacent = findAdjacentRealKeyFrame(
-          physicPaintStore.getRotoRealKeyRecords(layerId).map((record) => record.appFrame),
+          physicPaintStore.getRotoRealKeyRecords(layerId, trackIdOfLaunch(launchContext)).map((record) => record.appFrame),
           currentRecord.appFrame,
           direction,
         );
@@ -2270,7 +2284,7 @@ export function PhysicsPaintStudio() {
     isPlaying,
     onion,
     realKeyRecords: rotoKeyRecords,
-    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, appFrame) : null,
+    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,
     previewFrames: rotoOnionPreviewFrames,
     dirtyFrames: rotoOnionDirtyFrames,
   }), [currentFrame, isPlaying, onion, rotoKeyRecords, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
@@ -2426,8 +2440,8 @@ export function PhysicsPaintStudio() {
   const updatePanelMotion = useCallback((motion: { strokeDeformation: number; strokePosition: number }) => {
     const launch = launchContextRef.current;
     if (!launch) return;
-    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId);
-    physicPaintStore.setRotoInterpolationSettings(launch.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
+    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId, trackIdOfLaunch(launch));
+    physicPaintStore.setRotoInterpolationSettings(launch.layerId, trackIdOfLaunch(launch), { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   }, []);
   const layout = layoutPropsMemo.resolve([rightPanelCollapsed, handlePhysicsPaintKeyDown, handleSetRightPanelCollapsed], () => ({
     rightPanelCollapsed,
@@ -2564,7 +2578,7 @@ export function PhysicsPaintStudio() {
     if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
     if (acceptedTarget && !acceptedTarget.publishPixels) return;
     const appFrame = acceptedTarget?.appFrame ?? currentFrame;
-    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
+    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext));
     const completedTarget = acceptedTarget?.keyId
       ? { kind: 'ordinary-key' as const, keyId: acceptedTarget.keyId, appFrame }
       : document
@@ -2733,7 +2747,7 @@ export function PhysicsPaintStudio() {
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

@@ -5,6 +5,9 @@ import {
   physicPaintStore,
   _setPhysicPaintMarkDirtyCallback,
 } from '../stores/physicPaintStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
@@ -25,6 +28,18 @@ vi.mock('../stores/projectStore', () => ({
 import { PreviewRenderer, getPreviewPhysicPaintFrameCacheKey } from './previewRenderer';
 import { clearProjectPaperRasterCache } from './projectPaperRaster';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 // Phase 43 Plan 09 Task 2: D-28 preview/playback placeholder surface. A frame
 // inside an unresolvable Loop Clip range renders as a MARKED, VISIBLE
@@ -178,9 +193,9 @@ function install(
   interpolation: { readonly enabled: boolean; readonly mode: 'duplicate' | 'blend' } = INTERPOLATION,
   capacity = CAPACITY,
 ): void {
-  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, interpolation, capacity);
+  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, records, interpolation, capacity);
   if (!recordsResult.ok) throw new Error(recordsResult.error);
-  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, loops);
+  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, loops);
   if (!loopsResult.ok) throw new Error(loopsResult.error);
 }
 
@@ -200,6 +215,8 @@ function makeRotoLayer(): Layer {
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument(LAYER));
   clearProjectPaperRasterCache();
   vi.stubGlobal('window', { devicePixelRatio: 1 });
   vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas() : {} });
@@ -234,7 +251,7 @@ describe('preview accepted Group lifecycle parity', () => {
       [lifecycleGroup()],
       { enabled: true, mode: 'duplicate' },
     );
-    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1);
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 1);
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -256,8 +273,8 @@ describe('preview accepted Group lifecycle parity', () => {
       { enabled: true, mode: 'duplicate' },
     );
 
-    const override = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 5);
-    const neighbor = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 6);
+    const override = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 5);
+    const neighbor = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 6);
 
     expect(override).toEqual(expect.objectContaining({
       kind: 'real',
@@ -284,22 +301,22 @@ describe('preview accepted Group lifecycle parity', () => {
       { enabled: true, mode: 'duplicate' },
     );
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 5)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 5)).toEqual(expect.objectContaining({
       kind: 'generated',
       cycleOffset: 1,
     }));
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 7)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 7)).toEqual(expect.objectContaining({
       kind: 'real',
       keyId: 'A1',
     }));
 
-    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [lifecycleGroup({
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, [lifecycleGroup({
       syncState: 'synchronized',
       visibleRanges: [{ start: 0, endExclusive: 12 }],
     })]);
     if (!regenerated.ok) throw new Error(regenerated.error);
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 1)).toEqual(expect.objectContaining({
       kind: 'generated',
       cycleOffset: 1,
     }));
@@ -317,8 +334,8 @@ describe('preview accepted Group lifecycle parity', () => {
       })],
     );
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1)).toBeNull();
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 2)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 1)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 2)).toEqual(expect.objectContaining({
       kind: 'loop-placeholder',
       loopId: 'group-a',
       missingSourceKeyIds: ['missing-source'],
@@ -337,7 +354,7 @@ describe('preview linked-generated cache identity', () => {
       { enabled: true, mode: 'duplicate' },
       50,
     );
-    const sources = [13, 20, 31].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
+    const sources = [13, 20, 31].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame));
     for (const source of sources) {
       if (!source || source.kind !== 'generated') throw new Error('Expected linked-generated preview source.');
     }
@@ -416,7 +433,7 @@ describe('preview loop placeholder (D-28, audit finding 3)', () => {
 
   it('the store never returns null-as-blank inside an unresolved loop range — the typed placeholder variant drives the marked frame', () => {
     installUnresolvedLoop();
-    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 3);
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 3);
     expect(source).not.toBeNull();
     expect(source!.kind).toBe('loop-placeholder');
 

@@ -3,6 +3,9 @@ import {
   physicPaintStore,
   _setPhysicPaintMarkDirtyCallback,
 } from '../stores/physicPaintStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { exportStore } from '../stores/exportStore';
 import type {
   PhysicPaintRotoLoopClip,
@@ -83,6 +86,18 @@ import {
 } from './exportRenderer';
 import { exportCreateDir as exportCreateDirMock } from './ipc';
 import { PreviewRenderer } from './previewRenderer';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 // --- Minimal canvas/image harness (same discipline as previewRenderer.test.ts) ---
 
@@ -223,9 +238,9 @@ function lifecycleGroup(
 }
 
 function install(records: readonly PhysicPaintRotoRealKeyRecord[], loops: readonly PhysicPaintRotoLoopClip[], capacity = CAPACITY): void {
-  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, INTERPOLATION, capacity);
+  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, records, INTERPOLATION, capacity);
   if (!recordsResult.ok) throw new Error(recordsResult.error);
-  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, loops);
+  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, loops);
   if (!loopsResult.ok) throw new Error(loopsResult.error);
 }
 
@@ -272,6 +287,8 @@ function cycleRecords(keyIds: readonly string[]): PhysicPaintRotoRealKeyRecord[]
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument(LAYER));
   exportStore.resetProgress();
   exportStore.outputFolder.value = '/tmp/efx-export-loops';
   exportStore.includeAudio.value = false;
@@ -381,13 +398,13 @@ describe('export loop preflight (failure path, D-28)', () => {
     // same keyId would remain unresolved because physical source timing must be
     // strictly increasing; the next export surfaces the remaining late loop.
     const repairedRecords = physicPaintStore.replaceRotoPhysicalRecords(
-      LAYER,
+      LAYER, TEST_TRACK_ID,
       [record('A', 0), record('B', 1)],
       INTERPOLATION,
       CAPACITY,
     );
     expect(repairedRecords.ok).toBe(true);
-    const repaired = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [
+    const repaired = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, [
       loopClip('loop-late', 20, ['A', 'missing-late'], 2),
       loopClip('loop-early', 6, ['A', 'B'], 2),
     ]);
@@ -480,7 +497,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
       const results = spy.mock.results;
       spy.mockRestore();
       for (let index = 0; index < calls.length; index += 1) {
-        const [layerId, appFrame] = calls[index] as [string, number];
+        const [layerId, , appFrame] = calls[index] as [string, string, number];
         const result = results[index]?.value as PhysicPaintRotoPhysicalRenderSource | null;
         if (layerId !== LAYER) continue;
         if (result === null) {
@@ -512,7 +529,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     frameCount: number,
     expectedKeyId: (frame: number) => string,
   ): void {
-    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER);
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID);
     expect(revision).toBeTruthy();
     for (let frame = 0; frame < frameCount; frame += 1) {
       const exportSource = result.exportByFrame.get(frame);
@@ -628,7 +645,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     expect(detached.exportNullFrames.has(2)).toBe(true);
     expect(detached.previewByFrame.get(2)).toBeNull();
 
-    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [lifecycleGroup({
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, [lifecycleGroup({
       syncState: 'synchronized',
       provenanceState: 'attached',
       visibleRanges: [{ start: 0, endExclusive: 6 }],
