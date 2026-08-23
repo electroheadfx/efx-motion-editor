@@ -181,6 +181,9 @@ describe('rail-set clipboard — copyRailSet variant (quick 260820-bjw)', () => 
 
   const buildRailPayload = () => ({
     anchorAppFrame: 0,
+    // '' = legacy payload with no track context (46-03: sourceTrackId is
+    // recorded by buildRotorRailSetCopyPayload at copy time).
+    sourceTrackId: '',
     members: [{
       kind: 'key-rail' as const,
       firstKeyId: 'k0',

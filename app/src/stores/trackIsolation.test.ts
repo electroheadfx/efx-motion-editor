@@ -393,16 +393,22 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
   });
 
   it('reject not dangle: a payload whose Hold source frame is outside the pasted set fails closed with zero mutation', () => {
-    seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0')], []);
+    seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 1, 'a@1')], [makeLoop('hold', 0, ['k0', 'k1'])]);
     seedTrack(TRACK_B, [makeRecord('b5', 5, 'b@5')], []);
-    // Hand-build a payload that carries a Hold whose source key is NOT part of
-    // the pasted key set — the store must reject it, never write a dangling
-    // cross-track reference (defensive; the clipboard never produces one).
+    // Split the contiguous rail with a break on k1 so k0's segment carries k0
+    // only: the Hold then references a source (k1) that is NOT part of the
+    // pasted key set.
+    const breaks = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER, TRACK_A, ['k1']);
+    if (!breaks.ok) throw new Error(`Break seed failed: ${breaks.error}`);
+    // Hand-build a payload that carries a Hold whose source key (k1) is NOT
+    // part of the pasted key set — the engine must reject it, never write a
+    // dangling cross-track reference (defensive; the clipboard never produces
+    // one, because the store's copy only carries fully-covered Hold).
     const built = buildRotoRailSetCopyPayload({
       document: physicPaintStore.getRotoPhysicalDocument(LAYER, TRACK_A)!,
       members: [
         { kind: 'key-rail', firstKeyId: 'k0' },
-        { kind: 'loop', loopId: 'ghost' },
+        { kind: 'loop', loopId: 'hold' },
       ],
       trackId: TRACK_A,
     });
@@ -430,8 +436,8 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     // Deleting B leaves A untouched.
     expect(removeTrackRuntime(LAYER, TRACK_B)).toBe(true);
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-k0').dataUrl);
-    expect(physicPaintStore.getRotorRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
-    expect(physicPaintStore.getRotorPhysicalLoopClips(LAYER, TRACK_A)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A)).toHaveLength(1);
   });
 
   it('clearTrackFrames removes only the target track\'s frames + records; the sibling track\'s cache paths untouched', () => {
@@ -442,10 +448,10 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     if (!cleared.ok) throw new Error(`clear must resolve: ${cleared.reason}`);
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 5)).toBeNull();
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 6)).toBeNull();
-    expect(physicPaintStore.getRotorRealKeyRecords(LAYER, TRACK_A)).toEqual([]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual([]);
     // B's cache path and record at the same frame are untouched.
     expect(physicPaintStore.getFrame(LAYER, TRACK_B, 5)?.dataUrl).toBe(makeFrame(0, 5, 'frame-k5').dataUrl);
-    expect(physicPaintStore.getRotorRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
   });
 
   it('cutTrackSelection copies and removes the selection; cut fails closed on partial loop overlap', () => {
@@ -454,9 +460,10 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(cut.ok).toBe(true);
     if (!cut.ok) throw new Error(`cut must resolve: ${cut.reason}`);
     expect(cut.payload.members.map((member) => member.kind)).toEqual(['key-rail', 'loop']);
-    // The source lost the keys, their frames, and the carried Hold.
-    expect(physicPaintStore.getRotorRealKeyRecords(LAYER, TRACK_A)).toEqual([]);
-    expect(physicPaintStore.getRotorPhysicalLoopClips(LAYER, TRACK_A)).toEqual([]);
+    // The source lost the selected key (and only that key — k2 survives), its
+    // frame, and the carried Hold.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A).map((record) => record.appFrame)).toEqual([2]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A)).toEqual([]);
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)).toBeNull();
 
     // Partial overlap: cutting k0 alone when the Hold also references k1 must
@@ -466,8 +473,8 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(partialCut.ok).toBe(false);
     if (partialCut.ok) throw new Error('Partial-overlap cut must fail closed');
     expect(partialCut.reason).toBe('partial-loop-overlap');
-    expect(physicPaintStore.getRotorRealKeyRecords(LAYER, TRACK_B)).toHaveLength(2);
-    expect(physicPaintStore.getRotorPhysicalLoopClips(LAYER, TRACK_B)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(2);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_B)).toHaveLength(1);
   });
 
   it('duplicateTrackFrames duplicates at the derived anchor with fresh identities', () => {
@@ -475,13 +482,13 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     const duplicated = physicPaintStore.duplicateTrackFrames(LAYER, TRACK_A, [0, 2]);
     expect(duplicated.ok).toBe(true);
     if (!duplicated.ok) throw new Error(`duplicate must resolve: ${duplicated.reason}`);
-    const records = physicPaintStore.getRotorRealKeyRecords(LAYER, TRACK_A);
+    const records = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A);
     const fresh = records.filter((record) => record.keyId !== 'k0' && record.keyId !== 'k2');
     // Duplicate scan: last set end 2 → first fitting anchor 4 → fresh 4/6.
     expect(fresh.map((record) => record.appFrame).sort((a, b) => a - b)).toEqual([4, 6]);
     expect(fresh.every((record) => !['k0', 'k2'].includes(record.keyId))).toBe(true);
     // The covered Hold is duplicated with a fresh loop identity (same-track verbatim sources).
-    const clips = physicPaintStore.getRotorPhysicalLoopClips(LAYER, TRACK_A);
+    const clips = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A);
     expect(clips).toHaveLength(2);
     const freshClip = clips.find((clip) => clip.loopId !== 'hold-a')!;
     expect(freshClip.sourceKeyIds).toEqual(['k0']);

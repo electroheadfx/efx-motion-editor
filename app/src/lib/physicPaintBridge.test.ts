@@ -4609,6 +4609,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
 
     const copyPayload = (): RotoRailSetCopyPayload => Object.freeze({
       anchorAppFrame: 0,
+      // '' = legacy payload with no track context (46-03).
+      sourceTrackId: '',
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -4763,6 +4765,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
 
     const copyPayload = (): RotoRailSetCopyPayload => Object.freeze({
       anchorAppFrame: 0,
+      // '' = legacy payload with no track context (46-03).
+      sourceTrackId: '',
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -4897,6 +4901,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
 
     const payload: RotoRailSetCopyPayload = Object.freeze({
       anchorAppFrame: 0,
+      // '' = same-track payload with no track context (46-03).
+      sourceTrackId: '',
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,

@@ -3238,6 +3238,8 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
   function copyPayload(): RotoRailSetCopyPayload {
     return Object.freeze({
       anchorAppFrame: 0,
+      // '' = legacy payload with no track context (46-03).
+      sourceTrackId: '',
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -3330,7 +3332,7 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     test.seedGroupDocument(before);
 
     expect(await test.executePasteRails({
-      payload: Object.freeze({ anchorAppFrame: 0, members: Object.freeze([]) }) as RotoRailSetCopyPayload,
+      payload: Object.freeze({ anchorAppFrame: 0, sourceTrackId: '', members: Object.freeze([]) }) as RotoRailSetCopyPayload,
       placementMode: 'paste',
       destinationAppFrame: 10,
     })).toBe(false);

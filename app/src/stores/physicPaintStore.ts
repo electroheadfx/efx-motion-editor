@@ -32,6 +32,15 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+import type { RailSetIdentity } from '../components/physic-paint/roto/physicsPaintRotoRailSetSelection';
+import {
+  buildRotoRailSetCopyPayload,
+  proposeRails,
+  type RotoRailSetCopyPayload,
+  type RotoRailSetPasteFailureReason,
+  type RotoRailSetPasteImpact,
+} from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
+import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -1061,6 +1070,35 @@ function _buildRotoPhysicalDocumentForLayer(layerId: string, trackId: string): P
     incomingInterpolationBreakKeyIds,
   });
 }
+
+// ---------------------------------------------------------------------------
+// 46-03 TRK-04: track-scoped copy/cut/paste/duplicate/clear result contracts.
+// Every op takes an explicit trackId and routes only through the 46-01
+// per-track maps (ROADMAP SC 4). Paste results surface the pure engine's
+// closed failures (including the D-06 un-re-pointable Hold rejection).
+// ---------------------------------------------------------------------------
+
+export type RotoTrackSelectionFailureReason =
+  | 'track-missing'
+  | 'missing-key'
+  | 'partial-loop-overlap'
+  | 'apply-failed'
+  | RotoRailSetPasteFailureReason
+  | 'empty-set'
+  | 'malformed-member'
+  | 'stale-member';
+
+export type RotoTrackCopyResult =
+  | { ok: true; payload: RotoRailSetCopyPayload }
+  | { ok: false; reason: RotoTrackSelectionFailureReason };
+
+export type RotoTrackPasteResult =
+  | { ok: true; impact: RotoRailSetPasteImpact }
+  | { ok: false; reason: RotoTrackSelectionFailureReason };
+
+export type RotoTrackClearResult =
+  | { ok: true }
+  | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 export const physicPaintStore = {
   getFrame(layerId: string, trackId: string, frame: number): PhysicPaintRenderedFrame | null {
@@ -2410,4 +2448,244 @@ export const physicPaintStore = {
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
   },
+
+  // -------------------------------------------------------------------------
+  // 46-03 TRK-04: track-scoped copy/cut/paste/duplicate/clear. Every op takes
+  // an explicit trackId and routes only through the 46-01 per-track maps.
+  // Paste reuses the pure rail-set engine (one shared law): fresh identities
+  // per D-05, cross-track Hold re-pointing fail-closed per D-06, deep-copied
+  // assets per D-07. The clipboard payload freezes at the copy moment and is
+  // applied with copy-on-write bytes (RED 2b).
+  // -------------------------------------------------------------------------
+
+  /** Freeze a rail-set clipboard payload for the exact track (46-03 D-05/D-06). */
+  copyTrackSelection(layerId: string, trackId: string, keyIds: readonly string[]): RotoTrackCopyResult {
+    if (!layerId || !trackId) return { ok: false, reason: 'track-missing' };
+    const document = this.getRotoPhysicalDocument(layerId, trackId);
+    if (!document) return { ok: false, reason: 'track-missing' };
+    if (!Array.isArray(keyIds) || keyIds.length === 0) return { ok: false, reason: 'empty-set' };
+    const keyIdSet = new Set(keyIds);
+    for (const keyId of keyIds) {
+      if (!document.realKeyRecords.some((record) => record.keyId === keyId)) {
+        return { ok: false, reason: 'missing-key' };
+      }
+    }
+    // Key-rail members: ONE member per Key Rail segment that contains a
+    // selected key (the engine addresses rails by their segment firstKeyId and
+    // carries the whole segment — dedupe or the same rail would be emitted once
+    // per selected key and its entries duplicated). Plus every Loop Clip whose
+    // source frames are fully covered by the selection (Loop clips travel with
+    // their frames; a copy is non-destructive so partially-covered loops are
+    // simply not carried).
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: document.realKeyRecords,
+      incomingInterpolationBreakKeyIds: new Set(document.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds: new Set(),
+    });
+    const members: RailSetIdentity[] = segments
+      .filter((segment) => segment.keyIds.some((keyId) => keyIdSet.has(keyId)))
+      .map((segment) => ({ kind: 'key-rail' as const, firstKeyId: segment.firstKeyId }));
+    for (const clip of document.loopClips) {
+      if (clip.sourceKeyIds.length > 0 && clip.sourceKeyIds.every((sourceKeyId) => keyIdSet.has(sourceKeyId))) {
+        members.push({ kind: 'loop', loopId: clip.loopId });
+      }
+    }
+    const built = buildRotoRailSetCopyPayload({ document, members, trackId });
+    return built.ok ? { ok: true, payload: built.payload } : { ok: false, reason: built.reason };
+  },
+
+  /** Copy + remove the selection from the source track (move = cut + paste, D-09). */
+  cutTrackSelection(layerId: string, trackId: string, keyIds: readonly string[]): RotoTrackCopyResult {
+    if (!layerId || !trackId) return { ok: false, reason: 'track-missing' };
+    const document = this.getRotoPhysicalDocument(layerId, trackId);
+    if (!document) return { ok: false, reason: 'track-missing' };
+    if (!Array.isArray(keyIds) || keyIds.length === 0) return { ok: false, reason: 'empty-set' };
+    const keyIdSet = new Set(keyIds);
+    for (const keyId of keyIds) {
+      if (!document.realKeyRecords.some((record) => record.keyId === keyId)) {
+        return { ok: false, reason: 'missing-key' };
+      }
+    }
+    // Never dangle: a Loop Clip touching ANY cut key must be fully inside the
+    // cut set (all its source frames cut along), else the cut fails closed —
+    // removing keys under a partially-overlapping Hold would leave a dangling
+    // reference on the source (D-06).
+    for (const clip of document.loopClips) {
+      if (clip.sourceKeyIds.some((sourceKeyId) => keyIdSet.has(sourceKeyId))
+        && (clip.sourceKeyIds.length === 0 || !clip.sourceKeyIds.every((sourceKeyId) => keyIdSet.has(sourceKeyId)))) {
+        return { ok: false, reason: 'partial-loop-overlap' };
+      }
+    }
+    const copied = this.copyTrackSelection(layerId, trackId, keyIds);
+    if (!copied.ok) return copied;
+    const carriedLoopIds = new Set(
+      copied.payload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
+    );
+    const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, carriedLoopIds);
+    if (!removed.ok) return { ok: false, reason: 'apply-failed' };
+    return { ok: true, payload: copied.payload };
+  },
+
+  /**
+   * Paste a frozen clipboard payload into the exact target track (fresh
+   * identities, D-05). The anchor defaults to the target track's cursor frame
+   * (the UI paste rule); the caller can pin a frame explicitly (the move
+   * primitive does — D-09 preserves timing). Cross-track payloads re-point
+   * Hold sources or fail closed (D-06).
+   */
+  pasteTrackSelection(
+    layerId: string,
+    targetTrackId: string,
+    payload: RotoRailSetCopyPayload,
+    destinationAppFrame?: number,
+  ): RotoTrackPasteResult {
+    if (!layerId || !targetTrackId) return { ok: false, reason: 'track-missing' };
+    const document = this.getRotoPhysicalDocument(layerId, targetTrackId);
+    if (!document) return { ok: false, reason: 'track-missing' };
+    const anchor = destinationAppFrame ?? document.cursorAppFrame;
+    const pasted = proposeRails({
+      document,
+      payload,
+      placementMode: 'paste',
+      destinationAppFrame: anchor,
+      targetTrackId,
+    });
+    if (!pasted.ok) return { ok: false, reason: pasted.reason };
+    const applied = _applyRotoTrackPaste(this, layerId, targetTrackId, document, pasted.proposal);
+    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    return { ok: true, impact: pasted.impact };
+  },
+
+  /** Duplicate the frames at the given appFrames onto the same track (fresh identities). */
+  duplicateTrackFrames(layerId: string, trackId: string, frames: readonly number[]): RotoTrackPasteResult {
+    if (!layerId || !trackId) return { ok: false, reason: 'track-missing' };
+    const document = this.getRotoPhysicalDocument(layerId, trackId);
+    if (!document) return { ok: false, reason: 'track-missing' };
+    const keyIds: string[] = [];
+    for (const frame of frames) {
+      const record = this.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
+      if (!record) return { ok: false, reason: 'missing-key' };
+      keyIds.push(record.keyId);
+    }
+    const copied = this.copyTrackSelection(layerId, trackId, keyIds);
+    if (!copied.ok) return copied;
+    const duplicated = proposeRails({
+      document,
+      payload: copied.payload,
+      placementMode: 'duplicate',
+      targetTrackId: trackId,
+    });
+    if (!duplicated.ok) return { ok: false, reason: duplicated.reason };
+    const applied = _applyRotoTrackPaste(this, layerId, trackId, document, duplicated.proposal);
+    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    return { ok: true, impact: duplicated.impact };
+  },
+
+  /** Remove the exact frames (records + runtime frames + cache) from the track. */
+  clearTrackFrames(layerId: string, trackId: string, frames: readonly number[]): RotoTrackClearResult {
+    if (!layerId || !trackId) return { ok: false, reason: 'track-missing' };
+    const document = this.getRotoPhysicalDocument(layerId, trackId);
+    if (!document) return { ok: false, reason: 'track-missing' };
+    const keyIds: string[] = [];
+    for (const frame of frames) {
+      const record = this.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
+      if (!record) return { ok: false, reason: 'missing-key' };
+      keyIds.push(record.keyId);
+    }
+    const keyIdSet = new Set(keyIds);
+    for (const clip of document.loopClips) {
+      if (clip.sourceKeyIds.some((sourceKeyId) => keyIdSet.has(sourceKeyId))
+        && (clip.sourceKeyIds.length === 0 || !clip.sourceKeyIds.every((sourceKeyId) => keyIdSet.has(sourceKeyId)))) {
+        return { ok: false, reason: 'partial-loop-overlap' };
+      }
+    }
+    const coveredLoopIds = new Set(
+      document.loopClips
+        .filter((clip) => clip.sourceKeyIds.length > 0 && clip.sourceKeyIds.every((sourceKeyId) => keyIdSet.has(sourceKeyId)))
+        .map((clip) => clip.loopId),
+    );
+    const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, coveredLoopIds);
+    if (!removed.ok) return { ok: false, reason: 'apply-failed' };
+    return { ok: true };
+  },
 };
+
+/**
+ * 46-03 shared removal transaction for cut/clear/move: deletes the selected
+ * key records, their frames + cache, their owned breaks, and the carried loop
+ * clips. The replacement order is fixed so every fail-closed port validates:
+ * breaks first (validated against the CURRENT records — the survivors all
+ * exist), then records (projection validated against the already-reduced break
+ * collection), then loops, then the per-frame runtime deletion.
+ */
+function _applyRotoTrackSelectionRemoval(
+  store: typeof physicPaintStore,
+  layerId: string,
+  trackId: string,
+  selectedKeyIds: ReadonlySet<string>,
+  carriedLoopIds: ReadonlySet<string>,
+): { ok: true } | { ok: false; reason: string } {
+  const records = store.getRotoRealKeyRecords(layerId, trackId);
+  const remainingRecords = records.filter((record) => !selectedKeyIds.has(record.keyId));
+  const currentBreaks = store.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId);
+  const remainingBreaks = currentBreaks.filter((keyId) => !selectedKeyIds.has(keyId));
+  const currentLoops = store.getRotoPhysicalLoopClips(layerId, trackId);
+  const remainingLoops = currentLoops.filter((clip) => !carriedLoopIds.has(clip.loopId));
+  const removedFrames = records
+    .filter((record) => selectedKeyIds.has(record.keyId))
+    .map((record) => record.appFrame);
+  const breaksResult = store.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId, remainingBreaks);
+  if (!breaksResult.ok) return { ok: false, reason: breaksResult.error };
+  const recordsResult = store.replaceRotoPhysicalRecords(
+    layerId,
+    trackId,
+    remainingRecords,
+    store.getRotoPhysicalInterpolationState(layerId, trackId),
+    store.getRotoPhysicalCapacity(layerId, trackId),
+  );
+  if (!recordsResult.ok) return { ok: false, reason: recordsResult.error };
+  const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, remainingLoops);
+  if (!loopsResult.ok) return { ok: false, reason: loopsResult.error };
+  for (const frame of removedFrames) store.removeRealRotoKeyFrame(layerId, trackId, frame);
+  return { ok: true };
+}
+
+/**
+ * 46-03 shared commit helper for paste/duplicate: applies the pure engine's
+ * proposal through the three fail-closed record/loop/break ports, then
+ * publishes the runtime frame bytes for every FRESH key (the pre-existing
+ * target keys keep their own frames). The proposal was already validated by
+ * `proposeRails`, so the ports re-validate deterministically.
+ */
+function _applyRotoTrackPaste(
+  store: typeof physicPaintStore,
+  layerId: string,
+  trackId: string,
+  priorDocument: PhysicPaintRotoPhysicalDocument,
+  proposal: PhysicPaintRotoPhysicalDocument,
+): { ok: true } | { ok: false; reason: string } {
+  const recordsResult = store.replaceRotoPhysicalRecords(
+    layerId,
+    trackId,
+    proposal.realKeyRecords,
+    proposal.interpolation,
+    proposal.capacity,
+  );
+  if (!recordsResult.ok) return { ok: false, reason: recordsResult.error };
+  const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, proposal.loopClips);
+  if (!loopsResult.ok) return { ok: false, reason: loopsResult.error };
+  const breaksResult = store.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId, proposal.incomingInterpolationBreakKeyIds);
+  if (!breaksResult.ok) return { ok: false, reason: breaksResult.error };
+  const existingKeyIds = new Set(priorDocument.realKeyRecords.map((record) => record.keyId));
+  for (const record of proposal.realKeyRecords) {
+    if (existingKeyIds.has(record.keyId)) continue;
+    store.upsertRealRotoKeyFrame(layerId, trackId, record.appFrame, {
+      frameIndex: 0,
+      appFrame: record.appFrame,
+      dataUrl: record.payload.dataUrl,
+      width: record.payload.width ?? 0,
+      height: record.payload.height ?? 0,
+    });
+  }
+  return { ok: true };
+}

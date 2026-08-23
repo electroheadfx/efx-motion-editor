@@ -200,7 +200,12 @@ export default defineConfig({
     // efxPaintStore + efxPaintPersistence + the document model into the main
     // chunk, measured 1124.96 kB. Budget raised to 1130 (measured value +
     // ~5 kB headroom).
-    chunkSizeWarningLimit: 1130,
+    // Measurement note (2026-08-23): the 46-03 track-scoped copy/cut/paste/
+    // duplicate/clear ops + the cross-track Hold re-pointing engine pulled the
+    // rail-set copy engine and key-rail segmentation into the main chunk,
+    // measured 1131.51 kB. Budget raised to 1135 (measured value + ~3.5 kB
+    // headroom).
+    chunkSizeWarningLimit: 1135,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

@@ -3566,6 +3566,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       executeRailSetPaste,
       railSetClipboard: Object.freeze({
         anchorAppFrame: 0,
+        // '' = legacy payload with no track context (46-03).
+        sourceTrackId: '',
         members: Object.freeze([]),
       }) as RotoRailSetCopyPayload,
     });
@@ -3592,6 +3594,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       // its own payload at click time and never reads the clipboard (UAT-2).
       railSetClipboard: Object.freeze({
         anchorAppFrame: 0,
+        // '' = legacy payload with no track context (46-03).
+        sourceTrackId: '',
         members: Object.freeze([]),
       }) as RotoRailSetCopyPayload,
     });
@@ -3614,6 +3618,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     // A stale 2-rail set-A payload sits on the clipboard.
     const staleSetAClone = Object.freeze({
       anchorAppFrame: 0,
+      // '' = legacy payload with no track context (46-03).
+      sourceTrackId: '',
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -3691,6 +3697,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       executeRailSetPaste,
       railSetClipboard: Object.freeze({
         anchorAppFrame: 0,
+        // '' = legacy payload with no track context (46-03).
+        sourceTrackId: '',
         members: Object.freeze([]),
       }) as RotoRailSetCopyPayload,
     });

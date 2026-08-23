@@ -63,6 +63,12 @@ export interface RotoRailSetCopyPayload {
   readonly anchorAppFrame: number;
   /** Members in canonical order (placementStart asc, then kind/id tie-break). */
   readonly members: readonly RotoRailSetCopyMember[];
+  /**
+   * The stable track id the set was copied from (46-03 D-06). Empty string on
+   * legacy payloads built without track context — those never trigger
+   * cross-track re-pointing.
+   */
+  readonly sourceTrackId: string;
 }
 
 export type RotoRailSetCopyPlacementMode = 'paste' | 'duplicate';
@@ -86,6 +92,14 @@ export interface RotoRailSetPasteInput {
   readonly placementMode: RotoRailSetCopyPlacementMode;
   /** Required for 'paste' (the cursor frame); absent for 'duplicate'. */
   readonly destinationAppFrame?: number;
+  /**
+   * The destination track id (46-03 D-06). When present and different from
+   * `payload.sourceTrackId`, loop members are re-pointed onto the
+   * destination's freshly allocated source frames — a referenced source
+   * outside the pasted set fails the paste closed instead of dangling.
+   * Absent on pre-46-03 callers: verbatim shared-source placement.
+   */
+  readonly targetTrackId?: string;
   /**
    * Optional prescribed fresh identities. Absent on the child Copy propose
    * (fresh UUIDs allocated); present on the parent recompute (replay the
@@ -132,7 +146,13 @@ export type RotoRailSetPasteFailureReason =
   | 'stale-member'
   | 'out-of-range-frame'
   | 'over-capacity'
-  | 'duplicate-destination-frame';
+  | 'duplicate-destination-frame'
+  /**
+   * 46-03 D-06: a cross-track paste whose Loop Clip references a source key
+   * that is not part of the pasted set cannot re-point — rejected closed
+   * rather than producing a dangling or foreign-track reference.
+   */
+  | 'loop-source-outside-pasted-set';
 
 export type RotoRailSetPasteResult =
   | Readonly<{ ok: true; proposal: PhysicPaintRotoPhysicalDocument; impact: RotoRailSetPasteImpact }>
@@ -159,6 +179,9 @@ function freezePayload(payload: RotoRailSetCopyPayload): RotoRailSetCopyPayload 
   return Object.freeze({
     anchorAppFrame: payload.anchorAppFrame,
     members: Object.freeze([...payload.members]),
+    // '' = a legacy payload with no track context (never emit `undefined` —
+    // the bridge's structured-clone-plain-data check rejects undefined values).
+    sourceTrackId: payload.sourceTrackId ?? '',
   }) as RotoRailSetCopyPayload;
 }
 
@@ -188,8 +211,10 @@ function orderMembers(members: readonly RotoRailSetCopyMember[]): readonly RotoR
 export function buildRotoRailSetCopyPayload(input: {
   readonly document: PhysicPaintRotoPhysicalDocument;
   readonly members: readonly RailSetIdentity[];
+  /** 46-03 D-06: the stable track id the set is copied from. */
+  readonly trackId?: string;
 }): RotoRailSetCopyPayloadResult {
-  const { document, members } = input;
+  const { document, members, trackId } = input;
   if (!Array.isArray(members) || members.length === 0) {
     return Object.freeze({ ok: false, reason: 'empty-set' });
   }
@@ -257,20 +282,57 @@ export function buildRotoRailSetCopyPayload(input: {
   if (!Number.isInteger(anchor) || anchor < 0) {
     return Object.freeze({ ok: false, reason: 'malformed-member' });
   }
-  return Object.freeze({ ok: true, payload: freezePayload({ anchorAppFrame: anchor, members: ordered }) });
+  return Object.freeze({
+    ok: true,
+    payload: freezePayload({ anchorAppFrame: anchor, members: ordered, sourceTrackId: trackId ?? '' }),
+  });
 }
 
-/** Translate a loop lifecycle by the same signed delta used for the key records. */
+/**
+ * 46-03 D-06: remap a loop body's track-local source key references onto the
+ * destination track's freshly allocated keyIds (cross-track paste). Returns
+ * null when any referenced source is outside the pasted set — the caller
+ * rejects the paste closed instead of producing a dangling or foreign-track
+ * reference. Both `sourceKeyIds` and group `frameOverrides` key refs are
+ * re-pointed (they live on the same track dimension).
+ */
+function repointLoopClipSources(
+  clip: PhysicPaintRotoLoopClip,
+  freshKeyIds: Readonly<Record<string, string>>,
+): { readonly sourceKeyIds: readonly string[]; readonly frameOverrides: readonly { appFrame: number; keyId: string }[] | undefined } | null {
+  const sourceKeyIds: string[] = [];
+  for (const sourceKeyId of clip.sourceKeyIds) {
+    const fresh = freshKeyIds[sourceKeyId];
+    if (fresh === undefined) return null;
+    sourceKeyIds.push(fresh);
+  }
+  let frameOverrides: readonly { appFrame: number; keyId: string }[] | undefined;
+  if (clip.frameOverrides !== undefined) {
+    const repointed: { appFrame: number; keyId: string }[] = [];
+    for (const override of clip.frameOverrides) {
+      const fresh = freshKeyIds[override.keyId];
+      if (fresh === undefined) return null;
+      repointed.push(Object.freeze({ appFrame: override.appFrame, keyId: fresh }));
+    }
+    frameOverrides = Object.freeze(repointed);
+  }
+  return { sourceKeyIds: Object.freeze(sourceKeyIds), frameOverrides };
+}
+
+/** Translate a loop body by the same signed delta used for the key records. */
 function buildDuplicatedLoopClip(
   clip: PhysicPaintRotoLoopClip,
   freshLoopId: string,
   destinationStart: number,
   delta: number,
+  repoint?: { readonly sourceKeyIds: readonly string[]; readonly frameOverrides?: readonly { appFrame: number; keyId: string }[] },
 ): PhysicPaintRotoLoopClip {
+  const sourceKeyIds = repoint?.sourceKeyIds ?? clip.sourceKeyIds;
+  const frameOverrides = repoint?.frameOverrides ?? clip.frameOverrides;
   return Object.freeze({
     loopId: freshLoopId,
     placementStart: destinationStart,
-    sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
+    sourceKeyIds: Object.freeze([...sourceKeyIds]),
     repeat: clip.repeat,
     mode: clip.mode,
     ...(clip.scriptId !== undefined
@@ -290,7 +352,7 @@ function buildDuplicatedLoopClip(
             start: range.start + delta,
             endExclusive: range.endExclusive + delta,
           }))),
-          frameOverrides: Object.freeze(clip.frameOverrides!.map((override) => Object.freeze({
+          frameOverrides: Object.freeze(frameOverrides!.map((override) => Object.freeze({
             appFrame: override.appFrame + delta,
             keyId: override.keyId,
           }))),
@@ -498,7 +560,19 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     } else {
       const freshLoopId = allocation.loopIds[member.loopId] ?? createPhysicPaintRotoKeyId();
       const destinationStart = member.placementStart + delta;
-      duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta));
+      const crossTrack = input.targetTrackId !== undefined
+        && payload.sourceTrackId !== ''
+        && payload.sourceTrackId !== input.targetTrackId;
+      if (crossTrack) {
+        // 46-03 D-06: re-point every track-local source reference onto the
+        // destination's freshly allocated frames; impossible re-pointing
+        // fails the paste closed — never a dangling/foreign-track reference.
+        const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
+        if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, repoint));
+      } else {
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta));
+      }
     }
   }
 

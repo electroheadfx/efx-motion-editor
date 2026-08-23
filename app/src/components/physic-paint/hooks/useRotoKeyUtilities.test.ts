@@ -300,6 +300,8 @@ describe('useRotoKeyUtilities copyKey regression (shared selection resolution)',
 describe('useRotoKeyUtilities rail-set clipboard (quick 260820-bjw)', () => {
   const railPayload = () => ({
     anchorAppFrame: 0,
+    // '' = legacy payload with no track context (46-03).
+    sourceTrackId: '',
     members: [{
       kind: 'key-rail' as const,
       firstKeyId: 'k0',

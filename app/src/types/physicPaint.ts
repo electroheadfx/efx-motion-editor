@@ -1281,7 +1281,10 @@ function isRotoRailSetCopyMemberValue(value: unknown): boolean {
 }
 
 function isRotoRailSetCopyPayloadValue(value: unknown): boolean {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['anchorAppFrame', 'members'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['anchorAppFrame', 'members', 'sourceTrackId'])) return false;
+  // 46-03 D-06: the track the set was copied from ('' = legacy, no track
+  // context). Cross-track paste re-pointing keys off this field.
+  if (typeof value.sourceTrackId !== 'string') return false;
   if (!isNonNegativeInteger(value.anchorAppFrame)) return false;
   if (!Array.isArray(value.members) || value.members.length === 0) return false;
   return value.members.every(isRotoRailSetCopyMemberValue);
