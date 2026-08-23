@@ -67,7 +67,8 @@ function exchangeGeneration(projectDir: string, stagingBasename: string): void {
   for (const key of [...stagingDirs, ...canonicalDirs]) dirs.add(key);
 }
 
-vi.mock('./ipc', () => ({
+// Same absolute module id as efxPaintPersistence's './ipc' import.
+vi.mock('../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
 }));
@@ -470,16 +471,21 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     });
     const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
     const survivorDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_A}`;
-    dirs.add(`${PROJECT_DIR}/${deletedDir}`);
-    dirs.add(`${PROJECT_DIR}/${survivorDir}`);
-    files.set(`${PROJECT_DIR}/${deletedDir}/frame-000010-0000.png`, new Uint8Array([1]));
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
     const { remove } = await import('@tauri-apps/plugin-fs');
     const removeMock = vi.mocked(remove);
     removeMock.mockClear();
 
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {});
+    // The sidecar dirs exist on disk when the transaction commits — the
+    // publish mock's generation exchange wipes the canonical root, so they
+    // are (re)seeded in the writeProject callback that runs between prepare
+    // and the commit arm, which is exactly when the fs remove() must fire.
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
+      dirs.add(`${PROJECT_DIR}/${deletedDir}`);
+      dirs.add(`${PROJECT_DIR}/${survivorDir}`);
+      files.set(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`, new Uint8Array([1]));
+    });
     expect(persisted).toBeDefined();
     expect(removeMock).toHaveBeenCalledWith(`${PROJECT_DIR}/${deletedDir}`, { recursive: true });
     expect(removeMock).not.toHaveBeenCalledWith(`${PROJECT_DIR}/${survivorDir}`, { recursive: true });
@@ -494,8 +500,6 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
     });
     const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
-    dirs.add(`${PROJECT_DIR}/${deletedDir}`);
-    files.set(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`, new Uint8Array([1]));
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
     const { remove } = await import('@tauri-apps/plugin-fs');
@@ -504,12 +508,17 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
 
     await expect(
       saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
+        // The sidecar dir exists on disk when the failing write happens.
+        dirs.add(`${PROJECT_DIR}/${deletedDir}`);
+        files.set(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`, new Uint8Array([1]));
         throw new Error('write failed');
       }),
     ).rejects.toThrow('write failed');
+    // Rollback never removes: the deletion list is settled only by the
+    // commit arm (the mock generation exchange wipes on-disk state, so the
+    // fs remove() call contract is the authoritative assertion).
     expect(removeMock).not.toHaveBeenCalledWith(`${PROJECT_DIR}/${deletedDir}`, { recursive: true });
-    expect(dirs.has(`${PROJECT_DIR}/${deletedDir}`)).toBe(true);
-    expect(files.has(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`)).toBe(true);
+    expect(removeMock).not.toHaveBeenCalled();
   });
 
   it('clears the pending deletion list on read — a second save is a no-op deletion-wise', async () => {
