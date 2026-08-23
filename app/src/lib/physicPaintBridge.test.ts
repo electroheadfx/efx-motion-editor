@@ -579,6 +579,7 @@ describe('physicPaintBridge', () => {
       projectContextId: projectStore.projectContextId.peek(),
       layerId: layer.id,
       canonicalStart: 5,
+      trackId: TEST_TRACK_ID,
     });
 
     // 43.4 defect 1: the authority remaining is the child document capacity,

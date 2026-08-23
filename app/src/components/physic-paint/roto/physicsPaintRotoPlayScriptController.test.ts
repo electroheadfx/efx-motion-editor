@@ -57,6 +57,9 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { layerStore } from '../../../stores/layerStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import { projectStore } from '../../../stores/projectStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -74,6 +77,9 @@ const authority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): Phy
   ok: true,
   projectContextId: 'context-1',
   layerId: 'layer-1',
+  trackId: TEST_TRACK_ID,
+  trackRevision: 'track-revision-1',
+  documentRevision: 'document-revision-1',
   canonicalStart: 4,
   layerEndExclusive: 8,
   capacity: 4,
@@ -3059,8 +3065,23 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
     return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
   }
 
+  /** 46-04: the authority revalidates the document → track dimensions, so the
+   *  real round-trip needs a registered document whose active track is the
+   *  runtime track the suite seeds. */
+  function makeTrackDocument(layerId: string): EfxPaintDocument {
+    const document = createEfxPaintDocument(layerId);
+    const track = document.tracks[0];
+    return {
+      ...document,
+      activeTrackId: TEST_TRACK_ID,
+      tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    };
+  }
+
   function seedStoreWithKeys(): void {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument(LAYER_ID));
     projectStore.projectContextId.value = CONTEXT_ID;
     const layer = {
       id: LAYER_ID,
@@ -3119,7 +3140,7 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
       getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID, TEST_TRACK_ID),
       getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID),
       requestAuthority: vi.fn(async (operationId: string, start: number) => (
-        getPhysicPaintRotoAuthority({ operationId, projectContextId: CONTEXT_ID, layerId: LAYER_ID, canonicalStart: start })
+        getPhysicPaintRotoAuthority({ operationId, projectContextId: CONTEXT_ID, layerId: LAYER_ID, canonicalStart: start, trackId: TEST_TRACK_ID })
       )),
     });
     test.setSelection({ kind: 'real-key', keyId: 'k104', appFrame: 104 });

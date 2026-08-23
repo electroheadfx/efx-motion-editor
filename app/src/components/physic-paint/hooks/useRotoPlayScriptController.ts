@@ -64,7 +64,10 @@ export function useRotoPlayScriptController<EngineState = unknown>(
         const context = portsRef.current.getLaunchContext();
         if (!context?.project) throw new Error('Project authority is unavailable.');
         const mode = modeRef.current === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : modeRef.current;
-        await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start }, mode);
+        // 46-04: the launch IS the document (D-03) — the child names the
+        // document's active track; the parent revalidates the track dimension
+        // and fails closed on a foreign trackId.
+        await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start, trackId: context.document?.activeTrackId ?? '' }, mode);
       }, authorityFailure(operationId, portsRef.current)),
       commit: async (publication, revalidateUnderLease) => {
         let leaseRejection: string | null = null;
@@ -174,6 +177,9 @@ function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControl
     ok: false,
     projectContextId: context?.project?.contextId ?? '',
     layerId: context?.layerId ?? '',
+    trackId: context?.document?.activeTrackId ?? '',
+    trackRevision: '',
+    documentRevision: '',
     canonicalStart: selection.appFrame,
     layerEndExclusive: selection.appFrame,
     capacity: 0,

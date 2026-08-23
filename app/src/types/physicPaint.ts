@@ -1813,6 +1813,8 @@ export interface PhysicPaintRotoAuthorityRequest {
   projectContextId: string;
   layerId: string;
   canonicalStart: number;
+  /** 46-04: stable UUID of the internal track the authority fingerprints (never the live active track). */
+  trackId: string;
 }
 
 export interface PhysicPaintRotoAuthorityResult {
@@ -1821,6 +1823,12 @@ export interface PhysicPaintRotoAuthorityResult {
   projectContextId: string;
   layerId: string;
   canonicalStart: number;
+  /** 46-04: the requested track identity, echoed on every success AND failure. */
+  trackId: string;
+  /** 46-04: deterministic track revision (buildEfxPaintTrackRevision) of the requested track; empty when the track was unreachable. */
+  trackRevision: string;
+  /** 46-04: deterministic document revision (buildEfxPaintDocumentRevision) of the parent document; empty when the document was unreachable. */
+  documentRevision: string;
   layerEndExclusive: number;
   capacity: number;
   physicalCapacity: number;
@@ -2215,10 +2223,11 @@ export function isPhysicPaintScriptLibraryResultMessage(value: unknown): value i
 export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is PhysicPaintRotoAuthorityRequest {
   return Boolean(
     isRecord(value) &&
-      hasOnlyKeys(value, ['operationId', 'projectContextId', 'layerId', 'canonicalStart']) &&
+      hasOnlyKeys(value, ['operationId', 'projectContextId', 'layerId', 'canonicalStart', 'trackId']) &&
       isBoundedOperationId(value.operationId) &&
       isNonEmptyString(value.projectContextId) &&
       isNonEmptyString(value.layerId) &&
+      isNonEmptyString(value.trackId) &&
       isNonNegativeInteger(value.canonicalStart)
   );
 }

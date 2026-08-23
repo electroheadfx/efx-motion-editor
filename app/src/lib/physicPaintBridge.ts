@@ -41,6 +41,10 @@ import { proposeRails } from '../components/physic-paint/roto/physicsPaintRotoRa
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
 import { getCarriedRotoPhysical } from '../components/physic-paint/roto/rotoLaunchHydration';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import {
+  buildEfxPaintDocumentRevision,
+  buildEfxPaintTrackRevision,
+} from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument } from '../stores/efxPaintStore';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
@@ -348,6 +352,7 @@ function applyPhysicPaintPayloadWithPublicationLease(
           projectContextId: payload.projectContextId,
           layerId: payload.layerId,
           canonicalStart: payload.startFrame,
+          trackId: payload.trackId,
         });
         if (!authority.ok) return applyFailureResult(payload, authority.error ?? 'Roto authority rejected the batch.');
         if (authority.layerEndExclusive !== payload.expectedLayerEndExclusive || authority.rotoRevision !== payload.expectedRotoRevision) return applyFailureResult(payload, 'Roto authority became stale before commit.');
@@ -444,12 +449,15 @@ async function applyTransportedPhysicPaintPayload(
 }
 
 export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityRequest): PhysicPaintRotoAuthorityResult {
-  const failure = (error: string): PhysicPaintRotoAuthorityResult => ({
+  const failure = (error: string, revisionTerms?: { trackRevision: string; documentRevision: string }): PhysicPaintRotoAuthorityResult => ({
     operationId: request.operationId,
     ok: false,
     projectContextId: request.projectContextId,
     layerId: request.layerId,
     canonicalStart: request.canonicalStart,
+    trackId: request.trackId,
+    trackRevision: revisionTerms?.trackRevision ?? '',
+    documentRevision: revisionTerms?.documentRevision ?? '',
     layerEndExclusive: request.canonicalStart,
     capacity: 0,
     physicalCapacity: 0,
@@ -459,16 +467,24 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     interpolationEnabled: false,
     interpolationMode: 'duplicate',
     frames: [],
-    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId, getEfxPaintDocument(request.layerId)?.activeTrackId ?? ''),
+    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId, request.trackId),
     error,
   });
   if (request.projectContextId !== projectStore.projectContextId.peek()) return failure('Project context changed.');
   const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
-  // 46-01: authority reads resolve the document's ACTIVE track (the launch IS
-  // the document — D-03).
-  const trackId = getEfxPaintDocument(request.layerId)?.activeTrackId ?? '';
+  // 46-04: the document then track dimensions — the authority revalidates the
+  // requested track against the parent document before any per-track read
+  // (D-20 fail closed, edge TRK-06 empty). No active-track fallback, no
+  // auto-create: a trackId outside document.tracks is a closed failure.
+  const document = getEfxPaintDocument(request.layerId);
+  if (!document) return failure('Track is unavailable.');
+  const track = document.tracks.find((candidate) => candidate.id === request.trackId);
+  if (!track) {
+    return failure('Track is unavailable.', { trackRevision: '', documentRevision: buildEfxPaintDocumentRevision(document) });
+  }
+  const trackId = request.trackId;
   const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(request.layerId, trackId);
   // The child document's single end authority is the physical capacity
   // (43.4 defect 1): the stale main-editor display outFrame never clamps
@@ -499,6 +515,9 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     projectContextId: request.projectContextId,
     layerId: request.layerId,
     canonicalStart: request.canonicalStart,
+    trackId,
+    trackRevision: buildEfxPaintTrackRevision(track),
+    documentRevision: buildEfxPaintDocumentRevision(document),
     layerEndExclusive: request.canonicalStart + capacity,
     capacity,
     physicalCapacity,
@@ -527,7 +546,7 @@ const INVALID_AUTHORITY_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSett
 
 function extractAuthorityEnvelopeFields(payload: unknown): PhysicPaintRotoAuthorityRequest {
   if (typeof payload !== 'object' || payload === null) {
-    return { operationId: '', projectContextId: '', layerId: '', canonicalStart: 0 };
+    return { operationId: '', projectContextId: '', layerId: '', canonicalStart: 0, trackId: '' };
   }
   const record = payload as Record<string, unknown>;
   return {
@@ -535,6 +554,7 @@ function extractAuthorityEnvelopeFields(payload: unknown): PhysicPaintRotoAuthor
     projectContextId: typeof record.projectContextId === 'string' ? record.projectContextId : '',
     layerId: typeof record.layerId === 'string' ? record.layerId : '',
     canonicalStart: typeof record.canonicalStart === 'number' && Number.isInteger(record.canonicalStart) && record.canonicalStart >= 0 ? record.canonicalStart : 0,
+    trackId: typeof record.trackId === 'string' ? record.trackId : '',
   };
 }
 
@@ -554,6 +574,9 @@ export function getPhysicPaintRotoAuthorityFromUnknown(payload: unknown): Physic
     projectContextId: fields.projectContextId,
     layerId: fields.layerId,
     canonicalStart: fields.canonicalStart,
+    trackId: fields.trackId,
+    trackRevision: '',
+    documentRevision: '',
     layerEndExclusive: fields.canonicalStart,
     capacity: 0,
     physicalCapacity: 0,

@@ -38,6 +38,9 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { layerStore } from '../../../stores/layerStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import { projectStore } from '../../../stores/projectStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoRealKeyPayload,
@@ -57,8 +60,23 @@ function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
   return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
 }
 
+/** 46-04: the authority revalidates the document → track dimensions, so the
+ *  real round-trip needs a registered document whose active track is the
+ *  runtime track the suite seeds. */
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
+
 function seedStoreWithKeys(): void {
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument(LAYER_ID));
   projectStore.projectContextId.value = CONTEXT_ID;
   const layer = {
     id: LAYER_ID,
@@ -174,6 +192,7 @@ describe('useRotoPlayScriptController Create Group modal (43.4 regression seam)'
       projectContextId: CONTEXT_ID,
       layerId: LAYER_ID,
       canonicalStart: sent.canonicalStart,
+      trackId: TEST_TRACK_ID,
     });
     captured.authorityListener!(authority);
 
@@ -210,6 +229,7 @@ describe('useRotoPlayScriptController Create Group modal (43.4 regression seam)'
       projectContextId: CONTEXT_ID,
       layerId: LAYER_ID,
       canonicalStart: sent.canonicalStart,
+      trackId: TEST_TRACK_ID,
     });
     captured.authorityListener!(authority);
 

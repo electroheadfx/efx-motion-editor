@@ -66,7 +66,7 @@ function installProject() {
 }
 
 function batch(overrides: Record<string, unknown> = {}) {
-  const authority = getPhysicPaintRotoAuthority({ operationId: 'revision', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
+  const authority = getPhysicPaintRotoAuthority({ operationId: 'revision', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4, trackId: TEST_TRACK_ID });
   if (!authority.ok || authority.frames.length === 0) throw new Error('authority must expose the seeded physical keys');
   return {
     kind: 'replace-roto-key-frames'as const, trackId: TEST_TRACK_ID, operationId: `commit-${crypto.randomUUID()}`, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', startFrame: 4,
@@ -91,7 +91,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
   afterEach(() => { vi.restoreAllMocks(); physicPaintStore.reset(); sequenceStore.sequences.value = []; resetEfxPaintStore(); vi.unstubAllGlobals(); });
 
   it('returns current operation-correlated capacity, real keys, and revision', () => {
-    const result = getPhysicPaintRotoAuthority({ operationId: 'authority-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
+    const result = getPhysicPaintRotoAuthority({ operationId: 'authority-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4, trackId: TEST_TRACK_ID });
     // 43.4 defect 1: the authority remaining is the child document capacity,
     // never the stale main-editor display outFrame (10 here).
     expect(result).toMatchObject({ operationId: 'authority-1', ok: true, canonicalStart: 4, layerEndExclusive: 600, capacity: 596, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1' });
@@ -105,7 +105,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
 
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ appFrame: 1, source: 'generated-interpolation' });
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 3)).toMatchObject({ appFrame: 3, sourceFrame: 1, source: 'real-key' });
-    expect(getPhysicPaintRotoAuthority({ operationId: 'canonical-source-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 1 })).toMatchObject({ ok: true, canonicalStart: 1 });
+    expect(getPhysicPaintRotoAuthority({ operationId: 'canonical-source-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 1, trackId: TEST_TRACK_ID })).toMatchObject({ ok: true, canonicalStart: 1 });
   });
 
   it('fails closed without positive remaining sequence capacity and caps large valid ranges', () => {
@@ -114,6 +114,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
       projectContextId: '11111111-1111-4111-8111-111111111111',
       layerId: 'layer-1',
       canonicalStart,
+      trackId: TEST_TRACK_ID,
     });
 
     sequenceStore.sequences.value = [];
@@ -136,7 +137,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
   });
 
   it('rejects stale project, generated display mutations, stale revisions, duplicate, incomplete, and over-capacity batches', () => {
-    expect(getPhysicPaintRotoAuthority({ operationId: 'wrong-project', projectContextId: 'other', layerId: 'layer-1', canonicalStart: 4 }).ok).toBe(false);
+    expect(getPhysicPaintRotoAuthority({ operationId: 'wrong-project', projectContextId: 'other', layerId: 'layer-1', canonicalStart: 4, trackId: TEST_TRACK_ID }).ok).toBe(false);
     physicPaintStore.replaceGeneratedRotoCache('layer-1', TEST_TRACK_ID, [{ ...frame(4), source: 'generated-interpolation', nearestRealKeyFrame: 1 }]);
     expect(applyPhysicPaintPayload({ kind: 'delete-roto-frame', trackId: TEST_TRACK_ID, operationId: 'generated-display-delete', layerId: 'layer-1', startFrame: 4 })).toMatchObject({ ok: false });
     physicPaintStore.replaceGeneratedRotoCache('layer-1', TEST_TRACK_ID, []);
@@ -152,7 +153,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
       { keyId: 'key-20', appFrame: 20, dataUrl: `data:image/png;base64,${btoa('far-key')}` },
     ]);
     const frameSource = (candidate: PhysicPaintRotoCacheFrame) => candidate.sourceFrame ?? candidate.appFrame;
-    const authority = getPhysicPaintRotoAuthority({ operationId: 'complete-set', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
+    const authority = getPhysicPaintRotoAuthority({ operationId: 'complete-set', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4, trackId: TEST_TRACK_ID });
     const untouchedFarKey = authority.frames.find((candidate) => frameSource(candidate) === 20);
     if (!untouchedFarKey || !authority.frames[0]) throw new Error('authority must expose the seeded physical keys');
     const base = { expectedRotoRevision: authority.rotoRevision, frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5'), untouchedFarKey] };
@@ -205,7 +206,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     vi.stubGlobal('window', { location: { origin: 'http://localhost' }, addEventListener: vi.fn((name: string, listener: EventListener) => listeners.set(name, listener)), removeEventListener: vi.fn((name: string) => listeners.delete(name)) });
     const cleanup = await installPhysicPaintRotoAuthorityListener();
     const postMessage = vi.fn();
-    listeners.get('message')?.({ origin: 'http://localhost', source: { postMessage }, data: { type: PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, payload: { operationId: 'message-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 } } } as unknown as Event);
+    listeners.get('message')?.({ origin: 'http://localhost', source: { postMessage }, data: { type: PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, payload: { operationId: 'message-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4, trackId: TEST_TRACK_ID } } } as unknown as Event);
     await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, payload: expect.objectContaining({ operationId: 'message-1', ok: true }) }, 'http://localhost'));
     cleanup(); expect(listeners.has('message')).toBe(false);
   });
