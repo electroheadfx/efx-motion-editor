@@ -10,9 +10,28 @@ import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicP
 
 
 const editableState = {
-  version: 2 as const, width: 1000, height: 650,
-  strokes: [{ tool: 'paint', pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]], color: '#103c65', params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 }, time: 123, diffusionFrames: 0 }],
-  settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+  version: 1 as const,
+  parentLayerId: 'layer-1',
+  documentRevision: 0,
+  activeTrackId: 'track-1',
+  tracks: [{
+    id: 'track-1',
+    name: 'Paint',
+    order: 0,
+    visible: true,
+    solo: false,
+    opacity: 1,
+    blendMode: 'normal' as const,
+    revision: 0,
+    frames: {},
+    rotoPhysical: null,
+    loopClips: [],
+    strokes: [{ tool: 'paint', pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]], color: '#103c65', params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 }, time: 123, diffusionFrames: 0 }],
+    settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+  }],
+  background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' as const }, visible: true, revision: 0 },
+  photoReference: null,
+  compositeRevision: 0,
 };
 
 const makeFrame = (frameIndex: number, appFrame: number) => ({
@@ -71,7 +90,12 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 8,
       renderedFrame: makeFrame(0, 8),
-      editableState: { ...editableState, settings: { ...editableState.settings, bgMode: 'transparent' } },
+      editableState: {
+        ...editableState,
+        tracks: editableState.tracks.map((track) => track.id === editableState.activeTrackId
+          ? { ...track, settings: { ...track.settings, bgMode: 'transparent' } }
+          : track),
+      },
       rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
     });
 
@@ -90,7 +114,12 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 4,
       renderedFrame: makeFrame(0, 4),
-      editableState: { ...editableState, strokes: [] },
+      editableState: {
+        ...editableState,
+        tracks: editableState.tracks.map((track) => track.id === editableState.activeTrackId
+          ? { ...track, strokes: [] }
+          : track),
+      },
       backgroundOnly: true,
     });
 

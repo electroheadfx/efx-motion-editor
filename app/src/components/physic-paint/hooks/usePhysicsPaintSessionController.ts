@@ -91,9 +91,11 @@ export function createPhysicsPaintSessionController(
     try {
       const document = parsePhysicsPaintStateFile(contents);
       // The v1.0 session file IS the document. Install it into the store so
-      // the Studio runtime reflects the loaded session; the engine load
-      // re-wire lands in Task 3 of plan 45-06.
+      // the Studio runtime reflects the loaded session, and hand it to the
+      // engine so the package engine validates the same payload fail-closed
+      // (D-03: one document format everywhere).
       registerDocument(document);
+      engine.load(document);
       setSuccess(LOAD_STATE_SUCCESS_COPY);
     } catch (error) {
       setFailure(error);

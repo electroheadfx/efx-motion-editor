@@ -1997,7 +1997,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
 
   if (value.kind === 'apply-canvas') {
     const sourceFrame = typeof value.sourceFrame === 'number' ? value.sourceFrame : value.startFrame;
-    return (value.editableState === undefined || isSerializedProject(value.editableState)) &&
+    return (value.editableState === undefined || isEfxPaintDocumentEditableState(value.editableState)) &&
       optionalNonNegativeInteger(value.sourceFrame) &&
       optionalNonNegativeInteger(value.displayFrame) &&
       isPhysicPaintRenderedFrame(value.renderedFrame, sourceFrame, 0) &&
@@ -2245,6 +2245,25 @@ function containsForbiddenApplyField(value: Record<string, unknown>): boolean {
     if (FORBIDDEN_APPLY_FIELDS.has(key)) return true;
   }
   return false;
+}
+
+/**
+ * v1.0 document payload guard for the apply-canvas editableState carrier (D-03).
+ * Accepts the engine's save() output — strokes/settings ride the active track as
+ * optional engine-only carriers — and rejects the legacy version:2 shape. The
+ * full fail-closed parse (parseEfxPaintDocument) replaces this in the Task 4 sweep.
+ */
+function isEfxPaintDocumentEditableState(value: unknown): value is SerializedProject {
+  if (!isRecord(value)) return false;
+  if (value.version !== 1) return false;
+  if (typeof value.parentLayerId !== 'string' || value.parentLayerId.length === 0) return false;
+  if (!isNonNegativeInteger(value.documentRevision)) return false;
+  if (typeof value.activeTrackId !== 'string' || value.activeTrackId.length === 0) return false;
+  if (!Array.isArray(value.tracks) || value.tracks.length === 0) return false;
+  if (!isRecord(value.background)) return false;
+  if (value.photoReference !== null) return false;
+  if (!isNonNegativeInteger(value.compositeRevision)) return false;
+  return value.tracks.some((track) => isRecord(track) && track.id === value.activeTrackId);
 }
 
 export function isSerializedProject(value: unknown): value is SerializedProject {

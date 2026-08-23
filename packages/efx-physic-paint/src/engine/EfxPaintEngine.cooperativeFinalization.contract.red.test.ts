@@ -940,7 +940,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     ]
 
     const serialized = engine.save()
-    expect(serialized.strokes.map(stroke => stroke.physicsMode)).toEqual(['local', 'last', 'all', null])
+    expect(serialized.tracks[0].strokes!.map(stroke => stroke.physicsMode)).toEqual(['local', 'last', 'all', null])
 
     const { engine: loaded } = createHarness()
     loaded.redrawAll = vi.fn()

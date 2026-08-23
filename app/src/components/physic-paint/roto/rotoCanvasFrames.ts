@@ -7,6 +7,7 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
+import { readRotoActiveTrack } from './rotoSaveTransactions';
 
 export type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
 
@@ -101,7 +102,8 @@ export function addOccupiedRotoFrame(frames: number[], frame: number): number[] 
 
 export function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement {
   const state = engine.save();
-  const background = state.settings.bgMode as BgMode;
+  const track = readRotoActiveTrack(state);
+  const background = (track?.settings?.bgMode ?? 'transparent') as BgMode;
   try {
     engine.setBgMode('transparent');
     return engine.exportCompositeCanvas();

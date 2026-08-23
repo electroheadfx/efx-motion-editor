@@ -22,7 +22,9 @@ import type {
   FluidConfig,
   PaintStroke,
   PhysicsMode,
-  SerializedProject,
+  EfxPaintDocument,
+  SerializedEngineStroke,
+  EngineTrackSettings,
   NativePenInput,
   StrokeMetadata,
 } from '../types'
@@ -120,6 +122,116 @@ const STROKE_FINALIZATION_IDLE_MS = 500
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
+}
+
+// === v1.0 DOCUMENT CONTRACT (D-03) ===
+// The standalone engine speaks the same v1.0 EFX Paint document as the
+// app-side session files and bridge. Legacy pre-v1.0 session payloads
+// (version: 2 or the old strokes/settings top-level shape) reject with the
+// distinct unsupported copy — never converted or partially read (Pitfall F5).
+
+/** Distinct pre-v1.0 unsupported copy (same semantics as the app-side LOAD_STATE_UNSUPPORTED_VERSION_COPY). */
+export const LOAD_STATE_UNSUPPORTED_VERSION_COPY = 'This file is a pre-v1.0 Physics Paint session, which v1.0.0 does not support. Choose a state file exported from the current version of Physics Paint.'
+/** Generic invalid copy for malformed or unrecognized payloads. */
+export const LOAD_STATE_INVALID_COPY = 'This file is not a valid Physics Paint state JSON. Choose a state file exported from Physics Paint.'
+
+/** Fixed parent-layer identity of the standalone engine's own documents. */
+const STANDALONE_PARENT_LAYER_ID = 'standalone'
+/** Fixed default-track id of the standalone engine's own documents. */
+const STANDALONE_TRACK_ID = 'track-1'
+/** Fixed background-track id of the standalone engine's own documents. */
+const STANDALONE_BACKGROUND_ID = 'background-1'
+
+const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'compositeRevision'])
+const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity', 'blendMode', 'revision', 'frames', 'rotoPhysical', 'loopClips', 'strokes', 'settings'])
+const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision'])
+const STROKE_KEYS = new Set(['tool', 'pts', 'color', 'params', 'time', 'hasPenInput', 'diffusionFrames', 'playFrame', 'physicsMode'])
+const SETTINGS_KEYS = new Set(['bgMode', 'paperGrain', 'embossStrength', 'wetPaper'])
+const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add'])
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every(key => allowed.has(key))
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function isSerializedEngineStroke(value: unknown): value is SerializedEngineStroke {
+  if (!isPlainRecord(value)) return false
+  if (!hasOnlyKeys(value, STROKE_KEYS)) return false
+  if (typeof value.tool !== 'string' || value.tool.length === 0) return false
+  if (!Array.isArray(value.pts) || !value.pts.every(point => Array.isArray(point) && point.length === 7 && point.every(component => typeof component === 'number'))) return false
+  if (value.color !== null && typeof value.color !== 'string') return false
+  if (!isPlainRecord(value.params)) return false
+  if (typeof value.time !== 'number' || !Number.isFinite(value.time)) return false
+  return true
+}
+
+function isEngineTrackSettings(value: unknown): value is EngineTrackSettings {
+  if (!isPlainRecord(value)) return false
+  if (!hasOnlyKeys(value, SETTINGS_KEYS)) return false
+  if (typeof value.bgMode !== 'string') return false
+  if (typeof value.paperGrain !== 'string') return false
+  if (typeof value.embossStrength !== 'number' || !Number.isFinite(value.embossStrength)) return false
+  return typeof value.wetPaper === 'boolean'
+}
+
+/**
+ * Fail-closed structural validation of a v1.0 document payload, run BEFORE
+ * any engine state is mutated. Legacy version:2 payloads (or the old
+ * strokes/settings top-level shape) reject with the distinct unsupported
+ * copy; any other malformed or unknown-member payload throws the generic
+ * invalid copy. The engine only reads the active track's strokes/settings,
+ * so validation covers the document skeleton plus those carriers — the
+ * deep rotoPhysical/frames/loopClips validation stays with the app-side
+ * parser (the package never reads those members).
+ */
+function validateEfxPaintDocument(value: unknown): asserts value is EfxPaintDocument {
+  if (!isPlainRecord(value)) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (value.version === 2 || (Array.isArray(value.strokes) && isPlainRecord(value.settings))) {
+    throw new Error(LOAD_STATE_UNSUPPORTED_VERSION_COPY)
+  }
+  if (!hasOnlyKeys(value, DOCUMENT_KEYS)) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (value.version !== 1) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (!isNonEmptyString(value.parentLayerId)) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (!isNonNegativeInteger(value.documentRevision)) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (!isNonNegativeInteger(value.compositeRevision)) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (value.photoReference !== null) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (!Array.isArray(value.tracks) || value.tracks.length === 0) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (!isNonEmptyString(value.activeTrackId)) throw new Error(LOAD_STATE_INVALID_COPY)
+  const seenTrackIds = new Set<string>()
+  for (const track of value.tracks) {
+    if (!isPlainRecord(track)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (!hasOnlyKeys(track, TRACK_KEYS)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (!isNonEmptyString(track.id)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (seenTrackIds.has(track.id)) throw new Error(LOAD_STATE_INVALID_COPY)
+    seenTrackIds.add(track.id)
+    if (!isNonEmptyString(track.name)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (!isNonNegativeInteger(track.order)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (typeof track.visible !== 'boolean') throw new Error(LOAD_STATE_INVALID_COPY)
+    if (typeof track.solo !== 'boolean') throw new Error(LOAD_STATE_INVALID_COPY)
+    if (typeof track.opacity !== 'number' || !Number.isFinite(track.opacity)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (typeof track.blendMode !== 'string' || !BLEND_MODES.has(track.blendMode)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (!isNonNegativeInteger(track.revision)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (track.frames !== undefined && !isPlainRecord(track.frames)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (track.rotoPhysical !== null && !isPlainRecord(track.rotoPhysical)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (track.loopClips !== undefined && !Array.isArray(track.loopClips)) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (track.strokes !== undefined && (!Array.isArray(track.strokes) || !track.strokes.every(isSerializedEngineStroke))) throw new Error(LOAD_STATE_INVALID_COPY)
+    if (track.settings !== undefined && !isEngineTrackSettings(track.settings)) throw new Error(LOAD_STATE_INVALID_COPY)
+  }
+  if (!seenTrackIds.has(value.activeTrackId)) throw new Error(LOAD_STATE_INVALID_COPY)
+  if (!isPlainRecord(value.background) || !hasOnlyKeys(value.background, BACKGROUND_KEYS)) throw new Error(LOAD_STATE_INVALID_COPY)
 }
 
 /**
@@ -1078,14 +1190,14 @@ export class EfxPaintEngine {
     this.notifyCompletedMutation('clear')
   }
 
-  /** Serialize the project for saving */
-  save(): SerializedProject {
+  /** Serialize the project for saving (v1.0 document format, D-03) */
+  save(): EfxPaintDocument {
     this.flushPendingStrokeFinalizations()
     return this.serializeProject()
   }
 
-  /** Load a serialized project */
-  load(json: SerializedProject): void {
+  /** Load a serialized project (v1.0 document format, D-03) */
+  load(json: EfxPaintDocument): void {
     this.flushPendingStrokeFinalizations()
     this.loadProjectData(json)
   }
@@ -2138,54 +2250,86 @@ export class EfxPaintEngine {
   //  PRIVATE — Serialization
   // ================================================================
 
-  private serializeProject(): SerializedProject {
+  private serializeProject(): EfxPaintDocument {
     return {
-      version: 2,
-      width: this.width,
-      height: this.height,
-      strokes: this.allActions.map(s => ({
-        tool: s.tool,
-        pts: s.points.map(p => [
-          Math.round(p.x * 100) / 100,
-          Math.round(p.y * 100) / 100,
-          Math.round(p.p * 1000) / 1000,
-          p.tx || 0,
-          p.ty || 0,
-          p.tw || 0,
-          Math.round(p.spd * 100) / 100,
-        ] as [number, number, number, number, number, number, number]),
-        color: s.color,
-        params: { ...s.params },
-        time: s.timestamp,
-        hasPenInput: this.strokeHasPenInput(s),
-        diffusionFrames: s.diffusionFrames || 0,
-        ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
-        ...(s.physicsMode === 'local' || s.physicsMode === 'last' || s.physicsMode === 'all'
-          ? { physicsMode: s.physicsMode }
-          : { physicsMode: null }),
-      })),
-      settings: {
-        bgMode: this.state.bgMode,
-        paperGrain: this.currentPaperKey,
-        embossStrength: this.state.embossStrength,
-        wetPaper: this.state.wetPaper,
+      version: 1,
+      parentLayerId: STANDALONE_PARENT_LAYER_ID,
+      documentRevision: 0,
+      activeTrackId: STANDALONE_TRACK_ID,
+      tracks: [{
+        id: STANDALONE_TRACK_ID,
+        name: 'Track 1',
+        order: 0,
+        visible: true,
+        solo: false,
+        opacity: 1,
+        blendMode: 'normal',
+        revision: 0,
+        frames: {},
+        rotoPhysical: null,
+        loopClips: [],
+        strokes: this.allActions.map(s => ({
+          tool: s.tool,
+          pts: s.points.map(p => [
+            Math.round(p.x * 100) / 100,
+            Math.round(p.y * 100) / 100,
+            Math.round(p.p * 1000) / 1000,
+            p.tx || 0,
+            p.ty || 0,
+            p.tw || 0,
+            Math.round(p.spd * 100) / 100,
+          ] as [number, number, number, number, number, number, number]),
+          color: s.color,
+          params: { ...s.params },
+          time: s.timestamp,
+          hasPenInput: this.strokeHasPenInput(s),
+          diffusionFrames: s.diffusionFrames || 0,
+          ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
+          ...(s.physicsMode === 'local' || s.physicsMode === 'last' || s.physicsMode === 'all'
+            ? { physicsMode: s.physicsMode }
+            : { physicsMode: null }),
+        })),
+        settings: {
+          bgMode: this.state.bgMode,
+          paperGrain: this.currentPaperKey,
+          embossStrength: this.state.embossStrength,
+          wetPaper: this.state.wetPaper,
+        },
+      }],
+      background: {
+        id: STANDALONE_BACKGROUND_ID,
+        clips: [],
+        fallback: { mode: 'transparent' },
+        visible: true,
+        revision: 0,
       },
+      photoReference: null,
+      compositeRevision: 0,
     }
   }
 
-  private loadProjectData(json: SerializedProject): void {
+  private loadProjectData(json: EfxPaintDocument): void {
+    // Fail-closed validation BEFORE any engine state is mutated: legacy
+    // version:2 payloads reject with the distinct unsupported copy, any
+    // malformed or unknown-member payload throws the generic invalid copy.
+    validateEfxPaintDocument(json)
+    const activeTrack = json.tracks.find(track => track.id === json.activeTrackId)!
+
     // Restore brush settings but keep current background — allows loading strokes
-    // onto different backgrounds (important for efx-motion-editor animations)
-    if (json.settings) {
-      if (json.settings.paperGrain) this.setPaperGrain(json.settings.paperGrain)
-      if (json.settings.embossStrength != null) this.state.embossStrength = json.settings.embossStrength
-      if (json.settings.wetPaper != null) {
-        this.state.wetPaper = json.settings.wetPaper
+    // onto different backgrounds (important for efx-motion-editor animations).
+    // App-side documents carry no settings member; the engine keeps its own.
+    const settings = activeTrack.settings
+    if (settings) {
+      if (settings.paperGrain) this.setPaperGrain(settings.paperGrain)
+      if (settings.embossStrength != null) this.state.embossStrength = settings.embossStrength
+      if (settings.wetPaper != null) {
+        this.state.wetPaper = settings.wetPaper
       }
     }
 
-    // Convert compact point arrays back to PenPoint objects
-    this.allActions = json.strokes.map(s => ({
+    // Convert compact point arrays back to PenPoint objects. App-side
+    // documents carry no strokes member; the engine loads an empty baseline.
+    this.allActions = (activeTrack.strokes ?? []).map(s => ({
       tool: s.tool as ToolType,
       points: s.pts.map(p => ({
         x: p[0], y: p[1], p: p[2],

@@ -1,5 +1,6 @@
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import { readRotoActiveTrack } from './rotoSaveTransactions';
 
 export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
 export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
@@ -32,12 +33,14 @@ export function removeEditableRotoFrame(frames: number[], frame: number): number
     : frames;
 }
 
-export function hasEditableRotoContent(state: { strokes: readonly unknown[] }): boolean {
-  return state.strokes.length > 0;
+export function hasEditableRotoContent(state: RotoEditableState): boolean {
+  const track = readRotoActiveTrack(state);
+  return (track?.strokes?.length ?? 0) > 0;
 }
 
 export function shouldPersistRotoFrame(state: RotoEditableState): boolean {
-  return state.strokes.length > 0 || state.settings.bgMode !== 'transparent';
+  const track = readRotoActiveTrack(state);
+  return (track?.strokes?.length ?? 0) > 0 || (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
 }
 
 export function markRotoFrameDirty<State, Frame>(buffer: RotoEditBuffer<State, Frame>, frame: number): void {
@@ -80,7 +83,7 @@ export function clearRotoFrame<State, Frame>(buffer: RotoEditBuffer<State, Frame
   buffer.dirtyFrames.add(frame);
 }
 
-export function snapshotRotoFrame<State extends { strokes: readonly unknown[] }, Frame>(input: {
+export function snapshotRotoFrame<State extends RotoEditableState, Frame>(input: {
   buffer: RotoEditBuffer<State, Frame>;
   frame: number;
   state: State;

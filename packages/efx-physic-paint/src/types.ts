@@ -181,29 +181,104 @@ export interface PaintStroke {
   physicsMode?: PhysicsMode // per-stroke mode for Play-canvas replay
 }
 
-// === PROJECT SERIALIZATION ===
+// === PROJECT SERIALIZATION (v1.0 document) ===
+// The standalone engine adopts the v1.0 EFX Paint document format (D-03):
+// one document format everywhere. The declarations below are a structural
+// mirror of the app-side schema (app/src/efx-paint/document/efxPaintDocument.ts)
+// — the workspace package cannot import app code, so field names are kept
+// identical so payloads inter-operate across the bridge without mapping.
+// The engine's own strokes/settings ride on the default track as optional
+// engine-only carriers (absent in app-side documents).
 
-export interface SerializedProject {
-  version: 2
-  width: number
-  height: number
-  strokes: Array<{
-    tool: string
-    pts: Array<[number, number, number, number, number, number, number]>
-    color: string | null
-    params: Record<string, number>
-    time: number
-    hasPenInput?: boolean
-    diffusionFrames?: number
-    playFrame?: number
-    physicsMode?: PhysicsMode
-  }>
-  settings: {
-    bgMode: string
-    paperGrain: string
-    embossStrength: number
-    wetPaper: boolean
-  }
+/** Main-editor blend mode union (mirrors the app-side schema). */
+export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add'
+
+/** Document fallback revealed in Background gaps (mirrors the app-side schema). */
+export type BackgroundFallback =
+  | { readonly mode: 'transparent' }
+  | { readonly mode: 'solid'; readonly color: string }
+
+/** Repeat policy of a Background Loop Clip (mirrors the app-side schema). */
+export type FrameLoopClipRepeat =
+  | { readonly mode: 'finite'; readonly count: number }
+  | { readonly mode: 'infinite' }
+
+/** One Background Loop Clip (mirrors the app-side schema). */
+export interface FrameLoopClip {
+  readonly id: string
+  readonly startFrame: number
+  readonly sourceFrameRefs: readonly string[]
+  readonly repeat: FrameLoopClipRepeat
+  readonly sourceKind: 'playscript-hold' | 'imported-background'
+  readonly revision: number
+}
+
+/** Cached-frame sidecar reference record (mirrors the app-side schema). */
+export interface CachedFrameReference {
+  readonly cachePath: string
+  readonly width: number
+  readonly height: number
+}
+
+/** One serialized engine stroke carried on the default track (engine-only). */
+export interface SerializedEngineStroke {
+  tool: string
+  pts: Array<[number, number, number, number, number, number, number]>
+  color: string | null
+  params: Record<string, number>
+  time: number
+  hasPenInput?: boolean
+  diffusionFrames?: number
+  playFrame?: number
+  physicsMode?: PhysicsMode
+}
+
+/** Engine settings carried on the default track (engine-only). */
+export interface EngineTrackSettings {
+  bgMode: string
+  paperGrain: string
+  embossStrength: number
+  wetPaper: boolean
+}
+
+/** One internal Paint track inside the document (mirrors the app-side schema). */
+export interface InternalPaintTrack {
+  readonly id: string
+  readonly name: string
+  readonly order: number
+  readonly visible: boolean
+  readonly solo: boolean
+  readonly opacity: number
+  readonly blendMode: BlendMode
+  readonly revision: number
+  readonly frames: Readonly<Record<number, CachedFrameReference>>
+  readonly rotoPhysical: unknown | null
+  readonly loopClips: readonly FrameLoopClip[]
+  /** Engine-only carrier: serialized strokes of the standalone engine. */
+  readonly strokes?: readonly SerializedEngineStroke[]
+  /** Engine-only carrier: engine settings. */
+  readonly settings?: EngineTrackSettings
+}
+
+/** The single fixed Background track beneath all Paint tracks (mirrors the app-side schema). */
+export interface BackgroundTrack {
+  readonly id: string
+  readonly clips: readonly FrameLoopClip[]
+  readonly fallback: BackgroundFallback
+  readonly visible: boolean
+  readonly revision: number
+}
+
+/** The v1.0 EFX Physic Paint document owned by one parent layer (mirrors the app-side schema). */
+export interface EfxPaintDocument {
+  readonly version: number
+  readonly parentLayerId: string
+  readonly documentRevision: number
+  readonly activeTrackId: string
+  readonly tracks: readonly InternalPaintTrack[]
+  readonly background: BackgroundTrack
+  readonly photoReference: null
+  readonly compositeRevision: number
 }
 
 // === ENGINE STATE ===

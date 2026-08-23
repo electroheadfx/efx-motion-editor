@@ -49,12 +49,19 @@ export function selectRotoEditableState(input: {
     : { editableState: input.storedState, previousState: input.liveState };
 }
 
+/** Active-track engine carrier read: strokes/settings ride the active track in v1.0 documents (D-03). */
+export function readRotoActiveTrack(state: RotoEditableState) {
+  return state.tracks.find((track) => track.id === state.activeTrackId) ?? null;
+}
+
 export function shouldPersistRotoFrame(state: RotoEditableState): boolean {
-  return state.strokes.length > 0 || state.settings.bgMode !== 'transparent';
+  const track = readRotoActiveTrack(state);
+  return (track?.strokes?.length ?? 0) > 0 || (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
 }
 
 export function isBackgroundOnlyRotoFrame(state: RotoEditableState): boolean {
-  return state.strokes.length === 0 && state.settings.bgMode !== 'transparent';
+  const track = readRotoActiveTrack(state);
+  return (track?.strokes?.length ?? 0) === 0 && (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
 }
 
 export function resolveRotoSaveSourceFrame(frame: number, sourceFrameOverride: number | undefined, resolvedSourceFrame: number): number {

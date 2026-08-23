@@ -20,6 +20,8 @@ import { applyPhysicPaintPayload, openPhysicPaintCanvas } from '../lib/physicPai
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import { registerDocument, reset as resetEfxPaintStore } from './efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 
 // Phase 43 Plan 03: store-level linked Loop Clip resolution. The canonical
 // getRotoPhysicalRenderSource seam resolves linked repetition frames to the
@@ -621,6 +623,10 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
+    // The v1.0 launch contract carries the document from efxPaintStore (45-06
+    // Task 2): the bridge launch path requires a registered document.
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument(BRIDGE_LAYER));
     const layer = bridgeLayer();
     sequenceStore.sequences.value = [{
       id: 'store-loop-bridge-parent-sequence',

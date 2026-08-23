@@ -15,8 +15,27 @@ import {
 
 const state = (strokes: unknown[] = [], bgMode = 'transparent'): RotoEditableState => ({
   version: 1,
-  strokes,
-  settings: { bgMode },
+  parentLayerId: 'layer-1',
+  documentRevision: 0,
+  activeTrackId: 'track-1',
+  tracks: [{
+    id: 'track-1',
+    name: 'Paint',
+    order: 0,
+    visible: true,
+    solo: false,
+    opacity: 1,
+    blendMode: 'normal',
+    revision: 0,
+    frames: {},
+    rotoPhysical: null,
+    loopClips: [],
+    strokes,
+    settings: { bgMode, paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+  }],
+  background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
+  photoReference: null,
+  compositeRevision: 0,
 } as unknown as RotoEditableState);
 
 const launchContext = {
