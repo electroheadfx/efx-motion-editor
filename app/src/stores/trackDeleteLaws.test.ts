@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -11,12 +11,14 @@ import {
   _setEfxPaintMarkDirtyCallback,
 } from './efxPaintStore';
 import {
+  getTrackPaintVersion,
   mountTrackRuntime,
   physicPaintStore,
+  severTrackHoldReferences,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
 
-// 46-05 TRK-07 deletion laws: requestDeleteTrack/commitDeleteTrack delete
+// 46-05 track deletion laws: requestDeleteTrack/commitDeleteTrack delete
 // exactly one internal track — preview, explicit acknowledgement (D-14),
 // last-track refusal (D-17), full 46-01 runtime teardown, Hold reference
 // severing (D-16), nearest-adjacent active-track re-point (D-18), and sidecar
@@ -26,6 +28,7 @@ import {
 const LAYER = 'layer-delete-laws';
 const TRACK_A = 'track-a';
 const TRACK_B = 'track-b';
+const TRACK_C = 'track-c';
 const CAPACITY = 24;
 const INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 
@@ -196,5 +199,161 @@ describe('commitDeleteTrack acknowledge gate (46-05 D-14)', () => {
     expect(buildEfxPaintDocumentRevision(getDocument(LAYER))).toBe(revisionBefore);
     expect(getDocument(LAYER)!.tracks.length).toBe(2);
     expect(physicPaintStore.getFrames(LAYER, TRACK_A).size).toBe(1);
+  });
+});
+
+describe('commitDeleteTrack full per-track teardown (46-05 D-16)', () => {
+  beforeEach(() => {
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  it('tears down exactly the deleted track; the survivor is byte-identical', () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) {
+        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')], [makeLoop('loop-a-hold', 2, ['key-b-1'])]);
+      } else {
+        seedTrack(trackId, [makeRecord('key-b-1', 1, 'b@1'), makeRecord('key-b-2', 5, 'b@2')], [makeLoop('loop-b-1', 0, ['key-b-1'])]);
+      }
+    });
+    physicPaintStore.setRotoPhysicalSelection(LAYER, TRACK_B, 'key-b-1', 1);
+    const lease = physicPaintStore.acquireRotoPhysicalOperationLease('ctx-delete', LAYER, TRACK_B);
+    expect(lease).not.toBeNull();
+
+    const framesA = physicPaintStore.getFrames(LAYER, TRACK_A);
+    const recordsA = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A);
+    const versionA = getTrackPaintVersion(LAYER, TRACK_A).value;
+
+    const committed = commitDeleteTrack(LAYER, TRACK_B, true);
+    expect(committed).toEqual({ ok: true });
+
+    // B's complete runtime is gone: frames, records, clips, projection
+    // (structural memo key), selection, and leases are all settled.
+    expect(physicPaintStore.hasTrackRuntime(LAYER, TRACK_B)).toBe(false);
+    expect(physicPaintStore.getFrames(LAYER, TRACK_B).size).toBe(0);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_B)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK_B)).toBeNull();
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable('ctx-delete', LAYER, TRACK_B)).toBe(true);
+    expect(physicPaintStore.validateRotoPhysicalOperationLease('ctx-delete', LAYER, TRACK_B, lease))
+      .toEqual({ ok: false, reason: 'replayed-token' });
+    expect(getDocument(LAYER)!.tracks.some((track) => track.id === TRACK_B)).toBe(false);
+
+    // A's runtime is untouched by the teardown.
+    expect(physicPaintStore.getFrames(LAYER, TRACK_A)).toEqual(framesA);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual(recordsA);
+    expect(getTrackPaintVersion(LAYER, TRACK_A).value).toBe(versionA);
+  });
+});
+
+describe('commitDeleteTrack hold severing (46-05 D-16 / T-46-14)', () => {
+  beforeEach(() => {
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  it('severs every surviving Hold referencing the deleted track; the resolver answers linked-unresolved', () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) {
+        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')], [
+          makeLoop('loop-a-hold', 2, ['key-b-1']),
+          makeLoop('loop-a-own', 4, ['key-a-1']),
+        ]);
+      } else {
+        seedTrack(trackId, [makeRecord('key-b-1', 1, 'b@1')]);
+      }
+    });
+
+    // Only the cross-track Hold is severed; own-track Hold and B's own clips
+    // are untouched.
+    const severed = severTrackHoldReferences(LAYER, TRACK_B);
+    expect(severed).toBe(1);
+
+    const committed = commitDeleteTrack(LAYER, TRACK_B, true);
+    expect(committed).toEqual({ ok: true });
+
+    // The severed Hold answers 'linked-unresolved' (D-13 fail-closed), never
+    // a dangling or foreign-track reference.
+    const unresolved = physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, TRACK_A, 0, CAPACITY);
+    expect(unresolved.some((loop) => loop.loopId === 'loop-a-hold' && loop.missingSourceKeyIds.includes('key-b-1'))).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, 2)?.kind).toBe('loop-placeholder');
+
+    // The rebuilt document carries the severed Hold verbatim (D-31 dangling
+    // refs are legal and preserved) and the survivor's own Hold is intact.
+    const rotoA = getDocument(LAYER)!.tracks.find((track) => track.id === TRACK_A)!.rotoPhysical!;
+    const hold = rotoA.loopClips.find((clip) => clip.loopId === 'loop-a-hold');
+    expect(hold).toBeDefined();
+    expect(hold!.sourceKeyIds).toEqual(['key-b-1']);
+    expect(rotoA.loopClips.some((clip) => clip.loopId === 'loop-a-own')).toBe(true);
+  });
+});
+
+describe('commitDeleteTrack nearest-adjacent activation (46-05 D-18)', () => {
+  beforeEach(() => {
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  it('re-points activeTrackId to the next survivor when the deleted track is not last', () => {
+    seedDocument([TRACK_A, TRACK_B, TRACK_C], TRACK_B, (trackId) => {
+      if (trackId === TRACK_B) seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    expect(getDocument(LAYER)!.activeTrackId).toBe(TRACK_C);
+  });
+
+  it('re-points to the first survivor when the deleted track is first', () => {
+    seedDocument([TRACK_A, TRACK_B, TRACK_C], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+    });
+    expect(commitDeleteTrack(LAYER, TRACK_A, true)).toEqual({ ok: true });
+    expect(getDocument(LAYER)!.activeTrackId).toBe(TRACK_B);
+  });
+
+  it('re-points to the previous survivor when the deleted track is last', () => {
+    seedDocument([TRACK_A, TRACK_B, TRACK_C], TRACK_B, (trackId) => {
+      if (trackId === TRACK_C) seedTrack(trackId, [makeRecord('key-c', 10, 'c')]);
+    });
+    expect(commitDeleteTrack(LAYER, TRACK_C, true)).toEqual({ ok: true });
+    expect(getDocument(LAYER)!.activeTrackId).toBe(TRACK_B);
+  });
+
+  it('keeps the active track when a non-active track is deleted', () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+    });
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    expect(getDocument(LAYER)!.activeTrackId).toBe(TRACK_A);
+  });
+});
+
+describe('commitDeleteTrack revision and dirty signaling (46-05)', () => {
+  beforeEach(() => {
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  it('bumps the document revision and fires the dirty callback exactly once', () => {
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+      else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+    const revisionBefore = buildEfxPaintDocumentRevision(getDocument(LAYER)!);
+    dirty.mockClear();
+
+    const committed = commitDeleteTrack(LAYER, TRACK_B, true);
+    expect(committed).toEqual({ ok: true });
+    expect(buildEfxPaintDocumentRevision(getDocument(LAYER)!)).not.toBe(revisionBefore);
+    expect(dirty).toHaveBeenCalledTimes(1);
   });
 });
