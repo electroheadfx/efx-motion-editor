@@ -203,7 +203,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
   4. Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity.
   5. Main-editor sequence timing and outer layer composition remain unchanged.
 
-**Plans**: 1/8 plans executed
+**Plans**: 2/8 plans executed
 
 Plans:
 **Wave 1**
@@ -212,7 +212,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 45-02-PLAN.md — Rust+TS serde co-change (efx_paint_documents), v1.0 cache dir + native cache service re-point
+- [x] 45-02-PLAN.md — Rust+TS serde co-change (efx_paint_documents), v1.0 cache dir + native cache service re-point
 - [ ] 45-03-PLAN.md — Clean-break rejection gate predicate + fixture truth table (TDD)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -363,7 +363,7 @@ Plans:
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
-| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 1/8 | In Progress|  |
+| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 2/8 | In Progress|  |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 0/TBD | Not started | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 0/TBD | Not started | - |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |

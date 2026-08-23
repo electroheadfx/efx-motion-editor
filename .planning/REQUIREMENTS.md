@@ -12,8 +12,8 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **DOC-01**: New v1.0 parent Paint layer owns exactly one versioned EFX Paint document with stable internal track IDs, document revision, and active track ID
 - [x] **DOC-02**: Every new v1.0 EFX Paint document starts with one fresh default Paint track and one fixed Background track with configured fallback
 - [ ] **DOC-03**: Pre-v1.0 Paint project data fails explicitly as unsupported without partial mutation or fallback rendering
-- [ ] **DOC-04**: No legacy one-track schema reader, converter, renderer, cache path, or compatibility branch remains reachable
-- [ ] **DOC-05**: Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity
+- [x] **DOC-04**: No legacy one-track schema reader, converter, renderer, cache path, or compatibility branch remains reachable
+- [x] **DOC-05**: Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity
 - [ ] **DOC-06**: Main-editor sequence timing and outer layer composition remain unchanged
 
 ### TRK — Track-local State (Phase 2)
@@ -131,8 +131,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-01 | Phase 45 | Complete |
 | DOC-02 | Phase 45 | Complete |
 | DOC-03 | Phase 45 | Pending |
-| DOC-04 | Phase 45 | Pending |
-| DOC-05 | Phase 45 | Pending |
+| DOC-04 | Phase 45 | Complete |
+| DOC-05 | Phase 45 | Complete |
 | DOC-06 | Phase 45 | Pending |
 | TRK-01 | Phase 46 | Pending |
 | TRK-02 | Phase 46 | Pending |

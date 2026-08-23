@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Phase 45 context gathered
-last_updated: "2026-08-23T14:01:17.561Z"
+stopped_at: Phase 45 plan 02 complete
+last_updated: "2026-08-23T17:50:00.000Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 45 execution started
-state_head: 4c79a4d2e60dd44266db3fb38c6c1bc81a0b81c8
+last_activity_desc: Phase 45 plan 02 (Rust+TS serde co-change, cache re-point) complete
+state_head: 2f3ec7fc
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 1 of 8
+Plan: 2 of 8
 Status: Executing Phase 45
-Last activity: 2026-08-23 — Phase 45 execution started
+Last activity: 2026-08-23 — Phase 45 plan 02 complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -48,7 +48,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 45. New EFX Paint Document and Clean Cutover | 0 | TBD | - |
+| 45. New EFX Paint Document and Clean Cutover | 2 | TBD | - |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 0 | TBD | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 0 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
@@ -66,7 +66,8 @@ Progress: [░░░░░░░░░░] 0%
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
-| Phase 45 P01 | 135 | - tasks | - files |
+| Phase 45 P01 | 135 | 3 tasks | 6 files |
+| Phase 45 P02 | 110 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,7 @@ Recent decisions affecting current work:
 - Internal track opacity/blend applied once inside EFX Paint; parent opacity/blend applied once by the main editor (never double-applied).
 - Reveal uses photo source plus internal Paint coverage through one shared mask compositor.
 - [Phase 45]: EfxPaintDocument is the v1.0 identity root: one versioned document per parent layer, stable UUID track IDs, one default Paint track, one fixed Background track with transparent fallback (D-08); shared canonical encoder extracted to efxPaintCanonicalEncoder.ts and re-pointed from the roto physical model
+- [Phase 45 P02]: efx_paint_documents lands in BOTH models/project.rs and types/project.ts in the same commit (F1 co-change, proven by Rust round-trip test); physic_paint_outputs demoted to an opaque Vec<serde_json::Value> presence carrier (D-02/D-06); legacy Rust output structs deleted (DOC-04); create_project_dir creates cache/efx-paint and never cache/physic-paint, legacy dirs byte-untouched (D-04); native cache transaction service re-pointed to cache/efx-paint with .efx-paint-staging- prefix, command surface unchanged (T-45-06)
 
 ### Pending Todos
 
