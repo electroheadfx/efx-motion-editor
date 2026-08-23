@@ -217,7 +217,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 45-04-PLAN.md — efxPaintStore + efxPaintPersistence: staging/commit save, runtime↔default-track projection, path safety
+- [x] 45-04-PLAN.md — efxPaintStore + efxPaintPersistence: staging/commit save, runtime↔default-track projection, path safety
 
 **Wave 4** *(blocked on Wave 3 completion)*
 

@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Completed 45-03-PLAN.md
-last_updated: "2026-08-23T14:18:17.437Z"
+stopped_at: Completed 45-04-PLAN.md
+last_updated: "2026-08-23T14:37:03.595Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 45 plan 02 (Rust+TS serde co-change, cache re-point) complete
-state_head: 36d055ada5088f72bb0d989f119e63e289e5bf57
+state_head: 503f9c59a691ee738ea42974997c71c5bae92be2
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-08-23 — Phase 45 plan 02 complete
 
@@ -69,6 +69,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 45 P01 | 135 | 3 tasks | 6 files |
 | Phase 45 P02 | 110 | 3 tasks | 6 files |
 | Phase 45 P03 | 5 | 2 tasks | 7 files |
+| Phase 45-new-efx-paint-document-and-clean-cutover P04 | 25 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,13 @@ Recent decisions affecting current work:
 - [Phase 45]: EfxPaintDocument is the v1.0 identity root: one versioned document per parent layer, stable UUID track IDs, one default Paint track, one fixed Background track with transparent fallback (D-08); shared canonical encoder extracted to efxPaintCanonicalEncoder.ts and re-pointed from the roto physical model
 - [Phase 45 P02]: efx_paint_documents lands in BOTH models/project.rs and types/project.ts in the same commit (F1 co-change, proven by Rust round-trip test); physic_paint_outputs demoted to an opaque Vec<serde_json::Value> presence carrier (D-02/D-06); legacy Rust output structs deleted (DOC-04); create_project_dir creates cache/efx-paint and never cache/physic-paint, legacy dirs byte-untouched (D-04); native cache transaction service re-pointed to cache/efx-paint with .efx-paint-staging- prefix, command surface unchanged (T-45-06)
 - [Phase 45]: The rejection gate is a pure scan over raw parsed .mce JSON: no filesystem, no IPC, no mutation, no throwing on unexpected shapes; fixed precedence outputs → cache-reference → documentless-layer, first match only, reasons terminal (D-07) — Pitfall F2 closed by structure discrimination: a 'physic-paint' layer is a trigger only when the top-level efx_paint_documents map has no entry for its layer id (source.layer_id, falling back to layer.id)
+- [Phase 45 P04]: The persisted payload is the layerId → EfxPaintDocument map as-is (rotoPhysical dataUrls inline); the save input carries runtime frame bytes alongside documents and the loader returns hydrated frames (CachedFrameReference carries no dataUrl by 45-01 design)
+- [Phase 45 P04]: serializeRuntimeIntoDocument bumps documentRevision by one ONLY when the projected content actually changed (fingerprint comparison on the same docrev) — an unconditional bump would defeat the Task 3 idempotency dedup in the 45-05 save flow
+- [Phase 45 P04]: The dedup fingerprint combines buildEfxPaintDocumentRevision per layer with runtime frame byte terms (dataUrls): a repaint changes the bytes while deterministic cachePath refs stay the same, so a document-only key would wrongly skip re-staging
+- [Phase 45 P04]: The rotoPhysical payload build is shared between the legacy toMceOutputs roto branch and extractRuntimeStateForDocument via _buildRotoPhysicalDocumentForLayer so both serialization seams emit identical payloads (also kept the main chunk under the 1120 kB V09-C04 budget)
+- [Phase 45 P04]: installRuntimeStateFromDocument replaces the layer's runtime maps wholesale (delete-then-install), mirrors loadFromMceOutputs validation (canonical parse + timeline projection) and publication (bump rotoPhysicalRevision + physicPaintVersion, no dirty callback), and clears the per-layer _rotoPhysicalStructuralCache
+- [Phase 45 P04]: hydrateRuntimeFromDocument takes (document, frames) — the loader supplies the hydrated frame bytes; registerDocument stays a separate call (45-05 open path: loadEfxPaintDocuments + registerDocument + hydrateRuntimeFromDocument)
+- [Phase 45 P04]: The dedup cache is populated only after a successful commit and cleared on every commit, mirroring savedOutputCache; a rollback never touches the cache so the prior committed fingerprint stays reusable
 
 ### Pending Todos
 
@@ -115,6 +123,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T14:18:17.424Z
-Stopped at: Completed 45-03-PLAN.md
+Last session: 2026-08-23T14:37:03.581Z
+Stopped at: Completed 45-04-PLAN.md
 Resume file: None
