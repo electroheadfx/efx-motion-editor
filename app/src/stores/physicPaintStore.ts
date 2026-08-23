@@ -2599,7 +2599,7 @@ export const physicPaintStore = {
         return { ok: false, reason: 'partial-loop-overlap' };
       }
     }
-    const coveredLoopIds = new Set(
+  const coveredLoopIds = new Set(
       document.loopClips
         .filter((clip) => clip.sourceKeyIds.length > 0 && clip.sourceKeyIds.every((sourceKeyId) => keyIdSet.has(sourceKeyId)))
         .map((clip) => clip.loopId),
@@ -2607,6 +2607,67 @@ export const physicPaintStore = {
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, coveredLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
     return { ok: true };
+  },
+
+  /**
+   * Cross-track move (46-03 D-08/D-09) — the data primitive Phase 47's drag
+   * gesture calls. D-09 verbatim: build the fresh-identity clipboard payload
+   * from the source (cut's COPY half), paste it into the destination with the
+   * SAME appFrames (timing preserved — the anchor is the payload's own anchor,
+   * so the fresh copies land on the source frames), then delete the source
+   * items. The paste half runs FIRST: any failure (destination collision,
+   * impossible Hold re-pointing, ...) rejects the whole move closed with the
+   * source untouched. Hold Loop Clips re-point under the Task 1 cross-track
+   * rules — a covered Hold travels re-pointed onto the destination's fresh
+   * frames; a partially-overlapping Hold fails the move before anything is
+   * written (the same guard as cut).
+   */
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]): RotoTrackPasteResult {
+    if (!layerId || !fromTrackId || !toTrackId) return { ok: false, reason: 'track-missing' };
+    if (fromTrackId === toTrackId) return { ok: false, reason: 'duplicate-destination-frame' };
+    const sourceDocument = this.getRotoPhysicalDocument(layerId, fromTrackId);
+    if (!sourceDocument) return { ok: false, reason: 'track-missing' };
+    if (!Array.isArray(keys) || keys.length === 0) return { ok: false, reason: 'empty-set' };
+    const keyIdSet = new Set(keys);
+    for (const keyId of keys) {
+      if (!sourceDocument.realKeyRecords.some((record) => record.keyId === keyId)) {
+        return { ok: false, reason: 'missing-key' };
+      }
+    }
+    // Never dangle on the source: any Hold touching a moved key must be fully
+    // inside the moved set, else removing the keys would leave a dangling
+    // reference (mirrors cutTrackSelection).
+    for (const clip of sourceDocument.loopClips) {
+      if (clip.sourceKeyIds.some((sourceKeyId) => keyIdSet.has(sourceKeyId))
+        && (clip.sourceKeyIds.length === 0 || !clip.sourceKeyIds.every((sourceKeyId) => keyIdSet.has(sourceKeyId)))) {
+        return { ok: false, reason: 'partial-loop-overlap' };
+      }
+    }
+    const copied = this.copyTrackSelection(layerId, fromTrackId, keys);
+    if (!copied.ok) return copied;
+    const destinationDocument = this.getRotoPhysicalDocument(layerId, toTrackId);
+    if (!destinationDocument) return { ok: false, reason: 'track-missing' };
+    // Paste half FIRST with the payload's own anchor: D-09 preserves timing —
+    // the fresh destination copies land on the exact source appFrames. Any
+    // failure here (occupied destination frame, impossible Hold re-pointing)
+    // rejects the whole move with the source untouched.
+    const pasted = proposeRails({
+      document: destinationDocument,
+      payload: copied.payload,
+      placementMode: 'paste',
+      destinationAppFrame: copied.payload.anchorAppFrame,
+      targetTrackId: toTrackId,
+    });
+    if (!pasted.ok) return { ok: false, reason: pasted.reason };
+    const applied = _applyRotoTrackPaste(this, layerId, toTrackId, destinationDocument, pasted.proposal);
+    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    // Delete half second: the source loses the moved items exactly like a cut.
+    const carriedLoopIds = new Set(
+      copied.payload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
+    );
+    const removed = _applyRotoTrackSelectionRemoval(this, layerId, fromTrackId, keyIdSet, carriedLoopIds);
+    if (!removed.ok) return { ok: false, reason: 'apply-failed' };
+    return { ok: true, impact: pasted.impact };
   },
 };
 
