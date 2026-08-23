@@ -19,13 +19,13 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 ### TRK — Track-local State (Phase 2)
 
 - [x] **TRK-01**: Each internal Paint track owns its Paint frames, Roto real keys, generated interpolation, Script Motion, and PlayScript output
-- [ ] **TRK-02**: Each internal Paint track owns linked Hold Loop Clips and a shared Loop Clip resolver (modulo, finite/infinite repeat, next-clip interruption)
+- [x] **TRK-02**: Each internal Paint track owns linked Hold Loop Clips and a shared Loop Clip resolver (modulo, finite/infinite repeat, next-clip interruption)
 - [x] **TRK-03**: Each internal Paint track has its own revision and dirty state with track-aware cache invalidation
 - [x] **TRK-04**: Copy/cut/paste/duplicate/clear/undo/redo operations are track-aware
 - [x] **TRK-05**: Async PlayScript/Reveal operations revalidate parent, document, and track revision before commit
 - [x] **TRK-06**: Editing one track never changes another track's real keys or caches; stale async work cannot commit to another selected track
 - [x] **TRK-07**: Track deletion cannot orphan accepted assets silently
-- [ ] **TRK-08**: Editing one Hold source frame updates every linked occurrence without duplicating assets
+- [x] **TRK-08**: Editing one Hold source frame updates every linked occurrence without duplicating assets
 
 ### TML — Multi-track Timeline (Phase 3)
 
@@ -135,13 +135,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-05 | Phase 45 | Complete |
 | DOC-06 | Phase 45 | Complete |
 | TRK-01 | Phase 46 | Complete |
-| TRK-02 | Phase 46 | Pending |
+| TRK-02 | Phase 46 | Complete |
 | TRK-03 | Phase 46 | Complete |
 | TRK-04 | Phase 46 | Complete |
 | TRK-05 | Phase 46 | Complete |
 | TRK-06 | Phase 46 | Complete |
 | TRK-07 | Phase 46 | Complete |
-| TRK-08 | Phase 46 | Pending |
+| TRK-08 | Phase 46 | Complete |
 | TML-01 | Phase 47 | Pending |
 | TML-02 | Phase 47 | Pending |
 | TML-03 | Phase 47 | Pending |
