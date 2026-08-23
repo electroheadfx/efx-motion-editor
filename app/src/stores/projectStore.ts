@@ -28,6 +28,8 @@ import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {loadPhysicPaintData, savePhysicPaintDataWithProjectWrite} from '../lib/physicPaintPersistence';
 import {prepareRotoPhysicalDocumentPngs} from '../components/physic-paint/roto/rotoCanvasFrames';
+import {findLegacyPhysicPaintRejection} from '../efx-paint/document/efxPaintCleanBreak';
+import {showLegacyPhysicPaintRejectionDialog} from '../lib/efxPaintRejectionDialog';
 import {readFile} from '@tauri-apps/plugin-fs';
 
 // --- Signals ---
@@ -764,6 +766,16 @@ export const projectStore = {
     const result = await ipcProjectOpen(openFilePath);
     if (!result.ok) {
       throw new Error(result.error);
+    }
+
+    // Clean-break gate (D-05/D-07): refuse pre-v1.0 EFX Physic Paint projects
+    // before any sidecar IO, store mutation, or auto-save (Pitfall F4). The
+    // gate is a pure scan over the raw parsed JSON; on rejection the blocking
+    // no-recourse dialog is shown and openProject returns with zero mutation.
+    const rejection = findLegacyPhysicPaintRejection(result.data);
+    if (rejection) {
+      await showLegacyPhysicPaintRejectionDialog(rejection);
+      return;
     }
 
     // Decode every required Physics Paint sidecar and validate the complete
