@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 46
 current_phase_name: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 status: executing
-stopped_at: Completed 46-03-PLAN.md
-last_updated: "2026-08-23T22:08:33.185Z"
+stopped_at: Completed 46-04-PLAN.md
+last_updated: "2026-08-23T22:38:51.099Z"
 last_activity: 2026-08-24
-last_activity_desc: Phase 46 plan 03 complete (track-scoped ops, cross-track move, track-tagged undo/redo)
-state_head: eea0a68d3e82789d1e79c96e9f5524c216c2e2fa
+last_activity_desc: Phase 46 plan 04 complete (three-dimensional async authority, capture-then-revalidate commit gate, per-track stale-async laws)
+state_head: 8e347722b746f3c4373ba9eb4d9dc1f70262a5c9
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 11
 ---
 
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 46 (Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches) — EXECUTING
-Plan: 3 of 6 complete (46-03); next 46-04
+Plan: 4 of 6 complete (46-04); next 46-05
 Status: Ready to execute
-Last activity: 2026-08-24 — Phase 46 plan 03 complete (track-scoped ops, cross-track move, track-tagged undo/redo)
+Last activity: 2026-08-24 — Phase 46 plan 04 complete (three-dimensional async authority, capture-then-revalidate commit gate, per-track stale-async laws)
 
-Progress: [█████░░░░░] 50%
+Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [█████░░░░░] 50%
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P01 | 120 | 3 tasks | 13 files |
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P02 | 35 | 3 tasks | 10 files |
 | Phase 46 P03 | 33 | 3 tasks | 13 files |
+| Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P04 | 25 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,7 @@ Recent decisions affecting current work:
 - [Phase 46 P03]: The undo/redo ledger is one document-wide stack; each physical command carries the accepted edit's trackId; recordAcceptedEdit dedupes on operationId+trackId so one cross-track operation's per-track acceptances all record and same-opId/same-track duplicates still collapse (D-01)
 - [Phase 46 P03]: Stored history snapshots are sanitized at record time: the cached repaint base is nulled and the four per-frame raster maps are emptied — records + refs + the prior deterministic revision hash only, never raster bytes (D-03); the undo/redo recompute path stays the single source of raster truth
 - [Phase 46 P03]: undo()/redo() validate the live source against the entry's snapshot (existing snapshotReplayAuthorityEqual path) and, when the entry's trackId is not the document's active track, call the new efxPaintStore.setActiveTrackId FIRST so replay targets the live document (D-04); setActiveTrackId validates the track exists (fail closed) and bumps documentRevision via the 45-01 builders since activeTrackId is a docrev term
+- [Phase 46]: .planning/phases/46-track-local-paint-roto-playscript-state-loop-clips-and-cache/46-04-SUMMARY.md
 
 ### Pending Todos
 
@@ -163,6 +165,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T22:08:33.094Z
-Stopped at: Completed 46-03-PLAN.md
+Last session: 2026-08-23T22:38:51.025Z
+Stopped at: Completed 46-04-PLAN.md
 Resume file: None
