@@ -50,7 +50,7 @@ See: .planning/PROJECT.md (updated 2026-08-21 after v0.9.0 milestone close)
 Phase: Milestone v0.9.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-21 — Milestone v0.9.0 completed and archived
+Last activity: 2026-08-23 - Completed quick task 260823-dtu: Brush cursor circle with deterministic double-outline
 
 ## Performance Metrics
 
@@ -568,6 +568,7 @@ None yet.
 
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
+| 260823-dtu | Brush cursor: circle with diameter equal to brush pixel size, centered on crosshair, visible on light and dark backgrounds | 2026-08-23 | 45bf4b90 | pending UAT | [260823-dtu-brush-cursor-circle-with-diameter-equal-](./quick/260823-dtu-brush-cursor-circle-with-diameter-equal-/) |
 
 ### Roadmap Evolution
 
