@@ -565,7 +565,7 @@ async function launchBridge(): Promise<string> {
 
 function bridgePayload(launchOperationId: string, overrides: Record<string, unknown> = {}) {
   const projectContextId = projectStore.projectContextId.peek();
-  const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, BRIDGE_LAYER);
+  const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, BRIDGE_LAYER, TEST_TRACK_ID);
   if (!leaseToken) throw new Error('Expected canonical bridge physical-operation lease.');
   return {
     kind: 'replace-roto-physical-map' as const,

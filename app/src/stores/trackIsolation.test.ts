@@ -6,6 +6,7 @@ import {
   mountTrackRuntime,
   physicPaintStore,
   physicPaintVersion,
+  removeTrackRuntime,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
 import type {
@@ -193,5 +194,81 @@ describe('physicPaintStore per-track revision signals (46-01 TRK-03)', () => {
     expect(physicPaintVersion.value).toBe(globalBefore + 1);
     expect(getTrackPaintVersion(LAYER, TRACK_A).value).toBe(beforeA + 1);
     expect(getTrackPaintVersion(LAYER, TRACK_B).value).toBe(0);
+  });
+});
+
+describe('physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('lease scope: track A and track B each hold an exclusive lease on the same layer, with cross-track validation rejected', () => {
+    const leaseA = physicPaintStore.acquireRotoPhysicalOperationLease('project-leases', LAYER, TRACK_A);
+    expect(leaseA).toMatchObject({ projectContextId: 'project-leases', layerId: LAYER, trackId: TRACK_A, owner: 'exclusive' });
+    const leaseB = physicPaintStore.acquireRotoPhysicalOperationLease('project-leases', LAYER, TRACK_B);
+    expect(leaseB, 'a second track on the same layer acquires its own lease').not.toBeNull();
+
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-leases', LAYER, TRACK_A)).toBe(false);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-leases', LAYER, TRACK_B)).toBe(false);
+
+    expect(physicPaintStore.validateRotoPhysicalOperationLease('project-leases', LAYER, TRACK_B, leaseA!)).toEqual({ ok: false, reason: 'mismatched-token' });
+    expect(physicPaintStore.validateRotoPhysicalOperationLease('project-leases', LAYER, TRACK_A, leaseA!)).toEqual({ ok: true });
+    expect(physicPaintStore.validateRotoPhysicalOperationLease('project-leases', LAYER, TRACK_B, leaseB!)).toEqual({ ok: true });
+
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseA!)).toBe(true);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseB!)).toBe(true);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-leases', LAYER, TRACK_A)).toBe(true);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-leases', LAYER, TRACK_B)).toBe(true);
+  });
+
+  it('track teardown: removeTrackRuntime clears B frames, records, caches, selection, leases, and memo entries while A stays untouched', () => {
+    const seedA = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK_A,
+      [makeRecord('key-a-0', 0, 'a@0')],
+      INTERPOLATION,
+      CAPACITY,
+    );
+    expect(seedA.ok).toBe(true);
+    const seedB = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK_B,
+      [makeRecord('key-b-0', 0, 'b@0')],
+      INTERPOLATION,
+      CAPACITY,
+    );
+    expect(seedB.ok).toBe(true);
+    physicPaintStore.upsertRealRotoKeyFrame(LAYER, TRACK_B, 0, makeFrame(0, 0, 'frame-b-0'));
+    physicPaintStore.setRotoPhysicalSelection(LAYER, TRACK_B, 'key-b-0', 0);
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK_B)).not.toBeNull();
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TRACK_B)).toMatch(/^physical-/);
+    const bRotorRevisionBefore = getTrackRotorRevision(LAYER, TRACK_B).value;
+    expect(bRotorRevisionBefore).toBeGreaterThan(0);
+
+    const leaseB = physicPaintStore.acquireRotoPhysicalOperationLease('project-teardown', LAYER, TRACK_B);
+    expect(leaseB).not.toBeNull();
+
+    expect(removeTrackRuntime(LAYER, TRACK_B)).toBe(true);
+    expect(physicPaintStore.hasTrackRuntime(LAYER, TRACK_B)).toBe(false);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([]);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK_B)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TRACK_B)).toBeNull();
+    expect(physicPaintStore.validateRotoPhysicalOperationLease('project-teardown', LAYER, TRACK_B, leaseB!)).toEqual({ ok: false, reason: 'replayed-token' });
+
+    expect(physicPaintStore.hasTrackRuntime(LAYER, TRACK_A)).toBe(true);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
+
+    expect(removeTrackRuntime(LAYER, TRACK_B), 'a second teardown of the same track is a no-op').toBe(false);
+    // The trackRevisions entry was deleted with the runtime; the next read lazily
+    // recreates it at the clean baseline 0 (TRK-03 mount semantics). Read it only
+    // after the no-op assertion above so the entry is absent during that call.
+    expect(getTrackRotorRevision(LAYER, TRACK_B).value).toBe(0);
+  });
+
+  it('empty-keep: removeTrackRuntime on a never-mounted track is a no-op returning false without throwing', () => {
+    expect(removeTrackRuntime(LAYER, 'track-never-mounted')).toBe(false);
+    expect(physicPaintStore.hasTrackRuntime(LAYER, 'track-never-mounted')).toBe(false);
   });
 });

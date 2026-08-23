@@ -31,9 +31,10 @@ const TEST_TRACK_ID = 'track-1';
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
-const physicalLeaseToken = (layerId = 'layer-1') => ({
+const physicalLeaseToken = (layerId = 'layer-1', trackId = TEST_TRACK_ID) => ({
   projectContextId: 'project-1',
   layerId,
+  trackId,
   generation: 1,
   owner: 'exclusive' as const,
 });

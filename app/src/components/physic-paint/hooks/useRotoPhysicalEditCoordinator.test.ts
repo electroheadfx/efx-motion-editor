@@ -246,6 +246,7 @@ function harness(options: {
   const leaseToken = Object.freeze({
     projectContextId: 'project-1',
     layerId: 'layer-1',
+    trackId: 'track-1',
     generation: 17,
     owner: 'exclusive' as const,
   });
@@ -3149,7 +3150,7 @@ describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
   it('acquires before the final snapshot, propagates one token, records one history command, and releases after settlement', async () => {
     const document = groupDocument();
     const order: string[] = [];
-    const token = Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' as const });
+    const token = Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', trackId: 'track-1', generation: 1, owner: 'exclusive' as const });
     const recordHistory = vi.fn();
     const releaseLease = vi.fn(() => { order.push('release'); return true; });
     const result = await executePhysicPaintRotoGroupFramePaintTransaction({
@@ -3194,7 +3195,7 @@ describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
         overrideKeyId: 'override-4',
         renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
       }, {
-        acquireLease: () => Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' as const }),
+        acquireLease: () => Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', trackId: 'track-1', generation: 1, owner: 'exclusive' as const }),
         getAcceptedDocument: () => document,
         publish: async () => ({ ok: false, reason }),
         recordHistory,

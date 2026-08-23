@@ -1460,17 +1460,18 @@ describe('physicPaintStore', () => {
     };
 
     it('acquires one unique project/layer exclusive or recovery token and rejects cross-scope or replayed tokens', () => {
-      const exclusive = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1');
+      const exclusive = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID);
       expect(exclusive).toMatchObject({ projectContextId: 'project-1', layerId: 'layer-1', owner: 'exclusive' });
-      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')).toBeNull();
-      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-2')).not.toBeNull();
-      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-2', exclusive)).toEqual({ ok: false, reason: 'mismatched-token' });
+      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID)).toBeNull();
+      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-2', TEST_TRACK_ID)).not.toBeNull();
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-2', TEST_TRACK_ID, exclusive)).toEqual({ ok: false, reason: 'mismatched-token' });
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(exclusive!)).toBe(true);
-      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', exclusive)).toEqual({ ok: false, reason: 'replayed-token' });
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID, exclusive)).toEqual({ ok: false, reason: 'replayed-token' });
 
       const recovery = physicPaintStore.acquireRotoPhysicalRecoveryLease({
         projectContextId: 'project-1',
         layerId: 'layer-1',
+        trackId: TEST_TRACK_ID,
         generation: exclusive!.generation + 20,
       });
       expect(recovery).toMatchObject({ projectContextId: 'project-1', layerId: 'layer-1', owner: 'recovery' });
@@ -1479,28 +1480,28 @@ describe('physicPaintStore', () => {
 
     it('atomically transfers exclusive ownership to recovery and publishes reactive availability transitions', () => {
       const beforeVersion = physicPaintRotoPhysicalOperationLeaseVersion.value;
-      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1')).toBe(true);
+      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1', TEST_TRACK_ID)).toBe(true);
 
-      const exclusive = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')!;
+      const exclusive = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID)!;
       expect(physicPaintRotoPhysicalOperationLeaseVersion.value).toBe(beforeVersion + 1);
-      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1')).toBe(false);
+      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1', TEST_TRACK_ID)).toBe(false);
 
       const recovery = physicPaintStore.transferRotoPhysicalOperationLeaseToRecovery(exclusive);
       expect(recovery).toEqual({ ...exclusive, owner: 'recovery' });
       expect(physicPaintRotoPhysicalOperationLeaseVersion.value).toBe(beforeVersion + 2);
-      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', exclusive)).toEqual({ ok: false, reason: 'mismatched-token' });
-      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', recovery)).toEqual({ ok: true });
-      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')).toBeNull();
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID, exclusive)).toEqual({ ok: false, reason: 'mismatched-token' });
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID, recovery)).toEqual({ ok: true });
+      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID)).toBeNull();
 
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(recovery!)).toBe(true);
       expect(physicPaintRotoPhysicalOperationLeaseVersion.value).toBe(beforeVersion + 3);
-      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1')).toBe(true);
+      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1', TEST_TRACK_ID)).toBe(true);
     });
 
     it('requires the exact active token for complete replacement and direct real-key publication without changing accepted state on rejection', () => {
       const beforeDocument = physicalDocument();
       expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', TEST_TRACK_ID, beforeDocument).ok).toBe(true);
-      const lease = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')!;
+      const lease = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID)!;
       const beforeVersion = physicPaintVersion.value;
       const beforeRevisionSignal = physicPaintStore.getRotoPhysicalDocument('layer-1', TEST_TRACK_ID)!.revision;
       const nextDocument = physicalDocument('data:image/png;base64,BBBB');
@@ -1509,6 +1510,7 @@ describe('physicPaintStore', () => {
         undefined,
         { ...lease, generation: lease.generation + 1 },
         { ...lease, layerId: 'layer-2' },
+        { ...lease, trackId: 'track-other' },
       ]) {
         expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', TEST_TRACK_ID, nextDocument, token)).toEqual(expect.objectContaining({ ok: false }));
         expect(physicPaintStore.getRotoPhysicalDocument('layer-1', TEST_TRACK_ID)).toEqual(beforeDocument);

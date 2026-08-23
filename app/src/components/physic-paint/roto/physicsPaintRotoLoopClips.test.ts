@@ -228,6 +228,7 @@ const applyPayload = (loopClips?: unknown) => ({
   leaseToken: {
     projectContextId: 'project-1',
     layerId: 'layer-1',
+    trackId: 'track-1',
     generation: 1,
     owner: 'exclusive' as const,
   },

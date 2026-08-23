@@ -208,8 +208,9 @@ function seedPhysicalDocument(
 function acquirePhysicalLease(
   layerId: string,
   projectContextId: string = projectStore.projectContextId.peek(),
+  trackId: string = TEST_TRACK_ID,
 ) {
-  const token = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId);
+  const token = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId, trackId);
   if (!token) throw new Error(`Expected physical-operation lease for ${layerId}.`);
   return token;
 }
@@ -1042,7 +1043,7 @@ describe('physicPaintBridge', () => {
 
     expect(launch.ok).toBe(true);
     if (!launch.ok) return;
-    const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectStore.projectContextId.peek(), layer.id);
+    const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectStore.projectContextId.peek(), layer.id, TEST_TRACK_ID);
     if (!leaseToken) throw new Error('Expected ordinary physical-edit lease.');
     const records = [
       movePhysicalRecord(currentRecords[0], 1),
@@ -3559,7 +3560,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(test.childDocument.selectedKeyId).toBeNull();
     expect(test.childDocument.cursorAppFrame).toBe(test.childCursorAppFrame);
     expect(test.payload.expectedRevision).toBe(test.parentDocument.revision);
-    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(false);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id, TEST_TRACK_ID)).toBe(false);
 
     const result = applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);
 
@@ -3575,7 +3576,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       });
     }
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
-    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(true);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id, TEST_TRACK_ID)).toBe(true);
   });
 
   it('restores the child-authoritative pre-delete cursor through Group Delete Undo', async () => {
@@ -3793,9 +3794,9 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(rejected.ok).toBe(false);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)).toEqual(before);
     expect(physicPaintVersion.peek()).toBe(beforeVersion);
-    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(false);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id, TEST_TRACK_ID)).toBe(false);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
-    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(true);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id, TEST_TRACK_ID)).toBe(true);
 
     const retryLease = acquirePhysicalLease(test.layer.id, projectContextId);
     const accepted = applyPhysicPaintPayload({
@@ -4297,7 +4298,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     if (!acceptedForward.ok) throw new Error(`Forward setup failed: ${acceptedForward.reason}`);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
 
-    const undoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id);
+    const undoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id, TEST_TRACK_ID);
     if (!undoLease) throw new Error('Expected Undo lease.');
     const undo = {
       ...base,
@@ -4334,7 +4335,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)).toEqual(test.parentDocument);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
 
-    const redoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id);
+    const redoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id, TEST_TRACK_ID);
     if (!redoLease) throw new Error('Expected Redo lease.');
     const redo = {
       ...base,
@@ -5148,7 +5149,7 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
       renderedPayload: makePhysicalRecord('override-4', 4).payload,
     });
     if (!proposalResult.ok) throw new Error(proposalResult.reason);
-    const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id);
+    const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id, TEST_TRACK_ID);
     if (!leaseToken) throw new Error('Expected physical-operation lease.');
     return {
       layer,
@@ -5443,12 +5444,12 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
     const childSeed = childStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, emptyDocument);
     if (!childSeed.ok) throw new Error(childSeed.error);
 
-    const parentLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id);
+    const parentLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id, TEST_TRACK_ID);
     if (!parentLease) throw new Error('Expected parent physical-operation lease.');
     let childLease = null as ReturnType<typeof childStore.acquireRotoPhysicalOperationLease>;
     for (let generation = 1; generation <= parentLease.generation; generation += 1) {
       const candidateLayerId = generation === parentLease.generation ? layer.id : `generation-sync-${generation}`;
-      const candidate = childStore.acquireRotoPhysicalOperationLease(projectContextId, candidateLayerId);
+      const candidate = childStore.acquireRotoPhysicalOperationLease(projectContextId, candidateLayerId, TEST_TRACK_ID);
       if (!candidate) throw new Error(`Expected child lease generation ${generation}.`);
       if (candidateLayerId === layer.id) childLease = candidate;
       else if (!childStore.releaseRotoPhysicalOperationLease(candidate)) throw new Error('Could not advance the child lease generation.');
@@ -5550,7 +5551,7 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
     // registry. The native parent transport must independently complete its
     // canonical publication lease before the next child operation arrives.
     expect(childStore.releaseRotoPhysicalOperationLease(childLease)).toBe(true);
-    const secondChildLease = childStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id);
+    const secondChildLease = childStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id, TEST_TRACK_ID);
     if (!secondChildLease) throw new Error('Expected the second child physical-operation lease.');
     const acceptedAfterFirst = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
     if (!acceptedAfterFirst) throw new Error('Expected the accepted first-stroke document.');
