@@ -192,6 +192,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&test_dir);
         std::fs::create_dir_all(&test_dir).unwrap();
 
+        // Opaque legacy blob: presence is round-tripped for the TS rejection
+        // gate but never interpreted by Rust (D-02/D-06).
+        let legacy_blob = serde_json::json!({
+            "layer_id": "phys-layer-1",
+            "frames": [{
+                "frameIndex": 0,
+                "appFrame": 12,
+                "cache_path": "cache/physic-paint/phys-layer-1/frame-000012-0000.png",
+                "width": 1000,
+                "height": 650
+            }],
+            "roto_physical": {
+                "background": "canvas2",
+                "paperGrain": "canvas3",
+                "grainStrength": 0.65
+            }
+        });
+        // Arbitrary nested v1.0 document payload carried opaquely (F1).
+        let document_payload = serde_json::json!({
+            "version": 1,
+            "parentLayerId": "layer-1",
+            "documentRevision": 0,
+            "activeTrackId": "track-1",
+            "tracks": [{
+                "id": "track-1",
+                "name": "Track 1",
+                "kind": "paint",
+                "order": 0,
+                "visible": true,
+                "opacity": 1.0,
+                "blendMode": "normal",
+                "frames": [],
+                "loopClips": []
+            }],
+            "background": {
+                "id": "bg-1",
+                "clips": [],
+                "fallback": { "mode": "transparent" },
+                "visible": true,
+                "revision": 0
+            },
+            "photoReference": null,
+            "compositeRevision": 0
+        });
+
         let project = MceProject {
             version: 1,
             name: "Test Project".into(),
@@ -211,22 +256,11 @@ mod tests {
                 format: "jpg".into(),
             }],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![crate::models::project::McePhysicPaintOutput {
-                layer_id: "phys-layer-1".into(),
-                frames: vec![crate::models::project::McePhysicPaintCachedFrame {
-                    frame_index: 0,
-                    app_frame: 12,
-                    cache_path: "cache/physic-paint/phys-layer-1/frame-000012-0000.png".into(),
-                    width: Some(1000),
-                    height: Some(650),
-                }],
-                roto_physical: Some(serde_json::json!({
-                    "background": "canvas2",
-                    "paperGrain": "canvas3",
-                    "grainStrength": 0.65
-                })),
-                roto_playback: None,
-            }],
+            physic_paint_outputs: vec![legacy_blob.clone()],
+            efx_paint_documents: std::collections::HashMap::from([(
+                "layer-1".to_string(),
+                document_payload.clone(),
+            )]),
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -241,20 +275,92 @@ mod tests {
         assert_eq!(loaded.images[0].id, "img-1");
         // After open, paths remain relative (frontend resolves to absolute using project root)
         assert_eq!(loaded.images[0].relative_path, "images/photo_abc12345.jpg");
+        // The v1.0 document key survives the strict serde round-trip byte-identical (F1).
+        assert_eq!(loaded.efx_paint_documents.len(), 1);
+        assert_eq!(
+            loaded.efx_paint_documents.get("layer-1"),
+            Some(&document_payload)
+        );
+        // The legacy blob round-trips as an opaque presence carrier (D-02/D-06).
+        assert_eq!(loaded.physic_paint_outputs, vec![legacy_blob]);
+
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_legacy_physic_paint_outputs_open_as_opaque_presence() {
+        let test_dir = std::env::temp_dir().join("efx_test_legacy_outputs");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(&test_dir).unwrap();
+
+        // A pre-v1.0 project file carrying a legacy physic_paint_outputs array.
+        let legacy_json = r#"{
+            "version": 1,
+            "name": "Legacy Project",
+            "fps": 24,
+            "width": 1920,
+            "height": 1080,
+            "created_at": "2026-01-01T00:00:00Z",
+            "modified_at": "2026-01-01T00:00:00Z",
+            "sequences": [],
+            "images": [],
+            "audio_tracks": [],
+            "physic_paint_outputs": [{
+                "layer_id": "phys-layer-1",
+                "frames": [{
+                    "frameIndex": 0,
+                    "appFrame": 12,
+                    "cache_path": "cache/physic-paint/phys-layer-1/frame-000012-0000.png"
+                }],
+                "roto_physical": { "background": "canvas2" }
+            }]
+        }"#;
+
+        let mce_path = test_dir.join("legacy.mce");
+        std::fs::write(&mce_path, legacy_json).unwrap();
+
+        let loaded = open_project(mce_path.to_str().unwrap()).unwrap();
+        // Presence is visible to the TS rejection gate; the blob is never
+        // interpreted, migrated, or rendered (D-02/D-06).
         assert_eq!(loaded.physic_paint_outputs.len(), 1);
-        assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
-        assert_eq!(loaded.physic_paint_outputs[0].frames[0].app_frame, 12);
-        assert_eq!(
-            loaded.physic_paint_outputs[0].frames[0].cache_path,
-            "cache/physic-paint/phys-layer-1/frame-000012-0000.png"
-        );
-        assert_eq!(
-            loaded.physic_paint_outputs[0]
-                .roto_physical
-                .as_ref()
-                .unwrap()["background"],
-            "canvas2"
-        );
+        assert_eq!(loaded.efx_paint_documents.len(), 0);
+
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_save_skips_empty_document_keys() {
+        let test_dir = std::env::temp_dir().join("efx_test_skip_empty_keys");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(&test_dir).unwrap();
+
+        let project = MceProject {
+            version: 1,
+            name: "Empty Keys".into(),
+            fps: 24,
+            width: 1920,
+            height: 1080,
+            created_at: "2026-03-03T10:00:00Z".into(),
+            modified_at: "2026-03-03T10:00:00Z".into(),
+            sequences: vec![],
+            images: vec![],
+            audio_tracks: vec![],
+            physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
+        };
+
+        let mce_path = test_dir.join("empty_keys.mce");
+        save_project(
+            &project,
+            mce_path.to_str().unwrap(),
+            test_dir.to_str().unwrap(),
+            None,
+        )
+        .unwrap();
+
+        let saved = std::fs::read_to_string(&mce_path).unwrap();
+        assert!(!saved.contains("efx_paint_documents"));
+        assert!(!saved.contains("physic_paint_outputs"));
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -284,6 +390,7 @@ mod tests {
             images: vec![],
             audio_tracks: vec![],
             physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
         };
         let project_path = test_dir.join("project.mce");
 
@@ -337,6 +444,7 @@ mod tests {
             images: vec![],
             audio_tracks: vec![],
             physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -543,6 +651,7 @@ mod tests {
             images: vec![],
             audio_tracks: vec![],
             physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
         };
 
         // Save
