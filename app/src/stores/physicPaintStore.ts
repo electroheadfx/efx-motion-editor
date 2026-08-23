@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
@@ -37,6 +37,69 @@ let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
 
 export const physicPaintVersion = signal(0);
+
+/**
+ * 46-01 TRK-03: per-track revision signals, keyed by trackId (the stable
+ * UUID identity from the document — never an array index). Baseline 0 is the
+ * clean state; every track mutation bumps the track's paint+roto signals
+ * together with the global physicPaintVersion clock, so per-track
+ * subscribers react without global re-renders while existing global
+ * subscribers keep compiling. Entries are created lazily on first read or
+ * bump, deleted by removeTrackRuntime, and wiped by reset().
+ */
+const trackRevisions = new Map<string, { paint: Signal<number>; roto: Signal<number> }>();
+
+function _getOrCreateTrackRevisions(trackId: string): { paint: Signal<number>; roto: Signal<number> } {
+  let entry = trackRevisions.get(trackId);
+  if (!entry) {
+    entry = { paint: signal(0), roto: signal(0) };
+    trackRevisions.set(trackId, entry);
+  }
+  return entry;
+}
+
+/** Per-track paint revision signal (46-01 TRK-03). */
+export function getTrackPaintVersion(_layerId: string, trackId: string): ReadonlySignal<number> {
+  return _getOrCreateTrackRevisions(trackId).paint;
+}
+
+/** Per-track physical Roto revision signal (46-01 TRK-03). */
+export function getTrackRotorRevision(_layerId: string, trackId: string): ReadonlySignal<number> {
+  return _getOrCreateTrackRevisions(trackId).roto;
+}
+
+/**
+ * Single per-track invalidation point (46-01 TRK-03): bumps the track's
+ * paint+roto revision signals, always bumps the global physicPaintVersion
+ * clock, deletes the track's structural memo entry (composite layer+track
+ * key), and fires the injected project-dirty callback. Optional diagnostics
+ * mirror _notifyVisualChange so existing perf traces keep their stages.
+ * markDirty=false is reserved for install paths whose caller owns project
+ * dirty signaling.
+ */
+export function bumpTrackRevision(
+  layerId: string,
+  trackId: string,
+  diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void },
+  markDirty = true,
+): void {
+  const entry = _getOrCreateTrackRevisions(trackId);
+  entry.paint.value++;
+  entry.roto.value++;
+  physicPaintVersion.value++;
+  _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
+  if (markDirty) _markProjectDirty?.();
+  if (diagnostics) {
+    const completedAt = performance.now();
+    diagnostics.record({ stage: 'store-project-dirty', category: 'sync-cpu', durationMs: 0, timestamp: completedAt, mutationId: diagnostics.mutationId });
+    diagnostics.record({ stage: 'store-visual-notification', category: 'sync-cpu', durationMs: 0, timestamp: completedAt, mutationId: diagnostics.mutationId });
+  }
+}
+
+/** Ensure the per-track revision entry exists for a mounted track (46-01 TRK-03). */
+export function mountTrackRuntime(_layerId: string, trackId: string): void {
+  _getOrCreateTrackRevisions(trackId);
+}
 
 export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery';
 
@@ -931,7 +994,7 @@ export const physicPaintStore = {
 
   setRotoBackgroundMetadata(layerId: string, trackId: string, metadata: PhysicPaintRotoBackgroundMetadata): void {
     _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...metadata });
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
   },
 
   getRotoPlaybackSettings(layerId: string, trackId: string): PhysicPaintRotoPlaybackSettings | null {
@@ -983,7 +1046,7 @@ export const physicPaintStore = {
       _tryRegenerateGeneratedRotoCache(layerId, trackId, settings);
       if (diagnostics) diagnostics.record({ stage: 'store-interpolation-regeneration', category: 'sync-cpu', durationMs: performance.now() - interpolationStartedAt, timestamp: performance.now(), mutationId: diagnostics.mutationId, sourceFrame: frame, branch: settings.mode });
     }
-    _notifyVisualChange(diagnostics);
+    bumpTrackRevision(layerId, trackId, diagnostics);
   },
 
   removeRealRotoKeyFrame(layerId: string, trackId: string, frame: number): boolean {
@@ -1002,7 +1065,7 @@ export const physicPaintStore = {
     if (settings.enabled) {
       _tryRegenerateGeneratedRotoCache(layerId, trackId, settings);
     }
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
     return true;
   },
 
@@ -1056,6 +1119,8 @@ export const physicPaintStore = {
     }
     if (payload.rotoPhysical) {
       const physical = parsePhysicPaintRotoPhysicalDocument(payload.rotoPhysical);
+      // (46-01 TRK-03) per-track revisions bump WITHOUT the dirty callback —
+      // the caller owns project-dirty signaling for installs.
       const projection = projectPhysicPaintRotoPhysicalTimeline({
         identities: physical.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         capacity: physical.capacity,
@@ -1077,14 +1142,14 @@ export const physicPaintStore = {
       _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, physical.capacity);
       if (physical.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...physical.background });
     }
-      rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    physicPaintVersion.value++;
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    bumpTrackRevision(layerId, trackId, undefined, false);
   },
 
   setFrame(layerId: string, trackId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): void {
     if (!Number.isInteger(frame) || frame < 0) return;
     _getOrCreateTrack(layerId, trackId).set(frame, { ...renderedFrame, appFrame: frame });
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
   },
 
   getRotoInterpolationSettings(layerId: string, trackId: string): PhysicPaintRotoInterpolationSettings {
@@ -1106,7 +1171,7 @@ export const physicPaintStore = {
     const normalized = _normalizeRotoInterpolationSettings(source, realKeys);
     _getOrCreateLayerTrackMap(_rotoInterpolationSettings, layerId).set(trackId, normalized);
     const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(layerId, trackId, normalized);
-    if (changed || _rotoInterpolationSettings.get(layerId)?.has(trackId)) _notifyVisualChange();
+    if (changed || _rotoInterpolationSettings.get(layerId)?.has(trackId)) bumpTrackRevision(layerId, trackId);
     return generatedFrames.map(frame => ({ ...frame }));
   },
 
@@ -1122,14 +1187,14 @@ export const physicPaintStore = {
       added = true;
     }
     if (settings) _getOrCreateLayerTrackMap(_rotoInterpolationSettings, layerId).set(trackId, _normalizeRotoInterpolationSettings(settings, _getRealRotoKeyFrames(layerId, trackId)));
-    if (removed || added || settings) _notifyVisualChange();
+    if (removed || added || settings) bumpTrackRevision(layerId, trackId);
     return true;
   },
 
   regenerateRotoInterpolationCache(layerId: string, trackId: string): PhysicPaintRenderedFrame[] {
     const settings = this.getRotoInterpolationSettings(layerId, trackId);
     const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(layerId, trackId, settings);
-    if (changed) _notifyVisualChange();
+    if (changed) bumpTrackRevision(layerId, trackId);
     return generatedFrames.map(frame => ({ ...frame }));
   },
 
@@ -1145,13 +1210,13 @@ export const physicPaintStore = {
 
   recomputeBackgroundOnlyRotoSupport(layerId: string, trackId: string, requestedFrames: readonly number[]): PhysicPaintRotoCacheFrame[] {
     const { changed, supportFrames } = _recomputeBackgroundOnlyRotoSupport(layerId, trackId, requestedFrames);
-    if (changed) _notifyVisualChange();
+    if (changed) bumpTrackRevision(layerId, trackId);
     return supportFrames;
   },
 
   removeBackgroundOnlyRotoSupport(layerId: string, trackId: string, frames?: Iterable<number>): boolean {
     const changed = _removeBackgroundOnlyRotoSupport(layerId, trackId, frames);
-    if (changed) _notifyVisualChange();
+    if (changed) bumpTrackRevision(layerId, trackId);
     return changed;
   },
 
@@ -1167,7 +1232,7 @@ export const physicPaintStore = {
       changed = (trackFrames?.delete(frame) ?? false) || changed;
       changed = (generatedMetadata?.delete(frame) ?? false) || changed;
     }
-    if (changed) _notifyVisualChange();
+    if (changed) bumpTrackRevision(layerId, trackId);
   },
 
   /** 46-01: whether one track has any runtime entry across the map inventory
@@ -1222,7 +1287,7 @@ export const physicPaintStore = {
         else _rotoBackgroundMetadata.get(payload.layerId)?.delete(payload.trackId);
         return _errorResult(payload, update.error);
       }
-      if (!update.changed && JSON.stringify(previousBackground) !== JSON.stringify(nextBackground)) _notifyVisualChange();
+      if (!update.changed && JSON.stringify(previousBackground) !== JSON.stringify(nextBackground)) bumpTrackRevision(payload.layerId, payload.trackId);
     } else {
       const rotoBackground = payload.rotoBackground ?? null;
       if (rotoBackground) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, payload.layerId).set(payload.trackId, { ...rotoBackground });
@@ -1291,7 +1356,7 @@ export const physicPaintStore = {
     }
     const supportRecompute = _recomputeBackgroundOnlyRotoSupport(payload.layerId, trackId, previousSupportFrames);
     const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(payload.layerId, trackId, this.getRotoInterpolationSettings(payload.layerId, trackId));
-    if (previousGenerated || previousSupport || supportRecompute.changed || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
+    if (previousGenerated || previousSupport || supportRecompute.changed || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) bumpTrackRevision(payload.layerId, trackId);
     return {
       operationId: payload.operationId,
       kind: payload.kind,
@@ -1373,7 +1438,7 @@ export const physicPaintStore = {
     for (const [dataUrl, canvas] of snapshot.alphaCanvases) {
       if (!_rotoAlphaCanvasRegistry.has(dataUrl)) _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
     }
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
   },
 
   hasOutput(layerId: string, trackId: string): boolean {
@@ -1386,7 +1451,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -1411,6 +1476,7 @@ export const physicPaintStore = {
     _rotoPhysicalStructuralCache.clear();
     _rotoPhysicalContentTokens.clear();
     _rotoPhysicalContentTokenCounter = 0;
+    trackRevisions.clear();
     _notifyVisualChange();
   },
 
@@ -1516,7 +1582,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, capacity);
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
     return { ok: true };
   },
 
@@ -1653,7 +1719,7 @@ export const physicPaintStore = {
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
     return { ok: true, document };
   },
 
@@ -1790,7 +1856,7 @@ export const physicPaintStore = {
     }
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, validated);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
     return { ok: true };
   },
 
@@ -1830,7 +1896,7 @@ export const physicPaintStore = {
     if (nextRevision === this.getRotoPhysicalContentRevision(layerId, trackId)) return { ok: true };
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, validated);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
     return { ok: true };
   },
 
@@ -1859,7 +1925,7 @@ export const physicPaintStore = {
       mode: state.mode,
     }) as PhysicPaintRotoInterpolationState);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange();
+    bumpTrackRevision(layerId, trackId);
     return { ok: true };
   },
 
@@ -2225,7 +2291,7 @@ export const physicPaintStore = {
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
     _pruneUnreferencedRotoAlphaCanvases([current.payload.dataUrl]);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange(diagnostics);
+    bumpTrackRevision(layerId, trackId, diagnostics);
     return { ok: true, changed: true, contentRevision: nextRevision };
   },
 
