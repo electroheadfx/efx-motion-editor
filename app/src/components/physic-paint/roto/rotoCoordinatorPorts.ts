@@ -1,5 +1,4 @@
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload, PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { RotoSessionCopiedGroupEntry } from './physicsPaintRotoSession';
@@ -363,7 +362,7 @@ export interface RotoPhysicalEditStatusPort {
  * owners in Task 3 without introducing an adapter module or alternate
  * transaction implementation.
  */
-export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProject> {
+export interface RotoPhysicalEditCoordinatorPorts<EngineState = EfxPaintDocument> {
   readonly engine: EfxPaintEngine | null;
   readonly records: RotoPhysicalEditRecordsPort & {
     getDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;

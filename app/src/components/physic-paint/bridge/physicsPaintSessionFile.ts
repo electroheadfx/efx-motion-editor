@@ -68,7 +68,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
  * strokes/settings top-level members. Detection only — no legacy field is
  * read for conversion or partial hydration (Pitfall F5).
  */
-function isLegacySerializedProjectShape(value: unknown): boolean {
+function matchesLegacyV2SessionShape(value: unknown): boolean {
   if (!isPlainRecord(value)) return false;
   if (value.version === 2) return true;
   return Array.isArray(value.strokes) && isPlainRecord(value.settings);
@@ -81,7 +81,7 @@ export function parsePhysicsPaintStateFile(contents: string): EfxPaintDocument {
   } catch {
     throw new Error(LOAD_STATE_INVALID_COPY);
   }
-  if (isLegacySerializedProjectShape(parsed)) {
+  if (matchesLegacyV2SessionShape(parsed)) {
     throw new Error(LOAD_STATE_UNSUPPORTED_VERSION_COPY);
   }
   try {

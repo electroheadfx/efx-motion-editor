@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useComputed, useSignal } from '@preact/signals';
-import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
@@ -965,7 +965,7 @@ export function PhysicsPaintStudio() {
     setCachedRotoRepaintBaseFrame(next.reference.cachedRepaintBase);
     return result;
   };
-  const physicalEditCoordinator = useRotoPhysicalEditCoordinator<SerializedProject>({
+  const physicalEditCoordinator = useRotoPhysicalEditCoordinator<EfxPaintDocument>({
     engine,
     records: {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
@@ -989,7 +989,7 @@ export function PhysicsPaintStudio() {
       get dirtyFrames() { return rotoEditBuffer.bufferRef.current.dirtyFrames; },
       get liveOverlayActionCounts() { return rotoEditBuffer.bufferRef.current.liveOverlayActionCounts; },
       get editableFrames() { return rotoEditableFramesRef.current; },
-      replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, SerializedProject>); },
+      replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, EfxPaintDocument>); },
       replacePreviewFrames: (frames) => { rotoEditBuffer.replacePreviewFrames(frames as Map<number, RenderedFramePayload>); },
       replaceCapturedFrames: (frames) => { rotoEditBuffer.bufferRef.current.capturedFrames = new Map(frames) as Map<number, RenderedFramePayload>; },
       replaceConfirmedFrames: (frames) => { rotoPersistence.confirmedFramesRef.current = new Map(frames) as Map<number, RenderedFramePayload>; },
@@ -1110,7 +1110,7 @@ export function PhysicsPaintStudio() {
     },
   });
   groupFramePaintExecuteRef.current = (executeInput) => (
-    physicalEditCoordinator.executePhysicalEdit(executeInput as unknown as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>)
+    physicalEditCoordinator.executePhysicalEdit(executeInput as unknown as RotoPhysicalEditCoordinatorExecuteInput<EfxPaintDocument>)
   );
   groupLifecycleDeleteExecuteRef.current = async (target) => {
     const launch = launchContextRef.current;
@@ -1241,7 +1241,7 @@ export function PhysicsPaintStudio() {
       ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
       source: 'real-key',
     }),
-    executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>),
+    executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<EfxPaintDocument>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     executeGroupLifecycleDelete: (target) => groupLifecycleDeleteExecuteRef.current(target),
     executeRailSetDelete: (target) => railSetDeleteExecuteRef.current(target),
@@ -1962,7 +1962,7 @@ export function PhysicsPaintStudio() {
     navigate: navigateToSyncedPhysicalFrame,
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
   });
-  const rotoMoveHistory = useRotoPhysicalEditHistory<SerializedProject>({
+  const rotoMoveHistory = useRotoPhysicalEditHistory<EfxPaintDocument>({
     identity: launchContext ? {
       launchOperationId: launchContext.operationId,
       layerId: launchContext.layerId,

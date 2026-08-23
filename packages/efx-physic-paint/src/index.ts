@@ -15,6 +15,3 @@ export type {
   EngineState,
 } from './types'
 export type { EfxPaintDocument } from './types'
-// TEMP deprecated alias (removed in Task 4): keeps app-side consumers
-// compiling against the pre-v1.0 name while the consumer sweep lands.
-export type SerializedProject = EfxPaintDocument

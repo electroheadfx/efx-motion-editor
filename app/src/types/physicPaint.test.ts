@@ -143,6 +143,21 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
+  it('accepts a v1.0 document editableState carrier and rejects the legacy version:2 shape', () => {
+    const document = createEfxPaintDocument('layer-1');
+    const engineCarrierDocument = {
+      ...document,
+      tracks: document.tracks.map((track) => ({
+        ...track,
+        strokes: [{ tool: 'paint', pts: [[0, 0, 0.5, 0, 0, 0, 0]], color: '#103c65', params: { size: 6 }, time: 0 }],
+        settings: { bgMode: 'transparent', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+      })),
+    };
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: document })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: engineCarrierDocument })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: { version: 2, width: 1000, height: 650, strokes: [], settings: { bgMode: 'transparent' } } })).toBe(false);
+  });
+
   it('accepts only the insert-empty-segment transport contract', () => {
     const records = [{
       keyId: 'inserted-key',

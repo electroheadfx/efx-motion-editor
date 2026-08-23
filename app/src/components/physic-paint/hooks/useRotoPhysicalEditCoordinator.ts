@@ -40,7 +40,7 @@
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { computed, useSignal, type ReadonlySignal } from '@preact/signals';
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument } from '@efxlab/efx-physic-paint';
 import {
   isPhysicPaintRotoBackgroundMetadata,
   isPhysicPaintRotoPhysicalEditApplyResult,
@@ -976,7 +976,7 @@ function createPendingPhysicalEdit(
  * Coordinator external interface. Stable across renders; the same handle
  * is reused for the lifecycle of the owning Studio composition.
  */
-export interface RotoPhysicalEditCoordinatorHandle<EngineState = SerializedProject> {
+export interface RotoPhysicalEditCoordinatorHandle<EngineState = EfxPaintDocument> {
   /** Execute one acknowledged physical edit. Returns false if rejected before staging. */
   executePhysicalEdit: (input: RotoPhysicalEditCoordinatorExecuteInput<EngineState>) => Promise<boolean>;
   /** Consume one raw apply result from the bridge. Returns the transition classification. */
@@ -1010,7 +1010,7 @@ export interface RotoPhysicalEditCoordinatorHandle<EngineState = SerializedProje
   readonly pendingOperationKind: ReadonlySignal<PhysicPaintRotoPhysicalEditApplyPayload['operationKind'] | null>;
 }
 
-export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
+export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
   ports: RotoPhysicalEditCoordinatorPorts<EngineState>,
 ): RotoPhysicalEditCoordinatorHandle<EngineState> {
   const pendingRef = useRef<PendingPhysicalEditContext | null>(null);

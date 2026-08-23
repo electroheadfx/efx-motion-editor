@@ -1,5 +1,5 @@
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
-import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument as EfxPaintDocumentPayload } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
 import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
@@ -1700,7 +1700,7 @@ export interface PhysicPaintLaunchContext {
   height?: number;
   fps?: number;
   /** v1.0 document carrier (D-03): the launch IS the document, no fetch round-trip. */
-  document?: EfxPaintDocument;
+  document?: EfxPaintDocumentPayload;
   rotoPlayback?: PhysicPaintRotoPlaybackSettings;
   audioPreview?: EfxPaintAudioPreviewContext;
 }
@@ -1762,7 +1762,7 @@ export interface PhysicPaintApplyCanvasPayload {
   sourceFrame?: number;
   displayFrame?: number;
   renderedFrame: PhysicPaintRenderedFrame;
-  editableState?: SerializedProject;
+  editableState?: EfxPaintDocument;
   backgroundOnly?: boolean;
   onionDataUrl?: string;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
@@ -2249,43 +2249,27 @@ function containsForbiddenApplyField(value: Record<string, unknown>): boolean {
 
 /**
  * v1.0 document payload guard for the apply-canvas editableState carrier (D-03).
- * Accepts the engine's save() output — strokes/settings ride the active track as
- * optional engine-only carriers — and rejects the legacy version:2 shape. The
- * full fail-closed parse (parseEfxPaintDocument) replaces this in the Task 4 sweep.
+ * The engine's save() output carries engine-only strokes/settings on the active
+ * track; the app-side parser's closed TRACK_KEYS rejects those carriers, so the
+ * guard validates a carrier-stripped copy through the full fail-closed parse.
+ * Legacy version:2 payloads fail the parse and are rejected.
  */
-function isEfxPaintDocumentEditableState(value: unknown): value is SerializedProject {
-  if (!isRecord(value)) return false;
-  if (value.version !== 1) return false;
-  if (typeof value.parentLayerId !== 'string' || value.parentLayerId.length === 0) return false;
-  if (!isNonNegativeInteger(value.documentRevision)) return false;
-  if (typeof value.activeTrackId !== 'string' || value.activeTrackId.length === 0) return false;
-  if (!Array.isArray(value.tracks) || value.tracks.length === 0) return false;
-  if (!isRecord(value.background)) return false;
-  if (value.photoReference !== null) return false;
-  if (!isNonNegativeInteger(value.compositeRevision)) return false;
-  return value.tracks.some((track) => isRecord(track) && track.id === value.activeTrackId);
-}
-
-export function isSerializedProject(value: unknown): value is SerializedProject {
-  if (!isRecord(value)) return false;
-  if (value.version !== 2) return false;
-  if (typeof value.width !== 'number' || !Number.isFinite(value.width) || value.width <= 0) return false;
-  if (typeof value.height !== 'number' || !Number.isFinite(value.height) || value.height <= 0) return false;
-  if (!Array.isArray(value.strokes)) return false;
-  if (!isRecord(value.settings)) return false;
-  return value.strokes.every(isSerializedStroke);
-}
-
-function isSerializedStroke(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (typeof value.tool !== 'string') return false;
-  if (!Array.isArray(value.pts)) return false;
-  if (value.color !== null && typeof value.color !== 'string') return false;
-  if (!isRecord(value.params)) return false;
-  if (typeof value.time !== 'number' || !Number.isFinite(value.time)) return false;
-  if (value.playFrame !== undefined && !isNonNegativeInteger(value.playFrame)) return false;
-  if (value.physicsMode !== undefined && value.physicsMode !== 'local' && value.physicsMode !== null) return false;
-  return value.pts.every((point) => Array.isArray(point) && point.length === 7 && point.every((entry) => typeof entry === 'number' && Number.isFinite(entry)));
+function isEfxPaintDocumentEditableState(value: unknown): value is EfxPaintDocument {
+  if (!isRecord(value) || !Array.isArray(value.tracks)) return false;
+  const stripped = {
+    ...value,
+    tracks: value.tracks.map((track) => {
+      if (!isRecord(track)) return track;
+      const { strokes: _strokes, settings: _settings, ...rest } = track;
+      return rest;
+    }),
+  };
+  try {
+    parseEfxPaintDocument(stripped);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isRenderedPngDataUrl(value: unknown): value is string {
