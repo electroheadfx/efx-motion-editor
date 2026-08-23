@@ -1,42 +1,48 @@
 # Architecture Research
 
-**Domain:** v0.9.0 feature integration into the existing EFX Motion Editor monorepo (Tauri 2.0 main editor + standalone `efx-physic-paint` window)
-**Researched:** 2026-08-03
-**Confidence:** HIGH — all integration points verified by direct repo inspection (no external research needed; the open questions are internal seam choices, not ecosystem unknowns)
+**Domain:** v1.0.0 multi-track EFX Paint document integration into the existing EFX Motion Editor monorepo (Tauri 2.0 main editor + standalone `efx-physic-paint` window)
+**Researched:** 2026-08-23
+**Confidence:** HIGH — all integration points verified by direct repo inspection of the locked spec (`SPECS/milestone-v1.0.0-plan.md`) and the existing stores/bridge/renderer/persistence code. The open questions are internal seam choices, not ecosystem unknowns.
 
 ## Standard Architecture
 
-### System Overview (post-v0.9.0)
+### System Overview (post-v1.0.0)
+
+The architectural invariant is locked: **one parent Paint layer → one EFX Paint document → many internal Paint frame tracks → one flattened frame result delivered to the unchanged main-editor compositor.** The main editor never iterates internal tracks.
 
 ```
 ┌─────────────────────────── Main editor window (Tauri "main") ───────────────────────────┐
-│  timelineStore / audioStore / physicPaintStore / projectStore (13 signal stores)        │
-│  playbackEngine.ts ── audioEngine.ts (Web Audio, authoritative monitoring)              │
-│  lib/physicPaintBridge.ts                                                               │
-│    ├─ launch: createPhysicPaintLaunchContext (+ NEW audioPreview payload)               │
-│    ├─ NEW revisioned audio-preview context emitter (subscribes audioStore)              │
-│    ├─ listen branches: apply / roto-authority / script-library / state-save /           │
-│    │   thumbnail-encode / physic-paint:seek-frame                                       │
-│    └─ physicPaintPersistence.ts (+ NEW loop-clips member in roto_physical document)     │
+│  Sequence (UNCHANGED)                                                                   │
+│  ├── Paint layer A ──► EFX Paint document (NEW, owned by parent layer)                  │
+│  │       ├── Photo/reference track (NEW)                                                │
+│  │       ├── Paint frame track 1 (NEW)                                                 │
+│  │       ├── Paint frame track 2 (NEW)                                                 │
+│  │       ├── Paint frame track 3 (NEW)                                                 │
+│  │       ├── Background track with Loop Clips (NEW)                                   │
+│  │       ├── Document fallback: solid or transparent (NEW)                              │
+│  │       └── ONE flattened frame result ──► existing parent-layer boundary             │
+│  ├── Paint layer B ──► its own independent EFX Paint document                          │
+│  └── Other main-editor layers (UNCHANGED)                                              │
+│                                                                                         │
+│  timelineStore / audioStore / projectStore / physicPaintStore (13 signal stores)        │
+│  lib/previewRenderer.ts (UNCHANGED parent-layer compositor — consumes one raster)      │
+│  lib/physicPaintBridge.ts (MOD — document/track revisioned messages)                   │
 └───────────────┬─────────────────────────────────────────────────────────────────────────┘
                 │ Tauri events (emitTo 'efx-physic-paint') + launch URL context
                 │ (existing patterns: PHYSIC_PAINT_*_EVENT constants)
 ┌───────────────▼──────────── EFX Paint window (label "efx-physic-paint") ────────────────┐
 │  Same SPA bundle, parsed via parsePhysicsPaintLaunchContext(location)                   │
-│  PhysicsPaintStudio + hooks/ controllers (signals boundary)                             │
-│  ├─ NEW audio/efxPaintAudioPreviewEngine.ts (own AudioContext, read-only)               │
-│  ├─ roto/physicsPaintRotoPlayScriptController.ts (+ NEW applicationMode, colorOverride) │
-│  ├─ roto/physicsPaintRotoPlayScriptRenderer.ts (+ hold scheduling, recolor)             │
-│  ├─ roto/physicsPaintRotoPhysicalModel.ts (+ NEW durable loopClips member)              │
-│  ├─ roto/physicsPaintRotoPhysicalResolver.ts (+ loop projection/resolution)             │
-│  └─ view/PhysicsPaintWorkflowStrip.tsx (+ filmstrip loop capsule)                       │
+│  PhysicsPaintStudio + hooks/ controllers (signals boundary)                            │
+│  ├── NEW efx-paint/ document model + track-local stores (signals)                       │
+│  ├── NEW efx-paint/ internal compositor (one shared path)                              │
+│  ├── NEW multi-row timeline strip (extends PhysicsPaintWorkflowStrip)                  │
+│  ├── roto/ physicsPaintRoto* (MOD — track-local addressing, shared Loop Clip resolver) │
+│  └── audio/ efxPaintAudioPreview* (REUSE v0.9.0 Phase 41 as-is)                        │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
                 │
 ┌───────────────▼──────────── packages/efx-physic-paint ──────────────────────────────────┐
-│  animation/progressiveStrokeSchedule.ts (progressive — unchanged default)               │
-│  animation/recordedStrokeMotion.ts (deterministic held-pose Script Motion — reused)     │
-│  NEW animation/staticStrokeSchedule.ts (hold mode: full stroke set per frame)           │
-│  engine/EfxPaintEngine.ts (render host for staged frames — unchanged API)               │
+│  engine/EfxPaintEngine.ts (REUSE — render host for staged frames, unchanged API)       │
+│  animation/ progressiveStrokeSchedule / recordedStrokeMotion / staticStrokeSchedule     │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,204 +50,328 @@
 
 | Component | Responsibility | Status |
 |-----------|----------------|--------|
-| `app/src/stores/audioStore.ts` | Authoritative audio tracks (offset/trim/volume/mute/fades/order), persistence | **Unmodified** (read by new bridge code) |
-| `app/src/lib/audioEngine.ts` | Main-window Web Audio playback singleton (`play`, `playDelayed`, `stopAll`) | **Unmodified** |
-| `app/src/lib/playbackEngine.ts` | Main-editor frame→audio scheduling (`startAudioPlayback` math at lines 192–224) | **Modified** — extract pure resolver into shared module (see Pattern 1) |
-| `app/src/lib/physicPaintBridge.ts` | Launch context, project-context event, all request/result listen branches, seek-frame routing | **Modified** — new audio-preview context in launch payload + revisioned update emitter |
-| `app/src/types/physicPaint.ts` | Closed bridge/launch schema (`PhysicPaintLaunchContext`, authority result, etc.) | **Modified** — new `PhysicPaintAudioPreviewContext`, optional `audioPreview` on launch context, new event constants |
-| `app/src/components/physic-paint/audio/efxPaintAudioPreviewEngine.ts` | NEW. Paint-window-local Web Audio preview: decode, schedule, seek, stop, monitoring toggle | **New** |
-| `app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts` | Paint playback cursor (`playbackTick`, `start`/`stop`/`toggle`, loop/fps) | **Modified** — notify audio preview on start/stop/seek (ports-style callback, not direct import) |
-| `physicsPaintRotoPlayScriptController.ts` | Play Script commit authority: `requestAuthority` → render → `commit` with `expectedRevision`, phases, cancel | **Modified** — new controller ports/options (`applicationMode`, `colorOverride`, loop params); commit path itself unchanged |
-| `physicsPaintRotoPlayScriptRenderer.ts` | `renderRotoPlayScriptFrames` staging (engine host, schedule, alpha merge, PNG encode) | **Modified** — mode switch (progressive schedule vs full-set hold), application-time recolor |
-| `physicsPaintRotoPhysicalModel.ts` | Canonical durable model: `PhysicPaintRotoRealKeyRecord{keyId, appFrame, payload}`, `PhysicPaintRotoPhysicalState/Document`, revision builder, fail-closed parsers | **Modified** — new `loopClips` durable member + validators + revision participation |
-| `physicsPaintRotoPhysicalResolver.ts` | `resolvePhysicPaintRotoPhysicalEdit` / `projectPhysicPaintRotoPhysicalTimeline` (finalizeProposal single authority) | **Modified** — loop-clip cell projection, modulo occurrence resolution, next-clip boundary |
-| `app/src/types/project.ts` + `physicPaintPersistence.ts` | `.mce` `roto_physical` document + PNG sidecars | **Modified** — schema bump for loop clips (clean break per project convention: no legacy migration) |
-| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `hooks/useRotoTimelineModel.ts` | Roto timeline strip cells/capsule | **Modified** — filmstrip loop capsule rendering (source cycle + hatched repetition band + ×N/∞ badge) |
-| `app/vite.config.ts` + `app/src/viteBuild.test.ts` | Build config + production bundle guard test seam | **Modified** — `chunkSizeWarningLimit: 1100`, safe mixed-import fixes, extended seam assertions |
-| `scripts/macos-release.sh` + `app/src-tauri/icons/` + `tauri.conf.json` | Release preflight icon contract | **Modified icons only** — preflight already validates the exact 5-entry array + ICNS magic (lines ~117–136) and packaged `CFBundleIconFile` (~306–323); no SPECS dependency |
+| `app/src/stores/efxPaintStore.ts` | NEW. The v1.0.0 EFX Paint document store: `EfxPaintDocument` (version, parentLayerId, documentRevision, activeTrackId, tracks, photoReference, background, compositeRevision), track CRUD, hide/solo/opacity/blend, per-track revision, composite revision. Keyed `layerId → document`. | **New** |
+| `app/src/efx-paint/document/` | NEW. Pure document model: `EfxPaintDocument`/`InternalPaintTrack`/`PhotoReferenceTrack`/`BackgroundTrack`/`FrameLoopClip` types, fail-closed parsers, revision builders, clean-break validation (reject pre-v1.0 data explicitly). | **New** |
+| `app/src/efx-paint/compositor/` | NEW. The deterministic internal compositor: document fallback → Background clip → participating Paint tracks (hide/solo truth table) → per-track real/generated/cached content → stable-order composite with per-track opacity/blend → one flattened raster + composite revision. **One shared path for Studio preview and flattened output.** | **New** |
+| `app/src/efx-paint/background/` | NEW. Fixed Background track model: one row beneath Paint tracks, non-overlapping clips, gaps/fallback, imported still/sequence source refs. Reuses the existing Loop Clip resolver. | **New** |
+| `app/src/efx-paint/photo-reference/` | NEW. One photo/reference track: source reference, mode (`reference-only`/`reveal-source`/`masked-transform-source`), Studio visibility, exclusion from flattened output. | **New** |
+| `app/src/efx-paint/mask/` | NEW. Shared mask compositor + Reveal: offscreen source-plus-mask compositing, alpha-vs-luma interpretation, optional inversion, revision invalidation. | **New** |
+| `app/src/stores/physicPaintStore.ts` | Track-local Roto/PlayScript state. Extend the `Map<layerId, Map<number, T>>` pattern to `Map<layerId, Map<trackId, Map<number, T>>>`. Keep the counter-signal + lease-authority pattern. | **Modified** |
+| `app/src/stores/paintStore.ts` | Track-local Paint frames. Same `layerId → trackId → frame` extension. | **Modified** |
+| `app/src/lib/physicPaintBridge.ts` | Launch context + all request/result listen branches. Add document/track revision to messages; async PlayScript/Reveal revalidate parent+document+track revision before commit. | **Modified** |
+| `app/src/lib/previewRenderer.ts` | Main-editor parent-layer compositor. **Unchanged boundary** — it consumes one flattened raster per frame via the existing `resolvePhysicPaintFrameSource`/`getFrame` path. No internal-track iteration. | **Unmodified** (reads new flattened output) |
+| `app/src/lib/physicPaintPersistence.ts` + `app/src/types/project.ts` | `.mce` v1.0 document schema + PNG sidecars. Clean break: pre-v1.0 Paint data rejected explicitly, no legacy reader/renderer/cache path reachable. | **Modified** |
+| `app/src/stores/projectStore.ts` | Save/open flow. Save the v1.0 document (staging/commit transaction); on open, reject pre-v1.0 Paint data explicitly. | **Modified** |
+| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `useRotoTimelineModel.ts` | Multi-row internal timeline: N Paint rows + one fixed Background row + one photo/reference row, filmstrip capsules, active-track visibility. | **Modified** |
+| `app/src/components/physic-paint/audio/efxPaintAudioPreview*` | Read-only audio preview. **Reuse v0.9.0 Phase 41 as-is** — the spec's audio requirements are a subset of the Phase 41 contract. | **Unmodified** |
+| `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` + `physicsPaintRotoLoopClips.ts` | Loop Clip resolver (modulo, finite/infinite, next-clip interruption, half-open intervals). **Reuse verbatim** for Background clips (`sourceKind: 'imported-background'`) and Hold clips (`sourceKind: 'playscript-hold'`). | **Modified** (track-local addressing) |
+| Main-editor sequence/layer model (`timelineStore`, `layerStore`, `audioStore`, `playbackEngine`) | Outer stack, timing, audio, export. **Unchanged** per the ownership boundary. | **Unmodified** |
 
 ## Recommended Project Structure (new files only)
 
 ```
 app/src/
+├── efx-paint/                        # NEW — v1.0.0 EFX Paint document domain
+│   ├── document/                     # pure model + parsers + revision
+│   │   ├── efxPaintDocument.ts       #   EfxPaintDocument / InternalPaintTrack / PhotoReferenceTrack / BackgroundTrack / FrameLoopClip
+│   │   ├── efxPaintDocumentParsers.ts # fail-closed guards (isEfxPaint* pattern)
+│   │   ├── efxPaintDocumentRevision.ts # document/track/composite revision builders
+│   │   └── efxPaintCleanBreak.ts     #   explicit pre-v1.0 rejection
+│   ├── compositor/                   # one shared internal composition path
+│   │   ├── efxPaintCompositor.ts     #   fallback → Background → Paint tracks → flattened raster
+│   │   ├── efxPaintHideSolo.ts       #   hide/solo truth table (pure)
+│   │   └── efxPaintCompositeCache.ts #  track-revision-keyed cache
+│   ├── background/                   # fixed Background track
+│   │   ├── efxPaintBackgroundTrack.ts #  one row, non-overlapping clips, gaps/fallback
+│   │   └── efxPaintBackgroundLoop.ts #  Background clip resolution (reuses Loop Clip resolver)
+│   ├── photo-reference/
+│   │   └── efxPaintPhotoReference.ts #  source ref + mode + Studio visibility
+│   └── mask/
+│       ├── efxPaintMaskCompositor.ts #  offscreen source-plus-mask compositing
+│       └── efxPaintReveal.ts         #  Reveal semantics (alpha/luma, inversion)
+├── stores/
+│   ├── efxPaintStore.ts              # NEW — document store (signals)
+│   ├── physicPaintStore.ts           # MOD — track-local Roto/PlayScript state
+│   └── paintStore.ts                 # MOD — track-local Paint frames
 ├── lib/
-│   ├── audioPlaybackResolver.ts        # NEW — pure frame→per-track schedule math, shared
-│   └── physicPaintBridge.ts            # MOD — audio preview launch payload + revisioned emitter
-├── types/
-│   ├── physicPaint.ts                  # MOD — PhysicPaintAudioPreviewContext, event constants
-│   └── project.ts                      # MOD — McePhysicPaintRotoPhysicalDocument + loop_clips
+│   ├── physicPaintBridge.ts          # MOD — document/track revisioned messages
+│   ├── physicPaintPersistence.ts     # MOD — v1.0 document + sidecars, clean break
+│   └── previewRenderer.ts            # UNMODIFIED — consumes one flattened raster
 └── components/physic-paint/
-    ├── audio/                          # NEW folder
-    │   ├── efxPaintAudioPreviewEngine.ts   # own AudioContext, per-track sources/gains
-    │   ├── efxPaintAudioPreviewBridge.ts   # listen for context events, revision guard, dispose
-    │   └── useEfxPaintAudioPreview.ts      # hook: monitoring toggle signal + playback wiring
+    ├── view/
+    │   ├── PhysicsPaintWorkflowStrip.tsx  # MOD — multi-row timeline
+    │   └── useRotoTimelineModel.ts        # MOD — track rows + capsules
     └── roto/
-        ├── physicsPaintRotoLoopClip.ts     # NEW — LoopClip model, validators, modulo resolver
-        └── (model/resolver/controller/renderer/strip — modified in place)
-
-packages/efx-physic-paint/src/animation/
-└── staticStrokeSchedule.ts             # NEW — hold-mode full-set schedule + tests
+        ├── physicsPaintRotoPhysicalResolver.ts  # MOD — track-local + shared Loop Clip resolver
+        └── physicsPaintRotoLoopClips.ts         # MOD — track-local addressing
 ```
 
 ### Structure Rationale
 
-- **`audio/` subfolder under physic-paint:** mirrors the existing `bridge/`, `roto/`, `hooks/`, `view/` decomposition and keeps the session-local engine out of shared `lib/` (it must never be imported by the main window — two engines in one JS context is the doubled-audio pitfall).
-- **Loop clip as its own roto module:** matches the post-36.8 pattern of compact focused modules (`physicsPaintRotoAlphaMerge.ts`, `rotoLivePixelCacheTransactions.ts`) rather than growing the model file.
-- **Pure resolver in `lib/`:** the frame→audio math must be bit-identical between main editor and paint window; a shared pure module is the only way to guarantee that without cross-window imports.
+- **`efx-paint/` as a new top-level domain folder:** the v1.0.0 document is a distinct domain (document model, compositor, background, photo-reference, mask) that must not be entangled with the existing `physic-paint/` component tree. It mirrors the existing decomposition discipline (compact focused modules, pure model + fail-closed parsers) while keeping the new document boundary explicit.
+- **`document/` pure model separate from `stores/`:** the model is serializable and testable without Preact; the store adds reactivity. This matches the existing `physicsPaintRotoPhysicalModel.ts` (pure) vs `physicPaintStore.ts` (reactive) split.
+- **`compositor/` as its own folder:** the internal compositor is the milestone's keystone — one shared path for Studio preview and flattened output. It must be importable by both the Studio surface and the persistence/export path without pulling in UI.
+- **`background/` and `photo-reference/` separate from `document/`:** each is a distinct track type with its own rules (Background: non-overlap + fallback; photo/reference: mode + exclusion). Keeping them separate prevents the document model from becoming a god-object.
+- **`mask/` separate:** Reveal is a Phase 8 capability layered on the compositor; isolating it keeps the Phase 4 compositor stable and independently testable.
+- **Reuse `physicsPaintRotoLoopClips.ts` rather than a new Background loop module:** the resolver already implements the spec's exact loop formula. A second scheduler would duplicate the off-by-one risk the spec's risk register calls out.
 
 ## Architectural Patterns
 
-### Pattern 1: Shared pure frame→audio-time resolver (audio bridge correctness keystone)
+### Pattern 1: One parent layer → one document → many tracks → one flattened result (the invariant)
 
-**What:** Extract the scheduling math currently inline in `playbackEngine.ts` `startAudioPlayback()` (lines 192–224) into a pure function both windows use.
-**When to use:** Always — the spec stop condition "Audio drifts from Paint playback" is only satisfiable if both sides compute identical offsets.
-**Trade-offs:** Tiny refactor of proven code; must keep `playbackEngine` behavior bit-identical (regression-lock with existing audio tests before rewiring).
+**What:** Every parent Paint layer owns exactly one `EfxPaintDocument`. The document owns all internal tracks, the Background track, the photo/reference track, and the mask compositor. For every application frame, the internal compositor produces exactly one flattened raster, published through the existing parent Paint-layer boundary. The main editor composites that parent raster exactly once with the unchanged outer layer stack.
+
+**When to use:** Always — this is the locked architectural invariant. Any design that leaks internal tracks into the main-editor sequence/layer model violates the spec.
+
+**Trade-offs:** The main editor cannot edit internal tracks directly (by design). All multi-track editing happens inside the EFX Paint window. This is the correct trade-off: it keeps the main editor unchanged and the flattened-result contract simple.
 
 **Example:**
 ```typescript
-// app/src/lib/audioPlaybackResolver.ts (NEW)
-export interface AudioPlaybackCue {
-  trackId: string;
-  delaySec: number;        // 0 = start now
-  sourceOffsetSec: number; // (inFrame + slipOffset + framesIntoTrack) / fps
-  maxDurationSec: number;
+// app/src/efx-paint/document/efxPaintDocument.ts (NEW)
+export interface EfxPaintDocument {
+  version: number;              // 1
+  parentLayerId: string;
+  documentRevision: number;
+  activeTrackId: string;
+  tracks: InternalPaintTrack[]; // stable IDs, never array indices
+  photoReference: PhotoReferenceTrack | null;
+  background: BackgroundTrack;
+  compositeRevision: number;
 }
-export function resolveAudioCuesAtFrame(
-  tracks: readonly AudioTrack[],
-  frame: number,           // main-editor global frame == paint appFrame
-  fps: number,
-  maxFrames: number,
-): AudioPlaybackCue[] { /* exact math from playbackEngine.startAudioPlayback */ }
 ```
 
-**Locked mapping (answers question a):** `PhysicPaintRenderedFrame.appFrame` is documented as the *editor timeline frame* — the paint window's physical model already lives in main-editor global frames. Therefore the four-level mapping collapses: `paint appFrame == parent layer frame == main-editor global frame` (the physical model's `canonicalStart`/`layerEndExclusive` are the parent-layer bounds in global frames; sequence-local indices exist only as `frameIndex` inside rendered payloads). Audio time is `appFrame / fps` seconds; per-track source offset adds `inFrame + slipOffset`. The only remaining mapping is paint playback *range* (cursor start, loop span) → cue recomputation. A truth table (frame → per-track cue) must be written and regression-tested before implementation, per the spec risk register.
+### Pattern 2: Track-local addressing — `layerId → trackId → frame`
 
-### Pattern 2: Paint-window-local Web Audio preview engine (not a shared engine)
+**What:** Extend the existing `Map<string, Map<number, T>>` store pattern (already used by `physicPaintStore` and `paintStore`) to `Map<layerId, Map<trackId, Map<number, T>>>`. Keep the counter-signal pattern (`paintVersion`/`rotoPhysicalRevision`-style) for controlled re-renders; never make the Maps reactive.
 
-**What:** The EFX Paint window is a separate Tauri webview (`app/src-tauri/src/lib.rs:125`, label `efx-physic-paint`) loading the same SPA bundle. JS contexts do not cross windows, so `audioEngine` cannot be reused. The paint window instantiates its own preview engine with its own `AudioContext`, fed by a **read-only context payload**.
-**When to use:** For the entire audio preview feature.
-**Trade-offs:** Buffers are decoded twice (once per window). Acceptable: decode cost is bounded and one-time per open session. Do NOT attempt `AudioBuffer` transport — structured-clone of decoded buffers across Tauri events is not supported; transport asset bytes (via the existing secure asset channel family, same as thumbnail encode) and decode locally with `ctx.decodeAudioData` (existing pattern in `audioEngine.decode`).
+**When to use:** For all track-local Paint/Roto/PlayScript frames, caches, and dirty state (Phase 2).
 
-**Context payload (slots into existing launch/bridge schema):**
+**Trade-offs:** One extra key level per lookup. Negligible for the frame counts involved; the alternative (a flat `layerId → frame` map with track tags) breaks the real-key/cache boundary and makes track deletion orphan-prone.
+
+**Example:**
 ```typescript
-// app/src/types/physicPaint.ts (MOD)
-export interface PhysicPaintAudioPreviewTrack {
-  id: string; assetPath: string;      // absolute path; bytes via secure transport
-  offsetFrame: number; inFrame: number; outFrame: number;
-  slipOffset: number; volume: number; muted: boolean;
-  fadeInFrames: number; fadeOutFrames: number;
-  fadeInCurve: FadeCurve; fadeOutCurve: FadeCurve;
-  order: number;
-}
-export interface PhysicPaintAudioPreviewContext {
-  revision: number;                    // monotonic, main-editor-owned
-  fps: number;
-  tracks: readonly PhysicPaintAudioPreviewTrack[];
-}
-// PhysicPaintLaunchContext gains: audioPreview?: PhysicPaintAudioPreviewContext
-// New event: PHYSIC_PAINT_AUDIO_PREVIEW_CONTEXT_EVENT = 'physic-paint:audio-preview-context'
+// app/src/stores/physicPaintStore.ts (MOD)
+const _rotoRealKeyRecords = new Map<string, Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>>();
+// layerId → trackId → keyId → record
 ```
 
-**Revisioned updates:** `physicPaintBridge.ts` gains an emitter that subscribes to `audioStore` mutations (and fps), bumps a monotonic revision, and `emitTo('efx-physic-paint', ...)` the fresh context — same pattern as the existing `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` emission (line ~827). The paint-side bridge applies a context only if `incoming.revision > current.revision`; stale updates are dropped, never queued. This mirrors the `expectedRevision` guard discipline already used by the Roto authority/commit path.
+### Pattern 3: Revision-based async authority (parent/document/track)
 
-**Sync without drift:** on paint playback start, compute cues via Pattern 1 and schedule all sources against `AudioContext.currentTime` in one shot (`playDelayed`-style, already proven in `audioEngine`). Do not re-nudge per paint frame — the audio clock is the drift-free reference; the paint cursor chases wall-clock anyway. Seek/pause/stop = dispose all sources and recompute from the new cursor. Loop = at range end, stop all and reschedule from range start (source metadata untouched).
+**What:** Every async PlayScript/Reveal operation revalidates parent layer revision, document revision, AND track revision before commit. Stale work fails closed. This is the established Phase 36.8/43.2 lease pattern, extended with the document and track revision levels.
 
-**Doubled-audio and cleanup (AUDIO-06):**
-- Session rule: the paint preview engine asserts main-editor playback is stopped before starting (bridge-provided flag or a stop intent sent on paint play start); the main window never monitors while the paint window drives preview.
-- Window close → `dispose()` (stop all sources, `ctx.close()`, drop buffers) wired into the existing Studio close path. Regression test: close during playback leaves zero running sources.
-- Monitoring toggle is a session-local signal in the paint window (`useEfxPaintAudioPreview`), defaulting to on when context exists; it gates the preview engine's master gain only — never touches `audioStore`.
+**When to use:** For all async operations that mutate track state (PlayScript apply, Reveal, Background clip import, Hold Loop creation).
 
-### Pattern 3: LoopClip as a durable member of the canonical physical model
+**Trade-offs:** More revision fields to thread through bridge messages. Necessary: the spec's risk register lists "stale async job commits to wrong track" as a data-corruption risk.
 
-**What:** Loop clips live in `physicsPaintRotoPhysicalModel.ts` as a new member of `PhysicPaintRotoPhysicalState`/`PhysicPaintRotoPhysicalDocument`, referencing existing real keys by `keyId` — no duplicated payloads.
+**Example:**
+```typescript
+// app/src/lib/physicPaintBridge.ts (MOD)
+export interface PhysicPaintRotoAuthorityRequest {
+  operationId: string;
+  layerId: string;
+  documentRevision: number;  // NEW
+  trackId: string;           // NEW
+  trackRevision: number;     // NEW
+  // ...existing fields
+}
+```
 
-**Locked semantics mapped onto the existing model:**
-- Source cycle = N durable `PhysicPaintRotoRealKeyRecord`s created by one hold-mode Play Script commit (existing atomic path). They are ordinary real keys — editable, movable, undoable.
-- The loop clip record: `{ clipId, startFrame, sourceKeyIds: keyId[], repeat: finite{count} | infinite, revision }`. `cycleLength = sourceKeyIds.length`. Occurrence at appFrame F resolves to `sourceKeyIds[(F - startFrame) % cycleLength]` — render output is the referenced key's existing payload `dataUrl`, so the live pixel cache and preview get reuse for free.
-- Next-clip boundary: effective end = `min(startFrame + requestedDuration, nextClipStart, capacity)` with half-open intervals `[start, end)` — the same ordering discipline the resolver already applies to real keys. "Next clip" = the next durable occupant (real key or loop clip) at a later appFrame; a truth table for boundary cases (adjacent clips, partial cycle, clip moved later, clip removed, infinite → parent end) must be authored before implementation (project convention: truth table before timing patches).
-- Generated interpolation cells: loop occurrences are a distinct render-source variant (`{ kind: 'loop-occurrence', clipId, occurrenceIndex, sourceKeyId, ... }` added to `PhysicPaintRotoPhysicalRenderSource`), NOT generated-interpolation cells — they must be excluded from the interpolation gap derivation (`max(0, right-left-1)` interiors) to avoid phantom cells inside a loop span.
-- Revision/persistence: `loopClips` participates in `buildPhysicPaintRotoPhysicalRevision`, the fail-closed parsers (`parsePhysicPaintRotoPhysicalState`), and `McePhysicPaintRotoPhysicalDocument` (`roto_physical` in `.mce`; PNG sidecars unchanged — occurrences have no sidecars).
-- Undo/redo: loop creation is a semantic delta on the existing commit path (extend `validatePhysicPaintRotoPhysicalEditSemanticDelta` in `physicsPaintRotoPhysicalResolver.ts`); repeat-count edits are metadata-only operations through `finalizeProposal` — no re-render, no source cache invalidation.
+### Pattern 4: One shared internal composition path (Studio preview + flattened output)
 
-**Why not materialize occurrences as generated cells or cache frames:** the model deliberately excludes generated cells from durable serialization and cache ownership; a loop is durable user intent, so it belongs in the durable document beside real keys.
+**What:** The internal compositor is a single module used by both the Studio preview surface and the flattened-output/persistence path. There is never a second composition path. The main renderer never iterates internal tracks.
 
-### Pattern 4: PlayScript mode/color as render-input options, commit path untouched
+**When to use:** Always — the spec's stop condition "Studio and parent flattened output differ" is only satisfiable if both consume the same compositor.
 
-**What:** `applicationMode` and `colorOverride` enter exclusively through `RotoPlayScriptRenderInput` (renderer) and the controller's UI ports. `RotoPlayScriptControllerPorts.requestAuthority`/`commit`, the phase machine, `expectedRevision` guards, and undo/redo are unchanged.
-**When to use:** For PLAY-01/02/04.
-**Trade-offs:** The renderer branches on mode; the alternative (two controllers) would fork the commit authority — rejected.
+**Trade-offs:** The compositor must be UI-free (no Preact imports) so persistence/export can call it. This is a clean separation, not a cost.
 
-- **Hold mode:** new package export `staticStrokeSchedule.ts` (preferred over a `mode` param on `buildProgressiveStrokeSchedule` — the progressive distribution math is regression-locked and should not grow a branch). Hold mode materializes the full flattened stroke set on every destination frame, still passing each stroke through `transformRecordedStrokeForHeldPose` with the same deterministic `destinationSourceFrame` seeding → Script Motion variation preserved, zero motion = stable hold, same input = same output.
-- **Color override:** applied in the renderer at `flattenScriptStrokes` time — clone strokes, recolor paint strokes, pass erase strokes through untouched. The `RotoPaintScript` (`physicsPaintRotoScriptClipboard.ts`) and the durable library JSON (`physicsPaintRotoScriptLibrary.ts`) are never mutated (spec: no persisted overrides in script documents).
-- **UI:** extend `useRotoPlayScriptController.ts` + the PlayScript dialog/strip surfaces with mode selector, override swatch, cycle/repeat/∞ controls; status copy must show requested vs effective duration and the locked French label `Boucle raccourcie par le clip suivant` (never `clip bloquant`).
+**Composition order (per application frame, from spec Phase 4):**
+1. Resolve the document fallback: solid background or transparency.
+2. Resolve the fixed Background track clip at the frame (modulo source mapping, finite/infinite repeat, gaps, next-clip interruption).
+3. Composite the Background contribution beneath all internal Paint tracks.
+4. Resolve each participating internal Paint track.
+5. Apply the internal hide/solo truth table.
+6. Resolve real/generated/cached track frame content and linked Hold Loop occurrences.
+7. Composite Paint tracks in stable order.
+8. Apply internal track opacity and blend mode.
+9. Produce one flattened raster and composite revision.
+10. Publish/persist that raster through the existing parent Paint-layer boundary.
+11. Let the main editor apply parent transform, opacity, blend, outer ordering, motion blur, transitions, preview, and export exactly once.
+
+### Pattern 5: Linked source-frame references + modulo resolver (no duplicated assets)
+
+**What:** Hold and Background loops share one Loop Clip resolver: `sourceIndex = (applicationFrame - startFrame) mod cycleLength`, `requestedDuration = finite ? cycleLength × repeatCount : infinity`, `boundary = min(nextClipStart, parentEnd)`, `effectiveDuration = min(requestedDuration, boundary - startFrame)`. Repetitions reuse linked source-frame references; durable images are never duplicated.
+
+**When to use:** For all Hold and Background Loop Clips. The resolver already exists in `physicsPaintRotoPhysicalResolver.ts`/`physicsPaintRotoLoopClips.ts` — reuse it verbatim with `sourceKind` distinguishing `playscript-hold` from `imported-background`.
+
+**Trade-offs:** Effective duration is derived, not stored. Requested repeat count is authoritative and stored. This is the spec's explicit rule.
+
+### Pattern 6: Staging/commit persistence transaction
+
+**What:** Persist the v1.0 document through the existing staging/commit transaction pattern (`publishPhysicPaintCacheGeneration`/`settlePhysicPaintCacheGeneration` in `physicPaintPersistence.ts`). Undo snapshots metadata and asset references, never large PNG bytes.
+
+**When to use:** For all v1.0 document saves and undo/redo operations.
+
+**Trade-offs:** Slightly more ceremony than a direct write. Necessary: the spec's memory rule and the clean-break contract.
+
+### Pattern 7: Real-key/cache boundary per track
+
+**What:** Durable real keys and accepted local assets are authoritative; generated interpolation/caches are rebuildable. This boundary is preserved per track. Generated cache absence must never be confused with a missing real key.
+
+**When to use:** For all track-local Roto/PlayScript state.
+
+**Trade-offs:** Cache regeneration must produce the same flattened output (spec acceptance). The existing `_tryRegenerateGeneratedRotoCache` pattern already guarantees this.
+
+### Pattern 8: Clean-break document boundary
+
+**What:** v1.0.0 is a clean format break. Pre-v1.0 Paint data is rejected explicitly — no legacy schema reader, no converter, no compatibility shim, no old-project renderer, no second cache/history path. Every new v1.0 document starts with one default Paint track, one fixed Background track, and the configured fallback.
+
+**When to use:** Always — the spec's clean-break contract. The old one-track renderer and old Paint persistence path are deleted or made unreachable.
+
+**Trade-offs:** Existing Paint projects are discarded or recreated by the user. This is the locked spec decision (project convention: no backward compat for old projects).
 
 ## Data Flow
 
-### Audio preview (main → paint, read-only)
+### Per-frame flattened output (the core flow)
 
 ```
-audioStore mutation (main)                Paint playback (EFX Paint window)
-        ↓                                          ↓
-revisioned context builder          playbackTick / start / stop / seek
-(physicPaintBridge.ts)                       ↓
-        ↓ emitTo                        resolveAudioCuesAtFrame(cursor, fps)
-'physic-paint:audio-preview-context'         ↓
-        ↓                             efxPaintAudioPreviewEngine
-revision guard (drop stale)                 ↓
-        ↓                             own AudioContext: schedule all cues once
-applied context signal                monitoring toggle → master gain only
-```
-
-### Hold PlayScript with Loop Clip (commit)
-
-```
-Scripts panel (mode=hold, cycle=N, repeat=R, colorOverride?)
+Application frame F
         ↓
-useRotoPlayScriptController → createRotoPlayScriptController.confirm()
-        ↓ requestAuthority (unchanged)
-renderRotoPlayScriptFrames(mode:'hold', colorOverride)   ← staticStrokeSchedule + recolor clone
-        ↓ staged N frames (source cycle only — NOT N×R)
+efxPaintCompositor.compositeFrame(document, F)
+        ↓
+1. document fallback (solid | transparent)
+        ↓
+2. Background track: resolve clip at F
+   (modulo source mapping, finite/infinite repeat, gaps, next-clip interruption)
+        ↓
+3. composite Background beneath Paint tracks
+        ↓
+4. resolve each participating Paint track
+        ↓
+5. hide/solo truth table (no solo → all visible; solo → visible+soloed; hide wins)
+        ↓
+6. per-track real/generated/cached content + linked Hold Loop occurrences
+        ↓
+7. composite Paint tracks in stable order
+        ↓
+8. per-track opacity + blend mode (blendModeToCompositeOp)
+        ↓
+9. ONE flattened raster + compositeRevision
+        ↓
+10. publish through existing parent Paint-layer boundary
+    (physicPaintStore.getFrame(layerId, F) — UNCHANGED consumer contract)
+        ↓
+11. main editor composites parent layer exactly once with outer stack
+```
+
+### Save/reopen (v1.0 document)
+
+```
+Save:
+  efxPaintStore.toMceDocument() → staging (publishPhysicPaintCacheGeneration)
+    → settlePhysicPaintCacheGeneration → .mce v1.0 document + PNG sidecars
+  (projectStore.saveProject: savePaintData → savePhysicPaintDataWithProjectWrite)
+
+Open:
+  projectStore.openProject → loadPhysicPaintData(projectRoot, outputs)
+    → if pre-v1.0 Paint data: FAIL EXPLICITLY (no partial mutation, no legacy renderer)
+    → else: parse v1.0 document → efxPaintStore.loadFromMceDocument
+```
+
+### Async PlayScript/Reveal commit (track-scoped)
+
+```
+Studio action (active track T)
+        ↓
+requestAuthority({ layerId, documentRevision, trackId, trackRevision })
+        ↓ (revalidate parent + document + track revision)
+render staged frames (track-local)
+        ↓
 commit(publication, expectedRevision) → finalizeProposal (single authority)
-        ↓ semantic delta: play-script-hold { sourceKeyIds[N], loopClip{repeat} }
-durable document: N real keys + 1 loop clip → revision bump → undo snapshot
         ↓
-projectPhysicPaintRotoPhysicalTimeline: loop occurrences projected to
-min(start + N×R, nextClipStart, capacity), half-open
+semantic delta on track T → documentRevision++ → compositeRevision++
         ↓
-WorkflowStrip filmstrip capsule: [N source cells][hatched ×R band][Cycle 5f × 5 = 25f]
+undo snapshot (metadata + asset refs, NOT PNG bytes)
 ```
+
+### Loop resolution (Background clip)
+
+```
+Clip: start=0, cycle=5 images, repeat=3
+cycleLength = 5
+requestedDuration = 5 × 3 = 15
+boundary = min(nextClipStart=15, parentEnd) = 15
+effectiveDuration = min(15, 15 - 0) = 15
+interval = [0, 15)  →  visible frames 0–14
+sourceIndex = (F - 0) mod 5
+```
+
+## Scaling Considerations
+
+Not user-count scaling (single-user desktop); the real constraints are frame counts, track count, and asset weight.
+
+| Concern | Current behavior | v1.0.0 impact | Mitigation |
+|---------|------------------|---------------|------------|
+| Track count | n/a (one flat frame map per layer) | N internal tracks per document | Stable IDs + `layerId → trackId → frame` maps; track CRUD is O(tracks) not O(frames). No per-track render loop in the main editor. |
+| Cache footprint | PNG sidecars per real key; compression deferred | Track-local caches multiply by track count; loop occurrences add ZERO sidecars | Reuse the real-key/cache boundary per track; occurrences reuse source payloads. Revisit compression separately. |
+| Composite cost | One parent-layer composite per frame | One internal composite (N tracks) + one parent composite | The internal compositor is a single Canvas 2D pass; per-track cache keys include track revision + composition dependencies so unchanged tracks skip re-composite. |
+| Async commit size | Bounded by `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600` | Hold cycle bounded by cycle length, NOT requested duration | Enforce cycle-length capacity check at authority time; repeats are free (linked refs). |
+| Bundle size | entry chunk near 1100 kB budget | New `efx-paint/` domain adds code | Keep the compositor UI-free and the document model pure; the 1100 kB budget + production bundle guard remain the correctness gate. |
+| Undo memory | Metadata + asset refs (no PNG bytes) | Track-scoped undo snapshots | Reference-based history per track; never raster-byte snapshots. |
+
+### Scaling Priorities
+
+1. **First bottleneck:** composite cost with many tracks. Fix: per-track cache keys + skip unchanged tracks (the spec's "track cache key includes track revision and composition dependencies").
+2. **Second bottleneck:** cache footprint with many tracks × many frames. Fix: loop occurrences reuse source payloads (zero sidecars); revisit PNG compression separately.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Per-frame audio position correction
+### Anti-Pattern 1: `Sequence.frameTracks` / internal tracks as main-editor rows
 
-**What people do:** Send `seek` commands from the paint cursor to the audio engine every frame tick.
-**Why it's wrong:** Event latency jitter becomes audible drift/stutter; it also fights the AudioContext clock, which is the only accurate timebase.
-**Do this instead:** Schedule the whole cue set once per play/seek against `AudioContext.currentTime` (existing `playDelayed` pattern); the visual cursor is the thing that drifts, and it already chases wall-clock.
+**What people do:** Add internal tracks to the main-editor sequence/timeline so they're visible in the main window.
+**Why it's wrong:** Becomes an unrelated main-editor rewrite; can alter duration, outer layers, preview, and export. Explicitly forbidden by the spec.
+**Do this instead:** Store every internal track only inside the parent Paint layer's EFX Paint document. The main editor sees one Paint layer result.
 
-### Anti-Pattern 2: Loop occurrences as materialized frames or cache entries
+### Anti-Pattern 2: Direct main-renderer iteration over internal tracks
 
-**What people do:** Expand `5f × 5` into 25 staged frames at commit time "so the rest of the pipeline doesn't change."
-**Why it's wrong:** Violates the locked spec (no duplicated durable assets), breaks "edit source → all occurrences update," inflates the cache/sidecar footprint, and makes repeat-count edits a re-render.
-**Do this instead:** Durable loop clip + modulo resolution at projection/render time; occurrences reuse source payloads.
+**What people do:** Have `previewRenderer.renderFrame` loop over internal tracks to composite them.
+**Why it's wrong:** Breaks the one-flattened-result contract; the main renderer would need to know internal track semantics, hide/solo, and composition order.
+**Do this instead:** The internal compositor produces one flattened raster; the main renderer consumes it via the existing parent-layer boundary (`resolvePhysicPaintFrameSource`/`getFrame`).
 
-### Anti-Pattern 3: Importing main-window audio singletons into the paint window
+### Anti-Pattern 3: Duplicated durable assets for loop repetitions
 
-**What people do:** `import { audioEngine } from '../../../lib/audioEngine'` inside the paint surface and call it directly.
-**Why it's wrong:** Both windows load the same bundle but have separate JS contexts; bypassing the bridge loses the revision guard and the read-only contract, and invites doubled monitoring.
-**Do this instead:** Bridge-carried context payload + paint-local engine in `components/physic-paint/audio/`; keep `lib/audioEngine.ts` main-window-only.
+**What people do:** Expand `5f × 3` into 15 staged frames "so the rest of the pipeline doesn't change."
+**Why it's wrong:** Violates the locked spec (no duplicated durable images), breaks "edit source → all occurrences update," inflates cache/sidecar footprint, and makes repeat-count edits a re-render.
+**Do this instead:** Linked source-frame references + modulo resolver; occurrences reuse source payloads.
 
-### Anti-Pattern 4: Mutating the progressive schedule module for hold mode
+### Anti-Pattern 4: Double-applied parent opacity/blend
 
-**What people do:** Add `if (mode === 'hold')` branches inside `buildProgressiveStrokeSchedule`/`getProgressiveFrameStrokes`.
-**Why it's wrong:** That module is regression-locked progressive behavior (package-level tests); branching it risks the spec stop condition "Progressive PlayScript output changes unexpectedly."
-**Do this instead:** Separate `staticStrokeSchedule.ts` with its own tests; add an equivalence test asserting default progressive output is unchanged.
+**What people do:** Copy parent layer opacity/blend into internal tracks "for consistency."
+**Why it's wrong:** The parent opacity/blend is applied once by the main editor after flattening; copying it internally double-applies the visual effect.
+**Do this instead:** Internal track opacity/blend applied once inside EFX Paint; parent opacity/blend applied once by the main editor. Never copied.
 
-### Anti-Pattern 5: Timing-hack hydration or warning-filter build hygiene
+### Anti-Pattern 5: Legacy one-track schema or renderer remains reachable
 
-**What people do:** `setTimeout`/polling to fix Scripts hydration; warning filters or fake lazy imports to satisfy Vite's 500 kB default.
-**Why it's wrong:** Both are explicitly forbidden by the locked spec; they mask races and invite silent bundle growth.
-**Do this instead:** Consume the exact authoritative project-context event (existing `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` flow); set `chunkSizeWarningLimit: 1100` with documented desktop rationale and correct only proven-ineffective mixed imports, preserving Tauri/browser runtime guards and cycle-breaking dynamic imports involving stores/bridge modules.
+**What people do:** Keep the old Paint persistence path "just in case" or add a best-effort converter.
+**Why it's wrong:** Unsupported old projects can enter a partially compatible state and force permanent dual maintenance. Explicitly forbidden by the clean-break contract.
+**Do this instead:** Delete or make unreachable the old one-track renderer and old Paint persistence path; reject pre-v1.0 Paint data explicitly.
+
+### Anti-Pattern 6: Track identity by array position
+
+**What people do:** Use `tracks[index]` as the track address.
+**Why it's wrong:** Reorder/history/cache corruption — the spec's risk register lists this as a data-corruption risk.
+**Do this instead:** Stable IDs everywhere; reorder changes compositor order but not identity; duplicate creates fresh identities.
+
+### Anti-Pattern 7: Two composition paths (Studio vs flattened)
+
+**What people do:** A fast Studio preview path and a separate flattened-output path.
+**Why it's wrong:** Studio and parent flattened output differ — a user-visible output mismatch and a spec stop condition.
+**Do this instead:** One shared internal composition path for Studio preview and flattened output.
+
+### Anti-Pattern 8: Photo/reference track leaking into output
+
+**What people do:** Let reference visibility automatically enter the flattened output.
+**Why it's wrong:** Reference-only photo pixels leak into output — a spec stop condition.
+**Do this instead:** Explicit source mode (`reference-only`/`reveal-source`/`masked-transform-source`); reference visibility never automatically enters flattened output.
 
 ## Integration Points (new vs modified, explicit)
 
@@ -249,65 +379,69 @@ WorkflowStrip filmstrip capsule: [N source cells][hatched ×R band][Cycle 5f × 
 
 | Boundary | Communication | New/Modified | Notes |
 |----------|---------------|--------------|-------|
-| main `audioStore` → paint window | Tauri event `physic-paint:audio-preview-context` (revisioned) + launch payload | **New** | Follows `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` emission pattern (physicPaintBridge.ts ~827) |
-| paint playback → audio preview | ports-style callbacks on `useRotoCachedPlayback` (start/stop/seek/loop) | **Modified** | No direct store imports in the hook; keep the 38.1 signals-boundary discipline |
-| paint window close → preview engine | Studio close path → `dispose()` | **New** | Cleanup test: no leaked AudioContext, no playing sources |
-| Scripts UI → PlayScript controller | extended ports (`applicationMode`, `colorOverride`, loop params) | **Modified** | Controller/commit authority unchanged |
-| renderer → package animation | `staticStrokeSchedule.ts` export via `@efxlab/efx-physic-paint/animation` alias | **New** | Alias already exists in `app/vite.config.ts` resolve.alias |
-| loop clips → physical document | new durable member + parsers + revision | **Modified** | `.mce` schema bump; clean break (no legacy migration per project convention) |
-| loop clips → timeline strip | `projectPhysicPaintRotoPhysicalTimeline` cell projection → `useRotoTimelineModel` → `PhysicsPaintWorkflowStrip` capsule | **Modified** | Filmstrip rendering is view-only; resolution stays in the resolver |
-| release preflight → icons | existing inline node validation in `scripts/macos-release.sh` | **Unmodified** | Regenerate `app/src-tauri/icons/*` via `pnpm tauri icon SPECS/efxmotioneditor-icon-2.png`; preflight already independent of SPECS |
-| build seam → chunk budget | `app/src/viteBuild.test.ts` extended to assert resolved `chunkSizeWarningLimit === 1100` | **Modified** | Export a resolved-config helper from `vite.config.ts`; no hash/count-dependent assertions |
+| parent Paint layer → EFX Paint document | `EfxPaintDocument` owned by `parentLayerId`; persisted in `.mce` v1.0 | **New** | One document per parent layer; clean-break rejection of pre-v1.0 data |
+| EFX Paint document → internal compositor | `efxPaintCompositor.compositeFrame(document, F)` → one flattened raster | **New** | One shared path for Studio preview and flattened output |
+| internal compositor → main editor | existing parent-layer boundary (`physicPaintStore.getFrame(layerId, F)`) | **Unmodified** | Main renderer never iterates internal tracks |
+| Studio surface → track-local stores | signals + `finalizeProposal` single authority | **Modified** | `layerId → trackId → frame` addressing; parent/document/track revision revalidation |
+| async PlayScript/Reveal → document | bridge messages with `documentRevision` + `trackId` + `trackRevision` | **Modified** | Stale work fails closed |
+| Background track → Loop Clip resolver | `sourceKind: 'imported-background'` (reuse `physicsPaintRotoLoopClips.ts`) | **Modified** | Same resolver as Hold clips; no second scheduler |
+| photo/reference track → mask compositor | source ref + mode; Reveal = source pixels + Paint/PlayScript coverage alpha | **New** | Reference visibility never leaks into output |
+| audio preview → multi-track playback | reuse v0.9.0 Phase 41 (`efxPaintAudioPreview*`) | **Unmodified** | All internal tracks share one application-frame cursor |
+| persistence → `.mce` v1.0 | `physicPaintPersistence.ts` staging/commit transaction | **Modified** | Clean break; pre-v1.0 data fails explicitly |
+| multi-row timeline → track model | `PhysicsPaintWorkflowStrip.tsx` + `useRotoTimelineModel.ts` | **Modified** | N Paint rows + one Background row + one photo/reference row |
+
+### External Services
+
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| Image import (Background still/sequence, photo source) | Reuse `imageStore` LRU pool + `importImages` IPC + `efxasset://` transport | No new dependency; imported source assets remain local and authoritative after save/reopen |
+| Audio preview | Reuse Phase 41 `efxPaintAudioPreviewStore`/`efxPaintAudioMonitor`/`efxPaintAudioOwnership` | Read-only revisioned context; no doubled playback engine |
 
 ## Suggested Build Order (answers question d)
 
 ```
-Phase 0  Scripts auto-hydration quick fix        [blocking; touches bridge context flow]
-Phase 1  Icon regeneration + build hygiene       [independent of all feature code]
-Phase 2  Audio preview bridge                    [needs only Patterns 1+2; independent of PlayScript]
-Phase 3  PlayScript controls (mode + color)      [renderer/controller; no model change yet]
-Phase 4  Hold renderer + LoopClip model          [deepest change; needs Phase 3's hold mode]
-Phase 5  Integrated UAT + signed release         [all gates green]
+Phase 1  New EFX Paint document + clean cutover        [document model, parsers, clean-break rejection]
+Phase 2  Track-local Paint/Roto/PlayScript + caches     [layerId → trackId → frame addressing]
+Phase 3  Internal multi-track timeline + controls       [multi-row strip, filmstrip capsules]
+Phase 4  Internal compositor + flattened parent result  [one shared composition path]
+Phase 5  Fixed Background track + imported Loop Clips    [reuse Loop Clip resolver]
+Phase 6  Photo/reference track                          [source ref + mode + exclusion]
+Phase 7  Read-only audio preview                        [reuse Phase 41 as-is]
+Phase 8  Shared mask compositor + Reveal               [offscreen source-plus-mask]
+Phase 9  Integrated v1.0.0 acceptance                   [automated gates + native UAT]
 ```
 
 **Ordering rationale:**
-- **0 before everything:** locked by spec; also de-risks the bridge project-context event path that Phase 2's audio context emitter imitates.
-- **1 early and parallel-safe:** touches only `app/src-tauri/icons/`, `vite.config.ts`, `viteBuild.test.ts` — zero overlap with feature code; gets release-blocking surfaces validated while features proceed.
-- **2 before 3/4:** audio is self-contained (bridge + new engine + one shared pure module); landing it before the Roto model churn keeps UAT surfaces separable and matches the milestone schedule (08-07→08-12 audio, 08-13→08-17 controls, 08-18→08-23 hold/loop).
-- **3 before 4:** hold-mode rendering and color override are renderer-level and testable against real-key commits alone; LoopClip persistence/resolution (4) then builds on proven hold output instead of landing both halves of static/hold at once.
-- **Hard dependency:** Phase 4's filmstrip capsule needs the resolver projection from the same phase — do not split capsule UI into Phase 3.
-
-## Scaling Considerations
-
-Not user-count scaling (single-user desktop); the real constraints are frame counts and asset weight:
-
-| Concern | Current behavior | v0.9.0 impact | Mitigation |
-|---------|------------------|---------------|------------|
-| Roto cache footprint | PNG sidecars per real key; compression deferred from v0.8.0 | Loop clips add zero sidecars — this is the spec's point | Keep occurrences payload-free; revisit compression separately |
-| Audio decode cost in paint window | n/a | One decode per track per session | Decode lazily on first play, not at launch; non-blocking warning on missing assets |
-| Hold commit size | Progressive commits bounded by `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600` | Hold cycle bounded by cycle length, NOT requested duration | Enforce cycle-length capacity check at authority time; repeats are free |
-| Bundle size | entry chunk near warning threshold | 1100 budget documented | Fixed budget + review before raising; production bundle guard remains the correctness gate |
+- **1 before everything:** the document model and clean-break rejection are the foundation; every later phase addresses state inside the document. Deleting the legacy path first prevents any new feature from accidentally depending on it.
+- **2 before 3:** the multi-row timeline shows frame keys/caches on the correct row — it needs track-local state to exist first.
+- **3 before 4:** the compositor consumes track-local state and the hide/solo/opacity/blend controls that the timeline exposes.
+- **4 before 5/6/8:** the flattened-result contract is the milestone's keystone; Background (5), photo/reference (6), and Reveal (8) all feed the same compositor. Landing the compositor first keeps each later track type a clean addition.
+- **5 before 6:** the Background track and photo/reference track are distinct, but the Background track's Loop Clip resolver is the same machinery Reveal's source handling builds on.
+- **7 is independent:** audio preview reuses Phase 41 as-is; it can land any time after the shared application-frame cursor exists (Phase 3).
+- **8 last:** Reveal layers on the compositor (4), the photo/reference track (6), and Paint/PlayScript coverage (2). It is the deepest integration.
+- **Hard dependency:** Phase 4's flattened output must be the ONLY path — do not build a Studio-only preview path in Phase 3 that Phase 4 has to replace.
 
 ## Sources
 
-All findings from direct repository inspection (HIGH confidence):
+All findings from direct repository inspection + the locked spec (HIGH confidence):
 
-- `app/src/lib/physicPaintBridge.ts` — event constants, launch context construction (line 1087), project-context emission (~827), seek-frame listen branch (~966), request/result listener patterns
-- `app/src/types/physicPaint.ts` — `PhysicPaintLaunchContext`, `PhysicPaintRotoAuthorityResult` (`canonicalStart`, `layerEndExclusive`, `physicalRevision`), `PhysicPaintRenderedFrame.appFrame` documented as editor timeline frame, `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600`
-- `app/src/lib/audioEngine.ts` — Web Audio one-shot source pattern, `decode`, `play`/`playDelayed` fade scheduling
-- `app/src/lib/playbackEngine.ts` lines 192–224 — the frame→audio cue math to extract
-- `app/src/stores/audioStore.ts`, `app/src/types/audio.ts` — `AudioTrack` authoritative field set (offsetFrame/inFrame/outFrame/slipOffset/volume/muted/fades/order)
-- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts` — canonical keyId/appFrame records, `PhysicPaintRotoPhysicalState/Document` (the loop-clip host), revision builder, fail-closed parsers
-- `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts` — commit ports, phase machine, `expectedRevision` publication
-- `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.ts` — `RotoPlayScriptRenderInput`, engine staging, `flattenScriptStrokes` (recolor seam)
-- `packages/efx-physic-paint/src/animation/progressiveStrokeSchedule.ts`, `recordedStrokeMotion.ts` — progressive schedule + deterministic `transformRecordedStrokeForHeldPose`
-- `app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts` — paint playback surface (`playbackTick`, start/stop/loop/fps)
-- `app/src/lib/physicPaintPersistence.ts` + `app/src/types/project.ts` — `roto_physical` MCE document + sidecar validation
-- `app/src-tauri/src/lib.rs:125` — paint window creation; `app/src-tauri/tauri.conf.json` — exact 5-entry `bundle.icon` array
-- `scripts/macos-release.sh` — preflight icon validation (~117–136: exact array, non-empty, ICNS magic) and packaged-app checks (~306–323: `CFBundleIconFile`, bundled ICNS)
-- `app/vite.config.ts` — build config, production bundle guard, `@efxlab/efx-physic-paint/animation` alias; `app/src/viteBuild.test.ts` — the production-build test seam
-- `SPECS/milestone-v0.9.0-plan.md` — locked ownership boundaries, stop conditions, delivery schedule
+- `SPECS/milestone-v1.0.0-plan.md` — architectural invariant, ownership boundaries, locked MVP scope, canonical document concept, identity/asset/history rules, clean-break boundary, composition order, loop resolution formula, forbidden sequence-level assumptions, risk register, 9-phase structure
+- `app/src/stores/physicPaintStore.ts` — `Map<layerId, Map<number, T>>` pattern, counter-signal + lease-authority pattern, `toMceOutputs`/`loadFromMceOutputs`, `_rotoPhysicalStructuralCache` signal graph
+- `app/src/stores/paintStore.ts` — single-track paint store, `paintVersion` signal, `pushAction` undo/redo
+- `app/src/lib/previewRenderer.ts` — `renderFrame` signature, `resolvePhysicPaintFrameSource`, `collectPhysicPaintFrameSources`, `getPreviewPhysicPaintFrameCacheKey`, `blendModeToCompositeOp` (the parent-layer boundary the flattened raster flows through)
+- `app/src/lib/physicPaintBridge.ts` — event constants, launch context, request/result listener patterns, authority request/result
+- `app/src/lib/physicPaintPersistence.ts` — staging/commit transaction (`publishPhysicPaintCacheGeneration`/`settlePhysicPaintCacheGeneration`), `stableSegment` hashing
+- `app/src/lib/paintPersistence.ts` — sidecar JSON at `paint/{layerId}/frame-NNN.json`
+- `app/src/stores/projectStore.ts` — save/open flow (`savePaintData` → `savePhysicPaintDataWithProjectWrite`; `loadPhysicPaintData` → `loadPaintData`)
+- `app/src/types/project.ts` — `.mce` v15 format, `physic_paint_outputs`, `McePhysicPaintRotoPhysicalDocument`, `McePhysicPaintRotoLoopClip`
+- `app/src/types/physicPaint.ts` — `PhysicPaintRotoPhysicalDocumentPayload`, `PhysicPaintLaunchContext`, `EfxPaintAudioPreviewContext`
+- `app/src/types/paint.ts`, `app/src/types/layer.ts` — `PaintFrame`, `LayerType` (`'paint'`/`'physic-paint'`), `BlendMode`
+- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts` — canonical keyId/appFrame records, revision builder, fail-closed parsers
+- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` + `physicsPaintRotoLoopClips.ts` — Loop Clip resolver (modulo, finite/infinite, next-clip interruption, half-open intervals)
+- `app/src/components/physic-paint/audio/efxPaintAudioPreviewStore.ts` + `efxPaintAudioMonitor.ts` + `efxPaintAudioOwnership.ts` — v0.9.0 Phase 41 read-only audio preview (reuse as-is)
+- `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `hooks/useRotoTimelineModel.ts` — Canvas 2D Roto strip + filmstrip capsule (multi-row extension point)
+- `app/src/stores/imageStore.ts` — LRU image/sequence pool (Background/photo import reuse)
 
 ---
-*Architecture research for: EFX Motion Editor v0.9.0 — PlayScript workflow, EFX Paint audio preview, macOS identity*
-*Researched: 2026-08-03*
+*Architecture research for: EFX Motion Editor v1.0.0 — multi-track EFX Paint document, internal compositor, Background track, photo/reference track, Reveal mask compositor*
+*Researched: 2026-08-23*

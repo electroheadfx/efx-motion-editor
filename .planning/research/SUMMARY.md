@@ -1,178 +1,188 @@
 # Project Research Summary
 
-**Project:** EFX-Motion Editor — Milestone v0.9.0 (PlayScript Workflow, EFX Paint Audio Preview, macOS Identity)
-**Domain:** Tauri 2.0 + Preact Signals macOS desktop stop-motion editor — feature additions on a shipped, signed product
-**Researched:** 2026-08-03
+**Project:** EFX Motion Editor — milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal)
+**Domain:** macOS stop-motion editor (Tauri 2.0 + Preact Signals monorepo) — multi-track internal EFX Paint frame documents, deterministic internal compositor, fixed Background track with Loop Clips, photo/reference track, shared mask compositor + Reveal, read-only audio preview
+**Researched:** 2026-08-23
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Milestone v0.9.0 adds six spec-locked features to the shipped v0.8.1 app: a blocking Scripts auto-hydration fix, a legible macOS icon, Vite build hygiene, a read-only cross-window audio preview inside the standalone EFX Paint window, PlayScript progressive-vs-static/hold application modes with application-time color override, and linked Hold Loop Clips with a filmstrip capsule timeline visualization. Every capability maps onto infrastructure already in the repo — the `efxasset://` custom protocol, the existing Web Audio engine, the approved `physic-paint:*` event bridge with native seek-frame sync (G-01), `pnpm tauri icon`, and the canonical Roto physical-frame model from Phase 36.14. **Zero new runtime or dev dependencies are required**; the only config changes are a one-word CSP `connect-src` grant, a one-line `chunkSizeWarningLimit: 1100`, and optional audio MIME entries.
+Milestone v1.0.0 turns one parent Paint layer into a complete multi-track frame animation document. The locked architectural invariant is: **one parent Paint layer → one EFX Paint document → many internal Paint frame tracks → one flattened frame result delivered to the unchanged main-editor compositor.** The main editor never iterates internal tracks; it composites the parent raster exactly once with the unchanged outer layer stack. All multi-track editing happens inside the EFX Paint window.
 
-The recommended approach is thin adapters over proven paths, never parallel implementations: a shared pure frame→audio cue resolver extracted from `playbackEngine.ts` (bit-identical math in both windows), a paint-window-local audio preview engine fed by a revisioned read-only context payload over the existing bridge, hold mode as a new `staticStrokeSchedule.ts` package export (never branching the regression-locked progressive module), and Loop Clips as a durable member of the canonical physical model resolved by modulo indexing — repetitions are references, never materialized frames.
+The research confirms the spec is implementable on existing machinery with **zero new dependencies**. Every new capability is a pure TypeScript data-model + Canvas 2D + existing signal-store extension of proven code: the internal compositor is a second Canvas 2D pass reusing `previewRenderer.ts`'s `blendModeToCompositeOp`; track-local state extends the `Map<layerId, Map<number, T>>` store pattern to `Map<layerId, Map<trackId, Map<number, T>>>`; Background Loop Clips reuse the existing Loop Clip resolver verbatim; the photo/reference track is a data-model mode flag; audio preview reuses v0.9.0 Phase 41 as-is; Reveal is offscreen `globalCompositeOperation` mask compositing. The only genuinely new work is the v1.0.0 `.mce` document schema (a clean break with explicit pre-v1.0 rejection) and the multi-row timeline strip.
 
-The key risks are all named and mitigated: the hydration race must be fixed by explicit-payload handoff (any timer in the diff is an automatic rejection); audio preview requires a locked frame-mapping truth table and a single audible authority to prevent doubled engines and drift; color override must recolor clones only (deep-frozen source scripts make mutation either throw or silently no-op); loop intervals must be half-open with one resolver owning effective duration; and the whole milestone is guarded against the documented project failure pattern of adapter over-reach (Phases 27–32) by spec-locked ownership boundaries.
+The key risks are all data-corruption and output-parity traps, not ecosystem unknowns: track identity via array position, stale async commits to the wrong track, track-local cache keys missing `trackId`, parent opacity/blend double-application, Studio/main/export divergence, and loop off-by-one seams. Every risk has a proven prevention pattern already in the repo (stable IDs, parent/document/track revision authority, per-track cache keys, one shared composition path, half-open loop intervals). The 9-phase structure in the spec is confirmed as the correct build order, with Phase 1 (clean break) as the mandatory foundation and Phase 4 (compositor) as the keystone.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependencies. All features reuse existing, verified infrastructure (see STACK.md).
+**Zero new runtime or dev dependencies.** All existing dependencies are on caret ranges that already resolve to current versions; no bump is required. Vite stays pinned at 5.4.21 (the v0.9.0 decision — `@efxlab/motion-canvas-vite-plugin` 4.0.0 interop is delicately patched). The only "new" work is the v1.0.0 document schema (Rust serde + PNG sidecar, same pattern as `physicPaintPersistence.ts`) and the multi-row timeline strip (extension of the existing Canvas 2D Roto strip).
 
-**Core technologies:**
-- Web Audio API via existing `app/src/lib/audioEngine.ts`: paint-window audio preview — already decodes every accepted import format in WKWebView; `AudioContext.currentTime` is the only drift-free clock (HTMLAudioElement rejected).
-- Existing `efxasset://` custom protocol: audio byte transport to the second window — registered Builder-level so it already applies app-wide; requires only a `connect-src` CSP grant (v0.8.1 `img-src data:` precedent). Bytes never cross IPC.
-- Existing `physic-paint:*` Tauri event bridge: revisioned audio context handoff — the G-01 `physic-paint:seek-frame` listen branch is the regression-locked precedent for this exact channel.
-- `@tauri-apps/cli` `tauri icon` (current ^2.10.0): icon regeneration — accepts the 794×794 alpha source directly; no mandatory 1024 source; output matches the tracked 5-entry `bundle.icon` array verbatim.
-- Vite `build.chunkSizeWarningLimit: 1100`: desktop bundle budget — config-only; `manualChunks` and warning filters are spec-excluded anti-goals.
-- Plain TypeScript + Canvas 2D for Hold Loop Clips: no XState (Phase 36.8 decision), no schema library, no UI library — extends the existing Roto strip renderer.
+**Core technologies (all existing, all reused):**
+- **Canvas 2D compositing** (`previewRenderer.ts` + `blendModeToCompositeOp`): the internal multi-track compositor is a second self-contained pass producing one flattened parent raster per frame. Guarantees Studio/preview/export parity because all three share one compositing path.
+- **Preact Signals store pattern** (`physicPaintStore.ts`, `paintVersion`/`rotoPhysicalRevision` counters): track-local state adds a `trackId` key level; the counter-signal + lease-authority pattern is unchanged.
+- **Loop Clip resolver** (`physicsPaintRotoPhysicalResolver.ts` / `physicsPaintRotoLoopClips.ts`): reuse verbatim for Background clips (`sourceKind: 'imported-background'`) and Hold clips (`sourceKind: 'playscript-hold'`). Modulo source mapping, finite repeat 1..∞, next-clip interruption, half-open intervals.
+- **`imageStore` LRU pool + Rust image pipeline** (`importImages` IPC, `assetUrl`): imported still/sequence Background clips and photo source.
+- **Web Audio read-only preview** (v0.9.0 Phase 41 `efxPaintAudioPreviewStore`/`efxPaintAudioMonitor`/`efxPaintAudioOwnership`): reuse as-is; the spec's audio requirements are a subset of the Phase 41 contract.
+- **Canvas 2D offscreen mask compositing** (`globalCompositeOperation` `destination-in`/`source-in`/`source-atop`): shared mask compositor + Reveal; same technique already used for eraser/onion skin.
+- **Rust serde persistence** (`.mce` format): v1.0.0 clean-break document schema with explicit pre-v1.0 rejection, no migration shim.
+- **Canvas 2D multi-row timeline strip** (`PhysicsPaintWorkflowStrip.tsx` pattern): N Paint rows + one fixed Background row + one photo/reference row with the same renderer.
+
+**What NOT to use:** any new compositing/scene-graph library (PixiJS/Konva), any new state-management library (XState/Zustand), any new timeline/UI library, any new audio library, any new image-decoding library, any new mask/alpha library, any new schema/validation library, any new undo library, any new DnD library, Vite 6/7/8, new Rust crates, or a second audio engine. Each would fork a proven path and break parity.
 
 ### Expected Features
 
-All six spec-committed features are P1; the milestone is deliberately tight (see FEATURES.md).
+**Must have (table stakes):** versioned v1.0 document owned by one parent layer ID; track CRUD (add/rename/duplicate/delete/reorder); active track selection; per-track hide/solo; per-track opacity/blend; deterministic internal compositor → one flattened parent raster per frame; fixed Background track with imported still/sequence Loop Clips; Loop Clips (finite/infinite repeat, gaps, fallback); photo/reference track; Reveal via Paint/PlayScript coverage; read-only audio preview; filmstrip capsule timeline; save/reopen, undo/redo, clean-break legacy rejection, preview/export parity.
 
-**Must have (table stakes):**
-- Scripts auto-hydration fix — blocking prerequisite; root cause confirmed (stale launch-context getter reread); no setTimeout/polling/rAF hacks permitted.
-- Legible macOS app icon — Apple HIG full 16→1024 ladder, legibility verified at all sizes before packaging.
-- Desktop Vite build hygiene — 1100 kB budget + only provably-ineffective mixed-import fixes.
-- Audio synchronized to the local playhead — audio clock as master (Dragonframe pattern), never per-frame position chasing.
-- Session-local monitoring On/Off toggle — Resolve Shift+S precedent; never touches track mute or export.
-- Application-time color override — Photoshop tool-preset precedent; library JSON and thumbnails immutable.
-- Loop truncation by next clip with visible requested-vs-effective duration — locked French label `Boucle raccourcie par le clip suivant`; `clip bloquant` banned.
+**Should have (differentiators):** deterministic physical-frame Roto timeline per internal track; linked Hold Loop Clips with linked source-frame references (no duplicated assets); PlayScript progressive/static/hold application per track; Reveal through animated coverage; read-only cross-window audio preview; clean-break v1.0 format with explicit legacy rejection.
 
-**Should have (differentiators):**
-- Read-only cross-window audio preview — beyond every comparable tool (Dragonframe audio is same-process only).
-- Explicit progressive vs static/hold application modes — two-step authoring workflow no competitor offers at script level.
-- Linked Hold Loop Clips (cycle × repeat 1..∞) — Blender NLA linked-strip semantics + Dragonframe virtual-hold asset economy generalized to multi-frame cycles.
-- Filmstrip capsule visualization with cycle badges — makes requested-vs-effective duration legible at a glance.
-
-**Defer:**
-- Ping-pong loop mode — v0.9.x, after linked-loop resolution is proven.
-- Combined progressive-plus-hold scheduler — v0.9.x convenience; user applies two operations to adjacent ranges.
-- Multi-track internal Paint, Reveal masks — v1.0 scope, spec-excluded.
+**Defer (v2+):** multiple Background tracks; Background crossfades/transitions; nested track groups; track effects stacks; independent per-track transforms; multiple masks/vector masks/mask keyframes; advanced retiming; independent EFX Paint audio editing; online AI providers (v1.1 Codex+MMX AI is already on the roadmap).
 
 ### Architecture Approach
 
-Feature additions slot into the existing two-window architecture without new subsystems: main editor keeps sole authority over audio/project data; the EFX Paint window receives a revisioned, read-only audio preview context over the existing bridge and runs its own `AudioContext`; PlayScript mode/color enter exclusively through renderer input options with the commit path (authority → render → atomic commit) untouched; Loop Clips become a durable member of the canonical physical model beside real keys, with occurrences projected by modulo resolution and the filmstrip as a pure view of the resolver (see ARCHITECTURE.md).
+The invariant is locked: one parent Paint layer → one EFX Paint document → many internal Paint frame tracks → one flattened frame result delivered to the unchanged main-editor compositor. New code lives in a new `app/src/efx-paint/` domain folder (document model, compositor, background, photo-reference, mask) kept separate from the existing `physic-paint/` component tree. The main editor's `previewRenderer.ts` is unmodified — it consumes one flattened raster via the existing parent-layer boundary.
 
 **Major components:**
-1. `audioPlaybackResolver.ts` (NEW, `lib/`) — pure frame→per-track cue math extracted from `playbackEngine.ts:192-224`; bit-identical in both windows. The locked mapping: paint `appFrame` == main-editor global frame, so the four-level domain mapping collapses.
-2. `efxPaintAudioPreviewEngine.ts` + bridge + hook (NEW, `components/physic-paint/audio/`) — paint-local decode/schedule/seek/stop; revision guard drops stale contexts; dispose on window close; monitoring toggle gates master gain only.
-3. `staticStrokeSchedule.ts` (NEW, package `efx-physic-paint/animation/`) — hold-mode full-stroke-set schedule reusing deterministic `transformRecordedStrokeForHeldPose` seeding; progressive module untouched.
-4. `physicsPaintRotoLoopClip.ts` (NEW) + model/resolver/strip modifications — durable `{ clipId, startFrame, sourceKeyIds, repeat, revision }` records; half-open `[start, end)` resolution against next-clip/parent-end bounds; capsule rendering derives from the single resolver.
-5. `physicPaintBridge.ts` (MOD) — audio preview launch payload + revisioned emitter following the `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` pattern.
+1. `efxPaintStore.ts` + `efx-paint/document/` — the v1.0.0 document model, fail-closed parsers, revision builders, clean-break rejection.
+2. `efx-paint/compositor/` — the deterministic internal compositor (one shared path for Studio preview and flattened output), hide/solo truth table, track-revision-keyed cache.
+3. `efx-paint/background/` + `efx-paint/photo-reference/` + `efx-paint/mask/` — the three track types and the Reveal mask compositor.
+4. Modified `physicPaintStore.ts`/`paintStore.ts` — track-local addressing (`layerId → trackId → frame`).
+5. Modified `physicPaintBridge.ts` — document/track revisioned messages; async PlayScript/Reveal revalidate parent+document+track revision before commit.
+6. Modified `PhysicsPaintWorkflowStrip.tsx`/`useRotoTimelineModel.ts` — multi-row timeline with filmstrip capsules.
+7. Reused verbatim: Loop Clip resolver, Phase 41 audio, `imageStore`, `previewRenderer.ts` boundary.
+
+**Key patterns:** one parent layer → one document → many tracks → one flattened result (the invariant); track-local addressing; revision-based async authority (parent/document/track); one shared internal composition path; linked source-frame references + modulo resolver; staging/commit persistence transaction; real-key/cache boundary per track; clean-break document boundary.
 
 ### Critical Pitfalls
 
-(Top selections from PITFALLS.md — 12 critical + 8 moderate + 4 minor catalogued.)
-
-1. **Stale launch-context getter reread (hydration)** — pass the exact `updated` context payload from the bridge callback into the script-library update path; guard by context identity/generation; assert exactly one scan per authoritative context. Any timer in the Phase 0 diff is automatic rejection.
-2. **Two audio engines audible at once** — declare exactly one audible authority; gate main-window playback while paint monitoring is active; dispose sources/context on window close with a leak regression test.
-3. **Drift from clock mixing / frame-domain confusion** — lock the frame→audio truth table before implementation; schedule all cues once per play/seek against `AudioContext.currentTime`; never re-nudge per frame; restart (not rewind) on loop wrap.
-4. **Color override mutating deep-frozen source scripts** — recolor at clone time in `flattenScriptStrokes`; erase strokes exempt; byte-identical source JSON assertion; one shared recolor function for both modes.
-5. **Half-open interval off-by-one in Loop Clips** — one resolver owns effective-duration computation; badge and truncation label derive from it; truth-table tests cover exact-boundary, partial-cycle, 1-frame cycle, and next-clip move/remove re-expansion.
-6. **Scope creep via adapter over-reach** (the Phases 27–32 failure pattern) — enforce spec-locked ownership boundaries as review gates; phase file lists spanning more than two subsystems are a red flag.
+1. **Track identity via array position** — reorder/undo/cache/Reveal silently retarget to the wrong track. Avoid: stable `trackId` strings never rewritten by reorder; all maps `Map<layerId, Map<trackId, ...>>`; every cache key embeds `trackId`. (Phase 1/2)
+2. **Legacy one-track schema/renderer remains reachable** — a "temporary" compat branch becomes permanent dual maintenance. Avoid: delete or make unreachable the old one-track renderer and persistence path; reject pre-v1.0 data explicitly with a loud, testable failure. (Phase 1)
+3. **Stale async commit to wrong track** — an async PlayScript/Reveal/Background-import started on track A commits to track B after a switch. Avoid: async authority checks include parent + document + track revision; fail-closed on deleted track. (Phase 2)
+4. **Track-local cache keys missing `trackId` (and a single global `paintVersion`)** — cross-track cache pollution and over-invalidation. Avoid: every cache key embeds `trackId`; per-track `paintVersion` bump + subscribe keyed to active track. (Phase 2/4)
+5. **Parent opacity/blend double-applied** — the internal compositor bakes parent opacity/blend, then the main editor applies it again. Avoid: internal compositor produces a flat raster with internal track opacity/blend applied once in a locked order; parent applies opacity/blend exactly once. Contract test: parent 50% + internal 50% = 25%. (Phase 4)
+6. **Studio/main/export divergence** — three surfaces drift if the compositor is re-implemented per surface. Avoid: one shared internal composition path; one resolver owns Background effective-duration; pixel acceptance matrix is the gate. (Phase 4/5/8)
+7. **Loop next-clip interruption off-by-one** — seam frames overlap or gap. Avoid: lock half-open `[start, start + effectiveDuration)` intervals; truth-table tests before implementation; one resolver owns effective-duration. (Phase 5)
+8. **Reference photo leaks into output** — reference visibility accidentally enters flattened output. Avoid: explicit source mode (`reference-only`/`reveal-source`/`masked-transform-source`); exclusion tests. (Phase 6/8)
+9. **Scope creep via forbidden sequence-level assumptions** — the milestone grows into a main-editor rewrite. Avoid: enforce locked ownership boundaries as review gates; no `Sequence.frameTracks`, no main-editor rows for internal tracks, no direct main-renderer iteration. (All phases)
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure (mirrors the architecture build order, which all four research files converge on):
+The spec's 9-phase structure is confirmed as the correct build order. The research validates the ordering rationale and adds specific pitfalls each phase must avoid.
 
-### Phase 1: Scripts Auto-Hydration Fix (blocking)
-**Rationale:** Spec-locked prerequisite — the milestone cannot publish while Scripts need manual Refresh, and all PlayScript UI sits in the broken panel. Also de-risks the bridge project-context event path that the Phase 3 audio emitter imitates.
-**Delivers:** Explicit-payload context handoff, identity/generation guards, owned fail-before-fix regression test (exactly one scan, rows populate, `canSave === true`).
-**Addresses:** Table-stakes hydration; Pitfalls 1, 2.
-**Avoids:** Timing-hack fixes — any `setTimeout`/poll in the diff is an automatic rejection.
+### Phase 1: New EFX Paint document and clean cutover
+**Rationale:** The document model and clean-break rejection are the foundation; every later phase addresses state inside the document. Deleting the legacy path first prevents any new feature from accidentally depending on it.
+**Delivers:** versioned v1.0 document, stable track IDs, one default Paint track + one fixed Background track, document revision, active track ID, explicit pre-v1.0 rejection.
+**Addresses:** versioned document, clean-break legacy rejection (FEATURES.md table stakes).
+**Avoids:** Pitfall 2 (legacy path reachable), Pitfall 1 (track identity model locked here).
 
-### Phase 2: macOS Icon Regeneration + Build Hygiene
-**Rationale:** Independent of all feature code (touches only `app/src-tauri/icons/`, `vite.config.ts`, `viteBuild.test.ts`, release preflight); gets release-blocking surfaces validated while features proceed. Parallel-safe with Phase 1.
-**Delivers:** Regenerated tracked icon set from the 794×794 source; preflight stays SPECS-independent; `chunkSizeWarningLimit: 1100` with documented rationale pinned by test; pre-change warning snapshot; only provably-ineffective mixed imports fixed.
-**Addresses:** Icon + build-hygiene table stakes; Pitfalls 10, 11, m3, m4.
-**Avoids:** Manual 1024 upscale; warning filters; `manualChunks`; touching the fail-closed `assertProductionBundle` guard.
+### Phase 2: Track-local Paint/Roto/PlayScript and caches
+**Rationale:** The multi-row timeline shows frame keys/caches on the correct row — it needs track-local state to exist first.
+**Delivers:** `layerId → trackId → frame` addressing, track-local frames/caches/revision/dirty state, shared Loop Clip resolver, track-aware invalidation, parent/document/track async authority.
+**Uses:** Preact Signals store pattern, Loop Clip resolver (STACK.md).
+**Implements:** track-local addressing + revision authority patterns (ARCHITECTURE.md).
+**Avoids:** Pitfall 1 (addressing), Pitfall 3 (stale async), Pitfall 4 (cache keys), Pitfall 5 (undo wrong track), Pitfall 9 (loop asset duplication), Pitfall 17 (raster bytes in undo).
 
-### Phase 3: EFX Paint Audio Preview + Monitoring Toggle
-**Rationale:** Self-contained (shared pure resolver + bridge + new paint-local engine); landing it before the Roto model churn keeps UAT surfaces separable and matches the milestone schedule.
-**Delivers:** `audioPlaybackResolver.ts` extraction (regression-locked against existing audio tests first), revisioned `physic-paint:audio-preview-context` event, paint-local engine with gesture-gated `AudioContext`, single-audible-authority gate, session-local toggle, CSP `connect-src` grant with contract test, close-cleanup leak test.
-**Addresses:** Audio preview differentiator + sync/toggle table stakes; Pitfalls 3, 4, 5, M4, M5, M7.
-**Avoids:** Per-frame position correction; importing main-window audio singletons into the paint window; persisting the toggle.
-**Entry artifact:** Locked frame→audio truth table (paint appFrame == global frame; per-track offset/trim/slip combinations) — written and tested before implementation.
+### Phase 3: Internal multi-track timeline and controls
+**Rationale:** The compositor consumes track-local state and the hide/solo/opacity/blend controls the timeline exposes.
+**Delivers:** multi-row strip, filmstrip capsules, track CRUD UI, active selection, hide/solo/opacity/blend controls, fixed Background row, distinct photo/reference/audio surfaces.
+**Uses:** Canvas 2D multi-row timeline strip (STACK.md).
+**Avoids:** Pitfall 12 (Background overlap/reorder), Pitfall M2 (active-track routing), Pitfall M8 (hide/solo truth table drift), minor pitfalls (banned `clip bloquant` term, requested/effective duration visibility).
 
-### Phase 4: PlayScript Application Modes + Color Override
-**Rationale:** Renderer/controller-level changes testable against real-key commits alone, before the LoopClip model lands. Interval/display conventions locked here so Phase 5's filmstrip and resolver share them.
-**Delivers:** `staticStrokeSchedule.ts` package export, mode selector + override swatch UI, clone-time recolor (erase-exempt, shared by both modes), progressive equivalence regression test, byte-identical source-script assertion.
-**Addresses:** Progressive/static modes + color override; Pitfall 7, M8, m1.
-**Avoids:** Branching the regression-locked progressive module; mutating frozen script documents; persisted overrides.
+### Phase 4: Internal compositor and flattened parent result
+**Rationale:** The flattened-result contract is the milestone's keystone; Background (5), photo/reference (6), and Reveal (8) all feed the same compositor. Landing it first keeps each later track type a clean addition. **Hard dependency:** Phase 4's flattened output must be the ONLY path — do not build a Studio-only preview path in Phase 3 that Phase 4 has to replace.
+**Delivers:** one shared internal composition path, hide/solo truth table, per-track opacity/blend in stable order, one flattened raster + composite revision, pixel acceptance matrix.
+**Uses:** Canvas 2D compositing + `blendModeToCompositeOp` (STACK.md).
+**Implements:** `efx-paint/compositor/` (ARCHITECTURE.md).
+**Avoids:** Pitfall 6 (parent opacity/blend double-apply), Pitfall 7 (premultiplied alpha), Pitfall 8 (Studio/main/export divergence), Pitfall 13 (Background gaps differ), Pitfall M4/M6.
 
-### Phase 5: Hold Loop Clips + Filmstrip Capsule
-**Rationale:** Deepest change; builds on proven hold output from Phase 4. The capsule needs the resolver projection from the same phase — do not split capsule UI into Phase 4.
-**Delivers:** Durable `loopClips` model member + parsers + revision participation + `.mce` schema bump (clean break, no migration); modulo occurrence resolution with half-open next-clip/parent-end bounds; loop-occurrence render-source variant excluded from interpolation gap derivation; filmstrip capsule with `Cycle 5f × 5 = 25f` / `× ∞` badges and truncation label; metadata-only repeat-count edits through `finalizeProposal`; golden-pixel determinism tests (rerender, cache-clear, save/reopen).
-**Addresses:** Hold Loops + filmstrip differentiators + truncation table stakes; Pitfalls 6, 8, 9, M1, M2, M3, M6, m2.
-**Avoids:** Materializing repetitions as durable frames; a third frame model beside the canonical physical one; sizing render budgets by requested duration instead of cycle length.
+### Phase 5: Fixed Background track and imported Loop Clips
+**Rationale:** The Background track's Loop Clip resolver is the same machinery Reveal's source handling builds on.
+**Delivers:** one fixed non-overlapping Background row, imported still/sequence clips, finite/infinite repeat, gaps/fallback, filmstrip capsules, collision rejection.
+**Uses:** Loop Clip resolver, `imageStore` LRU + Rust image pipeline (STACK.md).
+**Avoids:** Pitfall 9 (asset duplication), Pitfall 10 (off-by-one), Pitfall 11 (infinite loop expanded range), Pitfall 12 (overlap/reorder), Pitfall 13 (gaps differ).
 
-### Phase 6: Integrated UAT + Signed Release
-**Rationale:** All gates green; stop conditions enforced (doubled audio, hydration regression, progressive output change, static non-determinism, library mutation).
-**Delivers:** Native UAT per spec steps (including 30s+ sustained playback, mid-play seek, loop wrap, close-during-playback), icon verification on the downloaded artifact (icon caches lie on dev machines), signed/notarized release via the unchanged v0.8.1 pipeline.
+### Phase 6: Photo/reference track
+**Rationale:** Distinct from Background; supplies the source for Reveal (Phase 8).
+**Delivers:** one photo/reference track, three source modes, reference-only Studio visibility, exclusion from flattened output, frame-aligned source resolution, missing-source recovery.
+**Uses:** `imageStore` LRU + Rust image pipeline (STACK.md).
+**Avoids:** Pitfall 14 (reference leak), Pitfall M5 (frame-aligned resolution).
+
+### Phase 7: Read-only audio preview
+**Rationale:** Independent — reuses Phase 41 as-is; can land any time after the shared application-frame cursor exists (Phase 3).
+**Delivers:** read-only synchronized audio monitoring across internal tracks, shared application-frame cursor, no doubled engine.
+**Uses:** Phase 41 audio preview (STACK.md) — reuse as-is, no new code.
+**Avoids:** Pitfall 15 (audio drift/mutation).
+
+### Phase 8: Shared mask compositor and Reveal
+**Rationale:** Reveal layers on the compositor (4), the photo/reference track (6), and Paint/PlayScript coverage (2). It is the deepest integration, so it lands last.
+**Delivers:** one offscreen source-plus-mask compositor, alpha-vs-luma interpretation, optional inversion, Reveal result written to an internal Paint/result track.
+**Uses:** Canvas 2D offscreen mask compositing (STACK.md).
+**Implements:** `efx-paint/mask/` (ARCHITECTURE.md).
+**Avoids:** Pitfall 16 (Reveal overlay leak), Pitfall 14 (reference leak).
+
+### Phase 9: Integrated v1.0.0 acceptance
+**Rationale:** The enforcement backstop for all stop conditions.
+**Delivers:** automated gates (vitest, typecheck, build, cargo test, release preflight) + native UAT + signed/notarized release.
+**Avoids:** Pitfall 18 (scope creep) — Phase 9 stop conditions are the enforcement backstop.
 
 ### Phase Ordering Rationale
 
-- **Hydration first:** spec-locked blocker; also proves the exact-payload bridge handoff idiom that the audio revision guard (Phase 3) reuses — one staleness idiom for the whole milestone.
-- **Icon/build parallel-safe early:** zero overlap with feature code; validates release surfaces while features proceed.
-- **Audio before PlayScript:** self-contained, independent of the Roto model churn; separable UAT surfaces.
-- **Modes before loops:** Hold Loops replay a completed-drawing source cycle — without the static/hold materialization path there is no cycle to link (PLAY-01 → PLAY-04 → HOLD-05 required order).
-- **Capsule with resolver, not before:** the filmstrip is a view of the loop resolver's outputs (requested vs effective, repeat instances, truncation) — splitting them invites the dual-source-of-truth pitfall.
+- **1 before everything:** the document model and clean-break rejection are the foundation; deleting the legacy path first prevents accidental dependency on it.
+- **2 before 3:** the multi-row timeline needs track-local state to exist first.
+- **3 before 4:** the compositor consumes the hide/solo/opacity/blend controls the timeline exposes.
+- **4 before 5/6/8:** the flattened-result contract is the keystone; Background, photo/reference, and Reveal all feed the same compositor.
+- **5 before 6:** the Background Loop Clip resolver is the same machinery Reveal's source handling builds on.
+- **7 is independent:** audio preview reuses Phase 41 as-is; can land any time after the shared application-frame cursor exists (Phase 3).
+- **8 last:** Reveal is the deepest integration, layering on the compositor, photo/reference track, and Paint/PlayScript coverage.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning (`--research-phase`):
-- **Phase 3 (audio preview):** The truth table and resolver extraction are fully specified, but per-track fade curves in the paint-local engine and seek-restart throttling during scrub deserve a focused planning pass. Medium research need.
-- **Phase 5 (loop clips):** Largest complexity budget; the boundary truth-table enumeration (adjacent clips, exact-boundary truncation, 1-frame cycle, next-clip move/remove) should be authored as a planning artifact before implementation. Medium research need.
+Phases likely needing deeper research during planning:
+- **Phase 1:** exact `.mce` v1.0 schema field-level design (the spec's canonical document concept is illustrative, not locked). Needs a schema decision before planning.
+- **Phase 4:** opacity/blend application order (opacity before blend, AE convention) must be locked and documented; the pixel acceptance matrix needs full enumeration.
+- **Phase 8:** Reveal result track semantics (written to vs represented by an internal Paint/result track) need a decision.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (hydration):** Root cause confirmed with file/line references and a deterministic repro prototype; fix pattern fully prescribed.
-- **Phase 2 (icon/build):** Pure tooling/config; preflight contract already exists.
-- **Phase 4 (modes/color):** Renderer seams identified with exact line references; precedents locked.
-- **Phase 6 (UAT/release):** Reuses the proven v0.8.1 signed pipeline.
+- **Phase 2:** track-local addressing and revision authority are direct extensions of proven store patterns.
+- **Phase 5:** Loop Clip resolution is a verbatim reuse of the existing resolver.
+- **Phase 7:** audio preview is a verbatim reuse of Phase 41.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; every integration point verified against the local codebase plus official Tauri/Vite docs; the one external-protocol claim (app-wide `efxasset://`) is corroborated by local Builder-level registration. |
-| Features | HIGH | Spec is user-locked; competitive patterns verified against Dragonframe manual, TVPaint/Procreate docs, Blender NLA, Photoshop preset semantics, Apple HIG. |
-| Architecture | HIGH | All findings from direct repository inspection with file/line evidence; open questions are internal seam choices, not ecosystem unknowns. |
-| Pitfalls | HIGH | Grounded in the spec risk register, confirmed hydration root-cause diagnosis, and project post-mortems (27–32, 36.2, 36.14, v0.8.0/v0.8.1). |
+| Stack | HIGH | All capabilities map onto existing, proven machinery verified by direct repo inspection; version claims cross-checked against npm registry; zero new dependencies |
+| Features | HIGH | Spec is user-locked and authoritative; competitive patterns cross-checked against TVPaint, Harmony, Krita, Blender GP, Procreate, AE, Nuke, Flame/Smoke, Photoshop, Unity, MNG |
+| Architecture | HIGH | All integration points verified by direct repo inspection of the locked spec and existing stores/bridge/renderer/persistence code; open questions are internal seam choices, not ecosystem unknowns |
+| Pitfalls | HIGH | Grounded in the spec risk register, required truth tables, forbidden sequence-level assumptions, and v0.7.0/v0.8.0/v0.9.0 post-mortems; web-derived patterns tagged LOW and used only to confirm prevention strategies |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Fade-curve parity in the paint-local engine:** The main engine's fade scheduling is proven, but the paint engine re-implements it; planning should decide whether fade math also moves into the shared pure resolver or is ported with equivalence tests.
-- **Scrub-throttling policy for seek-restart:** Performance trap is identified (rapid scrub → seek-restart churn) but the coalescing policy is not specified; resolve during Phase 3 planning.
-- **macOS icon cache flushing procedure for UAT:** Known to fool dev-machine verification; the exact cache-flush or downloaded-artifact verification steps should be scripted into the Phase 6 UAT plan.
-- **Cycle-length capacity check threshold:** Hold commits are bounded by cycle length (not requested duration) against `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600`, but the UX for an over-capacity cycle request needs a planning decision.
+- **Exact `.mce` v1.0 schema:** the spec's canonical document concept is illustrative, not a locked field-level implementation. Phase 1 planning must lock the field-level schema (document, track, photo-reference, background, FrameLoopClip) before code.
+- **Track cache key composition:** the exact composition of the track cache key (track revision + which composition dependencies) must be specified in Phase 4 planning so unchanged tracks skip re-composite.
+- **Opacity/blend application order:** opacity-before-blend (AE convention) must be locked and documented in Phase 4; the pixel acceptance matrix must enumerate it.
+- **Reveal result track semantics:** whether the Reveal result is written to a new internal Paint/result track or represented by an existing track must be decided in Phase 8 planning.
+- **Track-aware `paintVersion` reactivity model:** the exact mechanism (per-track counter vs track-aware reactivity) must be decided in Phase 2 planning to avoid over-invalidation.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Local codebase inspection — `physicPaintBridge.ts`, `types/physicPaint.ts`, `audioEngine.ts`, `playbackEngine.ts:192-224`, `physicsPaintRotoPhysicalModel.ts`, PlayScript controller/renderer, `progressiveStrokeSchedule.ts`, `recordedStrokeMotion.ts`, `physicPaintPersistence.ts`, `app/src-tauri/src/lib.rs`, `tauri.conf.json`, `scripts/macos-release.sh`, `vite.config.ts`, `viteBuild.test.ts`
-- `SPECS/milestone-v0.9.0-plan.md` — locked ownership boundaries, stop conditions, schedule
-- `SPECS/quick-prompts/fix-efx-paint-script-library-auto-hydration.md` — confirmed root-cause diagnosis with deterministic repro
-- `.planning/PROJECT.md` — post-mortems (Phases 27–32, 36.2, 36.14), G-01, v0.8.1 CSP precedent
-- Dragonframe official features page + 2025 manual + user guide — audio-as-timing-master, virtual holds
-- Apple HIG App Icons — size ladder, small-size legibility
-- TVPaint docs — pre/post behaviors, Repeat Images; Procreate Handbook — Hold Frame
+- `SPECS/milestone-v1.0.0-plan.md` — architectural invariant, ownership boundaries, locked MVP scope, required truth tables, canonical document concept, identity/asset/history rules, clean-break boundary, composition order, loop resolution formula, forbidden sequence-level assumptions, risk register, 9-phase structure
+- Direct repo inspection: `app/src/lib/previewRenderer.ts`, `app/src/stores/physicPaintStore.ts`, `app/src/stores/paintStore.ts`, `app/src/lib/physicPaintBridge.ts`, `app/src/lib/physicPaintPersistence.ts`, `app/src/lib/paintPersistence.ts`, `app/src/stores/projectStore.ts`, `app/src/types/project.ts`, `app/src/types/physicPaint.ts`, `app/src/types/paint.ts`, `app/src/types/layer.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.ts`, `app/src/components/physic-paint/audio/efxPaintAudioPreviewStore.ts` + `efxPaintAudioMonitor.ts` + `efxPaintAudioOwnership.ts`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `hooks/useRotoTimelineModel.ts`, `app/src/stores/imageStore.ts`, `app/src/lib/history.ts`, `app/package.json`
+- `.planning/PROJECT.md` — Key Decisions and post-mortems (Phases 27-32 adapter failure, 36.14 canonical physical-frame cutover, Phase 41 audio anchor model, Phase 43 Loop Clip resolver, Phase 43.6 batch ops, v0.8.1 CSP fix)
 
 ### Secondary (MEDIUM confidence)
-- Tauri v2 CLI/icons/JS-API docs — `tauri icon` contract, asset-protocol CSP
-- Vite build options docs + community reports — `chunkSizeWarningLimit` units, mixed-import warning semantics
-- WebKit feature blogs + bug trackers — WKWebView codec matrix, MP3 decode quirk
-- Blackmagic Fairlight + forum — audio scrubbing toggle precedent
-- Versluis/Blender NLA — linked strip + Repeat semantics
-- ClearPS/Affinity forums — preset color-override semantics
-- docs.fileformat.com + rust-icns — ICNS structure
+- npm registry (https://registry.npmjs.org/@preact/signals, /@tauri-apps/api, /preact, /tailwindcss, /@tauri-apps/plugin-fs, /@tauri-apps/plugin-dialog, /@tauri-apps/plugin-store) — current version verification
+- Tauri v2 release page (https://v2.tauri.app/release/) — `@tauri-apps/api` 2.11.1, cli 2.11.4
+- Tailwind CSS v4.3 blog (https://tailwindcss.com/blog/tailwindcss-v4-3) — v4.3.x line
 
-### Tertiary (LOW confidence)
-- Tauri issue #10691 / discussion #8571 — app-wide URI scheme protocol behavior (corroborated locally; no independent validation needed)
+### Tertiary (LOW confidence — cross-referenced patterns only)
+- TVPaint, Toon Boom Harmony, Krita, Blender Grease Pencil, Procreate, After Effects, Nuke, Flame/Smoke, Photoshop, Unity Streaming Image Sequence, MNG spec — competitive feature patterns (FEATURES.md)
+- NLE opacity/blend order divergence (FCP vs Resolve), double-premultiplied alpha dark halos, hidden black V0 layer, AE track-matte leak, Harmony Transform-Loop seam, Godot audio self-overlap, AudioContext clock drift, undo byte-budget/one-stack, schema-evolution silent-breakage — pitfall prevention confirmation (PITFALLS.md)
 
 ---
-*Research completed: 2026-08-03*
+*Research completed: 2026-08-23*
 *Ready for roadmap: yes*
