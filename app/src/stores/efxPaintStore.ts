@@ -14,7 +14,11 @@
  */
 
 import { signal } from '@preact/signals';
-import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { CachedFrameReference, EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
+import { buildEfxPaintFrameCachePath } from '../lib/efxPaintPersistence';
+import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { physicPaintStore } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -62,4 +66,60 @@ export function reset(): void {
   if (_documents.size === 0) return;
   _documents.clear();
   _notifyChange();
+}
+
+/**
+ * Project one layer's runtime state into its v1.0 document (Phase 45-04
+ * Task 2). The document must own exactly one default Paint track; runtime
+ * frames become deterministic CachedFrameReference sidecar refs and the
+ * physical Roto state is carried as-is. `documentRevision` bumps by one only
+ * when the projected content actually changed (the fingerprint includes the
+ * current docrev, so the comparison is made on the same revision).
+ */
+export function serializeRuntimeIntoDocument(layerId: string): EfxPaintDocument {
+  const document = getDocument(layerId);
+  if (!document) throw new Error(`No EFX Paint document for layer "${layerId}".`);
+  if (document.tracks.length !== 1 || document.tracks[0].id !== document.activeTrackId) {
+    throw new Error(`EFX Paint document for layer "${layerId}" must have exactly one default Paint track.`);
+  }
+  const track = document.tracks[0];
+  const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId);
+  const frames: Record<number, CachedFrameReference> = {};
+  for (const [appFrame, frame] of runtime.frames) {
+    frames[appFrame] = {
+      cachePath: buildEfxPaintFrameCachePath(layerId, frame),
+      width: frame.width ?? 0,
+      height: frame.height ?? 0,
+    };
+  }
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: [{ ...track, frames, rotoPhysical: runtime.rotoPhysical }],
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return candidate;
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return next;
+}
+
+/**
+ * Install a v1.0 document's runtime state into the physicPaintStore runtime
+ * maps (Phase 45-04 Task 2). The document must own exactly one default Paint
+ * track; the caller supplies the hydrated runtime frame bytes (from the
+ * persistence loader) alongside the document.
+ */
+export function hydrateRuntimeFromDocument(
+  document: EfxPaintDocument,
+  frames: ReadonlyMap<number, PhysicPaintRenderedFrame>,
+): void {
+  if (document.tracks.length !== 1 || document.tracks[0].id !== document.activeTrackId) {
+    throw new Error(`EFX Paint document for layer "${document.parentLayerId}" must have exactly one default Paint track.`);
+  }
+  physicPaintStore.installRuntimeStateFromDocument(document.parentLayerId, {
+    frames,
+    rotoPhysical: document.tracks[0].rotoPhysical,
+  });
 }

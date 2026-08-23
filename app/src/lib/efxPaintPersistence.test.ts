@@ -64,13 +64,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   }),
 }));
 
-function saveDocuments(
-  projectDir: string,
-  documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
-) {
-  return saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async () => {});
-}
-
 describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => {
   beforeEach(async () => {
     files.clear();
@@ -120,7 +113,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
       document: withFrame,
       frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]]),
     }]]);
-    const writeProject = vi.fn(async () => {});
+    const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
     const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
 
