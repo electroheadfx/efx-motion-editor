@@ -337,6 +337,43 @@ describe('physicPaintStore roto physical structural cache (38.1-07)', () => {
     expect(revisionSpy.mock.calls.length, 'no-op mutation keeps revision reads free').toBe(0);
   });
 
+  it('per-track memo key: editing track A recomputes A once while track B memo entry stays valid (46-01 TRK-03 ordering)', () => {
+    const TRACK_A = 'track-structural-a';
+    const TRACK_B = 'track-structural-b';
+
+    const installA = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK_A, baseRecords(), INTERPOLATION, CAPACITY);
+    expect(installA.ok).toBe(true);
+    const installB = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK_B, baseRecords(), INTERPOLATION, CAPACITY);
+    expect(installB.ok).toBe(true);
+    const bProjection = physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK_B);
+    expect(bProjection).not.toBeNull();
+    const bRenderSource = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_B, 2);
+    expect(bRenderSource?.kind).toBe('generated');
+    clearSpyCounts();
+
+    const mutated = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK_A,
+      [record('key-aa', 1), record('key-bb', 9)],
+      INTERPOLATION,
+      CAPACITY,
+    );
+    expect(mutated.ok).toBe(true);
+    clearSpyCounts();
+
+    // Track A's memo entry was invalidated: the first read recomputes exactly once.
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, 1)?.kind).toBe('real');
+    expect(projectionSpy.mock.calls.length, 'track A recomputes the projection exactly once after its own mutation').toBe(1);
+    expect(revisionSpy.mock.calls.length, 'track A recomputes the revision exactly once after its own mutation').toBe(1);
+
+    // Track B's memo entry stayed valid: same projection reference, same
+    // render source, zero additional recomputes.
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK_B)).toBe(bProjection);
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_B, 2)).toEqual(bRenderSource);
+    expect(projectionSpy.mock.calls.length, 'track B reads add zero projection recomputes').toBe(1);
+    expect(revisionSpy.mock.calls.length, 'track B reads add zero revision recomputes').toBe(1);
+  });
+
   it('getRotoPhysicalDocument reads the memoized revision', () => {
     installBase();
     warmUp();

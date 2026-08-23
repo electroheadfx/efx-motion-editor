@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  bumpTrackRevision,
+  getTrackPaintVersion,
+  getTrackRotorRevision,
+  mountTrackRuntime,
   physicPaintStore,
+  physicPaintVersion,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
 import type {
@@ -131,5 +136,62 @@ describe('physicPaintStore track isolation (46-01 TRK-01 base law)', () => {
     const ordered = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
     expect(ordered.map((record) => record.appFrame)).toEqual([0, 5, 10]);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual([]);
+  });
+});
+
+describe('physicPaintStore per-track revision signals (46-01 TRK-03)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('per-track revision isolation: bumpTrackRevision on track A bumps A and the global clock, track B untouched', () => {
+    const globalBefore = physicPaintVersion.value;
+    const aPaintBefore = getTrackPaintVersion(LAYER, TRACK_A).value;
+    const aRotoBefore = getTrackRotorRevision(LAYER, TRACK_A).value;
+    const bPaintBefore = getTrackPaintVersion(LAYER, TRACK_B).value;
+    const bRotoBefore = getTrackRotorRevision(LAYER, TRACK_B).value;
+
+    bumpTrackRevision(LAYER, TRACK_A);
+
+    expect(getTrackPaintVersion(LAYER, TRACK_A).value).toBe(aPaintBefore + 1);
+    expect(getTrackRotorRevision(LAYER, TRACK_A).value).toBe(aRotoBefore + 1);
+    expect(physicPaintVersion.value).toBe(globalBefore + 1);
+    expect(getTrackPaintVersion(LAYER, TRACK_B).value).toBe(bPaintBefore);
+    expect(getTrackRotorRevision(LAYER, TRACK_B).value).toBe(bRotoBefore);
+  });
+
+  it('fresh track runtime mounted by mountTrackRuntime reports the baseline revision and not-dirty', () => {
+    let dirtyCount = 0;
+    _setPhysicPaintMarkDirtyCallback(() => { dirtyCount += 1; });
+    const globalBefore = physicPaintVersion.value;
+
+    mountTrackRuntime(LAYER, TRACK_A);
+
+    expect(getTrackPaintVersion(LAYER, TRACK_A).value).toBe(0);
+    expect(getTrackRotorRevision(LAYER, TRACK_A).value).toBe(0);
+    expect(physicPaintVersion.value).toBe(globalBefore);
+    expect(dirtyCount).toBe(0);
+  });
+
+  it('per-track dirty law: one mutation fires the injected dirty callback exactly once and bumps the global paint version', () => {
+    let dirtyCount = 0;
+    _setPhysicPaintMarkDirtyCallback(() => { dirtyCount += 1; });
+    const globalBefore = physicPaintVersion.value;
+    const beforeA = getTrackPaintVersion(LAYER, TRACK_A).value;
+
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK_A,
+      [makeRecord('key-a-5', 5, 'a@5')],
+      INTERPOLATION,
+      CAPACITY,
+    );
+    expect(seeded.ok).toBe(true);
+
+    expect(dirtyCount).toBe(1);
+    expect(physicPaintVersion.value).toBe(globalBefore + 1);
+    expect(getTrackPaintVersion(LAYER, TRACK_A).value).toBe(beforeA + 1);
+    expect(getTrackPaintVersion(LAYER, TRACK_B).value).toBe(0);
   });
 });
