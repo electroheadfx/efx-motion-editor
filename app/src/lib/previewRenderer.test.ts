@@ -294,9 +294,9 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
       { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
     ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
-    const persisted = structuredClone(physicPaintStore.toMceOutputs());
+    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer');
     physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(persisted);
+    physicPaintStore.installRuntimeStateFromDocument('roto-layer', projection);
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -324,9 +324,9 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
       { keyId: 'key-2', appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' },
       { keyId: 'key-6', appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' },
     ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
-    const persisted = structuredClone(physicPaintStore.toMceOutputs());
+    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer');
     physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(persisted);
+    physicPaintStore.installRuntimeStateFromDocument('roto-layer', projection);
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 

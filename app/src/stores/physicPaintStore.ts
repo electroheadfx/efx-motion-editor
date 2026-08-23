@@ -1,7 +1,6 @@
 import { signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
-import type { RuntimePhysicPaintOutput } from '../types/project';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRenderedFrame, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
@@ -58,9 +57,6 @@ export type PhysicPaintRotoPhysicalOperationLeaseFailureReason =
   | 'missing-token'
   | 'mismatched-token'
   | 'replayed-token';
-
-type PhysicPaintMceOutput = RuntimePhysicPaintOutput;
-type PhysicPaintMceOutputInput = RuntimePhysicPaintOutput;
 
 export type PhysicPaintLayerSnapshot = {
   layerId: string;
@@ -222,27 +218,6 @@ function _validateRotoPhysicalLayerPublication(
     : { ok: false, reason: 'mismatched-token' };
 }
 
-function _validateRotoPhysicalProjectPublication(
-  token: PhysicPaintRotoPhysicalOperationLeaseToken | null | undefined,
-): { ok: true } | { ok: false; reason: PhysicPaintRotoPhysicalOperationLeaseFailureReason } {
-  if (_rotoPhysicalOperationLeases.size === 0) {
-    return token
-      ? { ok: false, reason: _settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))
-        ? 'replayed-token'
-        : 'mismatched-token' }
-      : { ok: true };
-  }
-  if (!token) return { ok: false, reason: 'missing-token' };
-  if (_rotoPhysicalOperationLeases.size !== 1) return { ok: false, reason: 'mismatched-token' };
-  const active = _rotoPhysicalOperationLeases.values().next().value as PhysicPaintRotoPhysicalOperationLeaseToken;
-  if (_settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))) {
-    return { ok: false, reason: 'replayed-token' };
-  }
-  return _sameRotoPhysicalOperationLease(active, token)
-    ? { ok: true }
-    : { ok: false, reason: 'mismatched-token' };
-}
-
 // --- Physical structural read memo (38.1-07) ---
 // Per-layer memo for the physical projection + content revision. Validity is
 // keyed on the structural identities (recordMap, frozen interpolation object,
@@ -326,10 +301,6 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
   _rotoPhysicalStructuralCache.set(layerId, entry);
   return entry;
 }
-let _serializationRevision = 0;
-let _cachedSerializationRevision = -1;
-let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
-
 function _collectFrameDataUrls(frames: Iterable<PhysicPaintRenderedFrame>, target: Set<string>): void {
   for (const frame of frames) {
     target.add(frame.dataUrl);
@@ -412,10 +383,6 @@ function _clearLayerState(layerId: string): boolean {
   return changed;
 }
 
-function _invalidateSerializationCache(): void {
-  _serializationRevision++;
-}
-
 function _getOrCreateLayer(layerId: string): Map<number, PhysicPaintRenderedFrame> {
   let layerFrames = _frames.get(layerId);
   if (!layerFrames) {
@@ -463,13 +430,6 @@ function _cloneRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationS
   };
 }
 
-function _serializeRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRotoInterpolationSettings {
-  return {
-    ..._cloneRotoInterpolationSettings(settings),
-    segmentSpacingOverrides: settings.segmentSpacingOverrides?.map(override => ({ ...override })) ?? [],
-  };
-}
-
 function _makeRotoCacheFrame(
   renderedFrame: PhysicPaintRenderedFrame,
   appFrame: number,
@@ -496,7 +456,6 @@ function _makeRotoCacheFrame(
 
 function _notifyVisualChange(diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void }, markDirty = true): void {
   const notificationStartedAt = diagnostics ? performance.now() : 0;
-  _invalidateSerializationCache();
   physicPaintVersion.value++;
   const dirtyStartedAt = diagnostics ? performance.now() : 0;
   if (markDirty) _markProjectDirty?.();
@@ -829,11 +788,11 @@ function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operation
 
 /**
  * Build the canonical v1.0 rotoPhysical document payload for one layer, or
- * null when the layer has no physical Roto state. Shared by the legacy
- * toMceOutputs roto branch and the v1.0 document projection
- * (extractRuntimeStateForDocument) so the serialized payload is identical
- * through both seams. Reads the module maps directly (the `_resolveRotoPhysicalStructural`
- * idiom) and mirrors the getRoto* accessor derivations exactly.
+ * null when the layer has no physical Roto state. Consumed by the v1.0
+ * document projection (extractRuntimeStateForDocument) so the serialized
+ * payload is always schema-valid. Reads the module maps directly (the
+ * `_resolveRotoPhysicalStructural` idiom) and mirrors the getRoto* accessor
+ * derivations exactly.
  */
 function _buildRotoPhysicalDocumentForLayer(layerId: string): PhysicPaintRotoPhysicalDocument | null {
   const recordMap = _rotoRealKeyRecords.get(layerId);
@@ -908,8 +867,7 @@ export const physicPaintStore = {
     const current = _rotoPlaybackSettings.get(layerId);
     if (current?.loop === settings.loop && current.fps === settings.fps) return false;
     _rotoPlaybackSettings.set(layerId, { ...settings });
-    _invalidateSerializationCache();
-    _markProjectDirty?.();
+      _markProjectDirty?.();
     return true;
   },
 
@@ -973,149 +931,11 @@ export const physicPaintStore = {
     return true;
   },
 
-  toMceOutputs(): PhysicPaintMceOutput[] {
-    if (_cachedSerializationRevision === _serializationRevision) return structuredClone(_cachedMceOutputs);
-    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys(), ..._rotoRealKeyRecords.keys(), ..._rotoGroupOverrideRecords.keys(), ..._rotoPlaybackSettings.keys()]);
-    const outputs = Array.from(layerIds).map((layerId): PhysicPaintMceOutput => {
-      if (_rotoRealKeyRecords.has(layerId)) {
-        return {
-          layer_id: layerId,
-          frames: [],
-          roto_physical: _buildRotoPhysicalDocumentForLayer(layerId)!,
-          ...(_rotoPlaybackSettings.has(layerId) ? { roto_playback: { ..._rotoPlaybackSettings.get(layerId)! } } : {}),
-        };
-      }
-      return {
-        layer_id: layerId,
-        frames: Array.from(_frames.get(layerId)?.values() ?? []).sort((a, b) => a.appFrame - b.appFrame),
-        ...(_rotoCacheMetadata.has(layerId) ? { roto_cache_metadata: Array.from(_rotoCacheMetadata.get(layerId)!.values()).sort((a, b) => a.appFrame - b.appFrame) } : {}),
-        ...(_rotoInterpolationSettings.has(layerId) ? { roto_interpolation_settings: _serializeRotoInterpolationSettings(_rotoInterpolationSettings.get(layerId)!) } : {}),
-        ...(_rotoBackgroundMetadata.has(layerId) ? { roto_background: { ..._rotoBackgroundMetadata.get(layerId)! } } : {}),
-        ...(_rotoPlaybackSettings.has(layerId) ? { roto_playback: { ..._rotoPlaybackSettings.get(layerId)! } } : {}),
-      };
-    }).filter((output) => output.frames.length > 0 || output.roto_physical || output.roto_playback || output.roto_cache_metadata || output.roto_interpolation_settings || output.roto_background);
-    _cachedMceOutputs = structuredClone(outputs);
-    _cachedSerializationRevision = _serializationRevision;
-    return outputs;
-  },
-
-  loadFromMceOutputs(
-    outputs: PhysicPaintMceOutputInput[] | null | undefined,
-    leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
-  ): void {
-    const leaseValidation = _validateRotoPhysicalProjectPublication(leaseToken);
-    if (!leaseValidation.ok) throw new Error(leaseValidation.reason);
-    const previousDataUrls = new Set(_rotoAlphaCanvasRegistry.keys());
-    const nextFrames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
-    const nextBackground = new Map<string, PhysicPaintRotoBackgroundMetadata>();
-    const nextCache = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
-    const nextInterpolationSettings = new Map<string, PhysicPaintRotoInterpolationSettings>();
-    const nextPhysicalRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
-    const nextGroupOverrideRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
-    const nextPhysicalInterpolation = new Map<string, PhysicPaintRotoInterpolationState>();
-    const nextPhysicalScriptMotion = new Map<string, PhysicPaintRotoScriptMotionSettings>();
-    const nextPhysicalLoopClips = new Map<string, readonly PhysicPaintRotoLoopClip[]>();
-    const nextPhysicalIncomingInterpolationBreakKeyIds = new Map<string, readonly string[]>();
-    const nextPhysicalSelection = new Map<string, string | null>();
-    const nextPhysicalCursor = new Map<string, number>();
-    const nextPhysicalCapacity = new Map<string, number>();
-    const nextPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>();
-    const seenLayerIds = new Set<string>();
-
-    for (const output of outputs ?? []) {
-      if (!output || typeof output.layer_id !== 'string' || output.layer_id.trim().length === 0 || seenLayerIds.has(output.layer_id)) {
-        throw new Error('Physics Paint store installation requires unique non-empty layer IDs.');
-      }
-      seenLayerIds.add(output.layer_id);
-      if (output.roto_playback !== undefined) {
-        if (!isPhysicPaintRotoPlaybackSettings(output.roto_playback)) throw new Error(`Invalid Roto playback settings for layer "${output.layer_id}".`);
-        nextPlaybackSettings.set(output.layer_id, { ...output.roto_playback });
-      }
-      if (output.roto_physical) {
-        const physical = parsePhysicPaintRotoPhysicalDocument(output.roto_physical);
-        const projection = projectPhysicPaintRotoPhysicalTimeline({
-          identities: physical.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
-          capacity: physical.capacity,
-          interpolationEnabled: physical.interpolation.enabled,
-          incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
-        });
-        if (!projection.ok) throw new Error(projection.failure.text);
-        nextPhysicalRecords.set(output.layer_id, new Map(physical.realKeyRecords.map((record) => [record.keyId, record])));
-        nextGroupOverrideRecords.set(
-          output.layer_id,
-          new Map((physical.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
-        );
-        nextPhysicalInterpolation.set(output.layer_id, physical.interpolation);
-        nextPhysicalScriptMotion.set(output.layer_id, physical.scriptMotion);
-        nextPhysicalLoopClips.set(output.layer_id, physical.loopClips);
-        nextPhysicalIncomingInterpolationBreakKeyIds.set(output.layer_id, physical.incomingInterpolationBreakKeyIds);
-        nextPhysicalSelection.set(output.layer_id, physical.selectedKeyId);
-        nextPhysicalCursor.set(output.layer_id, physical.cursorAppFrame);
-        nextPhysicalCapacity.set(output.layer_id, physical.capacity);
-        if (physical.background) nextBackground.set(output.layer_id, { ...physical.background });
-        continue;
-      }
-
-      const layerFrames = new Map<number, PhysicPaintRenderedFrame>();
-      for (const frame of output.frames ?? []) {
-        if (!isPhysicPaintRenderedFrame(frame) || layerFrames.has(frame.appFrame)) throw new Error(`Invalid Physics Paint frame for layer "${output.layer_id}".`);
-        layerFrames.set(frame.appFrame, { ...frame });
-      }
-      if (layerFrames.size > 0) nextFrames.set(output.layer_id, layerFrames);
-      const real = new Map<number, PhysicPaintRotoCacheFrame>();
-      for (const frame of output.roto_cache_metadata ?? []) {
-        if (!isPhysicPaintRotoCacheFrame(frame) || frame.source === 'generated-interpolation' || real.has(frame.appFrame)) {
-          throw new Error(`Invalid durable Roto cache metadata for layer "${output.layer_id}".`);
-        }
-        real.set(frame.appFrame, { ...frame });
-      }
-      if (real.size > 0) nextCache.set(output.layer_id, real);
-      if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) nextInterpolationSettings.set(output.layer_id, _normalizeRotoInterpolationSettings(output.roto_interpolation_settings));
-      if (isPhysicPaintRotoBackgroundMetadata(output.roto_background)) nextBackground.set(output.layer_id, { ...output.roto_background });
-    }
-
-    _frames.clear();
-    _rotoBackgroundMetadata.clear();
-    _rotoCacheMetadata.clear();
-    _rotoGeneratedCacheMetadata.clear();
-    _rotoInterpolationSettings.clear();
-    _rotoInterpolationFailureStatus.clear();
-    _rotoRealKeyRecords.clear();
-    _rotoGroupOverrideRecords.clear();
-    _rotoPhysicalInterpolationState.clear();
-    _rotoPhysicalScriptMotion.clear();
-    _rotoPhysicalLoopClips.clear();
-    _rotoPhysicalIncomingInterpolationBreakKeyIds.clear();
-    _rotoPhysicalSelectedKeyId.clear();
-    _rotoPhysicalCursorAppFrame.clear();
-    _rotoPhysicalCapacity.clear();
-    _rotoPlaybackSettings.clear();
-    _rotoPhysicalStructuralCache.clear();
-    for (const [layerId, value] of nextFrames) _frames.set(layerId, value);
-    for (const [layerId, value] of nextBackground) _rotoBackgroundMetadata.set(layerId, value);
-    for (const [layerId, value] of nextCache) _rotoCacheMetadata.set(layerId, value);
-    for (const [layerId, value] of nextInterpolationSettings) _rotoInterpolationSettings.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalRecords) _rotoRealKeyRecords.set(layerId, value);
-    for (const [layerId, value] of nextGroupOverrideRecords) _rotoGroupOverrideRecords.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalInterpolation) _rotoPhysicalInterpolationState.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalScriptMotion) _rotoPhysicalScriptMotion.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalLoopClips) _rotoPhysicalLoopClips.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalIncomingInterpolationBreakKeyIds) _rotoPhysicalIncomingInterpolationBreakKeyIds.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalSelection) _rotoPhysicalSelectedKeyId.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalCursor) _rotoPhysicalCursorAppFrame.set(layerId, value);
-    for (const [layerId, value] of nextPhysicalCapacity) _rotoPhysicalCapacity.set(layerId, value);
-    for (const [layerId, value] of nextPlaybackSettings) _rotoPlaybackSettings.set(layerId, value);
-    _pruneUnreferencedRotoAlphaCanvases(previousDataUrls);
-    _invalidateSerializationCache();
-    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    physicPaintVersion.value++;
-  },
-
   /**
    * Extract one layer's runtime state into the v1.0 document projection shape
    * (Phase 45-04 Task 2). The rotoPhysical payload is rebuilt through the
-   * canonical parser (shared with the toMceOutputs roto branch) so the
-   * document always carries a schema-valid, revision-consistent record.
+   * canonical parser so the document always carries a schema-valid,
+   * revision-consistent record.
    */
   extractRuntimeStateForDocument(layerId: string): EfxPaintRuntimeProjection {
     const frames = new Map(_frames.get(layerId) ?? []);
@@ -1124,10 +944,10 @@ export const physicPaintStore = {
 
   /**
    * Install one layer's runtime state from a v1.0 document projection payload
-   * (Phase 45-04 Task 2). Replaces the layer's runtime maps wholesale and
-   * mirrors loadFromMceOutputs' validation (canonical parse + timeline
-   * projection) and publication (bump rotoPhysicalRevision + physicPaintVersion,
-   * no dirty callback — the caller owns project-dirty signaling).
+   * (Phase 45-04 Task 2). Replaces the layer's runtime maps wholesale with
+   * the same validation (canonical parse + timeline projection) and
+   * publication (bump rotoPhysicalRevision + physicPaintVersion, no dirty
+   * callback — the caller owns project-dirty signaling).
    */
   installRuntimeStateFromDocument(layerId: string, payload: EfxPaintRuntimeProjection): void {
     _frames.delete(layerId);
@@ -1168,8 +988,7 @@ export const physicPaintStore = {
       _rotoPhysicalCapacity.set(layerId, physical.capacity);
       if (physical.background) _rotoBackgroundMetadata.set(layerId, { ...physical.background });
     }
-    _invalidateSerializationCache();
-    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+      rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     physicPaintVersion.value++;
   },
 
@@ -1461,18 +1280,6 @@ export const physicPaintStore = {
     _pruneUnreferencedRotoAlphaCanvases(dataUrls);
   },
 
-  _debugSerializationRevision(): number {
-    return _serializationRevision;
-  },
-
-  _debugCachedSerializationRevision(): number {
-    return _cachedSerializationRevision;
-  },
-
-  _debugInvalidateSerializationCache(): void {
-    _invalidateSerializationCache();
-  },
-
   // -------------------------------------------------------------------------
   // Physical record ownership (D-01/D-02/D-03/D-10).
   //
@@ -1737,8 +1544,7 @@ export const physicPaintStore = {
     }
     _rotoPhysicalSelectedKeyId.set(layerId, selectedKeyId);
     _rotoPhysicalCursorAppFrame.set(layerId, cursorAppFrame);
-    _invalidateSerializationCache();
-    return { ok: true };
+      return { ok: true };
   },
 
   setRotoPhysicalScriptMotion(layerId: string, value: unknown): { ok: true } | { ok: false; error: string } {
@@ -1747,8 +1553,7 @@ export const physicPaintStore = {
       if (!current) return { ok: false, error: 'Physical Roto layer does not exist.' };
       const next = parsePhysicPaintRotoPhysicalDocument({ ...current, scriptMotion: value });
       _rotoPhysicalScriptMotion.set(layerId, next.scriptMotion);
-      _invalidateSerializationCache();
-      return { ok: true };
+          return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Invalid Script Motion settings.' };
     }
@@ -1916,8 +1721,7 @@ export const physicPaintStore = {
   setRotoPhysicalCapacity(layerId: string, capacity: number): void {
     if (!Number.isInteger(capacity) || capacity < 0) return;
     _rotoPhysicalCapacity.set(layerId, Math.min(capacity, PHYSIC_PAINT_MAX_APPLY_FRAMES));
-    _invalidateSerializationCache();
-  },
+    },
 
   /**
    * Read the current physical timeline projection for a layer. Derives ordered
@@ -2282,6 +2086,5 @@ export const physicPaintStore = {
     _rotoPhysicalCapacity.delete(layerId);
     _rotoPhysicalStructuralCache.delete(layerId);
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
-    _invalidateSerializationCache();
-  },
+    },
 };

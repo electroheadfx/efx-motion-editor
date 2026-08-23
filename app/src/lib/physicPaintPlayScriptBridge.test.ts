@@ -166,9 +166,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(replace).toHaveBeenCalledOnce();
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4, 5]);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
-    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
-      roto_physical: expect.objectContaining({ background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } }),
-    }));
+    expect(physicPaintStore.extractRuntimeStateForDocument('layer-1').rotoPhysical?.background).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
     expect(physicPaintStore.getRotoCacheFrames('layer-1').filter((candidate) => candidate.source === 'generated-interpolation')).toHaveLength(2);
   });
 
@@ -176,7 +174,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     const transparent = { background: 'transparent' as const, paperGrain: 'canvas1', grainStrength: 0 };
     expect(applyPhysicPaintPayload(batch({ rotoBackground: transparent })).ok).toBe(true);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual(transparent);
-    expect(physicPaintStore.toMceOutputs()[0].roto_physical?.background).toEqual(transparent);
+    expect(physicPaintStore.extractRuntimeStateForDocument('layer-1').rotoPhysical?.background).toEqual(transparent);
   });
 
   it('installs the browser parent authority listener and replies to the correlated child source', async () => {

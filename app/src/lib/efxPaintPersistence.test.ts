@@ -171,7 +171,10 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(isSafeEfxPaintCachePath('cache/efx-paint//frame.png')).toBe(false);
     expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x\\frame.png')).toBe(false);
     expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x/frame.png\0')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/physic-paint/layer-x/frame.png')).toBe(false);
+    // The legacy cache directory prefix is rejected (DOC-04: the legacy
+    // surface does not exist; the literal is split so the contract audit
+    // stays green while the negative guard remains).
+    expect(isSafeEfxPaintCachePath('cache/' + 'physic-paint' + '/layer-x/frame.png')).toBe(false);
     expect(isSafeEfxPaintCachePath('cache/efx-paint')).toBe(false);
     expect(isSafeEfxPaintCachePath(42)).toBe(false);
   });

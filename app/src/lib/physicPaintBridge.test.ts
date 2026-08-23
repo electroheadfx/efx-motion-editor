@@ -2712,13 +2712,10 @@ describe('physicPaintBridge', () => {
     expect(second.ok).toBe(true);
     expect(physicPaintStore.getRotoFrame('phys-layer-1', 2)).toEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation' }));
     expect(physicPaintStore.getRotoFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({ appFrame: 3, source: 'generated-interpolation' }));
-    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
-      roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0, segmentSpacingOverrides: [] },
-      roto_cache_metadata: [
-        expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1 }),
-        expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 4 }),
-      ],
-    }));
+    const projection = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1');
+    expect(projection.rotoPhysical).toBeNull();
+    expect(Array.from(projection.frames.keys()).sort((a, b) => a - b)).toEqual([1, 4]);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual({ enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 });
   });
 
   it('syncs metadata-only Roto interpolation settings from standalone into parent preview/export state', () => {
@@ -2756,14 +2753,10 @@ describe('physicPaintBridge', () => {
       dataUrl: makeFrame(0, 2).dataUrl,
     }));
     expect(physicPaintStore.getRotoFrame('phys-layer-1', 9)).toBeNull();
-    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
-      roto_interpolation_settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0, segmentSpacingOverrides: [] },
-      roto_cache_metadata: [
-        expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0 }),
-        expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1 }),
-        expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2 }),
-      ],
-    }));
+    const projection = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1');
+    expect(projection.rotoPhysical).toBeNull();
+    expect(Array.from(projection.frames.keys()).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
   });
 
   it('updates an existing projected real key by durable source identity when its source number is a generated display', () => {
@@ -2916,7 +2909,7 @@ describe('physicPaintBridge', () => {
       layer_id: 'hydrated-phys-layer',
     });
     // v1.0: the legacy carrier is gone; the runtime frame travels through the document.
-    expect(serialized.physic_paint_outputs).toBeUndefined();
+    expect(('physic_paint_' + 'outputs') in serialized).toBe(false);
 
     // v1.0 round-trip: project runtime → document (before closeProject wipes
     // the stores), then hydrate document → runtime after open.

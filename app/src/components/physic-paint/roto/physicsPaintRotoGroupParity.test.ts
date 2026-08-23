@@ -7,7 +7,7 @@ const dirs = new Set<string>();
 
 function moveGeneration(projectDir: string, stagingBasename: string): void {
   const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
-  const canonicalRoot = `${projectDir}/cache/physic-paint`;
+  const canonicalRoot = `${projectDir}/cache/efx-paint`;
   for (const key of Array.from(files.keys())) {
     if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
   }
@@ -75,8 +75,12 @@ import {
   type PhysicPaintRotoPhysicalEditProposal,
 } from './physicsPaintRotoPhysicalResolver';
 import type { RailSetDeleteMember } from '../../../types/physicPaint';
-import { loadPhysicPaintData, savePhysicPaintDataWithProjectWrite } from '../../../lib/physicPaintPersistence';
-import type { RuntimePhysicPaintOutput } from '../../../types/project';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import {
+  loadEfxPaintDocuments,
+  saveEfxPaintDocumentsWithProjectWrite,
+  type EfxPaintDocumentSaveInput,
+} from '../../../lib/efxPaintPersistence';
 
 const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
 
@@ -353,17 +357,23 @@ describe('Group parity persistence matrix', () => {
     { placementStart: 10, repeat: 3 },
   ])('round-trips placementStart $placementStart · Repeat $repeat byte-identically', async (combo) => {
     const document = buildComboDocument(combo);
-    const outputs: RuntimePhysicPaintOutput[] = [{
-      layer_id: 'parity-layer',
-      frames: [],
-      roto_physical: document,
-    }];
+    const efxDocument = createEfxPaintDocument('parity-layer');
+    const track = efxDocument.tracks[0];
+    const withRoto = {
+      ...efxDocument,
+      tracks: [{ ...track, rotoPhysical: document }],
+    };
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['parity-layer', {
+      document: withRoto,
+      frames: new Map(),
+    }]]);
 
-    const persisted = await savePhysicPaintDataWithProjectWrite('/project', outputs, async () => {});
-    const hydrated = await loadPhysicPaintData('/project', persisted);
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, async () => {});
+    const hydrated = await loadEfxPaintDocuments('/project', persisted);
+    const restored = hydrated.get('parity-layer')?.document.tracks[0].rotoPhysical;
 
-    expect(hydrated?.[0].roto_physical?.loopClips).toEqual(document.loopClips);
-    expect(hydrated?.[0].roto_physical?.realKeyRecords.map((record) => record.keyId))
+    expect(restored?.loopClips).toEqual(document.loopClips);
+    expect(restored?.realKeyRecords.map((record) => record.keyId))
       .toEqual(document.realKeyRecords.map((record) => record.keyId));
   });
 });

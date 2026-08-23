@@ -227,27 +227,27 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
       width: 100,
       height: 50,
     });
-    const targetOutputBefore = physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target');
+    const targetOutputBefore = physicPaintStore.extractRuntimeStateForDocument('canonical-target');
     const targetCacheBefore = physicPaintStore.getRotoCacheFrames('canonical-target');
 
     sequenceStore.removeLayerFromSequence('timeline-target');
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
-    expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target')).toBeUndefined();
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target')).toEqual({ frames: new Map(), rotoPhysical: null });
     expect(physicPaintStore.getRotoCacheFrames('canonical-target')).toEqual([]);
     expect(physicPaintStore.getFrame('canonical-survivor', 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
 
     undo();
 
     expect(sequenceStore.getById('target-sequence')?.layers[0].source).toEqual({ type: 'physic-paint', layerId: 'canonical-target' });
-    expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target')).toEqual(targetOutputBefore);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target')).toEqual(targetOutputBefore);
     expect(physicPaintStore.getRotoCacheFrames('canonical-target')).toEqual(targetCacheBefore);
     expect(physicPaintStore.getFrame('canonical-survivor', 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
 
     redo();
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
-    expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target')).toBeUndefined();
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target')).toEqual({ frames: new Map(), rotoPhysical: null });
     expect(physicPaintStore.getFrame('canonical-survivor', 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
   });
 
@@ -283,16 +283,16 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
       width: 100,
       height: 50,
     });
-    const outputBefore = physicPaintStore.toMceOutputs()[0];
+    const outputBefore = physicPaintStore.extractRuntimeStateForDocument('canonical-target');
 
     remove();
-    expect(physicPaintStore.toMceOutputs()).toEqual([]);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target')).toEqual({ frames: new Map(), rotoPhysical: null });
 
     undo();
-    expect(physicPaintStore.toMceOutputs()).toEqual([outputBefore]);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target')).toEqual(outputBefore);
 
     redo();
-    expect(physicPaintStore.toMceOutputs()).toEqual([]);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target')).toEqual({ frames: new Map(), rotoPhysical: null });
   });
 
   it('keeps shared canonical state until the final timeline owner is removed', () => {

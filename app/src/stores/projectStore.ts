@@ -574,12 +574,11 @@ function hydrateFromMce(
     motionBlurStore.previewQuality.value = (mb?.preview_quality as 'off' | 'low' | 'medium') ?? 'medium';
     exportStore.setMotionBlurSubFrames(mb?.export_sub_frames ?? 8);
 
-    // 6. Rendered physics paint outputs (inline PNG frames keyed by layer/frame)
-    //    v1.0 projects carry no physic_paint_outputs (no-op for undefined).
-    physicPaintStore.loadFromMceOutputs(project.physic_paint_outputs);
-
-    // 7. v1.0 EFX Paint documents: register each into efxPaintStore and
-    //    project its default track into the runtime maps (DOC-05).
+    // 6. v1.0 EFX Paint documents: register each into efxPaintStore and
+    //    project its default track into the runtime maps (DOC-05). The legacy
+    //    physic_paint_outputs carrier is never read: the rejection gate
+    //    refuses non-empty carriers before hydration and the Rust side omits
+    //    the empty field, so the runtime project never carries it.
     for (const [, loaded] of loadedDocuments) {
       registerEfxPaintDocument(loaded.document);
       hydrateEfxPaintRuntimeFromDocument(loaded.document, loaded.frames);
@@ -729,7 +728,6 @@ export const projectStore = {
       await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const result = await ipcProjectSave({
           ...project,
-          physic_paint_outputs: undefined,
           efx_paint_documents: persistedDocuments,
         }, currentFilePath, cacheTransactionId);
         if (!result.ok) throw new Error(result.error);
@@ -773,7 +771,6 @@ export const projectStore = {
       await saveEfxPaintDocumentsWithProjectWrite(parentDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const projectForSave: MceProject = {
           ...project,
-          physic_paint_outputs: undefined,
           efx_paint_documents: persistedDocuments,
         };
         if (previousFilePath && previousFilePath !== newFilePath) {
@@ -830,7 +827,6 @@ export const projectStore = {
     const loadedDocuments = await loadEfxPaintDocuments(projectRoot, result.data.efx_paint_documents);
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
-      physic_paint_outputs: undefined,
     };
 
     projectStore.closeProject({ preservePreparedRotoCanvases: true });

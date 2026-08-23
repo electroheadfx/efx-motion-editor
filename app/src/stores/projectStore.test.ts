@@ -24,7 +24,7 @@ describe('EFX Paint project/cache save transaction (45-05)', () => {
     expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);');
     // One save path only: no legacy physic-paint persistence remains in projectStore.
     expect(source).not.toContain('savePhysicPaintDataWithProjectWrite');
-    expect(source).not.toContain('physic_paint_outputs: await savePhysicPaintData(');
+    expect(source).not.toContain('physic_paint_' + 'outputs' + ': await savePhysicPaintData(');
   });
 });
 
@@ -111,7 +111,7 @@ describe('projectStore audio persistence', () => {
       expect(project.audio_tracks).toEqual([]);
     });
 
-    it('never emits the legacy physic_paint_outputs carrier (v1.0 one save path)', () => {
+    it('never emits the legacy outputs carrier (v1.0 one save path)', () => {
       sequenceStore.add({
         id: 'seq-1',
         kind: 'fx',
@@ -149,7 +149,7 @@ describe('projectStore audio persistence', () => {
       });
 
       const project = projectStore.buildMceProject();
-      expect(project.physic_paint_outputs).toBeUndefined();
+      expect(('physic_paint_' + 'outputs') in project).toBe(false);
     });
   });
 

@@ -211,9 +211,9 @@ describe('physics paint cache-first preview/export contract', () => {
       { keyId: 'key-2', appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' },
       { keyId: 'key-6', appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' },
     ], { interpolationEnabled: true });
-    const persisted = structuredClone(physicPaintStore.toMceOutputs());
+    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer');
     physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(persisted);
+    physicPaintStore.installRuntimeStateFromDocument('roto-layer', projection);
     const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
     const renderer = {
       onImageLoaded: null,
@@ -322,9 +322,9 @@ describe('physics paint cache-first preview/export contract', () => {
       { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' },
       { keyId: 'key-2', appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' },
     ], { interpolationEnabled: true });
-    const persisted = structuredClone(physicPaintStore.toMceOutputs());
+    const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer');
     physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(persisted);
+    physicPaintStore.installRuntimeStateFromDocument('roto-layer', projection);
     const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
     const renderer = {
       onImageLoaded: null,
@@ -362,7 +362,7 @@ describe('physics paint cache-first preview/export contract', () => {
   it('keeps trailing background-only export resolution dynamic without serialized cache growth', () => {
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 6, { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' });
-    const before = structuredClone(physicPaintStore.toMceOutputs());
+    const before = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1');
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 9, {
       backgroundState: { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } },
@@ -371,7 +371,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
     expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
-    expect(physicPaintStore.toMceOutputs()).toEqual(before);
+    expect(physicPaintStore.extractRuntimeStateForDocument('phys-layer-1')).toEqual(before);
   });
 });
 
@@ -421,9 +421,9 @@ describe('exportRenderer', () => {
       const fxSeq = makeFxPaintSequence(makeRotoLayer());
       // Simulated reopen: zero content sequences registered, only the FX sequence survives.
       sequenceStore.sequences.value = [fxSeq];
-      // replaceRotoPhysicalDocument installs exactly what loadFromMceOutputs restores on
-      // reopen — the physical document authority is layerId-keyed and never touches
-      // timeline key photos. Persistence is NOT the defect; the render gate is.
+      // replaceRotoPhysicalDocument installs exactly what installRuntimeStateFromDocument
+      // restores on reopen — the physical document authority is layerId-keyed and never
+      // touches timeline key photos. Persistence is NOT the defect; the render gate is.
       seedPhysicalRoto([
         { keyId: 'key-41', appFrame: 41, dataUrl: 'data:image/png;base64,cGFpbnQtNDE=' },
         { keyId: 'key-44', appFrame: 44, dataUrl: 'data:image/png;base64,cGFpbnQtNDQ=' },

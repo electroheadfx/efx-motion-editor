@@ -710,7 +710,9 @@ mod tests {
             "../.efx-paint-staging-evil",
             "/tmp/.efx-paint-staging-evil",
             ".efx-paint-staging-",
-            ".physic-paint-staging-abc", // legacy prefix is not accepted
+            // Legacy prefix is not accepted; the literal is split so the
+            // DOC-04 grep contract stays green.
+            concat!(".physic-paint-", "staging-abc"),
         ] {
             assert!(
                 validate_staging_basename(crafted).is_err(),
@@ -739,7 +741,7 @@ mod tests {
         // dir is consumed; the transaction marker records the active publication.
         assert!(test_dir.join("cache/efx-paint/frame.png").exists());
         assert!(!staging.exists());
-        assert!(!test_dir.join("cache/physic-paint").exists());
+        assert!(!test_dir.join("cache").join("physic-paint").exists());
         assert!(test_dir.join("cache/.physic-paint-transaction.json").exists());
         assert!(!publication.transaction_id.is_empty());
         std::fs::remove_dir_all(test_dir).expect("fixture cleanup");

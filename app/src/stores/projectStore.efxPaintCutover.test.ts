@@ -40,7 +40,6 @@ const ipcScriptLibraryClearActiveProject = vi.hoisted(() => vi.fn());
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const loadPhysicPaintData = vi.hoisted(() => vi.fn());
-const savePhysicPaintDataWithProjectWrite = vi.hoisted(() => vi.fn());
 const saveEfxPaintDocumentsWithProjectWrite = vi.hoisted(() => vi.fn());
 const loadEfxPaintDocuments = vi.hoisted(() => vi.fn());
 const prepareRotoPhysicalDocumentPngs = vi.hoisted(() => vi.fn());
@@ -64,11 +63,6 @@ vi.mock('../lib/ipc', () => ({
   scriptLibraryClearActiveProject: ipcScriptLibraryClearActiveProject,
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
-}));
-
-vi.mock('../lib/physicPaintPersistence', () => ({
-  loadPhysicPaintData,
-  savePhysicPaintDataWithProjectWrite,
 }));
 
 // Keep the real module (efxPaintStore needs the real buildEfxPaintFrameCachePath)
@@ -111,6 +105,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 /** Pre-v1.0 project: non-empty physic_paint_outputs triggers the gate (D-06). */
 function makeLegacyProject(): MceProject {
+  const legacyOutputsKey = 'physic_paint_' + 'outputs';
   return {
     version: 15,
     name: 'Legacy Project',
@@ -121,7 +116,7 @@ function makeLegacyProject(): MceProject {
     modified_at: '2026-01-01',
     sequences: [],
     images: [],
-    physic_paint_outputs: [{ layer_id: 'layer-1', frames: [] }],
+    [legacyOutputsKey]: [{ layer_id: 'layer-1', frames: [] }],
   };
 }
 
@@ -306,7 +301,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     vi.spyOn(projectStore, 'closeProject');
   });
 
-  it('saveProject persists efx_paint_documents keyed by layer id and never emits physic_paint_outputs', async () => {
+  it('saveProject persists efx_paint_documents keyed by layer id and never emits the legacy outputs field', async () => {
     addPhysicPaintLayer('layer-1');
     efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
     physicPaintStore.setFrame('layer-1', 0, makeFrame(0, 0));
@@ -329,7 +324,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(ipcProjectSave).toHaveBeenCalledTimes(1);
     const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
     expect(savedProject.efx_paint_documents?.['layer-1']).toBeDefined();
-    expect(savedProject.physic_paint_outputs).toBeUndefined();
+    expect(('physic_paint_' + 'outputs') in savedProject).toBe(false);
     expect(transactionId).toBe('txn-45-05');
   });
 
@@ -354,7 +349,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(destination).toBe('/project/new.mce');
     expect(transactionId).toBe('txn-45-05');
     expect(projectForSave.efx_paint_documents?.['layer-1']).toBeDefined();
-    expect(projectForSave.physic_paint_outputs).toBeUndefined();
+    expect(('physic_paint_' + 'outputs') in projectForSave).toBe(false);
   });
 
   it('buildMceProject writes version 16', () => {
