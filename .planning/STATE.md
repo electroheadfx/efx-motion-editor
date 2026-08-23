@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 46
 current_phase_name: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 status: executing
-stopped_at: Phase 46 context gathered
-last_updated: "2026-08-23T23:20:00.000Z"
-last_activity: 2026-08-23
-last_activity_desc: Phase 46 plan 02 complete (multi-track projection, trackId cache paths, per-track save/load)
-state_head: 1832cdf121853e01cee00f3347607795de72f2c7
+stopped_at: Completed 46-03-PLAN.md
+last_updated: "2026-08-23T22:08:33.185Z"
+last_activity: 2026-08-24
+last_activity_desc: Phase 46 plan 03 complete (track-scoped ops, cross-track move, track-tagged undo/redo)
+state_head: eea0a68d3e82789d1e79c96e9f5524c216c2e2fa
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 11
 ---
 
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 46 (Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches) — EXECUTING
-Plan: 2 of 6 complete (46-02); next 46-03
+Plan: 3 of 6 complete (46-03); next 46-04
 Status: Ready to execute
-Last activity: 2026-08-23 — Phase 46 plan 02 complete (multi-track projection, trackId cache paths, per-track save/load)
+Last activity: 2026-08-24 — Phase 46 plan 03 complete (track-scoped ops, cross-track move, track-tagged undo/redo)
 
-Progress: [███░░░░░░░] 33%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -49,7 +49,7 @@ Progress: [███░░░░░░░] 33%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
-| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 2 | TBD | - |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 3 | TBD | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 0 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
@@ -76,6 +76,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 45-new-efx-paint-document-and-clean-cutover P07 | 25 | 2 tasks | 18 files |
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P01 | 120 | 3 tasks | 13 files |
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P02 | 35 | 3 tasks | 10 files |
+| Phase 46 P03 | 33 | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,12 @@ Recent decisions affecting current work:
 - [Phase 46 P02]: Cache paths embed the raw UUID trackId between the stable layer segment and the file name (cache/efx-paint/<stableSegment>/<trackId>/frame-NNNNNN-NNNN.png, D-15 foundation) so track deletion can address exactly its own sidecars; every emitted path still passes isSafeEfxPaintCachePath (T-46-04, ASVS V12); no back-migration of legacy track-less sidecar paths (Phase 45 no-compat)
 - [Phase 46 P02]: The save input / load output carry per-track frame maps (trackId → appFrame → frame); two tracks persist frames at the same appFrame without collision (edge TRK-03 ordering resolved explicit) and the loader's cross-track same-appFrame throw is gone; the save fingerprint byte terms include trackId (trackId:appFrame:dataUrl) so identical bytes on distinct tracks never dedupe incorrectly (T-46-06)
 - [Phase 46 P02]: buildEfxPaintDocuments collects one per-track frame map per document.tracks entry keyed by trackId; the project-store hydrate seam passes per-track frames through unchanged; the save orchestrator shape (saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, writeProject)) is untouched
+- [Phase 46 P03]: The rail-set copy engine (buildRotoRailSetCopyPayload) gains source/target track context: the fresh-identity allocation produces new keyIds/loopIds (D-05); Hold clips pasted across tracks are re-pointed to the destination track's freshly allocated source frames; an unre-pointable Hold rejects the paste with a closed result — never a dangling or foreign-track reference (D-06)
+- [Phase 46 P03]: Cross-track paste deep-copies the underlying source frame assets so the destination track is fully self-contained; the no-durable-asset-duplication contract applies only to linked repeats inside ONE Loop Clip (D-07)
+- [Phase 46 P03]: moveTrackItems is implemented verbatim as D-09: cut (fresh-identity clipboard payload) then paste into the destination then delete from the source; a failed move returns ok:false and the source stays untouched; the destination identity is always fresh
+- [Phase 46 P03]: The undo/redo ledger is one document-wide stack; each physical command carries the accepted edit's trackId; recordAcceptedEdit dedupes on operationId+trackId so one cross-track operation's per-track acceptances all record and same-opId/same-track duplicates still collapse (D-01)
+- [Phase 46 P03]: Stored history snapshots are sanitized at record time: the cached repaint base is nulled and the four per-frame raster maps are emptied — records + refs + the prior deterministic revision hash only, never raster bytes (D-03); the undo/redo recompute path stays the single source of raster truth
+- [Phase 46 P03]: undo()/redo() validate the live source against the entry's snapshot (existing snapshotReplayAuthorityEqual path) and, when the entry's trackId is not the document's active track, call the new efxPaintStore.setActiveTrackId FIRST so replay targets the live document (D-04); setActiveTrackId validates the track exists (fail closed) and bumps documentRevision via the 45-01 builders since activeTrackId is a docrev term
 
 ### Pending Todos
 
@@ -156,6 +163,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T18:46:40.223Z
-Stopped at: Phase 46 context gathered
-Resume file: .planning/phases/46-track-local-paint-roto-playscript-state-loop-clips-and-cache/46-CONTEXT.md
+Last session: 2026-08-23T22:08:33.094Z
+Stopped at: Completed 46-03-PLAN.md
+Resume file: None

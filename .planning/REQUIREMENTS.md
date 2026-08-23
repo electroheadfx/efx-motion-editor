@@ -21,7 +21,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **TRK-01**: Each internal Paint track owns its Paint frames, Roto real keys, generated interpolation, Script Motion, and PlayScript output
 - [ ] **TRK-02**: Each internal Paint track owns linked Hold Loop Clips and a shared Loop Clip resolver (modulo, finite/infinite repeat, next-clip interruption)
 - [x] **TRK-03**: Each internal Paint track has its own revision and dirty state with track-aware cache invalidation
-- [ ] **TRK-04**: Copy/cut/paste/duplicate/clear/undo/redo operations are track-aware
+- [x] **TRK-04**: Copy/cut/paste/duplicate/clear/undo/redo operations are track-aware
 - [ ] **TRK-05**: Async PlayScript/Reveal operations revalidate parent, document, and track revision before commit
 - [ ] **TRK-06**: Editing one track never changes another track's real keys or caches; stale async work cannot commit to another selected track
 - [ ] **TRK-07**: Track deletion cannot orphan accepted assets silently
@@ -137,7 +137,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRK-01 | Phase 46 | Complete |
 | TRK-02 | Phase 46 | Pending |
 | TRK-03 | Phase 46 | Complete |
-| TRK-04 | Phase 46 | Pending |
+| TRK-04 | Phase 46 | Complete |
 | TRK-05 | Phase 46 | Pending |
 | TRK-06 | Phase 46 | Pending |
 | TRK-07 | Phase 46 | Pending |

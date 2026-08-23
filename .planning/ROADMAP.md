@@ -245,7 +245,7 @@ Plans:
   4. Copy/cut/paste/duplicate/clear/undo/redo operations target the exact internal track.
   5. Editing one Hold source frame updates every linked occurrence without duplicating assets.
 
-**Plans**: 2/6 plans executed
+**Plans**: 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -258,7 +258,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 46-03-PLAN.md
+- [x] 46-03-PLAN.md — Track-scoped copy/cut/paste/duplicate/clear, cross-track move primitive, track-tagged undo/redo (TDD)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -389,7 +389,7 @@ Plans:
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
-| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 2/6 | In progress | - |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 3/6 | In Progress|  |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 0/TBD | Not started | - |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
