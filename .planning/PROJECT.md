@@ -129,6 +129,16 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
+- [ ] New versioned v1.0 EFX Paint document owned by one parent layer ID, with stable internal track IDs, document revision, and active track ID — v1.0.0
+- [ ] Clean-break creation of one fresh default Paint track and one fixed Background track for every new v1.0 EFX Paint document; pre-v1.0 Paint data rejected explicitly — v1.0.0
+- [ ] Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, caches, revision, and dirty state — v1.0.0
+- [ ] Internal multi-track timeline inside EFX Paint Studio: add/rename/duplicate/delete/reorder, active selection, hide/solo, opacity, blend mode — v1.0.0
+- [ ] Deterministic internal compositor resolving all Paint tracks into one flattened parent-layer raster per frame — v1.0.0
+- [ ] Fixed Background track with imported still/sequence Loop Clips, finite/infinite repeat, gaps, and solid/transparent fallback — v1.0.0
+- [ ] Photo/reference track (reference-only / reveal-source / masked-transform-source), excluded from ordinary flattened output — v1.0.0
+- [ ] Read-only main-editor audio preview synchronized to the shared application-frame cursor during internal track playback — v1.0.0
+- [ ] Shared mask compositor and Reveal using photo source plus internal Paint/PlayScript coverage — v1.0.0
+- [ ] Save/reopen, undo/redo, clean-break legacy rejection, preview/export parity, and native UAT — v1.0.0
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
@@ -136,19 +146,22 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 12 phases (39-44, incl. inserted 43.1-43.6), 100 plans, 962 commits over 17 days. Audit verdict `passed`: 38/38 requirements satisfied, 12/12 phases verified, integration + E2E flows wired (43→44 signed-artifact boundary not dropped), Nyquist fully compliant. Shipped as a signed/notarized/stapled macOS release published as GitHub **Latest** on 2026-08-21 (ahead of the 2026-08-31 target) with all six REL-01 gates green, the 17-step packaged-app UAT approved, downloaded-artifact verification passed, and all 15 stop conditions recorded not active. See `.planning/MILESTONES.md`, `milestones/v0.9.0-MILESTONE-AUDIT.md`, and `milestones/v0.9.0-ROADMAP.md`.
 
-## Next Milestone: v1.0 (multi-track — in planning)
+## Current Milestone: v1.0.0 EFX Paint Multi-Track Frames and Reveal
 
-**Direction:** expand the EFX Paint workflow beyond the single parent Paint layer toward multi-track timeline work, per the v1.0/v1.1 roadmap (v1.0 multi-track; v1.1 Codex+MMX AI). New requirements land under `### Active` below and are sharpened via `/gsd-new-milestone`.
+**Goal:** Allow one parent Paint layer to contain a complete multi-track frame animation document inside EFX Paint — multiple internal Paint frame tracks composited into one flattened parent-layer result.
 
 **Target features:**
-- Blocking prerequisite: Scripts auto-hydration fix — saved-project scripts and Save Script appear without manual Refresh (no delays/polling hacks)
-- macOS release identity: new icon from `SPECS/efxmotioneditor-icon-2.png` (794×794 alpha source, tracked generated icons stay release authority)
-- Desktop build hygiene: `chunkSizeWarningLimit: 1100` documented budget + safe mixed-import corrections only
-- Read-only audio preview inside EFX Paint synchronized to the Paint cursor, with session-local monitoring toggle
-- PlayScript application controls: progressive vs static/hold modes, application-time color override, Hold Loop controls (cycle × repeat 1..∞)
-- Deterministic static/hold rendering with linked Loop Clips (no duplicated source assets, next-clip interruption, filmstrip timeline visualization)
+- New versioned EFX Paint document (clean format break; pre-v1.0 Paint data rejected explicitly, no migration/compat shim)
+- Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, and caches
+- Internal multi-track timeline with filmstrip capsules and controls (add/rename/duplicate/delete/reorder, hide/solo, opacity, blend)
+- Deterministic internal compositor → one flattened parent raster per frame
+- Fixed Background track with imported still/sequence Loop Clips + solid/transparent fallback
+- Photo/reference track (reference-only / reveal-source / masked-transform-source)
+- Read-only main-editor audio preview during internal track playback
+- Shared mask compositor and Reveal via Paint/PlayScript coverage
+- Integrated native UAT + signed release
 
-**Source spec:** `SPECS/milestone-v0.9.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio; EFX Paint edits one parent Paint layer)
+**Source spec:** `SPECS/milestone-v1.0.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio and stays unchanged; multi-track means internal Paint frame tracks inside one opened EFX Paint document; all internal tracks share the parent application-frame axis and never change main-editor sequence duration)
 
 ## Previous Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
 
@@ -298,4 +311,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-21 after v0.9.0 milestone close — v0.9.0 shipped (signed/notarized/stapled macOS artifact published as GitHub Latest ahead of the 2026-08-31 target; 38/38 requirements, 12/12 phases, six REL-01 gates green, 17-step packaged-app UAT approved, downloaded-artifact verification + 15-item stop-condition checklist zero-active). Milestone archived to `milestones/v0.9.0-ROADMAP.md` / `v0.9.0-REQUIREMENTS.md`. Next milestone: v1.0 multi-track (via `/gsd-new-milestone`).*
+*Last updated: 2026-08-23 after v1.0.0 milestone start — v1.0.0 EFX Paint Multi-Track Frames and Reveal initialized from `SPECS/milestone-v1.0.0-plan.md` (locked ownership boundaries; clean format break; multi-track = internal Paint frame tracks inside one opened EFX Paint document). Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*

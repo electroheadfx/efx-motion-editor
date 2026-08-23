@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9.0
-status: completed
-stopped_at: Milestone v0.9.0 summary generated
-last_updated: "2026-08-21T13:40:45.701Z"
-last_activity: 2026-08-21
-last_activity_desc: Milestone v0.9.0 completed and archived
-state_head: 0e1d71c98db03bc5e846725e74c800c682dfdcfb
+milestone: v1.0.0
+milestone_name: EFX Paint Multi-Track Frames and Reveal
+status: planning
+last_updated: "2026-08-23T09:23:47.180Z"
+last_activity: 2026-08-23
 progress:
   total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
+  percent: 0
 ---
 
 Total Phases: 8
@@ -47,10 +44,10 @@ See: .planning/PROJECT.md (updated 2026-08-21 after v0.9.0 milestone close)
 
 ## Current Position
 
-Phase: Milestone v0.9.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-23 - Closed quick task 260823-dtu: solid dual-stroke brush cursor in Physics Paint Studio (UAT passed) + main-editor SVG cursor
+Status: Defining requirements
+Last activity: 2026-08-23 — Milestone v1.0.0 started
 
 ## Performance Metrics
 
