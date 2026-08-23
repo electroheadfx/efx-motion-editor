@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Completed 45-new-efx-paint-document-and-clean-cutover-06-PLAN.md
-last_updated: "2026-08-23T15:50:41.845Z"
+stopped_at: Completed 45-new-efx-paint-document-and-clean-cutover-07-PLAN.md
+last_updated: "2026-08-23T18:20:00.000Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 45 plan 05 (open/save funnel cutover) complete
-state_head: d4b2c9822b0c0273ef4bbfcf3ada5776f236784b
+last_activity_desc: Phase 45 plan 07 (legacy deletion + DOC-04 contract) complete
+state_head: 0a06011a
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 6 of 8
-Status: Ready to execute (next: 45-06)
-Last activity: 2026-08-23 — Phase 45 plan 05 (open/save funnel cutover) complete
+Plan: 7 of 8
+Status: Ready to execute (next: 45-08)
+Last activity: 2026-08-23 — Phase 45 plan 07 (legacy deletion + DOC-04 contract) complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 45-new-efx-paint-document-and-clean-cutover P04 | 25 | 3 tasks | 5 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P05 | 30 | 3 tasks | 8 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P06 | 55 | 4 tasks | 42 files |
+| Phase 45-new-efx-paint-document-and-clean-cutover P07 | 25 | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,10 @@ Recent decisions affecting current work:
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: The apply-canvas editableState carrier stays typed as the PACKAGE's EfxPaintDocument (the engine's save() output is not assignable to the app-side type — rotoPhysical: unknown vs PhysicPaintRotoPhysicalDocument); the guard validates a carrier-stripped copy through the full fail-closed parseEfxPaintDocument, rejecting legacy version:2
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: The dead PhysicsPaintStudioToolbar.tsx is deleted, not rewired: zero importers anywhere, and its independent v2-only session-load path is exactly the legacy session-file contract D-02 hard-deletes; the live Studio session load already routes through usePhysicsPaintSessionController → parsePhysicsPaintStateFile
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: The demo toolbar delegates validation to engine.load: JSON.parse failures surface the invalid-file copy, engine.load failures surface the engine's distinct error message (legacy v2 files hit the pre-v1.0 unsupported copy)
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: DOC-04 is mechanically proven by a grep contract test (efxPaintCleanBreakContract.test.ts): the 11 legacy persistence/format tokens ('physicPaintPersistence', 'cache/physic-paint', '.physic-paint-staging-', 'McePhysicPaint*', 'toMceOutputs', 'loadFromMceOutputs', 'efx-paint-state-', 'SerializedProject', 'isSerializedProject') must not appear outside the exact allowlist (gate module, gate test, fixtures, contract itself); the RED failure list IS the deletion checklist (D-02: the audit is a test, not a claim)
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The contract test's token scope is the legacy persistence/format surface only — bare retained runtime-state identifiers (interpolation-settings map, cached-frames signal, editable-state types, per-track rotoPhysical schema field) are intentionally NOT banned (research A4); the 4 removed launch-payload fields are policed by a region-scoped check on the PhysicPaintLaunchContext interface body, not a tree-wide ban
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: physic_paint_outputs survives only as the OPAQUE presence carrier for the gate (45-02 design): declared in models/project.rs and types/project.ts, named by the Rust carrier mechanics, confined by a dedicated carrier allowlist — never interpreted by a reader/renderer/serializer
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The legacy one-track surface is hard-deleted: physicPaintPersistence.ts + its test are gone (replaced by efxPaintPersistence.ts in 45-04), the McePhysicPaint* output types are removed from types/project.ts, and toMceOutputs/loadFromMceOutputs + their serialization cache are gone from physicPaintStore.ts — the v1.0 document projection (extractRuntimeStateForDocument + installRuntimeStateFromDocument) is the only save/load seam; git history is the only archive (D-02), deletion is code-only (D-04)
 
 ### Pending Todos
 
@@ -137,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T15:50:41.835Z
-Stopped at: Completed 45-new-efx-paint-document-and-clean-cutover-06-PLAN.md
+Last session: 2026-08-23T18:20:00.000Z
+Stopped at: Completed 45-new-efx-paint-document-and-clean-cutover-07-PLAN.md
 Resume file: None
