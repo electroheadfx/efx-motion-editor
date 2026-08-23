@@ -54,7 +54,7 @@ describe('findLegacyPhysicPaintRejection — full D-06 truth table', () => {
   });
 
   it('returns the first reason in fixed precedence order: outputs → cache-reference → documentless-layer', () => {
-    const base = {
+    const base: Record<string, unknown> = {
       version: 15,
       name: 'Precedence',
       fps: 24,
@@ -108,14 +108,14 @@ describe('findLegacyPhysicPaintRejection — full D-06 truth table', () => {
     });
 
     // Without outputs → cache-reference wins over documentless-layer.
-    const withoutOutputs = { ...base, physic_paint_outputs: [] };
+    const withoutOutputs: Record<string, unknown> = { ...base, physic_paint_outputs: [] };
     expect(findLegacyPhysicPaintRejection(withoutOutputs)).toEqual({
       kind: 'legacy-physic-paint-cache-reference',
       path: 'cache/physic-paint/legacy-frame.png',
     });
 
     // Without outputs and cache ref → documentless-layer.
-    const withoutCacheRef = { ...withoutOutputs };
+    const withoutCacheRef: Record<string, unknown> = { ...withoutOutputs };
     delete withoutCacheRef.cache_path;
     expect(findLegacyPhysicPaintRejection(withoutCacheRef)).toEqual({
       kind: 'physic-paint-layer-without-document',
