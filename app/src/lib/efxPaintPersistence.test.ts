@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
-import { buildEfxPaintFrameCachePath, loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite } from './efxPaintPersistence';
+import {
+  buildEfxPaintFrameCachePath,
+  isSafeEfxPaintCachePath,
+  loadEfxPaintDocuments,
+  saveEfxPaintDocumentsWithProjectWrite,
+  stableSegment,
+} from './efxPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -154,5 +160,91 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
   it('returns an empty map when no documents are persisted', async () => {
     const loaded = await loadEfxPaintDocuments('/project', undefined);
     expect(loaded.size).toBe(0);
+  });
+
+  it('isSafeEfxPaintCachePath accepts canonical sidecar paths and rejects traversal', () => {
+    const good = buildEfxPaintFrameCachePath('layer-x', { appFrame: 0, frameIndex: 0 });
+    expect(isSafeEfxPaintCachePath(good)).toBe(true);
+    expect(isSafeEfxPaintCachePath('/cache/efx-paint/layer-x/frame-000000-0000.png')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/efx-paint/../frame.png')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/efx-paint/./frame.png')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/efx-paint//frame.png')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x\\frame.png')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x/frame.png\0')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/physic-paint/layer-x/frame.png')).toBe(false);
+    expect(isSafeEfxPaintCachePath('cache/efx-paint')).toBe(false);
+    expect(isSafeEfxPaintCachePath(42)).toBe(false);
+  });
+
+  it('saving the same unchanged document twice skips sidecar staging on the second save', async () => {
+    const document = createEfxPaintDocument('layer-idem');
+    const frameRef = buildEfxPaintFrameCachePath('layer-idem', { appFrame: 0, frameIndex: 0 });
+    const track = document.tracks[0];
+    const withFrame = {
+      ...document,
+      tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
+    };
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-idem', {
+      document: withFrame,
+      frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]]),
+    }]]);
+    const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
+
+    const first = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
+    expect(firstWriteCount).toBeGreaterThan(0);
+
+    const second = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    expect(second).toEqual(first);
+    expect(vi.mocked(writeFile).mock.calls.length).toBe(firstWriteCount);
+    expect(writeProject).toHaveBeenCalledTimes(2);
+  });
+
+  it('rolls back the staged generation and keeps the prior committed generation when the project write throws', async () => {
+    const document = createEfxPaintDocument('layer-rollback');
+    const frameRef = buildEfxPaintFrameCachePath('layer-rollback', { appFrame: 0, frameIndex: 0 });
+    const track = document.tracks[0];
+    const withFrame = {
+      ...document,
+      tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
+    };
+    const makeDocuments = (dataUrl: string) => new Map<string, EfxPaintDocumentSaveInput>([['layer-rollback', {
+      document: withFrame,
+      frames: new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl, width: 100, height: 50 }]]),
+    }]]);
+
+    // First save commits a generation.
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments('data:image/png;base64,AQID'), async () => {});
+    expect(files.has(`/project/${frameRef}`)).toBe(true);
+
+    // Second save stages new bytes, then the project write throws.
+    await expect(saveEfxPaintDocumentsWithProjectWrite(
+      '/project',
+      makeDocuments('data:image/png;base64,BAID'),
+      async () => { throw new Error('forced project save failure'); },
+    )).rejects.toThrow('forced project save failure');
+
+    expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
+      '/project',
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
+      'rollback',
+    );
+    // The prior committed generation remains published with its original bytes.
+    const { readFile } = await import('@tauri-apps/plugin-fs');
+    expect(Array.from(await readFile(`/project/${frameRef}`))).toEqual([1, 2, 3]);
+    // The staging generation is gone.
+    expect(Array.from(files.keys()).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
+    expect(Array.from(dirs).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
+  });
+
+  it('stableSegment is deterministic, collision-resistant, and sanitized', () => {
+    expect(stableSegment('layer-x')).toBe(stableSegment('layer-x'));
+    expect(stableSegment('layer-x')).not.toBe(stableSegment('layer-y'));
+    expect(stableSegment('a/b\\c')).toBe(stableSegment('a/b\\c'));
+    expect(stableSegment('a/b\\c')).not.toContain('/');
+    expect(stableSegment('a/b\\c')).not.toContain('\\');
+    expect(stableSegment('a/b')).not.toBe(stableSegment('a_b'));
+    expect(stableSegment('')).toMatch(/^layer-/);
   });
 });
