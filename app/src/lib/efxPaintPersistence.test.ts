@@ -241,6 +241,83 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(Array.from(dirs).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
   });
 
+  it('embeds the trackId in the canonical cache path and the guard accepts it', () => {
+    const path = buildEfxPaintFrameCachePath('layer-x', 'track-y', { appFrame: 7, frameIndex: 3 });
+    expect(path).toBe(`cache/efx-paint/${stableSegment('layer-x')}/track-y/frame-000007-0003.png`);
+    expect(isSafeEfxPaintCachePath(path)).toBe(true);
+  });
+
+  it('stages two tracks at the same appFrame without collision and loads both back', async () => {
+    const document = createEfxPaintDocument('layer-2t');
+    const trackA = document.tracks[0];
+    const trackB = { ...trackA, id: 'track-b', order: 1 };
+    const pathA = buildEfxPaintFrameCachePath('layer-2t', trackA.id, { appFrame: 5, frameIndex: 0 });
+    const pathB = buildEfxPaintFrameCachePath('layer-2t', trackB.id, { appFrame: 5, frameIndex: 0 });
+    expect(pathA).not.toBe(pathB);
+    const withFrames = {
+      ...document,
+      tracks: [
+        { ...trackA, frames: { 5: { cachePath: pathA, width: 100, height: 50 } } },
+        { ...trackB, frames: { 5: { cachePath: pathB, width: 100, height: 50 } } },
+      ],
+    };
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-2t', {
+      document: withFrames,
+      frames: new Map([
+        [trackA.id, new Map([[5, { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]])],
+        [trackB.id, new Map([[5, { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,BAID', width: 100, height: 50 }]])],
+      ]),
+    }]]);
+    const writeProject = vi.fn(async () => {});
+
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+
+    // Both tracks' sidecars staged at their own track paths.
+    expect(files.has(`/project/${pathA}`)).toBe(true);
+    expect(files.has(`/project/${pathB}`)).toBe(true);
+    // Load restores per-track frames at the same appFrame without a throw.
+    const loaded = await loadEfxPaintDocuments('/project', persisted);
+    const restored = loaded.get('layer-2t')!;
+    expect(restored.frames.get(trackA.id)?.get(5)?.dataUrl).toBe('data:image/png;base64,AQID');
+    expect(restored.frames.get(trackB.id)?.get(5)?.dataUrl).toBe('data:image/png;base64,BAID');
+  });
+
+  it('loads per-track frame maps with validated cache paths', async () => {
+    const document = createEfxPaintDocument('layer-pt');
+    const trackA = document.tracks[0];
+    const trackB = { ...trackA, id: 'track-b', order: 1 };
+    const pathA = buildEfxPaintFrameCachePath('layer-pt', trackA.id, { appFrame: 1, frameIndex: 0 });
+    const pathB = buildEfxPaintFrameCachePath('layer-pt', trackB.id, { appFrame: 2, frameIndex: 0 });
+    files.set(`/project/${pathA}`, new Uint8Array([1, 2, 3]));
+    files.set(`/project/${pathB}`, new Uint8Array([4, 5, 6]));
+    const payload = { 'layer-pt': {
+      ...document,
+      tracks: [
+        { ...trackA, frames: { 1: { cachePath: pathA, width: 10, height: 10 } } },
+        { ...trackB, frames: { 2: { cachePath: pathB, width: 20, height: 20 } } },
+      ],
+    } };
+
+    const loaded = await loadEfxPaintDocuments('/project', payload);
+    const restored = loaded.get('layer-pt')!;
+    expect(Array.from(restored.frames.keys()).sort()).toEqual([trackA.id, trackB.id]);
+    expect(restored.frames.get(trackA.id)?.get(1)?.dataUrl).toBe('data:image/png;base64,AQID');
+    expect(restored.frames.get(trackB.id)?.get(2)?.dataUrl).toBe('data:image/png;base64,BAUG');
+  });
+
+  it('fails closed when a persisted track frame cachePath is unsafe', async () => {
+    const document = createEfxPaintDocument('layer-unsafe');
+    const track = document.tracks[0];
+    const payload = { 'layer-unsafe': {
+      ...document,
+      tracks: [
+        { ...track, frames: { 0: { cachePath: '/cache/efx-paint/seg/frame-000000-0000.png', width: 10, height: 10 } } },
+      ],
+    } };
+
+    await expect(loadEfxPaintDocuments('/project', payload)).rejects.toThrow(/unsafe sidecar path/);
+  });
+
   it('stableSegment is deterministic, collision-resistant, and sanitized', () => {
     expect(stableSegment('layer-x')).toBe(stableSegment('layer-x'));
     expect(stableSegment('layer-x')).not.toBe(stableSegment('layer-y'));
