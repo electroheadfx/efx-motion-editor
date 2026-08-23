@@ -35,10 +35,14 @@ export interface MceProject {
     export_sub_frames: number;     // 4, 8, or 16
   };
   physic_paint_outputs?: McePhysicPaintOutput[];
+  /** v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust). */
+  efx_paint_documents?: Record<string, unknown>;
 }
 
 export type RuntimeMceProject = Omit<MceProject, 'physic_paint_outputs'> & {
   physic_paint_outputs?: RuntimePhysicPaintOutput[];
+  /** v1.0 EFX Paint documents keyed by parent layer id (mirror of MceProject). */
+  efx_paint_documents?: Record<string, unknown>;
 };
 
 export interface McePhysicPaintCachedFrame {

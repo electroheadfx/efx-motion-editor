@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Legacy type -- kept for project_get_default backward compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,39 +25,16 @@ pub struct MceProject {
     pub images: Vec<MceImageRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<MceAudioTrack>,
+    /// Opaque legacy presence carrier (D-02/D-06): round-trips the presence of
+    /// pre-v1.0 physic_paint_outputs blobs to the TS rejection gate but is
+    /// never interpreted, migrated, or rendered by Rust.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub physic_paint_outputs: Vec<McePhysicPaintOutput>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McePhysicPaintOutput {
-    pub layer_id: String,
-    #[serde(default)]
-    pub frames: Vec<McePhysicPaintCachedFrame>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roto_physical: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roto_playback: Option<McePhysicPaintRotoPlaybackSettings>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McePhysicPaintRotoPlaybackSettings {
-    #[serde(rename = "loop")]
-    pub r#loop: bool,
-    pub fps: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McePhysicPaintCachedFrame {
-    #[serde(rename = "frameIndex")]
-    pub frame_index: u32,
-    #[serde(rename = "appFrame")]
-    pub app_frame: u32,
-    pub cache_path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub width: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub height: Option<u32>,
+    pub physic_paint_outputs: Vec<Value>,
+    /// v1.0 EFX Paint documents keyed by parent layer id (F1). Carried
+    /// opaquely as serde_json values — TS owns the fail-closed schema,
+    /// mirroring the roto_physical escape hatch.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub efx_paint_documents: HashMap<String, Value>,
 }
 
 /// Audio track in project file (Phase 15)

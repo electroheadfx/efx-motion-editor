@@ -52,6 +52,7 @@ pub fn project_create(
         images: vec![],
         audio_tracks: vec![],
         physic_paint_outputs: vec![],
+        efx_paint_documents: std::collections::HashMap::new(),
     })
 }
 
