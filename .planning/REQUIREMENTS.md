@@ -9,8 +9,8 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### DOC — Document & Clean Cutover (Phase 1)
 
-- [ ] **DOC-01**: New v1.0 parent Paint layer owns exactly one versioned EFX Paint document with stable internal track IDs, document revision, and active track ID
-- [ ] **DOC-02**: Every new v1.0 EFX Paint document starts with one fresh default Paint track and one fixed Background track with configured fallback
+- [x] **DOC-01**: New v1.0 parent Paint layer owns exactly one versioned EFX Paint document with stable internal track IDs, document revision, and active track ID
+- [x] **DOC-02**: Every new v1.0 EFX Paint document starts with one fresh default Paint track and one fixed Background track with configured fallback
 - [ ] **DOC-03**: Pre-v1.0 Paint project data fails explicitly as unsupported without partial mutation or fallback rendering
 - [ ] **DOC-04**: No legacy one-track schema reader, converter, renderer, cache path, or compatibility branch remains reachable
 - [ ] **DOC-05**: Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity
@@ -128,8 +128,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOC-01 | Phase 45 | Pending |
-| DOC-02 | Phase 45 | Pending |
+| DOC-01 | Phase 45 | Complete |
+| DOC-02 | Phase 45 | Complete |
 | DOC-03 | Phase 45 | Pending |
 | DOC-04 | Phase 45 | Pending |
 | DOC-05 | Phase 45 | Pending |
@@ -185,6 +185,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACC-03 | Phase 53 | Pending |
 
 **Coverage:**
+
 - v1.0.0 requirements: 55 total
 - Mapped to phases: 55
 - Unmapped: 0 ✓

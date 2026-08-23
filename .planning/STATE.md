@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
-current_phase_name: new-efx-paint-document-and-clean-cutover
+current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
 stopped_at: Phase 45 context gathered
-last_updated: "2026-08-23T13:38:19.144Z"
+last_updated: "2026-08-23T14:01:17.561Z"
 last_activity: 2026-08-23
-last_activity_desc: Milestone v1.0.0 roadmap created (9 phases 45-53, 55 requirements mapped)
-state_head: a03a84be142de697960e031d654fabfcfe596189
+last_activity_desc: Phase 45 execution started
+state_head: 4c79a4d2e60dd44266db3fb38c6c1bc81a0b81c8
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Milestone v1.0.0 EFX Paint Multi-Track Frames and Reveal — Phase 45 (New EFX Paint Document and Clean Cutover)
+**Current focus:** Phase 45 — New EFX Paint Document and Clean Cutover
 
 ## Current Position
 
-Phase: 45 (new-efx-paint-document-and-clean-cutover) — READY TO EXECUTE
-Plan: — (not yet planned)
-Status: Ready to execute
-Last activity: 2026-08-23 — Milestone v1.0.0 roadmap created (9 phases 45-53, 55 requirements mapped)
+Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
+Plan: 1 of 8
+Status: Executing Phase 45
+Last activity: 2026-08-23 — Phase 45 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -62,6 +62,12 @@ Progress: [░░░░░░░░░░] 0%
 
 - N/A (new milestone)
 
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 45 P01 | 135 | - tasks | - files |
+
 ## Accumulated Context
 
 ### Decisions
@@ -79,6 +85,7 @@ Recent decisions affecting current work:
 - Main-editor audio is available only as read-only synchronized monitoring during EFX Paint playback.
 - Internal track opacity/blend applied once inside EFX Paint; parent opacity/blend applied once by the main editor (never double-applied).
 - Reveal uses photo source plus internal Paint coverage through one shared mask compositor.
+- [Phase 45]: EfxPaintDocument is the v1.0 identity root: one versioned document per parent layer, stable UUID track IDs, one default Paint track, one fixed Background track with transparent fallback (D-08); shared canonical encoder extracted to efxPaintCanonicalEncoder.ts and re-pointed from the roto physical model
 
 ### Pending Todos
 
@@ -104,6 +111,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T10:36:28.947Z
+Last session: 2026-08-23T14:01:14.383Z
 Stopped at: Phase 45 context gathered
 Resume file: .planning/phases/45-new-efx-paint-document-and-clean-cutover/45-CONTEXT.md
