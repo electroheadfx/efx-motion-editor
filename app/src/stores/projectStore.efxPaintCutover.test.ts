@@ -1,0 +1,206 @@
+/**
+ * Phase 45-05 cutover test suite: the v1.0 EFX Paint document funnel.
+ *
+ * Task 1 (gate): openProject refuses pre-v1.0 projects end-to-end with a
+ * blocking no-recourse dialog and zero store mutation (D-05/D-07, Pitfall F4).
+ * Task 2 (save/load): both save paths persist efx_paint_documents through the
+ * v1.0 two-resource transaction; open hydrates documents into efxPaintStore;
+ * closeProject resets the store (DOC-05).
+ * Task 3 (creation): AddFxMenu registers one spec-shaped document per
+ * physic-paint layer (DOC-01/DOC-02).
+ *
+ * The ipc / persistence / dialog / fs modules are fully mocked; the real
+ * stores run so hydration effects are observable.
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { findLegacyPhysicPaintRejection } from '../efx-paint/document/efxPaintCleanBreak';
+import {
+  LEGACY_PHYSIC_PAINT_REJECTED_COPY,
+  showLegacyPhysicPaintRejectionDialog,
+} from '../lib/efxPaintRejectionDialog';
+import type { MceProject } from '../types/project';
+import { projectStore } from './projectStore';
+import { sequenceStore } from './sequenceStore';
+
+// --- Hoisted mocks (module graph is imported before the test body runs) ---
+
+const ipcProjectOpen = vi.hoisted(() => vi.fn());
+const ipcProjectSave = vi.hoisted(() => vi.fn());
+const ipcProjectSaveAsWithScriptLibrary = vi.hoisted(() => vi.fn());
+const ipcProjectCreate = vi.hoisted(() => vi.fn());
+const ipcProjectMigrateTempImages = vi.hoisted(() => vi.fn());
+const ipcScriptLibraryBindSavedProject = vi.hoisted(() => vi.fn());
+const ipcScriptLibraryClearActiveProject = vi.hoisted(() => vi.fn());
+const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const loadPhysicPaintData = vi.hoisted(() => vi.fn());
+const savePhysicPaintDataWithProjectWrite = vi.hoisted(() => vi.fn());
+const prepareRotoPhysicalDocumentPngs = vi.hoisted(() => vi.fn());
+const startAutoSave = vi.hoisted(() => vi.fn());
+const stopAutoSave = vi.hoisted(() => vi.fn());
+const addRecentProject = vi.hoisted(() => vi.fn());
+const setLastProjectPath = vi.hoisted(() => vi.fn());
+const savePaintData = vi.hoisted(() => vi.fn());
+const loadPaintData = vi.hoisted(() => vi.fn());
+const cleanupOrphanedPaintFiles = vi.hoisted(() => vi.fn());
+const dialogMessage = vi.hoisted(() => vi.fn());
+const fsReadFile = vi.hoisted(() => vi.fn());
+
+vi.mock('../lib/ipc', () => ({
+  projectCreate: ipcProjectCreate,
+  projectSave: ipcProjectSave,
+  projectSaveAsWithScriptLibrary: ipcProjectSaveAsWithScriptLibrary,
+  projectOpen: ipcProjectOpen,
+  projectMigrateTempImages: ipcProjectMigrateTempImages,
+  scriptLibraryBindSavedProject: ipcScriptLibraryBindSavedProject,
+  scriptLibraryClearActiveProject: ipcScriptLibraryClearActiveProject,
+  publishPhysicPaintCacheGeneration,
+  settlePhysicPaintCacheGeneration,
+}));
+
+vi.mock('../lib/physicPaintPersistence', () => ({
+  loadPhysicPaintData,
+  savePhysicPaintDataWithProjectWrite,
+}));
+
+vi.mock('../components/physic-paint/roto/rotoCanvasFrames', () => ({
+  prepareRotoPhysicalDocumentPngs,
+}));
+
+vi.mock('../lib/autoSave', () => ({
+  startAutoSave,
+  stopAutoSave,
+}));
+
+vi.mock('../lib/appConfig', () => ({
+  addRecentProject,
+  setLastProjectPath,
+}));
+
+vi.mock('../lib/paintPersistence', () => ({
+  savePaintData,
+  loadPaintData,
+  cleanupOrphanedPaintFiles,
+}));
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  message: dialogMessage,
+}));
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+  readFile: fsReadFile,
+}));
+
+// --- Fixtures ---
+
+/** Pre-v1.0 project: non-empty physic_paint_outputs triggers the gate (D-06). */
+function makeLegacyProject(): MceProject {
+  return {
+    version: 15,
+    name: 'Legacy Project',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    created_at: '2026-01-01',
+    modified_at: '2026-01-01',
+    sequences: [],
+    images: [],
+    physic_paint_outputs: [{ layer_id: 'layer-1', frames: [] }],
+  };
+}
+
+/** v1.0 project: no legacy outputs, no cache refs, no physic-paint layers. */
+function makeCleanProject(): MceProject {
+  return {
+    version: 16,
+    name: 'Clean Project',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    created_at: '2026-01-01',
+    modified_at: '2026-01-01',
+    sequences: [],
+    images: [],
+  };
+}
+
+describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectStore.reset();
+    sequenceStore.reset();
+    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
+    loadPhysicPaintData.mockResolvedValue([]);
+    prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
+    ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
+    ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
+    addRecentProject.mockResolvedValue(undefined);
+    setLastProjectPath.mockResolvedValue(undefined);
+    dialogMessage.mockResolvedValue('Ok');
+    fsReadFile.mockRejectedValue(new Error('unexpected readFile in test'));
+    vi.spyOn(projectStore, 'closeProject');
+  });
+
+  it('rejects a legacy project with a blocking dialog and zero downstream invocation', async () => {
+    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeLegacyProject() });
+
+    await projectStore.openProject('/project/legacy.mce');
+
+    expect(dialogMessage).toHaveBeenCalledTimes(1);
+    expect(dialogMessage).toHaveBeenCalledWith(LEGACY_PHYSIC_PAINT_REJECTED_COPY, {
+      title: 'EFX Motion Editor',
+      kind: 'error',
+      buttons: 'Ok',
+    });
+    // Zero mutation: nothing downstream of the gate runs.
+    expect(projectStore.closeProject).not.toHaveBeenCalled();
+    expect(loadPhysicPaintData).not.toHaveBeenCalled();
+    expect(startAutoSave).not.toHaveBeenCalled();
+    expect(ipcScriptLibraryBindSavedProject).not.toHaveBeenCalled();
+    expect(addRecentProject).not.toHaveBeenCalled();
+    expect(setLastProjectPath).not.toHaveBeenCalled();
+    // The previously open project state is untouched (no hydration).
+    expect(projectStore.name.value).toBe('Untitled Project');
+    expect(sequenceStore.sequences.value).toHaveLength(0);
+  });
+
+  it('opens a clean project through the normal hydration path exactly as today', async () => {
+    await projectStore.openProject('/project/clean.mce');
+
+    expect(dialogMessage).not.toHaveBeenCalled();
+    expect(projectStore.closeProject).toHaveBeenCalledTimes(1);
+    expect(loadPhysicPaintData).toHaveBeenCalledTimes(1);
+    expect(startAutoSave).toHaveBeenCalledTimes(1);
+    expect(ipcScriptLibraryBindSavedProject).toHaveBeenCalledTimes(1);
+    expect(addRecentProject).toHaveBeenCalledTimes(1);
+    expect(setLastProjectPath).toHaveBeenCalledTimes(1);
+    // Hydration ran: the project name is live in the store.
+    expect(projectStore.name.value).toBe('Clean Project');
+  });
+
+  it('exports an explicit no-recourse copy naming EFX Physic Paint, pre-v1.0, and the impossibility of opening', () => {
+    expect(typeof LEGACY_PHYSIC_PAINT_REJECTED_COPY).toBe('string');
+    expect(LEGACY_PHYSIC_PAINT_REJECTED_COPY).toMatch(/EFX Physic Paint/i);
+    expect(LEGACY_PHYSIC_PAINT_REJECTED_COPY).toMatch(/pre-v1\.0/i);
+    expect(LEGACY_PHYSIC_PAINT_REJECTED_COPY).toMatch(/cannot be opened|cannot open/i);
+  });
+
+  it('behaves identically on a second open attempt of a rejected file (stateless gate)', async () => {
+    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeLegacyProject() });
+
+    await projectStore.openProject('/project/legacy.mce');
+    await projectStore.openProject('/project/legacy.mce');
+
+    expect(dialogMessage).toHaveBeenCalledTimes(2);
+    expect(projectStore.closeProject).not.toHaveBeenCalled();
+    expect(loadPhysicPaintData).not.toHaveBeenCalled();
+    expect(startAutoSave).not.toHaveBeenCalled();
+    expect(projectStore.name.value).toBe('Untitled Project');
+  });
+
+  it('the gate predicate itself is the pure scan from 45-03 (structure-discriminated)', () => {
+    expect(findLegacyPhysicPaintRejection(makeLegacyProject())).toEqual({ kind: 'legacy-physic-paint-outputs' });
+    expect(findLegacyPhysicPaintRejection(makeCleanProject())).toBeNull();
+  });
+});
