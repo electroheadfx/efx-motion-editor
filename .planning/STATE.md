@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Completed 45-new-efx-paint-document-and-clean-cutover-07-PLAN.md
-last_updated: "2026-08-23T18:20:00.000Z"
+stopped_at: Completed 45-new-efx-paint-document-and-clean-cutover-08-PLAN.md
+last_updated: "2026-08-23T18:50:00.000Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 45 plan 07 (legacy deletion + DOC-04 contract) complete
-state_head: 0a06011a
+last_activity_desc: Phase 45 plan 08 (D-10 four-part native UAT) complete — Phase 45 fully verified
+state_head: 10da700a
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 7 of 8
-Status: Ready to execute (next: 45-08)
-Last activity: 2026-08-23 — Phase 45 plan 07 (legacy deletion + DOC-04 contract) complete
+Phase: 45 (New EFX Paint Document and Clean Cutover) — VERIFIED
+Plan: 8 of 8
+Status: Phase 45 fully verified (all DOC-01..DOC-06 confirmed); ready for post-waves aggregate/review/seal
+Last activity: 2026-08-23 — Phase 45 plan 08 (D-10 four-part native UAT) complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -117,6 +117,7 @@ Recent decisions affecting current work:
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: The contract test's token scope is the legacy persistence/format surface only — bare retained runtime-state identifiers (interpolation-settings map, cached-frames signal, editable-state types, per-track rotoPhysical schema field) are intentionally NOT banned (research A4); the 4 removed launch-payload fields are policed by a region-scoped check on the PhysicPaintLaunchContext interface body, not a tree-wide ban
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: physic_paint_outputs survives only as the OPAQUE presence carrier for the gate (45-02 design): declared in models/project.rs and types/project.ts, named by the Rust carrier mechanics, confined by a dedicated carrier allowlist — never interpreted by a reader/renderer/serializer
 - [Phase 45-new-efx-paint-document-and-clean-cutover]: The legacy one-track surface is hard-deleted: physicPaintPersistence.ts + its test are gone (replaced by efxPaintPersistence.ts in 45-04), the McePhysicPaint* output types are removed from types/project.ts, and toMceOutputs/loadFromMceOutputs + their serialization cache are gone from physicPaintStore.ts — the v1.0 document projection (extractRuntimeStateForDocument + installRuntimeStateFromDocument) is the only save/load seam; git history is the only archive (D-02), deletion is code-only (D-04)
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: D-10 four-part native UAT PASSED (45-08): document creation on a v1.0 document with stroke on the default track, save/reopen identity persistence verified via on-disk .mce (version 1, parentLayerId, documentRevision, activeTrackId = default track, one Paint + one transparent-fallback Background track, no legacy keys), explicit no-recourse rejection on a real v0.9 project copy (D-12), and main-editor parity (DOC-06). Three regressions (R1/R2/R3) shared one root cause — Rust PhysicsPaintLaunchContext lacked the v1.0 document field so serde dropped the carrier (fixed b6629984); R4 was saveProjectAs not registering Recents for a fresh project (2c949f18); a save-block was the 45-02 capability fs scope not covering cache/efx-paint (10da700a). Phase 45 is fully verified
 
 ### Pending Todos
 
@@ -142,6 +143,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T18:20:00.000Z
-Stopped at: Completed 45-new-efx-paint-document-and-clean-cutover-07-PLAN.md
+Last session: 2026-08-23T18:50:00.000Z
+Stopped at: Completed 45-new-efx-paint-document-and-clean-cutover-08-PLAN.md (Phase 45 fully verified)
 Resume file: None

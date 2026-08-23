@@ -203,7 +203,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
   4. Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity.
   5. Main-editor sequence timing and outer layer composition remain unchanged.
 
-**Plans**: 6/8 plans executed
+**Plans**: 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -230,7 +230,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 45-08-PLAN.md — D-10 four-part native UAT (blocking checkpoint)
+- [x] 45-08-PLAN.md — D-10 four-part native UAT (blocking checkpoint)
 
 ### Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 
