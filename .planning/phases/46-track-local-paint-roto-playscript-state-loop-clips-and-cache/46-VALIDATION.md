@@ -38,16 +38,14 @@ created: 2026-08-23
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
+| Task ID | Plan | Wave | Requirement | Reference | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD-01 | 01 | 1 | TRK-01 | T-46-01 | Track-owned frames/keys never cross tracks | unit | `vitest run app/src/stores/physicPaintStore.test.ts` | ❌ W0 | ⬜ pending |
-| TBD-02 | 01 | 1 | TRK-02 | — | Shared loop resolver reused for Hold clips (no second scheduler) | unit | `vitest run physicsPaintRotoLoopResolver.test.ts` (extended) | ✅ | ⬜ pending |
-| TBD-03 | 01 | 1 | TRK-03 | T-46-02 | Per-track cache invalidation via embedded `trackId` | unit | `vitest run efxPaintTrackCache.test.ts` (new) | ❌ W0 | ⬜ pending |
-| TBD-04 | 02 | 1 | TRK-04 | — | Track-aware copy/cut/paste/duplicate/clear/undo/redo targets exact internal track | unit | `vitest run physicsPaintRotoRailSetCopy.test.ts` + `useRotoPhysicalEditHistory.test.ts` (extended) | ✅ | ⬜ pending |
-| TBD-05 | 02 | 1 | TRK-05 | T-46-03 | Async revalidate parent+document+track before commit; fail-closed on mismatch | unit | `physicPaintBridge.test.ts` (extended) | ❌ W0 | ⬜ pending |
-| TBD-06 | 02 | 1 | TRK-06 | T-46-03 | One-track edits never touch another track's real keys or caches | unit | `trackIsolation.test.ts` (new) | ❌ W0 | ⬜ pending |
-| TBD-07 | 03 | 2 | TRK-07 | T-46-04 | Acknowledge-delete removes track AND cached sidecars; last Paint track refused | unit | `rotoCacheTransactions.test.ts` (extended) + `trackDeleteLaws.test.ts` (new) | ✅ / ❌ W0 | ⬜ pending |
-| TBD-08 | 03 | 2 | TRK-08 | — | Source-frame edit invalidates every linked Hold occurrence atomically; no asset duplication | unit | `physicsPaintRotoHoldDeterminism.test.ts` (extended) | ✅ | ⬜ pending |
+| 46-01-T1..T3 | 01 | 1 | TRK-01, TRK-03 | T-46-01..T-46-05 | Re-key runtime maps to `layerId→trackId`; per-track signal map + `bumpTrackRevision`; track-owned frames/keys never cross tracks; per-track cache invalidation | unit | `vitest run app/src/stores/physicPaintStore.test.ts` + `trackIsolation.test.ts` | ❌ W0 | ⬜ pending |
+| 46-02-T1..T3 | 02 | 2 | TRK-01, TRK-03 | T-46-06 | Relax `efxPaintStore` single-track guards; `buildEfxPaintFrameCachePath(layerId, trackId, frame)`; per-track save/load carriers; drop cross-track same-appFrame throw | unit | `vitest run efxPaintStore.test.ts` + `efxPaintMultiTrackProjection.test.ts` (new) | ❌ W0 | ⬜ pending |
+| 46-03-T1..T3 | 03 | 3 | TRK-04 | T-46-07..T-46-10 | Track-scoped copy/cut/paste/duplicate/clear with fresh identities + fail-closed Hold re-pointing; unified track-tagged undo/redo with auto-activation | unit | `vitest run physicsPaintRotoRailSetCopy.test.ts` + `useRotoPhysicalEditHistory.test.ts` (extended) | ✅ | ⬜ pending |
+| 46-04-T1..T3 | 04 | 4 | TRK-05, TRK-06 | T-46-11..T-46-13 | Three-dim authority (trackId + trackRevision + documentRevision); capture-then-revalidate; stale async never writes to another selected track | unit | `physicPaintBridgeAuthority.test.ts` (new) + `physicPaintBridge.test.ts` (extended) | ❌ W0 | ⬜ pending |
+| 46-05-T1..T3 | 05 | 5 | TRK-07 | T-46-14..T-46-16 | Acknowledge-delete removes track AND cached sidecars transactionally; last Paint track refused; nearest-adjacent activation | unit | `trackDeleteLaws.test.ts` (new) + `rotoCacheTransactions.test.ts` (extended) | ❌ W0 | ⬜ pending |
+| 46-06-T1..T3 | 06 | 6 | TRK-02, TRK-08 | T-46-17..T-46-18 | Track-local Hold ownership via shared resolver (do-not-fork); live single-source; source-frame edit invalidates every linked occurrence w/o duplication | unit | `efxPaintTrackCache.test.ts` (new) + `physicsPaintRotoHoldDeterminism.test.ts` (extended) | ✅ / ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

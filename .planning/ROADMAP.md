@@ -245,7 +245,7 @@ Plans:
   4. Copy/cut/paste/duplicate/clear/undo/redo operations target the exact internal track.
   5. Editing one Hold source frame updates every linked occurrence without duplicating assets.
 
-**Plans**: TBD
+**Plans**: 46-01 (wave 1), 46-02 (wave 2), 46-03 (wave 3), 46-04 (wave 4), 46-05 (wave 5), 46-06 (wave 6)
 
 ### Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
 

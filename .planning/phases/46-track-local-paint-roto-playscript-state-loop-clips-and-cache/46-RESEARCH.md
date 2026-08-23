@@ -387,22 +387,12 @@ The `'linked-unresolved'` state is exactly the D-13 fail-closed source-missing b
 | A5 | Deletion of track PNGs goes through the existing `cache-staging` transaction (additive to the `buildEfxPaintFrameCachePath` change), not a new ad-hoc file-removal path | Pattern 3 / Don't Hand-Roll | If `rotoCacheTransactions` cannot express a deletion batch, a new minimal native command may be needed (scope increase) |
 | A6 | Undo entry size stays under the 10-level cap without tuning; snapshot currently stores refs/records only, not bytes | Pitfall 5 | Verified the existing snapshot contains no raster bytes; any planner-prescribed byte add would violate D-03 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does Phase 46 persist track-sidecar paths in the document `frames` field on save?**
-   - What we know: `CachedFrameReference` carries `cachePath` per frame in the document; `buildEfxPaintFrameCachePath` currently emits `layer/track-less` path.
-   - What's unclear: whether the new `trackId`-prefixed path is written into the document's `frames[cachePath]` on next save, and whether old paths in already-saved v1.0 `.mce` files are re-derived.
-   - Recommendation: store the path as-is in the document and include `trackId` in the build helper — no back-migration needed (Phase 45 locked no-compat), but Plan must specify the save-time recomputation.
-
-2. **How do `_rotoPhysicalSelectedKeyId` and `_rotoPhysicalCursorAppFrame` (selection/cursor) become track-scoped?**
-   - What we know: selection and cursor are per-timeline; multi-track means each track may have its own selection/cursor.
-   - Recommendation: model selection/cursor per-track too, but this phase has no timeline UI (Phase 47). Recommend moving them to a track-keyed map but not wiring UI.
-
-3. **Does the unified track-tagged undo cross the bridge for PlayScript publications, or only the store layer?**
-   - What we know: PlayScript commits through `ports.commit(publication, revalidateUnderLease)` with its own authority. D-01 says Paint + PlayScript edits feed the same capped stack.
-   - Recommendation: treat PlayScript publication as a track-tagged entry with the `trackId` of the captured target; revalidate under the document+track revision (D-20) before popping.
-
-4. **Track delete confirmation copy** — content per D-14. Confirmed it is Claude's Discretion; recommend plain "Delete track and its N accepted cached frames?" with two buttons.
+1. **Does Phase 46 persist track-sidecar paths in the document `frames` field on save?** — **RESOLVED** (46-02 Task 2/3, truth 7): `buildEfxPaintFrameCachePath(layerId, trackId, frame)` emits the `trackId`-prefixed path; paths are stored as-is in the document with save-time recompute, no back-migration (Phase 45 no-compat).
+2. **How do `_rotoPhysicalSelectedKeyId` and `_rotoPhysicalCursorAppFrame` (selection/cursor) become track-scoped?** — **RESOLVED** (46-01 Task 3). Selection/cursor move to a per-track keyed map in the store layer; UI wiring deferred to Phase 47.
+3. **Does the unified track-tagged undo cross the bridge for PlayScript publications, or only the store layer?** — **RESOLVED** (46-03 Task 3). PlayScript publication is a track-tagged undo entry with the captured `trackId`, revalidated under document+track revision (D-20) before pop.
+4. **Track delete confirmation copy** — **RESOLVED** (46-05 Task 1, Claude's Discretion). Plain acknowledge-delete copy per D-14; exact wording left to the store-level dialog in the phase.
 
 ## Environment Availability
 
