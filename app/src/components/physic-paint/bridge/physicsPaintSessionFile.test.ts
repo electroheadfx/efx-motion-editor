@@ -5,7 +5,6 @@ import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocu
 import { parseEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocumentParsers';
 import {
   LOAD_STATE_INVALID_COPY,
-  LOAD_STATE_SUCCESS_COPY,
   LOAD_STATE_UNSUPPORTED_VERSION_COPY,
   SAVE_STATE_CANCELLED_COPY,
   SAVE_STATE_SUCCESS_COPY,

@@ -1,4 +1,6 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
 import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
@@ -1697,11 +1699,9 @@ export interface PhysicPaintLaunchContext {
   width?: number;
   height?: number;
   fps?: number;
-  editableState?: SerializedProject;
-  rotoPhysical?: PhysicPaintRotoPhysicalDocumentPayload;
+  /** v1.0 document carrier (D-03): the launch IS the document, no fetch round-trip. */
+  document?: EfxPaintDocument;
   rotoPlayback?: PhysicPaintRotoPlaybackSettings;
-  cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
-  rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
   audioPreview?: EfxPaintAudioPreviewContext;
 }
 
@@ -1932,6 +1932,15 @@ export function clampPhysicPaintFrameCount(value: unknown): number {
   return integer;
 }
 
+function isEfxPaintDocumentPayload(value: unknown): boolean {
+  try {
+    parseEfxPaintDocument(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaintLaunchContext {
   if (!isRecord(value)) return false;
   return (
@@ -1942,12 +1951,9 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
     optionalPositiveNumber(value.fps) &&
-    (value.editableState === undefined || isSerializedProject(value.editableState)) &&
     (value.rotoPlayback === undefined || isPhysicPaintRotoPlaybackSettings(value.rotoPlayback)) &&
     (value.audioPreview === undefined || isEfxPaintAudioPreviewContext(value.audioPreview)) &&
-    optionalRotoCacheFrames(value.cachedRotoFrames) &&
-    optionalRotoPhysicalDocumentPayload(value.rotoPhysical) &&
-    optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
+    (value.document === undefined || isEfxPaintDocumentPayload(value.document)) &&
     optionalNonEmptyString(value.workflowLabel) &&
     (value.layerName === undefined || typeof value.layerName === 'string')
   );
@@ -2336,33 +2342,6 @@ function optionalNonEmptyString(value: unknown): boolean {
 
 function optionalNonNegativeInteger(value: unknown): boolean {
   return value === undefined || isNonNegativeInteger(value);
-}
-
-function optionalRotoCacheFrames(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.every((frame) => isPhysicPaintRotoCacheFrame(frame)));
-}
-
-function optionalRotoPhysicalDocumentPayload(value: unknown): value is PhysicPaintRotoPhysicalDocumentPayload | undefined {
-  if (value === undefined) return true;
-  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'layerEndExclusive', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
-  if (!isNonNegativeInteger(value.capacity) || value.capacity < 1) return false;
-  if (!isNonNegativeInteger(value.layerEndExclusive)
-    || value.layerEndExclusive < 1
-    || value.layerEndExclusive > value.capacity) return false;
-  if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
-  if (value.groupOverrideRecords !== undefined
-    && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return false;
-  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
-  if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
-  if (typeof value.interpolationEnabled !== 'boolean') return false;
-  if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;
-  if (!isRecord(value.scriptMotion) || !hasOnlyKeys(value.scriptMotion, ['deformation', 'position'])) return false;
-  if (!isPercentInteger(value.scriptMotion.deformation) || !isPercentInteger(value.scriptMotion.position)) return false;
-  if (value.background !== null && !isPhysicPaintRotoBackgroundMetadata(value.background)) return false;
-  if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
-  if (!isNonNegativeInteger(value.cursorAppFrame)
-    || value.cursorAppFrame >= value.layerEndExclusive) return false;
-  return isNonEmptyString(value.revision);
 }
 
 function optionalRotoInterpolationSettings(value: unknown): boolean {

@@ -6,7 +6,6 @@ import type {
   PhysicPaintRotoPhysicalRenderSource,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
-  encodeRotoPhysicalLaunchDocument,
   rejectRotoLoopPlaceholderSource,
   resolveRotoCompletedGroupPaintTarget,
   resolveRotoLivePixelIdentityKey,
@@ -58,54 +57,14 @@ const placeholderSource: PhysicPaintRotoPhysicalRenderSource = {
 };
 
 describe('Roto frame persistence coordinator launch publication', () => {
-  it('republishes every canonical identity field without degrading the active launch', () => {
-    const record = {
-      kind: 'real-key' as const,
-      keyId: 'key-32',
-      appFrame: 32,
-      payload: {
-        frameIndex: 0,
-        appFrame: 32,
-        dataUrl: 'data:image/png;base64,',
-        width: 1,
-        height: 1,
-      },
-    };
-    const loopClips = [{
-      loopId: 'loop-1',
-      placementStart: 40,
-      sourceKeyIds: ['key-32'],
-      repeat: 2 as const,
-      mode: 'progressive' as const,
-    }];
-    const document: PhysicPaintRotoPhysicalDocument = {
-      capacity: 64,
-      realKeyRecords: [record],
-      interpolation: { enabled: true, mode: 'duplicate' },
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: 'key-32',
-      cursorAppFrame: 32,
-      revision: 'physical-complete',
-      loopClips,
-      incomingInterpolationBreakKeyIds: ['key-32'],
-    };
-
-    expect(encodeRotoPhysicalLaunchDocument(document, 40)).toEqual({
-      capacity: 64,
-      layerEndExclusive: 40,
-      records: [{ keyId: 'key-32', appFrame: 32, payload: record.payload }],
-      groupOverrideRecords: [],
-      interpolationEnabled: true,
-      interpolationMode: 'duplicate',
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: 'key-32',
-      cursorAppFrame: 32,
-      revision: 'physical-complete',
-      loopClips,
-      incomingInterpolationBreakKeyIds: ['key-32'],
-    });
+  it('publishes only the cursor through the active launch without degrading the carried document', () => {
+    // 45-06 Task 2: the launch IS the v1.0 document — publishCurrentDocument
+    // writes only startFrame; the removed envelope encoder and the
+    // cachedRotoFrames write are gone from the coordinator.
+    expect(coordinatorSource).not.toContain('encodeRotoPhysicalLaunchDocument');
+    expect(coordinatorSource).not.toContain('cachedRotoFrames: frames');
+    expect(coordinatorSource).toContain('? { ...current, startFrame: document.cursorAppFrame }');
+    expect(coordinatorSource).toContain('recordsAsRuntimeFrames(document)');
   });
 });
 

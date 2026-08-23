@@ -25,6 +25,7 @@ import type {
   PhysicPaintRotoPhysicalEditSemanticDelta,
   RailSetDeleteMember,
 } from '../../../types/physicPaint';
+import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -55,6 +56,29 @@ import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
 import { useRotoTimelineActions } from './useRotoTimelineActions';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
+
+function makeLaunchDocument(launchRotoPhysical?: { selectedKeyId: string | null; cursorAppFrame: number }): EfxPaintDocument {
+  const document = createEfxPaintDocument('layer-1');
+  const rotoPhysical = {
+    capacity: 30,
+    realKeyRecords: [],
+    groupOverrideRecords: [],
+    interpolation: INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: launchRotoPhysical?.selectedKeyId ?? null,
+    cursorAppFrame: launchRotoPhysical?.cursorAppFrame ?? 0,
+    revision: buildPhysicPaintRotoPhysicalRevision([], INTERPOLATION, []),
+    loopClips: [],
+    incomingInterpolationBreakKeyIds: [],
+  };
+  return {
+    ...document,
+    tracks: document.tracks.map((track) => track.id === document.activeTrackId
+      ? { ...track, rotoPhysical }
+      : track),
+  };
+}
 
 function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   return {
@@ -395,9 +419,7 @@ function harness(options: {
         operationId: 'launch-1',
         layerId: 'layer-1',
         project: { contextId: 'project-1' },
-        ...(options.launchRotoPhysical
-          ? { rotoPhysical: options.launchRotoPhysical }
-          : {}),
+        document: makeLaunchDocument(options.launchRotoPhysical),
       }) as never,
       setLaunchContextStartFrame: (frame) => { currentFrame = frame; },
       setLaunchContextCachedFrames: vi.fn(),

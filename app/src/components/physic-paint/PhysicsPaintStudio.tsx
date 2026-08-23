@@ -43,7 +43,8 @@ import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoK
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
-import { resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { recordsAsRuntimeFrames, resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { getCarriedRotoPhysical } from './roto/rotoLaunchHydration';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput, type RotoRailSetPasteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
@@ -235,7 +236,7 @@ export function PhysicsPaintStudio() {
   // itself always paints: max(acceptedToken, applied) is never below the applied
   // gate, and the accepted token is the newest content-derived token assigned.
   const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '');
-  const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
+  const selectedKeyId = useSignal<string | null>(getCarriedRotoPhysical(launchContext)?.selectedKeyId ?? null);
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
   // Session-local Key Rail selection: exact first-key plus ordered members,
@@ -275,14 +276,16 @@ export function PhysicsPaintStudio() {
   }>) => Promise<boolean>>(async () => false);
   const railSetClipboardReadRef = useRef<() => RotoRailSetCopyPayload | null>(() => null);
   const railSetClipboardWriteRef = useRef<(payload: RotoRailSetCopyPayload | null) => void>(() => {});
-  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
+  const initialCarried = launchContext ? getCarriedRotoPhysical(launchContext) : null;
+  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFrames(initialCarried) : []);
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
       const next = typeof update === 'function' ? update(current) : update;
       launchContextRef.current = next;
-      if (next?.cachedRotoFrames !== current?.cachedRotoFrames) latestRotoFramesRef.current = next?.cachedRotoFrames ?? [];
       if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {
-        selectedKeyId.value = next?.rotoPhysical?.selectedKeyId ?? null;
+        const carried = next ? getCarriedRotoPhysical(next) : null;
+        latestRotoFramesRef.current = carried ? recordsAsRuntimeFrames(carried) : [];
+        selectedKeyId.value = carried?.selectedKeyId ?? null;
         // Launch replacement resets the multi-selection exactly like the
         // single selection (Pattern 5): a replaced launch never inherits a
         // stale set or anchor.
@@ -637,7 +640,7 @@ export function PhysicsPaintStudio() {
     selectedKeyId: selectedKeyId.value,
     incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
-    rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,
+    rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 0,
   });
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   // The single canonical cross-type rail ordering authority (D-01): gestures,
@@ -1228,13 +1231,9 @@ export function PhysicsPaintStudio() {
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
-    getParentEndExclusive: () => {
-      const parentEndExclusive = launchContextRef.current?.rotoPhysical?.layerEndExclusive;
-      if (parentEndExclusive === undefined) {
-        throw new Error('Physics Paint launch has no authoritative parent timeline end.');
-      }
-      return parentEndExclusive;
-    },
+    getParentEndExclusive: () => launchContext
+      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId)
+      : 0,
     getIncomingInterpolationBreakKeyIds: () => launchContext
       ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId)
       : [],
@@ -1514,12 +1513,11 @@ export function PhysicsPaintStudio() {
     getLoopEditSnapshot: (placementStart) => {
       if (!launchContext) return null;
       const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
-      const layerEndExclusive = launchContext.rotoPhysical?.layerEndExclusive;
-      if (!document || layerEndExclusive === undefined) return null;
-      const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);
+      const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);
+      if (!document) return null;
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
-        physicalCapacity,
+        physicalCapacity: layerEndExclusive,
         layerEndExclusive,
         remainingCapacity: Math.max(0, layerEndExclusive - placementStart),
         interpolationEnabled: document.interpolation.enabled,
@@ -2735,7 +2733,7 @@ export function PhysicsPaintStudio() {
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

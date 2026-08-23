@@ -95,10 +95,10 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
     expect(studio).toContain('getLoopEditSnapshot: (placementStart) => {');
     expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)');
-    expect(studio).toContain('const layerEndExclusive = launchContext.rotoPhysical?.layerEndExclusive;');
+    expect(studio).toContain('const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);');
     expect(studio).toContain('layerEndExclusive,');
     expect(studio).toContain('remainingCapacity: Math.max(0, layerEndExclusive - placementStart)');
-    expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 0,');
     expect(studio).not.toContain('rotoParentEndExclusive: rotoPhysicalCapacity');
     expect(studio).not.toContain('layerEndExclusive: physicalCapacity');
     expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
@@ -456,7 +456,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
-    expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 0');
     expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
     expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
   });
@@ -1046,7 +1046,7 @@ describe('localized render instrumentation', () => {
       expect(countOccurrences(engineLifecycle, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
     }
     expect(engineLifecycle).toContain('}, []);');
-    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.rotoPhysical?.background]);');
+    expect(engineLifecycle).toContain('}, [engine, getCarriedRotoPhysical(input.launchContext)?.background]);');
   });
 
   it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and two Studio identity resolves', () => {

@@ -39,6 +39,9 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { proposeRails } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
+import { getCarriedRotoPhysical } from '../components/physic-paint/roto/rotoLaunchHydration';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { getDocument as getEfxPaintDocument } from '../stores/efxPaintStore';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
@@ -213,7 +216,7 @@ const deliveredGroupFramePaintOperations = new Map<string, Readonly<{
 
 function activatePhysicalLaunchAuthority(context: PhysicPaintLaunchContext): void {
   const projectContextId = context.project?.contextId ?? projectStore.projectContextId.peek();
-  const capacity = context.rotoPhysical?.capacity
+  const capacity = getCarriedRotoPhysical(context)?.capacity
     ?? physicPaintStore.getRotoPhysicalCapacity(context.layerId);
   for (const [operationId, entry] of acceptedPhysicalCommands) {
     if (entry.projectContextId !== projectContextId
@@ -2587,18 +2590,29 @@ export function createPhysicPaintLaunchContext(
     throw new Error('Physics Paint layer has no authoritative parent timeline range.');
   }
   const layerEndExclusive = Math.min(timelineRange.localEndExclusive, capacity);
+  // D-25/Q4 fold: the parent store capacity is the same parent-end bound the
+  // carried document carries, so the parent authority and the child document
+  // agree on one capacity for semantic-delta validation.
+  physicPaintStore.setRotoPhysicalCapacity(layerId, layerEndExclusive);
   const localFrame = Math.trunc(frame) - timelineRange.globalStart;
   const requestedFrame = Math.max(0, Math.min(layerEndExclusive - 1, localFrame));
   const storedDocument = physicPaintStore.getRotoPhysicalDocument(layerId);
   const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, requestedFrame);
-  const document = parsePhysicPaintRotoPhysicalDocument(storedDocument
+  // The carried document's ACTIVE track rotoPhysical is the launch authority:
+  // the runtime document (cursor/selection overridden to the requested frame)
+  // when one exists, otherwise an injected empty physical document so a fresh
+  // AddFxMenu document opens the Studio on the default track. Capacity is
+  // overridden to layerEndExclusive so the child's store capacity equals the
+  // parent-end bound (D-25/Q4 fold).
+  const physical = parsePhysicPaintRotoPhysicalDocument(storedDocument
     ? {
         ...storedDocument,
+        capacity: layerEndExclusive,
         selectedKeyId: selectedRecord?.keyId ?? null,
         cursorAppFrame: requestedFrame,
       }
     : {
-        capacity,
+        capacity: layerEndExclusive,
         realKeyRecords: [],
         interpolation: PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
         scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
@@ -2607,7 +2621,17 @@ export function createPhysicPaintLaunchContext(
         cursorAppFrame: requestedFrame,
         revision: buildPhysicPaintRotoPhysicalRevision([], PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, []),
       });
-  if (storedDocument) physicPaintStore.setRotoPhysicalSelection(layerId, document.selectedKeyId, document.cursorAppFrame);
+  if (storedDocument) physicPaintStore.setRotoPhysicalSelection(layerId, physical.selectedKeyId, physical.cursorAppFrame);
+  const baseDocument = getEfxPaintDocument(layerId);
+  if (!baseDocument) {
+    throw new Error(`No EFX Paint document for layer "${layerId}".`);
+  }
+  const carrier: EfxPaintDocument = {
+    ...baseDocument,
+    tracks: baseDocument.tracks.map((track) => track.id === baseDocument.activeTrackId
+      ? { ...track, rotoPhysical: physical }
+      : track),
+  };
   const playbackSettings = physicPaintStore.getRotoPlaybackSettings(layerId) ?? {
     loop: false,
     fps: Math.max(1, Math.min(60, isFinitePositiveNumber(fps) ? fps : 12)),
@@ -2623,32 +2647,14 @@ export function createPhysicPaintLaunchContext(
     },
     layerName: layer.name,
     ...(workflowLabel ? { workflowLabel } : {}),
-    startFrame: document.cursorAppFrame,
+    startFrame: physical.cursorAppFrame,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
     rotoPlayback: playbackSettings,
     // Absent section = no audio; keeps existing audio-less launches byte-stable.
     ...(audioStore.tracks.peek().length > 0 ? { audioPreview: buildPhysicPaintAudioPreviewSection() } : {}),
-    rotoPhysical: {
-      capacity: document.capacity,
-      layerEndExclusive,
-      records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
-      groupOverrideRecords: (document.groupOverrideRecords ?? []).map((record) => ({
-        keyId: record.keyId,
-        appFrame: record.appFrame,
-        payload: record.payload,
-      })),
-      interpolationEnabled: document.interpolation.enabled,
-      interpolationMode: document.interpolation.mode,
-      scriptMotion: document.scriptMotion,
-      background: document.background,
-      selectedKeyId: document.selectedKeyId,
-      cursorAppFrame: document.cursorAppFrame,
-      revision: document.revision,
-      loopClips: document.loopClips,
-      incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
-    },
+    document: carrier,
   };
   const validated = parseCanonicalPhysicsPaintLaunchValue(context);
   if (!validated) throw new Error('Could not construct a canonical physical launch context.');

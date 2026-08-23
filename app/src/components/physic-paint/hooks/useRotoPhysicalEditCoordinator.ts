@@ -94,6 +94,7 @@ import {
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
+import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
   RotoPhysicalEditAcceptedOutput,
@@ -1079,7 +1080,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       // made the parent replay target snapshot mismatch for Key Rail ops.
       if (lastAcceptedSelectionRef.current === null) {
         const document = portsRef.current.records.getDocument(launch.layerId);
-        const launchRoto = launch.rotoPhysical;
+        const launchRoto = getCarriedRotoPhysical(launch);
         lastAcceptedSelectionRef.current = {
           selectedKeyId: document?.selectedKeyId ?? launchRoto?.selectedKeyId ?? null,
           cursorAppFrame: document?.cursorAppFrame ?? launchRoto?.cursorAppFrame ?? 0,

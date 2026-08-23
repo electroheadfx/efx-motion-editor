@@ -27,42 +27,33 @@ export type RotoPhysicalLaunchHydrationResult =
   | { readonly ok: false; readonly error: string };
 
 /**
+ * Read the physical Roto model from the carried v1.0 document's ACTIVE track
+ * (D-03: the launch IS the document). The document parser already validated
+ * the track's rotoPhysical through parsePhysicPaintRotoPhysicalDocument, so
+ * the returned model is canonical; null only when the active track carries no
+ * physical state (a fresh AddFxMenu document before the parent injects one).
+ */
+export function getCarriedRotoPhysical(
+  context: PhysicPaintLaunchContext | null,
+): PhysicPaintRotoPhysicalDocument | null {
+  const document = context?.document;
+  if (!document) return null;
+  const activeTrack = document.tracks.find((track) => track.id === document.activeTrackId);
+  return activeTrack?.rotoPhysical ?? null;
+}
+
+/**
  * Validate one complete canonical launch without mutating the store or current
- * launch. The bridge payload is converted to the model's durable record shape
- * and the persisted revision is rechecked before publication.
+ * launch. The physical model is parsed from the carried document's ACTIVE
+ * track and the persisted revision is rechecked before publication.
  */
 export function prepareRotoPhysicalLaunch(
   context: PhysicPaintLaunchContext,
 ): RotoPhysicalLaunchHydrationResult {
-  const physical = context.rotoPhysical;
+  const physical = getCarriedRotoPhysical(context);
   if (!physical) return { ok: false, error: 'Launch is missing the complete physical Roto document.' };
   try {
-    const document = parsePhysicPaintRotoPhysicalDocument({
-      capacity: physical.capacity,
-      realKeyRecords: physical.records.map((record) => ({
-        kind: 'real-key' as const,
-        keyId: record.keyId,
-        appFrame: record.appFrame,
-        payload: record.payload,
-      })),
-      groupOverrideRecords: (physical.groupOverrideRecords ?? []).map((record) => ({
-        kind: 'real-key' as const,
-        keyId: record.keyId,
-        appFrame: record.appFrame,
-        payload: record.payload,
-      })),
-      interpolation: {
-        enabled: physical.interpolationEnabled,
-        mode: physical.interpolationMode,
-      },
-      scriptMotion: physical.scriptMotion,
-      background: physical.background,
-      selectedKeyId: physical.selectedKeyId,
-      cursorAppFrame: physical.cursorAppFrame,
-      revision: physical.revision,
-      loopClips: physical.loopClips,
-      incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
-    });
+    const document = parsePhysicPaintRotoPhysicalDocument(physical);
     if (context.startFrame !== document.cursorAppFrame) {
       return { ok: false, error: 'Launch cursor does not match the canonical physical document.' };
     }

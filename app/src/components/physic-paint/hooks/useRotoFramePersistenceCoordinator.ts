@@ -249,7 +249,7 @@ export function rejectRotoLoopPlaceholderSource(
   }
 }
 
-function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
+export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
   return document.realKeyRecords.map((record) => ({
     ...record.payload,
     appFrame: record.appFrame,
@@ -258,28 +258,6 @@ function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): Phys
     contentRevision: document.revision,
     cacheRevision: `${document.revision}:real:${record.keyId}`,
   }));
-}
-
-export function encodeRotoPhysicalLaunchDocument(
-  document: PhysicPaintRotoPhysicalDocument,
-  layerEndExclusive: number,
-) {
-  return {
-    capacity: document.capacity,
-    layerEndExclusive,
-    records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
-    groupOverrideRecords: (document.groupOverrideRecords ?? [])
-      .map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
-    interpolationEnabled: document.interpolation.enabled,
-    interpolationMode: document.interpolation.mode,
-    scriptMotion: document.scriptMotion,
-    background: document.background,
-    selectedKeyId: document.selectedKeyId,
-    cursorAppFrame: document.cursorAppFrame,
-    revision: document.revision,
-    loopClips: document.loopClips,
-    incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
-  };
 }
 
 export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenceCoordinatorInput) {
@@ -350,16 +328,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     inputRef.current.setLaunchContext((current) => current
       && current.layerId === layerId
       && current.operationId === launchId
-      && current.rotoPhysical
-      ? {
-          ...current,
-          startFrame: document.cursorAppFrame,
-          rotoPhysical: encodeRotoPhysicalLaunchDocument(
-            document,
-            current.rotoPhysical.layerEndExclusive,
-          ),
-          cachedRotoFrames: frames,
-        }
+      ? { ...current, startFrame: document.cursorAppFrame }
       : current);
   }, []);
 

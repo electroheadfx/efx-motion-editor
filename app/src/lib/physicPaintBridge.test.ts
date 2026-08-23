@@ -15,10 +15,11 @@ import { sequenceStore } from '../stores/sequenceStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import {
   registerDocument,
+  reset as resetEfxPaintStore,
   serializeRuntimeIntoDocument,
 } from '../stores/efxPaintStore';
 import { timelineStore } from '../stores/timelineStore';
-import type { PhysicPaintApplyPayload, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
   isPhysicPaintRotoPhysicalEditApplyPayload,
   isPhysicPaintRotoPhysicalEditIntent,
@@ -39,7 +40,7 @@ import {
   proposePhysicPaintRotoRegenerateGroup,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { proposeRails, type RotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
-import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
+import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import {
   applyCommittedReferencedActionDeletion,
@@ -162,6 +163,18 @@ function acquirePhysicalLease(
   return token;
 }
 
+/** The carried v1.0 document's ACTIVE track rotoPhysical (D-03 launch authority). */
+function carriedRotoPhysical(context: PhysicPaintLaunchContext): PhysicPaintRotoPhysicalDocument {
+  const physical = getCarriedRotoPhysical(context);
+  if (!physical) throw new Error('Expected carried physical Roto document.');
+  return physical;
+}
+
+/** Apply-payload records: the model's realKeyRecords minus the kind member. */
+function payloadRecords(physical: PhysicPaintRotoPhysicalDocument) {
+  return physical.realKeyRecords.map(({ kind: _kind, ...record }) => record);
+}
+
 function installCanonicalBlankCanvas(): void {
   vi.stubGlobal('document', {
     createElement: (tagName: string) => {
@@ -262,6 +275,8 @@ function makeAudioTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
 describe('physicPaintBridge', () => {
   beforeEach(() => {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('phys-layer-1'));
     setParentSequence([physicLayer()], 600);
     Object.defineProperty(globalThis, 'window', {
       value: {
@@ -347,9 +362,8 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(layer, 10);
 
-    expect(context.rotoPhysical).toMatchObject({
-      capacity: 600,
-      layerEndExclusive: 40,
+    expect(carriedRotoPhysical(context)).toMatchObject({
+      capacity: 40,
     });
   });
 
@@ -371,13 +385,10 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(layer, 10);
 
-    expect(context).toMatchObject({
-      startFrame: 0,
-      rotoPhysical: {
-        capacity: 600,
-        cursorAppFrame: 0,
-        layerEndExclusive: 30,
-      },
+    expect(context).toMatchObject({ startFrame: 0 });
+    expect(carriedRotoPhysical(context)).toMatchObject({
+      capacity: 30,
+      cursorAppFrame: 0,
     });
   });
 
@@ -400,14 +411,10 @@ describe('physicPaintBridge', () => {
     const withinRange = createPhysicPaintLaunchContext(layer, 25);
     const afterRange = createPhysicPaintLaunchContext(layer, 45);
 
-    expect(withinRange).toMatchObject({
-      startFrame: 15,
-      rotoPhysical: { cursorAppFrame: 15, layerEndExclusive: 30 },
-    });
-    expect(afterRange).toMatchObject({
-      startFrame: 29,
-      rotoPhysical: { cursorAppFrame: 29, layerEndExclusive: 30 },
-    });
+    expect(withinRange).toMatchObject({ startFrame: 15 });
+    expect(carriedRotoPhysical(withinRange)).toMatchObject({ cursorAppFrame: 15, capacity: 30 });
+    expect(afterRange).toMatchObject({ startFrame: 29 });
+    expect(carriedRotoPhysical(afterRange)).toMatchObject({ cursorAppFrame: 29, capacity: 30 });
   });
 
   it('launches a non-first content Sequence from its track layout origin in layer-local coordinates', () => {
@@ -435,14 +442,10 @@ describe('physicPaintBridge', () => {
     const atStart = createPhysicPaintLaunchContext(layer, 100);
     const later = createPhysicPaintLaunchContext(layer, 112);
 
-    expect(atStart).toMatchObject({
-      startFrame: 0,
-      rotoPhysical: { cursorAppFrame: 0, layerEndExclusive: 30 },
-    });
-    expect(later).toMatchObject({
-      startFrame: 12,
-      rotoPhysical: { cursorAppFrame: 12, layerEndExclusive: 30 },
-    });
+    expect(atStart).toMatchObject({ startFrame: 0 });
+    expect(carriedRotoPhysical(atStart)).toMatchObject({ cursorAppFrame: 0, capacity: 30 });
+    expect(later).toMatchObject({ startFrame: 12 });
+    expect(carriedRotoPhysical(later)).toMatchObject({ cursorAppFrame: 12, capacity: 30 });
   });
 
   it('bounds a non-first content Sequence local end by physical capacity', () => {
@@ -481,10 +484,8 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(layer, 125);
 
-    expect(context).toMatchObject({
-      startFrame: 19,
-      rotoPhysical: { capacity: 20, cursorAppFrame: 19, layerEndExclusive: 20 },
-    });
+    expect(context).toMatchObject({ startFrame: 19 });
+    expect(carriedRotoPhysical(context)).toMatchObject({ capacity: 20, cursorAppFrame: 19 });
   });
 
   it('fails closed when content timing cannot validate its matching track layout', () => {
@@ -568,17 +569,16 @@ describe('physicPaintBridge', () => {
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
     expect(context).toMatchObject({ startFrame: 8 });
-    expect(context.rotoPhysical).toEqual(expect.objectContaining({
+    expect(carriedRotoPhysical(context)).toEqual(expect.objectContaining({
       cursorAppFrame: 8,
       selectedKeyId: 'key-8',
-      interpolationEnabled: true,
-      interpolationMode: 'duplicate',
+      interpolation: { enabled: true, mode: 'duplicate' },
     }));
-    expect(context.rotoPhysical?.records).toEqual([
+    expect(carriedRotoPhysical(context).realKeyRecords).toEqual([
       expect.objectContaining({ keyId: 'key-8', appFrame: 8 }),
       expect.objectContaining({ keyId: 'key-10', appFrame: 10 }),
     ]);
-    expect(context.editableState).toBeUndefined();
+    expect('editableState' in context).toBe(false);
   });
 
   it('retains the complete physical document through close sync and child reopen hydration', async () => {
@@ -649,8 +649,8 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
-    expect(context.rotoPhysical?.background).toEqual(metadata);
-    expect(context.rotoPhysical?.background).not.toBe(metadata);
+    expect(carriedRotoPhysical(context).background).toEqual(metadata);
+    expect(carriedRotoPhysical(context).background).not.toBe(metadata);
   });
 
   it('does not attach stale layer-level editable state when reopening cached-only Roto frames', () => {
@@ -660,8 +660,8 @@ describe('physicPaintBridge', () => {
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 1, null, null);
 
     expect(context).toMatchObject({ startFrame: 1 });
-    expect(context.rotoPhysical?.records).toEqual([]);
-    expect(context.editableState).toBeUndefined();
+    expect(carriedRotoPhysical(context).realKeyRecords).toEqual([]);
+    expect('editableState' in context).toBe(false);
   });
 
   it('36.12 D-16 rejects generated-only Roto launch targets as render-only instead of redirecting to editable state', () => {
@@ -670,13 +670,13 @@ describe('physicPaintBridge', () => {
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 13, null, null);
 
     expect(context).toMatchObject({ startFrame: 13 });
-    expect(context.editableState).toBeUndefined();
-    expect(context.rotoPhysical).toEqual(expect.objectContaining({
+    expect('editableState' in context).toBe(false);
+    expect(carriedRotoPhysical(context)).toEqual(expect.objectContaining({
       cursorAppFrame: 13,
       selectedKeyId: null,
-      interpolationEnabled: true,
+      interpolation: { enabled: true, mode: 'duplicate' },
     }));
-    expect(context.rotoPhysical?.records.map((record) => record.appFrame)).toEqual([12, 14]);
+    expect(carriedRotoPhysical(context).realKeyRecords.map((record) => record.appFrame)).toEqual([12, 14]);
   });
 
 
@@ -740,7 +740,7 @@ describe('physicPaintBridge', () => {
       frame: 4,
     });
 
-    expect(result).toEqual({ ok: false, error: 'Could not open physics paint canvas: Error: Could not construct a canonical physical launch context.' });
+    expect(result).toEqual({ ok: false, error: 'Could not open physics paint canvas: Error: No EFX Paint document for layer "".' });
     expect(open).not.toHaveBeenCalled();
     open.mockRestore();
   });
@@ -849,6 +849,8 @@ describe('physicPaintBridge', () => {
       invoke: vi.fn().mockRejectedValue(new Error('permission denied')),
     }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
+    registerFreshDocument(createEfxPaintDocument('phys-layer-1'));
     const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
     nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
 
@@ -878,6 +880,8 @@ describe('physicPaintBridge', () => {
     });
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
+    registerFreshDocument(createEfxPaintDocument('phys-layer-1'));
     const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
     nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
 
@@ -909,6 +913,8 @@ describe('physicPaintBridge', () => {
     });
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
+    registerFreshDocument(createEfxPaintDocument('phys-layer-1'));
     const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
     nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
 
@@ -933,7 +939,7 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
     const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
@@ -952,7 +958,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 3,
       launchOperationId: launch.data.operationId,
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records: canonicalRecords,
       interpolationEnabled: true,
       interpolationMode: 'duplicate',
@@ -982,7 +988,7 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
     const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectStore.projectContextId.peek(), layer.id);
     if (!leaseToken) throw new Error('Expected ordinary physical-edit lease.');
     const records = [
@@ -1000,7 +1006,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 3,
       launchOperationId: launch.data.operationId,
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records,
       interpolationEnabled: false,
       interpolationMode: 'duplicate' as const,
@@ -1039,7 +1045,7 @@ describe('physicPaintBridge', () => {
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
 
     const validToken = acquirePhysicalLease(layer.id);
     const crossLayerToken = acquirePhysicalLease('other-layer');
@@ -1055,8 +1061,8 @@ describe('physicPaintBridge', () => {
       startFrame: 3,
       launchOperationId: launch.data.operationId,
       projectContextId: projectStore.projectContextId.peek(),
-      expectedRevision: launch.data.rotoPhysical.revision,
-      records: launch.data.rotoPhysical.records,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
+      records: payloadRecords(carriedRotoPhysical(launch.data)),
       interpolationEnabled: false,
       interpolationMode: 'duplicate' as const,
       loopClips: [],
@@ -1173,14 +1179,14 @@ describe('physicPaintBridge', () => {
       seedPhysicalDocument(layer.id, baseline, { enabled: false, mode: 'duplicate' }, ['D']);
       const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
       expect(launch.ok, intent.kind).toBe(true);
-      if (!launch.ok || !launch.data.rotoPhysical) throw new Error(`${intent.kind} launch must resolve`);
+      if (!launch.ok) throw new Error(`${intent.kind} launch must resolve`);
       const leaseToken = acquirePhysicalLease(layer.id);
       const resolution = resolvePhysicPaintRotoPhysicalEdit({
         identities: baseline.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         records: baseline,
         intent,
-        parentEndExclusive: launch.data.rotoPhysical.capacity,
-        capacity: launch.data.rotoPhysical.capacity,
+        parentEndExclusive: carriedRotoPhysical(launch.data).capacity,
+        capacity: carriedRotoPhysical(launch.data).capacity,
         interpolationEnabled: false,
         loopClips: [],
         incomingInterpolationBreakKeyIds: ['D'],
@@ -1205,7 +1211,7 @@ describe('physicPaintBridge', () => {
         leaseToken,
         startFrame: proposal.selectedAppFrame ?? 0,
         launchOperationId: launch.data.operationId,
-        expectedRevision: launch.data.rotoPhysical.revision,
+        expectedRevision: carriedRotoPhysical(launch.data).revision,
         records: canonicalRecords,
         interpolationEnabled: false,
         interpolationMode: 'duplicate',
@@ -1213,7 +1219,7 @@ describe('physicPaintBridge', () => {
         incomingInterpolationBreakKeyIds: canonicalBreaks,
         selectedKeyId: proposal.selectedKeyId,
         selectedAppFrame: proposal.selectedAppFrame,
-        cursorAppFrame: proposal.selectedAppFrame ?? launch.data.rotoPhysical.cursorAppFrame,
+        cursorAppFrame: proposal.selectedAppFrame ?? carriedRotoPhysical(launch.data).cursorAppFrame,
         ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
       } as PhysicalMapPayload;
       const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
@@ -1315,11 +1321,9 @@ describe('physicPaintBridge', () => {
     });
     if (!seeded.ok) throw new Error(seeded.error);
     const launch = await openPhysicPaintCanvas({ layer, frame: 20 });
-    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
-    expect(launch.data).toMatchObject({
-      startFrame: 10,
-      rotoPhysical: { cursorAppFrame: 10, layerEndExclusive: 50 },
-    });
+    if (!launch.ok) throw new Error('Expected physical launch authority.');
+    expect(launch.data).toMatchObject({ startFrame: 10 });
+    expect(carriedRotoPhysical(launch.data)).toMatchObject({ cursorAppFrame: 10, capacity: 50 });
     const intent = {
       kind: 'move-group' as const,
       loopId: 'loop-infinity',
@@ -1376,7 +1380,7 @@ describe('physicPaintBridge', () => {
       cursorAppFrame: 14,
       launchOperationId: launch.data.operationId,
       projectContextId: projectStore.projectContextId.peek(),
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records: proposedRecords.map(({ kind: _kind, ...record }) => record),
       groupOverrideRecords: proposedGroupOverrideRecords.map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: false,
@@ -1499,7 +1503,7 @@ describe('physicPaintBridge', () => {
     });
     if (!seeded.ok) throw new Error(seeded.error);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
-    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
+    if (!launch.ok) throw new Error('Expected physical launch authority.');
     const intent = {
       kind: 'move-key-rail' as const,
       memberKeyIds: ['A', 'B'],
@@ -1537,7 +1541,7 @@ describe('physicPaintBridge', () => {
       cursorAppFrame: 1,
       launchOperationId: launch.data.operationId,
       projectContextId: projectStore.projectContextId.peek(),
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records: proposedRecords.map(({ kind: _kind, ...record }) => record),
       groupOverrideRecords: [],
       interpolationEnabled: false,
@@ -1639,7 +1643,7 @@ describe('physicPaintBridge', () => {
     });
     if (!seeded.ok) throw new Error(seeded.error);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
-    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
+    if (!launch.ok) throw new Error('Expected physical launch authority.');
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
@@ -1672,7 +1676,7 @@ describe('physicPaintBridge', () => {
       cursorAppFrame: proposal.selectedAppFrame ?? beforeDocument.cursorAppFrame,
       launchOperationId: launch.data.operationId,
       projectContextId: projectStore.projectContextId.peek(),
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records: proposedRecords.map(({ kind: _kind, ...record }) => record),
       groupOverrideRecords: [],
       interpolationEnabled: false,
@@ -1776,11 +1780,9 @@ describe('physicPaintBridge', () => {
     });
     if (!seeded.ok) throw new Error(seeded.error);
     const launch = await openPhysicPaintCanvas({ layer, frame: 20 });
-    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
-    expect(launch.data).toMatchObject({
-      startFrame: 10,
-      rotoPhysical: { capacity: 600, cursorAppFrame: 10, layerEndExclusive: 30 },
-    });
+    if (!launch.ok) throw new Error('Expected physical launch authority.');
+    expect(launch.data).toMatchObject({ startFrame: 10 });
+    expect(carriedRotoPhysical(launch.data)).toMatchObject({ capacity: 30, cursorAppFrame: 10 });
     const intent = {
       kind: 'move-group' as const,
       loopId: 'loop-infinity-parent-end',
@@ -1791,7 +1793,10 @@ describe('physicPaintBridge', () => {
       records,
       intent,
       parentEndExclusive: 30,
-      capacity: 600,
+      // D-25/Q4 fold: the parent store capacity is the child document
+      // capacity (layerEndExclusive 30), so the canonical resolution must
+      // recompute against 30, never the stale seeded 600.
+      capacity: 30,
       interpolationEnabled: false,
       loopClips,
       incomingInterpolationBreakKeyIds: [],
@@ -1805,8 +1810,8 @@ describe('physicPaintBridge', () => {
     expect(nextLoopClips[0]).toMatchObject({
       placementStart: 16,
       phaseOrigin: 16,
-      originalEndExclusive: 600,
-      visibleRanges: [{ start: 16, endExclusive: 600 }],
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 16, endExclusive: 30 }],
     });
     const proposedRecords = proposal.orderedKeyIds.map((keyId) => {
       const current = records.find((record) => record.keyId === keyId);
@@ -1830,7 +1835,7 @@ describe('physicPaintBridge', () => {
       cursorAppFrame: 16,
       launchOperationId: launch.data.operationId,
       projectContextId: projectStore.projectContextId.peek(),
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records: proposedRecords.map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
@@ -1843,8 +1848,8 @@ describe('physicPaintBridge', () => {
     expect(result.ok, result.ok ? undefined : result.error).toBe(true);
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.loopClips[0]).toMatchObject({
       placementStart: 16,
-      originalEndExclusive: 600,
-      visibleRanges: [{ start: 16, endExclusive: 600 }],
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 16, endExclusive: 30 }],
     });
     expect(replace).toHaveBeenCalledTimes(1);
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).not.toEqual(beforeDocument);
@@ -1865,7 +1870,7 @@ describe('physicPaintBridge', () => {
     const launchA = await openPhysicPaintCanvas({ layer, frame: 10 });
 
     expect(launchA.ok).toBe(true);
-    if (!launchA.ok || !launchA.data.rotoPhysical) return;
+    if (!launchA.ok) return;
     const projectALease = acquirePhysicalLease(layer.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     const accepted = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
@@ -1881,8 +1886,8 @@ describe('physicPaintBridge', () => {
       startFrame: 10,
       launchOperationId: launchA.data.operationId,
       projectContextId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      expectedRevision: launchA.data.rotoPhysical.revision,
-      records: launchA.data.rotoPhysical.records,
+      expectedRevision: carriedRotoPhysical(launchA.data).revision,
+      records: payloadRecords(carriedRotoPhysical(launchA.data)),
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
       loopClips: [],
@@ -1898,7 +1903,7 @@ describe('physicPaintBridge', () => {
     projectStore.projectContextId.value = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const launchB = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(launchB.ok).toBe(true);
-    if (!launchB.ok || !launchB.data.rotoPhysical) return;
+    if (!launchB.ok) return;
     const projectBLease = acquirePhysicalLease(layer.id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
     const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
@@ -1928,7 +1933,7 @@ describe('physicPaintBridge', () => {
         historyCommandId: 'project-A-command',
         historyDirection: 'undo',
         sourceRevision: accepted.acceptedRevision,
-        targetRevision: launchA.data.rotoPhysical.revision,
+        targetRevision: carriedRotoPhysical(launchA.data).revision,
       },
     });
 
@@ -1953,15 +1958,15 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
     const commandLease = acquirePhysicalLease(layer.id, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
     expect(physicPaintStore.setRotoPhysicalSelection(layer.id, null, 0)).toEqual({ ok: true });
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
-      parentEndExclusive: launch.data.rotoPhysical.capacity,
-      capacity: launch.data.rotoPhysical.capacity,
+      parentEndExclusive: carriedRotoPhysical(launch.data).capacity,
+      capacity: carriedRotoPhysical(launch.data).capacity,
       interpolationEnabled: false,
       loopClips: [],
       incomingInterpolationBreakKeyIds: [],
@@ -1985,7 +1990,7 @@ describe('physicPaintBridge', () => {
       startFrame: 4,
       launchOperationId: launch.data.operationId,
       projectContextId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records: spacedRecords,
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
@@ -2039,7 +2044,7 @@ describe('physicPaintBridge', () => {
         historyCommandId: 'null-selection-command',
         historyDirection: 'undo',
         sourceRevision: accepted.acceptedRevision,
-        targetRevision: launch.data.rotoPhysical.revision,
+        targetRevision: carriedRotoPhysical(launch.data).revision,
       },
     });
 
@@ -2076,7 +2081,7 @@ describe('physicPaintBridge', () => {
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const firstLaunch = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(firstLaunch.ok).toBe(true);
-    if (!firstLaunch.ok || !firstLaunch.data.rotoPhysical) return;
+    if (!firstLaunch.ok) return;
     const commandLease = acquirePhysicalLease(layer.id, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd');
 
     const command = applyPhysicPaintPayload({
@@ -2093,8 +2098,8 @@ describe('physicPaintBridge', () => {
       startFrame: 10,
       launchOperationId: firstLaunch.data.operationId,
       projectContextId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-      expectedRevision: firstLaunch.data.rotoPhysical.revision,
-      records: firstLaunch.data.rotoPhysical.records,
+      expectedRevision: carriedRotoPhysical(firstLaunch.data).revision,
+      records: payloadRecords(carriedRotoPhysical(firstLaunch.data)),
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
       loopClips: [],
@@ -2109,7 +2114,7 @@ describe('physicPaintBridge', () => {
 
     const replacementLaunch = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(replacementLaunch.ok).toBe(true);
-    if (!replacementLaunch.ok || !replacementLaunch.data.rotoPhysical) return;
+    if (!replacementLaunch.ok) return;
     const replayLease = acquirePhysicalLease(layer.id, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd');
     const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
@@ -2137,7 +2142,7 @@ describe('physicPaintBridge', () => {
         historyCommandId: 'replaced-launch-command',
         historyDirection: 'undo',
         sourceRevision: command.acceptedRevision,
-        targetRevision: firstLaunch.data.rotoPhysical.revision,
+        targetRevision: carriedRotoPhysical(firstLaunch.data).revision,
       },
     });
 
@@ -2162,8 +2167,8 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
-    const records = launch.data.rotoPhysical.records;
+    if (!launch.ok) return;
+    const records = payloadRecords(carriedRotoPhysical(launch.data));
     const firstLease = acquirePhysicalLease(layer.id);
     const result = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
@@ -2178,7 +2183,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launch.data.operationId,
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records,
       interpolationEnabled: true,
       interpolationMode: 'duplicate',
@@ -2261,9 +2266,10 @@ describe('physicPaintBridge', () => {
       source: { type: 'physic-paint', layerId: 'fresh-layer' },
     });
     setParentSequence([freshLayer], 600);
+    registerDocument(createEfxPaintDocument('fresh-layer'));
     const fresh = createPhysicPaintLaunchContext(freshLayer, 0);
-    expect(fresh.rotoPhysical?.incomingInterpolationBreakKeyIds).toEqual([]);
-    expect(Object.isFrozen(fresh.rotoPhysical?.incomingInterpolationBreakKeyIds)).toBe(true);
+    expect(carriedRotoPhysical(fresh).incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(Object.isFrozen(carriedRotoPhysical(fresh).incomingInterpolationBreakKeyIds)).toBe(true);
     open.mockRestore();
   });
 
@@ -2278,7 +2284,7 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
     const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const basePayload = {
@@ -2292,8 +2298,8 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launch.data.operationId,
-      expectedRevision: launch.data.rotoPhysical.revision,
-      records: launch.data.rotoPhysical.records,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
+      records: payloadRecords(carriedRotoPhysical(launch.data)),
       interpolationEnabled: true,
       interpolationMode: 'duplicate' as const,
       selectedKeyId: 'key-10',
@@ -2331,10 +2337,10 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
     const leaseToken = acquirePhysicalLease(layer.id);
     const inserted = makeEmptySegmentRecord('key-5', 5);
-    const records = [...launch.data.rotoPhysical.records, inserted]
+    const records = [...payloadRecords(carriedRotoPhysical(launch.data)), inserted]
       .sort((left, right) => left.appFrame - right.appFrame);
     const result = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
@@ -2350,7 +2356,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 5,
       launchOperationId: launch.data.operationId,
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records,
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
@@ -2394,10 +2400,10 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 12 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical) return;
+    if (!launch.ok) return;
     const leaseToken = acquirePhysicalLease(layer.id);
     const inserted = makeEmptySegmentRecord('key-12', 12);
-    const records = [...launch.data.rotoPhysical.records, inserted]
+    const records = [...payloadRecords(carriedRotoPhysical(launch.data)), inserted]
       .sort((left, right) => left.appFrame - right.appFrame);
     const basePayload = {
       kind: 'replace-roto-physical-map' as const,
@@ -2412,7 +2418,7 @@ describe('physicPaintBridge', () => {
       leaseToken,
       startFrame: 12,
       launchOperationId: launch.data.operationId,
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records,
       interpolationEnabled: true,
       interpolationMode: 'duplicate' as const,
@@ -2486,7 +2492,7 @@ describe('physicPaintBridge', () => {
         ...basePayload,
         operationId: 'reject-empty-segment-capacity-race',
         records: [
-          ...launch.data.rotoPhysical.records,
+          ...payloadRecords(carriedRotoPhysical(launch.data)),
           makeEmptySegmentRecord('key-600', 600),
         ],
         incomingInterpolationBreakKeyIds: ['key-10', 'key-600'],
@@ -2550,11 +2556,9 @@ describe('physicPaintBridge', () => {
     const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
 
     expect(launch.ok).toBe(true);
-    if (!launch.ok || !launch.data.rotoPhysical || !launch.data.project) return;
-    expect(launch.data).toMatchObject({
-      startFrame: 0,
-      rotoPhysical: { cursorAppFrame: 0, layerEndExclusive: 30 },
-    });
+    if (!launch.ok || !launch.data.project) return;
+    expect(launch.data).toMatchObject({ startFrame: 0 });
+    expect(carriedRotoPhysical(launch.data)).toMatchObject({ cursorAppFrame: 0, capacity: 30 });
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toBeNull();
     const leaseToken = acquirePhysicalLease(layer.id, launch.data.project.contextId);
 
@@ -2579,10 +2583,10 @@ describe('physicPaintBridge', () => {
       startFrame: 0,
       launchOperationId: launch.data.operationId,
       projectContextId: launch.data.project.contextId,
-      expectedRevision: launch.data.rotoPhysical.revision,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
       records,
-      interpolationEnabled: launch.data.rotoPhysical.interpolationEnabled,
-      interpolationMode: launch.data.rotoPhysical.interpolationMode,
+      interpolationEnabled: carriedRotoPhysical(launch.data).interpolation.enabled,
+      interpolationMode: carriedRotoPhysical(launch.data).interpolation.mode,
       rotoBackground,
       loopClips: [{
         loopId: 'fresh-progressive-loop',
@@ -2604,10 +2608,11 @@ describe('physicPaintBridge', () => {
         kind: 'play-script',
         affectedStartAppFrame: 0,
         affectedEndAppFrame: 4,
-        expectedLayerCapacity: launch.data.rotoPhysical.capacity,
+        expectedLayerCapacity: carriedRotoPhysical(launch.data).capacity,
         // 43.4 defect 1: the play-script expected end is the child document
-        // capacity, never the stale main-editor display outFrame.
-        expectedLayerEndExclusive: 600,
+        // capacity (the D-25/Q4 parent-end fold), never the stale
+        // main-editor display outFrame.
+        expectedLayerEndExclusive: carriedRotoPhysical(launch.data).capacity,
         proposedRecords: records,
         freshKeyIds: records.map((record) => record.keyId),
       },
@@ -3166,6 +3171,8 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
 
   beforeEach(() => {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('phys-layer-1'));
     Object.defineProperty(globalThis, 'window', {
       value: {
         open: vi.fn(),
@@ -4440,6 +4447,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
 
   beforeEach(() => {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('phys-layer-1'));
     Object.defineProperty(globalThis, 'window', {
       value: {
         open: vi.fn(),
@@ -4977,6 +4986,8 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
 
   beforeEach(() => {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('phys-layer-1'));
     Object.defineProperty(globalThis, 'window', {
       value: {
         open: vi.fn(),
@@ -5277,6 +5288,8 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
 
   beforeEach(() => {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('phys-layer-1'));
     Object.defineProperty(globalThis, 'window', {
       value: {
         open: vi.fn(),
@@ -5326,7 +5339,7 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
     if (!parentSeed.ok) throw new Error(parentSeed.error);
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
-    if (!launch.ok || !launch.data.rotoPhysical) throw new Error(launch.ok ? 'Missing physical launch document.' : launch.error);
+    if (!launch.ok) throw new Error(launch.error);
 
     // A native parent and Physics Paint child own separate module registries.
     // resetModules gives this test a second real physicPaintStore instance

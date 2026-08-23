@@ -3,6 +3,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
 import { applyRotoBackgroundMetadataToEngine } from '../engine/physicsPaintStudioSettings';
+import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 
@@ -65,9 +66,9 @@ export function usePhysicsPaintEngineLifecycle(input: {
   }, []);
 
   useEffect(() => {
-    const background = input.launchContext?.rotoPhysical?.background;
+    const background = getCarriedRotoPhysical(input.launchContext)?.background;
     if (engine && background) applyRotoBackgroundMetadataToEngine(engine, background);
-  }, [engine, input.launchContext?.rotoPhysical?.background]);
+  }, [engine, getCarriedRotoPhysical(input.launchContext)?.background]);
 
 
   useEffect(() => () => {

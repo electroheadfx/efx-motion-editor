@@ -3,17 +3,15 @@ import {
   isEfxPaintAudioPreviewContext,
   isEfxPaintAudioPreviewTrack,
   isPhysicPaintLaunchContext,
-  isPhysicPaintRotoPhysicalEditRecord,
 } from '../../../types/physicPaint';
-import { parsePhysicPaintRotoPhysicalDocument } from '../roto/physicsPaintRotoPhysicalModel';
+import { parseEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocumentParsers';
 
 export interface PhysicsPaintLaunchStateSetters<Settings> {
   setLaunchContext: (context: PhysicPaintLaunchContext) => void;
   setSettings: (settings: Settings) => void;
 }
 
-const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback', 'audioPreview']);
-const PHYSICAL_KEYS = new Set(['capacity', 'layerEndExclusive', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
+const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'document', 'rotoPlayback', 'audioPreview']);
 const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
 const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
@@ -55,43 +53,24 @@ export function applyPhysicsPaintLaunchContext<Settings>(
 /** Parse and reconstruct only the canonical complete physical launch envelope. */
 export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPaintLaunchContext | null {
   if (!isStructuredClonePlainData(value) || !isPlainRecord(value) || !hasOnlyKeys(value, LAUNCH_KEYS)) return null;
-  if (!isPhysicPaintLaunchContext(value) || !isPlainRecord(value.project) || !isPlainRecord(value.rotoPhysical)) return null;
-  if (!hasOnlyKeys(value.rotoPhysical, PHYSICAL_KEYS) || !Array.isArray(value.rotoPhysical.records)) return null;
-  if (!value.rotoPhysical.records.every(isPhysicPaintRotoPhysicalEditRecord)) return null;
-  if (value.rotoPhysical.groupOverrideRecords !== undefined
-    && (!Array.isArray(value.rotoPhysical.groupOverrideRecords)
-      || !value.rotoPhysical.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return null;
+  if (!isPhysicPaintLaunchContext(value) || !isPlainRecord(value.project) || !isPlainRecord(value.document)) return null;
   if (value.audioPreview !== undefined) {
     if (!isPlainRecord(value.audioPreview) || !hasOnlyKeys(value.audioPreview, AUDIO_PREVIEW_KEYS)) return null;
     if (!isEfxPaintAudioPreviewContext(value.audioPreview)) return null;
     if (!value.audioPreview.tracks.every((track) => isPlainRecord(track) && hasOnlyKeys(track, AUDIO_PREVIEW_TRACK_KEYS) && isEfxPaintAudioPreviewTrack(track))) return null;
   }
   try {
-    const document = parsePhysicPaintRotoPhysicalDocument({
-      capacity: value.rotoPhysical.capacity,
-      realKeyRecords: value.rotoPhysical.records.map((record) => ({ ...record, kind: 'real-key' as const })),
-      groupOverrideRecords: (value.rotoPhysical.groupOverrideRecords ?? []).map((record) => ({
-        ...record,
-        kind: 'real-key' as const,
-      })),
-      interpolation: {
-        enabled: value.rotoPhysical.interpolationEnabled,
-        mode: value.rotoPhysical.interpolationMode,
-      },
-      scriptMotion: value.rotoPhysical.scriptMotion,
-      background: value.rotoPhysical.background,
-      selectedKeyId: value.rotoPhysical.selectedKeyId,
-      cursorAppFrame: value.rotoPhysical.cursorAppFrame,
-      revision: value.rotoPhysical.revision,
-      loopClips: value.rotoPhysical.loopClips,
-      incomingInterpolationBreakKeyIds: value.rotoPhysical.incomingInterpolationBreakKeyIds,
-    });
-    if (value.startFrame !== document.cursorAppFrame) return null;
+    // Fail-closed document validation: unknown members, wrong version, or a
+    // dangling active track all refuse the launch (no partial hydration).
+    const document = parseEfxPaintDocument(value.document);
+    const activeTrack = document.tracks.find((track) => track.id === document.activeTrackId);
+    const cursorAppFrame = activeTrack?.rotoPhysical?.cursorAppFrame;
+    if (cursorAppFrame !== undefined && value.startFrame !== cursorAppFrame) return null;
     return {
       operationId: value.operationId,
       layerId: value.layerId,
       project: { ...value.project },
-      startFrame: document.cursorAppFrame,
+      startFrame: cursorAppFrame ?? value.startFrame,
       ...(value.layerName !== undefined ? { layerName: value.layerName } : {}),
       ...(value.workflowLabel !== undefined ? { workflowLabel: value.workflowLabel } : {}),
       ...(value.width !== undefined ? { width: value.width } : {}),
@@ -107,25 +86,7 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
             },
           }
         : {}),
-      rotoPhysical: {
-        capacity: document.capacity,
-        layerEndExclusive: value.rotoPhysical.layerEndExclusive,
-        records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
-        groupOverrideRecords: (document.groupOverrideRecords ?? []).map((record) => ({
-          keyId: record.keyId,
-          appFrame: record.appFrame,
-          payload: record.payload,
-        })),
-        interpolationEnabled: document.interpolation.enabled,
-        interpolationMode: document.interpolation.mode,
-        scriptMotion: document.scriptMotion,
-        background: document.background,
-        selectedKeyId: document.selectedKeyId,
-        cursorAppFrame: document.cursorAppFrame,
-        revision: document.revision,
-        loopClips: document.loopClips,
-        incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
-      },
+      document,
     };
   } catch {
     return null;

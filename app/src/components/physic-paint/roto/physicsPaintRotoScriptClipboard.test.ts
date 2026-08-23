@@ -623,7 +623,7 @@ describe('Roto script clipboard controller', () => {
     const reader = { readAsText: vi.fn(), onload: null, onerror: null, result: '' } as unknown as FileReader;
     const session = createPhysicsPaintSessionController({
       engine: { save, load }, framesToApply: 1, canvasSize: { width: 800, height: 520 },
-      launchContext: { operationId: 'operation-1', layerId: 'layer-1', startFrame: 8, width: 1000, height: 650, cachedRotoFrames: [] },
+      launchContext: { operationId: 'operation-1', layerId: 'layer-1', startFrame: 8, width: 1000, height: 650 },
       currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
       annotatePlayState: vi.fn((state) => state), restorePlayFrameEdits: vi.fn(), clearLatestPlayFrames: vi.fn(),
       setCachedPlayPreviewUrl: vi.fn(), setSavedPlayCacheDirty: vi.fn(), setLocalPlayPreviewFrame: vi.fn(),

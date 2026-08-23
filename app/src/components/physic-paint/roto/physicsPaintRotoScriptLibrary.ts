@@ -8,6 +8,7 @@ import type {
   PhysicPaintScriptLibraryResult,
 } from '../../../types/physicPaint';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
+import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
 import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
@@ -421,7 +422,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
           projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
           sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
           width: context.width ?? 1000, height: context.height ?? 650,
-          background: context.rotoPhysical?.background ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+          background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
         },
         thumbnail, brushes: scriptSnapshot.brushes,
       });

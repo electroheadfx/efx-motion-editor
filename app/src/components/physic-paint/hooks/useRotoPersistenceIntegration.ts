@@ -100,8 +100,7 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     const sortedFrames = [...frames].sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex);
     input.cache.latestFramesRef.current = sortedFrames;
     input.cache.confirmedFramesRef.current = new Map(sortedFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
-    input.frame.setLaunchContext((current) => current ? { ...current, cachedRotoFrames: sortedFrames } : current);
-  }, [input.cache.confirmedFramesRef, input.cache.latestFramesRef, input.frame.setLaunchContext]);
+  }, [input.cache.confirmedFramesRef, input.cache.latestFramesRef]);
 
   const applyKeyFrames = useCallback((transaction: RotoKeyUtilityTransaction) => {
     if (!input.launchContext) return [];

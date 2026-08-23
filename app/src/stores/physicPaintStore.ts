@@ -1909,6 +1909,17 @@ export const physicPaintStore = {
   },
 
   /**
+   * Set the bounded physical frame capacity for a layer. Used by the launch
+   * path to fold the parent-end bound into the store so the parent authority
+   * and the carried document agree on one capacity (D-25/Q4 fold).
+   */
+  setRotoPhysicalCapacity(layerId: string, capacity: number): void {
+    if (!Number.isInteger(capacity) || capacity < 0) return;
+    _rotoPhysicalCapacity.set(layerId, Math.min(capacity, PHYSIC_PAINT_MAX_APPLY_FRAMES));
+    _invalidateSerializationCache();
+  },
+
+  /**
    * Read the current physical timeline projection for a layer. Derives ordered
    * assignments, exact runtime generated interiors, and bounded
    * real/generated/empty physical cells from the validated record set and

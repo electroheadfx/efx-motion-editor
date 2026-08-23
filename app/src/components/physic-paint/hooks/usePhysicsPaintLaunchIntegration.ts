@@ -9,7 +9,8 @@ import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
 import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
+import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
+import { registerDocument } from '../../../stores/efxPaintStore';
 import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -84,7 +85,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
   lifecycle: LaunchLifecyclePorts;
   state: LaunchStatePorts;
   peekLaunchContext: () => PhysicPaintLaunchContext | null;
-  resetPersistenceForLaunch: (frames: PhysicPaintLaunchContext['cachedRotoFrames']) => void;
+  resetPersistenceForLaunch: () => void;
   resetNavigationForLaunchRef: MutableRef<(settings: PhysicPaintRotoPlaybackSettings) => void>;
   hydratePlaybackSettingsForLaunch: (context: PhysicPaintLaunchContext, settings: PhysicPaintRotoPlaybackSettings) => void;
   resetCachedReference: () => void;
@@ -98,7 +99,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
       loop: false,
       fps: Math.max(1, Math.min(60, context.fps ?? 12)),
     };
-    input.resetPersistenceForLaunch(undefined);
+    input.resetPersistenceForLaunch();
     input.lifecycle.pendingApplyRef.current = null;
     input.resetNavigationForLaunchRef.current(playbackSettings);
     input.hydratePlaybackSettingsForLaunch(context, playbackSettings);
@@ -118,9 +119,12 @@ export function usePhysicsPaintLaunchIntegration(input: {
       return;
     }
 
+    // The carried v1.0 document IS the session: install it into the child's
+    // efxPaintStore so the session-file save path resolves the document.
+    if (hydration.context.document) registerDocument(hydration.context.document);
     resetRotoSessionForLaunch(hydration.context);
     applyPhysicsPaintLaunchContext(hydration.context, input.state, (launch) => {
-      const background = launch.rotoPhysical?.background;
+      const background = getCarriedRotoPhysical(launch)?.background;
       return background ? applyRotoBackgroundMetadataToSettings(background) : null;
     });
     // 41-02 (D-01): hydrate the audio preview store from the launch section

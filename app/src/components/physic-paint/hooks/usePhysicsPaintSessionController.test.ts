@@ -7,7 +7,7 @@ import { buildPhysicsPaintDebugProof, createPhysicsPaintSessionController, type 
 vi.mock('@tauri-apps/plugin-fs', () => ({}));
 
 function makeContext(): PhysicPaintLaunchContext {
-  return { operationId: 'operation-1', layerId: 'layer-1', startFrame: 4, width: 1000, height: 650, cachedRotoFrames: [] };
+  return { operationId: 'operation-1', layerId: 'layer-1', startFrame: 4, width: 1000, height: 650 };
 }
 
 function makeFrame(): PhysicPaintRenderedFrame {
