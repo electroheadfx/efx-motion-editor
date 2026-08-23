@@ -21,6 +21,7 @@
 import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
+import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
 
@@ -42,6 +43,14 @@ export interface EfxPaintLoadedDocument {
 }
 
 type PendingWrite = { readonly path: string; readonly bytes: Uint8Array };
+
+/**
+ * Content-fingerprint dedup cache (mirrors savedOutputCache): keyed by the
+ * save fingerprint (document revisions + frame byte terms), populated only
+ * after a successful commit. A no-op save reuses the prior persisted payload
+ * and skips sidecar staging entirely (T-45-12 idempotency edge).
+ */
+const savedDocumentCache = new Map<string, Record<string, unknown>>();
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -134,10 +143,32 @@ async function removeStagingGeneration(path: string): Promise<void> {
 
 interface PreparedEfxPaintSave {
   readonly persistedDocuments: Record<string, unknown>;
+  readonly fingerprint: string | null;
   readonly publication: Readonly<{
     transactionId: string;
   }> | null;
   readonly removeCanonicalAfterCommit: boolean;
+}
+
+/**
+ * Deterministic save fingerprint: the 45-01 document revision per layer plus
+ * the runtime frame byte terms (dataUrls). The byte terms are required — a
+ * repaint changes the bytes while the deterministic cachePath refs stay the
+ * same, so a document-only fingerprint would wrongly skip re-staging.
+ */
+function buildEfxPaintSaveFingerprint(
+  projectDir: string,
+  documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+): string {
+  const terms: string[] = [];
+  for (const [layerId, input] of documents) {
+    const document = parseEfxPaintDocument(input.document);
+    terms.push(`${layerId.length}:${layerId}:${buildEfxPaintDocumentRevision(document)}`);
+    for (const [appFrame, frame] of input.frames) {
+      terms.push(`${appFrame}:${frame.dataUrl.length}:${frame.dataUrl}`);
+    }
+  }
+  return `${projectDir}\0${terms.sort().join('\0')}`;
 }
 
 async function prepareEfxPaintSave(
@@ -147,8 +178,20 @@ async function prepareEfxPaintSave(
   if (!documents || documents.size === 0) {
     return {
       persistedDocuments: {},
+      fingerprint: null,
       publication: null,
       removeCanonicalAfterCommit: true,
+    };
+  }
+
+  const fingerprint = buildEfxPaintSaveFingerprint(projectDir, documents);
+  const cached = savedDocumentCache.get(fingerprint);
+  if (cached) {
+    return {
+      persistedDocuments: structuredClone(cached),
+      fingerprint,
+      publication: null,
+      removeCanonicalAfterCommit: false,
     };
   }
 
@@ -196,6 +239,7 @@ async function prepareEfxPaintSave(
     if (!publication.ok) throw new Error(publication.error);
     return {
       persistedDocuments,
+      fingerprint,
       publication: { transactionId: publication.data.transactionId },
       removeCanonicalAfterCommit: false,
     };
@@ -222,6 +266,10 @@ async function settlePreparedEfxPaintSave(
     if (prepared.removeCanonicalAfterCommit) {
       const rootDir = `${projectDir}/${EFX_PAINT_CACHE_DIR}`;
       if (await exists(rootDir)) await remove(rootDir, { recursive: true });
+    }
+    savedDocumentCache.clear();
+    if (prepared.fingerprint) {
+      savedDocumentCache.set(prepared.fingerprint, structuredClone(prepared.persistedDocuments));
     }
   }
 }
