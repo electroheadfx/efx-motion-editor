@@ -14,12 +14,18 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { findLegacyPhysicPaintRejection } from '../efx-paint/document/efxPaintCleanBreak';
 import {
   LEGACY_PHYSIC_PAINT_REJECTED_COPY,
   showLegacyPhysicPaintRejectionDialog,
 } from '../lib/efxPaintRejectionDialog';
+import type { EfxPaintDocumentSaveInput, EfxPaintLoadedDocument } from '../lib/efxPaintPersistence';
 import type { MceProject } from '../types/project';
+import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import * as efxPaintStoreModule from './efxPaintStore';
+import { physicPaintStore } from './physicPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
 
@@ -36,6 +42,8 @@ const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const loadPhysicPaintData = vi.hoisted(() => vi.fn());
 const savePhysicPaintDataWithProjectWrite = vi.hoisted(() => vi.fn());
+const saveEfxPaintDocumentsWithProjectWrite = vi.hoisted(() => vi.fn());
+const loadEfxPaintDocuments = vi.hoisted(() => vi.fn());
 const prepareRotoPhysicalDocumentPngs = vi.hoisted(() => vi.fn());
 const startAutoSave = vi.hoisted(() => vi.fn());
 const stopAutoSave = vi.hoisted(() => vi.fn());
@@ -62,6 +70,14 @@ vi.mock('../lib/ipc', () => ({
 vi.mock('../lib/physicPaintPersistence', () => ({
   loadPhysicPaintData,
   savePhysicPaintDataWithProjectWrite,
+}));
+
+// Keep the real module (efxPaintStore needs the real buildEfxPaintFrameCachePath)
+// and override only the two funnel functions exercised by projectStore.
+vi.mock('../lib/efxPaintPersistence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/efxPaintPersistence')>()),
+  saveEfxPaintDocumentsWithProjectWrite,
+  loadEfxPaintDocuments,
 }));
 
 vi.mock('../components/physic-paint/roto/rotoCanvasFrames', () => ({
@@ -202,5 +218,195 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
   it('the gate predicate itself is the pure scan from 45-03 (structure-discriminated)', () => {
     expect(findLegacyPhysicPaintRejection(makeLegacyProject())).toEqual({ kind: 'legacy-physic-paint-outputs' });
     expect(findLegacyPhysicPaintRejection(makeCleanProject())).toBeNull();
+  });
+});
+
+// --- Task 2 helpers ---
+
+const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
+  frameIndex,
+  appFrame,
+  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  width: 100,
+  height: 50,
+});
+
+/** Add one fx sequence carrying a physic-paint layer keyed by layerId. */
+function addPhysicPaintLayer(layerId: string): void {
+  sequenceStore.add({
+    id: 'seq-1',
+    kind: 'fx',
+    name: 'Physics Paint',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    keyPhotos: [],
+    layers: [{
+      id: `layer-${layerId}`,
+      name: 'Physics Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+      source: { type: 'physic-paint', layerId },
+    }],
+    inFrame: 0,
+    outFrame: 24,
+  });
+}
+
+describe('45-05 Task 2: v1.0 document save/load funnel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectStore.reset();
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    efxPaintStoreModule.reset();
+    projectStore.filePath.value = null;
+    projectStore.dirPath.value = null;
+    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
+    ipcProjectSave.mockResolvedValue({ ok: true, data: null });
+    ipcProjectSaveAsWithScriptLibrary.mockResolvedValue({ ok: true, data: { diagnostics: [] } });
+    ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
+    ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
+    addRecentProject.mockResolvedValue(undefined);
+    setLastProjectPath.mockResolvedValue(undefined);
+    savePaintData.mockResolvedValue(undefined);
+    cleanupOrphanedPaintFiles.mockResolvedValue(undefined);
+    loadPhysicPaintData.mockResolvedValue([]);
+    prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
+    // Mirror the real two-resource transaction: empty documents → no
+    // publication (null transaction id); otherwise a bound transaction id.
+    saveEfxPaintDocumentsWithProjectWrite.mockImplementation(
+      async (
+        _projectDir: string,
+        documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+        writeProject: (payload: Record<string, unknown>, transactionId: string | null) => Promise<void>,
+      ) => {
+        const persisted: Record<string, unknown> = {};
+        for (const [layerId, input] of documents) persisted[layerId] = input.document;
+        await writeProject(persisted, documents.size === 0 ? null : 'txn-45-05');
+        return persisted;
+      },
+    );
+    loadEfxPaintDocuments.mockImplementation(
+      async (_projectRoot: string, persistedMap: Record<string, unknown> | undefined) => {
+        const loaded = new Map<string, EfxPaintLoadedDocument>();
+        if (!persistedMap) return loaded;
+        for (const [layerId, value] of Object.entries(persistedMap)) {
+          loaded.set(layerId, {
+            document: value as EfxPaintDocument,
+            frames: new Map([[0, makeFrame(0, 0)]]),
+          });
+        }
+        return loaded;
+      },
+    );
+    vi.spyOn(projectStore, 'closeProject');
+  });
+
+  it('saveProject persists efx_paint_documents keyed by layer id and never emits physic_paint_outputs', async () => {
+    addPhysicPaintLayer('layer-1');
+    efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
+    physicPaintStore.setFrame('layer-1', 0, makeFrame(0, 0));
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+
+    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
+    const [projectDir, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
+      string,
+      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+    ];
+    expect(projectDir).toBe('/project');
+    expect(documents.size).toBe(1);
+    const input = documents.get('layer-1');
+    expect(input).toBeDefined();
+    // The runtime frame was projected into the document's default track.
+    expect(input!.document.tracks[0].frames[0].cachePath).toMatch(/^cache\/efx-paint\//);
+    expect(ipcProjectSave).toHaveBeenCalledTimes(1);
+    const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
+    expect(savedProject.efx_paint_documents?.['layer-1']).toBeDefined();
+    expect(savedProject.physic_paint_outputs).toBeUndefined();
+    expect(transactionId).toBe('txn-45-05');
+  });
+
+  it('saveProjectAs performs the identical v1.0 switch on its call path', async () => {
+    addPhysicPaintLayer('layer-1');
+    efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
+    physicPaintStore.setFrame('layer-1', 0, makeFrame(0, 0));
+    projectStore.filePath.value = '/project/old.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProjectAs('/project/new.mce');
+
+    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
+    expect(ipcProjectSaveAsWithScriptLibrary).toHaveBeenCalledTimes(1);
+    const [projectForSave, source, destination, transactionId] = ipcProjectSaveAsWithScriptLibrary.mock.calls[0] as [
+      MceProject,
+      string,
+      string,
+      string | null,
+    ];
+    expect(source).toBe('/project/old.mce');
+    expect(destination).toBe('/project/new.mce');
+    expect(transactionId).toBe('txn-45-05');
+    expect(projectForSave.efx_paint_documents?.['layer-1']).toBeDefined();
+    expect(projectForSave.physic_paint_outputs).toBeUndefined();
+  });
+
+  it('buildMceProject writes version 16', () => {
+    expect(projectStore.buildMceProject().version).toBe(16);
+  });
+
+  it('openProject hydrates efxPaintStore and projects the default track into the runtime', async () => {
+    const document = createEfxPaintDocument('layer-1');
+    const track = document.tracks[0];
+    const withFrame = {
+      ...document,
+      tracks: [{
+        ...track,
+        frames: { 0: { cachePath: 'cache/efx-paint/layer-1/frame-000000-0000.png', width: 100, height: 50 } },
+      }],
+    };
+    ipcProjectOpen.mockResolvedValue({
+      ok: true,
+      data: { ...makeCleanProject(), efx_paint_documents: { 'layer-1': withFrame } },
+    });
+
+    await projectStore.openProject('/project/v1.mce');
+
+    expect(loadEfxPaintDocuments).toHaveBeenCalledTimes(1);
+    expect(efxPaintStoreModule.getDocument('layer-1')).toBeDefined();
+    expect(physicPaintStore.getFrames('layer-1').get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
+  });
+
+  it('closeProject resets efxPaintStore so no document leaks across projects', () => {
+    efxPaintStoreModule.registerDocument(createEfxPaintDocument('layer-1'));
+    const resetSpy = vi.spyOn(efxPaintStoreModule, 'reset');
+
+    projectStore.closeProject();
+
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect(efxPaintStoreModule.hasDocument('layer-1')).toBe(false);
+  });
+
+  it('a save with no physic-paint layers passes an empty document map and skips staging', async () => {
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+
+    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
+    const [, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
+      string,
+      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+    ];
+    expect(documents.size).toBe(0);
+    const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
+    expect(savedProject.efx_paint_documents).toEqual({});
+    expect(transactionId).toBeNull();
   });
 });
