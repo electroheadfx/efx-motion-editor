@@ -495,3 +495,128 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(freshClip.placementStart).toBe(4);
   });
 });
+
+/**
+ * 46-03 Task 2 equivalence normalization: the move and the cut-then-paste
+ * branches allocate fresh keyIds/loopIds at random, so the comparison maps
+ * every track-local identity onto its appFrame (identity-free shape). Bytes,
+ * timing, loop placement/sources, and breaks must be EXACTLY equal between the
+ * two branches; the revision hash and cursor are excluded (fresh per write).
+ */
+function normalizeTrackDocument(trackId: string): {
+  readonly records: readonly { appFrame: number; dataUrl: string }[];
+  readonly loops: readonly { placementStart: number; sourceAppFrames: readonly number[] }[];
+  readonly breaks: readonly number[];
+} {
+  const document = physicPaintStore.getRotoPhysicalDocument(LAYER, trackId)!;
+  const frameByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record.appFrame]));
+  const records = [...document.realKeyRecords]
+    .sort((left, right) => left.appFrame - right.appFrame)
+    .map((record) => ({ appFrame: record.appFrame, dataUrl: record.payload.dataUrl }));
+  const loops = [...document.loopClips]
+    .sort((left, right) => left.placementStart - right.placementStart)
+    .map((clip) => ({
+      placementStart: clip.placementStart,
+      sourceAppFrames: [...clip.sourceKeyIds].map((keyId) => frameByKeyId.get(keyId) ?? -1),
+    }));
+  const breaks = [...document.incomingInterpolationBreakKeyIds]
+    .map((keyId) => frameByKeyId.get(keyId) ?? -1)
+    .sort((left, right) => left - right);
+  return { records, loops, breaks };
+}
+
+describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('RED: move removes the items from the source and adds fresh-identity copies at the same appFrames', () => {
+    seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], []);
+    seedTrack(TRACK_B, [], []);
+
+    const moved = physicPaintStore.moveTrackItems(LAYER, TRACK_A, TRACK_B, ['k0']);
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) throw new Error(`move must resolve: ${moved.reason}`);
+
+    // Destination: fresh-identity copy at the same appFrame, owning the source bytes.
+    const destination = physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TRACK_B, 0);
+    expect(destination).not.toBeNull();
+    expect(destination!.keyId).not.toBe('k0');
+    expect(destination!.payload.dataUrl).toBe(makePayload(0, 'a@0').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.dataUrl).toBe(makePayload(0, 'a@0').dataUrl);
+
+    // Source: k0's record, frame, and cache path are gone; k2 untouched.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A).map((record) => record.appFrame)).toEqual([2]);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)).toBeNull();
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 2)?.dataUrl).toBe(makeFrame(0, 2, 'frame-k2').dataUrl);
+  });
+
+  it('RED: move equals cut-then-paste — destination matches the cut payload pasted at its anchor, source matches the cut effect', () => {
+    const seedBoth = () => {
+      seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
+      seedTrack(TRACK_B, [], []);
+    };
+
+    // Branch 1: the move primitive.
+    seedBoth();
+    const moved = physicPaintStore.moveTrackItems(LAYER, TRACK_A, TRACK_B, ['k0']);
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) throw new Error(`move must resolve: ${moved.reason}`);
+    const movedDestination = normalizeTrackDocument(TRACK_B);
+    const movedSource = normalizeTrackDocument(TRACK_A);
+
+    // Branch 2: cut then paste (the move's definition, D-09).
+    physicPaintStore.reset();
+    seedBoth();
+    const cut = physicPaintStore.cutTrackSelection(LAYER, TRACK_A, ['k0']);
+    expect(cut.ok).toBe(true);
+    if (!cut.ok) throw new Error(`cut must resolve: ${cut.reason}`);
+    const pasted = physicPaintStore.pasteTrackSelection(LAYER, TRACK_B, cut.payload, cut.payload.anchorAppFrame);
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`paste must resolve: ${pasted.reason}`);
+    const pastedDestination = normalizeTrackDocument(TRACK_B);
+    const cutSource = normalizeTrackDocument(TRACK_A);
+
+    // Identity-free equality: same frames, same bytes, same re-pointed Hold, same breaks.
+    expect(movedDestination).toEqual(pastedDestination);
+    expect(movedSource).toEqual(cutSource);
+  });
+
+  it('RED: a covered Hold re-points onto the destination fresh frames; a colliding move fails closed with the source untouched', () => {
+    seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 1, 'a@1')], [makeLoop('hold-a', 0, ['k0', 'k1'])]);
+    seedTrack(TRACK_B, [], []);
+
+    const moved = physicPaintStore.moveTrackItems(LAYER, TRACK_A, TRACK_B, ['k0', 'k1']);
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) throw new Error(`move must resolve: ${moved.reason}`);
+
+    // The Hold travelled with fresh identity and its sources re-pointed to the
+    // destination's own fresh keys (never the source keyIds).
+    const clipsB = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_B);
+    expect(clipsB).toHaveLength(1);
+    const movedClip = clipsB[0];
+    expect(movedClip.loopId).not.toBe('hold-a');
+    const frameByKeyId = new Map(
+      physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B).map((record) => [record.keyId, record.appFrame]),
+    );
+    expect(movedClip.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId))).toEqual([0, 1]);
+    expect(movedClip.sourceKeyIds).not.toContain('k0');
+    expect(movedClip.placementStart).toBe(0);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual([]);
+
+    // Fail-closed: a destination already owning frame 0 makes the paste half
+    // impossible — the move rejects and the source stays byte-identical.
+    physicPaintStore.reset();
+    seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0')], []);
+    seedTrack(TRACK_B, [makeRecord('b0', 0, 'b@0')], []);
+    const colliding = physicPaintStore.moveTrackItems(LAYER, TRACK_A, TRACK_B, ['k0']);
+    expect(colliding.ok).toBe(false);
+    if (colliding.ok) throw new Error('A colliding move must fail closed');
+    expect(colliding.reason).toBe('duplicate-destination-frame');
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A).map((record) => record.appFrame)).toEqual([0]);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-k0').dataUrl);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-b0').dataUrl);
+  });
+});
