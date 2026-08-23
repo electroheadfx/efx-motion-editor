@@ -15,6 +15,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { buildRotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
+import { resolvePhysicPaintRotoLoopFrame } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from './layerStore';
 import { projectStore } from './projectStore';
@@ -631,6 +632,129 @@ describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-k0').dataUrl);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
     expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-b0').dataUrl);
+  });
+});
+
+/**
+ * 46-06 Task 1 (TRK-02): the track-local Hold Loop Clip laws on top of the
+ * shared resolver. Every Hold cell must answer from its owning track's live
+ * records — a clip on A never resolves against B's records — empty tracks
+ * answer 'linked-unresolved' (never a foreign frame, never a fabricated base),
+ * half-open placementStart boundaries belong to exactly one clip, the
+ * store-built context carries track provenance, and linked answers are virtual
+ * query results that never persist.
+ */
+describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('adjacency: two tracks holding a Hold Loop Clip at the same appFrame each answer their own loopId/sourceKeyId — the A answer never shows B\'s', () => {
+    seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
+    seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], [makeLoop('hold-b', 10, ['kB-0'])]);
+
+    const contextA = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    const contextB = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_B);
+    expect(contextA).not.toBeNull();
+    expect(contextB).not.toBeNull();
+    expect(contextA!.trackId).toBe(TRACK_A);
+    expect(contextB!.trackId).toBe(TRACK_B);
+
+    const answerA = resolvePhysicPaintRotoLoopFrame(contextA!.context, 10);
+    const answerB = resolvePhysicPaintRotoLoopFrame(contextB!.context, 10);
+    expect(answerA).toMatchObject({ kind: 'linked', loopId: 'hold-a', sourceKeyId: 'kA-0' });
+    expect(answerB).toMatchObject({ kind: 'linked', loopId: 'hold-b', sourceKeyId: 'kB-0' });
+    expect(answerA.kind === 'linked' ? answerA.loopId : '').not.toBe('hold-b');
+    expect(answerB.kind === 'linked' ? answerB.loopId : '').not.toBe('hold-a');
+    // The two answers are byte-different when the clips are.
+    expect(JSON.stringify(answerA)).not.toBe(JSON.stringify(answerB));
+  });
+
+  it('empty: a track with a Hold clip but zero real keys answers every clip cell linked-unresolved — never a foreign frame, never a fabricated base', () => {
+    // The sibling track's real key must never leak into A's answer.
+    seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], []);
+    seedTrack(TRACK_A, [], [makeLoop('hold-a', 10, ['kA-0'])]);
+
+    const contextA = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(contextA).not.toBeNull();
+    const answer = resolvePhysicPaintRotoLoopFrame(contextA!.context, 10);
+    expect(answer).toMatchObject({
+      kind: 'linked-unresolved',
+      loopId: 'hold-a',
+      placementStart: 10,
+      missingSourceKeyIds: ['kA-0'],
+    });
+    // Never a foreign-track frame and never a fabricated base: the answer
+    // carries no sourceKeyId at all.
+    expect('sourceKeyId' in answer).toBe(false);
+    expect(answer.kind).not.toBe('real');
+  });
+
+  it('ordering: half-open boundaries — the frame at the next clip\'s placementStart belongs to the next clip, never both', () => {
+    seedTrack(TRACK_A, [makeRecord('k1-0', 0, 'a@0'), makeRecord('k2-0', 20, 'a@20')], [
+      { loopId: 'c1', placementStart: 10, sourceKeyIds: ['k1-0'], repeat: 10, mode: 'static' },
+      { loopId: 'c2', placementStart: 20, sourceKeyIds: ['k2-0'], repeat: 2, mode: 'static' },
+    ]);
+
+    const context = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(context).not.toBeNull();
+    // The frame just before the next placement start is C1's last repeat
+    // instance; the frame AT the next placement start is C2's own real key.
+    const at19 = resolvePhysicPaintRotoLoopFrame(context!.context, 19);
+    expect(at19).toMatchObject({ kind: 'linked', loopId: 'c1', sourceKeyId: 'k1-0', repeatInstance: 9 });
+    const at20 = resolvePhysicPaintRotoLoopFrame(context!.context, 20);
+    expect(at20).toMatchObject({ kind: 'real', keyId: 'k2-0' });
+    // No overlap and no gap inside the union: every frame answers exactly one clip.
+    const at21 = resolvePhysicPaintRotoLoopFrame(context!.context, 21);
+    expect(at21).toMatchObject({ kind: 'linked', loopId: 'c2', sourceKeyId: 'k2-0', repeatInstance: 1 });
+    const answers = [10, 15, 19, 20, 21].map((frame) => resolvePhysicPaintRotoLoopFrame(context!.context, frame));
+    expect(answers.every((answer) => answer.kind === 'linked' || answer.kind === 'real')).toBe(true);
+  });
+
+  it('context provenance: the context the store builds for track A contains no loopId and no keyId owned by track B', () => {
+    seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
+    seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], [makeLoop('hold-b', 10, ['kB-0'])]);
+
+    const contextA = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(contextA).not.toBeNull();
+    expect(contextA!.context.ranges.map((range) => range.loopId)).toEqual(['hold-a']);
+    for (const range of contextA!.context.ranges) {
+      expect(range.sourceKeyIds).not.toContain('kB-0');
+      expect(range.sourceKeyIds).toEqual(['kA-0']);
+    }
+    expect(contextA!.context.keyIdByAppFrame.get(5)).toBe('kA-0');
+    // No B-owned frame is indexed in A's context.
+    expect(contextA!.context.keyIdByAppFrame.get(20)).toBeUndefined();
+  });
+
+  it('virtual-only: no linked or linked-unresolved resolution is ever persisted — frames, cache, projection, and document stay virtual', () => {
+    seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
+    const contextA = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(contextA).not.toBeNull();
+    expect(resolvePhysicPaintRotoLoopFrame(contextA!.context, 10)).toMatchObject({ kind: 'linked' });
+
+    // The projection only ever contains real/generated/empty cells — never a
+    // virtual 'linked' kind.
+    const projection = physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK_A);
+    expect(projection).not.toBeNull();
+    expect(projection!.cells.every((cell) => cell.kind === 'real' || cell.kind === 'generated' || cell.kind === 'empty')).toBe(true);
+    // No persisted runtime frame exists at the virtual frame.
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 10)).toBeNull();
+    expect(physicPaintStore.getFrames(LAYER, TRACK_A).has(10)).toBe(false);
+    // The persisted document carries the clip's source records, never a
+    // resolved answer. (The canonical clip parse attaches the group-lifecycle
+    // enrichment fields — syncState/provenanceState/visibleRanges/... — so
+    // assert the persistent source fields, not the full enriched shape.)
+    const persisted = physicPaintStore.getRotoPhysicalDocument(LAYER, TRACK_A)!.loopClips;
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]).toMatchObject({
+      loopId: 'hold-a',
+      placementStart: 10,
+      sourceKeyIds: ['kA-0'],
+      repeat: 1,
+      mode: 'static',
+    });
   });
 });
 
