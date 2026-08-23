@@ -18,6 +18,7 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
+  applyPhysicPaintPayload,
   getPhysicPaintRotoAuthority,
   getPhysicPaintRotoAuthorityFromUnknown,
 } from './physicPaintBridge';
@@ -254,5 +255,136 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
     expect(result.trackId).toBe('foreign-track');
     expect(result.capacity).toBe(0);
     expect(result.error).toBe('Malformed Roto authority request.');
+  });
+});
+
+describe('three-dimensional commit gate (46-04 Task 2)', () => {
+  /** Mount one track's runtime so the authority + gate read real per-track state. */
+  function mountTrackRuntime(trackId: string, records: readonly PhysicPaintRotoRealKeyRecord[]): void {
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, trackId, {
+      capacity: 100,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], []),
+    });
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  /** Seed the two-track document + runtimes used by every gate test. */
+  function seedTwoTrackState(aRecords: readonly PhysicPaintRotoRealKeyRecord[]): void {
+    registerTwoTrackDocument(TRACK_A, aRecords);
+    mockParentAuthority(physicLayer());
+    mountTrackRuntime(TRACK_A, aRecords);
+    mountTrackRuntime(TRACK_B, [makeRecord('key-b-0', 0, 'b@0')]);
+  }
+
+  /** Capture the A authority the payload's expected terms revalidate against. */
+  function captureA(canonicalStart: number): PhysicPaintRotoAuthorityResult {
+    const authority = getPhysicPaintRotoAuthority({
+      operationId: `gate-capture-${crypto.randomUUID()}`,
+      projectContextId: projectStore.projectContextId.peek(),
+      layerId: LAYER,
+      canonicalStart,
+      trackId: TRACK_A,
+    });
+    if (!authority.ok) throw new Error('Expected the seeded track-A authority.');
+    return authority;
+  }
+
+  function buildBatch(
+    authority: PhysicPaintRotoAuthorityResult,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      kind: 'replace-roto-key-frames',
+      trackId: TRACK_A,
+      operationId: `gate-commit-${crypto.randomUUID()}`,
+      layerId: LAYER,
+      startFrame: 2,
+      projectContextId: projectStore.projectContextId.peek(),
+      frameCount: 1,
+      expectedLayerEndExclusive: authority.layerEndExclusive,
+      expectedRotoRevision: authority.rotoRevision,
+      expectedTrackRevision: authority.trackRevision,
+      expectedDocumentRevision: authority.documentRevision,
+      frames: [
+        authority.frames[0],
+        { frameIndex: 0, appFrame: 2, dataUrl: `data:image/png;base64,${btoa('a@2')}`, width: 4, height: 4, source: 'real-key' },
+      ],
+      ...overrides,
+    };
+  }
+
+  it('commits a captured track-A batch onto A and leaves B byte-identical', () => {
+    const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
+    seedTwoTrackState(aRecords);
+    const authority = captureA(2);
+    expect(authority.trackRevision).not.toBe('');
+    const beforeB = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
+
+    const result = applyPhysicPaintPayload(buildBatch(authority));
+    expect(result).toMatchObject({ ok: true, operationId: expect.any(String) });
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
+    // Track B's records are byte-identical after A's commit.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeB);
+  });
+
+  it('fails closed on a stale captured track revision and writes nothing', () => {
+    const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
+    seedTwoTrackState(aRecords);
+    const authority = captureA(2);
+    const beforeARecords = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A);
+    const beforeBRecords = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
+    const beforeACacheFrames = physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A);
+
+    const result = applyPhysicPaintPayload(buildBatch(authority, { expectedTrackRevision: 'stale-track-revision' }));
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('Roto authority became stale before commit.') });
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual(beforeARecords);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeBRecords);
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual(beforeACacheFrames);
+  });
+
+  it('fails closed on a stale captured document revision and writes nothing', () => {
+    const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
+    seedTwoTrackState(aRecords);
+    const authority = captureA(2);
+    const beforeARecords = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A);
+    const beforeBRecords = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
+    const beforeACacheFrames = physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A);
+
+    const result = applyPhysicPaintPayload(buildBatch(authority, { expectedDocumentRevision: 'stale-document-revision' }));
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('Roto authority became stale before commit.') });
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual(beforeARecords);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeBRecords);
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual(beforeACacheFrames);
+  });
+
+  it('lands the commit on the captured track when the active track switches mid-flight', () => {
+    const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
+    seedTwoTrackState(aRecords);
+    const authority = captureA(2);
+    // The payload asserts the captured track term but never re-resolves the
+    // live active track at commit time (TRK-06 async law, T-46-10). The
+    // document term is omitted: a strict child would re-capture after the
+    // switch; this payload still proves the write target is the captured
+    // track, never the live active track.
+    const { expectedDocumentRevision: _omittedDocumentTerm, ...payload } = buildBatch(authority);
+
+    // Mid-flight: the parent document's ACTIVE track moves to B. Track A's
+    // content is unchanged, so the captured track term still revalidates and
+    // the commit must land on A — never on the live active track B.
+    registerTwoTrackDocument(TRACK_B, aRecords);
+
+    const result = applyPhysicPaintPayload(payload);
+    expect(result).toMatchObject({ ok: true });
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([
+      expect.objectContaining({ keyId: 'key-b-0', appFrame: 0 }),
+    ]);
   });
 });

@@ -1158,6 +1158,73 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(crossLayerToken)).toBe(true);
   });
 
+  it('fails closed when the transported lease token tracks a different track (46-04 T-46-12)', async () => {
+    // A lease token captured on track "track-foreign" must never authorize a
+    // publication onto the payload's captured track: the payload validator
+    // requires leaseToken.trackId === payload.trackId, and the transport seam
+    // compares submittedLeaseToken.trackId with payload.trackId, so a
+    // mismatched token falls through to the prepared path where it is
+    // rejected — the foreign token can never publish a write.
+    const layer = physicLayer();
+    mockLayers([layer]);
+    const records = [makePhysicalRecord('A', 1), makePhysicalRecord('B', 3)];
+    seedPhysicalDocument(layer.id, records);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
+    expect(launch.ok).toBe(true);
+    if (!launch.ok) return;
+
+    const foreignTrackToken = acquirePhysicalLease(layer.id, projectStore.projectContextId.peek(), 'track-foreign');
+    const payload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: 'foreign-track-lease-mismatch',
+      trackId: TEST_TRACK_ID,
+      operationKind: 'move-key' as const,
+      intent: { kind: 'move-key' as const, movedKeyId: 'B', target: { kind: 'physical-cell' as const, appFrame: 4 } },
+      layerId: layer.id,
+      startFrame: 3,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
+      records: payloadRecords(carriedRotoPhysical(launch.data)),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate' as const,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: 'B',
+      selectedAppFrame: 3,
+      leaseToken: foreignTrackToken,
+    };
+    let listener: ((event: MessageEvent) => void) | undefined;
+    const child = { postMessage: vi.fn() };
+    vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
+      if (event === 'message') listener = cb as (event: MessageEvent) => void;
+    });
+    const dispatch = vi.spyOn(window, 'dispatchEvent').mockReturnValue(true);
+
+    await installPhysicPaintApplyListener();
+    listener?.({
+      origin: 'http://localhost:1420',
+      data: { type: PHYSIC_PAINT_APPLY_EVENT, payload },
+      source: child as unknown as MessageEventSource,
+    } as MessageEvent);
+    // The fallback listener applies through the asynchronous prepared-payload seam.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The parent replied (fail closed), never published under the foreign token.
+    expect(child.postMessage).toHaveBeenCalledWith({
+      type: PHYSIC_PAINT_APPLY_RESULT_EVENT,
+      payload: expect.objectContaining({ ok: false, operationId: payload.operationId }),
+    }, 'http://localhost:1420');
+    // The payload track was not written: no B write ever happened.
+    expect(physicPaintStore.getRotoRealKeyRecords(layer.id, TEST_TRACK_ID)).toEqual(records);
+    // The foreign-track token was never consumed by a publication lease.
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(foreignTrackToken)).toBe(true);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it('parent-recomputes every ordinary physical mapping before publication', async () => {
     installCanonicalBlankCanvas();
     const layer = physicLayer();
