@@ -16,7 +16,7 @@
 import { signal } from '@preact/signals';
 import type { CachedFrameReference, EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
-import { buildEfxPaintFrameCachePath } from '../lib/efxPaintPersistence';
+import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
@@ -29,6 +29,26 @@ export function _setEfxPaintMarkDirtyCallback(cb: () => void) { _markProjectDirt
 export const efxPaintVersion = signal(0);
 
 const _documents = new Map<string, EfxPaintDocument>();
+
+/**
+ * Pending track-sidecar deletion dirs (46-05 TRK-07 D-15): layerId →
+ * relative dirs under `cache/efx-paint/` registered by committed track
+ * deletions. The save path (projectStore.buildEfxPaintDocuments) merges them
+ * into the next save input so the sidecar removal rides the same tracked
+ * transaction as the save — commit removes, rollback keeps.
+ */
+const _pendingTrackDeletions = new Map<string, string[]>();
+
+/**
+ * Read and clear the pending sidecar deletion dirs for one layer (46-05
+ * D-15). Clearing happens on read: the next save carries exactly the
+ * deletions registered before it was built — a later save has none.
+ */
+export function takePendingTrackDeletions(layerId: string): readonly string[] {
+  const deletions = _pendingTrackDeletions.get(layerId);
+  _pendingTrackDeletions.delete(layerId);
+  return deletions ?? [];
+}
 
 function _notifyChange(): void {
   efxPaintVersion.value++;
@@ -173,6 +193,14 @@ export function commitDeleteTrack(
   severTrackHoldReferences(layerId, trackId);
   removeTrackRuntime(layerId, trackId);
 
+  // 46-05 D-15: register the deleted track's sidecar directory for removal
+  // in the same cache transaction as the next save. The dir (a relative
+  // path under cache/efx-paint) is validated by the persistence boundary
+  // before it may ride the transaction.
+  const deletionDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(layerId)}/${trackId}`;
+  const pending = _pendingTrackDeletions.get(layerId) ?? [];
+  _pendingTrackDeletions.set(layerId, [...pending, deletionDir]);
+
   const deletedIndex = document.tracks.findIndex((track) => track.id === trackId);
   const remainingTracks = document.tracks.filter((track) => track.id !== trackId);
   const projectedTracks = remainingTracks.map((track) => {
@@ -204,6 +232,7 @@ export function commitDeleteTrack(
 
 /** Empty the store and bump the version signal (project close hook). */
 export function reset(): void {
+  _pendingTrackDeletions.clear();
   if (_documents.size === 0) return;
   _documents.clear();
   _notifyChange();

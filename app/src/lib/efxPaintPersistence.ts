@@ -34,11 +34,15 @@ const DATA_URL_PREFIX = 'data:image/png;base64,';
  * One layer's save input: the document plus the runtime frame bytes to stage.
  * Frames are carried per track (trackId → appFrame → frame) so two tracks may
  * persist frames at the same appFrame without collision (46-02, edge TRK-03
- * ordering resolved explicit).
+ * ordering resolved explicit). `deletions` lists relative sidecar directories
+ * under `cache/efx-paint/` to remove in the same transaction as the save
+ * (46-05 TRK-07 D-15) — the commit arm removes them, rollback never touches
+ * them. Every entry must pass `isSafeEfxPaintCachePath`.
  */
 export interface EfxPaintDocumentSaveInput {
   readonly document: EfxPaintDocument;
   readonly frames: ReadonlyMap<string, ReadonlyMap<number, PhysicPaintRenderedFrame>>;
+  readonly deletions?: readonly string[];
 }
 
 /**
@@ -161,6 +165,8 @@ interface PreparedEfxPaintSave {
     transactionId: string;
   }> | null;
   readonly removeCanonicalAfterCommit: boolean;
+  /** Sidecar directories to remove in the commit arm (46-05 D-15). */
+  readonly deletions: readonly string[];
 }
 
 /**
@@ -200,7 +206,20 @@ async function prepareEfxPaintSave(
       fingerprint: null,
       publication: null,
       removeCanonicalAfterCommit: true,
+      deletions: [],
     };
+  }
+
+  // 46-05 D-15: every deletion dir must live under cache/efx-paint and pass
+  // the segment rules before it may ride the transaction (ASVS V12).
+  const deletions: string[] = [];
+  for (const input of documents.values()) {
+    for (const deletion of input.deletions ?? []) {
+      if (!isSafeEfxPaintCachePath(deletion)) {
+        throw new Error(`EFX Paint deletion "${deletion}" is not a safe cache path.`);
+      }
+      if (!deletions.includes(deletion)) deletions.push(deletion);
+    }
   }
 
   const fingerprint = buildEfxPaintSaveFingerprint(projectDir, documents);
@@ -211,6 +230,7 @@ async function prepareEfxPaintSave(
       fingerprint,
       publication: null,
       removeCanonicalAfterCommit: false,
+      deletions,
     };
   }
 
@@ -262,6 +282,7 @@ async function prepareEfxPaintSave(
       fingerprint,
       publication: { transactionId: publication.data.transactionId },
       removeCanonicalAfterCommit: false,
+      deletions,
     };
   } catch (error) {
     await removeStagingGeneration(stagingRoot);
@@ -283,9 +304,23 @@ async function settlePreparedEfxPaintSave(
     if (!result.ok && action === 'rollback') throw new Error(result.error);
   }
   if (action === 'commit') {
+    // 46-05 D-15: the deleted track's sidecar directory rides the same
+    // transaction as the save — settled only at commit, after the canonical
+    // publication, before the cache record. A removal failure is
+    // non-authoritative: the transaction already committed and the stale
+    // directory is unreferenced by the fresh document.
+    for (const deletion of prepared.deletions) {
+      const deletionPath = `${projectDir}/${deletion}`;
+      if (!(await exists(deletionPath))) continue;
+      try {
+        await remove(deletionPath, { recursive: true });
+      } catch {
+        // Non-authoritative cleanup failure: the commit stands.
+      }
+    }
     if (prepared.removeCanonicalAfterCommit) {
-      const rootDir = `${projectDir}/${EFX_PAINT_CACHE_DIR}`;
-      if (await exists(rootDir)) await remove(rootDir, { recursive: true });
+      const existingRootDir = `${projectDir}/${EFX_PAINT_CACHE_DIR}`;
+      if (await exists(existingRootDir)) await remove(existingRootDir, { recursive: true });
     }
     savedDocumentCache.clear();
     if (prepared.fingerprint) {

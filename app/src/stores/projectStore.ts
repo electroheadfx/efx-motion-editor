@@ -35,6 +35,7 @@ import {
   registerDocument as registerEfxPaintDocument,
   hydrateRuntimeFromDocument as hydrateEfxPaintRuntimeFromDocument,
   serializeRuntimeIntoDocument as serializeEfxPaintDocument,
+  takePendingTrackDeletions,
   reset as resetEfxPaintStore,
   _setEfxPaintMarkDirtyCallback,
 } from './efxPaintStore';
@@ -117,7 +118,14 @@ function buildEfxPaintDocuments(): Map<string, EfxPaintDocumentSaveInput> {
     for (const track of document.tracks) {
       framesPerTrack.set(track.id, physicPaintStore.getFrames(layerId, track.id));
     }
-    documents.set(layerId, { document, frames: framesPerTrack });
+    // 46-05 D-15: committed track deletions register their sidecar dirs here
+    // (cleared on read) so the removal rides the same cache transaction as
+    // this save.
+    documents.set(layerId, {
+      document,
+      frames: framesPerTrack,
+      deletions: takePendingTrackDeletions(layerId),
+    });
   }
   return documents;
 }
