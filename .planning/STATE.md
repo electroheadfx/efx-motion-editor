@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 45
 current_phase_name: New EFX Paint Document and Clean Cutover
 status: executing
-stopped_at: Completed 45-05-PLAN.md
-last_updated: "2026-08-23T14:55:00.000Z"
+stopped_at: Completed 45-new-efx-paint-document-and-clean-cutover-06-PLAN.md
+last_updated: "2026-08-23T15:50:41.845Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 45 plan 05 (open/save funnel cutover) complete
-state_head: e565526b
+state_head: d4b2c9822b0c0273ef4bbfcf3ada5776f236784b
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 45 (New EFX Paint Document and Clean Cutover) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute (next: 45-06)
 Last activity: 2026-08-23 — Phase 45 plan 05 (open/save funnel cutover) complete
 
@@ -71,6 +71,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 45 P03 | 5 | 2 tasks | 7 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P04 | 25 | 3 tasks | 5 files |
 | Phase 45-new-efx-paint-document-and-clean-cutover P05 | 30 | 3 tasks | 8 files |
+| Phase 45-new-efx-paint-document-and-clean-cutover P06 | 55 | 4 tasks | 42 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,12 @@ Recent decisions affecting current work:
 - [Phase 45 P05]: openProject hydrates documents via loadEfxPaintDocuments + registerDocument + hydrateRuntimeFromDocument per document; closeProject calls efxPaintStore.reset() alongside physicPaintStore.reset so no document leaks across projects; the dirty callback is wired at module bottom
 - [Phase 45 P05]: AddFxMenu registers exactly one v1.0 document per physic-paint layer at creation (registerDocument(createEfxPaintDocument(layerId)) after both creation branches)
 - [Phase 45 P05]: The 45-05 wiring pulled efxPaintStore + efxPaintPersistence + the document model into the main chunk (1124.96 kB measured); the V09-C04 desktop budget was raised 1120 → 1130 with documented measurement (established pattern)
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: Session files are v1.0 documents: parsePhysicsPaintStateFile JSON-parses, detects the recognized legacy version:2 / strokes+settings shape and throws the distinct LOAD_STATE_UNSUPPORTED_VERSION_COPY, then validates via parseEfxPaintDocument mapping any parse throw to LOAD_STATE_INVALID_COPY; save serializes the document from efxPaintStore with the efx-paint-doc- filename marker
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The launch IS the document: PhysicPaintLaunchContext carries the full v1.0 document from efxPaintStore.getDocument(layerId) — no fetch round-trip — and the legacy editableState/rotoPhysical/cachedRotoFrames/rotoInterpolationSettings fields are gone from the launch contract
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The standalone engine adopts the v1.0 document: save() emits the document with strokes/settings riding the default track as engine-only carriers; load() validates fail-closed BEFORE mutating engine state, rejecting legacy version:2 with the distinct pre-v1.0 copy and unknown members with the generic invalid copy
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The apply-canvas editableState carrier stays typed as the PACKAGE's EfxPaintDocument (the engine's save() output is not assignable to the app-side type — rotoPhysical: unknown vs PhysicPaintRotoPhysicalDocument); the guard validates a carrier-stripped copy through the full fail-closed parseEfxPaintDocument, rejecting legacy version:2
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The dead PhysicsPaintStudioToolbar.tsx is deleted, not rewired: zero importers anywhere, and its independent v2-only session-load path is exactly the legacy session-file contract D-02 hard-deletes; the live Studio session load already routes through usePhysicsPaintSessionController → parsePhysicsPaintStateFile
+- [Phase 45-new-efx-paint-document-and-clean-cutover]: The demo toolbar delegates validation to engine.load: JSON.parse failures surface the invalid-file copy, engine.load failures surface the engine's distinct error message (legacy v2 files hit the pre-v1.0 unsupported copy)
 
 ### Pending Todos
 
@@ -130,6 +137,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T14:55:00.000Z
-Stopped at: Completed 45-05-PLAN.md
+Last session: 2026-08-23T15:50:41.835Z
+Stopped at: Completed 45-new-efx-paint-document-and-clean-cutover-06-PLAN.md
 Resume file: None

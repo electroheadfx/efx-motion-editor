@@ -222,7 +222,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 45-05-PLAN.md — Open/save funnel cutover: gate + blocking dialog, save-path switch, version 16, AddFxMenu registration
-- [ ] 45-06-PLAN.md — v1.0 session-file format, bridge launch-context swap, standalone engine re-wire (D-03)
+- [x] 45-06-PLAN.md — v1.0 session-file format, bridge launch-context swap, standalone engine re-wire (D-03)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
