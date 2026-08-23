@@ -84,6 +84,8 @@ struct PhysicsPaintLaunchContext {
     height: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fps: Option<f64>,
+    #[serde(rename = "document", skip_serializing_if = "Option::is_none")]
+    document: Option<Value>,
     #[serde(rename = "rotoPhysical", skip_serializing_if = "Option::is_none")]
     roto_background: Option<Value>,
     #[serde(rename = "rotoPlayback", skip_serializing_if = "Option::is_none")]
@@ -779,6 +781,7 @@ mod tests {
             width: Some(1000),
             height: Some(650),
             fps: Some(24.0),
+            document: Some(serde_json::json!({ "id": "layer-1", "version": 1, "activeTrackId": "track-1", "tracks": [] })),
             roto_background: Some(serde_json::json!({ "background": "canvas2", "paperGrain": "canvas3", "grainStrength": 0.65 })),
             roto_playback: None,
             cached_roto_frames: Vec::new(),
@@ -804,6 +807,19 @@ mod tests {
         assert_eq!(cloned.start_frame, 12);
         assert_eq!(cloned.workflow_label.as_deref(), Some("PPaint #2 / Selected"));
         assert_eq!(cloned.roto_background.as_ref().unwrap()["background"], "canvas2");
+    }
+
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_v1_document() {
+        // R1/R2/R3: the child fetches its launch context across the Tauri
+        // boundary, and the v1.0 `document` carrier must survive that round-trip
+        // or the Studio stays on its launchContext-null fallbacks (capacity 1,
+        // fps 12, default background).
+        let context = roto_launch_context();
+        let json = serde_json::to_value(&context).unwrap();
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.document.as_ref().unwrap()["id"], "layer-1");
+        assert_eq!(deserialized.document.as_ref().unwrap()["activeTrackId"], "track-1");
     }
 
     // WR-07: pure byte-range resolution for the efxasset video Range branch.
