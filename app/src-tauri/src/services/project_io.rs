@@ -393,9 +393,9 @@ mod tests {
     fn project_save_binds_cache_transaction_for_open_time_commit_recovery() {
         let test_dir =
             std::env::temp_dir().join(format!("efx_test_cache_project_save_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(test_dir.join("cache/physic-paint")).expect("canonical cache");
-        std::fs::write(test_dir.join("cache/physic-paint/old.png"), b"old").expect("old cache");
-        let staging_basename = format!(".physic-paint-staging-{}", Uuid::new_v4());
+        std::fs::create_dir_all(test_dir.join("cache/efx-paint")).expect("canonical cache");
+        std::fs::write(test_dir.join("cache/efx-paint/old.png"), b"old").expect("old cache");
+        let staging_basename = format!(".efx-paint-staging-{}", Uuid::new_v4());
         let staging = test_dir.join("cache").join(&staging_basename);
         std::fs::create_dir_all(&staging).expect("staging cache");
         std::fs::write(staging.join("new.png"), b"new").expect("new cache");
@@ -426,8 +426,8 @@ mod tests {
         .expect("project save");
         recover_cache_transaction(&test_dir).expect("open-time recovery");
 
-        assert!(test_dir.join("cache/physic-paint/new.png").exists());
-        assert!(!test_dir.join("cache/physic-paint/old.png").exists());
+        assert!(test_dir.join("cache/efx-paint/new.png").exists());
+        assert!(!test_dir.join("cache/efx-paint/old.png").exists());
         assert!(!staging.exists());
         assert!(!test_dir
             .join("cache/.physic-paint-transaction.json")

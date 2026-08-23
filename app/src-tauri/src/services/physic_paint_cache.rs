@@ -693,3 +693,108 @@ fn atomic_exchange_directories(
         "Physics Paint cache publication is supported only on macOS",
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn staging_basename_rejects_traversal_and_absolute_paths() {
+        // Crafted basenames containing ../ or absolute paths must fail the
+        // existing validation and never escape the v1.0 root (T-45-04).
+        for crafted in [
+            ".efx-paint-staging-../evil",
+            ".efx-paint-staging-/abs",
+            ".efx-paint-staging-..",
+            "../.efx-paint-staging-evil",
+            "/tmp/.efx-paint-staging-evil",
+            ".efx-paint-staging-",
+            ".physic-paint-staging-abc", // legacy prefix is not accepted
+        ] {
+            assert!(
+                validate_staging_basename(crafted).is_err(),
+                "expected rejection: {crafted}"
+            );
+        }
+        // Valid v1.0 staging basenames still pass.
+        assert!(validate_staging_basename(&format!(".efx-paint-staging-{}", Uuid::new_v4())).is_ok());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn publish_stages_and_publishes_into_efx_paint_cache() {
+        let test_dir =
+            std::env::temp_dir().join(format!("efx_test_cache_publish_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
+        let staging_basename = format!(".efx-paint-staging-{}", Uuid::new_v4());
+        let staging = test_dir.join("cache").join(&staging_basename);
+        std::fs::create_dir_all(&staging).expect("staging cache");
+        std::fs::write(staging.join("frame.png"), b"frame").expect("staged frame");
+
+        let publication =
+            publish_cache_generation(&test_dir, &staging_basename).expect("cache publication");
+
+        // The staged generation is published into cache/efx-paint; the staging
+        // dir is consumed; the transaction marker records the active publication.
+        assert!(test_dir.join("cache/efx-paint/frame.png").exists());
+        assert!(!staging.exists());
+        assert!(!test_dir.join("cache/physic-paint").exists());
+        assert!(test_dir.join("cache/.physic-paint-transaction.json").exists());
+        assert!(!publication.transaction_id.is_empty());
+        std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn settle_commit_swaps_and_rollback_restores_previous_generation() {
+        // First generation committed into cache/efx-paint.
+        let test_dir =
+            std::env::temp_dir().join(format!("efx_test_cache_settle_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
+        let first_staging = format!(".efx-paint-staging-{}", Uuid::new_v4());
+        let first_dir = test_dir.join("cache").join(&first_staging);
+        std::fs::create_dir_all(&first_dir).expect("staging cache");
+        std::fs::write(first_dir.join("old.png"), b"old").expect("staged frame");
+        let first =
+            publish_cache_generation(&test_dir, &first_staging).expect("first publication");
+        settle_cache_generation(&test_dir, &first.transaction_id, CacheSettlementAction::Commit)
+            .expect("first commit");
+        assert!(test_dir.join("cache/efx-paint/old.png").exists());
+
+        // Second generation replaces it, then rollback restores the first and
+        // removes the staging dir.
+        let second_staging = format!(".efx-paint-staging-{}", Uuid::new_v4());
+        let second_dir = test_dir.join("cache").join(&second_staging);
+        std::fs::create_dir_all(&second_dir).expect("staging cache");
+        std::fs::write(second_dir.join("new.png"), b"new").expect("staged frame");
+        let second =
+            publish_cache_generation(&test_dir, &second_staging).expect("second publication");
+        assert!(test_dir.join("cache/efx-paint/new.png").exists());
+        assert!(!test_dir.join("cache/efx-paint/old.png").exists());
+
+        settle_cache_generation(&test_dir, &second.transaction_id, CacheSettlementAction::Rollback)
+            .expect("rollback");
+        assert!(test_dir.join("cache/efx-paint/old.png").exists());
+        assert!(!test_dir.join("cache/efx-paint/new.png").exists());
+        assert!(!second_dir.exists());
+        assert!(!test_dir.join("cache/.physic-paint-transaction.json").exists());
+        std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn publish_rejects_crafted_staging_basename_without_escaping_root() {
+        let test_dir =
+            std::env::temp_dir().join(format!("efx_test_cache_crafted_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
+        for crafted in [".efx-paint-staging-../evil", "/tmp/.efx-paint-staging-evil"] {
+            let result = publish_cache_generation(&test_dir, crafted);
+            assert!(result.is_err(), "expected rejection: {crafted}");
+        }
+        // Nothing escaped the v1.0 root: no canonical cache, no marker.
+        assert!(!test_dir.join("cache/efx-paint").exists());
+        assert!(!test_dir.join("cache/.physic-paint-transaction.json").exists());
+        std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
+    }
+}
