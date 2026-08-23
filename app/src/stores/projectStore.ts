@@ -3,6 +3,7 @@ import type {ProjectData, MceProject, RuntimeMceProject, MceSequence, MceKeyPhot
 import type {MceAudioTrack} from '../types/audio';
 import type {AudioTrack, FadeCurve} from '../types/audio';
 import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequence';
+import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
 import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {projectCreate, projectSave as ipcProjectSave, projectSaveAsWithScriptLibrary, projectOpen as ipcProjectOpen, projectMigrateTempImages, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject} from '../lib/ipc';
@@ -108,11 +109,15 @@ function buildEfxPaintDocuments(): Map<string, EfxPaintDocumentSaveInput> {
   const documents = new Map<string, EfxPaintDocumentSaveInput>();
   for (const layerId of getActivePhysicPaintLayerIds()) {
     const document = serializeEfxPaintDocument(layerId);
-    // 46-01: serialize the ACTIVE track's runtime frames (single-track
-    // documents this wave; multi-track frame collection lands with the
-    // timeline wave).
-    const trackId = document.activeTrackId;
-    documents.set(layerId, { document, frames: physicPaintStore.getFrames(layerId, trackId) });
+    // 46-02 (TRK-03): the frame carrier is per-track (trackId → appFrame →
+    // frame). Every track of the serialized document contributes its own
+    // runtime frame map so two tracks may own frames at the same appFrame
+    // without collision.
+    const framesPerTrack = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
+    for (const track of document.tracks) {
+      framesPerTrack.set(track.id, physicPaintStore.getFrames(layerId, track.id));
+    }
+    documents.set(layerId, { document, frames: framesPerTrack });
   }
   return documents;
 }
