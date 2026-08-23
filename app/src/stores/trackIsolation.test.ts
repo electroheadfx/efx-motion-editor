@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bumpTrackRevision,
   getTrackPaintVersion,
@@ -15,6 +15,19 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { buildRotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
+import { defaultTransform, type Layer } from '../types/layer';
+import { layerStore } from './layerStore';
+import { projectStore } from './projectStore';
+import { sequenceStore } from './sequenceStore';
+import { getDocument, registerDocument, reset as resetEfxPaintStore } from './efxPaintStore';
+import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { buildEfxPaintTrackRevision } from '../efx-paint/document/efxPaintDocumentRevision';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  type PhysicPaintRotoPhysicalDocument,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoAuthorityResult } from '../types/physicPaint';
+import { applyPhysicPaintPayload, getPhysicPaintRotoAuthority } from '../lib/physicPaintBridge';
 
 // 46-01 TRK-01 base law: the runtime store is addressed layerId -> trackId ->
 // value. Editing one internal track never changes another track's real keys,
@@ -618,5 +631,255 @@ describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-k0').dataUrl);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
     expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-b0').dataUrl);
+  });
+});
+
+/**
+ * 46-04 Task 3 (TRK-06 edge, T-46-10): the per-track stale-async law proof.
+ * The async commit authority is three-dimensional (Task 1) and the commit gate
+ * revalidates the captured terms (Task 2); these four laws prove the isolation
+ * under concurrent track activity — a commit in flight on track A is gated only
+ * by A's captured track term, never by a foreign track's edit nor by the
+ * global paint clock.
+ */
+describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    sequenceStore.sequences.value = [];
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const physicLayer = (): Layer => ({
+    id: LAYER,
+    name: 'Physics Paint',
+    type: 'physic-paint',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'physic-paint', layerId: LAYER },
+  });
+
+  /** Parent authority harness: layer store, overlay store, and the layer's sequence. */
+  function mockParentAuthority(): void {
+    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([physicLayer()]);
+    vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
+    sequenceStore.sequences.value = [{
+      id: 'stale-async-parent-sequence',
+      kind: 'fx',
+      name: 'Authority parent',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [physicLayer()],
+      inFrame: 0,
+      outFrame: 600,
+    }];
+  }
+
+  /** Canonical per-track physical snapshot stored inside the document's tracks. */
+  function buildTrackPhysicalSnapshot(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicPaintRotoPhysicalDocument {
+    return {
+      capacity: CAPACITY,
+      realKeyRecords: Object.freeze([...records]),
+      interpolation: Object.freeze(INTERPOLATION),
+      scriptMotion: Object.freeze({ deformation: 0, position: 0 }),
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, [], []),
+      loopClips: Object.freeze([]),
+      incomingInterpolationBreakKeyIds: Object.freeze([]),
+    };
+  }
+
+  /** Two-track document where both tracks carry their own physical snapshot. */
+  function makeTwoTrackAuthorityDocument(
+    activeTrackId: string,
+    aRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    bRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  ): EfxPaintDocument {
+    const base = createEfxPaintDocument(LAYER);
+    const trackA = Object.freeze({
+      ...base.tracks[0],
+      id: TRACK_A,
+      name: 'Track A',
+      order: 0,
+      rotoPhysical: Object.freeze(buildTrackPhysicalSnapshot(aRecords)),
+    });
+    const trackB = Object.freeze({
+      ...base.tracks[0],
+      id: TRACK_B,
+      name: 'Track B',
+      order: 1,
+      rotoPhysical: Object.freeze(buildTrackPhysicalSnapshot(bRecords)),
+    });
+    return Object.freeze({
+      ...base,
+      activeTrackId,
+      tracks: Object.freeze([trackA, trackB]),
+    });
+  }
+
+  function registerTwoTrackAuthorityDocument(
+    aRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    bRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    activeTrackId = TRACK_A,
+  ): void {
+    registerDocument(makeTwoTrackAuthorityDocument(activeTrackId, aRecords, bRecords));
+  }
+
+  /** Mount one track's runtime: records + capacity + interpolation (46-01 maps). */
+  function seedRuntime(trackId: string, records: readonly PhysicPaintRotoRealKeyRecord[]): void {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(LAYER, trackId, records, INTERPOLATION, CAPACITY);
+    if (!seeded.ok) throw new Error(`Runtime seed failed for ${trackId}: ${seeded.error}`);
+  }
+
+  function seedTwoTrackState(
+    aRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    bRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  ): void {
+    registerTwoTrackAuthorityDocument(aRecords, bRecords);
+    mockParentAuthority();
+    seedRuntime(TRACK_A, aRecords);
+    seedRuntime(TRACK_B, bRecords);
+  }
+
+  function capture(trackId: string, canonicalStart = 2): PhysicPaintRotoAuthorityResult {
+    const authority = getPhysicPaintRotoAuthority({
+      operationId: `stale-async-capture-${crypto.randomUUID()}`,
+      projectContextId: projectStore.projectContextId.peek(),
+      layerId: LAYER,
+      canonicalStart,
+      trackId,
+    });
+    if (!authority.ok) throw new Error(`Authority must succeed for ${trackId}: ${authority.error}`);
+    return authority;
+  }
+
+  /** Complete-set commit batch for the captured authority (targets its track). */
+  function buildBatch(
+    authority: PhysicPaintRotoAuthorityResult,
+    options: { trackId?: string; tag?: string } = {},
+  ): Record<string, unknown> {
+    const trackId = options.trackId ?? TRACK_A;
+    const tag = options.tag ?? 'a@2';
+    return {
+      kind: 'replace-roto-key-frames',
+      trackId,
+      operationId: `stale-async-commit-${crypto.randomUUID()}`,
+      layerId: LAYER,
+      startFrame: 2,
+      projectContextId: projectStore.projectContextId.peek(),
+      frameCount: 1,
+      expectedLayerEndExclusive: authority.layerEndExclusive,
+      expectedRotoRevision: authority.rotoRevision,
+      expectedTrackRevision: authority.trackRevision,
+      expectedDocumentRevision: authority.documentRevision,
+      frames: [
+        authority.frames[0],
+        { frameIndex: 0, appFrame: 2, dataUrl: `data:image/png;base64,${btoa(tag)}`, width: 4, height: 4, source: 'real-key' },
+      ],
+    };
+  }
+
+  it('cross-track stale isolation: a track-B edit between capture and commit leaves the A capture valid and never moves B', () => {
+    seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
+    const capturedA = capture(TRACK_A, 2);
+
+    // A track-B edit lands between A's capture and A's commit: B's document
+    // track term and runtime move; A's deterministic term does not.
+    registerTwoTrackAuthorityDocument([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-5', 5, 'b@5')]);
+    seedRuntime(TRACK_B, [makeRecord('key-b-5', 5, 'b@5')]);
+    const bAfterEdit = capture(TRACK_B, 6);
+    expect(bAfterEdit.trackRevision).not.toBe(capturedA.trackRevision);
+    expect(capturedA.trackRevision).toBe(
+      buildEfxPaintTrackRevision(getDocument(LAYER)!.tracks.find((track) => track.id === TRACK_A)),
+    );
+
+    // The document term moved with B's edit (a strict child would re-capture);
+    // the per-track law under test: A's captured TRACK term still revalidates
+    // and the commit lands on A, never on the edited B.
+    const { expectedDocumentRevision: _omittedDocumentTerm, ...payload } = buildBatch(capturedA);
+    const beforeB = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
+    const result = applyPhysicPaintPayload(payload);
+    expect(result).toMatchObject({ ok: true });
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeB);
+    // A's commit never moved B's revision term: the post-edit B term is unchanged.
+    expect(capture(TRACK_B, 6).trackRevision).toBe(bAfterEdit.trackRevision);
+  });
+
+  it('concurrent captures at a shared appFrame: both commit their own maps, the last never overwrites the first', () => {
+    seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
+    // Each track capture names its own track and its own operation: the
+    // dedupe registry keys on the per-commit operationId, so A's entry can
+    // never intercept B's commit (and vice versa).
+    const capturedA = capture(TRACK_A, 2);
+    const capturedB = capture(TRACK_B, 2);
+
+    const commitA = applyPhysicPaintPayload(buildBatch(capturedA));
+    expect(commitA).toMatchObject({ ok: true });
+    const commitB = applyPhysicPaintPayload(buildBatch(capturedB, { trackId: TRACK_B, tag: 'b@2' }));
+    expect(commitB).toMatchObject({ ok: true });
+
+    // The shared appFrame 2 holds each track's own bytes: the last commit
+    // writes its own track map and never overwrites the first's frame.
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 2)?.dataUrl).toBe(`data:image/png;base64,${btoa('a@2')}`);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 2)?.dataUrl).toBe(`data:image/png;base64,${btoa('b@2')}`);
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_B)).toEqual([0, 2]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual([makeRecord('key-a-0', 0, 'a@0')]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([makeRecord('key-b-0', 0, 'b@0')]);
+  });
+
+  it('B-dirty does not fail A: the per-track revision, not the global clock, gates A\'s commit', () => {
+    seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
+    const capturedA = capture(TRACK_A, 2);
+    const globalBefore = physicPaintVersion.value;
+    const bRotorBefore = getTrackRotorRevision(LAYER, TRACK_B).value;
+    const aRotorBefore = getTrackRotorRevision(LAYER, TRACK_A).value;
+
+    // B gets dirty after A's capture: the global clock and B's own signal
+    // move; A's per-track signal stays put.
+    seedRuntime(TRACK_B, [makeRecord('key-b-5', 5, 'b@5')]);
+    expect(physicPaintVersion.value).toBe(globalBefore + 1);
+    expect(getTrackRotorRevision(LAYER, TRACK_B).value).toBe(bRotorBefore + 1);
+    expect(getTrackRotorRevision(LAYER, TRACK_A).value).toBe(aRotorBefore);
+
+    const result = applyPhysicPaintPayload(buildBatch(capturedA));
+    expect(result).toMatchObject({ ok: true });
+    expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([makeRecord('key-b-5', 5, 'b@5')]);
+    // The authority still speaks the unchanged A terms (track revision AND
+    // roto revision are A-scoped; the global clock never entered the gate).
+    const recapturedA = capture(TRACK_A, 0);
+    expect(recapturedA.trackRevision).toBe(capturedA.trackRevision);
+    expect(recapturedA.rotoRevision).toBe(capturedA.rotoRevision);
+  });
+
+  it('authority during a foreign-track edit: a request for A after a B edit returns A\'s terms and bytes unchanged', () => {
+    seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
+    const beforeA = capture(TRACK_A, 0);
+
+    // A track-B edit (document + runtime) lands: the document term moves and
+    // B's track term moves; A's track term, roto revision, and bytes do not.
+    registerTwoTrackAuthorityDocument([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-5', 5, 'b@5')]);
+    seedRuntime(TRACK_B, [makeRecord('key-b-5', 5, 'b@5')]);
+
+    const afterA = capture(TRACK_A, 0);
+    const afterB = capture(TRACK_B, 6);
+    expect(afterA.trackRevision).toBe(beforeA.trackRevision);
+    expect(afterA.rotoRevision).toBe(beforeA.rotoRevision);
+    expect(afterA.frames).toEqual(beforeA.frames);
+    expect(afterA.documentRevision).not.toBe(beforeA.documentRevision);
+    expect(afterB.trackRevision).not.toBe(beforeA.trackRevision);
+    expect(afterB.frames).toEqual([expect.objectContaining({ appFrame: 5 })]);
   });
 });
