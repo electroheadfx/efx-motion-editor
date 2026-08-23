@@ -214,3 +214,140 @@ describe('physicPaintStore linked Hold source laws (46-06 Task 2 — TRK-02, D-1
     expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 10)).toMatchObject({ kind: 'linked', sourceKeyId: 'kA-0' });
   });
 });
+
+describe('physicPaintStore fail-closed Hold creation + linked ordering (46-06 Task 3 — D-13, TRK-08, T-46-16)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('empty refs rejected: a Hold clip with sourceFrameRefs [] fails closed empty-source-refs and writes nothing', () => {
+    seedTrack(TRACK_A, [record('kA-0', 5, 'a@5')], []);
+    const before = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A);
+
+    const rejected = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK_A, [
+      { loopId: 'hold-empty', placementStart: 10, sourceKeyIds: [], repeat: 1, mode: 'static' },
+    ]);
+    expect(rejected).toEqual({ ok: false, error: 'empty-source-refs' });
+
+    // Nothing was written: the clip collection and the record map are untouched.
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A)).toEqual(before);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
+    expect(physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A)).not.toBeNull();
+
+    // The exported validation closes the same way, document-shaped (46-03
+    // re-pointing's second gate).
+    expect(physicPaintStore.validateTrackHoldLoopClipRefs(LAYER, TRACK_A, {
+      sourceFrameRefs: [],
+      sourceKind: 'playscript-hold',
+    })).toEqual({ ok: false, error: 'empty-source-refs' });
+  });
+
+  it('foreign refs rejected: a Hold clip on A referencing B\'s key fails closed foreign-refs and writes nothing', () => {
+    seedTrack(TRACK_A, [record('kA-0', 5, 'a@5')], []);
+    seedTrack(TRACK_B, [record('kB-0', 5, 'b@5')], []);
+    const before = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A);
+
+    const rejected = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK_A, [
+      { loopId: 'hold-foreign', placementStart: 10, sourceKeyIds: ['kB-0'], repeat: 1, mode: 'static' },
+    ]);
+    expect(rejected).toEqual({ ok: false, error: 'foreign-source-refs' });
+
+    // Nothing was written on either track; A's own valid Hold still passes.
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A)).toEqual(before);
+    const accepted = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK_A, [
+      { loopId: 'hold-a', placementStart: 10, sourceKeyIds: ['kA-0'], repeat: 1, mode: 'static' },
+    ]);
+    expect(accepted.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A).map((clip) => clip.loopId)).toEqual(['hold-a']);
+
+    // The exported validation is ref-based against the OWNING map only:
+    // B's key is foreign on A, A's own key is fine under either sourceKind.
+    expect(physicPaintStore.validateTrackHoldLoopClipRefs(LAYER, TRACK_A, {
+      sourceFrameRefs: ['kB-0'],
+      sourceKind: 'playscript-hold',
+    })).toEqual({ ok: false, error: 'foreign-source-refs' });
+    expect(physicPaintStore.validateTrackHoldLoopClipRefs(LAYER, TRACK_A, {
+      sourceFrameRefs: ['kA-0'],
+      sourceKind: 'playscript-hold',
+    })).toEqual({ ok: true });
+    expect(physicPaintStore.validateTrackHoldLoopClipRefs(LAYER, TRACK_A, {
+      sourceFrameRefs: ['kA-0'],
+      sourceKind: 'imported-background',
+    })).toEqual({ ok: true });
+  });
+
+  it('missing source after create: deleting one source frame of a multi-source Hold turns the cycle unresolved and heals on re-add', () => {
+    // Two sources at 5 and 7 → cycleLength 3; repeat 2 covers frames 10..15.
+    seedTrack(TRACK_A, [record('kA-0', 5, 'a@5'), record('kA-1', 7, 'a@7')], [{ loopId: 'hold-a', placementStart: 10, sourceKeyIds: ['kA-0', 'kA-1'], repeat: 2 }]);
+    let pair = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 10)).toMatchObject({ kind: 'linked', sourceKeyId: 'kA-0' });
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 12)).toMatchObject({ kind: 'linked', sourceKeyId: 'kA-1' });
+
+    // Delete ONE source frame — the whole owned cycle fails closed unresolved,
+    // naming exactly the missing key; never a dangling or partial answer. The
+    // unresolved clip keeps its compact placeholder duration (cycleLength =
+    // ref count = 2 → effectiveEnd 14), so the fail-closed window is 10..13
+    // and the frames past it resolve 'empty', never a foreign answer.
+    const deleted = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK_A, [record('kA-0', 5, 'a@5')], INTERPOLATION, CAPACITY);
+    expect(deleted.ok).toBe(true);
+    pair = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    for (const frame of [10, 11, 12, 13]) {
+      const answer = resolvePhysicPaintRotoLoopFrame(pair!.context, frame);
+      expect(answer).toMatchObject({ kind: 'linked-unresolved', loopId: 'hold-a', missingSourceKeyIds: ['kA-1'] });
+      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, frame)).toMatchObject({ kind: 'loop-placeholder' });
+    }
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 14)).toMatchObject({ kind: 'empty' });
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, 14)).toBeNull();
+
+    // Re-adding a real key at the deleted frame heals the linked answers.
+    const healed = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK_A,
+      [record('kA-0', 5, 'a@5'), record('kA-1', 7, 'a@7')],
+      INTERPOLATION,
+      CAPACITY,
+    );
+    expect(healed.ok).toBe(true);
+    pair = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 10)).toMatchObject({ kind: 'linked', sourceKeyId: 'kA-0' });
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 12)).toMatchObject({ kind: 'linked', sourceKeyId: 'kA-1' });
+  });
+
+  it('ordering: the boundary frame at the later clip\'s placementStart belongs to exactly one clip — stable over 10 repeat instances', () => {
+    // C1: cycleLength 1 × repeat 10 → effectiveEnd 20, exactly C2's placementStart.
+    seedTrack(TRACK_A, [record('k1-0', 0, 'a@0'), record('k2-0', 20, 'a@20')], [
+      { loopId: 'c1', placementStart: 10, sourceKeyIds: ['k1-0'], repeat: 10 },
+      { loopId: 'c2', placementStart: 20, sourceKeyIds: ['k2-0'], repeat: 2 },
+    ]);
+    const pair = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
+    expect(pair).not.toBeNull();
+
+    // The 10 repeat instances of C1 (frames 10..19): sourceIndex computed over
+    // the own clip's cycle, deterministic repeatInstance per frame.
+    for (let frame = 10; frame < 20; frame += 1) {
+      expect(resolvePhysicPaintRotoLoopFrame(pair!.context, frame)).toMatchObject({
+        kind: 'linked',
+        loopId: 'c1',
+        sourceKeyId: 'k1-0',
+        sourceIndex: 0,
+        repeatInstance: frame - 10,
+      });
+    }
+    // The boundary frame belongs to the later clip alone: C2's own real key at
+    // 20, and the cell after it is C2's first repeat — never C1.
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 20)).toMatchObject({ kind: 'real', keyId: 'k2-0' });
+    expect(resolvePhysicPaintRotoLoopFrame(pair!.context, 21)).toMatchObject({ kind: 'linked', loopId: 'c2', sourceKeyId: 'k2-0', repeatInstance: 1 });
+    // At the render-source surface real/generated projection cells are the
+    // authority: 19 is the projection interpolation cell toward k2-0, 20 is
+    // k2-0's real cell, and 21 is C2's first linked repeat delivering the same
+    // source key — the boundary still belongs to exactly one clip.
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, 19)?.kind).toBe('generated');
+    const at20 = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, 20);
+    expect(at20?.kind).toBe('real');
+    if (at20 && at20.kind === 'real') expect(at20.keyId).toBe('k2-0');
+    const at21 = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK_A, 21);
+    expect(at21?.kind).toBe('real');
+    if (at21 && at21.kind === 'real') expect(at21.keyId).toBe('k2-0');
+  });
+});

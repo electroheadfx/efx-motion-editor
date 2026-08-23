@@ -674,7 +674,13 @@ describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 —
   it('empty: a track with a Hold clip but zero real keys answers every clip cell linked-unresolved — never a foreign frame, never a fabricated base', () => {
     // The sibling track's real key must never leak into A's answer.
     seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], []);
-    seedTrack(TRACK_A, [], [makeLoop('hold-a', 10, ['kA-0'])]);
+    // 46-06 Task 3: the clip surface rejects refs to never-present keys, so
+    // reach the zero-real-keys state the law covers by deleting the source
+    // key after a valid creation (the delete-after-create missing-source
+    // path) — the resolution law itself is unchanged.
+    seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
+    const removed = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK_A, [], INTERPOLATION, CAPACITY);
+    if (!removed.ok) throw new Error(`Remove source failed: ${removed.error}`);
 
     const contextA = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
     expect(contextA).not.toBeNull();

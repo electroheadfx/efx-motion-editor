@@ -154,6 +154,16 @@ function seedTrack(
   }
 }
 
+/** Install loop clips directly through the document-install port (bypasses the
+ *  46-06 Task 3 creation gate — legitimate for D-31 dangling/cross-track
+ *  fixtures; the same seam hydration and Hold severing use). */
+function installTrackLoops(trackId: string, loops: readonly PhysicPaintRotoLoopClip[]): void {
+  const current = physicPaintStore.getRotoPhysicalDocument(LAYER, trackId);
+  if (!current) throw new Error(`No runtime for ${trackId}`);
+  const installed = physicPaintStore.replaceRotoPhysicalDocument(LAYER, trackId, { ...current, loopClips: loops });
+  if (!installed.ok) throw new Error(`Install loops failed for ${trackId}: ${installed.error}`);
+}
+
 function seedDocument(
   trackIds: readonly string[],
   activeTrackId: string,
@@ -177,7 +187,8 @@ describe('requestDeleteTrack preview (46-05 D-14)', () => {
   it('returns a complete preview (frames, clips, hold references, isLastTrack) without mutating anything', () => {
     seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
       if (trackId === TRACK_A) {
-        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')], [
+        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')]);
+        installTrackLoops(trackId, [
           makeLoop('loop-a-1', 0, ['key-a-1']),
           // One Hold clip on surviving track A referencing B's key (D-16 surface).
           makeLoop('loop-a-hold', 2, ['key-b-1']),
@@ -277,7 +288,8 @@ describe('commitDeleteTrack full per-track teardown (46-05 D-16)', () => {
   it('tears down exactly the deleted track; the survivor is byte-identical', () => {
     seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
       if (trackId === TRACK_A) {
-        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')], [makeLoop('loop-a-hold', 2, ['key-b-1'])]);
+        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')]);
+        installTrackLoops(trackId, [makeLoop('loop-a-hold', 2, ['key-b-1'])]);
       } else {
         seedTrack(trackId, [makeRecord('key-b-1', 1, 'b@1'), makeRecord('key-b-2', 5, 'b@2')], [makeLoop('loop-b-1', 0, ['key-b-1'])]);
       }
@@ -323,7 +335,8 @@ describe('commitDeleteTrack hold severing (46-05 D-16 / T-46-14)', () => {
   it('severs every surviving Hold referencing the deleted track; the resolver answers linked-unresolved', () => {
     seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
       if (trackId === TRACK_A) {
-        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')], [
+        seedTrack(trackId, [makeRecord('key-a-1', 1, 'a@1')]);
+        installTrackLoops(trackId, [
           makeLoop('loop-a-hold', 2, ['key-b-1']),
           makeLoop('loop-a-own', 4, ['key-a-1']),
         ]);
