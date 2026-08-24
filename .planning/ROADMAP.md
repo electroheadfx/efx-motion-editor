@@ -288,10 +288,21 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 47-01-PLAN.md — tracer: multi-row strip slice + track CRUD store ops + hide/solo/opacity/blend setters + preview filter
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 47-02-PLAN.md — pinned header column, track CRUD interactions, acknowledge-and-delete dialog, vertical scroll with ensure-active-row-visible
 - [ ] 47-03-PLAN.md — right-panel track section (opacity/blend) + guarded track CRUD keyboard shortcuts
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 47-04-PLAN.md — filmstrip capsule (source-cycle cells, ×N/∞ badge, partial-cycle cut, high-zoom expansion) + Bg-row clip display
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 47-05-PLAN.md — cross-track drag gesture with destination highlight, moveTrackItems commit, rejection publication
 
 **UI hint**: yes
