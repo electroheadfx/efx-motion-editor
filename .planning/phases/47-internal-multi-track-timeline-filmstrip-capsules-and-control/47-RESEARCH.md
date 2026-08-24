@@ -474,22 +474,11 @@ Accessibility:                   aria-label="Duplicate track {name}" / "Delete t
 | A5 | Opacity slider range (0-1 float) and blend options map 1:1 to the document `opacity: number` and `BlendMode` union — the right-panel Track section UI copy/labels are Claude's discretion per CONTEXT. | Pattern 1 / TML-04 | Cosmetic divergence only; the data contract is the `BlendMode` union (verified). |
 | A6 | The vertical-scroll ensure-active-row-visible can hook the existing active-track change signal(s) (Phase 46 undo auto-activation included) without new plumbing. The undo auto-activation signal name was not verified this session. | Pattern 2 / D-05 | Minor plumbing if a distinct signal exists; planner should reference Phase 46 D-04's mechanism. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does `setActiveTrackId` bump `efxPaintVersion`?**
-   - What we know: the op exists (`efxPaintStore.ts:97`); all other store mutations bump `efxPaintVersion`.
-   - What's unclear: the exact bump behavior (not read this session — A1).
-   - Recommendation: first Wave-0 task reads the op; if it does not bump, add the bump in the same task that wires row-click selection.
-
-2. **What is the exact undo auto-activation signal for ensure-active-row-visible?**
-   - What we know: Phase 46 D-04 auto-activates the target track on undo; D-05 requires the active row to auto-scroll into view on that event.
-   - What's unclear: the signal/notification name in the Phase 46 store layer.
-   - Recommendation: planner adds a "subscribe to active-track change (incl. undo auto-activation) → scrollIntoView" task and references Phase 46 D-04's mechanism.
-
-3. **Background capsule projection reuse (A3) — confirmed at implementation?**
-   - What we know: Phase 47 renders Bg clips when present via the shared capsule (D-11); `BackgroundTrack.clips` are `FrameLoopClip[]`.
-   - What's unclear: whether `derivePhysicPaintRotoLoopRanges` accepts the Background clip shape directly.
-   - Recommendation: keep Bg-capsule rendering a sub-task with a verification step; the primary Bg deliverable is the row surface + fallback display, which is independent of the capsule reuse question.
+1. **Does `setActiveTrackId` bump `efxPaintVersion`?** — RESOLVED: yes. `setActiveTrackId` calls `_notifyChange()` (`efxPaintStore.ts:106`), which increments `efxPaintVersion` (`efxPaintStore.ts:54`). Plan 01 Task 1's "Studio re-reads on efxPaintVersion" truth holds.
+2. **What is the exact undo auto-activation signal for ensure-active-row-visible?** — RESOLVED: Plan 02 Task 3 action subscribes an effect to activeTrackId changes (row click, undo auto-activation, keyboard navigation), per Phase 46 D-04's mechanism.
+3. **Background capsule projection reuse (A3) — confirmed at implementation?** — RESOLVED: Plan 04 Task 3 handles Bg-clip rendering as an explicit sub-task with a verification step; the primary Bg deliverable (row surface + fallback display) is independent of the capsule reuse question.
 
 ## Environment Availability
 
