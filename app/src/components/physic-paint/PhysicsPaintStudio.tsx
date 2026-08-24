@@ -3,7 +3,17 @@ import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
-import { efxPaintVersion, getDocument as getEfxPaintDocument, setActiveTrackId } from '../../stores/efxPaintStore';
+import {
+  addTrack,
+  commitDeleteTrack,
+  duplicateTrack,
+  efxPaintVersion,
+  getDocument as getEfxPaintDocument,
+  renameTrack,
+  requestDeleteTrack,
+  setActiveTrackId,
+  setTrackVisible,
+} from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -2731,20 +2741,75 @@ export function PhysicsPaintStudio() {
         hasCopiedRotoKey: rotoSession.copiedKey.value !== null,
       }
     : { actionAvailability: sessionKeyAvailability, hasCopiedRotoKey: rotoSession.copiedKey.value !== null };
+  // 47-01 mockup redesign: track CRUD + visibility intents. Each routes
+  // through its store op fail-closed on the layer; refusals (empty rename,
+  // last-track delete) publish to the status capsule so the user sees why the
+  // timeline did not change. Newly added / duplicated tracks become active so
+  // they are immediately visible in the preview.
+  const handleAddTrack = useCallback(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = addTrack(layerId);
+    if (result.ok) setActiveTrackId(layerId, result.trackId);
+  }, [launchContext?.layerId]);
+  const handleToggleTrackVisible = useCallback((trackId: string, visible: boolean) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = setTrackVisible(layerId, trackId, visible);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleRenameTrack = useCallback((trackId: string, name: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = renameTrack(layerId, trackId, name);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleDuplicateTrack = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = duplicateTrack(layerId, trackId);
+    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    else setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleDeleteTrack = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const preview = requestDeleteTrack(layerId, trackId);
+    if (!preview) { setApplyMessage('Could not delete track.'); return; }
+    if (preview.isLastTrack) {
+      setApplyMessage('A document must always have at least one Paint track.');
+      return;
+    }
+    const result = commitDeleteTrack(layerId, trackId, true);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
   // 47-01: the multi-track row bundle is document-derived. Reading
   // `efxPaintVersion.value` subscribes the bundle to every store mutation
   // (setActiveTrackId included) so a row-header click flips the active row.
   const multiTrackRowBundle = useMemo(() => {
     const layerId = launchContext?.layerId;
-    if (!layerId) return { layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined, onSelectTrack: undefined };
+    if (!layerId) return {
+      layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined,
+      onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
+      onRenameTrack: undefined, onDuplicateTrack: undefined, onDeleteTrack: undefined,
+    };
     const document = getEfxPaintDocument(layerId);
-    if (!document) return { layerId, tracks: undefined, activeTrackId: undefined, background: undefined, onSelectTrack: undefined };
+    if (!document) return {
+      layerId, tracks: undefined, activeTrackId: undefined, background: undefined,
+      onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
+      onRenameTrack: undefined, onDuplicateTrack: undefined, onDeleteTrack: undefined,
+    };
     return {
       layerId,
       tracks: document.tracks,
       activeTrackId: document.activeTrackId,
       background: document.background,
       onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
+      onAddTrack: handleAddTrack,
+      onToggleTrackVisible: handleToggleTrackVisible,
+      onRenameTrack: handleRenameTrack,
+      onDuplicateTrack: handleDuplicateTrack,
+      onDeleteTrack: handleDeleteTrack,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, efxPaintVersion.value]);
@@ -2761,6 +2826,11 @@ export function PhysicsPaintStudio() {
         activeTrackId: multiTrackRowBundle.activeTrackId,
         background: multiTrackRowBundle.background,
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
+        onAddTrack: multiTrackRowBundle.onAddTrack,
+        onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
+        onRenameTrack: multiTrackRowBundle.onRenameTrack,
+        onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,
+        onDeleteTrack: multiTrackRowBundle.onDeleteTrack,
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
