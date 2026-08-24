@@ -943,19 +943,22 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     const code = source();
     const scrollIndex = code.indexOf('class="physics-paint-timeline-scroll"');
     const scrollEnd = getMatchingDivEnd(code, code.lastIndexOf('<div', scrollIndex));
-    const laneIndex = code.indexOf('class="physics-paint-lane"', scrollIndex);
-    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneIndex);
+    // 47-01 mockup redesign: the active lane source now lives in the reusable
+    // `renderActiveLane()` helper, mounted inside the rows-region here — so the
+    // mount point, not the lane class string, is the scroll-containment anchor.
+    const laneMountIndex = code.indexOf('renderActiveLane()', scrollIndex);
+    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneMountIndex);
     const utilitiesIndex = code.indexOf('physics-paint-roto-key-utilities', actionRowIndex);
     const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', utilitiesIndex);
-    for (const index of [scrollIndex, scrollEnd, laneIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
+    for (const index of [scrollIndex, scrollEnd, laneMountIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
-    expect(laneIndex).toBeLessThan(scrollEnd);
+    expect(laneMountIndex).toBeLessThan(scrollEnd);
     expect(actionRowIndex).toBeGreaterThan(scrollEnd);
     expect(utilitiesIndex).toBeGreaterThan(actionRowIndex);
     expect(scrollbarIndex).toBeGreaterThan(utilitiesIndex);
     expect(code.slice(scrollIndex, scrollEnd)).not.toContain('physics-paint-roto-action-row');
-    expect(code.slice(scrollIndex, scrollEnd)).toContain('physics-paint-roto-cells');
+    expect(code.slice(scrollIndex, scrollEnd)).toContain('renderActiveLane()');
   });
 
   it('makes the timeline scroll container focusable so Cmd+Z/Cmd+Shift+Z routing survives rail commits (43.4 defect 7)', () => {
@@ -1423,9 +1426,14 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
   it('keeps only the integrated rail inside the unchanged physical row', () => {
     const code = source();
     const rulerIndex = code.indexOf('class="physics-paint-ruler"');
-    const physicalLaneIndex = code.indexOf('class="physics-paint-lane"');
-    const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail');
-    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"');
+    // 47-01 mockup redesign: the lane source lives in the reusable
+    // `renderActiveLane()` helper (rendered after the ruler in the DOM), so the
+    // rail/cells containment assertions anchor to that helper instead of a
+    // global source offset.
+    const laneFnIndex = code.indexOf('const renderActiveLane');
+    const physicalLaneIndex = code.indexOf('class="physics-paint-lane"', laneFnIndex);
+    const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail', physicalLaneIndex);
+    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"', loopRailIndex);
 
     expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipIds?: readonly string[];');
     expect(getWorkflowStripPropsInterface(code)).not.toContain('selectedRotoLoopSourceKeyIds');
@@ -1436,7 +1444,8 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(code).toContain('ranges={loopResolutionContext.ranges}');
     expect(code).toContain('visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}');
     expect(rulerIndex).toBeGreaterThanOrEqual(0);
-    expect(physicalLaneIndex).toBeGreaterThan(rulerIndex);
+    expect(laneFnIndex).toBeGreaterThanOrEqual(0);
+    expect(physicalLaneIndex).toBeGreaterThan(laneFnIndex);
     expect(loopRailIndex).toBeGreaterThan(physicalLaneIndex);
     expect(cellsIndex).toBeGreaterThan(loopRailIndex);
     expect(code).not.toContain('PhysicsPaintLoopClipLane');
