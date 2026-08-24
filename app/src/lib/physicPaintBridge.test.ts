@@ -29,6 +29,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
   type PhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoLoopClip,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import {
@@ -4910,6 +4911,144 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
       selectedAppFrame: 0,
       historyProvenance: {
         historyCommandId: 'paste-rails-undo-target',
+        historyDirection: 'undo',
+        sourceRevision: acceptedDocument.revision,
+        targetRevision: seededDoc.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID)).toEqual(seededDoc);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+  });
+
+  it('RED (46 UAT): a LOOP-clip paste replays its Undo target — the pre-paste document (source loop + key) is byte-restored', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    projectStore.projectContextId.value = projectContextId;
+    sequenceStore.add({
+      id: 'bridge-loop-paste-undo-sequence',
+      kind: 'fx',
+      name: 'Bridge loop-paste undo',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const sourceRecord = makePhysicalRecord('k0', 0);
+    const loopClip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+      frameOverrides: [],
+    };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity: 100,
+      realKeyRecords: [sourceRecord],
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'k0',
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([sourceRecord], interpolation, [loopClip], []),
+      loopClips: [loopClip],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(sourceRecord.payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    if (!seededDoc) throw new Error('Expected seeded physical document.');
+
+    const copyPayload = (): RotoRailSetCopyPayload => Object.freeze({
+      anchorAppFrame: 0,
+      sourceTrackId: '',
+      members: Object.freeze([
+        Object.freeze({
+          kind: 'loop' as const,
+          loopId: 'g1',
+          placementStart: 0,
+          clip: loopClip,
+          effectiveEndExclusive: 4,
+          repeat: 2,
+        }),
+      ]),
+    });
+
+    const proposed = proposeRails({
+      document: seededDoc,
+      payload: copyPayload(),
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) throw new Error(`Loop paste proposal must resolve: ${proposed.reason}`);
+    const pasteLease = acquirePhysicalLease(layer.id, projectContextId);
+    const paste = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'loop-paste-undo-target',
+      operationKind: 'paste',
+      leaseToken: pasteLease,
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: seededDoc.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
+      semanticDelta: proposed.impact,
+    });
+    expect(paste.ok, paste.ok ? undefined : paste.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    if (!acceptedDocument) throw new Error('Expected accepted loop-paste document.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(pasteLease)).toBe(true);
+
+    // Undo replays the PRE-paste document (source loop + clip), exactly as the
+    // coordinator/history submits entry.before.
+    const undoLease = acquirePhysicalLease(layer.id, projectContextId);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'loop-paste-undo-target-undo',
+      operationKind: 'undo',
+      leaseToken: undoLease,
+      layerId: layer.id,
+      startFrame: 0,
+      cursorAppFrame: 0,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: acceptedDocument.revision,
+      records: seededDoc.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (seededDoc.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: seededDoc.interpolation.enabled,
+      interpolationMode: seededDoc.interpolation.mode,
+      loopClips: seededDoc.loopClips,
+      incomingInterpolationBreakKeyIds: seededDoc.incomingInterpolationBreakKeyIds,
+      selectedKeyId: 'k0',
+      selectedAppFrame: 0,
+      historyProvenance: {
+        historyCommandId: 'loop-paste-undo-target',
         historyDirection: 'undo',
         sourceRevision: acceptedDocument.revision,
         targetRevision: seededDoc.revision,

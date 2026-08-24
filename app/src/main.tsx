@@ -16,12 +16,16 @@ import {paintStore} from './stores/paintStore';
 import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
+import {setDebugReplayDiff} from './lib/physicPaintBridge';
 // 46 UAT debug hook: enable per-clause apply-payload rejection logging from the
 // console via window.__setDebugApplyPayloadValidation(true).
 (window as unknown as { __setDebugApplyPayloadValidation: (enabled: boolean) => void }).__setDebugApplyPayloadValidation = setDebugApplyPayloadValidation;
 // 46 UAT debug hook: enable why-Paste-does-or-doesn't-record / why-Undo-rejects
 // logging from the console via window.__setDebugRotoUndo(true).
 (window as unknown as { __setDebugRotoUndo: (enabled: boolean) => void }).__setDebugRotoUndo = setDebugRotoUndo;
+// 46 UAT debug hook: enable field-level diff of a rejected parent replay-target
+// snapshot from the MAIN window console via window.__setDebugReplayDiff(true).
+(window as unknown as { __setDebugReplayDiff: (enabled: boolean) => void }).__setDebugReplayDiff = setDebugReplayDiff;
 
 const root = document.getElementById('app')!;
 

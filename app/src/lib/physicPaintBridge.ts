@@ -278,6 +278,62 @@ function sameAcceptedPhysicalCommandSnapshot(
   return stableSerialize(left, new WeakSet<object>()) === stableSerialize(right, new WeakSet<object>());
 }
 
+// 46 UAT debug hook: field-level diff of a rejected replay-target snapshot.
+// Gated off by default; enable from the MAIN window console via
+// window.__setDebugReplayDiff(true).
+let debugReplayDiff = false;
+export function setDebugReplayDiff(enabled: boolean): void {
+  debugReplayDiff = enabled;
+}
+
+function debugReplaySnapshotDiff(
+  proposed: AcceptedPhysicalCommandSnapshot,
+  expected: AcceptedPhysicalCommandSnapshot,
+): void {
+  if (!debugReplayDiff) return;
+  const failures: string[] = [];
+  if (proposed.capacity !== expected.capacity) failures.push(`capacity ${proposed.capacity} != ${expected.capacity}`);
+  if (proposed.revision !== expected.revision) failures.push(`revision ${proposed.revision} != ${expected.revision}`);
+  if (proposed.cursorAppFrame !== expected.cursorAppFrame) failures.push(`cursor ${proposed.cursorAppFrame} != ${expected.cursorAppFrame}`);
+  if (proposed.selectedKeyId !== expected.selectedKeyId) failures.push(`selectedKeyId ${proposed.selectedKeyId} != ${expected.selectedKeyId}`);
+  if (proposed.selectedAppFrame !== expected.selectedAppFrame) failures.push(`selectedAppFrame ${proposed.selectedAppFrame} != ${expected.selectedAppFrame}`);
+  if (proposed.interpolation.enabled !== expected.interpolation.enabled
+    || proposed.interpolation.mode !== expected.interpolation.mode) {
+    failures.push(`interpolation ${JSON.stringify(proposed.interpolation)} != ${JSON.stringify(expected.interpolation)}`);
+  }
+  if (proposed.records.length !== expected.records.length) {
+    failures.push(`records length ${proposed.records.length} != ${expected.records.length}`);
+  } else {
+    for (let i = 0; i < proposed.records.length; i += 1) {
+      if (stableSerialize(proposed.records[i], new WeakSet<object>()) !== stableSerialize(expected.records[i], new WeakSet<object>())) {
+        failures.push(`records[${i}] ${proposed.records[i].keyId}@${proposed.records[i].appFrame} differs`);
+        break;
+      }
+    }
+  }
+  if (proposed.loopClips.length !== expected.loopClips.length) {
+    failures.push(`loopClips length ${proposed.loopClips.length} != ${expected.loopClips.length}`);
+  } else {
+    for (let i = 0; i < proposed.loopClips.length; i += 1) {
+      if (stableSerialize(proposed.loopClips[i], new WeakSet<object>()) !== stableSerialize(expected.loopClips[i], new WeakSet<object>())) {
+        failures.push(`loopClips[${i}] ${proposed.loopClips[i]?.loopId} differs`);
+        break;
+      }
+    }
+  }
+  if (proposed.incomingInterpolationBreakKeyIds.length !== expected.incomingInterpolationBreakKeyIds.length) {
+    failures.push(`breaks length ${proposed.incomingInterpolationBreakKeyIds.length} != ${expected.incomingInterpolationBreakKeyIds.length}`);
+  } else {
+    for (let i = 0; i < proposed.incomingInterpolationBreakKeyIds.length; i += 1) {
+      if (proposed.incomingInterpolationBreakKeyIds[i] !== expected.incomingInterpolationBreakKeyIds[i]) {
+        failures.push(`breaks[${i}] ${proposed.incomingInterpolationBreakKeyIds[i]} != ${expected.incomingInterpolationBreakKeyIds[i]}`);
+        break;
+      }
+    }
+  }
+  console.warn(`[replay-diff] replay target mismatch: ${failures.join(' | ') || 'unknown-field'}`);
+}
+
 export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
   return applyPhysicPaintPayloadWithPublicationLease(payload);
 }
@@ -1657,6 +1713,7 @@ function applyPhysicPaintRotoPhysicalMap(
       revision: stagedRevision,
     });
     if (!sameAcceptedPhysicalCommandSnapshot(proposedTargetSnapshot, expectedTargetSnapshot)) {
+      debugReplaySnapshotDiff(proposedTargetSnapshot, expectedTargetSnapshot);
       return reject('Roto physical replay target snapshot does not match the original accepted command.', stagedRevision);
     }
     if (currentRevision !== provenance.sourceRevision) return reject('Roto physical replay source revision does not match the current state.', stagedRevision);
