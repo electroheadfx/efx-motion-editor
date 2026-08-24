@@ -205,7 +205,12 @@ export default defineConfig({
     // rail-set copy engine and key-rail segmentation into the main chunk,
     // measured 1131.51 kB. Budget raised to 1135 (measured value + ~3.5 kB
     // headroom).
-    chunkSizeWarningLimit: 1135,
+    // Measurement note (2026-08-24): the 46 UAT fixes (infinity-repeat paste
+    // freeze + lifecycle synthesis, spacing-on-set loop retime) added the
+    // rail-set copy extent resolver and loop-lifecycle normalization to the
+    // main chunk, measured 1136.14 kB. Budget raised to 1140 (measured value +
+    // ~3.9 kB headroom).
+    chunkSizeWarningLimit: 1140,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
