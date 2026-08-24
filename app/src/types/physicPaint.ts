@@ -1272,9 +1272,16 @@ function isRotoRailSetCopyMemberValue(value: unknown): boolean {
     return value.entries.every(isRotoRailSetCopyEntryValue);
   }
   if (value.kind === 'loop') {
-    if (!hasOnlyKeys(value, ['kind', 'loopId', 'placementStart', 'clip'])) return false;
+    // 46 UAT R1/R5: loop members carry the resolver-resolved effective end and
+    // an optional frozen finite repeat (infinity sources). Both must be
+    // accepted by the semantic-delta validator or every paste payload rejects
+    // at bad-semanticDelta.
+    if (!hasOnlyKeys(value, ['kind', 'loopId', 'placementStart', 'clip', 'effectiveEndExclusive', 'repeat'])) return false;
     if (!isBoundedPhysicalKeyId(value.loopId)) return false;
     if (!isNonNegativeInteger(value.placementStart)) return false;
+    if (!isNonNegativeInteger(value.effectiveEndExclusive)) return false;
+    if (value.repeat !== undefined
+      && (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1)) return false;
     return isPhysicPaintRotoLoopClip(value.clip);
   }
   return false;
