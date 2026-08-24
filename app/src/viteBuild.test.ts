@@ -135,7 +135,7 @@ describe('production vite build', () => {
     'resolved chunkSizeWarningLimit is exactly the documented 1140 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1140 desktop budget').toBe(1140);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1165 desktop budget').toBe(1165);
     },
   );
 
@@ -197,6 +197,9 @@ describe('production vite build', () => {
       // Measured 2026-08-24: 1136.14 kB after the 46 UAT fixes (infinity-repeat
       // paste freeze + lifecycle synthesis, spacing-on-set loop retime);
       // budget raised 1135 → 1140.
+      // Measured 2026-08-24: 1155.32 kB after the post-budget phase-46 rail/
+      // capsule fixes (paste boundary law, capsule warning UX, cursor-capture
+      // undo); budget raised 1140 → 1165.
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(

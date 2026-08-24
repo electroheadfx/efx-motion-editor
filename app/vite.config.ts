@@ -207,10 +207,14 @@ export default defineConfig({
     // headroom).
     // Measurement note (2026-08-24): the 46 UAT fixes (infinity-repeat paste
     // freeze + lifecycle synthesis, spacing-on-set loop retime) added the
-    // rail-set copy extent resolver and loop-lifecycle normalization to the
+    // rail-set copy extent and loop-lifecycle normalization to the
     // main chunk, measured 1136.14 kB. Budget raised to 1140 (measured value +
     // ~3.9 kB headroom).
-    chunkSizeWarningLimit: 1140,
+    // Measurement note (2026-08-24): the post-budget phase-46 rail/capsule
+    // fixes (paste boundary law, capsule warning UX, cursor-capture undo) added
+    // the boundary-extent and capsule-state code to the main chunk, measured
+    // 1155.32 kB. Budget raised to 1165 (measured value + ~9.7 kB headroom).
+    chunkSizeWarningLimit: 1165,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
