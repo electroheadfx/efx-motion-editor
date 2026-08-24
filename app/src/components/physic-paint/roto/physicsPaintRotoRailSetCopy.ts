@@ -227,38 +227,41 @@ function orderMembers(members: readonly RotoRailSetCopyMember[]): readonly RotoR
 }
 
 /**
- * Resolve a Loop Clip's visible extent the way the resolver does, so the copy
- * payload can freeze an infinity-repeat source to the finite duration it
- * actually rendered. Mirrors the resolver's `deriveBoundary` scan (next
- * unowned real key, then next loop-start to the right) against the SOURCE
- * document, plus the sourceOffsets-derived cycle length, and reports the
- * finite repeat count that reproduces that end-exclusive. Falls back to the
- * clip's own repeat for finite sources.
+ * Resolve a Loop Clip's copied extent. The freeze-to-finite behavior (46 UAT
+ * paste-repeat regression) applies ONLY to infinity-repeat sources: their
+ * extent must be mirrored from the resolver's boundary scan (next unowned real
+ * key, then next loop-start to the right, clamped to capacity) so the pasted
+ * copy reproduces the visible duration it actually had instead of re-resolving
+ * `naturalEnd = capacity`. Finite/static clips keep the established v0.9
+ * extent semantics verbatim — `sourceKeyIds.length`-based cycle, or
+ * `originalEndExclusive` when lifecycle is present — so copying them is
+ * byte-for-byte unchanged (46 UAT R1).
  */
 function resolveLoopCopyExtent(
   document: PhysicPaintRotoPhysicalDocument,
   clip: PhysicPaintRotoLoopClip,
 ): { readonly effectiveEndExclusive: number; readonly repeat: number | undefined } {
-  const recordByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
-  const positions: number[] = [];
-  for (const keyId of clip.sourceKeyIds) {
-    const record = recordByKeyId.get(keyId);
-    if (record !== undefined) positions.push(record.appFrame);
-  }
-  positions.sort((left, right) => left - right);
-  const cycleLength = positions.length === 0
-    ? clip.sourceKeyIds.length
-    : positions[positions.length - 1]! - positions[0]! + 1;
-
   if (clip.repeat !== 'infinity') {
-    const finiteEnd = clip.placementStart + cycleLength * clip.repeat;
     return {
       effectiveEndExclusive: typeof clip.originalEndExclusive === 'number'
         ? clip.originalEndExclusive
-        : finiteEnd,
+        : clip.placementStart + clip.sourceKeyIds.length * clip.repeat,
       repeat: undefined,
     };
   }
+
+  const recordByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  // Mirror the resolver's sourceOffsets-derived cycle length exactly (falls
+  // back to the source key count when the source cycle is dangling/unsorted).
+  const sourceFrameCount = clip.sourceKeyIds.length;
+  const sourcePositions = clip.sourceKeyIds.map((keyId) => recordByKeyId.get(keyId)?.appFrame);
+  const missingSourceKeyIds = clip.sourceKeyIds.filter((keyId) => !recordByKeyId.has(keyId));
+  const sourceTimingIsValid = missingSourceKeyIds.length === 0
+    && sourcePositions.every((position): position is number => position !== undefined)
+    && sourcePositions.every((position, index) => index === 0 || sourcePositions[index - 1]! < position);
+  const cycleLength = sourceTimingIsValid
+    ? sourcePositions[sourcePositions.length - 1]! - sourcePositions[0]! + 1
+    : sourceFrameCount;
 
   const ownedSourceKeyIds = new Set([
     ...clip.sourceKeyIds,

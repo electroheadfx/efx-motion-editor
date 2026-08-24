@@ -430,7 +430,6 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
   it('freezes an infinity-repeat source to the finite repeat it effectively had (same visible extent, no re-expansion)', () => {
     // Source: clip g1, repeat='infinity', placement 0, source keys at frames 0 and 5
     // (cycleLength 6). Truncated by an unowned real key at frame 24 → visible 0..24.
-    const sourceKeys = [recordKey('k0', 0), recordKey('k5', 5)];
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'g1',
       placementStart: 0,
@@ -448,7 +447,7 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
     const built = buildRotoRailSetCopyPayload({ document: sourceDocument, members: [{ kind: 'loop', loopId: 'g1' }] });
     if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
     const member = built.payload.members[0];
-    expect(member.kind).toBe('loop');
+    if (member.kind !== 'loop') throw new Error('expected loop member');
     expect(member.clip.repeat).toBe('infinity');
     expect(member.effectiveEndExclusive).toBe(24);
     expect(member.repeat).toBe(4);
@@ -486,11 +485,64 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
     const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
     if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
     const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
     expect(member.effectiveEndExclusive).toBe(100);
     expect(member.repeat).toBe(17); // round(100 / 6)
     const pasted = proposeRails({ document: buildDocument([]), payload: built.payload, placementMode: 'paste', destinationAppFrame: 0 });
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
     expect(pasted.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1')[0].repeat).toBe(17);
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — 46 UAT R1 (finite/static extent must not regress)', () => {
+  it('keeps the v0.9 sourceKeyIds.length extent for a finite motion clip (no positions-span inflation)', () => {
+    // Source keys at frames 0 and 2: sourceKeyIds.length = 2, but the resolver
+    // cycle (positions span) = 3. The copy extent must stay length-based (6 for
+    // repeat 3), exactly as before the freeze change, so pastes near the end of
+    // the timeline are not rejected as out-of-range.
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k2'],
+      repeat: 3,
+      mode: 'progressive',
+    };
+    const document = buildDocument([recordKey('k0', 0), recordKey('k2', 2)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.clip.repeat).toBe(3);
+    expect(member.effectiveEndExclusive).toBe(0 + 2 * 3); // 6, not positions-span 9
+    expect(member.repeat).toBeUndefined(); // finite: no freeze
+    // Paste near the far end of a tight document still fits.
+    const tight = buildDocument([recordKey('k0', 0), recordKey('k2', 2)], [], [], 20);
+    const pasted = proposeRails({ document: tight, payload: built.payload, placementMode: 'paste', destinationAppFrame: 10 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Finite paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'g1')!;
+    expect(duplicated.repeat).toBe(3); // repeat preserved, not frozen
+  });
+
+  it('freezes an infinity clip but leaves a finite static hold untouched (repeat preserved verbatim)', () => {
+    const finiteHold: PhysicPaintRotoLoopClip = {
+      loopId: 'hold',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const document = buildDocument([recordKey('k0', 0)], [finiteHold]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'hold' }] });
+    if (!built.ok) throw new Error(`Hold payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.effectiveEndExclusive).toBe(0 + 1 * 2); // 2
+    expect(member.repeat).toBeUndefined();
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 5 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Hold paste must resolve: ${pasted.reason}`);
+    expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'hold')!.repeat).toBe(2);
   });
 });
