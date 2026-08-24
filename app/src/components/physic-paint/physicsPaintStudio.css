@@ -3303,10 +3303,77 @@ button.destructive {
   border-right: 1px solid #4c4e50;
 }
 
-.physics-paint-header-ruler-spacer {
+/* 47-01 mockup redesign: the header column's top strip (mockup "Tracks" bar).
+   Layers icon + "Tracks" title + count badge + '+' add-track button, sitting in
+   the 28px ruler-spacer slot so it aligns with the frame ruler above the rows. */
+.physics-paint-track-column-strip {
   flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
+}
+
+.physics-paint-track-column-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.physics-paint-track-column-layers-icon {
+  flex: 0 0 auto;
+  color: #7799bb;
+}
+
+.physics-paint-track-column-title {
+  color: #e5edf8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.physics-paint-track-column-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #585a5c;
+  color: #7799bb;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.physics-paint-track-column-add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #58616b;
+  border-radius: 6px;
+  background: #3a424c;
+  color: #e5edf8;
+  cursor: pointer;
+}
+
+.physics-paint-track-column-add:hover {
+  background: #45505c;
+}
+
+.physics-paint-track-column-add:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
 }
 
 /* 141px header-rows band, vertically synced with the rows-region (D-05). */
@@ -3322,21 +3389,30 @@ button.destructive {
   display: none;
 }
 
-/* 47-01 rows-region: the active track's rich lane stays inside this fixed
-   141px band (46 + 1 + 28 + 141 + 34 + 14 = 264) stacked above one row per
-   non-active Paint track and the Background row. The region scrolls
-   vertically only when the track count overflows the band. The top border
-   and slightly lighter surface make the region a distinct band below the
-   ruler (and below the active lane's rich surface). */
+/* 47-01 mockup redesign rows-region: the region SIZES TO ITS CONTENT — every
+   Paint track row + the fixed Background row at 48px each — with NO fixed
+   141px band and no dead space below the Background row. It caps at 141px
+   (46 + 1 + 28 + 141 + 34 + 14 = 264 total strip) and scrolls vertically with
+   a slim scrollbar only when the track count overflows the cap. */
 .physics-paint-rows-region {
   display: flex;
   flex-direction: column;
-  height: 141px;
+  height: auto;
+  max-height: 141px;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   border-top: 1px solid #4c4e50;
   background: #3e3f41;
+}
+
+.physics-paint-rows-region::-webkit-scrollbar {
+  width: 6px;
+}
+
+.physics-paint-rows-region::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #585a5c;
 }
 
 /* One presentational 48px track row: per-track cells lane only. The row's
@@ -3359,14 +3435,20 @@ button.destructive {
 
 /* One 48px header cell in the pinned header column. Every row — including
    the active lane and the fixed Background row — gets exactly one header
-   cell showing its track name (UI-SPEC header column layout). */
+   cell showing its track name (UI-SPEC header column layout). 47-01 mockup
+   redesign: reorder grip + truncated name + hover tools (eye/pencil/copy/
+   trash-2); a reserved 3px left border keeps content from shifting when the
+   active accent appears. */
 .physics-paint-track-row-header {
+  position: relative;
   display: flex;
   align-items: center;
+  gap: 5px;
   height: 48px;
   min-height: 48px;
-  padding: 0 8px;
+  padding: 0 6px 0 5px;
   border-bottom: 1px solid #4c4e50;
+  border-left: 3px solid transparent;
   background: #333536;
   cursor: pointer;
   overflow: hidden;
@@ -3383,20 +3465,163 @@ button.destructive {
   background: #2f3a4d;
 }
 
+.physics-paint-track-row-header-active:hover {
+  background: #33425a;
+}
+
 .physics-paint-track-row-header-active .physics-paint-track-row-label {
+  color: #ffffff;
   font-weight: 800;
 }
 
+/* Fixed Background header: muted tone + lock semantics (D-06) — no grab,
+   no rename, no duplicate, no delete. */
+.physics-paint-track-row-header-background {
+  background: #3c3e40;
+}
+
+.physics-paint-track-row-header-background:hover {
+  background: #434547;
+}
+
+/* Fixed Background row lane: muted tone (D-06). */
+.physics-paint-track-row-background {
+  background: #3c3e40;
+}
+
 .physics-paint-track-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 10px;
   color: #d8dde3;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Reorder grip: a 6-dot affordance with a DISTINCT cursor. Content drag (a
+   plain header click) selects the track and never reorders — the drag gesture
+   itself is plan 47-05 scope. */
+.physics-paint-track-row-grip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #4c4e50;
+  cursor: grab;
+}
+
+.physics-paint-track-row-grip:active {
+  cursor: grabbing;
+}
+
+/* Hover-visible tool buttons (eye / pencil / copy / trash-2), overlaid on the
+   header's right edge. Hidden by default so the label gets full width; shown
+   on row hover. pointer-events are disabled while hidden so the invisible
+   buttons never swallow header clicks. */
+.physics-paint-track-row-tools {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 20px;
+  background: linear-gradient(90deg, rgba(40, 42, 44, 0) 0%, rgba(40, 42, 44, 0.92) 38%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.physics-paint-track-row-header:hover .physics-paint-track-row-tools,
+.physics-paint-track-row-header:focus-within .physics-paint-track-row-tools {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.physics-paint-track-row-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #a9b0b8;
+  cursor: pointer;
+}
+
+.physics-paint-track-row-tool-button:hover {
+  background: #3a424c;
+  border-color: #58616b;
+  color: #e5edf8;
+}
+
+.physics-paint-track-row-tool-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.physics-paint-track-row-tool-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* Edit-in-place rename input (Enter commits, Escape cancels). */
+.physics-paint-track-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #2a2c2e;
+  color: #e5edf8;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+}
+
+.physics-paint-track-rename-input:focus {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* Background row lock affordance. */
+.physics-paint-track-row-lock {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #6d7378;
+}
+
+/* Background checkerboard icon (4 cells, mockup Bg row). */
+.physics-paint-bg-checker {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 5px 5px;
+  grid-template-rows: 5px 5px;
+  width: 10px;
+  height: 10px;
+  background: #333536;
+}
+
+.physics-paint-bg-checker-cell-a,
+.physics-paint-bg-checker-cell-d {
+  background: #c6ccd4;
+}
+
+.physics-paint-bg-checker-cell-b,
+.physics-paint-bg-checker-cell-c {
+  background: #8a939c;
 }
 
 .physics-paint-track-row-cells {

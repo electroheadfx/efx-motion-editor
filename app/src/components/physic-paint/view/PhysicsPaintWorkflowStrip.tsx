@@ -1,6 +1,6 @@
 import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
-import type { ComponentChildren, RefObject } from 'preact';
+import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal, type Signal } from '@preact/signals';
@@ -107,7 +107,7 @@ import {
 } from '../hooks/usePhysicsPaintRailSetDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
-import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -354,6 +354,16 @@ export interface PhysicsPaintWorkflowStripProps {
   background?: BackgroundTrack | null;
   /** Row-header click intent; the controller routes it through setActiveTrackId. */
   onSelectTrack?: (trackId: string) => void;
+  /** 47-01 mockup redesign: '+' add-track intent (controller routes through addTrack). */
+  onAddTrack?: () => void;
+  /** Eye toggle intent (controller routes through setTrackVisible). */
+  onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
+  /** Rename commit intent (controller routes through renameTrack). */
+  onRenameTrack?: (trackId: string, name: string) => void;
+  /** Copy intent (controller routes through duplicateTrack). */
+  onDuplicateTrack?: (trackId: string) => void;
+  /** Trash intent (controller routes through requestDeleteTrack/commitDeleteTrack). */
+  onDeleteTrack?: (trackId: string) => void;
 }
 
 const RULER_STEP = 3;
@@ -1066,7 +1076,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
-  const activeTrackName = props.tracks?.find((track) => track.id === props.activeTrackId)?.name ?? '';
+  // 47-01 mockup redesign: edit-in-place rename state. The header column is
+  // presentational and hook-free, so the draft + active-edit track live here
+  // and flow down to the matching `PhysicsPaintTrackRowHeader` as props.
+  const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const handleStartRename = useCallback((trackId: string) => {
+    const track = props.tracks?.find((candidate) => candidate.id === trackId);
+    setRenamingTrackId(trackId);
+    setRenameDraft(track?.name ?? '');
+  }, [props.tracks]);
+  const handleRenameDraftChange = useCallback((_trackId: string, value: string) => {
+    setRenameDraft(value);
+  }, []);
+  const handleCommitRename = useCallback((trackId: string) => {
+    setRenamingTrackId(null);
+    props.onRenameTrack?.(trackId, renameDraft);
+  }, [props.onRenameTrack, renameDraft]);
+  const handleCancelRename = useCallback(() => {
+    setRenamingTrackId(null);
+  }, []);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells;
@@ -2709,6 +2738,346 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const ghostWidth = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
     return preview.blockedEdge === 'left' ? ghostLeft : ghostLeft + ghostWidth - 2;
   })();
+  /**
+   * 47-01 mockup redesign: the active track's rich lane is re-usable. It
+   * renders at its DOCUMENT position among the presentational rows (the
+   * mockup highlights the active row in place), and alone when the strip
+   * has no multi-track bundle (pre-47 single-lane DOM contract). Every
+   * value it reads stays in the component body — this function captures
+   * the full closure scope, so the lane can be mounted at any row index.
+   */
+  const renderActiveLane = (): ComponentChildren => (
+              <div
+                ref={timelineContentRef}
+                class="physics-paint-lane"
+                data-track-id={props.activeTrackId || undefined}
+                data-push-armed={pushArmed ? 'true' : undefined}
+                data-push-hover-invalid={pushHoverInvalid ? 'true' : undefined}
+                onPointerDownCapture={handleLanePushPointerDownCapture}
+                onClickCapture={handleLanePushClickCapture}
+                style={{
+                  width: `${rotoLaneWidthPx}px`,
+                  minWidth: `${rotoLaneWidthPx}px`,
+                  gridTemplateColumns: `${rotoLaneWidthPx}px`,
+                }}
+              >
+                {keyRailSegments.length > 0 ? (
+                  <PhysicsPaintKeyRail
+                    segments={keyRailSegments}
+                    visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+                    framePitch={ROTO_CELL_WIDTH_PX}
+                    selectedKeyRail={props.selectedRotoKeyRail ?? null}
+                    railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
+                    railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
+                    railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
+                    railSetSize={railSetSize}
+                    onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
+                    prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
+                    commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
+                    getClampInput={getRotoKeyRailDragClampInput}
+                    onKeyRailDragRejected={props.onRotoKeyRailDragRejected}
+                    onPreviewChange={setRotoKeyRailDragPreview}
+                    dragUnavailableReason={keyUtilitiesDisabledByBusyState
+                      ? ROTO_KEY_BUSY_STATUS_TEMPLATE
+                      : undefined}
+                    deleteUnavailableReason={deleteRotoKeyDisabledReason}
+                    busy={keyUtilitiesDisabledByBusyState}
+                    onRailFocus={handleKeyRailFocus}
+                    onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
+                    onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                  />
+                ) : null}
+                {loopResolutionContext !== null
+                  && loopResolutionContext.ranges.length > 0
+                  && props.onSelectRotoLoopClip
+                  && props.onOpenRotoLoopEdit ? (
+                  <PhysicsPaintLoopClipRail
+                    ranges={loopResolutionContext.ranges}
+                    presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
+                    visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+                    framePitch={ROTO_CELL_WIDTH_PX}
+                    selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
+                    railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
+                    railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}
+                    railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
+                    railSetSize={railSetSize}
+                    linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
+                    linkedActionName={props.linkedRotoActionName ?? null}
+                    onSelectLoopClip={props.onSelectRotoLoopClip}
+                    onOpenLoopEdit={props.onOpenRotoLoopEdit}
+                    prepareRotoGroupDrag={physicalActions?.prepareRotoGroupDrag}
+                    commitRotoGroupDrag={physicalActions?.commitRotoGroupDrag}
+                    getClampInput={getRotoGroupDragClampInput}
+                    onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? '')}
+                    onPreviewChange={setRotoGroupDragPreview}
+                    onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
+                    onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                    registerClickSequenceCanceller={(canceller) => {
+                      railClickSequenceCancellersRef.current.add(canceller);
+                      return () => {
+                        railClickSequenceCancellersRef.current.delete(canceller);
+                      };
+                    }}
+                  />
+                ) : null}
+                <div
+                  class="physics-paint-roto-cells"
+                  role="row"
+                  style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
+                >
+                  {frameCells.map(frame => {
+                    const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
+                    const isGenerated = semanticCell?.kind === 'generated';
+                    // Phase 43: lazy per-frame resolution for this visible cell
+                    // (null when no loop context is supplied). Exhaustive mappers
+                    // gate every virtual linked occurrence out of selection/drag
+                    // (D-11/D-23) while preserving the existing cell-state fill
+                    // (D-18). The local badge/aria predicate intentionally groups
+                    // the four linked variants as presentation-only occurrences.
+                    const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
+                    const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;
+                    const isSpacingProxySelected = spacingProxy !== null
+                      && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
+                      && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
+                    const isLoopBoundaryStart = loopBoundaryFrames.starts.has(frame);
+                    const isLoopBoundaryEnd = loopBoundaryFrames.ends.has(frame);
+                    const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
+                      || frameResolution?.kind === 'linked-generated'
+                      || frameResolution?.kind === 'linked-gap'
+                      || frameResolution?.kind === 'linked-unresolved';
+                    const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
+                      || ((frameResolution?.kind === 'linked'
+                        || frameResolution?.kind === 'linked-generated'
+                        || frameResolution?.kind === 'linked-gap')
+                        && frameResolution.repeatInstance > 0);
+                    const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
+                      && frameResolution.repeatInstance > 0
+                      && !isGenerated;
+                    const linkedLoopClass = isLinkedRepeat
+                      ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
+                      : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
+                        ? 'roto-linked-source-generated'
+                        : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
+                          : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
+                            : '';
+                    const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
+                    // Cached per-cell derivation (38.1-04, Option A): recomputed
+                    // for at most the previous+new current cells on a pure frame
+                    // change; the value is byte-identical to the pre-cache
+                    // inline derivation.
+                    const { vm, fill } = getRotoCellDerivation(frame);
+                    const isPhysicalRealKey = semanticCell?.kind === 'real';
+                    const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
+                    const fillClass = getRotoAcceptedCellFillClass({
+                      lifecycleTargetKind: lifecycleTarget.kind,
+                      resolutionKind: frameResolution?.kind ?? 'empty',
+                      isPhysicalRealKey,
+                      fill,
+                      viewModelFillClass: vm.fillClass,
+                    });
+                    const isOccupiedRealKey = isPhysicalRealKey;
+                    const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
+                    const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
+                    const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
+                    const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
+                    // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
+                    const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
+                    const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
+                    const isDragMoved = previewCell?.role === 'moved';
+                    const isDragShifted = previewCell?.role === 'shifted';
+                    const isDragTarget = previewCell?.role === 'target';
+                    const isDragGenerated = previewCell?.role === 'generated';
+                    const isDragVacated = rotoDragVacatedAppFrames.has(frame);
+                    const isDragCommitting = Boolean(rotoDragPreview?.pending && rotoDragPreviewViewModel);
+                    const hasTargetFeedback = Boolean(rotoDragFeedback && (isDragMoved || isDragShifted || isDragTarget || isDragGenerated || isDragVacated || isDragSource));
+                    const dragLabel = hasTargetFeedback
+                      ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
+                      : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
+                    const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
+                      ? 'real-key'
+                      : isGenerated
+                        ? 'generated'
+                        : vm.baseMeaning === 'cached'
+                          ? 'cached'
+                          : vm.baseMeaning === 'background-only'
+                            ? 'background-only'
+                            : 'empty';
+                    // D-18: linked cells keep their existing cell-state fill,
+                    // while tooltip/aria copy comes from the typed resolution and
+                    // the one compact loopId → source-frame-count index above.
+                    const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
+                      ? existingCellTooltipKind
+                      : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
+                    const baseCellTooltipCopy = frameResolution === null
+                      ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
+                      : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
+                    // Real keys use primary-versus-complete selection treatment;
+                    // non-real cells keep the cursor unless Select All owns selection.
+                    const isCurrentFrame = vm.overlays.includes('current');
+                    const isPrimarySelected = !isSpacingProxySelected
+                      && cellKeyId !== null
+                      && props.rotoPrimarySelectedKeyId === cellKeyId;
+                    const isSecondarySelected = !isSpacingProxySelected
+                      && cellKeyId !== null
+                      && rotoSelectedKeyIdSet.has(cellKeyId)
+                      && rotoSelectedKeyIdSet.size >= 2
+                      && !isPrimarySelected;
+                    const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
+                    const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;
+                    const cellBaseTooltipCopy = isSpacingProxySelected
+                      ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
+                      : isSecondarySelected
+                        ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
+                        : baseCellTooltipCopy;
+                    const cellBaseAriaLabel = isSpacingProxySelected
+                      ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
+                      : hasLinkedLoopBadge
+                        ? `${baseCellTooltipCopy} · Frame ${frame}`
+                        : isSecondarySelected
+                          ? `${dragLabel} Selected.`
+                          : dragLabel;
+                    const cellPresentation = getRotoCellPresentationViewModel({
+                      kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
+                      keyId: cellKeyId,
+                      orderedRealKeyIds: realKeyOrderById,
+                      incomingInterpolationBreakKeyIds: incomingInterpolationBreakKeyIdSet,
+                      baseCopy: cellBaseTooltipCopy,
+                      ariaLabel: cellBaseAriaLabel,
+                    });
+                    const cellAriaLabel = cellPresentation.ariaLabel;
+                    const cellTooltipCopy = cellPresentation.tooltipCopy;
+                    // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
+                    // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
+                    // gap treatment (D-02). Class application only — no new DOM nodes.
+                    const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
+                    const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);
+                    // 43.5-05 Task 2 (T5): the push would-open gap previews as
+                    // ordinary roto-fill-empty cells, byte-identical to the
+                    // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
+                    const isPushGapPreview = pushGapPreviewAppFrames.has(frame);
+                    // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
+                    // preview as ordinary roto-fill-empty cells, byte-identical
+                    // to the 43.2-43.5 gap treatment (D-09).
+                    const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
+                    const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
+                      ? 'roto-fill-empty' : fillClass;
+                    const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                    return (
+                      <RotoTimelineCellButton
+                        key={frame}
+                        frame={frame}
+                        vm={vm}
+                        cellClass={cellClass}
+                        semanticKind={semanticKind}
+                        cellKeyId={cellKeyId}
+                        dragEligible={dragEligible}
+                        startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
+                        ariaLabel={cellAriaLabel}
+                        ariaSelected={isSpacingProxySelected || isSecondarySelected}
+                        tooltipCopy={cellTooltipCopy}
+                        onCellPointerDown={handleRotoTimelineCellPointerDown}
+                        onCellClick={handleRotoTimelineCellClick}
+                      />
+                    );
+                  })}
+                </div>
+                {/* 43.5-05 design revision: armed anchor pre-highlight — the
+                    selected Rail shows the prospective-set treatment as soon as
+                    armed (the direction is chosen by the drag, so no pivot tick
+                    until the drag locks it). On drag start the per-rail ghosts
+                    take over. */}
+                {pushArmedAnchorRail !== null && !pushDragGhost.active ? (
+                  <div class="physics-paint-push-hover-layer" aria-hidden="true">
+                    <span
+                      class={`physics-paint-push-hover-rail${pushHoverRailKindClass(pushArmedAnchorRail)}`}
+                      style={{
+                        left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                        width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                      }}
+                    />
+                  </div>
+                ) : null}
+                {/* 43.5-05 Task 2 push ghost layer (T5): every moved-set rail
+                    ghosts at 55% kind-color opacity at the clamped destination
+                    (original interval + the hook's clamped signed delta — rigid
+                    translation, never recomputed here); the clamped blocked edge
+                    paints the 2x12px #FF6B6B bar on the set's outermost ghost
+                    edge. Originals stay at 100% until exact parent
+                    acknowledgement (Pitfall 9). */}
+                {pushDragGhost.active ? (
+                  <div class="physics-paint-push-ghost-layer" aria-hidden="true">
+                    {pushSessionRef.current?.movedRails.map((rail) => {
+                      const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * ROTO_CELL_WIDTH_PX;
+                      const width = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
+                      return (
+                        <span
+                          key={rail.id}
+                          class={`physics-paint-push-ghost${pushGhostRailKindClass(rail)}`}
+                          style={{ left: `${left}px`, width: `${width}px` }}
+                        />
+                      );
+                    })}
+                    {pushDragGhost.blockedEdge !== null && pushSessionRef.current !== null ? (
+                      <span
+                        class="physics-paint-push-blocked-edge"
+                        style={{
+                          left: `${(pushDragGhost.blockedEdge === 'left'
+                            ? pushSessionRef.current.movedSetBounds.firstFrame
+                            : pushSessionRef.current.movedSetBounds.lastEndExclusive) * ROTO_CELL_WIDTH_PX
+                            + pushDragGhost.deltaFrames * ROTO_CELL_WIDTH_PX
+                            - (pushDragGhost.blockedEdge === 'right' ? 2 : 0)
+                            - frameCells[0] * ROTO_CELL_WIDTH_PX}px`,
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+                {/* 43.6-03 Task 2 batch Move ghost layer (UI-SPEC M3): every set
+                    member ghosts at 55% kind-color opacity at the clamped
+                    destination (original interval + the hook's clamped delta —
+                    rigid translation, never recomputed here); the clamped
+                    blocked edge paints the 2x12px #FF6B6B bar on the colliding
+                    member's ghost blocked edge. Originals stay at 100% with
+                    their orange selection lines for the whole drag. */}
+                {railSetDragPreview !== null ? (
+                  <div class="physics-paint-rail-set-ghost-layer" aria-hidden="true">
+                    {railSetMoveGhostRails.map((rail) => (
+                      <span
+                        key={rail.id}
+                        class={`physics-paint-rail-set-ghost${railSetGhostRailKindClass(rail)}`}
+                        style={{
+                          left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                          width: `${Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                        }}
+                      />
+                    ))}
+                    {railSetBlockedEdgeLeftPx !== null ? (
+                      <span
+                        class="physics-paint-rail-set-blocked-edge"
+                        style={{ left: `${railSetBlockedEdgeLeftPx}px` }}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+                {/* 43.5-05 smoke revision: the anchor Rail's orange capsule always
+                    renders ABOVE the hover pre-highlight (7) and the ghosts (8),
+                    so the anchor reference stays fully visible while armed and
+                    during the whole drag. Pre-highlight and ghosts complement it;
+                    they never replace the anchor's selection visual. On commit
+                    the anchor re-binds to its new position and stays selected. */}
+                {pushArmedAnchorRail !== null ? (
+                  <span
+                    class="physics-paint-push-anchor-capsule"
+                    aria-hidden="true"
+                    style={{
+                      left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                      width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                    }}
+                  />
+                ) : null}
+              </div>
+  );
+
   return (
     <section
       class={`physics-paint-workflow-strip${pushArmed ? ' physics-paint-push-armed' : ''}`}
@@ -2762,27 +3131,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               cells; its 141px header-rows band shares the rows-region's
               vertical scroll position (syncHeaderScroll/syncRowsScroll). */}
           <div class="physics-paint-header-column">
-            <div class="physics-paint-header-ruler-spacer" aria-hidden="true"></div>
+            <PhysicsPaintTrackColumnStrip
+              trackCount={props.tracks?.length ?? 1}
+              onAddTrack={props.onAddTrack}
+            />
             <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={syncHeaderScroll}>
               {props.tracks && props.activeTrackId ? (
                 <>
-                  <PhysicsPaintTrackRowHeader
-                    trackId={props.activeTrackId}
-                    label={activeTrackName}
-                    activeTrackId={props.activeTrackId}
-                    onSelectTrack={props.onSelectTrack}
-                  />
-                  {props.tracks
-                    .filter((track) => track.id !== props.activeTrackId)
-                    .map((track) => (
-                      <PhysicsPaintTrackRowHeader
-                        key={track.id}
-                        trackId={track.id}
-                        label={track.name}
-                        activeTrackId={props.activeTrackId}
-                        onSelectTrack={props.onSelectTrack}
-                      />
-                    ))}
+                  {props.tracks.map((track) => (
+                    <PhysicsPaintTrackRowHeader
+                      key={track.id}
+                      trackId={track.id}
+                      label={track.name}
+                      activeTrackId={props.activeTrackId}
+                      onSelectTrack={props.onSelectTrack}
+                      visible={track.visible}
+                      reorderable
+                      deletable={(props.tracks?.length ?? 0) > 1}
+                      editing={renamingTrackId === track.id}
+                      renameValue={renameDraft}
+                      onStartRename={handleStartRename}
+                      onRenameDraftChange={handleRenameDraftChange}
+                      onCommitRename={handleCommitRename}
+                      onCancelRename={handleCancelRename}
+                      onToggleVisible={props.onToggleTrackVisible}
+                      onDuplicateTrack={props.onDuplicateTrack}
+                      onDeleteTrack={props.onDeleteTrack}
+                    />
+                  ))}
                   {props.background ? (
                     <PhysicsPaintTrackRowHeader
                       trackId={props.background.id}
@@ -2809,359 +3185,32 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 multi-track bundle is supplied the region holds only the lane,
                 keeping the pre-47 single-lane surface's DOM contract. */}
             <div ref={rowsRegionRef} class="physics-paint-rows-region" data-rows={props.tracks ? 'multi' : 'single'} onScroll={syncRowsScroll}>
-            <div
-              ref={timelineContentRef}
-              class="physics-paint-lane"
-              data-track-id={props.activeTrackId || undefined}
-              data-push-armed={pushArmed ? 'true' : undefined}
-              data-push-hover-invalid={pushHoverInvalid ? 'true' : undefined}
-              onPointerDownCapture={handleLanePushPointerDownCapture}
-              onClickCapture={handleLanePushClickCapture}
-              style={{
-                width: `${rotoLaneWidthPx}px`,
-                minWidth: `${rotoLaneWidthPx}px`,
-                gridTemplateColumns: `${rotoLaneWidthPx}px`,
-              }}
-            >
-              {keyRailSegments.length > 0 ? (
-                <PhysicsPaintKeyRail
-                  segments={keyRailSegments}
-                  visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-                  framePitch={ROTO_CELL_WIDTH_PX}
-                  selectedKeyRail={props.selectedRotoKeyRail ?? null}
-                  railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
-                  railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
-                  railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
-                  railSetSize={railSetSize}
-                  onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
-                  prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
-                  commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
-                  getClampInput={getRotoKeyRailDragClampInput}
-                  onKeyRailDragRejected={props.onRotoKeyRailDragRejected}
-                  onPreviewChange={setRotoKeyRailDragPreview}
-                  dragUnavailableReason={keyUtilitiesDisabledByBusyState
-                    ? ROTO_KEY_BUSY_STATUS_TEMPLATE
-                    : undefined}
-                  deleteUnavailableReason={deleteRotoKeyDisabledReason}
-                  busy={keyUtilitiesDisabledByBusyState}
-                  onRailFocus={handleKeyRailFocus}
-                  onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
-                  onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
-                />
-              ) : null}
-              {loopResolutionContext !== null
-                && loopResolutionContext.ranges.length > 0
-                && props.onSelectRotoLoopClip
-                && props.onOpenRotoLoopEdit ? (
-                <PhysicsPaintLoopClipRail
-                  ranges={loopResolutionContext.ranges}
-                  presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
-                  visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-                  framePitch={ROTO_CELL_WIDTH_PX}
-                  selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
-                  railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
-                  railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}
-                  railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
-                  railSetSize={railSetSize}
-                  linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
-                  linkedActionName={props.linkedRotoActionName ?? null}
-                  onSelectLoopClip={props.onSelectRotoLoopClip}
-                  onOpenLoopEdit={props.onOpenRotoLoopEdit}
-                  prepareRotoGroupDrag={physicalActions?.prepareRotoGroupDrag}
-                  commitRotoGroupDrag={physicalActions?.commitRotoGroupDrag}
-                  getClampInput={getRotoGroupDragClampInput}
-                  onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? '')}
-                  onPreviewChange={setRotoGroupDragPreview}
-                  onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
-                  onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
-                  registerClickSequenceCanceller={(canceller) => {
-                    railClickSequenceCancellersRef.current.add(canceller);
-                    return () => {
-                      railClickSequenceCancellersRef.current.delete(canceller);
-                    };
-                  }}
-                />
-              ) : null}
-              <div
-                class="physics-paint-roto-cells"
-                role="row"
-                style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
-              >
-                {frameCells.map(frame => {
-                  const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
-                  const isGenerated = semanticCell?.kind === 'generated';
-                  // Phase 43: lazy per-frame resolution for this visible cell
-                  // (null when no loop context is supplied). Exhaustive mappers
-                  // gate every virtual linked occurrence out of selection/drag
-                  // (D-11/D-23) while preserving the existing cell-state fill
-                  // (D-18). The local badge/aria predicate intentionally groups
-                  // the four linked variants as presentation-only occurrences.
-                  const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
-                  const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;
-                  const isSpacingProxySelected = spacingProxy !== null
-                    && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
-                    && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
-                  const isLoopBoundaryStart = loopBoundaryFrames.starts.has(frame);
-                  const isLoopBoundaryEnd = loopBoundaryFrames.ends.has(frame);
-                  const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
-                    || frameResolution?.kind === 'linked-generated'
-                    || frameResolution?.kind === 'linked-gap'
-                    || frameResolution?.kind === 'linked-unresolved';
-                  const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
-                    || ((frameResolution?.kind === 'linked'
-                      || frameResolution?.kind === 'linked-generated'
-                      || frameResolution?.kind === 'linked-gap')
-                      && frameResolution.repeatInstance > 0);
-                  const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
-                    && frameResolution.repeatInstance > 0
-                    && !isGenerated;
-                  const linkedLoopClass = isLinkedRepeat
-                    ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
-                    : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
-                      ? 'roto-linked-source-generated'
-                      : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
-                        : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
-                          : '';
-                  const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
-                  // Cached per-cell derivation (38.1-04, Option A): recomputed
-                  // for at most the previous+new current cells on a pure frame
-                  // change; the value is byte-identical to the pre-cache
-                  // inline derivation.
-                  const { vm, fill } = getRotoCellDerivation(frame);
-                  const isPhysicalRealKey = semanticCell?.kind === 'real';
-                  const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
-                  const fillClass = getRotoAcceptedCellFillClass({
-                    lifecycleTargetKind: lifecycleTarget.kind,
-                    resolutionKind: frameResolution?.kind ?? 'empty',
-                    isPhysicalRealKey,
-                    fill,
-                    viewModelFillClass: vm.fillClass,
-                  });
-                  const isOccupiedRealKey = isPhysicalRealKey;
-                  const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
-                  const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
-                  const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
-                  const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
-                  // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
-                  const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
-                  const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
-                  const isDragMoved = previewCell?.role === 'moved';
-                  const isDragShifted = previewCell?.role === 'shifted';
-                  const isDragTarget = previewCell?.role === 'target';
-                  const isDragGenerated = previewCell?.role === 'generated';
-                  const isDragVacated = rotoDragVacatedAppFrames.has(frame);
-                  const isDragCommitting = Boolean(rotoDragPreview?.pending && rotoDragPreviewViewModel);
-                  const hasTargetFeedback = Boolean(rotoDragFeedback && (isDragMoved || isDragShifted || isDragTarget || isDragGenerated || isDragVacated || isDragSource));
-                  const dragLabel = hasTargetFeedback
-                    ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
-                    : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
-                  const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
-                    ? 'real-key'
-                    : isGenerated
-                      ? 'generated'
-                      : vm.baseMeaning === 'cached'
-                        ? 'cached'
-                        : vm.baseMeaning === 'background-only'
-                          ? 'background-only'
-                          : 'empty';
-                  // D-18: linked cells keep their existing cell-state fill,
-                  // while tooltip/aria copy comes from the typed resolution and
-                  // the one compact loopId → source-frame-count index above.
-                  const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
-                    ? existingCellTooltipKind
-                    : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
-                  const baseCellTooltipCopy = frameResolution === null
-                    ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
-                    : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
-                  // Real keys use primary-versus-complete selection treatment;
-                  // non-real cells keep the cursor unless Select All owns selection.
-                  const isCurrentFrame = vm.overlays.includes('current');
-                  const isPrimarySelected = !isSpacingProxySelected
-                    && cellKeyId !== null
-                    && props.rotoPrimarySelectedKeyId === cellKeyId;
-                  const isSecondarySelected = !isSpacingProxySelected
-                    && cellKeyId !== null
-                    && rotoSelectedKeyIdSet.has(cellKeyId)
-                    && rotoSelectedKeyIdSet.size >= 2
-                    && !isPrimarySelected;
-                  const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
-                  const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;
-                  const cellBaseTooltipCopy = isSpacingProxySelected
-                    ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
-                    : isSecondarySelected
-                      ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
-                      : baseCellTooltipCopy;
-                  const cellBaseAriaLabel = isSpacingProxySelected
-                    ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
-                    : hasLinkedLoopBadge
-                      ? `${baseCellTooltipCopy} · Frame ${frame}`
-                      : isSecondarySelected
-                        ? `${dragLabel} Selected.`
-                        : dragLabel;
-                  const cellPresentation = getRotoCellPresentationViewModel({
-                    kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
-                    keyId: cellKeyId,
-                    orderedRealKeyIds: realKeyOrderById,
-                    incomingInterpolationBreakKeyIds: incomingInterpolationBreakKeyIdSet,
-                    baseCopy: cellBaseTooltipCopy,
-                    ariaLabel: cellBaseAriaLabel,
-                  });
-                  const cellAriaLabel = cellPresentation.ariaLabel;
-                  const cellTooltipCopy = cellPresentation.tooltipCopy;
-                  // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
-                  // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
-                  // gap treatment (D-02). Class application only — no new DOM nodes.
-                  const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
-                  const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);
-                  // 43.5-05 Task 2 (T5): the push would-open gap previews as
-                  // ordinary roto-fill-empty cells, byte-identical to the
-                  // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
-                  const isPushGapPreview = pushGapPreviewAppFrames.has(frame);
-                  // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
-                  // preview as ordinary roto-fill-empty cells, byte-identical
-                  // to the 43.2-43.5 gap treatment (D-09).
-                  const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
-                  const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
-                    ? 'roto-fill-empty' : fillClass;
-                  const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
-                  return (
-                    <RotoTimelineCellButton
-                      key={frame}
-                      frame={frame}
-                      vm={vm}
-                      cellClass={cellClass}
-                      semanticKind={semanticKind}
-                      cellKeyId={cellKeyId}
-                      dragEligible={dragEligible}
-                      startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
-                      ariaLabel={cellAriaLabel}
-                      ariaSelected={isSpacingProxySelected || isSecondarySelected}
-                      tooltipCopy={cellTooltipCopy}
-                      onCellPointerDown={handleRotoTimelineCellPointerDown}
-                      onCellClick={handleRotoTimelineCellClick}
-                    />
-                  );
-                })}
-              </div>
-              {/* 43.5-05 design revision: armed anchor pre-highlight — the
-                  selected Rail shows the prospective-set treatment as soon as
-                  armed (the direction is chosen by the drag, so no pivot tick
-                  until the drag locks it). On drag start the per-rail ghosts
-                  take over. */}
-              {pushArmedAnchorRail !== null && !pushDragGhost.active ? (
-                <div class="physics-paint-push-hover-layer" aria-hidden="true">
-                  <span
-                    class={`physics-paint-push-hover-rail${pushHoverRailKindClass(pushArmedAnchorRail)}`}
-                    style={{
-                      left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                      width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
-                    }}
-                  />
-                </div>
-              ) : null}
-              {/* 43.5-05 Task 2 push ghost layer (T5): every moved-set rail
-                  ghosts at 55% kind-color opacity at the clamped destination
-                  (original interval + the hook's clamped signed delta — rigid
-                  translation, never recomputed here); the clamped blocked edge
-                  paints the 2x12px #FF6B6B bar on the set's outermost ghost
-                  edge. Originals stay at 100% until exact parent
-                  acknowledgement (Pitfall 9). */}
-              {pushDragGhost.active ? (
-                <div class="physics-paint-push-ghost-layer" aria-hidden="true">
-                  {pushSessionRef.current?.movedRails.map((rail) => {
-                    const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * ROTO_CELL_WIDTH_PX;
-                    const width = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
-                    return (
-                      <span
-                        key={rail.id}
-                        class={`physics-paint-push-ghost${pushGhostRailKindClass(rail)}`}
-                        style={{ left: `${left}px`, width: `${width}px` }}
-                      />
-                    );
-                  })}
-                  {pushDragGhost.blockedEdge !== null && pushSessionRef.current !== null ? (
-                    <span
-                      class="physics-paint-push-blocked-edge"
-                      style={{
-                        left: `${(pushDragGhost.blockedEdge === 'left'
-                          ? pushSessionRef.current.movedSetBounds.firstFrame
-                          : pushSessionRef.current.movedSetBounds.lastEndExclusive) * ROTO_CELL_WIDTH_PX
-                          + pushDragGhost.deltaFrames * ROTO_CELL_WIDTH_PX
-                          - (pushDragGhost.blockedEdge === 'right' ? 2 : 0)
-                          - frameCells[0] * ROTO_CELL_WIDTH_PX}px`,
-                      }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              {/* 43.6-03 Task 2 batch Move ghost layer (UI-SPEC M3): every set
-                  member ghosts at 55% kind-color opacity at the clamped
-                  destination (original interval + the hook's clamped delta —
-                  rigid translation, never recomputed here); the clamped
-                  blocked edge paints the 2x12px #FF6B6B bar on the colliding
-                  member's ghost blocked edge. Originals stay at 100% with
-                  their orange selection lines for the whole drag. */}
-              {railSetDragPreview !== null ? (
-                <div class="physics-paint-rail-set-ghost-layer" aria-hidden="true">
-                  {railSetMoveGhostRails.map((rail) => (
-                    <span
-                      key={rail.id}
-                      class={`physics-paint-rail-set-ghost${railSetGhostRailKindClass(rail)}`}
-                      style={{
-                        left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                        width: `${Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
-                      }}
-                    />
-                  ))}
-                  {railSetBlockedEdgeLeftPx !== null ? (
-                    <span
-                      class="physics-paint-rail-set-blocked-edge"
-                      style={{ left: `${railSetBlockedEdgeLeftPx}px` }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              {/* 43.5-05 smoke revision: the anchor Rail's orange capsule always
-                  renders ABOVE the hover pre-highlight (7) and the ghosts (8),
-                  so the anchor reference stays fully visible while armed and
-                  during the whole drag. Pre-highlight and ghosts complement it;
-                  they never replace the anchor's selection visual. On commit
-                  the anchor re-binds to its new position and stays selected. */}
-              {pushArmedAnchorRail !== null ? (
-                <span
-                  class="physics-paint-push-anchor-capsule"
-                  aria-hidden="true"
-                  style={{
-                    left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                    width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
-                  }}
-                />
-              ) : null}
-            </div>
-            {props.tracks && props.activeTrackId && props.layerId ? (
-              <>
-                {props.tracks
-                  .filter((track) => track.id !== props.activeTrackId)
-                  .map((track) => (
+              {props.tracks && props.activeTrackId && props.layerId ? (
+                <>
+                  {props.tracks.map((track) =>
+                    track.id === props.activeTrackId
+                      ? <Fragment key={track.id}>{renderActiveLane()}</Fragment>
+                      : (
+                        <PhysicsPaintTrackRow
+                          key={track.id}
+                          trackId={track.id}
+                          layerId={props.layerId!}
+                          frameCells={frameCells}
+                        />
+                      ),
+                  )}
+                  {props.background ? (
                     <PhysicsPaintTrackRow
-                      key={track.id}
-                      trackId={track.id}
+                      key={props.background.id}
+                      trackId={props.background.id}
                       layerId={props.layerId!}
                       frameCells={frameCells}
+                      kind="background"
                     />
-                  ))}
-                {props.background ? (
-                  <PhysicsPaintTrackRow
-                    key={props.background.id}
-                    trackId={props.background.id}
-                    layerId={props.layerId!}
-                    frameCells={frameCells}
-                    kind="background"
-                  />
-                ) : null}
-              </>
-            ) : null}
-          </div>
+                  ) : null}
+                </>
+              ) : renderActiveLane()}
+            </div>
           </div>
         </div>
         <div
