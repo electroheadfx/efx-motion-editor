@@ -5600,8 +5600,42 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     const { proposal } = resolution;
     expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 22 });
     expect(proposal.status.affectedKeyIds).toEqual(['g1']);
-    // placementStart === first source key frame 20, unchanged: no clip translation.
-    expect(proposal.nextLoopClips).toBeNull();
+    // placementStart === first source key frame 20, unchanged: no clip
+    // translation, but the lifecycle IS retimed to the new cycle length (3):
+    // originalEndExclusive = 20 + 3 * 4 = 32 (46 UAT R6).
+    const retimed = proposal.nextLoopClips!.find((clip) => clip.loopId === 'loop-G');
+    expect(retimed).toBeDefined();
+    expect(retimed!.repeat).toBe(4);
+    expect(retimed!.originalEndExclusive).toBe(32);
+    expect(retimed!.visibleRanges).toEqual([{ start: 20, endExclusive: 32 }]);
+  });
+
+  it('retimes a Loop member lifecycle when spacing pushes a source key beyond originalEndExclusive (UAT R6)', () => {
+    // g1 moves from 21 to 29 (emptyFrames 8 -> step 9), past the stale
+    // originalEndExclusive 28. Without retiming the loop range ends at 28 and
+    // the rail band stops before the moved key.
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      emptyFrames: 8,
+      loopClips: buildSingleAttachedGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Loop-member spacing must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 29 });
+    // The loop's lifecycle must be retimed so the band covers the moved key:
+    // originalEndExclusive = placementStart + cycleLength(10) * repeat(4) = 60.
+    expect(proposal.nextLoopClips).not.toBeNull();
+    const retimed = proposal.nextLoopClips!.find((clip) => clip.loopId === 'loop-G');
+    expect(retimed).toBeDefined();
+    expect(retimed!.repeat).toBe(4);
+    expect(retimed!.originalEndExclusive).toBe(60);
+    expect(retimed!.visibleRanges).toEqual([{ start: 20, endExclusive: 60 }]);
   });
 
   it('rejects atomically when a computed destination collides with an unselected key frame', () => {
@@ -5705,7 +5739,11 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Fully-selected family must resolve');
     expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ g0: 20, g1: 22 });
-    expect(resolution.proposal.nextLoopClips).toBeNull();
+    // Both shared-source clips are retimed to the new cycle length (3) so their
+    // bands cover the respaced keys (46 UAT R6).
+    const retimed = resolution.proposal.nextLoopClips!;
+    expect(retimed.find((clip) => clip.loopId === 'loop-G')!.originalEndExclusive).toBe(32);
+    expect(retimed.find((clip) => clip.loopId === 'loop-D')!.originalEndExclusive).toBe(14);
   });
 
   it('fails closed on stale members', () => {

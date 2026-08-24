@@ -4821,6 +4821,17 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       changed: computeChanged(identities, mapping),
       roleByKeyId,
       drag: null,
+      // 46 UAT R6: spacing moves the source cycle keys, so the loop's lifecycle
+      // (originalEndExclusive/visibleRanges) must be retimed to cover the moved
+      // keys — otherwise the rail band ends at the stale originalEndExclusive,
+      // before the respaced keys. Mirrors force-spacing's retime (D-24).
+      nextLoopClips: computeSourceAttachedLoopPlacementFollow(
+        identities,
+        loopClips,
+        mapping,
+        () => true,
+        true,
+      ),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
