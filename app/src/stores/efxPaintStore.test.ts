@@ -10,7 +10,13 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { _setPhysicPaintMarkDirtyCallback, physicPaintStore } from './physicPaintStore';
+import {
+  _setPhysicPaintMarkDirtyCallback,
+  getTrackPaintVersion,
+  getTrackRotorRevision,
+  physicPaintStore,
+  physicPaintVersion,
+} from './physicPaintStore';
 import {
   _setEfxPaintMarkDirtyCallback,
   addTrack,
@@ -25,6 +31,10 @@ import {
   reorderTrack,
   reset,
   serializeRuntimeIntoDocument,
+  setTrackBlend,
+  setTrackOpacity,
+  setTrackSolo,
+  setTrackVisible,
 } from './efxPaintStore';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -430,5 +440,113 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     expect(restored.tracks.map((track) => track.id)).toEqual(ids);
     expect(restored.tracks.map((track) => track.order)).toEqual(orders);
     expect(restored.tracks.map((track) => track.name)).toEqual(names);
+  });
+});
+
+describe('hide/solo/opacity/blend track setters (47-01 Task 3)', () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  it('setTrackVisible flips visible and bumps the per-track revision; same value is a no-op', () => {
+    const document = makeTrackDocument('layer-set');
+    registerDocument(document);
+    const paintRev = getTrackPaintVersion('layer-set', TEST_TRACK_ID).value;
+    const rotoRev = getTrackRotorRevision('layer-set', TEST_TRACK_ID).value;
+    const clock = physicPaintVersion.value;
+
+    const result = setTrackVisible('layer-set', TEST_TRACK_ID, false);
+    expect(result.ok).toBe(true);
+    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.visible).toBe(false);
+    expect(getTrackPaintVersion('layer-set', TEST_TRACK_ID).value).toBe(paintRev + 1);
+    expect(getTrackRotorRevision('layer-set', TEST_TRACK_ID).value).toBe(rotoRev + 1);
+    expect(physicPaintVersion.value).toBe(clock + 1);
+
+    const noOp = setTrackVisible('layer-set', TEST_TRACK_ID, false);
+    expect(noOp.ok).toBe(true);
+    expect(getTrackPaintVersion('layer-set', TEST_TRACK_ID).value).toBe(paintRev + 1);
+    expect(physicPaintVersion.value).toBe(clock + 1);
+  });
+
+  it('setTrackSolo arms and disarms solo, bumping the per-track revision each change', () => {
+    const document = makeTrackDocument('layer-set');
+    registerDocument(document);
+    const base = physicPaintVersion.value;
+
+    const armed = setTrackSolo('layer-set', TEST_TRACK_ID, true);
+    expect(armed.ok).toBe(true);
+    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.solo).toBe(true);
+    expect(physicPaintVersion.value).toBe(base + 1);
+
+    const disarmed = setTrackSolo('layer-set', TEST_TRACK_ID, false);
+    expect(disarmed.ok).toBe(true);
+    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.solo).toBe(false);
+    expect(physicPaintVersion.value).toBe(base + 2);
+  });
+
+  it('setTrackOpacity stores 0..1 floats exactly and clamps out-of-range values into 0..1', () => {
+    const document = makeTrackDocument('layer-set');
+    registerDocument(document);
+
+    const exact = setTrackOpacity('layer-set', TEST_TRACK_ID, 0.5);
+    expect(exact.ok).toBe(true);
+    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.opacity).toBe(0.5);
+
+    const high = setTrackOpacity('layer-set', TEST_TRACK_ID, 1.5);
+    expect(high.ok).toBe(true);
+    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.opacity).toBe(1);
+
+    const low = setTrackOpacity('layer-set', TEST_TRACK_ID, -0.25);
+    expect(low.ok).toBe(true);
+    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.opacity).toBe(0);
+  });
+
+  it('setTrackBlend accepts exactly the BlendMode union members and rejects anything else', () => {
+    const document = makeTrackDocument('layer-set');
+    registerDocument(document);
+    for (const mode of ['normal', 'screen', 'multiply', 'overlay', 'add'] as const) {
+      const result = setTrackBlend('layer-set', TEST_TRACK_ID, mode);
+      expect(result.ok).toBe(true);
+      expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.blendMode).toBe(mode);
+    }
+    const rejected = setTrackBlend('layer-set', TEST_TRACK_ID, 'burn' as never);
+    expect(rejected.ok).toBe(false);
+    expect(getDocument('layer-set')).not.toBeNull();
+  });
+
+  it('each accepted setter bumps the per-track revision, global clock, and dirty exactly once without bumping documentRevision', () => {
+    const document = makeTrackDocument('layer-set');
+    registerDocument(document);
+    const efxDirty = vi.fn();
+    const physicDirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(efxDirty);
+    _setPhysicPaintMarkDirtyCallback(physicDirty);
+    const clockBefore = physicPaintVersion.value;
+    const paintRevBefore = getTrackPaintVersion('layer-set', TEST_TRACK_ID).value;
+    const rotoRevBefore = getTrackRotorRevision('layer-set', TEST_TRACK_ID).value;
+    const docRevBefore = getDocument('layer-set')!.documentRevision;
+
+    const result = setTrackVisible('layer-set', TEST_TRACK_ID, false);
+    expect(result.ok).toBe(true);
+
+    expect(getDocument('layer-set')!.documentRevision).toBe(docRevBefore);
+    expect(physicPaintVersion.value).toBe(clockBefore + 1);
+    expect(getTrackPaintVersion('layer-set', TEST_TRACK_ID).value).toBe(paintRevBefore + 1);
+    expect(getTrackRotorRevision('layer-set', TEST_TRACK_ID).value).toBe(rotoRevBefore + 1);
+    expect(efxDirty).toHaveBeenCalledTimes(1);
+    expect(physicDirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('setters fail closed on absent document and unknown track', () => {
+    const document = makeTrackDocument('layer-set');
+    registerDocument(document);
+    expect(setTrackVisible('layer-missing', TEST_TRACK_ID, false).ok).toBe(false);
+    expect(setTrackSolo('layer-set', 'unknown-track', true).ok).toBe(false);
+    expect(setTrackOpacity('layer-set', 'unknown-track', 0.5).ok).toBe(false);
+    expect(setTrackBlend('layer-set', 'unknown-track', 'normal').ok).toBe(false);
+    expect(getDocument('layer-set')).toBe(document);
   });
 });
