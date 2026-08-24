@@ -50,6 +50,7 @@ import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy
 import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
 import {
   executePhysicPaintRotoGroupFramePaintTransaction,
+  normalizeLoopClipForPayload,
   useRotoPhysicalEditCoordinator,
 } from './useRotoPhysicalEditCoordinator';
 import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
@@ -3455,5 +3456,59 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
     expect(test.getCanonicalDocument()).toEqual(before);
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+});
+
+describe('normalizeLoopClipForPayload — 46 UAT R5 (every shipped clip is lifecycle-complete)', () => {
+  it('synthesizes a complete lifecycle for a finite clip with syncState undefined', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'm',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k2'],
+      repeat: 3,
+      mode: 'progressive',
+    };
+    const normalized = normalizeLoopClipForPayload(clip);
+    expect(normalized.syncState).toBe('synchronized');
+    expect(normalized.provenanceState).toBe('attached');
+    expect(normalized.phaseOrigin).toBe(0);
+    expect(normalized.originalEndExclusive).toBe(0 + 2 * 3); // 6
+    expect(normalized.visibleRanges).toEqual([{ start: 0, endExclusive: 6 }]);
+    expect(normalized.frameOverrides).toEqual([]);
+  });
+
+  it('synthesizes a complete lifecycle for an infinity clip (parse never attaches one)', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'i',
+      placementStart: 4,
+      sourceKeyIds: ['k0', 'k5'],
+      repeat: 'infinity',
+      mode: 'progressive',
+    };
+    const normalized = normalizeLoopClipForPayload(clip);
+    expect(normalized.syncState).toBe('synchronized');
+    expect(normalized.provenanceState).toBe('attached');
+    expect(normalized.phaseOrigin).toBe(4);
+    // One cycle minimum; the resolver extends an infinity+lifecycle clip to capacity.
+    expect(normalized.originalEndExclusive).toBe(4 + 2);
+    expect(normalized.visibleRanges).toEqual([{ start: 4, endExclusive: 6 }]);
+    expect(normalized.frameOverrides).toEqual([]);
+  });
+
+  it('leaves an already-lifecycle-complete clip untouched', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 2,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'detached',
+      phaseOrigin: 0,
+      originalEndExclusive: 2,
+      visibleRanges: [{ start: 0, endExclusive: 2 }],
+      frameOverrides: [],
+    };
+    expect(normalizeLoopClipForPayload(clip)).toBe(clip);
   });
 });

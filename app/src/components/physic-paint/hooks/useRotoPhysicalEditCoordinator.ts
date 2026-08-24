@@ -608,28 +608,59 @@ function cloneIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): strin
   return [...keyIds];
 }
 
+/**
+ * 46 UAT R5: the bridge apply validator requires every loop clip in a
+ * replace-roto-physical-map payload to be lifecycle-complete
+ * (isLifecycleCompletePhysicPaintRotoLoopClip). A v1.0-created clip that was
+ * never synchronized carries no lifecycle, and an infinity clip never gets one
+ * from parse (buildDefaultPhysicPaintRotoGroupLifecycle returns null for
+ * infinity). A track containing such a clip poisons EVERY subsequent bridge
+ * payload. Normalize at the coordinator: synthesize a complete lifecycle for
+ * any clip lacking one, pinned to its effective end (finite: placementStart +
+ * sourceKeyIds.length * repeat; infinity: one cycle, which the resolver extends
+ * to capacity). The resolver renders an infinity+lifecycle clip to capacity
+ * unchanged, so this is render-neutral.
+ */
+export function normalizeLoopClipForPayload(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
+  if (clip.syncState !== undefined) return clip;
+  const originalEndExclusive = clip.placementStart
+    + clip.sourceKeyIds.length * (clip.repeat === 'infinity' ? 1 : clip.repeat);
+  return Object.freeze({
+    ...clip,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: clip.placementStart,
+    originalEndExclusive,
+    visibleRanges: Object.freeze([Object.freeze({ start: clip.placementStart, endExclusive: originalEndExclusive })]),
+    frameOverrides: Object.freeze([]),
+  }) as PhysicPaintRotoLoopClip;
+}
+
 function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoLoopClip[] {
-  return parsePhysicPaintRotoLoopClips(loopClips).map((clip) => ({
-    loopId: clip.loopId,
-    placementStart: clip.placementStart,
-    sourceKeyIds: [...clip.sourceKeyIds],
-    repeat: clip.repeat,
-    mode: clip.mode,
-    // 43-06 provenance rides every clone.
-    ...(clip.scriptId !== undefined
-      ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
-      : {}),
-    ...(clip.syncState !== undefined
-      ? {
-          syncState: clip.syncState,
-          provenanceState: clip.provenanceState!,
-          phaseOrigin: clip.phaseOrigin!,
-          originalEndExclusive: clip.originalEndExclusive!,
-          visibleRanges: clip.visibleRanges!.map((range) => ({ ...range })),
-          frameOverrides: clip.frameOverrides!.map((override) => ({ ...override })),
-        }
-      : {}),
-  }));
+  return parsePhysicPaintRotoLoopClips(loopClips).map((clip) => {
+    const normalized = normalizeLoopClipForPayload(clip);
+    return {
+      loopId: normalized.loopId,
+      placementStart: normalized.placementStart,
+      sourceKeyIds: [...normalized.sourceKeyIds],
+      repeat: normalized.repeat,
+      mode: normalized.mode,
+      // 43-06 provenance rides every clone.
+      ...(normalized.scriptId !== undefined
+        ? { scriptId: normalized.scriptId, motion: { ...normalized.motion! }, overrideColor: normalized.overrideColor ?? null }
+        : {}),
+      ...(normalized.syncState !== undefined
+        ? {
+            syncState: normalized.syncState,
+            provenanceState: normalized.provenanceState!,
+            phaseOrigin: normalized.phaseOrigin!,
+            originalEndExclusive: normalized.originalEndExclusive!,
+            visibleRanges: normalized.visibleRanges!.map((range) => ({ ...range })),
+            frameOverrides: normalized.frameOverrides!.map((override) => ({ ...override })),
+          }
+        : {}),
+    };
+  });
 }
 
 function recordsEqual(
