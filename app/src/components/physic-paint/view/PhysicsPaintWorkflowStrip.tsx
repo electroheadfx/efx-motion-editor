@@ -106,6 +106,8 @@ import {
   type RailSetDragSessionApi,
 } from '../hooks/usePhysicsPaintRailSetDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -335,6 +337,23 @@ export interface PhysicsPaintWorkflowStripProps {
   onGoToNextFrame: () => void;
   onGoToLastFrame: () => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
+  /**
+   * 47-01 multi-track row slice: when `tracks` is present the strip renders
+   * the rows-region — the active track's rich lane PLUS one presentational
+   * `PhysicsPaintTrackRow` per non-active Paint track and the fixed Background
+   * row. When absent the strip renders byte-identical to the pre-47 single-lane
+   * surface. Row-header clicks route through `onSelectTrack`, never mutating
+   * directly in the view (controller routes through setActiveTrackId).
+   */
+  tracks?: readonly InternalPaintTrack[];
+  /** The document's current active track id — the active lane keeps the rich strip. */
+  activeTrackId?: string;
+  /** The EFX Paint layer the runtime store keys per-row reads on. */
+  layerId?: string;
+  /** Fixed Background track (clips/fallback/visible) rendered as the muted Bg row. */
+  background?: BackgroundTrack | null;
+  /** Row-header click intent; the controller routes it through setActiveTrackId. */
+  onSelectTrack?: (trackId: string) => void;
 }
 
 const RULER_STEP = 3;
@@ -2718,9 +2737,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             ))}
           </div>
 
+          {/* 47-01: the active track's rich lane lives INSIDE the shared
+              rows-region (141px) stacked above one presentational row per
+              non-active Paint track and the fixed Background row. When no
+              multi-track bundle is supplied the region holds only the lane,
+              keeping the pre-47 single-lane surface's DOM contract. */}
+          <div class="physics-paint-rows-region" data-rows={props.tracks ? 'multi' : 'single'}>
             <div
               ref={timelineContentRef}
               class="physics-paint-lane"
+              data-track-id={props.activeTrackId || undefined}
               data-push-armed={pushArmed ? 'true' : undefined}
               data-push-hover-invalid={pushHoverInvalid ? 'true' : undefined}
               onPointerDownCapture={handleLanePushPointerDownCapture}
@@ -3046,6 +3072,36 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 />
               ) : null}
             </div>
+            {props.tracks && props.activeTrackId && props.layerId ? (
+              <>
+                {props.tracks
+                  .filter((track) => track.id !== props.activeTrackId)
+                  .map((track) => (
+                    <PhysicsPaintTrackRow
+                      key={track.id}
+                      trackId={track.id}
+                      layerId={props.layerId!}
+                      frameCells={frameCells}
+                      label={track.name}
+                      activeTrackId={props.activeTrackId}
+                      onSelectTrack={props.onSelectTrack}
+                    />
+                  ))}
+                {props.background ? (
+                  <PhysicsPaintTrackRow
+                    key={props.background.id}
+                    trackId={props.background.id}
+                    layerId={props.layerId!}
+                    frameCells={frameCells}
+                    label="Bg"
+                    kind="background"
+                    activeTrackId={props.activeTrackId}
+                    onSelectTrack={props.onSelectTrack}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
         <div
           class="physics-paint-roto-action-row"

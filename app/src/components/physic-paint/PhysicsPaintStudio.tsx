@@ -3,6 +3,7 @@ import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { efxPaintVersion, getDocument as getEfxPaintDocument, setActiveTrackId } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -2730,6 +2731,23 @@ export function PhysicsPaintStudio() {
         hasCopiedRotoKey: rotoSession.copiedKey.value !== null,
       }
     : { actionAvailability: sessionKeyAvailability, hasCopiedRotoKey: rotoSession.copiedKey.value !== null };
+  // 47-01: the multi-track row bundle is document-derived. Reading
+  // `efxPaintVersion.value` subscribes the bundle to every store mutation
+  // (setActiveTrackId included) so a row-header click flips the active row.
+  const multiTrackRowBundle = useMemo(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return { layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined, onSelectTrack: undefined };
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return { layerId, tracks: undefined, activeTrackId: undefined, background: undefined, onSelectTrack: undefined };
+    return {
+      layerId,
+      tracks: document.tracks,
+      activeTrackId: document.activeTrackId,
+      background: document.background,
+      onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchContext?.layerId, efxPaintVersion.value]);
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -2738,6 +2756,11 @@ export function PhysicsPaintStudio() {
     rightPanel,
     playScriptDialog,
     workflow: {
+        layerId: multiTrackRowBundle.layerId,
+        tracks: multiTrackRowBundle.tracks,
+        activeTrackId: multiTrackRowBundle.activeTrackId,
+        background: multiTrackRowBundle.background,
+        onSelectTrack: multiTrackRowBundle.onSelectTrack,
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,

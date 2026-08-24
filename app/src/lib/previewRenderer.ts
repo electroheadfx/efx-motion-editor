@@ -95,6 +95,26 @@ function getActiveTrackId(layerId: string): string {
   return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
 }
 
+/**
+ * 47-01 hide/solo preview filter (TML-04/Pitfall M8). The truth table:
+ * - no solo armed → every track whose `visible !== false` resolves visible;
+ * - any solo armed → only tracks that are `visible !== false` AND soloed show;
+ * - hide always wins over solo (`visible: false` is hidden even when soloed);
+ * - unknown track id or absent document fails closed to hidden.
+ * The preview resolver applies this ONLY to the ACTIVE track at the top of
+ * `resolvePhysicPaintFrameSource` — a hidden active track renders an empty
+ * (transparent) preview frame for the whole layer.
+ */
+export function resolvePhysicPaintTrackVisibility(layerId: string, trackId: string): boolean {
+  const document = getEfxPaintDocument(layerId);
+  if (!document) return false;
+  const track = document.tracks.find((candidate) => candidate.id === trackId);
+  if (!track || track.visible === false) return false;
+  const soloArmed = document.tracks.some((candidate) => candidate.solo === true);
+  if (!soloArmed) return true;
+  return track.solo === true;
+}
+
 function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackgroundState {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const metadata = physicPaintStore.getRotoBackgroundMetadata(paintLayerId, getActiveTrackId(paintLayerId));
@@ -130,6 +150,10 @@ export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFra
 
 /** Resolve one exact physical Roto cell, or preserve the non-Roto Physics Paint lookup. */
 function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewPhysicPaintFrameSource | null {
+  // 47-01 TML-04/M8: the hide/solo preview filter applies ONLY at the top of
+  // the ACTIVE-track resolution. A hidden active track resolves null so the
+  // canvas renders an empty preview frame (the layer contributes no pixels).
+  if (!resolvePhysicPaintTrackVisibility(layerId, getActiveTrackId(layerId))) return null;
   if (isPhysicalRotoWorkflowLayer(layerId)) {
     const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame);
     // Phase 43 (D-28): the 'loop-placeholder' variant carries no payload — it

@@ -15,7 +15,7 @@ function getCssRuleBlock(styles: string, selector: string): string {
 
 describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   it('lets the studio top row grow beyond 58px so wrapped controls are never crushed', () => {
-    expect(getCssRuleBlock(css(), '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px');
+    expect(getCssRuleBlock(css(), '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 264px');
   });
 
   it('reserves no fixed minimum side-column width in the topbar grid at any width', () => {

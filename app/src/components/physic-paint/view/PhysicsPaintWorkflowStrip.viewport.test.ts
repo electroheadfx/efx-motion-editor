@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { vi } from 'vitest';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
@@ -38,6 +39,7 @@ vi.mock('@preact/signals', async () => {
 import { describe, expect, it } from 'vitest';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
+import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
 
 const CELL_WIDTH_PX = 18;
 
@@ -139,7 +141,7 @@ interface WorkflowHarnessOptions {
   readonly visibleFrameCount?: number;
   readonly physicalCells?: readonly RotoPhysicalTimelineCell[];
   readonly realKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
-  readonly cachedRotoFrames?: readonly { frameIndex: number; appFrame: number; dataUrl: string; source: string }[];
+  readonly cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
   readonly loopResolutionContext?: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null;
   // 47-01: multi-track row slice — the document-derived row bundle.
@@ -184,7 +186,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       ready: true,
       onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
       rotoPhysicalCells: options.physicalCells ?? createPhysicalCells(capacity),
-      cachedRotoFrames: options.cachedRotoFrames,
+      cachedRotoFrames: options.cachedRotoFrames as PhysicPaintRotoCacheFrame[] | undefined,
       rotoKeyRecords: options.realKeyRecords,
       rotoLoopClips: options.loopClips,
       rotoLoopResolutionContext: options.loopResolutionContext,
@@ -259,14 +261,41 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     render();
   }
 
+  // The strip renders rows via the <PhysicsPaintTrackRow /> component. This
+  // harness executes the strip as a plain function (never a real Preact
+  // render), so component vnodes are opaque — their rendered DOM never appears
+  // in the tree. `PhysicsPaintTrackRow` is hook-free, so we expand it here by
+  // calling the component function directly with its props.
+  function resolveRow(vnode: TestVNode): TestVNode {
+    if (vnode.type === PhysicsPaintTrackRow) {
+      return (vnode.type as (props: TestVNode['props']) => TestVNode)(vnode.props);
+    }
+    return vnode;
+  }
+
   function trackRows(): TestVNode[] {
-    return findAll(tree, (vnode) => typeof vnode.props['data-track-id'] === 'string');
+    return findAll(tree, (vnode) => (
+      typeof vnode.props['data-track-id'] === 'string' || vnode.type === PhysicsPaintTrackRow
+    ))
+      .map(resolveRow)
+      .filter((vnode) => typeof vnode.props['data-track-id'] === 'string');
   }
 
   function rowCells(trackId: string): TestVNode[] {
     const row = trackRows().find((candidate) => candidate.props['data-track-id'] === trackId);
     expect(row).toBeDefined();
-    return findAll(row, (vnode) => typeof vnode.props['data-roto-app-frame'] === 'string');
+    return findAll(row, (vnode) => {
+      // Active lane: cells are opaque RotoTimelineCellButton vnodes carrying
+      // `frame` (number) + `cellClass` (roto-fill-*).
+      const frame = vnode.props.frame;
+      const cellClass = vnode.props.cellClass;
+      if (typeof frame === 'number' && typeof cellClass === 'string' && cellClass.includes('physics-paint-roto-cell')) {
+        return true;
+      }
+      // Presentational rows: rendered spans carry data-roto-app-frame + class.
+      const appFrame = vnode.props['data-roto-app-frame'];
+      return (typeof appFrame === 'number' || typeof appFrame === 'string') && hasClass(vnode, 'physics-paint-roto-cell');
+    });
   }
 
   function clickRowHeader(trackId: string): void {
@@ -561,9 +590,20 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(ids).toContain(trackA.id);
       expect(ids).toContain(trackB.id);
       expect(ids).toContain(document.background.id);
-      // Every row renders the shared frameCells extent (presentational cells).
+      // Every row renders the shared frameCells extent. The active lane emits
+      // opaque RotoTimelineCellButton vnodes (frame + cellClass), the
+      // presentational rows emit rendered spans (data-roto-app-frame + class) —
+      // both are per-row cells keyed to the same frameCells extent.
       for (const row of rows) {
-        const cells = findAll(row, (vnode) => typeof vnode.props['data-roto-app-frame'] === 'string');
+        const cells = findAll(row, (vnode) => {
+          const frame = vnode.props.frame;
+          const cellClass = vnode.props.cellClass;
+          if (typeof frame === 'number' && typeof cellClass === 'string' && cellClass.includes('physics-paint-roto-cell')) {
+            return true;
+          }
+          const appFrame = vnode.props['data-roto-app-frame'];
+          return (typeof appFrame === 'number' || typeof appFrame === 'string') && hasClass(vnode, 'physics-paint-roto-cell');
+        });
         expect(cells.length).toBeGreaterThan(0);
       }
     });
@@ -600,10 +640,12 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       harness.render();
 
       const aCells = harness.rowCells(trackA.id);
-      expect(String(aCells[5].props['data-roto-app-frame'])).toBe('5');
-      expect(String(aCells[5].props.class)).toContain('roto-fill-cached');
-      expect(String(aCells[8].props['data-roto-app-frame'])).toBe('8');
-      expect(String(aCells[8].props.class)).toContain('roto-fill-empty');
+      // The active lane renders opaque RotoTimelineCellButton vnodes: frame +
+      // cellClass props (the rich lane, not the presentational row spans).
+      expect(String(aCells[5].props.frame)).toBe('5');
+      expect(String(aCells[5].props.cellClass)).toContain('roto-fill-cached');
+      expect(String(aCells[8].props.frame)).toBe('8');
+      expect(String(aCells[8].props.cellClass)).toContain('roto-fill-empty');
 
       const bCells = harness.rowCells(trackB.id);
       expect(String(bCells[8].props['data-roto-app-frame'])).toBe('8');
