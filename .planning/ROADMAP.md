@@ -285,7 +285,15 @@ Plans:
   4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
   5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 47-01-PLAN.md — tracer: multi-row strip slice + track CRUD store ops + hide/solo/opacity/blend setters + preview filter
+- [ ] 47-02-PLAN.md — pinned header column, track CRUD interactions, acknowledge-and-delete dialog, vertical scroll with ensure-active-row-visible
+- [ ] 47-03-PLAN.md — right-panel track section (opacity/blend) + guarded track CRUD keyboard shortcuts
+- [ ] 47-04-PLAN.md — filmstrip capsule (source-cycle cells, ×N/∞ badge, partial-cycle cut, high-zoom expansion) + Bg-row clip display
+- [ ] 47-05-PLAN.md — cross-track drag gesture with destination highlight, moveTrackItems commit, rejection publication
+
 **UI hint**: yes
 
 ### Phase 48: Internal Compositor and Flattened Parent Result
