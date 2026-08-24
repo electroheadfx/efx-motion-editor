@@ -14,11 +14,11 @@
  */
 
 import { signal } from '@preact/signals';
-import type { CachedFrameReference, EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
+import type { BlendMode, CachedFrameReference, EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
+import { bumpTrackRevision, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -307,9 +307,89 @@ export function reorderTrack(layerId: string, trackId: string, newOrder: number)
   return { ok: true, trackId };
 }
 
+/** The main-editor BlendMode union as a lookup set (efxPaintDocument.ts:17). */
+const BLEND_MODES: ReadonlySet<BlendMode> = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
+
 /**
- * Acknowledged track-deletion surface (TRK-07, D-14/D-17): the preview
- * reports the full destruction surface (frames, clips, Delete references to
+ * Shared hide/solo/opacity/blend setter body (47-01 Task 3, TML-04). Follows
+ * the setActiveTrackId shape — fail-closed on absent document / unknown
+ * trackId, early no-op on an identical value, immutable next document,
+ * `_documents.set` — but the write does NOT bump documentRevision (visible/
+ * solo/opacity/blendMode are not `buildEfxPaintDocumentRevision` terms and not
+ * docrev terms). Instead it calls `bumpTrackRevision` so the per-track paint +
+ * roto signals and the global physicPaintVersion clock bump exactly once and
+ * the track's structural cache invalidates, and fires the efxPaint dirty
+ * callback exactly once via `_notifyChange`.
+ */
+function _setTrackDisplayProperty(
+  layerId: string,
+  trackId: string,
+  patch: (track: InternalPaintTrack) => InternalPaintTrack,
+  isChanged: (track: InternalPaintTrack) => boolean,
+): TrackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  const track = document.tracks.find((candidate) => candidate.id === trackId);
+  if (!track) return { ok: false, error: 'unknown track' };
+  if (!isChanged(track)) return { ok: true, trackId };
+  const nextTrack = patch(track);
+  const next: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) => (current.id === trackId ? nextTrack : current)),
+  };
+  _documents.set(layerId, next);
+  bumpTrackRevision(layerId, trackId);
+  _notifyChange();
+  return { ok: true, trackId };
+}
+
+/** Hide/unhide one Paint track (47-01 Task 3, TML-04). */
+export function setTrackVisible(layerId: string, trackId: string, visible: boolean): TrackMutationResult {
+  return _setTrackDisplayProperty(
+    layerId, trackId,
+    (track) => ({ ...track, visible }),
+    (track) => track.visible !== visible,
+  );
+}
+
+/** Arm/disarm solo on one Paint track (47-01 Task 3, TML-04). */
+export function setTrackSolo(layerId: string, trackId: string, solo: boolean): TrackMutationResult {
+  return _setTrackDisplayProperty(
+    layerId, trackId,
+    (track) => ({ ...track, solo }),
+    (track) => track.solo !== solo,
+  );
+}
+
+/**
+ * Set one Paint track's opacity (47-01 Task 3, TML-04). Accepts 0..1 floats
+ * and stores them exactly; out-of-range finite values are clamped into 0..1;
+ * non-finite values are rejected fail-closed. The stored value is always in
+ * 0..1.
+ */
+export function setTrackOpacity(layerId: string, trackId: string, opacity: number): TrackMutationResult {
+  if (!Number.isFinite(opacity)) return { ok: false, error: 'invalid opacity' };
+  const clamped = Math.min(1, Math.max(0, opacity));
+  return _setTrackDisplayProperty(
+    layerId, trackId,
+    (track) => ({ ...track, opacity: clamped }),
+    (track) => track.opacity !== clamped,
+  );
+}
+
+/** Set one Paint track's blend mode — accepts exactly the BlendMode union (47-01 Task 3, TML-04). */
+export function setTrackBlend(layerId: string, trackId: string, blendMode: BlendMode): TrackMutationResult {
+  if (!BLEND_MODES.has(blendMode)) return { ok: false, error: 'invalid blend mode' };
+  return _setTrackDisplayProperty(
+    layerId, trackId,
+    (track) => ({ ...track, blendMode }),
+    (track) => track.blendMode !== blendMode,
+  );
+}
+
+/**
+ * Acknowledged track-deletion surface (46-05 TRK-07, D-14/D-17): the preview
+ * reports the full destruction surface (frames, clips, Hold references to
  * sever, last-track flag) BEFORE any mutation; the commit refuses without the
  * explicit acknowledgement, refuses the last surviving Paint track, and
  * otherwise performs the exact per-track teardown through 46-01's
