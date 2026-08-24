@@ -14,11 +14,11 @@
  */
 
 import { signal } from '@preact/signals';
-import type { CachedFrameReference, EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { CachedFrameReference, EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
+import { mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -107,9 +107,209 @@ export function setActiveTrackId(layerId: string, trackId: string): boolean {
   return true;
 }
 
+/** Max length of a Paint track display name after trimming (47-01 Task 2, ASVS V5). */
+export const MAX_TRACK_NAME_LENGTH = 64;
+
+/** Fail-closed result of a track CRUD mutation (47-01 Tasks 2/3). */
+export type TrackMutationResult =
+  | { readonly ok: true; readonly trackId: string }
+  | { readonly ok: false; readonly error: string };
+
+/** Track name control-character guard (ASVS V5 — reject C0 controls and DEL). */
+const TRACK_NAME_CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
+
+/** Next free auto-number: the first positive integer not already taken by an existing `Paint N` name (47-UI-SPEC D-02). */
+function _nextPaintTrackNumber(document: EfxPaintDocument): number {
+  const used = new Set<number>();
+  for (const track of document.tracks) {
+    const match = /^Paint (\d+)$/.exec(track.name);
+    if (match) used.add(Number(match[1]));
+  }
+  let n = 1;
+  while (used.has(n)) n += 1;
+  return n;
+}
+
+/** The maximum existing track order, or -1 when the document has no tracks. */
+function _maxTrackOrder(document: EfxPaintDocument): number {
+  return document.tracks.reduce((max, track) => Math.max(max, track.order), -1);
+}
+
 /**
- * Acknowledged track-deletion surface (46-05 TRK-07, D-14/D-17): the preview
- * reports the full destruction surface (frames, clips, Hold references to
+ * Project one track's runtime into the document CachedFrameReference + Roto
+ * record shape (shared by duplicateTrack and commitDeleteTrack — the runtime
+ * is the authority, the document carries the projection).
+ */
+function _projectTrackRuntime(layerId: string, trackId: string): Pick<InternalPaintTrack, 'frames' | 'rotoPhysical'> {
+  const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, trackId);
+  const frames: Record<number, CachedFrameReference> = {};
+  for (const [appFrame, frame] of runtime.frames) {
+    frames[appFrame] = {
+      cachePath: buildEfxPaintFrameCachePath(layerId, trackId, frame),
+      width: frame.width ?? 0,
+      height: frame.height ?? 0,
+    };
+  }
+  return { frames, rotoPhysical: runtime.rotoPhysical };
+}
+
+/**
+ * Add a new Paint track to the document (47-01 Task 2, TML-02). Fail-closed on
+ * an absent document. The new track gets a fresh UUID, the auto-name `Paint {N}`
+ * (next free number not taken by an existing Paint track name, 47-UI-SPEC
+ * D-02), `order` = max existing order + 1, and the createDefaultPaintTrack
+ * field set. It is mounted into the runtime maps after the document write
+ * (mountTrackRuntime never bumps revisions). `activeTrackId` is left unchanged
+ * — the UI activates the returned track via setActiveTrackId. Bumps
+ * documentRevision by 1 and fires _notifyChange once.
+ */
+export function addTrack(layerId: string): TrackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  const trackId = crypto.randomUUID();
+  const newTrack: InternalPaintTrack = {
+    id: trackId,
+    name: `Paint ${_nextPaintTrackNumber(document)}`,
+    order: _maxTrackOrder(document) + 1,
+    visible: true,
+    solo: false,
+    opacity: 1,
+    blendMode: 'normal',
+    revision: 0,
+    frames: {},
+    rotoPhysical: null,
+    loopClips: [],
+  };
+  const candidate: EfxPaintDocument = { ...document, tracks: [...document.tracks, newTrack] };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  mountTrackRuntime(layerId, trackId);
+  _notifyChange();
+  return { ok: true, trackId };
+}
+
+/**
+ * Rename one Paint track (47-01 Task 2, TML-02, ASVS V5). Trims the input,
+ * caps it at MAX_TRACK_NAME_LENGTH, rejects empty/whitespace-only names and
+ * control characters fail-closed, and is a no-op when the trimmed+capped name
+ * equals the current one (no revision bump). A valid rename bumps
+ * documentRevision exactly once (name is a docrev term) and fires
+ * _notifyChange once.
+ */
+export function renameTrack(layerId: string, trackId: string, name: string): TrackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  const track = document.tracks.find((candidate) => candidate.id === trackId);
+  if (!track) return { ok: false, error: 'unknown track' };
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return { ok: false, error: 'empty track name' };
+  if (TRACK_NAME_CONTROL_CHAR.test(trimmed)) return { ok: false, error: 'invalid track name' };
+  const capped = trimmed.slice(0, MAX_TRACK_NAME_LENGTH);
+  if (capped === track.name) return { ok: true, trackId };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) => (current.id === trackId ? { ...current, name: capped } : current)),
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) return { ok: true, trackId };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true, trackId };
+}
+
+/**
+ * Duplicate one Paint track whole (47-01 Task 2, TML-02/D-09). Deep-copies the
+ * source's Paint frames, Roto real keys, and Loop Clips with fresh identities
+ * through the Phase 46 copy-paste primitive — the copy is independently
+ * editable with zero effect on the source (D-05). The copy's document record is
+ * projected from the copy's own runtime (the runtime is the authority). The
+ * name gets the ` Copy` suffix: first copy `X Copy`, then `X Copy 2`, `X Copy 3`
+ * (47-UI-SPEC D-09). Fails closed with the source untouched when the copy
+ * primitive rejects (e.g. an impossible Hold re-pointing, D-06).
+ */
+export function duplicateTrack(layerId: string, trackId: string): TrackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  const source = document.tracks.find((candidate) => candidate.id === trackId);
+  if (!source) return { ok: false, error: 'unknown track' };
+  const newTrackId = crypto.randomUUID();
+
+  mountTrackRuntime(layerId, newTrackId);
+  const sourceKeyIds = physicPaintStore.getRotoRealKeyRecords(layerId, trackId).map((record) => record.keyId);
+  if (sourceKeyIds.length > 0) {
+    const copied = physicPaintStore.copyTrackSelection(layerId, trackId, sourceKeyIds);
+    if (!copied.ok) {
+      removeTrackRuntime(layerId, newTrackId);
+      return { ok: false, error: `copy-failed: ${copied.reason}` };
+    }
+    // Paste with the payload's own anchor (delta 0): the fresh destination
+    // keys land on the exact source app frames (paste selection D-09 idiom).
+    const pasted = physicPaintStore.pasteTrackSelection(
+      layerId, newTrackId, copied.payload, copied.payload.anchorAppFrame,
+    );
+    if (!pasted.ok) {
+      removeTrackRuntime(layerId, newTrackId);
+      return { ok: false, error: `paste-failed: ${pasted.reason}` };
+    }
+  }
+
+  const copyCount = document.tracks
+    .filter((candidate) => candidate.id !== trackId
+      && (candidate.name === `${source.name} Copy` || candidate.name.startsWith(`${source.name} Copy `)))
+    .length;
+  const copyName = copyCount === 0 ? `${source.name} Copy` : `${source.name} Copy ${copyCount + 1}`;
+  const projected = _projectTrackRuntime(layerId, newTrackId);
+  const newTrack: InternalPaintTrack = {
+    id: newTrackId,
+    name: copyName,
+    order: _maxTrackOrder(document) + 1,
+    visible: source.visible,
+    solo: source.solo,
+    opacity: source.opacity,
+    blendMode: source.blendMode,
+    revision: source.revision,
+    ...projected,
+    loopClips: [],
+  };
+  const candidate: EfxPaintDocument = { ...document, tracks: [...document.tracks, newTrack] };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true, trackId: newTrackId };
+}
+
+/**
+ * Reorder one Paint track (47-01 Task 2, TML-08). Rewrites only the track's
+ * `order` field — never the stable UUID id and never array-position semantics;
+ * the document `tracks` array is re-sorted to match the new orders. `newOrder`
+ * is the resulting 0-based position of the moved track; the other orders are
+ * normalized 0..N-1 so the field stays a contiguous index. A move to the track's
+ * current position is a no-op (no revision bump, no _notifyChange). Otherwise
+ * bumps documentRevision exactly once (order is a docrev term).
+ */
+export function reorderTrack(layerId: string, trackId: string, newOrder: number): TrackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  if (!document.tracks.some((candidate) => candidate.id === trackId)) return { ok: false, error: 'unknown track' };
+  const sorted = [...document.tracks].sort((a, b) => a.order - b.order);
+  const fromIndex = sorted.findIndex((candidate) => candidate.id === trackId);
+  if (fromIndex === newOrder) return { ok: true, trackId };
+  const clamped = Math.max(0, Math.min(sorted.length - 1, Math.trunc(newOrder)));
+  if (clamped === fromIndex) return { ok: true, trackId };
+  const without = sorted.filter((candidate) => candidate.id !== trackId);
+  without.splice(clamped, 0, sorted[fromIndex]);
+  const reorderedTracks = without.map((track, index) => ({ ...track, order: index }));
+  const candidate: EfxPaintDocument = { ...document, tracks: reorderedTracks };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) return { ok: true, trackId };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true, trackId };
+}
+
+/**
+ * Acknowledged track-deletion surface (TRK-07, D-14/D-17): the preview
+ * reports the full destruction surface (frames, clips, Delete references to
  * sever, last-track flag) BEFORE any mutation; the commit refuses without the
  * explicit acknowledgement, refuses the last surviving Paint track, and
  * otherwise performs the exact per-track teardown through 46-01's

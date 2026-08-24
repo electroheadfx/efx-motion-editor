@@ -25,10 +25,6 @@ import {
   reorderTrack,
   reset,
   serializeRuntimeIntoDocument,
-  setTrackBlend,
-  setTrackOpacity,
-  setTrackSolo,
-  setTrackVisible,
 } from './efxPaintStore';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -57,7 +53,7 @@ const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
 });
 
 describe('efxPaintStore', () => {
@@ -309,10 +305,11 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     _setEfxPaintMarkDirtyCallback(dirty);
     const document = makeTrackDocument('layer-crud');
     registerDocument(document);
+    const dirtyBefore = dirty.mock.calls.length;
     const result = renameTrack('layer-crud', TEST_TRACK_ID, 'Track 1');
     expect(result.ok).toBe(true);
     expect(getDocument('layer-crud')!.documentRevision).toBe(document.documentRevision);
-    expect(dirty).not.toHaveBeenCalled();
+    expect(dirty).toHaveBeenCalledTimes(dirtyBefore);
   });
 
   it('duplicateTrack deep-copies frames and keys with fresh identities and the Copy suffix', () => {
@@ -322,7 +319,7 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     physicPaintStore.setFrame('layer-crud', TEST_TRACK_ID, 3, makeFrame(1, 3));
     const replace = physicPaintStore.replaceRotoPhysicalRecords(
       'layer-crud', TEST_TRACK_ID,
-      [rotoRecord('key-1', 0)],
+      [rotoRecord('key-1', 0), rotoRecord('key-2', 3)],
       { enabled: false, mode: 'duplicate' },
       10,
     );
@@ -342,10 +339,14 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
 
     const copyKeyIds = physicPaintStore.getRotoRealKeyRecords('layer-crud', copyId).map((record) => record.keyId);
     const sourceKeyIds = physicPaintStore.getRotoRealKeyRecords('layer-crud', TEST_TRACK_ID).map((record) => record.keyId);
-    expect(copyKeyIds).toHaveLength(1);
-    expect(copyKeyIds[0]).not.toBe(sourceKeyIds[0]);
-    expect(physicPaintStore.getFrames('layer-crud', copyId).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
-    expect(physicPaintStore.getFrames('layer-crud', copyId).get(3)?.dataUrl).toBe(makeFrame(1, 3).dataUrl);
+    expect(copyKeyIds).toHaveLength(2);
+    expect(copyKeyIds.some((keyId) => sourceKeyIds.includes(keyId))).toBe(false);
+    // The copy's frame bytes are byte-identical to the source's real-key payloads.
+    const sourceRecords = physicPaintStore.getRotoRealKeyRecords('layer-crud', TEST_TRACK_ID);
+    expect(physicPaintStore.getFrames('layer-crud', copyId).get(0)?.dataUrl)
+      .toBe(sourceRecords.find((record) => record.appFrame === 0)?.payload.dataUrl);
+    expect(physicPaintStore.getFrames('layer-crud', copyId).get(3)?.dataUrl)
+      .toBe(sourceRecords.find((record) => record.appFrame === 3)?.payload.dataUrl);
     // The copy is independently editable — mutating it leaves the source untouched.
     const sourceFrameCount = physicPaintStore.getFrames('layer-crud', TEST_TRACK_ID).size;
     physicPaintStore.setFrame('layer-crud', copyId, 9, makeFrame(2, 9));
