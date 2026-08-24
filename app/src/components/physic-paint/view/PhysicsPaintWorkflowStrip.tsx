@@ -539,7 +539,7 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
   const capsuleText = props.capsuleText.value;
   return (
     <div
-      class="physics-paint-status-capsule"
+      class={`physics-paint-status-capsule${props.isError ? ' physics-paint-status-capsule-error' : ''}`}
       role="status"
       aria-live="polite"
       onPointerEnter={tooltip.onPointerEnter}

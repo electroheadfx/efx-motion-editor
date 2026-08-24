@@ -2024,6 +2024,10 @@ button.destructive {
   color: #f8c96b;
 }
 
+.physics-paint-status-capsule-error .lucide {
+  color: #ff6b6b;
+}
+
 .physics-paint-status-capsule-text {
   min-width: 0;
   overflow: hidden;

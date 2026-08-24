@@ -817,6 +817,7 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(capsuleTextBlock).toContain('white-space: nowrap');
     expect(capsuleTextBlock.toLowerCase()).toContain('#dde7f0');
     expect(getCssRuleBlock(styles, '.physics-paint-status-capsule .lucide {').toLowerCase()).toContain('#f8c96b');
+    expect(getCssRuleBlock(styles, '.physics-paint-status-capsule-error .lucide {').toLowerCase()).toContain('#ff6b6b');
     for (const retired of [
       '.physics-paint-roto-status-stack',
       '.physics-paint-roto-cell-legend',
