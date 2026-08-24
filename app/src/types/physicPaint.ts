@@ -1510,49 +1510,62 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  * kinds; the validator rejects unknown fields and accepts only the two
  * directions.
  */
+let debugApplyPayloadValidation = false;
+/** Debug hook (46 UAT): toggle per-clause rejection logging for the apply-payload validator. */
+export function setDebugApplyPayloadValidation(enabled: boolean): void {
+  debugApplyPayloadValidation = enabled;
+}
+function failApplyPayload(clause: string): false {
+  if (debugApplyPayloadValidation) {
+    // eslint-disable-next-line no-console
+    console.error(`[apply-payload-validation] rejected at clause: ${clause}`);
+  }
+  return false;
+}
+
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
-  if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
-  if (value.kind !== 'replace-roto-physical-map') return false;
-  if (!isNonEmptyString(value.operationId)) return false;
-  if (!isNonEmptyString(value.trackId)) return false;
-  if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
+  if (!isRecord(value)) return failApplyPayload('not-record');
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
+  if (value.kind !== 'replace-roto-physical-map') return failApplyPayload('wrong-kind');
+  if (!isNonEmptyString(value.operationId)) return failApplyPayload('bad-operationId');
+  if (!isNonEmptyString(value.trackId)) return failApplyPayload('bad-trackId');
+  if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return failApplyPayload('bad-operationKind');
   const intent = value.intent;
   const isOrdinary = isPhysicPaintRotoPhysicalEditIntent(intent);
   if (isOrdinary) {
-    if (intent.kind !== value.operationKind) return false;
-  } else if (intent !== undefined || isPhysicPaintRotoOrdinaryOperationKind(value.operationKind)) return false;
-  if (!isNonEmptyString(value.layerId)) return false;
-  if (!isPhysicPaintRotoPhysicalOperationLeaseToken(value.leaseToken)) return false;
-  if (value.leaseToken.layerId !== value.layerId) return false;
-  if (value.leaseToken.trackId !== value.trackId) return false;
-  if (!isNonNegativeInteger(value.startFrame)) return false;
-  if (!isNonEmptyString(value.launchOperationId)) return false;
-  if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return false;
+    if (intent.kind !== value.operationKind) return failApplyPayload('intent-kind-mismatch');
+  } else if (intent !== undefined || isPhysicPaintRotoOrdinaryOperationKind(value.operationKind)) return failApplyPayload('intent-undefined-mismatch');
+  if (!isNonEmptyString(value.layerId)) return failApplyPayload('bad-layerId');
+  if (!isPhysicPaintRotoPhysicalOperationLeaseToken(value.leaseToken)) return failApplyPayload('bad-leaseToken');
+  if (value.leaseToken.layerId !== value.layerId) return failApplyPayload('lease-layer-mismatch');
+  if (value.leaseToken.trackId !== value.trackId) return failApplyPayload('lease-track-mismatch');
+  if (!isNonNegativeInteger(value.startFrame)) return failApplyPayload('bad-startFrame');
+  if (!isNonEmptyString(value.launchOperationId)) return failApplyPayload('bad-launchOperationId');
+  if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return failApplyPayload('bad-projectContextId');
   if (value.projectContextId !== undefined
-    && value.leaseToken.projectContextId !== value.projectContextId) return false;
-  if (!isNonEmptyString(value.expectedRevision)) return false;
-  if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
+    && value.leaseToken.projectContextId !== value.projectContextId) return failApplyPayload('lease-projectContext-mismatch');
+  if (!isNonEmptyString(value.expectedRevision)) return failApplyPayload('bad-expectedRevision');
+  if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return failApplyPayload('bad-records');
   if (value.groupOverrideRecords !== undefined
-    && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return false;
-  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
-  if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
-  if (typeof value.interpolationEnabled !== 'boolean') return false;
-  if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;
+    && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return failApplyPayload('bad-groupOverrideRecords');
+  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return failApplyPayload('bad-loopClips');
+  if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return failApplyPayload('bad-incomingBreaks');
+  if (typeof value.interpolationEnabled !== 'boolean') return failApplyPayload('bad-interpolationEnabled');
+  if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return failApplyPayload('bad-interpolationMode');
   if (value.operationKind === 'play-script') {
-    if (!isPhysicPaintRotoBackgroundMetadata(value.rotoBackground)) return false;
-  } else if (value.rotoBackground !== undefined) return false;
-  if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
-  if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
-  if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
-  if (!isNonNegativeInteger(value.cursorAppFrame)) return false;
-  if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)) return false;
+    if (!isPhysicPaintRotoBackgroundMetadata(value.rotoBackground)) return failApplyPayload('bad-rotoBackground');
+  } else if (value.rotoBackground !== undefined) return failApplyPayload('unexpected-rotoBackground');
+  if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return failApplyPayload('bad-selectedKeyId');
+  if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return failApplyPayload('bad-selectedAppFrame');
+  if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return failApplyPayload('selected-mismatch');
+  if (!isNonNegativeInteger(value.cursorAppFrame)) return failApplyPayload('bad-cursorAppFrame');
+  if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)) return failApplyPayload('bad-semanticDelta');
   const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
   if (isReplay) {
-    if (!isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)) return false;
-    if (value.historyProvenance.historyDirection !== value.operationKind) return false;
+    if (!isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)) return failApplyPayload('bad-historyProvenance');
+    if (value.historyProvenance.historyDirection !== value.operationKind) return failApplyPayload('history-direction-mismatch');
   } else {
-    if (value.historyProvenance !== undefined) return false;
+    if (value.historyProvenance !== undefined) return failApplyPayload('unexpected-historyProvenance');
   }
   return true;
 }

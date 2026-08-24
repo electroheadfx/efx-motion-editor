@@ -14,6 +14,10 @@ import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
 import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {setDebugApplyPayloadValidation} from './types/physicPaint';
+// 46 UAT debug hook: enable per-clause apply-payload rejection logging from the
+// console via window.__setDebugApplyPayloadValidation(true).
+(window as unknown as { __setDebugApplyPayloadValidation: (enabled: boolean) => void }).__setDebugApplyPayloadValidation = setDebugApplyPayloadValidation;
 
 const root = document.getElementById('app')!;
 
