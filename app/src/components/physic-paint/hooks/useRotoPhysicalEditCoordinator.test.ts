@@ -3525,6 +3525,78 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     expect(test.getCanonicalDocument()).toEqual(before);
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
   });
+
+  it('RED (46 UAT): a click that moves the cursor BEFORE a paste is captured in the before snapshot, so the undo replay target matches the parent’s live document cursor', async () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['s0'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+      frameOverrides: [],
+    };
+    const sourceDoc = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: [pasteRecord('s0', 0)],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([pasteRecord('s0', 0)], INTERPOLATION, [clip], []),
+      loopClips: [clip],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    const built = buildRotoRailSetCopyPayload({ document: sourceDoc, members: [{ kind: 'loop', loopId: 'g1' }] });
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error(`Loop payload must build: ${built.reason}`);
+
+    const test = harness();
+    const before = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: [pasteRecord('s0', 0)],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([pasteRecord('s0', 0)], INTERPOLATION, [clip], []),
+      loopClips: [clip],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    // The user clicks an empty frame, moving the cursor to 15 before pasting at
+    // that frame. publishCanonicalGroupSelection keeps the live and canonical
+    // (parent-authority) cursors in lockstep, as a real click does.
+    test.publishCanonicalGroupSelection(15);
+
+    expect(await test.executePasteRails({ payload: built.payload, placementMode: 'paste', destinationAppFrame: 15 })).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted click-paste operation.');
+    // The before snapshot must reflect the live (clicked) cursor, not a stale
+    // commit-anchored cursor, so the parent's replay-target comparison passes.
+    expect(accepted.before.currentAppFrame).toBe(15);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected click Paste Undo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    // Undo restores the exact pre-paste content AND the live cursor from the
+    // click (15) — the pre-paste document cursor, not the stale seed cursor.
+    expect(test.getCanonicalDocument()).toEqual({ ...before, cursorAppFrame: 15 });
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
 });
 
 describe('normalizeLoopClipForPayload — 46 UAT R5 (every shipped clip is lifecycle-complete)', () => {

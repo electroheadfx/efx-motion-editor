@@ -1514,6 +1514,7 @@ function applyPhysicPaintRotoPhysicalMap(
       ? replayEntry.after
       : replayEntry.before;
     if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
+      debugReplaySnapshotDiff(liveSourceSnapshot, expectedSourceSnapshot);
       return reject('Roto physical replay source snapshot does not match the original accepted command.');
     }
   }

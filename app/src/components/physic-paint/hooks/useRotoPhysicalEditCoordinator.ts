@@ -1114,7 +1114,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         };
       }
       const selectedKeyId = lastAcceptedSelectionRef.current.selectedKeyId;
-      const currentAppFrame = lastAcceptedSelectionRef.current.cursorAppFrame;
+      // The cursor (unlike the selection) is read from the live selection port so
+      // a click/navigation that moved the cursor BEFORE this operation is
+      // reflected — the parent records original.before from the live document
+      // cursor, so a stale commit-anchored cursor here would diverge and reject
+      // the replay. Key-rail ops are unaffected: they never read a stale cursor
+      // and the selectedKeyId above remains commit-anchored.
+      const currentAppFrame = portsRef.current.selection.getCurrentAppFrame()
+        ?? lastAcceptedSelectionRef.current.cursorAppFrame;
       const buffer = portsRef.current.buffer;
       const reference = portsRef.current.reference.getCachedReference();
       return {
