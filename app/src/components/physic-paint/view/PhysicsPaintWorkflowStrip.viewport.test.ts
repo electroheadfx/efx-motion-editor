@@ -784,5 +784,33 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(lane).toBeDefined();
       expect(harness.rowsRegionRows()).toHaveLength(2);
     });
+
+    it('renders rows in document order with the active lane highlighted in place (mockup redesign)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      // Track B is second in document order and active — the rich lane must
+      // render at its DOCUMENT position (the mockup highlights the active row
+      // in place), not first.
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackB.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      const rows = harness.trackRows();
+      expect(rows.map((row) => row.props['data-track-id'])).toEqual([trackA.id, trackB.id, document.background.id]);
+      // The active track is the rich lane: its cells are opaque
+      // RotoTimelineCellButton vnodes (frame prop); the presentational row's
+      // cells are rendered spans (data-roto-app-frame).
+      const bCells = harness.rowCells(trackB.id);
+      expect(String(bCells[0].props.frame)).toBe('0');
+      const aCells = harness.rowCells(trackA.id);
+      expect(String(aCells[0].props['data-roto-app-frame'])).toBe('0');
+      // The pinned header column mirrors the same document order 1:1.
+      const headers = harness.rowHeaders();
+      expect(headers.map((header) => header.props['data-track-id'])).toEqual([trackA.id, trackB.id, document.background.id]);
+    });
   });
 });
