@@ -1402,6 +1402,23 @@ function buildPasteCandidate(
     : records.find((record) => record.keyId === intent.destinationKeyId) ?? null;
   const changed = destinationRecord === null
     || !payloadEqualsAtFrame(destinationRecord.payload, intent.clipboardPayload, destinationRecord.appFrame);
+  // Rail-set boundary law for ordinary paste: the destination sits in a
+  // trailing gap / between-rail gap (and must start its own segment) when it
+  // has content to its left AND is NOT strictly inside a connected segment
+  // span. A destination strictly inside a span (nearest left and right keys
+  // connected — no incoming break on the right key) joins that rail.
+  let leftBelow: PhysicPaintRotoRealKeyRecord | undefined;
+  let rightAbove: PhysicPaintRotoRealKeyRecord | undefined;
+  for (const record of records) {
+    if (record.appFrame < intent.destinationAppFrame) {
+      if (leftBelow === undefined || record.appFrame > leftBelow.appFrame) leftBelow = record;
+    } else if (record.appFrame > intent.destinationAppFrame) {
+      if (rightAbove === undefined || record.appFrame < rightAbove.appFrame) rightAbove = record;
+    }
+  }
+  const insideConnectedSpan = leftBelow !== undefined && rightAbove !== undefined
+    && !incomingInterpolationBreakKeyIds.includes(rightAbove.keyId);
+  const boundaryBreak = leftBelow !== undefined && !insideConnectedSpan;
   return {
     mapping,
     expectedKeyIds,
@@ -1413,11 +1430,19 @@ function buildPasteCandidate(
     roleByKeyId: new Map(),
     drag: null,
     nextRecords: Object.freeze(nextRecords),
-    // Quick 260816-tv7: paste-to-empty with startsNewSegment (Paint-on-empty /
-    // + Key) makes the new key own a persistent incoming interpolation break,
-    // starting a new segment and its own Key Rail. Ordinary Copy/Paste leaves
-    // the collection unset so the pasted key stays connected.
-    ...(intent.startsNewSegment === true && intent.destinationKeyId === null
+    // Quick 260816-tv7 + the rail-set boundary law: paste-to-empty with
+    // startsNewSegment (Paint-on-empty / + Key) makes the new key own a
+    // persistent incoming interpolation break, starting a new segment and its
+    // own Key Rail. The SAME boundary law applies to ordinary Copy/Paste onto
+    // an empty frame: the first pasted key owns an incoming break when existing
+    // content lies to its left AND the destination is NOT strictly inside an
+    // existing Key Rail segment span (the segmenter merges across empty frames,
+    // so a trailing-gap paste would otherwise bridge into the neighbor's rail).
+    // A destination strictly inside a connected segment span joins that rail
+    // instead (quick 260819-wzi). Pasting onto an existing key replaces its
+    // paint and leaves the break collection unchanged.
+    ...(intent.destinationKeyId === null
+      && (intent.startsNewSegment === true || boundaryBreak)
       ? { nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds, intent.newKeyId as string]) }
       : {}),
     semanticDelta: Object.freeze({
@@ -1449,6 +1474,7 @@ function buildPasteKeyGroupCandidate(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key-group' }>,
   capacity: number,
+  incomingInterpolationBreakKeyIds: readonly string[],
 ): PasteKeyGroupBuilderResult {
   const anchorSourceAppFrame = Math.min(...intent.entries.map((entry) => entry.sourceAppFrame));
   const destinations = intent.entries.map((entry) => intent.destinationAppFrame + (entry.sourceAppFrame - anchorSourceAppFrame));
@@ -1497,6 +1523,23 @@ function buildPasteKeyGroupCandidate(
   const mapping = new Map(nextRecords.map((record) => [record.keyId, record.appFrame]));
   const expectedKeyIds = new Set(identities.keyIds);
   for (const entry of intent.entries) expectedKeyIds.add(entry.newKeyId);
+  // Rail-set boundary law (mirror buildPasteCandidate): the group's first pasted
+  // key (the anchor at destinationAppFrame) owns an incoming interpolation break
+  // when existing content lies to its left and the destination is NOT strictly
+  // inside a connected segment span, so a trailing-gap group paste never bridges
+  // into a neighbor's rail — interpolation-before only happens on Insert.
+  let groupLeftBelow: PhysicPaintRotoRealKeyRecord | undefined;
+  let groupRightAbove: PhysicPaintRotoRealKeyRecord | undefined;
+  for (const record of records) {
+    if (record.appFrame < intent.destinationAppFrame) {
+      if (groupLeftBelow === undefined || record.appFrame > groupLeftBelow.appFrame) groupLeftBelow = record;
+    } else if (record.appFrame > intent.destinationAppFrame) {
+      if (groupRightAbove === undefined || record.appFrame < groupRightAbove.appFrame) groupRightAbove = record;
+    }
+  }
+  const groupInsideConnectedSpan = groupLeftBelow !== undefined && groupRightAbove !== undefined
+    && !incomingInterpolationBreakKeyIds.includes(groupRightAbove.keyId);
+  const groupBoundaryBreak = groupLeftBelow !== undefined && !groupInsideConnectedSpan;
   return {
     ok: true,
     candidate: {
@@ -1510,6 +1553,9 @@ function buildPasteKeyGroupCandidate(
       roleByKeyId: new Map(),
       drag: null,
       nextRecords: Object.freeze(nextRecords),
+      ...(groupBoundaryBreak
+        ? { nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds, anchorEntry.newKeyId]) }
+        : {}),
       semanticDelta: Object.freeze({
         kind: 'paste-key-group',
         destinationAppFrame: intent.destinationAppFrame,
@@ -4349,7 +4395,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const recordsResult = validateSemanticInputRecords(input.records, identities, input.capacity, 'paste-key-group');
     if (!recordsResult.ok) return recordsResult.resolution;
-    const candidateResult = buildPasteKeyGroupCandidate(identities, recordsResult.records, intent, input.capacity);
+    const candidateResult = buildPasteKeyGroupCandidate(identities, recordsResult.records, intent, input.capacity, incomingInterpolationBreakKeyIds);
     if (!candidateResult.ok) return candidateResult.resolution;
     const finalized = finalizeProposal(candidateResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
