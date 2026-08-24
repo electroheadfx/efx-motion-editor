@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import type { ComponentChildren, RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -189,6 +189,8 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoInterpolationMode?: PhysicPaintRotoInterpolationState['mode'];
   rotoInterpolationPending?: boolean;
   statusMessage?: string | null;
+  /** Capsule icon tone: the current status message is an apply/rejection error. */
+  statusIsError?: boolean;
   /** Persisted operation-result line (UAT-3): survives the operation's own
    *  selection publication until a NEW explicit gesture or the next operation. */
   operationResult?: string | null;
@@ -532,7 +534,7 @@ function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; p
   return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>;
 }
 
-function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string> }) {
+function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean }) {
   const tooltip = useStyledTooltip();
   const capsuleText = props.capsuleText.value;
   return (
@@ -543,7 +545,9 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string> }) 
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
-      <Info size={16} aria-hidden="true" />
+      {props.isError
+        ? <TriangleAlert size={16} aria-hidden="true" />
+        : <Info size={16} aria-hidden="true" />}
       <span class="physics-paint-status-capsule-text">{capsuleText}</span>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
     </div>
@@ -553,6 +557,8 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string> }) 
 interface PhysicsPaintWorkflowStaticChromeProps {
   currentFrame: Signal<number>;
   capsuleText: Signal<string>;
+  /** Capsule icon tone: a warning triangle when the current message is an error. */
+  capsuleIsError: boolean;
   ready: boolean;
   playbackAvailable: boolean;
   playbackActive: boolean;
@@ -825,7 +831,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         ) : null}
         <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
       </div>
-      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} />
+      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} />
       <span
         class="physics-paint-roto-key-icon-action physics-paint-toolbox-button-anchor"
         ref={toolboxAnchorRef}
@@ -2669,6 +2675,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       <PhysicsPaintWorkflowStaticChrome
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
+        capsuleIsError={Boolean(props.statusIsError)}
         ready={props.ready !== false}
         playbackAvailable={Boolean(props.rotoCachedPlaybackAvailable)}
         playbackActive={Boolean(props.isRotoCachedPlaybackActive)}

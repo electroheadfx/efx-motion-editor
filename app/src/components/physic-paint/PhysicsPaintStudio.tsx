@@ -1894,6 +1894,11 @@ export function PhysicsPaintStudio() {
   }, [engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
+    // A new navigation resets the status capsule: the previous operation's
+    // rejection/success text no longer applies once the playhead moves, so the
+    // capsule falls back to the ambient frame context ("Empty frame • Frame N").
+    setApplyStatus('idle');
+    setApplyMessage(null);
     rotoCachedPlayback.stop();
     // 38.1 D-05: begin the navigation generation BEFORE any await so a newer
     // navigation started during the flush supersedes this one.
@@ -2782,7 +2787,7 @@ export function PhysicsPaintStudio() {
         onRotoRailSetMoveRejected: handleRotoRailSetMoveRejected,
         railSetMoveMembers,
         rotoScript,
-        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
+        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
       },
     status: { shortcutsVisible },
