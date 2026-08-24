@@ -107,7 +107,7 @@ import {
 } from '../hooks/usePhysicsPaintRailSetDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
-import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -1048,6 +1048,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   >(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
+  // 47-01 header column: the pinned header-rows container and the rows-region
+  // share the same vertical scroll position (D-05). The sync is a no-op while
+  // the track count fits the 141px band; it keeps header cells aligned with
+  // their rows once the region overflows.
+  const headerRowsRef = useRef<HTMLDivElement>(null);
+  const rowsRegionRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
   const suppressNextRotoClickRef = useRef(false);
@@ -1058,6 +1064,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const lastFocusedKeyRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
+  // 47-01 header column: the active lane's header cell shows the active
+  // track's name (UI-SPEC header column layout — every row gets a label).
+  const activeTrackName = props.tracks?.find((track) => track.id === props.activeTrackId)?.name ?? '';
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells;
@@ -2220,6 +2229,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     });
   }, []);
 
+  // 47-01 header-column vertical sync (D-05): the pinned header-rows and the
+  // rows-region share one vertical scroll position. Each handler mirrors the
+  // other container's scrollTop; the equality guard prevents a ping-pong loop
+  // (setting scrollTop to the same value fires no scroll event).
+  const syncHeaderScroll = useCallback(() => {
+    if (headerRowsRef.current && rowsRegionRef.current && headerRowsRef.current.scrollTop !== rowsRegionRef.current.scrollTop) {
+      rowsRegionRef.current.scrollTop = headerRowsRef.current.scrollTop;
+    }
+  }, []);
+
+  const syncRowsScroll = useCallback(() => {
+    if (headerRowsRef.current && rowsRegionRef.current && headerRowsRef.current.scrollTop !== rowsRegionRef.current.scrollTop) {
+      headerRowsRef.current.scrollTop = rowsRegionRef.current.scrollTop;
+    }
+  }, []);
+
   const classifyRotoDragTarget = useCallback((clientX: number, clientY: number, movedKeyId: string, sourceAppFrame: number): {
     target: RotoDragTarget | null;
     kind: RotoDragCandidateKind;
@@ -2730,19 +2755,60 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
-        <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
-            {rotoRulerTicks.map(frame => (
-              <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
-            ))}
+        <div class="physics-paint-timeline-body">
+          {/* 47-01 pinned header column (UI-SPEC D-01/D-05): a fixed 140px
+              column listing every row's track name. It sits OUTSIDE the
+              horizontal scroller so it never scrolls away with the frame
+              cells; its 141px header-rows band shares the rows-region's
+              vertical scroll position (syncHeaderScroll/syncRowsScroll). */}
+          <div class="physics-paint-header-column">
+            <div class="physics-paint-header-ruler-spacer" aria-hidden="true"></div>
+            <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={syncHeaderScroll}>
+              {props.tracks && props.activeTrackId ? (
+                <>
+                  <PhysicsPaintTrackRowHeader
+                    trackId={props.activeTrackId}
+                    label={activeTrackName}
+                    activeTrackId={props.activeTrackId}
+                    onSelectTrack={props.onSelectTrack}
+                  />
+                  {props.tracks
+                    .filter((track) => track.id !== props.activeTrackId)
+                    .map((track) => (
+                      <PhysicsPaintTrackRowHeader
+                        key={track.id}
+                        trackId={track.id}
+                        label={track.name}
+                        activeTrackId={props.activeTrackId}
+                        onSelectTrack={props.onSelectTrack}
+                      />
+                    ))}
+                  {props.background ? (
+                    <PhysicsPaintTrackRowHeader
+                      trackId={props.background.id}
+                      label="Bg"
+                      kind="background"
+                      activeTrackId={props.activeTrackId}
+                      onSelectTrack={props.onSelectTrack}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
           </div>
+          <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
+            <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
+              {rotoRulerTicks.map(frame => (
+                <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
+              ))}
+            </div>
 
-          {/* 47-01: the active track's rich lane lives INSIDE the shared
-              rows-region (141px) stacked above one presentational row per
-              non-active Paint track and the fixed Background row. When no
-              multi-track bundle is supplied the region holds only the lane,
-              keeping the pre-47 single-lane surface's DOM contract. */}
-          <div class="physics-paint-rows-region" data-rows={props.tracks ? 'multi' : 'single'}>
+            {/* 47-01: the active track's rich lane lives INSIDE the shared
+                rows-region (141px) stacked above one presentational row per
+                non-active Paint track and the fixed Background row. When no
+                multi-track bundle is supplied the region holds only the lane,
+                keeping the pre-47 single-lane surface's DOM contract. */}
+            <div ref={rowsRegionRef} class="physics-paint-rows-region" data-rows={props.tracks ? 'multi' : 'single'} onScroll={syncRowsScroll}>
             <div
               ref={timelineContentRef}
               class="physics-paint-lane"
@@ -3082,9 +3148,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       trackId={track.id}
                       layerId={props.layerId!}
                       frameCells={frameCells}
-                      label={track.name}
-                      activeTrackId={props.activeTrackId}
-                      onSelectTrack={props.onSelectTrack}
                     />
                   ))}
                 {props.background ? (
@@ -3093,14 +3156,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     trackId={props.background.id}
                     layerId={props.layerId!}
                     frameCells={frameCells}
-                    label="Bg"
                     kind="background"
-                    activeTrackId={props.activeTrackId}
-                    onSelectTrack={props.onSelectTrack}
                   />
                 ) : null}
               </>
             ) : null}
+          </div>
           </div>
         </div>
         <div

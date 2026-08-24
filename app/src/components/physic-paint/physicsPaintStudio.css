@@ -2878,6 +2878,12 @@ button.destructive {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  /* 47-01 UAT: the horizontal scroll stops at frame boundaries so the
+     viewport right edge never slices a cell mid-frame. `scroll-padding-left`
+     mirrors the 4px padding so frame 0 snaps to the same origin the ruler
+     uses. */
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 4px;
 }
 
 .physics-paint-timeline-scroll::-webkit-scrollbar {
@@ -3275,10 +3281,53 @@ button.destructive {
   background: #37393a;
 }
 
+/* 47-01 timeline body: the pinned header column (140px) sits beside the
+   horizontally-scrolling frame area. The header column never scrolls
+   horizontally (D-05); the frame area scrolls beneath it. */
+.physics-paint-timeline-body {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Pinned 140px header column (UI-SPEC D-01): lists every row's track name.
+   Its 28px ruler spacer + 141px header-rows band mirror the ruler + rows
+   region heights so header cells align 1:1 with their rows. */
+.physics-paint-header-column {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 140px;
+  min-width: 0;
+  background: #333536;
+  border-right: 1px solid #4c4e50;
+}
+
+.physics-paint-header-ruler-spacer {
+  flex: 0 0 28px;
+  border-bottom: 1px solid #5c6066;
+  background: #47494b;
+}
+
+/* 141px header-rows band, vertically synced with the rows-region (D-05). */
+.physics-paint-header-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.physics-paint-header-rows::-webkit-scrollbar {
+  display: none;
+}
+
 /* 47-01 rows-region: the active track's rich lane stays inside this fixed
    141px band (46 + 1 + 28 + 141 + 34 + 14 = 264) stacked above one row per
    non-active Paint track and the Background row. The region scrolls
-   vertically only when the track count overflows the band. */
+   vertically only when the track count overflows the band. The top border
+   and slightly lighter surface make the region a distinct band below the
+   ruler (and below the active lane's rich surface). */
 .physics-paint-rows-region {
   display: flex;
   flex-direction: column;
@@ -3286,26 +3335,38 @@ button.destructive {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  border-top: 1px solid #4c4e50;
   background: #3e3f41;
 }
 
-/* One presentational 48px track row: clickable header + per-track cells. */
+/* One presentational 48px track row: per-track cells lane only. The row's
+   header cell lives in the pinned header column (PhysicsPaintTrackRowHeader),
+   so the row itself carries no label column. */
 .physics-paint-track-row {
-  display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
-  align-items: stretch;
   height: 48px;
   min-height: 48px;
   border-top: 1px solid #47494b;
   background: #3a3c3d;
 }
 
+.physics-paint-track-row-lane {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* One 48px header cell in the pinned header column. Every row — including
+   the active lane and the fixed Background row — gets exactly one header
+   cell showing its track name (UI-SPEC header column layout). */
 .physics-paint-track-row-header {
   display: flex;
   align-items: center;
-  min-width: 0;
+  height: 48px;
+  min-height: 48px;
   padding: 0 8px;
-  border-right: 1px solid #4c4e50;
+  border-bottom: 1px solid #4c4e50;
   background: #333536;
   cursor: pointer;
   overflow: hidden;
@@ -3315,21 +3376,27 @@ button.destructive {
   background: #3c3e40;
 }
 
+/* Active-track marking (D-04): accent left border + row tint + bold name,
+   distinct from selection orange and rail purple/cyan. */
+.physics-paint-track-row-header-active {
+  border-left: 3px solid #6f90ff;
+  background: #2f3a4d;
+}
+
+.physics-paint-track-row-header-active .physics-paint-track-row-label {
+  font-weight: 800;
+}
+
 .physics-paint-track-row-label {
   color: #d8dde3;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.physics-paint-track-row-lane {
-  min-width: 0;
-  overflow: hidden;
 }
 
 .physics-paint-track-row-cells {
@@ -3411,6 +3478,9 @@ button.destructive {
   overflow: hidden;
   background: #505860;
   color: transparent;
+  /* 47-01 UAT: each cell is a horizontal snap target so the scroll stops at
+     frame boundaries (the viewport right edge never slices a cell). */
+  scroll-snap-align: start;
 }
 
 .physics-paint-roto-cell.roto-fill-empty {

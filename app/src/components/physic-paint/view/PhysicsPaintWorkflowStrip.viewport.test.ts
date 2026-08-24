@@ -39,7 +39,7 @@ vi.mock('@preact/signals', async () => {
 import { describe, expect, it } from 'vitest';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
-import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
 const CELL_WIDTH_PX = 18;
 
@@ -261,13 +261,14 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     render();
   }
 
-  // The strip renders rows via the <PhysicsPaintTrackRow /> component. This
-  // harness executes the strip as a plain function (never a real Preact
-  // render), so component vnodes are opaque — their rendered DOM never appears
-  // in the tree. `PhysicsPaintTrackRow` is hook-free, so we expand it here by
-  // calling the component function directly with its props.
+  // The strip renders rows via the <PhysicsPaintTrackRow /> component and
+  // header cells via <PhysicsPaintTrackRowHeader />. This harness executes
+  // the strip as a plain function (never a real Preact render), so component
+  // vnodes are opaque — their rendered DOM never appears in the tree. Both
+  // components are hook-free, so we expand them here by calling the component
+  // function directly with its props.
   function resolveRow(vnode: TestVNode): TestVNode {
-    if (vnode.type === PhysicsPaintTrackRow) {
+    if (vnode.type === PhysicsPaintTrackRow || vnode.type === PhysicsPaintTrackRowHeader) {
       return (vnode.type as (props: TestVNode['props']) => TestVNode)(vnode.props);
     }
     return vnode;
@@ -275,10 +276,28 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
 
   function trackRows(): TestVNode[] {
     return findAll(tree, (vnode) => (
-      typeof vnode.props['data-track-id'] === 'string' || vnode.type === PhysicsPaintTrackRow
+      typeof vnode.props['data-track-id'] === 'string'
+      || vnode.type === PhysicsPaintTrackRow
+      || vnode.type === PhysicsPaintTrackRowHeader
     ))
       .map(resolveRow)
-      .filter((vnode) => typeof vnode.props['data-track-id'] === 'string');
+      .filter((vnode) => (
+        typeof vnode.props['data-track-id'] === 'string'
+        && (hasClass(vnode, 'physics-paint-track-row') || hasClass(vnode, 'physics-paint-lane'))
+      ));
+  }
+
+  function rowHeaders(): TestVNode[] {
+    return findAll(tree, (vnode) => (
+      typeof vnode.props['data-track-id'] === 'string'
+      || vnode.type === PhysicsPaintTrackRow
+      || vnode.type === PhysicsPaintTrackRowHeader
+    ))
+      .map(resolveRow)
+      .filter((vnode) => (
+        typeof vnode.props['data-track-id'] === 'string'
+        && hasClass(vnode, 'physics-paint-track-row-header')
+      ));
   }
 
   function rowCells(trackId: string): TestVNode[] {
@@ -299,11 +318,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   }
 
   function clickRowHeader(trackId: string): void {
-    const row = trackRows().find((candidate) => candidate.props['data-track-id'] === trackId);
-    expect(row).toBeDefined();
-    const header = findAll(row, (vnode) => hasClass(vnode, 'physics-paint-track-row-header'))[0];
+    const header = rowHeaders().find((candidate) => candidate.props['data-track-id'] === trackId);
     expect(header).toBeDefined();
-    (header.props.onClick as () => void)();
+    (header!.props.onClick as () => void)();
     render();
   }
 
@@ -317,8 +334,44 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     representedFrames: () => representedFrames(tree),
     currentFrame: () => currentFrame,
     trackRows,
+    rowHeaders,
     rowCells,
     clickRowHeader,
+    headerColumn: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-column')),
+    headerRows: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-rows')),
+    rowsRegion: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-rows-region')),
+    rowsRegionRows: () => {
+      const region = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-rows-region'));
+      return findAll(region, (vnode) => (
+        typeof vnode.props['data-track-id'] === 'string'
+        || vnode.type === PhysicsPaintTrackRow
+        || vnode.type === PhysicsPaintTrackRowHeader
+      ))
+        .map(resolveRow)
+        .filter((vnode) => (
+          typeof vnode.props['data-track-id'] === 'string'
+          && hasClass(vnode, 'physics-paint-track-row')
+        ));
+    },
+    headerRowsHeaders: () => {
+      const rows = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-rows'));
+      return findAll(rows, (vnode) => (
+        typeof vnode.props['data-track-id'] === 'string'
+        || vnode.type === PhysicsPaintTrackRow
+        || vnode.type === PhysicsPaintTrackRowHeader
+      ))
+        .map(resolveRow)
+        .filter((vnode) => (
+          typeof vnode.props['data-track-id'] === 'string'
+          && hasClass(vnode, 'physics-paint-track-row-header')
+        ));
+    },
+    // 47-01 UAT: the header column must be OUTSIDE the horizontal scroller so
+    // it stays pinned while the frame cells scroll (D-05).
+    headerInsideScroller: () => {
+      const scroller = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
+      return findAll(scroller, (vnode) => hasClass(vnode, 'physics-paint-track-row-header'));
+    },
     spies: {
       onNavigateToSyncedFrame,
       onGoToFirstFrame,
@@ -673,6 +726,63 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       expect(onSelectTrack).toHaveBeenCalledWith(trackB.id);
       expect(getDocument(layerId)?.activeTrackId).toBe(trackB.id);
+    });
+
+    it('renders a pinned header column with a label cell for every row including the active lane (UI-SPEC header column)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      // Every row — the active lane, the non-active Paint row, and the fixed
+      // Background row — gets exactly one header cell in the header column.
+      const headers = harness.rowHeaders();
+      expect(headers).toHaveLength(3);
+      const activeHeader = headers.find((h) => h.props['data-track-id'] === trackA.id);
+      expect(activeHeader).toBeDefined();
+      expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
+      expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
+      const bgHeader = headers.find((h) => h.props['data-track-id'] === document.background.id);
+      expect(bgHeader).toBeDefined();
+      expect(bgHeader!.props['aria-label']).toBe('Select track Bg');
+      expect(bgHeader!.props.class).toContain('physics-paint-track-row-header-background');
+
+      // The header column is a sibling of the horizontal scroller, never a
+      // descendant — so it stays pinned while the frame cells scroll (D-05).
+      expect(harness.headerInsideScroller()).toHaveLength(0);
+      const headerColumn = harness.headerColumn();
+      expect(headerColumn).toBeDefined();
+      const headerRows = harness.headerRows();
+      expect(headerRows).toBeDefined();
+      // Header cells live inside the 141px header-rows band, so each 48px
+      // header cell aligns 1:1 with its 48px row.
+      expect(harness.headerRowsHeaders()).toHaveLength(3);
+    });
+
+    it('keeps the rows-region a distinct 141px band below the active lane (UI-SPEC rows region)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      // The rows-region is a distinct container holding the active lane plus
+      // the presentational rows; it is a sibling of the header column inside
+      // the timeline body, not fused into the lane.
+      const rowsRegion = harness.rowsRegion();
+      expect(rowsRegion.props['data-rows']).toBe('multi');
+      const lane = findOne(rowsRegion, (vnode) => hasClass(vnode, 'physics-paint-lane'));
+      expect(lane).toBeDefined();
+      expect(harness.rowsRegionRows()).toHaveLength(2);
     });
   });
 });
