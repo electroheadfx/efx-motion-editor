@@ -329,14 +329,25 @@ English product copy only. Never display a raw track UUID, raw Loop Clip UUID, r
 
 ## UI Considerations
 
-Applicable state considerations resolved: 24 covered, 3 dismissed, 0 backstops, 0 unresolved.
+Applicable state considerations resolved: 40 covered, 30 dismissed, 0 backstops, 0 unresolved.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
 | empty | multi-row timeline | ✅ covered | Fresh document always has exactly one Paint track + one Background row; last-track delete is refused, so a zero-track state cannot occur |
+| loading | multi-row timeline | ✅ covered | During controller preparation/commit, rows keep accepted geometry; rail targets expose `aria-busy`; mutation actions use `aria-disabled` with the current controller reason; no optimistic row changes |
+| error | multi-row timeline | ✅ covered | Rejections leave the timeline unchanged (prior geometry, selection, focus preserved); the reason surfaces through the status capsule with the red warning triangle |
 | populated | multi-row timeline | ✅ covered | N Paint rows + one Background row render in stable compositor order; reorder changes order, never identity |
+| partial | multi-row timeline | ✅ covered | A track with empty frames renders transparent cells; lower contributing tracks remain visible through empty upper tracks (locked truth table) |
 | overflow | multi-row timeline | ✅ covered | Rows region is vertically scrollable with the header column pinned; a slim vertical scrollbar on the right; active row auto-scrolls into view |
 | zero-one-many | multi-row timeline | ✅ covered | One track renders one row; many tracks render N rows with vertical scroll; the Background row is always exactly one |
+| long-text | multi-row timeline | ✖ dismissed | Rows contain no persistent product text; names live in the header column (long-text covered there); raw UUID text is prohibited |
+| empty | header column | ✅ covered | Zero tracks cannot occur — the last Paint track delete is refused; a fresh document always has exactly one Paint track + one Background row |
+| loading | header column | ✖ dismissed | The column renders from canonical state; loading is handled at the controller level (`aria-busy` on rail targets), not the column |
+| error | header column | ✖ dismissed | Header-column failures surface through the status capsule; the column itself has no error state |
+| populated | header column | ✅ covered | The column lists every track with name, hide/solo toggles, hover actions, and reorder grab; names truncate with ellipsis, full name on hover tooltip |
+| partial | header column | ✖ dismissed | Tracks are either present or absent; partial data is not a header-column state |
+| overflow | header column | ✅ covered | Many tracks scroll vertically beneath the pinned header column; the column itself never scrolls horizontally; names truncate |
+| zero-one-many | header column | ✅ covered | One track renders one row header; many tracks render N row headers with vertical scroll; the Bg row header is always exactly one |
 | long-text | header column | ✅ covered | Track names truncate with an ellipsis on one line; full name on hover tooltip; the frame area never depends on name length |
 | empty | filmstrip capsule | ✅ covered | Zero Loop Clips removes the capsule DOM, focus targets, and layout footprint (Phase 43 contract) |
 | loading | filmstrip capsule | ✅ covered | During controller preparation/commit, accepted geometry remains visible at 55% opacity with `aria-busy`; no optimistic width or facts |
@@ -346,18 +357,51 @@ Applicable state considerations resolved: 24 covered, 3 dismissed, 0 backstops, 
 | overflow | filmstrip capsule | ✅ covered | Long ranges clip at the shared horizontal viewport and return on scroll; they never wrap, stack, or add a scrollbar |
 | zero-one-many | filmstrip capsule | ✅ covered | Zero hides the capsule; one renders one capsule; many follow placement order and canonical non-overlapping Effective ranges |
 | long-text | filmstrip capsule | ✖ dismissed | The capsule contains no persistent product text; names and Cycle copy live in the tooltip/sidebar, and raw UUID text is prohibited |
-| empty | Background row | ✅ covered | With no clips, the row shows the fallback display — transparent checkerboard or solid fallback swatch; no import UI in Phase 47 |
-| populated | Background row | ✅ covered | Background clips render when present via the shared capsule (D-11); import/repeat/fallback-config UI is Phase 49 |
-| partial | Background row | ✅ covered | Gaps reveal the document fallback identically; the row stays visually distinct from Paint rows (muted tone + lock indicator) |
-| error | track CRUD | ✅ covered | Last-track delete is refused with `A document must always have at least one Paint track.`; delete of a track with accepted assets requires the acknowledge-and-delete dialog |
+| empty | track CRUD | ✖ dismissed | Zero tracks cannot occur — the last Paint track delete is refused |
 | loading | track CRUD | ✅ covered | During async commit, mutation actions use `aria-disabled` with the current controller reason; no optimistic row changes |
-| error | cross-track drag | ✅ covered | Rejections surface through the existing status capsule with the red warning triangle (Phase 46 paste UX); source items stay untouched on failure |
+| error | track CRUD | ✅ covered | Last-track delete is refused with `A document must always have at least one Paint track.`; delete of a track with accepted assets requires the acknowledge-and-delete dialog |
+| populated | track CRUD | ✖ dismissed | CRUD controls are discrete per-row actions; the populated state is the normal rendering of rows with hover actions |
+| partial | track CRUD | ✖ dismissed | CRUD actions are discrete operations; partial data is not a CRUD state |
+| overflow | track CRUD | ✖ dismissed | Many tracks scroll vertically; CRUD controls stay with their row |
+| zero-one-many | track CRUD | ✖ dismissed | One track renders one row with its controls; many tracks render N rows; the last track cannot be deleted |
+| long-text | track CRUD | ✖ dismissed | Track names truncate in the header column (covered); CRUD controls are icon-only with `aria-label`s |
+| empty | active-track marking | ✖ dismissed | An active track always exists — the last Paint track delete is refused |
+| loading | active-track marking | ✅ covered | During async activation (e.g., undo auto-activation), the target row auto-scrolls into view; no optimistic marking |
+| error | active-track marking | ✅ covered | Activation failures leave the previous active track marked; the reason surfaces through the status capsule |
+| populated | active-track marking | ✅ covered | The active row shows the accent left border + row tint + bold name; exactly one active track at all times |
+| partial | active-track marking | ✖ dismissed | The marking is binary (active or not); partial is not applicable |
+| overflow | active-track marking | ✖ dismissed | The marking is a 3px border + tint + bold name; it cannot overflow |
+| zero-one-many | active-track marking | ✅ covered | Exactly one active track always; the marking is unambiguous and distinct from rail selection colors |
+| long-text | active-track marking | ✖ dismissed | The marking carries no text; name truncation is covered by the header-column long-text row |
+| empty | cross-track drag | ✖ dismissed | Drag requires existing content; with no draggables there is nothing to drag |
 | loading | cross-track drag | ✅ covered | Commit-in-flight keeps the destination highlight and insertion preview visible; no optimistic row mutation |
+| error | cross-track drag | ✅ covered | Rejections surface through the existing status capsule with the red warning triangle (Phase 46 paste UX); source items stay untouched on failure |
+| populated | cross-track drag | ✖ dismissed | All existing draggables cross rows with plain drag; destination highlight + live insertion preview — the normal gesture state |
+| partial | cross-track drag | ✖ dismissed | Drag is a gesture, not a data state; partial is not applicable |
+| overflow | cross-track drag | ✖ dismissed | Drags clip at the shared horizontal viewport; the insertion preview shows the landing frame position |
+| zero-one-many | cross-track drag | ✖ dismissed | One draggable crosses as one; many cross as a rail set; the destination row is always exactly one |
+| long-text | cross-track drag | ✖ dismissed | Drag carries no text; rejection copy lives in the status capsule (covered) |
+| empty | hide/solo | ✅ covered | No soloed track → all visible tracks composite; solo → visible+soloed only; hide wins over solo (locked truth table) |
+| loading | hide/solo | ✖ dismissed | During async commit, toggles use `aria-disabled`; no optimistic state changes |
+| error | hide/solo | ✖ dismissed | Failed mutations leave prior state; the reason surfaces through the status capsule |
+| populated | hide/solo | ✖ dismissed | Hide/solo toggles render per-row; opacity/blend for the active track in the right panel — the normal state |
+| partial | hide/solo | ✖ dismissed | Toggles are binary; partial is not applicable |
+| overflow | hide/solo | ✖ dismissed | Controls are fixed-size icons; they cannot overflow |
+| zero-one-many | hide/solo | ✅ covered | Zero soloed tracks shows all; one or many soloed tracks composite only visible+soloed tracks |
+| long-text | hide/solo | ✖ dismissed | Controls carry no text; `aria-label`s are fixed strings |
 | populated | status capsule | ✅ covered | Idle context renders the existing status capsule; rejection renders the red warning triangle + mapped reason |
 | error | status capsule | ✅ covered | Rejection copy is the existing mapped reason; `role="alert"` announces it |
 | long-text | status capsule | ✅ covered | Capsule text ellipsizes on one line; the full reason is available through the styled tooltip |
-| empty | hide/solo | ✅ covered | No soloed track → all visible tracks composite; solo → visible+soloed only; hide wins over solo (locked truth table) |
-| zero-one-many | hide/solo | ✅ covered | Zero soloed tracks shows all; one or many soloed tracks composite only visible+soloed tracks |
+| empty | Background row | ✅ covered | With no clips, the row shows the fallback display — transparent checkerboard or solid fallback swatch; no import UI in Phase 47 |
+| loading | Background row | ✅ covered | During async commit, the row keeps accepted geometry; no optimistic changes |
+| error | Background row | ✅ covered | Rejections leave the row unchanged; the reason surfaces through the status capsule |
+| populated | Background row | ✅ covered | Background clips render when present via the shared capsule (D-11); import/repeat/fallback-config UI is Phase 49 |
+| partial | Background row | ✅ covered | Gaps reveal the document fallback identically; the row stays visually distinct from Paint rows (muted tone + lock indicator) |
+| overflow | Background row | ✅ covered | Background clips render via the shared capsule; long ranges clip at the shared horizontal viewport and return on scroll |
+| zero-one-many | Background row | ✅ covered | Exactly one Background row, always; it cannot reorder above Paint rows (lock indicator) |
+| loading | delete confirmation | ✖ dismissed | Async commit is covered by the track CRUD loading row (`aria-disabled` confirm button) |
+| error | delete confirmation | ✖ dismissed | A failed delete leaves the track and dialog unchanged; the reason surfaces through the status capsule |
+| overflow | delete confirmation | ✖ dismissed | The dialog body wraps; the frame count and track name use tabular-nums and ellipsis-safe layout |
 | long-text | delete confirmation | ✅ covered | The dialog body wraps; the frame count and track name use tabular-nums and ellipsis-safe layout |
 
 ---
