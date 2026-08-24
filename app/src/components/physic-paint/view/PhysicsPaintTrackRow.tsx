@@ -340,7 +340,7 @@ export function PhysicsPaintTrackColumnStrip(props: PhysicsPaintTrackColumnStrip
         title="Add track"
         onClick={() => onAddTrack?.()}
       >
-        <Plus size={12} aria-hidden="true" />
+        <Plus size={11} strokeWidth={2.5} aria-hidden="true" />
       </button>
     </div>
   );

@@ -3360,11 +3360,17 @@ button.destructive {
   justify-content: center;
   width: 18px;
   height: 18px;
+  padding: 0;
   border: 1px solid #58616b;
   border-radius: 6px;
   background: #3a424c;
   color: #e5edf8;
+  line-height: 0;
   cursor: pointer;
+}
+
+.physics-paint-track-column-add svg {
+  flex: 0 0 auto;
 }
 
 .physics-paint-track-column-add:hover {
@@ -3376,24 +3382,41 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* 141px header-rows band, vertically synced with the rows-region (D-05). */
+/* 141px header-rows band, vertically synced with the rows-region (D-05).
+   47-01 UAT round 2: this pinned band carries the ONLY visible vertical
+   scrollbar (slim 6px). It never scrolls away horizontally and only appears
+   when the header rows overflow the 141px cap — which happens exactly when the
+   rows-region overflows — so it behaves as a real control, never a static
+   decorative bar. */
 .physics-paint-header-rows {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none;
+  scrollbar-width: thin;
 }
 
 .physics-paint-header-rows::-webkit-scrollbar {
-  display: none;
+  width: 6px;
+}
+
+.physics-paint-header-rows::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #585a5c;
 }
 
 /* 47-01 mockup redesign rows-region: the region SIZES TO ITS CONTENT — every
-   Paint track row + the fixed Background row at 48px each — with NO fixed
+   Track row + the fixed Background row at 48px each — with NO fixed
    141px band and no dead space below the Background row. It caps at 141px
-   (46 + 1 + 28 + 141 + 34 + 14 = 264 total strip) and scrolls vertically with
-   a slim scrollbar only when the track count overflows the cap. */
+   (46 + 1 + 28 + 141 + 34 + 14 = 264 total strip) and scrolls vertically only
+   when the track count overflows the cap.
+
+   47-01 UAT round 2: the region carries the FULL frame-capacity width
+   (inline width/minWidth set by the strip) so the frame cells extend past the
+   viewport and scroll with the ruler instead of clipping at the window width.
+   Its native vertical scrollbar is hidden — the only visible vertical scroll
+   control lives on the pinned header-rows band (D-05), which overflows exactly
+   when this region does, so no fake static bar is ever drawn. */
 .physics-paint-rows-region {
   display: flex;
   flex-direction: column;
@@ -3402,17 +3425,12 @@ button.destructive {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  border-top: 1px solid #4c4e50;
+  scrollbar-width: none;
   background: #3e3f41;
 }
 
 .physics-paint-rows-region::-webkit-scrollbar {
-  width: 6px;
-}
-
-.physics-paint-rows-region::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: #585a5c;
+  display: none;
 }
 
 /* One presentational 48px track row: per-track cells lane only. The row's
@@ -3431,6 +3449,14 @@ button.destructive {
   height: 48px;
   min-width: 0;
   overflow: hidden;
+}
+
+/* 47-01 UAT round 2 (tight packing): the FIRST row in the region carries no
+   top border — the ruler's own border-bottom is the only line above the first
+   lane, so the frame cells sit flush under the ruler with the mockup's 2px
+   rhythm. Later rows keep their 1px border-top as the row separators. */
+.physics-paint-rows-region > :first-child {
+  border-top: 0;
 }
 
 /* One 48px header cell in the pinned header column. Every row — including
@@ -3455,7 +3481,9 @@ button.destructive {
 }
 
 .physics-paint-track-row-header:hover {
-  background: #3c3e40;
+  /* 47-01 UAT round 2: slightly lighter than the resting state so the track
+     name keeps full contrast when the hover tools appear. */
+  background: #3f4145;
 }
 
 /* Active-track marking (D-04): accent left border + row tint + bold name,
@@ -3521,7 +3549,11 @@ button.destructive {
 /* Hover-visible tool buttons (eye / pencil / copy / trash-2), overlaid on the
    header's right edge. Hidden by default so the label gets full width; shown
    on row hover. pointer-events are disabled while hidden so the invisible
-   buttons never swallow header clicks. */
+   buttons never swallow header clicks.
+
+   47-01 UAT round 2: the dark right-to-left gradient is removed — it washed a
+   dark veil over the track name. The buttons now carry their own solid
+   surfaces (below), so they separate from the label without a gradient. */
 .physics-paint-track-row-tools {
   position: absolute;
   right: 4px;
@@ -3530,8 +3562,7 @@ button.destructive {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding-left: 20px;
-  background: linear-gradient(90deg, rgba(40, 42, 44, 0) 0%, rgba(40, 42, 44, 0.92) 38%);
+  padding-left: 4px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -3551,16 +3582,16 @@ button.destructive {
   justify-content: center;
   width: 18px;
   height: 18px;
-  border: 1px solid transparent;
+  border: 1px solid #58616b;
   border-radius: 4px;
-  background: transparent;
-  color: #a9b0b8;
+  background: #3a424c;
+  color: #d8dde3;
   cursor: pointer;
 }
 
 .physics-paint-track-row-tool-button:hover {
-  background: #3a424c;
-  border-color: #58616b;
+  background: #45505c;
+  border-color: #69727c;
   color: #e5edf8;
 }
 
@@ -3696,7 +3727,10 @@ button.destructive {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 24px;
+  /* 47-01 UAT round 2 (tight packing): the cell fills the locked 48px row
+     with a 2px rhythm above and below (mockup density) instead of leaving
+     12px of dead gray on each side. The 18px pitch is unchanged. */
+  height: 44px;
   padding: 0;
   border: 1px solid #3d454d;
   border-radius: 1px;

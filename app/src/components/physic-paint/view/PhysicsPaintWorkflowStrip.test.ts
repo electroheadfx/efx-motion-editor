@@ -389,7 +389,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(repeatDot).toContain('height: 4px');
     expect(repeatDot).toContain('top: 2px');
     expect(repeatDot).toContain('right: 2px');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
+    // 47-01 UAT round 2: the cell fills the locked 48px row (44px tall = 2px
+    // rhythm above/below), tightened from the old 24px stub height.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 44px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
   });
 
@@ -423,7 +425,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(cut).toContain('pointer-events: none');
     expect(cut).not.toMatch(/background:\s*(?:white|#fff(?:fff)?|#f8fafc|rgba?\(255)/i);
     expect(cut).not.toMatch(/(?:^|\n)\s*(?:height|padding|margin|min-width|max-width):/);
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
+    // 47-01 UAT round 2: the cell fills the locked 48px row (44px tall = 2px
+    // rhythm above/below), tightened from the old 24px stub height.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 44px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
