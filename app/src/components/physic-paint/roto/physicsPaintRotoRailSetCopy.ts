@@ -779,6 +779,37 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
       if (leftRecord) nextBreaks.add(firstOf.freshFirstKeyId);
     }
   }
+  // Right-mirror of the rail-boundary rule: the pasted set must not bridge into
+  // existing content to its RIGHT either. A break on the set's first key only
+  // severs its left edge; the first existing key after the set's last fresh
+  // frame must own an incoming break, otherwise the segmenter merges the set's
+  // last key with the following rail across the empty frames. Skipped when the
+  // destination is strictly INSIDE a connected segment span (the set joins that
+  // rail). Idempotent when the following key already owns a break.
+  const setFirstFreshFrame = freshRecords.reduce(
+    (minFrame, record) => Math.min(minFrame, record.appFrame),
+    Number.POSITIVE_INFINITY,
+  );
+  const setLastFreshFrame = freshRecords.reduce(
+    (maxFrame, record) => Math.max(maxFrame, record.appFrame),
+    Number.NEGATIVE_INFINITY,
+  );
+  if (freshRecords.length > 0) {
+    let setLeftBelow: PhysicPaintRotoRealKeyRecord | undefined;
+    let setRightAbove: PhysicPaintRotoRealKeyRecord | undefined;
+    for (const record of document.realKeyRecords) {
+      if (record.appFrame < setFirstFreshFrame) {
+        if (setLeftBelow === undefined || record.appFrame > setLeftBelow.appFrame) setLeftBelow = record;
+      } else if (record.appFrame > setLastFreshFrame) {
+        if (setRightAbove === undefined || record.appFrame < setRightAbove.appFrame) setRightAbove = record;
+      }
+    }
+    const setInsideConnectedSpan = setLeftBelow !== undefined && setRightAbove !== undefined
+      && !document.incomingInterpolationBreakKeyIds.includes(setRightAbove.keyId);
+    if (setRightAbove !== undefined && !setInsideConnectedSpan) {
+      nextBreaks.add(setRightAbove.keyId);
+    }
+  }
 
   // Build the complete next document (single immutable proposal).
   const nextRealKeyRecords = Object.freeze(

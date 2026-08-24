@@ -185,6 +185,34 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     expect(pasted.impact.identities[1].id).toBe(freshBFirst);
   });
 
+  it('RED 1m: pasting a rail set BEFORE an existing rail stays isolated (right-mirror boundary law)', () => {
+    const built = buildRotoRailSetCopyPayload({
+      document: buildDocument([recordKey('s0', 0), recordKey('s1', 1)], [], []),
+      members: [{ kind: 'key-rail', firstKeyId: 's0' }],
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const document = buildDocument([recordKey('j5', 5), recordKey('j6', 6)], [], []);
+    const pasted = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 1,
+    });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
+    // The fresh rail lands at 1..2 with nothing before it, so no break lands on
+    // the fresh anchor — but the right mirror gives the following rail's first
+    // key j5 an incoming break, otherwise the segmenter would merge the pasted
+    // rail into [5,6] across the empty frames.
+    expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain('j5');
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: pasted.proposal.realKeyRecords,
+      incomingInterpolationBreakKeyIds: new Set(pasted.proposal.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds: new Set(),
+    });
+    expect(segments.map((segment) => [segment.firstKeyFrame, segment.lastKeyFrame])).toEqual([[1, 2], [5, 6]]);
+  });
+
   it('RED 2: pasting a Motion Rail duplicates the shared-source placement with relocated phase fields', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'g1',
