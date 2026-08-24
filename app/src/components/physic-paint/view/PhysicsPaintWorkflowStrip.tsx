@@ -3184,7 +3184,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 non-active Paint track and the fixed Background row. When no
                 multi-track bundle is supplied the region holds only the lane,
                 keeping the pre-47 single-lane surface's DOM contract. */}
-            <div ref={rowsRegionRef} class="physics-paint-rows-region" data-rows={props.tracks ? 'multi' : 'single'} onScroll={syncRowsScroll}>
+            {/* 47-01 UAT round 2: the rows-region carries the SAME full
+                frame-capacity width as the ruler and the active lane, so the
+                per-track frame cells extend past the viewport and scroll with
+                the ruler instead of clipping at the window width. */}
+            <div
+              ref={rowsRegionRef}
+              class="physics-paint-rows-region"
+              data-rows={props.tracks ? 'multi' : 'single'}
+              onScroll={syncRowsScroll}
+              style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
+            >
               {props.tracks && props.activeTrackId && props.layerId ? (
                 <>
                   {props.tracks.map((track) =>

@@ -785,6 +785,38 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(harness.rowsRegionRows()).toHaveLength(2);
     });
 
+    it('carries the full frame-capacity width on the rows-region and every track row (UAT round 2 horizontal scroll)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+        // A document wider than a typical viewport: the rows must extend past
+        // the visible window to the last cell, matching the ruler extent.
+        capacity: 600,
+      });
+      harness.render();
+
+      const fullWidth = `${harness.capacity * CELL_WIDTH_PX}px`;
+      // The rows-region itself carries the full capacity width so its block
+      // child does not clip at the viewport edge (the ruler and active lane
+      // already reach the full extent).
+      const rowsRegion = harness.rowsRegion();
+      const rowsStyle = rowsRegion.props.style as { width?: string; minWidth?: string };
+      expect(String(rowsStyle.width)).toBe(fullWidth);
+      expect(String(rowsStyle.minWidth)).toBe(fullWidth);
+      // Each presentational track row's cells grid mirrors the same extent so
+      // its cells stay scrollable to the last frame like the active lane.
+      for (const row of harness.rowsRegionRows()) {
+        const cells = findOne(row, (vnode) => hasClass(vnode, 'physics-paint-track-row-cells'));
+        expect(cells).toBeDefined();
+        const cellsStyle = cells!.props.style as { minWidth?: string };
+        expect(String(cellsStyle.minWidth)).toBe(fullWidth);
+      }
+    });
+
     it('renders rows in document order with the active lane highlighted in place (mockup redesign)', () => {
       const layerId = 'multi-track-layer';
       const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');

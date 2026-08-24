@@ -88,7 +88,14 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
         <div
           class="physics-paint-track-row-cells"
           role="row"
-          style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROW_CELL_WIDTH_PX}px)` }}
+          style={{
+            gridTemplateColumns: `repeat(${frameCells.length}, ${ROW_CELL_WIDTH_PX}px)`,
+            /* 47-01 UAT round 2: the cells lane must never shrink below the
+               full frame capacity, so the track's frames stay scrollable to
+               the last cell like the active lane (the rows-region carries the
+               matching full width from the strip). */
+            minWidth: `${frameCells.length * ROW_CELL_WIDTH_PX}px`,
+          }}
         >
           {frameCells.map((frame) => {
             const state = resolveTrackRowCellState(layerId, trackId, frame);
