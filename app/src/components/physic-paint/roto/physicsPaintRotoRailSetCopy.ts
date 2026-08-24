@@ -560,6 +560,7 @@ interface FreshAllocation {
 function allocateFreshIdentities(
   payload: RotoRailSetCopyPayload,
   prescribed: RotoRailSetFreshIdentityAllocation | undefined,
+  crossTrack: boolean,
 ): FreshAllocation {
   const keyIds: Record<string, string> = {};
   const loopIds: Record<string, string> = {};
@@ -572,6 +573,17 @@ function allocateFreshIdentities(
     } else {
       if (loopIds[member.loopId] !== undefined) continue;
       loopIds[member.loopId] = prescribed?.loopIds?.[member.loopId] ?? createPhysicPaintRotoKeyId();
+      // 46 UAT: a same-track pasted Loop Clip duplicates its source cycle, so
+      // allocate a fresh key for every source key — the parent recompute must
+      // replay the SAME fresh keys or the semantic impact mismatches. Cross-track
+      // pastes re-point onto the key-rail members' fresh keys instead (and fail
+      // closed when a source key is not covered), so no loop-source allocation.
+      if (!crossTrack) {
+        for (const sourceKeyId of member.clip.sourceKeyIds) {
+          if (keyIds[sourceKeyId] !== undefined) continue;
+          keyIds[sourceKeyId] = prescribed?.keyIds?.[sourceKeyId] ?? createPhysicPaintRotoKeyId();
+        }
+      }
     }
   }
   return { keyIds, loopIds };
@@ -628,7 +640,10 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
   }
 
   // Fresh identities (replay the child allocation on the parent recompute).
-  const allocation = allocateFreshIdentities(payload, input.freshIdentityAllocation);
+  const crossTrack = input.targetTrackId !== undefined
+    && payload.sourceTrackId !== ''
+    && payload.sourceTrackId !== input.targetTrackId;
+  const allocation = allocateFreshIdentities(payload, input.freshIdentityAllocation, crossTrack);
 
   // Build fresh records, duplicated loops, breaks.
   const freshRecords: PhysicPaintRotoRealKeyRecord[] = [];
@@ -664,9 +679,6 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     } else {
       const freshLoopId = allocation.loopIds[member.loopId] ?? createPhysicPaintRotoKeyId();
       const destinationStart = member.placementStart + delta;
-      const crossTrack = input.targetTrackId !== undefined
-        && payload.sourceTrackId !== ''
-        && payload.sourceTrackId !== input.targetTrackId;
       if (crossTrack) {
         // 46-03 D-06: re-point every track-local source reference onto the
         // destination's freshly allocated frames (created by the key-rail
