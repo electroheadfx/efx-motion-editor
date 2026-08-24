@@ -406,10 +406,19 @@ function buildDuplicatedLoopClip(
   destinationStart: number,
   delta: number,
   repeatOverride?: number,
+  sourceEffectiveEndExclusive?: number,
   repoint?: { readonly sourceKeyIds: readonly string[]; readonly frameOverrides?: readonly { appFrame: number; keyId: string }[] },
 ): PhysicPaintRotoLoopClip {
   const sourceKeyIds = repoint?.sourceKeyIds ?? clip.sourceKeyIds;
   const frameOverrides = repoint?.frameOverrides ?? clip.frameOverrides;
+  // 46 UAT R5: an infinity source frozen to a finite repeat has NO lifecycle
+  // (infinity clips never carry one), but the apply payload validator requires
+  // every loop clip to be lifecycle-complete. Synthesize a complete lifecycle
+  // pinned to the frozen effective end so the pasted clip passes the bridge
+  // apply validation and renders to exactly the source's visible duration.
+  const frozenEndExclusive = repeatOverride !== undefined && sourceEffectiveEndExclusive !== undefined
+    ? destinationStart + (sourceEffectiveEndExclusive - clip.placementStart)
+    : undefined;
   return Object.freeze({
     loopId: freshLoopId,
     placementStart: destinationStart,
@@ -438,7 +447,16 @@ function buildDuplicatedLoopClip(
             keyId: override.keyId,
           }))),
         }
-      : {}),
+      : frozenEndExclusive !== undefined
+        ? {
+            syncState: 'synchronized',
+            provenanceState: 'attached',
+            phaseOrigin: destinationStart,
+            originalEndExclusive: frozenEndExclusive,
+            visibleRanges: Object.freeze([Object.freeze({ start: destinationStart, endExclusive: frozenEndExclusive })]),
+            frameOverrides: Object.freeze([]),
+          }
+        : {}),
   }) as PhysicPaintRotoLoopClip;
 }
 
@@ -642,9 +660,9 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
         // fails the paste closed — never a dangling/foreign-track reference.
         const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
         if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
-        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, repoint));
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));
       } else {
-        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat));
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive));
       }
     }
   }

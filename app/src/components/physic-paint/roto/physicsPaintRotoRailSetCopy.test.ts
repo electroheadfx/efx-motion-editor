@@ -470,6 +470,14 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
     // Same effective visible duration as the source (0..24 → 40..64, 24 frames).
     expect(pasted.impact.identities).toHaveLength(1);
     expect(pasted.impact.identities[0].effectiveEndExclusive).toBe(64);
+    // 46 UAT R5: the frozen clip must be lifecycle-complete so the bridge apply
+    // validator (isLifecycleCompletePhysicPaintRotoLoopClip) accepts the payload.
+    expect(duplicated.syncState).toBe('synchronized');
+    expect(duplicated.provenanceState).toBe('attached');
+    expect(duplicated.phaseOrigin).toBe(40);
+    expect(duplicated.originalEndExclusive).toBe(64);
+    expect(duplicated.visibleRanges).toEqual([{ start: 40, endExclusive: 64 }]);
+    expect(duplicated.frameOverrides).toEqual([]);
   });
 
   it('captures a truly-unbounded infinity source at the parent end and freezes it finite', () => {
