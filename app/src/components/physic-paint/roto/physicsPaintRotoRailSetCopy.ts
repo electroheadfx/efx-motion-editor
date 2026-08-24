@@ -53,6 +53,24 @@ export interface RotoRailSetCopyLoopMember {
   readonly placementStart: number;
   /** Frozen Loop Clip snapshot; paste duplicates the shared-source placement. */
   readonly clip: PhysicPaintRotoLoopClip;
+  /**
+   * Resolver-resolved source end-exclusive (computed against the source
+   * document at copy time). For a plain infinity clip the resolver would
+   * otherwise re-resolve `naturalEnd = capacity` against the empty paste
+   * destination and expand beyond the source's visible duration (UAT
+   * paste-repeat regression). Capturing the true source end lets occupancy,
+   * range checks, and the pasted extent all mirror what the source actually
+   * rendered.
+   */
+  readonly effectiveEndExclusive: number;
+  /**
+   * Finite repeat applied on paste for an infinity-repeat source — the
+   * source's visible cycle count, so the pasted copy is frozen to the finite
+   * duration it effectively had instead of staying 'infinity' and growing with
+   * the destination's parent end. Undefined for finite sources (their own
+   * `clip.repeat` is reused verbatim).
+   */
+  readonly repeat?: number;
 }
 
 export type RotoRailSetCopyMember = RotoRailSetCopyKeyRailMember | RotoRailSetCopyLoopMember;
@@ -208,6 +226,62 @@ function orderMembers(members: readonly RotoRailSetCopyMember[]): readonly RotoR
   }));
 }
 
+/**
+ * Resolve a Loop Clip's visible extent the way the resolver does, so the copy
+ * payload can freeze an infinity-repeat source to the finite duration it
+ * actually rendered. Mirrors the resolver's `deriveBoundary` scan (next
+ * unowned real key, then next loop-start to the right) against the SOURCE
+ * document, plus the sourceOffsets-derived cycle length, and reports the
+ * finite repeat count that reproduces that end-exclusive. Falls back to the
+ * clip's own repeat for finite sources.
+ */
+function resolveLoopCopyExtent(
+  document: PhysicPaintRotoPhysicalDocument,
+  clip: PhysicPaintRotoLoopClip,
+): { readonly effectiveEndExclusive: number; readonly repeat: number | undefined } {
+  const recordByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  const positions: number[] = [];
+  for (const keyId of clip.sourceKeyIds) {
+    const record = recordByKeyId.get(keyId);
+    if (record !== undefined) positions.push(record.appFrame);
+  }
+  positions.sort((left, right) => left - right);
+  const cycleLength = positions.length === 0
+    ? clip.sourceKeyIds.length
+    : positions[positions.length - 1]! - positions[0]! + 1;
+
+  if (clip.repeat !== 'infinity') {
+    const finiteEnd = clip.placementStart + cycleLength * clip.repeat;
+    return {
+      effectiveEndExclusive: typeof clip.originalEndExclusive === 'number'
+        ? clip.originalEndExclusive
+        : finiteEnd,
+      repeat: undefined,
+    };
+  }
+
+  const ownedSourceKeyIds = new Set([
+    ...clip.sourceKeyIds,
+    ...(clip.frameOverrides?.map((override) => override.keyId) ?? []),
+  ]);
+  let boundary = document.capacity;
+  for (const record of document.realKeyRecords) {
+    if (record.appFrame < clip.placementStart) continue;
+    if (ownedSourceKeyIds.has(record.keyId)) continue;
+    if (record.appFrame < boundary) boundary = record.appFrame;
+  }
+  for (const other of document.loopClips) {
+    if (other.loopId === clip.loopId) continue;
+    if (other.placementStart <= clip.placementStart) continue;
+    if (other.placementStart < boundary) boundary = other.placementStart;
+  }
+  const effectiveEndExclusive = Math.max(clip.placementStart, Math.min(document.capacity, boundary));
+  return {
+    effectiveEndExclusive,
+    repeat: Math.max(1, Math.round((effectiveEndExclusive - clip.placementStart) / cycleLength)),
+  };
+}
+
 export function buildRotoRailSetCopyPayload(input: {
   readonly document: PhysicPaintRotoPhysicalDocument;
   readonly members: readonly RailSetIdentity[];
@@ -267,11 +341,14 @@ export function buildRotoRailSetCopyPayload(input: {
       if (clip === undefined) {
         return Object.freeze({ ok: false, reason: 'stale-member' });
       }
+      const extent = resolveLoopCopyExtent(document, clip);
       built.push(Object.freeze({
         kind: 'loop',
         loopId: member.loopId,
         placementStart: clip.placementStart,
         clip: Object.freeze(clip),
+        effectiveEndExclusive: extent.effectiveEndExclusive,
+        ...(extent.repeat !== undefined ? { repeat: extent.repeat } : {}),
       }));
     }
   }
@@ -325,6 +402,7 @@ function buildDuplicatedLoopClip(
   freshLoopId: string,
   destinationStart: number,
   delta: number,
+  repeatOverride?: number,
   repoint?: { readonly sourceKeyIds: readonly string[]; readonly frameOverrides?: readonly { appFrame: number; keyId: string }[] },
 ): PhysicPaintRotoLoopClip {
   const sourceKeyIds = repoint?.sourceKeyIds ?? clip.sourceKeyIds;
@@ -333,7 +411,7 @@ function buildDuplicatedLoopClip(
     loopId: freshLoopId,
     placementStart: destinationStart,
     sourceKeyIds: Object.freeze([...sourceKeyIds]),
-    repeat: clip.repeat,
+    repeat: repeatOverride ?? clip.repeat,
     mode: clip.mode,
     ...(clip.scriptId !== undefined
       ? {
@@ -380,14 +458,6 @@ function buildFreshKeyRecord(
   }) as PhysicPaintRotoRealKeyRecord;
 }
 
-/** Source extent of one copied loop (end-exclusive) for occupancy and scanning. */
-function loopSourceEndExclusive(clip: PhysicPaintRotoLoopClip): number {
-  if (typeof clip.originalEndExclusive === 'number') return clip.originalEndExclusive;
-  const cycleLength = clip.sourceKeyIds.length;
-  const repeats = clip.repeat === 'infinity' ? 1 : clip.repeat;
-  return clip.placementStart + cycleLength * repeats;
-}
-
 interface PastedExtent {
   readonly keyDestinations: readonly number[];
   readonly loopEndExclusives: readonly number[];
@@ -410,7 +480,7 @@ function computePastedExtent(
         if (destinationFrame > lastFrame) lastFrame = destinationFrame;
       }
     } else {
-      const endExclusive = loopSourceEndExclusive(member.clip) + delta;
+      const endExclusive = member.effectiveEndExclusive + delta;
       loopEndExclusives.push(endExclusive);
       if (endExclusive - 1 > lastFrame) lastFrame = endExclusive - 1;
     }
@@ -426,7 +496,7 @@ function computeLastSetEnd(members: readonly RotoRailSetCopyMember[]): number {
       const lastEntry = member.entries[member.entries.length - 1];
       if (lastEntry && lastEntry.sourceAppFrame > last) last = lastEntry.sourceAppFrame;
     } else {
-      const end = loopSourceEndExclusive(member.clip) - 1;
+      const end = member.effectiveEndExclusive - 1;
       if (end > last) last = end;
     }
   }
@@ -569,9 +639,9 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
         // fails the paste closed — never a dangling/foreign-track reference.
         const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
         if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
-        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, repoint));
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, repoint));
       } else {
-        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta));
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat));
       }
     }
   }
@@ -648,7 +718,7 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
       kind: 'loop' as const,
       id: freshLoopId,
       firstFrame: member.placementStart + delta,
-      effectiveEndExclusive: loopSourceEndExclusive(member.clip) + delta,
+      effectiveEndExclusive: member.effectiveEndExclusive + delta,
     });
   });
 
