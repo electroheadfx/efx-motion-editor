@@ -194,18 +194,27 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const duplicated = newClips[0];
     expect(duplicated.loopId).not.toBe('g1');
     expect(duplicated.placementStart).toBe(8);
-    expect(duplicated.sourceKeyIds).toEqual(['k0']);
+    // 46 UAT: the pasted Loop Clip duplicates its source cycle — a fresh source
+    // key is created at the destination frame, not a reference to the original.
+    expect(duplicated.sourceKeyIds).toHaveLength(1);
+    expect(duplicated.sourceKeyIds[0]).not.toBe('k0');
     expect(duplicated.mode).toBe('progressive');
     expect(duplicated.repeat).toBe(3);
     expect(duplicated.phaseOrigin).toBe(8);
     expect(duplicated.originalEndExclusive).toBe(14);
     expect(duplicated.visibleRanges).toEqual([{ start: 8, endExclusive: 14 }]);
-    // Shared source cycle: identical sourceCycleId; fresh placement identity.
+    // The fresh source key lands at the destination frame (8).
+    const freshSource = pasted.proposal.realKeyRecords.find((r) => r.keyId === duplicated.sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    expect(freshSource!.appFrame).toBe(8);
+    // The pasted Loop Clip owns a fresh source cycle (fresh keys), so its
+    // source cycle ID differs from the original's.
     expect(getPhysicsPaintRotoSourceCycleId(duplicated.sourceKeyIds))
-      .toBe(getPhysicsPaintRotoSourceCycleId(['k0']));
-    // The original group record is unchanged.
+      .not.toBe(getPhysicsPaintRotoSourceCycleId(['k0']));
+    // The original group record is unchanged; the original k0 remains and a
+    // fresh source key is added at frame 8.
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'g1')).toEqual(clip);
-    expect(pasted.proposal.realKeyRecords).toEqual(document.realKeyRecords);
+    expect(pasted.proposal.realKeyRecords).toHaveLength(2);
     expect(pasted.impact.identities).toHaveLength(1);
     expect(pasted.impact.identities[0]).toMatchObject({ kind: 'loop', id: duplicated.loopId, firstFrame: 8 });
   });
@@ -422,7 +431,13 @@ describe('physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cros
     const newClips = pasted.proposal.loopClips.filter((clip) => clip.loopId !== 'hold1');
     expect(newClips).toHaveLength(1);
     expect(newClips[0].loopId).not.toBe('hold1');
-    expect(newClips[0].sourceKeyIds).toEqual(['k0']);
+    // 46 UAT: the pasted Loop Clip references the fresh source key created by
+    // the key-rail member at the destination frame, not the original k0.
+    expect(newClips[0].sourceKeyIds).toHaveLength(1);
+    expect(newClips[0].sourceKeyIds[0]).not.toBe('k0');
+    const freshSource = pasted.proposal.realKeyRecords.find((r) => r.keyId === newClips[0].sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    expect(freshSource!.appFrame).toBe(10);
   });
 });
 
@@ -452,11 +467,11 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
     expect(member.effectiveEndExclusive).toBe(24);
     expect(member.repeat).toBe(4);
 
-    // Paste into an EMPTY destination (no k24 to the right) — the exact case
-    // that previously made the pasted loop re-resolve `naturalEnd = capacity`
-    // and expand beyond the source.
-    const emptyDocument = buildDocument([]);
-    const pasted = proposeRails({ document: emptyDocument, payload: built.payload, placementMode: 'paste', destinationAppFrame: 40 });
+    // Paste into a destination that carries the source keys (k0, k5) but no
+    // k24 to the right — the exact case that previously made the pasted loop
+    // re-resolve `naturalEnd = capacity` and expand beyond the source.
+    const destinationDocument = buildDocument([recordKey('k0', 0), recordKey('k5', 5)]);
+    const pasted = proposeRails({ document: destinationDocument, payload: built.payload, placementMode: 'paste', destinationAppFrame: 40 });
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`Infinity-loop paste must resolve: ${pasted.reason}`);
     const newClips = pasted.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1');
@@ -496,7 +511,7 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
     if (member.kind !== 'loop') throw new Error('expected loop member');
     expect(member.effectiveEndExclusive).toBe(100);
     expect(member.repeat).toBe(17); // round(100 / 6)
-    const pasted = proposeRails({ document: buildDocument([]), payload: built.payload, placementMode: 'paste', destinationAppFrame: 0 });
+    const pasted = proposeRails({ document: buildDocument([recordKey('k0', 0), recordKey('k5', 5)], [], [], 200), payload: built.payload, placementMode: 'paste', destinationAppFrame: 20 });
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
     expect(pasted.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1')[0].repeat).toBe(17);

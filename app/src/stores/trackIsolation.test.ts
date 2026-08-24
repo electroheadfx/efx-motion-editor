@@ -350,12 +350,18 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
       [12, makePayload(2, 'a@2').dataUrl],
     ]);
     for (const record of fresh) expect(record.payload.dataUrl).toBe(sourcePayloads.get(record.appFrame));
-    // Fresh loop identity; the same-track paste keeps source references verbatim.
+    // Fresh loop identity; the same-track paste duplicates the source cycle, so
+    // the pasted loop references the fresh source key (the key-rail's copy of
+    // k0 at frame 10), never the original k0.
     const clips = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A);
     const freshClips = clips.filter((clip) => clip.loopId !== 'hold-a');
     expect(freshClips).toHaveLength(1);
     expect(freshClips[0].loopId).not.toBe('hold-a');
-    expect(freshClips[0].sourceKeyIds).toEqual(['k0']);
+    expect(freshClips[0].sourceKeyIds).toHaveLength(1);
+    expect(freshClips[0].sourceKeyIds[0]).not.toBe('k0');
+    const freshSource = records.find((record) => record.keyId === freshClips[0].sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    expect(freshSource!.appFrame).toBe(10);
   });
 
   it('cross-track paste isolation: pasting A\'s selection into B changes B only; A records, caches, and revisions stay byte-identical', () => {
@@ -501,11 +507,17 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     // Duplicate scan: last set end 2 → first fitting anchor 4 → fresh 4/6.
     expect(fresh.map((record) => record.appFrame).sort((a, b) => a - b)).toEqual([4, 6]);
     expect(fresh.every((record) => !['k0', 'k2'].includes(record.keyId))).toBe(true);
-    // The covered Hold is duplicated with a fresh loop identity (same-track verbatim sources).
+    // The covered Hold is duplicated with a fresh loop identity; the same-track
+    // duplicate duplicates the source cycle, so the loop references the fresh
+    // source key (the key-rail's copy of k0 at frame 4), never the original k0.
     const clips = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A);
     expect(clips).toHaveLength(2);
     const freshClip = clips.find((clip) => clip.loopId !== 'hold-a')!;
-    expect(freshClip.sourceKeyIds).toEqual(['k0']);
+    expect(freshClip.sourceKeyIds).toHaveLength(1);
+    expect(freshClip.sourceKeyIds[0]).not.toBe('k0');
+    const freshSource = records.find((record) => record.keyId === freshClip.sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    expect(freshSource!.appFrame).toBe(4);
     expect(freshClip.placementStart).toBe(4);
   });
 });

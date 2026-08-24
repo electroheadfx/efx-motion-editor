@@ -635,6 +635,15 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
   const duplicatedLoopClips: PhysicPaintRotoLoopClip[] = [];
   const freshBreakOwners = new Set<string>();
   const memberFirstFrames: { readonly freshFirstFrame: number; readonly freshFirstKeyId: string }[] = [];
+  // Source keys already covered by a key-rail member in the set — those get
+  // their fresh records from the key-rail branch, so a loop member must not
+  // duplicate them.
+  const keyRailCoveredSourceKeys = new Set<string>();
+  for (const member of payload.members) {
+    if (member.kind === 'key-rail') {
+      for (const entry of member.entries) keyRailCoveredSourceKeys.add(entry.sourceKeyId);
+    }
+  }
   for (const member of payload.members) {
     if (member.kind === 'key-rail') {
       let firstFrame: number | null = null;
@@ -660,13 +669,38 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
         && payload.sourceTrackId !== input.targetTrackId;
       if (crossTrack) {
         // 46-03 D-06: re-point every track-local source reference onto the
-        // destination's freshly allocated frames; impossible re-pointing
-        // fails the paste closed — never a dangling/foreign-track reference.
+        // destination's freshly allocated frames (created by the key-rail
+        // members of the set); impossible re-pointing fails the paste closed.
         const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
         if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
         duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));
       } else {
-        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive));
+        // 46 UAT: a same-track pasted Loop Clip duplicates its source cycle —
+        // create fresh real keys at the destination frames (destinationStart +
+        // source offset) so the pasted rail shows blue source keys, not
+        // unresolved gray cells. A source cycle that cannot be fully duplicated
+        // (a missing source key) fails closed.
+        const sourceRecords = (member.clip.sourceKeyIds as readonly string[])
+          .map((keyId: string) => document.realKeyRecords.find((record: PhysicPaintRotoRealKeyRecord) => record.keyId === keyId))
+          .filter((record): record is PhysicPaintRotoRealKeyRecord => record !== undefined);
+        if (sourceRecords.length !== member.clip.sourceKeyIds.length) {
+          return rejectPaste('loop-source-outside-pasted-set');
+        }
+        const firstSourceFrame = sourceRecords[0]?.appFrame;
+        if (firstSourceFrame !== undefined) {
+          for (const sourceRecord of sourceRecords) {
+            // A key-rail member in the set already created this source key's
+            // fresh record; the loop only creates records for keys it owns alone.
+            if (keyRailCoveredSourceKeys.has(sourceRecord.keyId)) continue;
+            const freshKeyId = allocation.keyIds[sourceRecord.keyId] ?? createPhysicPaintRotoKeyId();
+            allocation.keyIds[sourceRecord.keyId] = freshKeyId;
+            const freshFrame = destinationStart + (sourceRecord.appFrame - firstSourceFrame);
+            freshRecords.push(buildFreshKeyRecord(sourceRecord.payload, freshKeyId, freshFrame));
+          }
+        }
+        const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
+        if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));
       }
     }
   }
