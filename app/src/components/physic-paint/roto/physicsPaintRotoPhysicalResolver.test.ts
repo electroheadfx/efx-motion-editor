@@ -780,7 +780,7 @@ describe('incoming interpolation break lifecycle', () => {
     expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'pasted-X')).toBe(false);
   });
 
-  it('Copy/Paste as the leftmost content stays connected (no boundary break)', () => {
+  it('Copy/Paste before an existing rail isolates the key — the following rail keeps an incoming break (right-mirror boundary law)', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
       { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
       { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
@@ -803,9 +803,43 @@ describe('incoming interpolation break lifecycle', () => {
 
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Leading paste must resolve');
-    // Nothing lies to the left of the paste at 2, so no boundary break is
-    // needed — the fresh key owns no incoming interpolation break.
-    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds ?? []).not.toContain('pasted-X');
+    // The fresh key owns NO incoming break (nothing lies to its left), but the
+    // following rail's first key A@5 keeps an incoming break — a break owned by
+    // the fresh key alone would only sever its left edge, and the segmenter
+    // would still merge the paste into [5,6] across the empty frames.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'A')).toBe(false);
+  });
+
+  it('Paint on an empty frame before an existing rail stays isolated (mirror of quick 260816-tv7)', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 2,
+        destinationKeyId: null,
+        newKeyId: 'painted-X',
+        clipboardPayload: records[0].payload,
+        startsNewSegment: true,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Paint-on-empty must resolve');
+    // startsNewSegment gives the painted key its own persistent break AND the
+    // right mirror gives the following rail's first key a break — the two keys
+    // form distinct segments [painted-X] and [A,B].
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['painted-X', 'A']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'A')).toBe(false);
   });
 
   it('Copy/Paste Group into a trailing gap owns a break on its first pasted key', () => {
@@ -834,6 +868,34 @@ describe('incoming interpolation break lifecycle', () => {
     // break so the pasted group never bridges into the previous rail.
     const anchorKeyId = intent.entries.find((entry) => entry.sourceAppFrame === Math.min(...intent.entries.map((e) => e.sourceAppFrame)))!.newKeyId;
     expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toContain(anchorKeyId);
+  });
+
+  it('Copy/Paste Group before an existing rail keeps the rail isolated (right-mirror boundary law)', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+    ];
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(2, records.map((record) => Object.freeze({
+      payload: record.payload,
+      sourceAppFrame: record.appFrame,
+      sourceKeyId: record.keyId,
+    })));
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Group paste must resolve');
+    // The group anchors at 2, before the [5,6] rail. No content lies to its
+    // left, so the anchor owns no break; the following rail's first key A@5
+    // keeps an incoming break so the pasted group never bridges into the rail.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
   });
 
   it('insert-empty-segment inside a intentional gap connects left and preserves the right break', () => {
