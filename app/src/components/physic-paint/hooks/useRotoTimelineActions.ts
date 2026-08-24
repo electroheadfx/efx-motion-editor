@@ -1445,6 +1445,13 @@ export interface RotoTimelineActionsInput {
   /** Concise status/LOG publisher for resolver failures. */
   publishStatus?: (message: string | null) => void;
   /**
+   * Mark the current apply as an error so a rejection message surfaces in the
+   * timeline status capsule (`applyStatus !== 'success'` gate in the strip).
+   * The coordinator sets this for its own rail-set rejections; resolver-level
+   * rejections in this module set it here.
+   */
+  setApplyStatus?: (status: 'idle' | 'applying' | 'success' | 'error') => void;
+  /**
    * D-26 detail leg: full resolver failure detail (code + text) routed to the
    * surviving diagnostic channel. The Studio wires this to the same console
    * diagnostic style as the coordinator's logDiagnostic.
@@ -1872,6 +1879,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
     });
     if (!resolution.ok) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.(runnerInput.rejectedCopy?.(resolution.failure) ?? (resolution.failure.text || 'The Roto timeline edit is invalid.'));
       if (
         runnerInput.operationKind === 'delete-key-group'
@@ -2063,10 +2071,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     destinationKeyId: string | null,
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select a valid Roto frame before pasting.');
       return Promise.resolve(false);
     }
     if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('The destination Roto key identity is malformed.');
       return Promise.resolve(false);
     }
@@ -2082,6 +2092,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         successMessage: PASTE_SUCCESS_MESSAGE,
       });
     } catch {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('The copied Roto paint is unavailable.');
       return Promise.resolve(false);
     }
@@ -2092,6 +2103,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     entries: readonly RotoSessionCopiedGroupEntry[],
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select a valid Roto frame before pasting.');
       return Promise.resolve(false);
     }
@@ -2101,6 +2113,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // entries or malformed entry fields (T-38-01).
       intent = createPhysicPaintRotoPasteKeyGroupIntent(destinationAppFrame, entries);
     } catch {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('The copied Roto key group is unavailable.');
       return Promise.resolve(false);
     }
@@ -2135,6 +2148,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return Promise.resolve(false);
     }
     if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Rail set selection is stale. Select the Rails again.');
       return Promise.resolve(false);
     }
@@ -2170,12 +2184,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     payload: RotoRailSetCopyPayload,
   ): Promise<boolean> => {
     if (!input.executeRailSetPaste) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Rail set pasting is unavailable.');
       return Promise.resolve(false);
     }
     const destinationAppFrame = placementMode === 'paste' ? input.getCurrentAppFrame?.() ?? null : null;
     if (placementMode === 'paste'
       && (destinationAppFrame === null || !Number.isInteger(destinationAppFrame) || destinationAppFrame < 0)) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select a valid Roto frame before pasting.');
       return Promise.resolve(false);
     }
@@ -2201,14 +2217,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           placementMode: 'duplicate',
           payload,
         });
+    // On rejection the coordinator owns the user-facing capsule message (mapped
+    // from the exact failure reason via mapRotoRailSetPasteFailure and marked
+    // with an error apply status), so the action must not clobber it with a
+    // generic fallback. The action's pre-flight publishes above still cover the
+    // caller-level cases (missing seam, invalid destination frame).
     return input.executeRailSetPaste(executeInput).then((accepted) => {
       if (accepted) {
         input.publishStatus?.(placementMode === 'paste' ? 'Pasted the copied Rails.' : 'Duplicated the selected Rails.');
         return true;
       }
-      input.publishStatus?.(placementMode === 'paste'
-        ? 'Paste rejected — not enough room or the destination is occupied.'
-        : 'Duplicate rejected — not enough room.');
       return false;
     });
   }, [input]);
@@ -2218,6 +2236,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const pasteRailSet = useCallback((): Promise<boolean> => {
     const payload = input.getRailSetClipboard?.() ?? null;
     if (!payload) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Copy a rail set before pasting.');
       return Promise.resolve(false);
     }
@@ -2232,10 +2251,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const duplicateRailSet = useCallback((): Promise<boolean> => {
     const members = input.getRailSetMembers?.() ?? [];
     if (members.length === 0) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select the Rails to duplicate.');
       return Promise.resolve(false);
     }
     if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Rail set selection is stale. Select the Rails again.');
       return Promise.resolve(false);
     }

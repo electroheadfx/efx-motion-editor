@@ -189,6 +189,32 @@ function rejectPaste(
     : Object.freeze({ ok: false, reason, conflictingAppFrames: Object.freeze([...conflictingAppFrames]) });
 }
 
+/**
+ * User-facing capsule copy for a rejected rail-set Paste/Duplicate. One locked
+ * message per failure class, distinct for the two placement modes so the user
+ * knows which gesture failed.
+ */
+export function mapRotoRailSetPasteFailure(
+  placementMode: RotoRailSetCopyPlacementMode,
+  reason: RotoRailSetPasteFailureReason,
+): string {
+  const verb = placementMode === 'paste' ? 'Paste' : 'Duplicate';
+  switch (reason) {
+    case 'out-of-range-frame':
+    case 'over-capacity':
+      return `${verb} failed — not enough space in the timeline.`;
+    case 'duplicate-destination-frame':
+      return `${verb} failed — a key already occupies the destination frame.`;
+    case 'empty-payload':
+    case 'malformed-payload':
+    case 'unknown-member':
+    case 'stale-member':
+      return `${verb} failed — the copied rail set is no longer available. Select the rails again.`;
+    case 'loop-source-outside-pasted-set':
+      return `${verb} failed — a linked Hold can't be re-pointed to that destination.`;
+  }
+}
+
 function isBoundedKeyId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
 }

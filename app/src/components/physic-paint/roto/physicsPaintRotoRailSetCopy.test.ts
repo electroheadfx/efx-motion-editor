@@ -12,6 +12,7 @@ import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import {
   buildRotoRailSetCopyPayload,
   buildRotoRailSetOperationResult,
+  mapRotoRailSetPasteFailure,
   proposeRails,
   type RotoRailSetCopyPayload,
 } from './physicsPaintRotoRailSetCopy';
@@ -86,6 +87,21 @@ describe('physicsPaintRotoRailSetCopy — operation-result capsule copy (UAT-3)'
       { kind: 'key-rail', firstFrame: 2, effectiveEndExclusive: 6 },
     ])).toBe('Deleted 2 Rails — frames 2–23.');
     expect(buildRotoRailSetOperationResult('Copied', [])).toBeNull();
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — rejection capsule copy', () => {
+  it('maps each failure class to a placement-aware user message', () => {
+    expect(mapRotoRailSetPasteFailure('paste', 'out-of-range-frame'))
+      .toBe('Paste failed — not enough space in the timeline.');
+    expect(mapRotoRailSetPasteFailure('duplicate', 'over-capacity'))
+      .toBe('Duplicate failed — not enough space in the timeline.');
+    expect(mapRotoRailSetPasteFailure('paste', 'duplicate-destination-frame'))
+      .toBe('Paste failed — a key already occupies the destination frame.');
+    expect(mapRotoRailSetPasteFailure('paste', 'stale-member'))
+      .toBe('Paste failed — the copied rail set is no longer available. Select the rails again.');
+    expect(mapRotoRailSetPasteFailure('duplicate', 'loop-source-outside-pasted-set'))
+      .toBe('Duplicate failed — a linked Hold can\'t be re-pointed to that destination.');
   });
 });
 

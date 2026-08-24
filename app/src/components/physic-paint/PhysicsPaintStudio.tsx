@@ -1261,6 +1261,7 @@ export function PhysicsPaintStudio() {
     executeRailSetPaste: (input) => railSetPasteExecuteRef.current(input),
     requestSoleOccurrenceDeleteWarning: handleRequestSoleOccurrenceDeleteWarning,
     publishStatus: (message) => { setApplyMessage(message); },
+    setApplyStatus,
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
   });
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;

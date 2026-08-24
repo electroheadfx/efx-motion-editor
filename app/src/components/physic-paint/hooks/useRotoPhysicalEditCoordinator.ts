@@ -81,6 +81,7 @@ import {
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../roto/physicsPaintRotoGroupLifecycle';
 import {
+  mapRotoRailSetPasteFailure,
   proposeRails,
   type RotoRailSetCopyPayload,
   type RotoRailSetCopyPlacementMode,
@@ -1608,7 +1609,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             && (railSetPasteInput.destinationAppFrame === undefined
               || !Number.isSafeInteger(railSetPasteInput.destinationAppFrame)
               || railSetPasteInput.destinationAppFrame < 0))) {
-          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          portsRef.current.status.setApplyStatus('error');
+          portsRef.current.status.setConciseMessage(
+            `${railSetPasteInput?.placementMode === 'duplicate' ? 'Duplicate' : 'Paste'} failed — the copied rail set is invalid. Select the rails again.`,
+          );
           return false;
         }
       } else if (!proposal) {
@@ -1841,7 +1845,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
                 : {}),
             });
             if (!proposed.ok) {
-              portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+              // Surface the specific rejection in the timeline status capsule:
+              // mark the apply as an error so the `applyStatus !== 'success'`
+              // gate in the strip shows the mapped user-facing message instead
+              // of swallowing it behind the last accepted state.
+              portsRef.current.status.setApplyStatus('error');
+              portsRef.current.status.setConciseMessage(
+                mapRotoRailSetPasteFailure(railSetPasteInput.placementMode, proposed.reason),
+              );
               portsRef.current.status.logDiagnostic(`Rail-set ${railSetPasteInput.placementMode} physical proposal rejected: ${proposed.reason}`);
               clearPendingOnce();
               return false;

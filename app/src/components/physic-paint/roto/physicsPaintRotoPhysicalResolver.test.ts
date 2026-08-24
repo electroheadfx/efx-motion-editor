@@ -720,7 +720,7 @@ describe('incoming interpolation break lifecycle', () => {
   });
 
   it('Copy/Paste into a trailing gap after a rail owns an incoming break (v0.9 boundary law)', () => {
-    const records = [
+    const records: PhysicPaintRotoRealKeyRecord[] = [
       { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
       { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
     ];
@@ -750,7 +750,7 @@ describe('incoming interpolation break lifecycle', () => {
   });
 
   it('Copy/Paste into a between-rail gap owns an incoming break', () => {
-    const records = [
+    const records: PhysicPaintRotoRealKeyRecord[] = [
       { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
       { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
       { kind: 'real-key', keyId: 'C', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
@@ -781,7 +781,7 @@ describe('incoming interpolation break lifecycle', () => {
   });
 
   it('Copy/Paste as the leftmost content stays connected (no boundary break)', () => {
-    const records = [
+    const records: PhysicPaintRotoRealKeyRecord[] = [
       { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
       { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
     ];
@@ -809,7 +809,7 @@ describe('incoming interpolation break lifecycle', () => {
   });
 
   it('Copy/Paste Group into a trailing gap owns a break on its first pasted key', () => {
-    const records = [
+    const records: PhysicPaintRotoRealKeyRecord[] = [
       { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
       { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
     ];
