@@ -207,6 +207,11 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const freshSource = pasted.proposal.realKeyRecords.find((r) => r.keyId === duplicated.sourceKeyIds[0]);
     expect(freshSource).toBeDefined();
     expect(freshSource!.appFrame).toBe(8);
+    // 46 UAT (issue 2): the loop's FIRST source key starts a new segment —
+    // break-before-first-key, exactly like a pasted key rail — so no
+    // interpolation is derived before the pasted loop. The original k0 lies to
+    // its left, so the fresh source key owns an incoming break.
+    expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain(freshSource!.keyId);
     // The pasted Loop Clip owns a fresh source cycle (fresh keys), so its
     // source cycle ID differs from the original's.
     expect(getPhysicsPaintRotoSourceCycleId(duplicated.sourceKeyIds))
@@ -217,6 +222,34 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     expect(pasted.proposal.realKeyRecords).toHaveLength(2);
     expect(pasted.impact.identities).toHaveLength(1);
     expect(pasted.impact.identities[0]).toMatchObject({ kind: 'loop', id: duplicated.loopId, firstFrame: 8 });
+  });
+
+  it('RED 2dup: duplicating a Motion Rail also starts the fresh source key on a new segment (no interpolation before the duplicated rail)', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 3,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const document = buildDocument([recordKey('k0', 0)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error('Loop payload must resolve');
+    const duplicated = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
+    expect(duplicated.ok).toBe(true);
+    if (!duplicated.ok) throw new Error(`Loop duplicate must resolve: ${duplicated.reason}`);
+    const newClips = duplicated.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1');
+    expect(newClips).toHaveLength(1);
+    const freshSource = duplicated.proposal.realKeyRecords.find((record) => record.keyId === newClips[0]!.sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    // The duplicated rail's first source key owns a break (break-before-first-key).
+    expect(duplicated.proposal.incomingInterpolationBreakKeyIds).toContain(freshSource!.keyId);
   });
 
   it('RED 2b: paste uses the frozen payload bytes even if the source record changes after copy', () => {

@@ -710,6 +710,15 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
             freshRecords.push(buildFreshKeyRecord(sourceRecord.payload, freshKeyId, freshFrame));
           }
         }
+        // The loop's first source key starts a new segment (break-before-first-
+        // key), exactly like a pasted key rail — no interpolation before it.
+        const firstSourceRecord = sourceRecords[0];
+        if (firstSourceRecord !== undefined && !keyRailCoveredSourceKeys.has(firstSourceRecord.keyId)) {
+          const firstFreshKeyId = allocation.keyIds[firstSourceRecord.keyId];
+          if (firstFreshKeyId !== undefined) {
+            memberFirstFrames.push({ freshFirstFrame: destinationStart, freshFirstKeyId: firstFreshKeyId });
+          }
+        }
         const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
         if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
         duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));

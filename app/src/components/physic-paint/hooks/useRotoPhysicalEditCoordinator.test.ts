@@ -47,6 +47,7 @@ import {
 import { resolvePostAcceptanceRotoStudioSelection } from '../roto/physicsPaintRotoMultiSelection';
 import { createRotoLivePixelCacheTransactions } from '../roto/rotoLivePixelCacheTransactions';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
+import { buildRotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
 import {
   executePhysicPaintRotoGroupFramePaintTransaction,
@@ -3453,6 +3454,73 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     expect(test.accept()).toBe('accepted');
     const undoOperationId = test.getPayload()?.operationId;
     if (!undoOperationId) throw new Error('Expected Duplicate Undo operation id.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('RED (46 UAT): a LOOP-clip Paste records one command and Undo removes exactly the pasted loop', async () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['s0'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+      frameOverrides: [],
+    };
+    const sourceDoc = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: [pasteRecord('s0', 0)],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([pasteRecord('s0', 0)], INTERPOLATION, [clip], []),
+      loopClips: [clip],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    const built = buildRotoRailSetCopyPayload({ document: sourceDoc, members: [{ kind: 'loop', loopId: 'g1' }] });
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error(`Loop payload must build: ${built.reason}`);
+
+    const test = harness();
+    // Same-track paste: the source loop + its source key must already live in
+    // the destination document (the paste duplicates an existing loop).
+    const before = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: [pasteRecord('s0', 0)],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([pasteRecord('s0', 0)], INTERPOLATION, [clip], []),
+      loopClips: [clip],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    expect(await test.executePasteRails({ payload: built.payload, placementMode: 'paste', destinationAppFrame: 5 })).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted loop Paste operation.');
+    const after = test.getCanonicalDocument();
+    expect(after.loopClips.length).toBe(2);
+    expect(accepted.operationKind).toBe('paste');
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected loop Paste Undo operation ID.');
     expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
     expect(test.getCanonicalDocument()).toEqual(before);
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
