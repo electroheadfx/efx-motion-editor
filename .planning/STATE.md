@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 46
 current_phase_name: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
 status: executing
-stopped_at: Completed 46-06-PLAN.md
-last_updated: "2026-08-23T23:17:46.415Z"
+stopped_at: Phase 47 context gathered
+last_updated: "2026-08-24T14:43:47.442Z"
 last_activity: 2026-08-24
 last_activity_desc: "Phase 46 plan 05 complete (acknowledged track deletion: closed preview, teardown, hold severing, nearest-adjacent activation, transactional sidecar removal)"
-state_head: 3fe9f669dca417669c64e1ecdb24a15a1fa6d6fe
+state_head: 3d89d6aa59c36943368a4b9cfafa61e6d289ffa9
 progress:
   total_phases: 9
   completed_phases: 1
@@ -170,6 +170,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T23:17:46.334Z
-Stopped at: Completed 46-06-PLAN.md
-Resume file: None
+Last session: 2026-08-24T14:43:47.258Z
+Stopped at: Phase 47 context gathered
+Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-CONTEXT.md
