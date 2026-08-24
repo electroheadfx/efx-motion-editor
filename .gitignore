@@ -59,3 +59,4 @@ entities.json
 # GSD
 .gsd/dispatch-isolation-sentinel.json
 .gsd/dispatch-isolation-sentinel.json.tmp-*
+.planning/milestone.lock
