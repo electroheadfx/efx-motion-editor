@@ -554,3 +554,35 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT R1 (finite/static extent must n
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'hold')!.repeat).toBe(2);
   });
 });
+
+describe('physicsPaintRotoRailSetCopy — 46 UAT R5 (pasted clips are lifecycle-complete)', () => {
+  it('synthesizes a complete lifecycle for a finite-repeat source with syncState undefined (no lifecycle)', () => {
+    // Repro: a finite motion rail never synchronized (no syncState/lifecycle).
+    // Pasting it previously produced a no-lifecycle clip that the bridge apply
+    // validator rejected (appliedFrameCount 0 -> timeout -> engine not ready).
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'm',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k2'],
+      repeat: 3,
+      mode: 'progressive',
+    };
+    const document = buildDocument([recordKey('k0', 0), recordKey('k2', 2)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'm' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 10 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Finite paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'm')!;
+    expect(duplicated.repeat).toBe(3);
+    expect(duplicated.placementStart).toBe(10);
+    // Lifecycle-complete so isLifecycleCompletePhysicPaintRotoLoopClip passes:
+    // originalEndExclusive = 10 + (member extent 6) = 16.
+    expect(duplicated.syncState).toBe('synchronized');
+    expect(duplicated.provenanceState).toBe('attached');
+    expect(duplicated.phaseOrigin).toBe(10);
+    expect(duplicated.originalEndExclusive).toBe(16);
+    expect(duplicated.visibleRanges).toEqual([{ start: 10, endExclusive: 16 }]);
+    expect(duplicated.frameOverrides).toEqual([]);
+  });
+});

@@ -411,12 +411,16 @@ function buildDuplicatedLoopClip(
 ): PhysicPaintRotoLoopClip {
   const sourceKeyIds = repoint?.sourceKeyIds ?? clip.sourceKeyIds;
   const frameOverrides = repoint?.frameOverrides ?? clip.frameOverrides;
-  // 46 UAT R5: an infinity source frozen to a finite repeat has NO lifecycle
-  // (infinity clips never carry one), but the apply payload validator requires
-  // every loop clip to be lifecycle-complete. Synthesize a complete lifecycle
-  // pinned to the frozen effective end so the pasted clip passes the bridge
-  // apply validation and renders to exactly the source's visible duration.
-  const frozenEndExclusive = repeatOverride !== undefined && sourceEffectiveEndExclusive !== undefined
+  // 46 UAT R5: the bridge apply validator requires every loop clip in a
+  // replace-roto-physical-map payload to be lifecycle-complete
+  // (isLifecycleCompletePhysicPaintRotoLoopClip). An infinity source frozen to
+  // a finite repeat carries no lifecycle (infinity clips never do), and a
+  // finite source with syncState === undefined (never synchronized) carries
+  // none either. Synthesize a complete lifecycle for ANY pasted clip that
+  // lacks one, pinned to its effective end — the copied member's resolved
+  // extent translated by delta — so the pasted clip passes apply validation
+  // and renders to exactly the source's visible duration.
+  const synthesizedEndExclusive = sourceEffectiveEndExclusive !== undefined
     ? destinationStart + (sourceEffectiveEndExclusive - clip.placementStart)
     : undefined;
   return Object.freeze({
@@ -447,13 +451,13 @@ function buildDuplicatedLoopClip(
             keyId: override.keyId,
           }))),
         }
-      : frozenEndExclusive !== undefined
+      : synthesizedEndExclusive !== undefined
         ? {
             syncState: 'synchronized',
             provenanceState: 'attached',
             phaseOrigin: destinationStart,
-            originalEndExclusive: frozenEndExclusive,
-            visibleRanges: Object.freeze([Object.freeze({ start: destinationStart, endExclusive: frozenEndExclusive })]),
+            originalEndExclusive: synthesizedEndExclusive,
+            visibleRanges: Object.freeze([Object.freeze({ start: destinationStart, endExclusive: synthesizedEndExclusive })]),
             frameOverrides: Object.freeze([]),
           }
         : {}),
