@@ -625,15 +625,15 @@ export function normalizeLoopClipForPayload(clip: PhysicPaintRotoLoopClip): Phys
   if (clip.syncState !== undefined) return clip;
   const originalEndExclusive = clip.placementStart
     + clip.sourceKeyIds.length * (clip.repeat === 'infinity' ? 1 : clip.repeat);
-  return Object.freeze({
+  return {
     ...clip,
     syncState: 'synchronized',
     provenanceState: 'attached',
     phaseOrigin: clip.placementStart,
     originalEndExclusive,
-    visibleRanges: Object.freeze([Object.freeze({ start: clip.placementStart, endExclusive: originalEndExclusive })]),
-    frameOverrides: Object.freeze([]),
-  }) as PhysicPaintRotoLoopClip;
+    visibleRanges: [{ start: clip.placementStart, endExclusive: originalEndExclusive }],
+    frameOverrides: [],
+  } as PhysicPaintRotoLoopClip;
 }
 
 function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoLoopClip[] {
@@ -649,16 +649,12 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
       ...(normalized.scriptId !== undefined
         ? { scriptId: normalized.scriptId, motion: { ...normalized.motion! }, overrideColor: normalized.overrideColor ?? null }
         : {}),
-      ...(normalized.syncState !== undefined
-        ? {
-            syncState: normalized.syncState,
-            provenanceState: normalized.provenanceState!,
-            phaseOrigin: normalized.phaseOrigin!,
-            originalEndExclusive: normalized.originalEndExclusive!,
-            visibleRanges: normalized.visibleRanges!.map((range) => ({ ...range })),
-            frameOverrides: normalized.frameOverrides!.map((override) => ({ ...override })),
-          }
-        : {}),
+      syncState: normalized.syncState,
+      provenanceState: normalized.provenanceState!,
+      phaseOrigin: normalized.phaseOrigin!,
+      originalEndExclusive: normalized.originalEndExclusive!,
+      visibleRanges: normalized.visibleRanges!.map((range) => ({ ...range })),
+      frameOverrides: normalized.frameOverrides!.map((override) => ({ ...override })),
     };
   });
 }
