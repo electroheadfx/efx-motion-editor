@@ -226,3 +226,26 @@ None - no external service configuration required.
 - All 11 task commits verified in git history (5679e1f4, 67ac5e16, 238aeaa9, 01d7778b, d96f4e8f, 08514d88, 343fc6f0, 3eee318a, 0ab1ec92, da947596, 16647c3c)
 - Full suite green (149 files / 2847 tests passed), `pnpm --dir app exec tsc --noEmit` exit 0
 - `previewRenderer.ts` byte-unchanged across the design-slice commits (hide/solo truth table and loop-placeholder branch preserved)
+
+---
+
+## UAT Round 2 (2026-08-24)
+
+User-reported visual issues in the mockup timeline redesign, fixed with presentation-only changes (no `efxPaintStore` ops, no `previewRenderer` truth-table edits).
+
+**Commits:**
+- `b67bf62b` — `fix(47-01): restore full frame-capacity horizontal scroll on the rows region` (Issue 2)
+- `b8f4d72b` — `fix(47-01): tighten row packing, restore hover tools, drop fake scrollbar, fix empty add icon` (Issues 1, 3, 4, 5)
+
+**Per-issue root cause + fix:**
+1. **Row vertical spacing too large** — shared cell height was 24px inside the locked 48px row, leaving ~12px dead gray per side. Cell height now 44px (2px rhythm above/below); the region and first row drop their top border so the cells sit flush under the ruler line.
+2. **Horizontal scroll void at window width** — the `.physics-paint-rows-region` was a viewport-width block child (`width: auto`, `overflow-x: hidden`), so per-track cells clipped at the visible window while the ruler and active lane reached full capacity. The region now carries the same explicit `rotoLaneWidthPx` width/minWidth, and every presentational track-row cells grid mirrors it, so tracks scroll to the last cell with the ruler.
+3. **Fake static vertical bar at the strip's right end** — the region's styled 6px webkit scrollbar rendered as a decorative bar. It is now hidden; the only visible vertical scroll control is a slim 6px native scrollbar on the pinned header-rows band, which overflows exactly when the region does (real control, never decorative).
+4. **Hover state unreadable** — the tools group's dark right-to-left gradient washed a veil over the track name and the tool buttons were transparent (`color: #a9b0b8`). Gradient removed; buttons got solid `#3a424c` surfaces + `#58616b` borders + `#d8dde3` icons; header hover background lightened to `#3f4145`.
+5. **'+' add button rendered empty** — the Plus icon at `size={12}` was clipped/invisible in the 18px button. Now `size={11}` + `strokeWidth={2.5}`, `padding: 0; line-height: 0`, and `svg { flex: 0 0 auto }`.
+
+**Test adjustments:**
+- `PhysicsPaintWorkflowStrip.test.ts` — two source-contract assertions updated from the old `height: 24px` to the new `height: 44px` (intended UAT geometry).
+- `PhysicsPaintWorkflowStrip.viewport.test.ts` — new assertion: a 600-frame document's rows-region and every presentational track-row cells grid carry the full `capacity × 18px` width/minWidth.
+
+**Verification:** viewport + previewRenderer (43 tests), efxPaintStore (26 tests), full suite (2848 passed / 1 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0.
