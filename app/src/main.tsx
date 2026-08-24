@@ -15,9 +15,13 @@ import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
 import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
+import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
 // 46 UAT debug hook: enable per-clause apply-payload rejection logging from the
 // console via window.__setDebugApplyPayloadValidation(true).
 (window as unknown as { __setDebugApplyPayloadValidation: (enabled: boolean) => void }).__setDebugApplyPayloadValidation = setDebugApplyPayloadValidation;
+// 46 UAT debug hook: enable why-Paste-does-or-doesn't-record / why-Undo-rejects
+// logging from the console via window.__setDebugRotoUndo(true).
+(window as unknown as { __setDebugRotoUndo: (enabled: boolean) => void }).__setDebugRotoUndo = setDebugRotoUndo;
 
 const root = document.getElementById('app')!;
 

@@ -79,6 +79,17 @@ import type {
 } from '../roto/rotoCoordinatorPorts';
 import { getActiveTrackId, setActiveTrackId } from '../../../stores/efxPaintStore';
 
+// 46 UAT debug hook: capture why a Paste/Duplicate command is (or is not)
+// recorded and why an Undo replay is rejected. Gated off by default; enable
+// from the console via window.__setDebugRotoUndo(true).
+let debugRotoUndo = false;
+export function setDebugRotoUndo(enabled: boolean): void {
+  debugRotoUndo = enabled;
+}
+function debugUndoLog(message: string): void {
+  if (debugRotoUndo) console.warn(`[roto-undo] ${message}`);
+}
+
 export interface RotoPhysicalEditHistoryIdentity {
   launchOperationId: string;
   layerId: string;
@@ -628,7 +639,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
 
     // Ordinary acceptance — append one immutable complete command and clear
     // redo exactly once. Reject an equal no-change command.
-    if (snapshotRecordsEqual(accepted.before, accepted.after)) return;
+    if (snapshotRecordsEqual(accepted.before, accepted.after)) {
+      if (accepted.operationKind === 'paste') {
+        debugUndoLog(`paste NOT recorded (before==after): ${accepted.operationId}`);
+      }
+      return;
+    }
+    if (accepted.operationKind === 'paste') {
+      debugUndoLog(`paste recorded: ${accepted.operationId} kind=${String(accepted.semanticDelta?.kind)}`);
+    }
     const command: RotoPhysicalEditCommand<EngineState> = {
       kind: 'physical',
       operationId: accepted.operationId,
@@ -731,7 +750,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     // coordinator or parent mutation boundary.
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
     if (typeof getLiveSourceSnapshot !== 'function'
-      || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) return false;
+      || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) {
+      if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+        debugUndoLog(`undo rejected at live-authority guard: kind=${entry.operationKind} getLive=${typeof getLiveSourceSnapshot === 'function'}`);
+      }
+      return false;
+    }
+    if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+      debugUndoLog(`undo live-authority guard passed for ${entry.operationId}; dispatching replay`);
+    }
     // 46-03 (D-04): auto-activate the command's track BEFORE the replay seam
     // when another track is active — replay then targets the live document.
     if (getActiveTrackId(identity.layerId) !== entry.trackId) setActiveTrackId(identity.layerId, entry.trackId);
@@ -753,8 +780,14 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       },
     });
     if (!accepted) {
+      if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+        debugUndoLog(`undo replay rejected by coordinator for ${entry.operationId}`);
+      }
       pendingReplayRef.current = null;
       return false;
+    }
+    if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+      debugUndoLog(`undo replay accepted by coordinator for ${entry.operationId}`);
     }
     return true;
   }, [publishAvailability]);
