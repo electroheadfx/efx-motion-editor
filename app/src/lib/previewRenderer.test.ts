@@ -6,9 +6,9 @@ import { defaultTransform } from '../types/layer';
 import type { Sequence } from '../types/sequence';
 import { paintStore } from '../stores/paintStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
-import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { getDocument, registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 vi.mock('../stores/paintStore', () => ({
@@ -22,7 +22,7 @@ vi.mock('../stores/projectStore', () => ({
   },
 }));
 
-import { PreviewRenderer } from './previewRenderer';
+import { PreviewRenderer, resolvePhysicPaintTrackVisibility } from './previewRenderer';
 import { renderGlobalFrame } from './exportRenderer';
 import { clearProjectPaperRasterCache } from './projectPaperRaster';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -460,5 +460,71 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
 
     expect(physicalLookup).toHaveBeenCalledWith('roto-layer', TEST_TRACK_ID, 0);
     expect(ordinaryPaintLookup).toHaveBeenCalledWith('paint-layer', 100);
+  });
+});
+
+describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
+  it('no solo armed: every visible track resolves visible; a hidden track resolves hidden', () => {
+    const document = createEfxPaintDocument('roto-layer');
+    const track = document.tracks[0];
+    registerDocument(document);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(true);
+    // Hide wins over solo: hiding the same track flips the answer.
+    registerDocument({ ...document, tracks: [{ ...track, visible: false }] });
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(false);
+  });
+
+  it('solo armed → only visible+soloed tracks show; the active non-soloed track resolves null', () => {
+    const document = createEfxPaintDocument('roto-layer');
+    const trackA = document.tracks[0];
+    const trackB: InternalPaintTrack = { ...trackA, id: 'track-b', name: 'Paint 2', order: 1 };
+    registerDocument({ ...document, tracks: [{ ...trackA, solo: true }, trackB] });
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', trackA.id)).toBe(true);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', trackB.id)).toBe(false);
+  });
+
+  it('soloed-and-hidden track is hidden (hide beats solo)', () => {
+    const document = createEfxPaintDocument('roto-layer');
+    const track = document.tracks[0];
+    registerDocument({ ...document, tracks: [{ ...track, solo: true, visible: false }] });
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(false);
+  });
+
+  it('an unknown track or absent document resolves hidden (fail closed)', () => {
+    const document = createEfxPaintDocument('roto-layer');
+    registerDocument(document);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'ghost-track')).toBe(false);
+    resetEfxPaintStore();
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', document.tracks[0].id)).toBe(false);
+  });
+
+  it('renders an empty preview frame when the active track is hidden', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    const current = getDocument('roto-layer');
+    expect(current).not.toBeNull();
+    const track = current!.tracks[0];
+    registerDocument({ ...current!, tracks: [{ ...track, visible: false }] });
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+  });
+
+  it('draws the real key normally when no solo is armed and the active track is visible', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
   });
 });

@@ -3,6 +3,11 @@ import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { vi } from 'vitest';
+import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { getDocument, registerDocument, setActiveTrackId } from '../../../stores/efxPaintStore';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 
 const runtimeHolder = vi.hoisted(() => ({ current: null as PreactHookRuntime | null }));
 
@@ -134,8 +139,15 @@ interface WorkflowHarnessOptions {
   readonly visibleFrameCount?: number;
   readonly physicalCells?: readonly RotoPhysicalTimelineCell[];
   readonly realKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly cachedRotoFrames?: readonly { frameIndex: number; appFrame: number; dataUrl: string; source: string }[];
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
   readonly loopResolutionContext?: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null;
+  // 47-01: multi-track row slice — the document-derived row bundle.
+  readonly tracks?: readonly InternalPaintTrack[];
+  readonly activeTrackId?: string;
+  readonly layerId?: string;
+  readonly background?: BackgroundTrack;
+  readonly onSelectTrack?: (trackId: string) => void;
 }
 
 function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
@@ -172,6 +184,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       ready: true,
       onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
       rotoPhysicalCells: options.physicalCells ?? createPhysicalCells(capacity),
+      cachedRotoFrames: options.cachedRotoFrames,
       rotoKeyRecords: options.realKeyRecords,
       rotoLoopClips: options.loopClips,
       rotoLoopResolutionContext: options.loopResolutionContext,
@@ -185,6 +198,12 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       onGoToNextFrame,
       onGoToLastFrame,
       onOnionChange,
+      // 47-01: multi-track row slice.
+      tracks: options.tracks,
+      activeTrackId: options.activeTrackId ?? '',
+      layerId: options.layerId ?? '',
+      background: options.background,
+      onSelectTrack: options.onSelectTrack,
     });
 
     const scrollerNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
@@ -240,6 +259,25 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     render();
   }
 
+  function trackRows(): TestVNode[] {
+    return findAll(tree, (vnode) => typeof vnode.props['data-track-id'] === 'string');
+  }
+
+  function rowCells(trackId: string): TestVNode[] {
+    const row = trackRows().find((candidate) => candidate.props['data-track-id'] === trackId);
+    expect(row).toBeDefined();
+    return findAll(row, (vnode) => typeof vnode.props['data-roto-app-frame'] === 'string');
+  }
+
+  function clickRowHeader(trackId: string): void {
+    const row = trackRows().find((candidate) => candidate.props['data-track-id'] === trackId);
+    expect(row).toBeDefined();
+    const header = findAll(row, (vnode) => hasClass(vnode, 'physics-paint-track-row-header'))[0];
+    expect(header).toBeDefined();
+    (header.props.onClick as () => void)();
+    render();
+  }
+
   return {
     capacity,
     scroller,
@@ -249,6 +287,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     dragScrollbarToRatio,
     representedFrames: () => representedFrames(tree),
     currentFrame: () => currentFrame,
+    trackRows,
+    rowCells,
+    clickRowHeader,
     spies: {
       onNavigateToSyncedFrame,
       onGoToFirstFrame,
@@ -491,6 +532,105 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(harness.spies.onGoToPreviousFrame).not.toHaveBeenCalled();
       expect(harness.spies.onGoToNextFrame).not.toHaveBeenCalled();
       expect(harness.spies.onGoToLastFrame).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('47-01 multi-track row slice', () => {
+    function makeMultiTrackDocument(layerId: string, secondId: string) {
+      const document = createEfxPaintDocument(layerId);
+      const trackA = document.tracks[0];
+      const trackB: InternalPaintTrack = { ...trackA, id: secondId, name: 'Paint 2', order: 1 };
+      registerDocument({ ...document, tracks: [trackA, trackB] });
+      return { document, trackA, trackB };
+    }
+
+    it('renders every Paint track as a row plus exactly one Background row (TML-01)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      const rows = harness.trackRows();
+      expect(rows).toHaveLength(3);
+      const ids = rows.map((row) => row.props['data-track-id']);
+      expect(ids).toContain(trackA.id);
+      expect(ids).toContain(trackB.id);
+      expect(ids).toContain(document.background.id);
+      // Every row renders the shared frameCells extent (presentational cells).
+      for (const row of rows) {
+        const cells = findAll(row, (vnode) => typeof vnode.props['data-roto-app-frame'] === 'string');
+        expect(cells.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('reads each row through its own trackId — no cross-row frame leak (TML-05/Pitfall 8)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      // Track B owns a real key at frame 8 in the runtime store.
+      const bRecords: readonly PhysicPaintRotoRealKeyRecord[] = [
+        { keyId: 'b-key', appFrame: 8, kind: 'real-key', payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Yg==' } },
+      ];
+      const seeded = physicPaintStore.replaceRotoPhysicalDocument(layerId, trackB.id, {
+        capacity: 240,
+        realKeyRecords: bRecords,
+        interpolation: { enabled: false, mode: 'duplicate' },
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        revision: buildPhysicPaintRotoPhysicalRevision(bRecords, { enabled: false, mode: 'duplicate' }, []),
+      });
+      expect(seeded.ok).toBe(true);
+      // Track A (the active row) owns a real frame at frame 5 in the props projection.
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+        physicalCells: createPhysicalCells(240, [
+          { kind: 'real', appFrame: 5, keyId: 'a-key' },
+        ]),
+        cachedRotoFrames: [{ frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,YQ==', source: 'real-key' }],
+      });
+      harness.render();
+
+      const aCells = harness.rowCells(trackA.id);
+      expect(String(aCells[5].props['data-roto-app-frame'])).toBe('5');
+      expect(String(aCells[5].props.class)).toContain('roto-fill-cached');
+      expect(String(aCells[8].props['data-roto-app-frame'])).toBe('8');
+      expect(String(aCells[8].props.class)).toContain('roto-fill-empty');
+
+      const bCells = harness.rowCells(trackB.id);
+      expect(String(bCells[8].props['data-roto-app-frame'])).toBe('8');
+      expect(String(bCells[8].props.class)).toContain('roto-fill-cached');
+      expect(String(bCells[5].props['data-roto-app-frame'])).toBe('5');
+      expect(String(bCells[5].props.class)).toContain('roto-fill-empty');
+    });
+
+    it('row-header click fires onSelectTrack and the active track switches (TML-03)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const onSelectTrack = vi.fn((trackId: string) => {
+        setActiveTrackId(layerId, trackId);
+      });
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+        onSelectTrack,
+      });
+      harness.render();
+
+      harness.clickRowHeader(trackB.id);
+
+      expect(onSelectTrack).toHaveBeenCalledWith(trackB.id);
+      expect(getDocument(layerId)?.activeTrackId).toBe(trackB.id);
     });
   });
 });
