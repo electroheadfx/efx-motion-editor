@@ -143,6 +143,7 @@ function textContent(node: unknown): string {
   const walk = (current: unknown) => {
     if (typeof current === 'string' || typeof current === 'number') { parts.push(String(current)); return; }
     if (!current || typeof current !== 'object') return;
+    if (Array.isArray(current)) { for (const child of current) walk(child); return; }
     walk((current as AnyVNode).props?.children);
   };
   walk(node);
