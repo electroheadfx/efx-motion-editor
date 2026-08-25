@@ -32,3 +32,21 @@ expected: Dragging real keys from one track's row onto another track's row highl
 expected: Track 1 and new tracks keep their keys across save/reopen; painting stays fluid (no stutter at stroke start); hover cursors are the select pointer on frames/keys; no black window on reopen after a long idle.
 
 ## Summary
+
+### Round 1 (2026-08-25) — test 1 feedback + fixes (commit 6d19e5f6)
+
+User feedback on the header column:
+- Solo 'S' chip removed from the standing row; moved into the hover tools panel.
+- Pencil (rename) icon removed from the hover tools — double-click on the name
+  renames in place (confirmed working by the user).
+- Eye toggle moved OUT of the hover tools to a standing row control, placed
+  before the name and after the reorder grip.
+- The row now shows only: grip, eye, name, more-button; the tools panel opens
+  solo / copy / trash.
+- Header column widened from 140px to 160px (`.physics-paint-header-column`).
+- Delete-track dialog now centered on the EFX Paint window (`position: fixed`,
+  no transformed ancestor — tracked to the webview viewport).
+- Drag reorder confirmed working by the user.
+
+Re-verification of this group is pending user response; remaining UAT items
+(2-5) are still awaiting the user's group-by-group reports.
