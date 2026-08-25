@@ -3684,6 +3684,7 @@ button.destructive {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   width: 18px;
   height: 18px;
   border: 1px solid #58616b;
