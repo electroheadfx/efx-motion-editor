@@ -33,6 +33,21 @@ expected: Track 1 and new tracks keep their keys across save/reopen; painting st
 
 ## Summary
 
+### Round 4 (2026-08-25) — test 2 regression fix (commit 6ca409ab)
+
+User report: selecting a track opens the Track option tab, then it reverts to
+Paint option a fraction of a second later ("event conflict").
+
+Root cause: clicking a track row ALSO emits paint-revision activity shortly
+after (runtime re-projection / document sync round-trip), which the
+paint-flip signals effect translated into an instant tab revert.
+
+Fix: paint-revision bumps inside a 600ms quiet window after a track
+selection are treated as selection side effects and ignored
+(`TRACK_TAB_SETTLE_MS`); a real paint stroke after the window still snaps
+back to Paint option. Regression tests cover both paths (bump inside the
+window keeps the Track tab; bump after the window flips to Paint).
+
 ### Round 3 (2026-08-25) — test 2 (right sidebar) feedback + fixes (commit 82fc8a91)
 
 - The tool pane now hosts two tabs, matching the bottom Actions/Onion/Motion
