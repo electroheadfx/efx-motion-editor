@@ -384,6 +384,9 @@ export interface PhysicsPaintWorkflowStripProps {
   onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
   /** 47-02 Task 2: 'S' solo toggle intent (controller routes through setTrackSolo). */
   onToggleSolo?: (trackId: string, solo: boolean) => void;
+  /** 47 UAT: per-row frame-blending toggle intent — the controller toggles
+   *  the track's canonical interpolation state (physicPaintStore). */
+  onToggleBlend?: (trackId: string) => void;
   /** Rename commit intent (controller routes through renameTrack). */
   onRenameTrack?: (trackId: string, name: string) => void;
   /** Copy intent (controller routes through duplicateTrack). */
@@ -3625,9 +3628,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div class="physics-paint-timeline-body">
           {/* 47-01/47-02 pinned header column (UI-SPEC D-01/D-05, Task 1): the
-              hook-free `physicsPaintTrackHeaderColumn` renders the 140px fixed
-              column OUTSIDE the horizontal scroller, listing every row's track
-              name plus the locked 'Bg' row; its header-rows band shares the
+              hook-free `physicsPaintTrackHeaderColumn` renders the fixed
+              185px column OUTSIDE the horizontal scroller, listing every row's
+              track name plus the locked 'Bg' row; its header-rows band shares the
               rows-region's vertical scroll position
               (syncHeaderScroll/syncRowsScroll). The strip owns the interactive
               state (rename draft, tools panel, vertical scrollbar geometry,
@@ -3645,6 +3648,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               props.onToggleTrackVisible?.(trackId, !track?.visible);
             },
             onToggleSolo: handleToggleSolo,
+            layerId: props.layerId,
+            onToggleBlend: props.onToggleBlend ?? (() => {}),
             onAddTrack: props.onAddTrack ?? (() => {}),
             onDuplicateTrack: props.onDuplicateTrack ?? (() => {}),
             onRequestDeleteTrack: handleRequestDeleteTrack,

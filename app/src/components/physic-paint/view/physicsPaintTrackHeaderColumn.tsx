@@ -15,10 +15,11 @@
  *
  * Every control binds to the 47-01 store-op surface through the prop bundle
  * — the column never mutates a row it does not target: row click selects via
- * onSelectTrack, the standing eye toggle and the tools-panel solo toggle
- * route visibility/solo intents, the '+' adds a track, and the more-panel
- * holds solo/duplicate/delete (47 UAT: the pencil is gone — a double-click
- * on the name renames in place). The reorder grab area is deliberately NOT
+ * onSelectTrack, the standing eye + blend toggles and the tools-panel solo
+ * toggle route visibility/blending/solo intents, the '+' adds a track, and
+ * the more-panel holds solo/duplicate/delete (47 UAT: the pencil is gone —
+ * a double-click on the name renames in place). The reorder grab area is
+ * deliberately NOT
  * wired to any pointer drag here (the header-drag reorder gesture is 47-02
  * Task 2; content cross-track drag is 47-05 — D-18 keeps the two distinct).
  */
@@ -53,6 +54,10 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly onToggleVisible: (trackId: string) => void;
   /** 'S' solo-toggle intent; the strip wires it through setTrackSolo. */
   readonly onToggleSolo: (trackId: string) => void;
+  /** Parent EFX Paint layer for the rows' per-track store reads. */
+  readonly layerId?: string;
+  /** Per-row frame-blending toggle intent (47 UAT). */
+  readonly onToggleBlend?: (trackId: string) => void;
   /** '+' add-track intent; the strip wires it through addTrack. */
   readonly onAddTrack: () => void;
   /** Duplicate intent; the strip wires it through duplicateTrack. */
@@ -113,6 +118,8 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onSelectTrack,
     onToggleVisible,
     onToggleSolo,
+    layerId,
+    onToggleBlend,
     onAddTrack,
     onDuplicateTrack,
     onRequestDeleteTrack,
@@ -158,6 +165,8 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               onCancelRename={onCancelRename}
               onToggleVisible={(trackId) => onToggleVisible(trackId)}
               onToggleSolo={onToggleSolo}
+              layerId={layerId}
+              onToggleBlend={onToggleBlend}
               onDuplicateTrack={onDuplicateTrack}
               onDeleteTrack={onRequestDeleteTrack}
               toolsOpen={toolsOpenTrackId === track.id}

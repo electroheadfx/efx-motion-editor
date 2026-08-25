@@ -3483,10 +3483,11 @@ button.destructive {
 .physics-paint-header-column {
   display: flex;
   flex-direction: column;
-  /* 47 UAT: widened 140px -> 160px so the standing row controls (grip + eye +
-     name + more-button) breathe — the eye moved out of the hover tools into
-     the always-visible row controls. */
-  flex: 0 0 160px;
+  /* 47 UAT: widened 140px -> 185px so the standing row controls (grip + eye +
+     blend + name + more-button) breathe — the eye moved out of the hover
+     tools into the always-visible row controls, then the per-row frame-
+     blending toggle joined it after the eye. */
+  flex: 0 0 185px;
   min-width: 0;
   /* 47-01 UAT round 3: allows the column to shrink to the timeline-body's
      dynamic height so the header-rows band scrolls in lockstep with the
@@ -3889,6 +3890,19 @@ button.destructive {
   outline-offset: 1px;
 }
 
+/* 47 UAT: the per-row frame-blending toggle's pressed state — the same
+   accent family as the armed solo chip, so an enabled blend reads at a
+   glance on every track row. */
+.physics-paint-track-row-blend-enabled {
+  border-color: #6f90ff;
+  background: #2f3a4d;
+  color: #ffffff;
+}
+
+.physics-paint-track-row-blend-enabled:hover {
+  background: #33425a;
+}
+
 /* Hover-visible tool buttons (eye / pencil / copy / trash-2). 47-01 UAT
    round 5: the tools collapse to ZERO width while hidden (max-width: 0 +
    overflow: hidden) so they reserve no layout space at rest — the track name
@@ -3918,17 +3932,36 @@ button.destructive {
    name's right extreme (data-tools-open='true' set by the strip state) — a
    hover or a click on the name never reveals them (a name click selects the
    track). Leaving the panel or the header closes them (onPointerLeave in the
-   component). The slide-in animation and the label collapse are unchanged. */
+   component).
+
+   47 UAT: while the panel is open it takes over the WHOLE row — the standing
+   controls (grip, eye, blend, name) and the more-button hide, and the three
+   tool buttons (solo / copy / trash) stretch across the track's full width
+   (flex: 1 each). */
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-grip,
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-label,
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools-toggle,
+.physics-paint-track-row-header[data-tools-open='true'] > .physics-paint-track-row-tool-button {
+  display: none;
+}
+
 .physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools {
-  max-width: 90px;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+  justify-content: stretch;
+  gap: 4px;
 }
 
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-label {
-  max-width: 0;
-  padding-right: 0;
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools .physics-paint-track-row-tool-button,
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools .physics-paint-track-row-solo {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  height: 22px;
 }
 
 /* 47-01 UAT round 6: the more-button lives at the header's right extreme,

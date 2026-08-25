@@ -25,7 +25,7 @@
  * grab, no rename, no duplicate, no delete (D-06).
  */
 
-import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
+import { Blend, Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
 import { PhysicsPaintFilmstripCapsule } from './physicsPaintFilmstripCapsule';
@@ -247,6 +247,13 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onToggleVisible?: (trackId: string, visible: boolean) => void;
   /** 'S' solo toggle intent (47-02 Task 1) — routes through setTrackSolo. */
   readonly onToggleSolo?: (trackId: string) => void;
+  /** Parent EFX Paint layer for the row's per-track store reads (frame
+   *  blending state). Absent in minimal fixtures — the blend toggle only
+   *  renders when a layer is known. */
+  readonly layerId?: string;
+  /** Frame-blending toggle intent (47 UAT) — the row routes it to the strip,
+   *  which toggles the track's canonical interpolation state. */
+  readonly onToggleBlend?: (trackId: string) => void;
   /** Copy intent — routes through duplicateTrack. */
   readonly onDuplicateTrack?: (trackId: string) => void;
   /** Trash intent — routes through requestDeleteTrack/commitDeleteTrack. */
@@ -290,6 +297,8 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onCancelRename,
     onToggleVisible,
     onToggleSolo,
+    layerId,
+    onToggleBlend,
     onDuplicateTrack,
     onDeleteTrack,
     onGripPointerDown,
@@ -299,6 +308,10 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
   } = props;
   const isActive = activeTrackId === trackId;
   const isBackground = kind === 'background';
+  // 47 UAT: the per-row frame-blending toggle reads THIS track's canonical
+  // interpolation state (same store read the toolbox toggle uses, keyed by
+  // the row's own trackId — never the active track's, T-47-04).
+  const blendEnabled = layerId ? physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId).enabled : false;
   const headerClass = [
     'physics-paint-track-row-header',
     isActive ? 'physics-paint-track-row-header-active' : '',
@@ -415,6 +428,25 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           >
             {visible ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
           </button>
+          {/* 47 UAT: per-row frame-blending toggle right after the eye. Its
+              pressed state reflects THIS track's canonical interpolation
+              enabled flag; the click routes through onToggleBlend(trackId)
+              and the strip toggles the track's interpolation state. */}
+          {layerId ? (
+            <button
+              type="button"
+              class={`physics-paint-track-row-tool-button physics-paint-track-row-blend${blendEnabled ? ' physics-paint-track-row-blend-enabled' : ''}`}
+              aria-label={`Blend ${label}`}
+              aria-pressed={blendEnabled ? 'true' : 'false'}
+              title={blendEnabled ? `Disable frame blending for ${label}` : `Enable frame blending for ${label}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleBlend?.(trackId);
+              }}
+            >
+              <Blend size={12} aria-hidden="true" />
+            </button>
+          ) : null}
           <span
             class="physics-paint-track-row-label physics-paint-track-row-label-ellipsis"
             title={label}

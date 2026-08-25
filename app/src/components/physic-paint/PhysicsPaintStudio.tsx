@@ -2963,6 +2963,22 @@ export function PhysicsPaintStudio() {
     const result = setTrackSolo(layerId, trackId, solo);
     if (!result.ok) setApplyMessage(result.error);
   }, [launchContext?.layerId]);
+  // 47 UAT: the per-row frame-blending toggle writes THIS track's canonical
+  // interpolation state through the store op (the same state the toolbox
+  // toggle drives for the active track). The write bumps the track revision,
+  // so the push path serializes it into the parent document — no coordinator
+  // lease needed (interpolation is render metadata, never a record edit).
+  // Skipped while a physical edit is pending, like the toolbox toggle.
+  const handleToggleBlend = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    if (physicalEditCoordinator.pendingOperationId.value !== null) return;
+    const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
+    physicPaintStore.setRotoPhysicalInterpolationState(layerId, trackId, {
+      enabled: !current.enabled,
+      mode: current.mode,
+    });
+  }, [launchContext?.layerId]);
   const handleReorderTrack = useCallback((trackId: string, newOrder: number) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
@@ -2977,15 +2993,15 @@ export function PhysicsPaintStudio() {
     if (!layerId) return {
       layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
-      onToggleSolo: undefined, onRenameTrack: undefined, onDuplicateTrack: undefined,
-      onDeleteTrack: undefined, onReorderTrack: undefined,
+      onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
+      onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
       layerId, tracks: undefined, activeTrackId: undefined, background: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
-      onToggleSolo: undefined, onRenameTrack: undefined, onDuplicateTrack: undefined,
-      onDeleteTrack: undefined, onReorderTrack: undefined,
+      onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
+      onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
     };
     return {
       layerId,
@@ -2996,6 +3012,7 @@ export function PhysicsPaintStudio() {
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
       onToggleSolo: handleToggleSolo,
+      onToggleBlend: handleToggleBlend,
       onRenameTrack: handleRenameTrack,
       onDuplicateTrack: handleDuplicateTrack,
       onDeleteTrack: handleDeleteTrack,
@@ -3066,6 +3083,7 @@ export function PhysicsPaintStudio() {
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
         onToggleSolo: multiTrackRowBundle.onToggleSolo,
+        onToggleBlend: multiTrackRowBundle.onToggleBlend,
         onRenameTrack: multiTrackRowBundle.onRenameTrack,
         onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,
         onDeleteTrack: multiTrackRowBundle.onDeleteTrack,

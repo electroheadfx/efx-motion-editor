@@ -48,6 +48,8 @@ vi.mock('@preact/signals', async () => {
 
 import { getDocument, registerDocument, requestDeleteTrack } from '../../../stores/efxPaintStore';
 import * as efxPaintStoreModule from '../../../stores/efxPaintStore';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED } from '../roto/physicsPaintRotoPhysicalModel';
 import { signal } from '@preact/signals';
 import { PhysicsPaintWorkflowStrip, computeEnsureRowScrollDelta } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
@@ -122,11 +124,12 @@ function headerCell(root: unknown, trackId: string): TestVNode {
 }
 
 interface ColumnFixture {
-  tracks: readonly InternalPaintTrack[];
-  activeTrackId: string;
-  background: BackgroundTrack;
-  trackA: InternalPaintTrack;
-  trackB: InternalPaintTrack;
+  readonly layerId: string;
+  readonly tracks: readonly InternalPaintTrack[];
+  readonly activeTrackId: string;
+  readonly background: BackgroundTrack;
+  readonly trackA: InternalPaintTrack;
+  readonly trackB: InternalPaintTrack;
 }
 
 function makeTwoTrackFixture(): ColumnFixture {
@@ -134,6 +137,7 @@ function makeTwoTrackFixture(): ColumnFixture {
   const trackA = document.tracks[0];
   const trackB: InternalPaintTrack = { ...trackA, id: 'track-b', name: 'Paint 2', order: 1 };
   return {
+    layerId: 'header-column-layer',
     tracks: [trackA, trackB],
     activeTrackId: trackA.id,
     background: document.background,
@@ -143,12 +147,14 @@ function makeTwoTrackFixture(): ColumnFixture {
 }
 
 interface ColumnRenderOptions {
+  readonly layerId?: string;
   readonly tracks: readonly InternalPaintTrack[];
   readonly activeTrackId: string;
   readonly background: BackgroundTrack | null;
   readonly onSelectTrack?: (trackId: string) => void;
   readonly onToggleVisible?: (trackId: string) => void;
   readonly onToggleSolo?: (trackId: string) => void;
+  readonly onToggleBlend?: (trackId: string) => void;
   readonly onAddTrack?: () => void;
   readonly onDuplicateTrack?: (trackId: string) => void;
   readonly onRequestDeleteTrack?: (trackId: string) => void;
@@ -158,12 +164,14 @@ interface ColumnRenderOptions {
 
 function renderColumn(options: ColumnRenderOptions): TestVNode {
   return physicsPaintTrackHeaderColumn({
+    layerId: options.layerId ?? 'header-column-layer',
     tracks: options.tracks,
     activeTrackId: options.activeTrackId,
     background: options.background,
     onSelectTrack: options.onSelectTrack ?? vi.fn(),
     onToggleVisible: options.onToggleVisible ?? vi.fn(),
     onToggleSolo: options.onToggleSolo ?? vi.fn(),
+    onToggleBlend: options.onToggleBlend ?? vi.fn(),
     onAddTrack: options.onAddTrack ?? vi.fn(),
     onDuplicateTrack: options.onDuplicateTrack ?? vi.fn(),
     onRequestDeleteTrack: options.onRequestDeleteTrack ?? vi.fn(),
@@ -636,6 +644,39 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     const disarmedSolo = findOne(headerCell(disarmedRoot, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
     expect(hasClass(disarmedSolo, 'physics-paint-track-row-solo-armed')).toBe(false);
     expect(String(disarmedSolo.props['aria-pressed'])).toBe('false');
+  });
+
+  it('renders a per-track frame-blending toggle after the eye and routes the click to onToggleBlend, arming with the row\'s own canonical interpolation state (47 UAT)', () => {
+    const fixture = makeTwoTrackFixture();
+    const onToggleBlend = vi.fn();
+    const root = renderFixture(fixture, { onToggleBlend });
+    const headerA = headerCell(root, fixture.trackA.id);
+
+    // The blend toggle sits in the standing row controls (after the eye,
+    // before the name) — disabled by default (disabled interpolation state).
+    const blend = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Blend Track 1');
+    expect(hasClass(blend, 'physics-paint-track-row-blend-enabled')).toBe(false);
+    expect(String(blend.props['aria-pressed'])).toBe('false');
+    (blend.props.onClick as (event: unknown) => void)(clickEvent());
+    expect(onToggleBlend).toHaveBeenCalledWith(fixture.trackA.id);
+
+    // The pressed state reflects THIS row's track's canonical interpolation
+    // state (T-47-04: a row never reads the active track's state). A unique
+    // layer keeps the armed write out of the shared fixture layer.
+    const layerId = 'header-column-blend-layer';
+    try {
+      physicPaintStore.setRotoPhysicalInterpolationState(layerId, fixture.trackA.id, { enabled: true, mode: 'blend' });
+      const armedRoot = renderFixture({ ...fixture, layerId }, { onToggleBlend });
+      const armedBlend = findOne(headerCell(armedRoot, fixture.trackA.id), (vnode) => vnode.props['aria-label'] === 'Blend Track 1');
+      expect(hasClass(armedBlend, 'physics-paint-track-row-blend-enabled')).toBe(true);
+      expect(String(armedBlend.props['aria-pressed'])).toBe('true');
+      // Track B's row stays disarmed — the toggle is per-track, not per-layer.
+      const headerB = headerCell(armedRoot, fixture.trackB.id);
+      const blendB = findOne(headerB, (vnode) => vnode.props['aria-label'] === 'Blend Paint 2');
+      expect(hasClass(blendB, 'physics-paint-track-row-blend-enabled')).toBe(false);
+    } finally {
+      physicPaintStore.setRotoPhysicalInterpolationState(layerId, fixture.trackA.id, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED);
+    }
   });
 
   it('truncates a long name with an ellipsis class and keeps the full name in the title tooltip (D-02)', () => {
