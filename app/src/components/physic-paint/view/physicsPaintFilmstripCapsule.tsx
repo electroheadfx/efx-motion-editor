@@ -10,6 +10,26 @@ import type {
  */
 export const FILMSTRIP_CELL_EXPAND_THRESHOLD_PX = 12;
 
+/**
+ * Approximate glyph widths (px) at the badge's 8px/600 system-ui font, used
+ * to decide whether the full cycle label fits the capsule width. Digits are
+ * tabular (equal width); the remaining glyphs cover every character that
+ * appears in `cycleLabel` / `×N`/`×∞` markers.
+ */
+const BADGE_GLYPH_WIDTHS: Readonly<Record<string, number>> = {
+  ' ': 2.2,
+  '0': 4.6, '1': 4.6, '2': 4.6, '3': 4.6, '4': 4.6,
+  '5': 4.6, '6': 4.6, '7': 4.6, '8': 4.6, '9': 4.6,
+  'C': 5.2, 'y': 4.0, 'c': 3.4, 'l': 2.4, 'e': 3.8, 'f': 3.2,
+  '×': 3.2, '∞': 7.0, '=': 4.4,
+};
+
+function estimateBadgeTextWidth(text: string): number {
+  let width = 0;
+  for (const char of text) width += BADGE_GLYPH_WIDTHS[char] ?? 3.8;
+  return width;
+}
+
 export interface PhysicsPaintFilmstripCapsuleProps {
   /** Task-1 presentation — the ONLY source of copy (badge, shortened label, cut). */
   readonly presentation: PhysicsPaintLoopClipPresentation;
@@ -31,11 +51,16 @@ export interface PhysicsPaintFilmstripCapsuleProps {
  * Phase 43 rail surface without touching its selection/drag/spacing/
  * playback semantics (D-11). All facts come from the presentation and the
  * resolver-derived range fields — this component never computes loop math.
+ * 47 UAT: cells are pure visual treatments (no numeric labels on frames);
+ * the capsule carries AT MOST one compact badge at its head — the full
+ * cycle label when it fits the capsule width, else the ×N/×∞ form. All
+ * other facts (shortened label, durations) live in the tooltip.
  */
 export function PhysicsPaintFilmstripCapsule(props: PhysicsPaintFilmstripCapsuleProps) {
   const { presentation, geometry, repeat, sourceOffsets, cycleLength, cellWidth } = props;
   const expanded = cellWidth >= FILMSTRIP_CELL_EXPAND_THRESHOLD_PX;
   const repeatMarker = repeat === 'infinity' ? '×∞' : `×${repeat}`;
+  const badgeFits = estimateBadgeTextWidth(presentation.cycleLabel) <= geometry.width;
   const repeatCells = [];
   if (expanded) {
     for (let cycle = 0; cycle < presentation.repeatInstanceCount; cycle += 1) {
@@ -45,9 +70,7 @@ export function PhysicsPaintFilmstripCapsule(props: PhysicsPaintFilmstripCapsule
             key={`${cycle}:${cell}`}
             class="physics-paint-capsule-repeat-cell"
             style={{ left: `${(cycle * cycleLength + sourceOffsets[cell]) * cellWidth}px` }}
-          >
-            {sourceOffsets[cell]}
-          </span>,
+          />,
         );
       }
     }
@@ -70,20 +93,15 @@ export function PhysicsPaintFilmstripCapsule(props: PhysicsPaintFilmstripCapsule
             key={offset}
             class="physics-paint-capsule-source-cell"
             style={{ left: `${offset * cellWidth}px` }}
-          >
-            {offset}
-          </span>
+          />
         ))}
       </span>
-      <span class="physics-paint-capsule-badge" aria-hidden="true">
-        {presentation.cycleLabel}
-        <span class="physics-paint-capsule-repeat-marker">{repeatMarker}</span>
+      <span
+        class={`physics-paint-capsule-badge${badgeFits ? '' : ' marker-only'}`}
+        aria-hidden="true"
+      >
+        {badgeFits ? presentation.cycleLabel : repeatMarker}
       </span>
-      {presentation.shortened && presentation.shortenedLabel ? (
-        <span class="physics-paint-capsule-shortened-label" aria-hidden="true">
-          {presentation.shortenedLabel}
-        </span>
-      ) : null}
       <span class={bandClass} aria-hidden="true">
         {expanded ? repeatCells : null}
       </span>

@@ -100,6 +100,7 @@ function presentation(overrides: Partial<PhysicsPaintLoopClipPresentation> = {})
 
 function render(overrides: {
   presentation?: PhysicsPaintLoopClipPresentation;
+  geometry?: { left: number; width: number };
   repeat?: number | 'infinity';
   sourceOffsets?: readonly number[];
   sourceFrameCount?: number;
@@ -108,7 +109,7 @@ function render(overrides: {
 } = {}) {
   const props = {
     presentation: overrides.presentation ?? presentation(),
-    geometry: { left: 0, width: 216 },
+    geometry: overrides.geometry ?? { left: 0, width: 216 },
     repeat: overrides.repeat ?? 3,
     sourceOffsets: overrides.sourceOffsets ?? [0, 1, 2, 3, 4],
     sourceFrameCount: overrides.sourceFrameCount ?? 5,
@@ -119,28 +120,52 @@ function render(overrides: {
 }
 
 describe('physics paint filmstrip capsule (TML-06)', () => {
-  it('renders one source-cycle cell per source frame at the capsule head, each carrying the source-frame index', () => {
+  it('renders one source-cycle cell per source frame at the capsule head as a pure visual cell — no numeric labels (47 UAT)', () => {
     const { tree } = render({ sourceOffsets: [0, 1, 2, 3, 4], sourceFrameCount: 5 });
 
     const cells = findAll(tree, (node) => hasClass(node, 'physics-paint-capsule-source-cell'));
     expect(cells).toHaveLength(5);
-    expect(cells.map((cell) => textOf(cell))).toEqual(['0', '1', '2', '3', '4']);
+    expect(cells.map((cell) => textOf(cell))).toEqual(['', '', '', '', '']);
   });
 
-  it('derives the ×N/×∞ badge from the requested cycleLabel, never from the effective duration', () => {
-    const finite = render({ presentation: presentation({ cycleLabel: 'Cycle 4f × 3 = 12f' }), repeat: 3 });
+  it('shows the full cycle label as ONE badge at the head when it fits the capsule width, with no duplicated ×N suffix (47 UAT)', () => {
+    const finite = render({
+      presentation: presentation({ cycleLabel: 'Cycle 4f × 3 = 12f' }),
+      geometry: { left: 0, width: 216 },
+      repeat: 3,
+    });
     const finiteBadge = findOne(finite.tree, (node) => hasClass(node, 'physics-paint-capsule-badge'));
-    expect(textOf(finiteBadge)).toContain('Cycle 4f × 3 = 12f');
-    expect(textOf(finiteBadge)).toContain('×3');
+    expect(textOf(finiteBadge)).toBe('Cycle 4f × 3 = 12f');
     expect(textOf(finiteBadge)).not.toContain('Effective');
+    expect(hasClass(finiteBadge, 'marker-only')).toBe(false);
 
     const infinite = render({
       presentation: presentation({ cycleLabel: 'Cycle 4f × ∞' }),
+      geometry: { left: 0, width: 216 },
       repeat: 'infinity',
     });
     const infiniteBadge = findOne(infinite.tree, (node) => hasClass(node, 'physics-paint-capsule-badge'));
-    expect(textOf(infiniteBadge)).toContain('Cycle 4f × ∞');
-    expect(textOf(infiniteBadge)).toContain('×∞');
+    expect(textOf(infiniteBadge)).toBe('Cycle 4f × ∞');
+    expect(hasClass(infiniteBadge, 'marker-only')).toBe(false);
+  });
+
+  it('shrinks the badge to the compact ×N/×∞ form when the full cycle label does not fit the capsule width (47 UAT)', () => {
+    const finite = render({
+      presentation: presentation({ cycleLabel: 'Cycle 4f × 3 = 12f' }),
+      geometry: { left: 0, width: 24 },
+      repeat: 3,
+    });
+    const finiteBadge = findOne(finite.tree, (node) => hasClass(node, 'physics-paint-capsule-badge'));
+    expect(textOf(finiteBadge)).toBe('×3');
+    expect(hasClass(finiteBadge, 'marker-only')).toBe(true);
+
+    const infinite = render({
+      presentation: presentation({ cycleLabel: 'Cycle 4f × ∞' }),
+      geometry: { left: 0, width: 24 },
+      repeat: 'infinity',
+    });
+    const infiniteBadge = findOne(infinite.tree, (node) => hasClass(node, 'physics-paint-capsule-badge'));
+    expect(textOf(infiniteBadge)).toBe('×∞');
   });
 
   it('renders the diagonal cut across the repetition band only when the cycle is partial', () => {
@@ -168,14 +193,11 @@ describe('physics paint filmstrip capsule (TML-06)', () => {
     expect(hasClass(expandedBand, 'compact')).toBe(false);
     const cells = findAll(expanded.tree, (node) => hasClass(node, 'physics-paint-capsule-repeat-cell'));
     expect(cells).toHaveLength(15); // repeatInstanceCount 3 × sourceOffsets 5
-    expect(cells.map((cell) => textOf(cell))).toEqual([
-      '0', '1', '2', '3', '4',
-      '0', '1', '2', '3', '4',
-      '0', '1', '2', '3', '4',
-    ]);
+    // 47 UAT: repetition cells are visual only — no numeric labels.
+    expect(cells.every((cell) => textOf(cell) === '')).toBe(true);
   });
 
-  it('renders the distinct shortened visual and label while keeping the requested badge (D-12)', () => {
+  it('keeps the shortened visual (amber border) and the full badge while the shortened phrase lives in the tooltip only (D-12, 47 UAT)', () => {
     expect(cssRule('.physics-paint-filmstrip-capsule.shortened')).toContain('#ffb020');
 
     const { tree } = render({
@@ -184,7 +206,8 @@ describe('physics paint filmstrip capsule (TML-06)', () => {
 
     const capsule = findOne(tree, (node) => hasClass(node, 'physics-paint-filmstrip-capsule'));
     expect(hasClass(capsule, 'shortened')).toBe(true);
-    expect(textOf(capsule)).toContain('Loop shortened by next clip');
+    // The capsule surface carries at most the badge — no overlay text.
+    expect(textOf(capsule)).not.toContain('Loop shortened by next clip');
     expect(textOf(capsule)).toContain('Cycle 4f × 3 = 12f');
   });
 });

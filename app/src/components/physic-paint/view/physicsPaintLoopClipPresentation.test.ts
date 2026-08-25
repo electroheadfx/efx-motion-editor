@@ -221,6 +221,7 @@ describe('capsule presentation — shortened state and partial-cycle facts (TML-
       'Cycle 4f × 3 = 12f',
       'Effective 10f',
       'Status: Synchronized with Action.',
+      'Loop shortened by next clip',
       'next clip — interrupts the loop',
     ]);
   });

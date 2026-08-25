@@ -120,12 +120,15 @@ export function projectPhysicsPaintLoopClipPresentation(
   );
   const shortenedLabel = shortened ? 'Loop shortened by next clip' : null;
   const interruptionTooltipLine = shortened ? 'next clip — interrupts the loop' : null;
+  // 47 UAT: the capsule carries at most one compact badge — the shortened
+  // phrase moved from the capsule surface into the tooltip.
   const tooltipLines = [
     displayName,
     `Type: ${modeLabel}`,
     cycleLabel,
     `Effective ${effectiveDuration}f`,
     `Status: ${statusLabel}`,
+    ...(shortenedLabel ? [shortenedLabel] : []),
     ...(interruptionTooltipLine ? [interruptionTooltipLine] : []),
     ...(fragmentLabel ? [fragmentLabel] : []),
   ];
