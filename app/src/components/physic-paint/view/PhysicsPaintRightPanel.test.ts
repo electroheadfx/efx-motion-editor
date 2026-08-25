@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
+import { physicPaintVersion } from '../../../stores/physicPaintStore';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -95,6 +96,7 @@ vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null }));
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
     activeTool: 'paint',
+    activeTrackId: 'track-a',
     color: '#103c65',
     opacity: 100,
     edgeDetail: 50,
@@ -172,6 +174,30 @@ function findById(tree: AnyVNode, id: string): AnyVNode {
 /** The five-option blend select in the Track section (TML-04). */
 const TRACK_BLEND_OPTIONS = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
+/** Find a host element by class (the harness walks expanded components). */
+function findByClass(tree: AnyVNode, className: string): AnyVNode {
+  const match = childrenOf(tree).find((node) => {
+    const vnode = node as AnyVNode;
+    return typeof vnode.type !== 'function' && String(vnode.props?.class ?? '').split(/\s+/).includes(className);
+  }) as AnyVNode | undefined;
+  expect(match, `Missing element with class ${className}`).toBeDefined();
+  return match!;
+}
+
+/** Click a tool-pane tab and re-render so the harness picks up the state. */
+function clickToolTab(tree: AnyVNode, tabClass: string): void {
+  const tab = findByClass(tree, tabClass);
+  (tab.props.onClick as () => void)();
+}
+
+/** Render the panel and open the 'Track option' tab (the initial tab is
+ *  'Paint option'). */
+function renderPanelWithTrackTab(props: PhysicsPaintRightPanelProps): AnyVNode {
+  const tree = renderPanel(props);
+  clickToolTab(tree, 'physics-paint-tab-track-option');
+  return renderPanel(props);
+}
+
 beforeEach(() => {
   runtime = new HookRuntime();
   vi.clearAllMocks();
@@ -183,23 +209,32 @@ beforeEach(() => {
   mocks.saveHiddenPaletteColors.mockResolvedValue();
 });
 
-describe('Physics Paint right panel Track section (47-03, TML-04)', () => {
-  it('renders the Track section with the active track name, opacity slider value, and blend select value', () => {
-    const tree = renderPanel(baseProps({
+describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)', () => {
+  it('hosts the track options behind the Track option tab: active track name, opacity slider value, and blend select value', () => {
+    const tree = renderPanelWithTrackTab(baseProps({
       trackName: 'Paint 1',
       trackOpacity: 0.5,
       trackBlendMode: 'multiply',
     }));
 
+    expect(textContent(tree)).toContain('Paint option');
+    expect(textContent(tree)).toContain('Track option');
     expect(textContent(tree)).toContain('Blend');
     expect(textContent(tree)).toContain('Paint 1');
     expect(findById(tree, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(tree, 'physics-track-blend').props.value).toBe('multiply');
   });
 
+  it('keeps the track controls out of the Paint option panel (47 UAT)', () => {
+    const tree = renderPanel(baseProps());
+    expect(findByClass(tree, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+    expect(findByClass(tree, 'physics-paint-tab-track-option').props['aria-selected']).toBe(false);
+    expect(textContent(tree)).not.toContain('Track:');
+  });
+
   it('commits the dragged opacity once and clamps the slider display to 0..1', () => {
     const props = baseProps({ trackOpacity: 0.5 });
-    const tree = renderPanel(props);
+    const tree = renderPanelWithTrackTab(props);
 
     findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
 
@@ -208,16 +243,16 @@ describe('Physics Paint right panel Track section (47-03, TML-04)', () => {
     expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);
     expect(findById(tree, 'physics-track-opacity').props.max).toBe(1);
 
-    const clampedUp = renderPanel(baseProps({ trackOpacity: 1.5 }));
+    const clampedUp = renderPanelWithTrackTab(baseProps({ trackOpacity: 1.5 }));
     expect(findById(clampedUp, 'physics-track-opacity').props.value).toBe(1);
 
-    const clampedDown = renderPanel(baseProps({ trackOpacity: -0.2 }));
+    const clampedDown = renderPanelWithTrackTab(baseProps({ trackOpacity: -0.2 }));
     expect(findById(clampedDown, 'physics-track-opacity').props.value).toBe(0);
   });
 
   it('commits the selected blend mode once and offers exactly the five BlendMode options', () => {
     const props = baseProps({ trackBlendMode: 'normal' });
-    const tree = renderPanel(props);
+    const tree = renderPanelWithTrackTab(props);
 
     findById(tree, 'physics-track-blend').props.onChange({ currentTarget: { value: 'screen' } });
 
@@ -232,18 +267,17 @@ describe('Physics Paint right panel Track section (47-03, TML-04)', () => {
   });
 
   it('re-renders to the new active track values when the active track changes (D-05)', () => {
-    const props = baseProps({
+    const first = renderPanelWithTrackTab(baseProps({
       trackName: 'Paint 1',
       trackOpacity: 0.5,
       trackBlendMode: 'multiply',
-    });
-    const first = renderPanel(props);
+    }));
 
     expect(textContent(first)).toContain('Paint 1');
     expect(findById(first, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(first, 'physics-track-blend').props.value).toBe('multiply');
 
-    const second = renderPanel(baseProps({
+    const second = renderPanelWithTrackTab(baseProps({
       trackName: 'Paint 2',
       trackOpacity: 1,
       trackBlendMode: 'normal',
@@ -253,6 +287,46 @@ describe('Physics Paint right panel Track section (47-03, TML-04)', () => {
     expect(textContent(second)).not.toContain('Paint 1');
     expect(findById(second, 'physics-track-opacity').props.value).toBe(1);
     expect(findById(second, 'physics-track-blend').props.value).toBe('normal');
+  });
+
+  it('auto-selects the Track option tab when the active track changes (47 UAT)', () => {
+    renderPanel(baseProps({ activeTrackId: 'track-a' }));
+    // The track-change effect flips the tab during the post-render effect
+    // pass, so the next render settles on the Track option panel.
+    renderPanel(baseProps({ activeTrackId: 'track-b' }));
+    const settled = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+
+    expect(findByClass(settled, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+    expect(textContent(settled)).toContain('Track:');
+    expect(findById(settled, 'physics-track-opacity')).toBeDefined();
+  });
+
+  it('auto-selects the Paint option tab when the tool changes (47 UAT)', () => {
+    renderPanel(baseProps({ activeTrackId: 'track-a' }));
+    renderPanel(baseProps({ activeTrackId: 'track-b' }));
+    const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+    expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+
+    // Tool change re-runs the tool effect -> Paint option on the next render.
+    renderPanel(baseProps({ activeTrackId: 'track-b', activeTool: 'erase' }));
+    const backToPaint = renderPanel(baseProps({ activeTrackId: 'track-b', activeTool: 'erase' }));
+
+    expect(findByClass(backToPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+    expect(findById(backToPaint, 'physics-edge-detail')).toBeDefined();
+    expect(findById(backToPaint, 'physics-erase-strength')).toBeDefined();
+  });
+
+  it('auto-selects the Paint option tab when a paint mutation bumps the paint revision (47 UAT)', () => {
+    renderPanel(baseProps({ activeTrackId: 'track-a' }));
+    renderPanel(baseProps({ activeTrackId: 'track-b' }));
+    const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+    expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+
+    physicPaintVersion.value++;
+    const afterPaint = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+
+    expect(findByClass(afterPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+    expect(findById(afterPaint, 'physics-edge-detail')).toBeDefined();
   });
 });
 

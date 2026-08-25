@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { effect } from '@preact/signals';
 import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
+import { physicPaintVersion } from '../../../stores/physicPaintStore';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
 import {
   loadFavoriteColors,
@@ -23,6 +25,9 @@ export interface PhysicsPaintPlayWiggleSettings {
 
 export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
+  /** 47 UAT: the document's active track id — a change auto-selects the
+   *  'Track option' tab. */
+  activeTrackId: string;
   color: string;
   opacity: number;
   edgeDetail: number;
@@ -168,6 +173,7 @@ function SmoothingButton(props: { label: string; value: number; active: boolean;
 // directly-callable implementation the palette contract tests invoke.
 export function PhysicsPaintRightPanel({
   activeTool,
+  activeTrackId,
   color,
   opacity,
   edgeDetail,
@@ -203,6 +209,28 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
+  // 47 UAT: the tool pane hosts two tabs — 'Paint option' (brush/tool
+  // options) and 'Track option' (active track's name/opacity/blend). The tab
+  // auto-selects: choosing a track opens 'Track option'; choosing a tool or
+  // painting snaps back to 'Paint option'. The effects below run in this
+  // order, so on mount the final state is the initial 'paint' tab.
+  const [toolTab, setToolTab] = useState<'paint' | 'track'>('paint');
+  useEffect(() => {
+    setToolTab('track');
+  }, [activeTrackId]);
+  useEffect(() => {
+    setToolTab('paint');
+  }, [activeTool]);
+  useEffect(() => {
+    // A paint (or roto) mutation snaps the pane back to the Paint option —
+    // subscribed via a signals effect so the memoized panel flips the tab
+    // without re-rendering on every stroke.
+    const dispose = effect(() => {
+      physicPaintVersion.value;
+      setToolTab('paint');
+    });
+    return dispose;
+  }, []);
   // Three resizable sections (36.15-12, UAT Gap H-4; default shares from
   // 36.15-13 Gap I-2, trimmed by Gap J): brush color, tool, and
   // Scripts/Onion/Motion take 361.25:213:272 of the content height by default;
@@ -538,8 +566,29 @@ export function PhysicsPaintRightPanel({
         <div class="physics-paint-right-pane physics-paint-right-pane-tools">
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
-          <section class="physics-paint-right-section physics-paint-single-tab-section">
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool">
+          <div class="physics-paint-options-tabs physics-paint-options-tabs-tool" role="tablist" aria-label="Physics Paint tool option panels">
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-paint-option${toolTab === 'paint' ? ' active' : ''}`}
+            role="tab"
+            aria-selected={toolTab === 'paint'}
+            onClick={() => setToolTab('paint')}
+          >
+            Paint option
+          </button>
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-track-option${toolTab === 'track' ? ' active' : ''}`}
+            role="tab"
+            aria-selected={toolTab === 'track'}
+            onClick={() => setToolTab('track')}
+          >
+            Track option
+          </button>
+      </div>
+      <section class="physics-paint-right-section physics-paint-options-tabs-section">
+        {toolTab === 'paint' ? (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
             {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
             {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
@@ -554,7 +603,9 @@ export function PhysicsPaintRightPanel({
                 <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
               </div>
             </div>
-
+          </div>
+        ) : (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-track" role="tabpanel" aria-label="Track options">
             <div class="physics-paint-option-group">
               <span class="physics-paint-right-label">Track: {trackName}</span>
               <PanelSlider id="physics-track-opacity" label="Opacity" min={0} max={1} step={0.01} value={trackOpacity} onChange={onTrackOpacityChange} />
@@ -571,6 +622,7 @@ export function PhysicsPaintRightPanel({
               </label>
             </div>
           </div>
+        )}
           </section>
             </div>
           </SidebarScrollArea>

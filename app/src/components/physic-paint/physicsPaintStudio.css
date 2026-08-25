@@ -1041,6 +1041,13 @@ button.destructive {
   flex: 1 1 0;
 }
 
+/* 47 UAT: the tool pane's two tabs ('Paint option' / 'Track option') share
+   the bottom pane's tab look and split the pane width equally. */
+.physics-paint-tab-paint-option,
+.physics-paint-tab-track-option {
+  flex: 1 1 0;
+}
+
 .physics-paint-options-tab:hover:not(.active) {
   border-color: transparent !important;
   background: transparent !important;

@@ -98,6 +98,7 @@ const DEFAULTS = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff666
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
     activeTool: 'paint',
+    activeTrackId: 'track-a',
     color: '#103c65',
     opacity: 100,
     edgeDetail: 50,
