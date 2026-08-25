@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
@@ -11,6 +12,7 @@ import {
   getDocument as getEfxPaintDocument,
   renameTrack,
   requestDeleteTrack,
+  serializeRuntimeIntoDocument,
   setActiveTrackId,
   setTrackVisible,
 } from '../../stores/efxPaintStore';
@@ -2903,18 +2905,29 @@ export function PhysicsPaintStudio() {
   // track list (idempotency is guarded by document revision on the main
   // side). The push fires for the launch registration too — both windows
   // already hold that document, so it is a revision no-op.
+  // 47-01 UAT round 7: push the LIVE runtime projection (serializeRuntimeIntoDocument)
+  // instead of the raw document — the raw document never re-projects the
+  // child's runtime, so Track 1's rotoPhysical stayed at launch state and the
+  // main window's runtime mirror + save path diverged from the child's live
+  // records (delete rejections, keys lost on save). Subscribing to
+  // physicPaintVersion too makes every paint/roto edit re-push.
   useEffect(() => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
-    const document = getEfxPaintDocument(layerId);
-    if (!document) return;
     const mode = bridgeModeRef.current;
     if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
+    let document: EfxPaintDocumentModel | null = null;
+    try {
+      document = serializeRuntimeIntoDocument(layerId);
+    } catch {
+      document = getEfxPaintDocument(layerId);
+    }
+    if (!document) return;
     void sendEfxPaintDocumentSync(document, mode).catch((error) => {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, efxPaintVersion.value]);
+  }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value]);
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,

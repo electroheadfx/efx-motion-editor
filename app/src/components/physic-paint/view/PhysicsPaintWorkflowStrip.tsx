@@ -381,8 +381,8 @@ const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
    rows), capped at 270px so the canvas keeps room; the top-edge drag handle
    lets the user shrink (vertical scroll appears) or grow up to the full
    content height — never beyond the number of tracks. */
-// 47-01 UAT round 6: the row is 34px (12px rail band + 22px cells, no overlap).
-const STRIP_ROW_HEIGHT_PX = 34;
+// 47-01 UAT round 7: the row is 30px (8px rail band + 22px cells, no overlap).
+const STRIP_ROW_HEIGHT_PX = 30;
 const STRIP_CHROME_HEIGHT_PX = 124;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
@@ -3376,6 +3376,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           layerId={props.layerId!}
                           frameCells={frameCells}
                           visible={track.visible}
+                          onSelectTrack={props.onSelectTrack}
+                          onNavigateToFrame={props.onNavigateToSyncedFrame}
                         />
                       ),
                   )}

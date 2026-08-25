@@ -782,8 +782,8 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(headerColumn).toBeDefined();
       const headerRows = harness.headerRows();
       expect(headerRows).toBeDefined();
-      // Header cells live inside the header-rows band, so each 34px header
-      // cell aligns 1:1 with its 34px row.
+      // Header cells live inside the header-rows band, so each 30px header
+      // cell aligns 1:1 with its 30px row.
       expect(harness.headerRowsHeaders()).toHaveLength(3);
     });
 
@@ -821,10 +821,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 2 Paint rows + 1 Bg row = 3 rows × 34px = 102px content; chrome 124px
-      // → default = min(124 + 102, 270) = 226px (all rows visible, no dead
+      // 2 Paint rows + 1 Bg row = 3 rows × 30px = 90px content; chrome 124px
+      // → default = min(124 + 90, 270) = 214px (all rows visible, no dead
       // space, no scroll).
-      expect(String(stripStyle.height)).toBe('226px');
+      expect(String(stripStyle.height)).toBe('214px');
     });
 
     it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
@@ -845,7 +845,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 5 Paint rows + 1 Bg row = 6 rows × 34px = 204px content; default is
+      // 5 Paint rows + 1 Bg row = 6 rows × 30px = 180px content; default is
       // capped at 270px so the canvas keeps room — the rows region scrolls.
       expect(String(stripStyle.height)).toBe('270px');
     });

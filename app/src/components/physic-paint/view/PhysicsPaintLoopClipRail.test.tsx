@@ -800,7 +800,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
     expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 3px');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
@@ -808,10 +808,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 2px solid #f2f5f7');
     expect(ringRule).toContain('top: -2px');
-    expect(ringRule).toContain('bottom: -22px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(ringRule).toContain('border-radius: 8px');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
-    expect(cssRule('.physics-paint-lane {')).toContain('height: 34px');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(physicsPaintStudioCss).not.toContain('physics-paint-group-lifecycle-lane');
   });
@@ -1268,7 +1268,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(railSelectedRule).toContain('background: #f59e0b');
     expect(physicsPaintStudioCss).not.toContain('background: #a78bfa');
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     const railTargetHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(:disabled),');
     expect(railTargetHoverRule).toContain('background: transparent');
     expect(railTargetHoverRule).toContain('box-shadow: none');
@@ -1398,7 +1398,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-lane'))).toHaveLength(1);
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lane'))).toHaveLength(0);
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
-    expect(cssRule('.physics-paint-lane {')).toContain('height: 34px');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
 
     const linkedCells = findAll(workflowTree, (vnode) => String(vnode.props.cellClass ?? '').includes('roto-linked-loop-badge'));
     expect(linkedCells.length).toBeGreaterThan(0);

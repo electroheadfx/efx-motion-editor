@@ -3001,14 +3001,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 12px;
+  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-loop-clip-rail-anchor {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3017,7 +3017,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3152,11 +3152,11 @@ button.destructive {
   top: -2px;
   left: -2px;
   right: -2px;
-  bottom: -22px;
+  bottom: -24px;
   z-index: 2;
   border: 2px solid #f2f5f7;
   /* Capsule-ish rounding on the full-row ring (8px reads rounded on the
-     ~32px-tall rectangle without going full pill); identical across every
+     ~30px-tall rectangle without going full pill); identical across every
      rail family via the shared class. */
   border-radius: 8px;
   pointer-events: none;
@@ -3225,14 +3225,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 12px;
+  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-key-rail-anchor {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3241,7 +3241,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3331,12 +3331,15 @@ button.destructive {
   position: relative;
   display: grid;
   align-items: center;
-  /* 47-01 UAT round 6: compact 34px row — the 12px rail band sits ABOVE the
+  /* 47-01 UAT round 6: compact 30px row — the 8px rail band sits ABOVE the
      22px-tall cells (padding-top pushes the cell row below the band). The
      previous 30px row let the absolute-positioned rail band (top 12px, z 4)
-     overlap the cells' top 8px, so frame/key clicks sometimes hit the rail. */
-  height: 34px;
-  padding-top: 12px;
+     overlap the cells' top 8px, so frame/key clicks sometimes hit the rail.
+     47-01 UAT round 7: the band shrank 12px -> 8px (the rail line + key
+     markers only need 8px) so the cells start at y8 — a 5px gap under the
+     rail line instead of the round-6 9px gap. */
+  height: 30px;
+  padding-top: 8px;
   background: #37393a;
 }
 
@@ -3535,8 +3538,8 @@ button.destructive {
    header cell lives in the pinned header column (PhysicsPaintTrackRowHeader),
    so the row itself carries no label column. */
 .physics-paint-track-row {
-  height: 34px;
-  min-height: 34px;
+  height: 30px;
+  min-height: 30px;
   border-top: 1px solid #47494b;
   background: #3a3c3d;
 }
@@ -3544,7 +3547,7 @@ button.destructive {
 .physics-paint-track-row-lane {
   display: flex;
   align-items: center;
-  height: 34px;
+  height: 30px;
   min-width: 0;
   overflow: hidden;
 }
@@ -3557,9 +3560,9 @@ button.destructive {
   border-top: 0;
 }
 
-/* One 34px header cell in the pinned header column. Every row — including
+/* One 30px header cell in the pinned header column. Every row — including
    the active lane and the fixed Background row — gets exactly one header
-   cell showing its track name (UI-SPEC header column layout). The 34px
+   cell showing its track name (UI-SPEC header column layout). The 30px
    height matches the frame lanes so headers align 1:1 with their rows.
    47-01 mockup redesign: reorder grip + truncated name + hover/replace
    tools (eye/pencil/copy/trash); a reserved 3px left border keeps content
@@ -3569,8 +3572,8 @@ button.destructive {
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 34px;
-  min-height: 34px;
+  height: 30px;
+  min-height: 30px;
   padding: 0 6px 0 5px;
   border-bottom: 1px solid #4c4e50;
   border-left: 3px solid transparent;

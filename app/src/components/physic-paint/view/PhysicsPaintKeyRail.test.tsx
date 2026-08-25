@@ -412,7 +412,7 @@ describe('PhysicsPaintKeyRail', () => {
 
     expect(cssRule('.physics-paint-key-rail-segment {')).toContain('height: 3px');
     expect(cssRule('.physics-paint-key-rail-segment {')).toContain('background: #8a939c');
-    expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,')).toContain('background: #a7b0b9');
     expect(cssRule('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {')).toContain('background: #f59e0b');
     // 43.4 defect 6 + defect 8: the shared rail focus ring (2px #F2F5F7, full
@@ -427,7 +427,7 @@ describe('PhysicsPaintKeyRail', () => {
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 2px solid #f2f5f7');
     expect(ringRule).toContain('top: -2px');
-    expect(ringRule).toContain('bottom: -22px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(ringRule).toContain('border-radius: 8px');
     expect(cssRule('.physics-paint-key-rail-target.busy {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('opacity: 0.55');

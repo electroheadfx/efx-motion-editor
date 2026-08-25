@@ -944,7 +944,7 @@ describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2
     expect(region).toContain('flex: 1 1 auto');
     expect(region).toContain('min-height: 0');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
-    expect(lane).toContain('height: 34px');
+    expect(lane).toContain('height: 30px');
     expect(lane).not.toContain('min-height');
     expect(lane).not.toContain('padding: 8px 0');
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
@@ -1329,7 +1329,7 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 28px');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('flex: 1 1 auto');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('min-height: 0');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 34px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
@@ -1557,7 +1557,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#8b5cf6/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#c4b5fd/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\.selected[^}]*background:\s*#f59e0b/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*8px/s);
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 
@@ -1651,7 +1651,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #f2f5f7');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 34px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 

@@ -2636,6 +2636,23 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       const current = getEfxPaintDocument(document.parentLayerId);
       if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
       registerEfxPaintDocument(document);
+      // 47-01 UAT round 7: mirror the child's live runtime into the main
+      // window's runtime maps (rotoPhysical only — frame bytes stay owned by
+      // the bridge applies) so the apply validation and the save projection
+      // always see the child's current records for EVERY track. Best-effort
+      // per track: a track under an active operation lease is skipped
+      // (fail closed), and tracks without rotoPhysical state are untouched.
+      for (const track of document.tracks) {
+        if (!track.rotoPhysical) continue;
+        const result = physicPaintStore.replaceRotoPhysicalDocument(
+          document.parentLayerId,
+          track.id,
+          track.rotoPhysical,
+        );
+        if (!result.ok) {
+          console.warn(`[physicPaintBridge] EFX Paint runtime mirror skipped for track ${track.id}: ${result.error}`);
+        }
+      }
     } catch (error) {
       console.warn('[physicPaintBridge] Rejected EFX Paint document sync:', error instanceof Error ? error.message : String(error));
     }

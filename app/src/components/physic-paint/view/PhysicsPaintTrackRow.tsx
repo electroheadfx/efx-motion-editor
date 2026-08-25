@@ -45,6 +45,14 @@ export interface PhysicsPaintTrackRowProps {
    * hidden state reads at a glance.
    */
   readonly visible?: boolean;
+  /**
+   * 47-01 UAT round 7: clicking a frame cell on a NON-active track activates
+   * that track (the controller routes through setActiveTrackId) and navigates
+   * the cursor to the clicked frame — the same intent a click on the active
+   * lane's cell carries.
+   */
+  readonly onSelectTrack?: (trackId: string) => void;
+  readonly onNavigateToFrame?: (frame: number) => void;
 }
 
 type TrackRowCellState = 'cached' | 'generated' | 'empty';
@@ -84,14 +92,27 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     frameCells,
     kind = 'paint',
     visible = true,
+    onSelectTrack,
+    onNavigateToFrame,
   } = props;
   const rowClass = [
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
     visible === false ? 'physics-paint-track-row-hidden' : '',
   ].filter(Boolean).join(' ');
+  // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
+  // row's track and navigates to the clicked frame. The frame is read from the
+  // clicked cell's data-roto-app-frame (the row itself carries no frame).
+  const handleRowClick = (event: MouseEvent) => {
+    if (!onSelectTrack && !onNavigateToFrame) return;
+    const target = event.target as HTMLElement | null;
+    const cell = target?.closest?.('[data-roto-app-frame]') as HTMLElement | null;
+    const frame = cell ? Number(cell.dataset.rotoAppFrame) : NaN;
+    onSelectTrack?.(trackId);
+    if (Number.isInteger(frame)) onNavigateToFrame?.(frame);
+  };
   return (
-    <div class={rowClass} data-track-id={trackId}>
+    <div class={rowClass} data-track-id={trackId} onClick={handleRowClick}>
       <div class="physics-paint-track-row-lane">
         <div
           class="physics-paint-track-row-cells"
