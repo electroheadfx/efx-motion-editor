@@ -3660,12 +3660,11 @@ button.destructive {
    dark veil over the track name. The buttons now carry their own solid
    surfaces (below), so they separate from the label without a gradient. */
 .physics-paint-track-row-tools {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   max-width: 0;
   overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 2px;
   opacity: 0;
   visibility: hidden;
@@ -3675,7 +3674,7 @@ button.destructive {
 
 .physics-paint-track-row-header:hover .physics-paint-track-row-tools,
 .physics-paint-track-row-header:focus-within .physics-paint-track-row-tools {
-  max-width: 100%;
+  max-width: 90px;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -3692,8 +3691,9 @@ button.destructive {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 18px;
+  width: 20px;
   height: 18px;
+  padding: 0;
   border: 1px solid #58616b;
   border-radius: 4px;
   background: #3a424c;
