@@ -1239,17 +1239,17 @@ export function PhysicsPaintStudio() {
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
     getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
-    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
     setInterpolationSettings: (settings) => {
       if (!launchContext) return settings;
-      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext), settings);
-      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext));
+      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId(), settings);
+      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId());
     },
-    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
-    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,
+    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, studioActiveTrackId()) : [],
+    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, studioActiveTrackId()) : null,
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
-    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
+    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
@@ -1267,21 +1267,21 @@ export function PhysicsPaintStudio() {
     },
     getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
       rotoSpacingSelection.peek(),
-      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, trackIdOfLaunch(launchContextRef.current)) : [])
+      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, studioActiveTrackId()) : [])
         .filter((loopClip) => {
-          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId, trackIdOfLaunch(launchContextRef.current)).map((record) => record.keyId) : []);
+          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId, studioActiveTrackId()).map((record) => record.keyId) : []);
           return loopClip.sourceKeyIds.every((keyId) => currentKeyIds.has(keyId));
         })
         .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
     ),
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
-    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 1,
+    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,
     getParentEndExclusive: () => launchContext
-      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext))
+      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())
       : 0,
     getIncomingInterpolationBreakKeyIds: () => launchContext
-      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, trackIdOfLaunch(launchContext))
+      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())
       : [],
     buildBlankRotoFrame: (frame) => ({
       ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
@@ -1357,7 +1357,7 @@ export function PhysicsPaintStudio() {
       currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       physicalKeyUtilities: rotoTimelineActions.physicalKeyUtilities,
       getSelectedKeyIds: () => selectedKeyIds.value,
-      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
+      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [],
       canvasSize: { width: canvasWidth, height: canvasHeight },
       realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
         ...record.payload,
@@ -1371,8 +1371,8 @@ export function PhysicsPaintStudio() {
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
       showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),
-      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, trackIdOfLaunch(launchContext), frame, 1); },
-      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, trackIdOfLaunch(launchContext), frame); },
+      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, studioActiveTrackId(), frame, 1); },
+      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, studioActiveTrackId(), frame); },
       setApplyMessage,
       setApplyStatus,
       setLastError,
@@ -2084,7 +2084,7 @@ export function PhysicsPaintStudio() {
       layerId: launchContext.layerId,
       projectContextId: launchContext.project?.contextId ?? null,
       capacity: rotoPhysicalCapacity,
-      trackId: trackIdOfLaunch(launchContext),
+      trackId: studioActiveTrackId(),
     } : null,
     availability: historyAvailability,
     coordinator: {
@@ -2333,10 +2333,10 @@ export function PhysicsPaintStudio() {
         const layerId = launchContext?.layerId;
         const currentKeyId = selectedKeyId.peek();
         if (!layerId || currentKeyId === null) return;
-        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, trackIdOfLaunch(launchContext), currentKeyId);
+        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);
         if (!currentRecord) return;
         const adjacent = findAdjacentRealKeyFrame(
-          physicPaintStore.getRotoRealKeyRecords(layerId, trackIdOfLaunch(launchContext)).map((record) => record.appFrame),
+          physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()).map((record) => record.appFrame),
           currentRecord.appFrame,
           direction,
         );
@@ -2543,8 +2543,8 @@ export function PhysicsPaintStudio() {
   const updatePanelMotion = useCallback((motion: { strokeDeformation: number; strokePosition: number }) => {
     const launch = launchContextRef.current;
     if (!launch) return;
-    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId, trackIdOfLaunch(launch));
-    physicPaintStore.setRotoInterpolationSettings(launch.layerId, trackIdOfLaunch(launch), { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
+    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId, studioActiveTrackId());
+    physicPaintStore.setRotoInterpolationSettings(launch.layerId, studioActiveTrackId(), { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   }, []);
   const layout = layoutPropsMemo.resolve([rightPanelCollapsed, handlePhysicsPaintKeyDown, handleSetRightPanelCollapsed], () => ({
     rightPanelCollapsed,
