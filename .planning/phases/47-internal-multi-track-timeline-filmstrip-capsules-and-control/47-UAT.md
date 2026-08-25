@@ -33,6 +33,20 @@ expected: Track 1 and new tracks keep their keys across save/reopen; painting st
 
 ## Summary
 
+### Round 3 (2026-08-25) — test 2 (right sidebar) feedback + fixes (commit 82fc8a91)
+
+- The tool pane now hosts two tabs, matching the bottom Actions/Onion/Motion
+  pattern: 'Paint option' (Shape detail / Color blending / Spread / Erase
+  strength / Brush smoothing) and 'Track option' (active track name, Opacity
+  0-1, Blend select) — the track options are out of the brush-tools pane.
+- Auto-selection: choosing a track (activeTrackId change) opens 'Track
+  option'; choosing a tool (activeTool change) or painting (physicPaintVersion
+  bump, subscribed via a signals effect so the memoized panel flips the tab
+  without re-rendering per stroke) snaps back to 'Paint option'.
+
+Re-verification of this group is pending user response; remaining UAT items
+(3-5) are still awaiting the user's group-by-group reports.
+
 ### Round 2 (2026-08-25) — test 1 feedback + fixes (commit d437f053)
 
 - Open tools panel now takes over the WHOLE row: grip, eye, blend, name and
