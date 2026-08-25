@@ -754,8 +754,17 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(String(activeLabel.props.children)).toBe('Track 1');
       const bgHeader = headers.find((h) => h.props['data-track-id'] === document.background.id);
       expect(bgHeader).toBeDefined();
-      expect(bgHeader!.props['aria-label']).toBe('Select track Bg');
+      expect(bgHeader!.props['aria-label']).toBe('Background row');
       expect(bgHeader!.props.class).toContain('physics-paint-track-row-header-background');
+      // The Background row has no hover/selection capability for now — it must
+      // NOT be a role=button, must not carry an onSelectTrack handler, and must
+      // not render the hover tools.
+      expect(bgHeader!.props.role).toBeUndefined();
+      expect(bgHeader!.props.tabIndex).toBeUndefined();
+      expect(bgHeader!.props.onClick).toBeUndefined();
+      const bgLabel = findOne(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
+      expect(String(bgLabel.props.children)).toBe('Background');
+      expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
 
       // The header column is a sibling of the horizontal scroller, never a
       // descendant — so it stays pinned while the frame cells scroll (D-05).

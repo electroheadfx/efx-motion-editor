@@ -3305,10 +3305,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {props.background ? (
                       <PhysicsPaintTrackRowHeader
                         trackId={props.background.id}
-                        label="Bg"
+                        label="Background"
                         kind="background"
-                        activeTrackId={props.activeTrackId}
-                        onSelectTrack={props.onSelectTrack}
                       />
                     ) : null}
                   </>

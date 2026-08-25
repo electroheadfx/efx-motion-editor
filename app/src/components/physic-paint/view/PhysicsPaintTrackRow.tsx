@@ -190,6 +190,29 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     isActive ? 'physics-paint-track-row-header-active' : '',
     isBackground ? 'physics-paint-track-row-header-background' : '',
   ].filter(Boolean).join(' ');
+  if (isBackground) {
+    // The Background row is not selectable and has no hover capability for now
+    // (D-06 lock semantics): render a plain header cell — no role=button, no
+    // tabIndex, no click/keyboard selection, no hover tools.
+    return (
+      <div
+        class={headerClass}
+        data-track-id={trackId}
+        aria-label={`${label} row`}
+      >
+        <span class="physics-paint-bg-checker" aria-hidden="true">
+          <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-a" />
+          <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-b" />
+          <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-c" />
+          <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-d" />
+        </span>
+        <span class="physics-paint-track-row-label">{label}</span>
+        <span class="physics-paint-track-row-lock" title="Background layer — fixed position" aria-hidden="true">
+          <Lock size={12} />
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       class={headerClass}
@@ -205,20 +228,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
         }
       }}
     >
-      {isBackground ? (
-        <>
-          <span class="physics-paint-bg-checker" aria-hidden="true">
-            <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-a" />
-            <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-b" />
-            <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-c" />
-            <i class="physics-paint-bg-checker-cell physics-paint-bg-checker-cell-d" />
-          </span>
-          <span class="physics-paint-track-row-label">{label}</span>
-          <span class="physics-paint-track-row-lock" title="Background layer — fixed position" aria-hidden="true">
-            <Lock size={12} />
-          </span>
-        </>
-      ) : editing ? (
+      {editing ? (
         <input
           class="physics-paint-track-rename-input"
           type="text"
@@ -239,8 +249,15 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           onInput={(event) => onRenameDraftChange?.(trackId, (event.target as HTMLInputElement).value)}
           onBlur={() => onCancelRename?.(trackId)}
           ref={(element) => {
-            element?.focus();
-            element?.select();
+            // Select only on first mount — the ref runs on every re-render and
+            // an unconditional select() would re-select all text after each
+            // keystroke, so the next key replaces the whole draft (the rename
+            // would accept only a single letter).
+            if (element && !element.dataset.renameSelected) {
+              element.dataset.renameSelected = 'true';
+              element.focus();
+              element.select();
+            }
           }}
         />
       ) : (
