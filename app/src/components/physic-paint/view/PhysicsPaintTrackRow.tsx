@@ -28,28 +28,11 @@
 import { Blend, Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
-import { PhysicsPaintFilmstripCapsule } from './physicsPaintFilmstripCapsule';
-import type {
-  PhysicsPaintLoopClipGeometry,
-  PhysicsPaintLoopClipPresentation,
-} from './physicsPaintLoopClipPresentation';
 
-/** 47-01 geometry: shared frame pitch (same 18px as the active track). */
+/** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
 
 export type PhysicsPaintTrackRowKind = 'paint' | 'background';
-
-/** One ready-to-render filmstrip capsule for a track row (47-04 Task 3): all
- *  facts were projected by the strip's existing projection functions — the
- *  row is presentational and never computes loop data itself. */
-export interface PhysicsPaintTrackRowLoopCapsule {
-  readonly presentation: PhysicsPaintLoopClipPresentation;
-  readonly geometry: PhysicsPaintLoopClipGeometry;
-  readonly repeat: number | 'infinity';
-  readonly sourceOffsets: readonly number[];
-  readonly sourceFrameCount: number;
-  readonly cycleLength: number;
-}
 
 export interface PhysicsPaintTrackRowProps {
   /** The stable track UUID this row renders — identity, never an array index. */
@@ -66,11 +49,6 @@ export interface PhysicsPaintTrackRowProps {
    * hidden state reads at a glance.
    */
   readonly visible?: boolean;
-  /** 47-04 Task 3: per-loop filmstrip capsules for THIS row's Loop Clips
-   *  (paint rows: store-derived resolver contexts; Bg row: background clips
-   *  when present). Absent/empty keeps the plain row — the Bg fallback
-   *  display remains untouched. */
-  readonly loopCapsules?: readonly PhysicsPaintTrackRowLoopCapsule[];
   /** 47-05 Task 1 (TML-05, D-16): true while this row is the cross-track
    *  drag destination — read-only highlight feedback, the gesture never
    *  mutates the row until release commits through moveTrackItems. */
@@ -126,7 +104,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     frameCells,
     kind = 'paint',
     visible = true,
-    loopCapsules,
     crossDestination = false,
     crossInsertionFrame = null,
     onSelectTrack,
@@ -178,26 +155,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             );
           })}
         </div>
-        {/* 47-04 Task 3: paint-only filmstrip capsules for this row's Loop
-            Clips — the strip projected every fact; the row stays
-            presentational. The capsule layer is pointer-events none so row
-            clicks keep reaching the cells below. */}
-        {loopCapsules && loopCapsules.length > 0 ? (
-          <div class="physics-paint-track-row-capsules" aria-hidden="true">
-            {loopCapsules.map((capsule) => (
-              <PhysicsPaintFilmstripCapsule
-                key={capsule.presentation.loopId}
-                presentation={capsule.presentation}
-                geometry={capsule.geometry}
-                repeat={capsule.repeat}
-                sourceOffsets={capsule.sourceOffsets}
-                sourceFrameCount={capsule.sourceFrameCount}
-                cycleLength={capsule.cycleLength}
-                cellWidth={ROW_CELL_WIDTH_PX}
-              />
-            ))}
-          </div>
-        ) : null}
         {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px
             accent line at the frame position where the dragged content lands
             inside this destination row (left = frame × the 18px pitch). Pure

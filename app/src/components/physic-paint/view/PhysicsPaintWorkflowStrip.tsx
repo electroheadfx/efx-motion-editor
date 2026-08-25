@@ -79,10 +79,7 @@ import {
   type PushToolDirection,
 } from '../hooks/usePhysicsPaintPushDrag';
 import {
-  projectBackgroundFrameLoopClipCapsule,
   projectPhysicsPaintGroupProductReason,
-  projectPhysicsPaintLoopClipGeometry,
-  projectPhysicsPaintLoopClipPresentation,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import type {
@@ -114,7 +111,7 @@ import {
   type CrossTrackRowBounds,
 } from '../hooks/usePhysicsPaintCrossTrackDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import type { BackgroundTrack, FrameLoopClip, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
 // requestDeleteTrack preview plus the rename-validation constants — every
 // destructive mutation routes through a controller intent (the delete commit
@@ -126,10 +123,7 @@ import {
   type TrackDeletePreview,
 } from '../../../stores/efxPaintStore';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import {
-  PhysicsPaintTrackRow,
-  type PhysicsPaintTrackRowLoopCapsule,
-} from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
@@ -460,64 +454,7 @@ const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
 const EMPTY_STRING_IDS: readonly string[] = [];
 const EMPTY_RAIL_SET_MOVE_MEMBERS: readonly PhysicPaintRailSetMoveMember[] = [];
 const EMPTY_RAIL_SET_GAP_PREVIEW_FRAMES: ReadonlySet<number> = new Set<number>();
-const EMPTY_ROW_LOOP_CAPSULES: readonly PhysicsPaintTrackRowLoopCapsule[] = [];
 const NOOP_KEY_RAIL_SELECTION = (_selection: RotoKeyRailSelection): void => {};
-
-/* 47-04 Task 3 (glue): per-row filmstrip capsule facts for one Paint track.
-   The ranges come from the store's memoized per-track resolution context
-   (the SAME resolver path the active lane's rail uses) and every fact is
-   projected through the existing projection functions — this module never
-   computes loop ranges itself (Pitfall m2, T-47-04). */
-function buildPaintRowLoopCapsules(
-  layerId: string,
-  trackId: string,
-  visibleFrameWindow: { readonly startFrame: number; readonly endFrameExclusive: number },
-): readonly PhysicsPaintTrackRowLoopCapsule[] {
-  const context = physicPaintStore.getTrackRotoResolutionContext(layerId, trackId);
-  if (!context) return EMPTY_ROW_LOOP_CAPSULES;
-  const clips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
-  const clipsById = new Map(clips.map((clip) => [clip.loopId, clip]));
-  const capsules: PhysicsPaintTrackRowLoopCapsule[] = [];
-  for (const range of context.context.ranges) {
-    const geometry = projectPhysicsPaintLoopClipGeometry(range, visibleFrameWindow, ROTO_CELL_WIDTH_PX);
-    if (!geometry) continue;
-    capsules.push({
-      presentation: projectPhysicsPaintLoopClipPresentation(
-        range,
-        clipsById.get(range.loopId),
-        null,
-      ),
-      geometry,
-      repeat: range.repeat,
-      sourceOffsets: range.sourceOffsets,
-      sourceFrameCount: range.sourceFrameCount,
-      cycleLength: range.cycleLength,
-    });
-  }
-  return capsules;
-}
-
-// 47-04 Task 3: the Bg row renders its document clips through the shared
-// capsule only when clips exist; the no-clip fallback display stays intact.
-function buildBackgroundRowLoopCapsules(
-  clips: readonly FrameLoopClip[],
-  visibleFrameWindow: { readonly startFrame: number; readonly endFrameExclusive: number },
-): readonly PhysicsPaintTrackRowLoopCapsule[] {
-  const capsules: PhysicsPaintTrackRowLoopCapsule[] = [];
-  for (const clip of clips) {
-    const projection = projectBackgroundFrameLoopClipCapsule(clip, visibleFrameWindow, ROTO_CELL_WIDTH_PX);
-    if (!projection) continue;
-    capsules.push({
-      presentation: projection.presentation,
-      geometry: projection.geometry,
-      repeat: projection.repeat,
-      sourceOffsets: projection.sourceOffsets,
-      sourceFrameCount: projection.sourceFrameCount,
-      cycleLength: projection.cycleLength,
-    });
-  }
-  return capsules;
-}
 
 function buildRulerTicks(frameCells: number[]): number[] {
   return frameCells.filter((frame) => frame % RULER_STEP === 0);
@@ -3707,11 +3644,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           layerId={props.layerId!}
                           frameCells={frameCells}
                           visible={track.visible}
-                          loopCapsules={buildPaintRowLoopCapsules(
-                            props.layerId!,
-                            track.id,
-                            { startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 },
-                          )}
                           // 47-05 Task 1 (TML-05, D-16): read-only cross-track
                           // drag feedback — the destination highlight + the
                           // live insertion preview. The gesture never mutates
@@ -3732,12 +3664,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       layerId={props.layerId!}
                       frameCells={frameCells}
                       kind="background"
-                      loopCapsules={props.background.clips.length > 0
-                        ? buildBackgroundRowLoopCapsules(
-                            props.background.clips,
-                            { startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 },
-                          )
-                        : EMPTY_ROW_LOOP_CAPSULES}
                     />
                   ) : null}
                 </>

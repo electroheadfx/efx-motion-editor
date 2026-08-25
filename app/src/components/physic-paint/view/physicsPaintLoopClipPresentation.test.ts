@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
-  projectBackgroundFrameLoopClipCapsule,
   projectPhysicsPaintGroupAcceptedFeedback,
   projectPhysicsPaintGroupProductReason,
   projectPhysicsPaintLoopClipPresentation,
@@ -272,68 +270,6 @@ describe('capsule presentation — shortened state and partial-cycle facts (TML-
 
     const complete = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
     expect(complete).toMatchObject({ partialCycle: false, repeatInstanceCount: 3 });
-  });
-});
-
-describe('background FrameLoopClip capsule projection (TML-07, RESEARCH A3)', () => {
-  function backgroundClip(overrides: Partial<FrameLoopClip> = {}): FrameLoopClip {
-    return {
-      id: 'bg-clip-id',
-      startFrame: 12,
-      sourceFrameRefs: ['a', 'b', 'c', 'd'],
-      repeat: { mode: 'finite', count: 3 },
-      sourceKind: 'playscript-hold',
-      revision: 1,
-      ...overrides,
-    };
-  }
-
-  it('projects a finite background clip into the shared capsule inputs without loop math', () => {
-    const projection = projectBackgroundFrameLoopClipCapsule(
-      backgroundClip(),
-      { startFrame: 0, endFrameExclusive: 100 },
-      18,
-    );
-
-    expect(projection).not.toBeNull();
-    expect(projection!.presentation).toMatchObject({
-      loopId: 'bg-clip-id',
-      cycleLabel: 'Cycle 4f × 3 = 12f',
-      effectiveLabel: 'Effective 12f',
-      shortened: false,
-      partialCycle: false,
-      shortenedLabel: null,
-      repeatInstanceCount: 3,
-      interruptionTooltipLine: null,
-    });
-    expect(projection!.geometry).toEqual({ left: 216, width: 216 });
-    expect(projection!.repeat).toBe(3);
-    expect(projection!.sourceOffsets).toEqual([0, 1, 2, 3]);
-    expect(projection!.sourceFrameCount).toBe(4);
-    expect(projection!.cycleLength).toBe(4);
-  });
-
-  it('bounds an infinite background clip display by the visible frame window', () => {
-    const projection = projectBackgroundFrameLoopClipCapsule(
-      backgroundClip({ repeat: { mode: 'infinite' } }),
-      { startFrame: 0, endFrameExclusive: 40 },
-      18,
-    );
-
-    expect(projection!.presentation).toMatchObject({
-      cycleLabel: 'Cycle 4f × ∞',
-      repeatInstanceCount: 7, // (40 - 12) / 4 = 7 full cycles within the window
-    });
-    expect(projection!.repeat).toBe('infinity');
-    expect(projection!.geometry.width).toBe(504); // (40 - 12) * 18
-  });
-
-  it('returns null for a background clip fully outside the visible window', () => {
-    expect(projectBackgroundFrameLoopClipCapsule(
-      backgroundClip({ startFrame: 200 }),
-      { startFrame: 0, endFrameExclusive: 40 },
-      18,
-    )).toBeNull();
   });
 });
 
