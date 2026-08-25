@@ -533,7 +533,7 @@ describe('localized render contract', () => {
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
     expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n    updateVerticalScrollbar();\n  }, [frameCells, currentPhysicalCells, updateScrollbar, updateVerticalScrollbar]);');
     expect(code).toContain('ref={timelineContentRef}');
-    expect(code).toContain('class="physics-paint-lane"');
+    expect(code).toContain('class={`physics-paint-lane');
     expect(code).toContain('gridTemplateColumns: `${rotoLaneWidthPx}px`');
   });
 
@@ -1450,7 +1450,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     // rail/cells containment assertions anchor to that helper instead of a
     // global source offset.
     const laneFnIndex = code.indexOf('const renderActiveLane');
-    const physicalLaneIndex = code.indexOf('class="physics-paint-lane"', laneFnIndex);
+    const physicalLaneIndex = code.indexOf('class={`physics-paint-lane', laneFnIndex);
     const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail', physicalLaneIndex);
     const cellsIndex = code.indexOf('class="physics-paint-roto-cells"', loopRailIndex);
 
@@ -1748,7 +1748,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(keyRailGate).not.toContain('loopResolutionContext');
     expect(keyRailGate).not.toContain('onSelectRotoLoopClip');
     expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
-    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class="physics-paint-lane"'));
+    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class={`physics-paint-lane'));
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
   });
 
