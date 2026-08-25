@@ -6,15 +6,15 @@ current_phase: 47
 current_phase_name: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
 status: executing
 stopped_at: Phase 47 UI-SPEC approved
-last_updated: "2026-08-25T19:05:00.000Z"
+last_updated: "2026-08-25T19:20:00.000Z"
 last_activity: 2026-08-25
-last_activity_desc: "Phase 47 plan 02 complete (pinned header column, track CRUD interactions — fail-closed rename, duplicate, acknowledge-and-delete dialog, header-drag reorder — vertical scroll with ensure-active-row-visible)"
-state_head: f3a6ab0c
+last_activity_desc: "Phase 47 plan 03 complete (right-panel Track section — active track opacity slider 0..1 + five-option blend select through fail-closed setters with status-capsule rejections — and guarded Cmd/Ctrl+Shift+N add / Cmd/Ctrl+Shift+D duplicate keyboard shortcuts)"
+state_head: dc77e3c3
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
   percent: 11
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 47 (Internal Multi-track Timeline, Filmstrip Capsules, and Controls) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Executing Phase 47
-Last activity: 2026-08-25 — Phase 47 plan 02 complete
+Last activity: 2026-08-25 — Phase 47 plan 03 complete
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -50,7 +50,7 @@ Progress: [█░░░░░░░░░] 11%
 |-------|-------|-------|----------|
 | 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 3 | TBD | - |
-| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 0 | TBD | - |
+| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 3 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
 | 50. Photo/Reference Track | 0 | TBD | - |
@@ -80,6 +80,9 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P04 | 25 | 3 tasks | 10 files |
 | Phase 46-track-local-paint-roto-playscript-state-loop-clips-and-cache P05 | 35 | 3 tasks | 5 files |
 | Phase 46 P06 | 50 | 3 tasks | 4 files |
+| Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P01 | 225 | 3 tasks | 10 files |
+| Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P02 | 190 | 3 tasks | 12 files |
+| Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P03 | 45 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -145,6 +148,9 @@ Recent decisions affecting current work:
 - [Phase 46 P05]: The committed deletion runs severTrackHoldReferences → removeTrackRuntime (46-01 sweep: frames, records, loopClips, caches, selection/cursor, leases settled to 'replayed-token', structural memo composite key) then rebuilds the document re-projecting every survivor from the runtime (the runtime is the authority; severed Hold refs stay verbatim, D-31) and re-points activeTrackId directly in the rebuilt document (never setActiveTrackId — the single dirty-callback law); nearest-adjacent is next-first (D-18 executable test contract)
 - [Phase 46 P05]: Sidecar deletion rides the tracked save transaction (D-15): EfxPaintDocumentSaveInput.deletions (validated by isSafeEfxPaintCachePath, ASVS V12) ride PreparedSave and are removed only in the settle commit arm — after the canonical publication settles, before the cache record; rollback never touches them; commitDeleteTrack registers the deleted track's cache/efx-paint/<stableSegment>/<trackId> dir in a pending list (takePendingTrackDeletions clears on read) that projectStore merges into the next save input
 - [Phase 46]: .planning/phases/46-track-local-paint-roto-playscript-state-loop-clips-and-cache/46-05-SUMMARY.md
+- [Phase 47 P03]: The right-panel Track section always shows the ACTIVE track — resolved inside the memoized build from getEfxPaintDocument(layerId).activeTrackId with efxPaintVersion.value in the memo deps, so a row-header click re-renders the panel to the new track (D-05 routing); rejections publish to the status capsule via setApplyMessage
+- [Phase 47 P03]: The guarded shortcuts reuse the pointer-path handlers (handleAddTrack/handleDuplicateTrack relocated above the keyboard dispatch hook, TDZ-safe) so the strip '+', the duplicate icon, and Cmd/Ctrl+Shift+N/D all publish failures identically; the new branches skip on mutationLocked BEFORE preventDefault (a blocked shortcut never touches the event) — deliberately different from the pre-existing redo/undo branches; Delete/Backspace track deletion stays acknowledge-and-delete dialog-only (D-17), test-3 contract asserts no deleteTrack binding exists in the dispatch
+- [Phase 47 P03]: The panel contract tests needed three RED-phase harness refinements before green (documented in 47-03-SUMMARY): array-children traversal in textContent, function-vnode expansion in childrenOf, and findById skipping function vnodes whose props.id mirrors the inner element's id — kept as separate test-only commits per the no-amend convention
 
 ### Pending Todos
 
