@@ -8,7 +8,7 @@
  * vnodes the same way the strip viewport test does. The solo-arm reflection
  * reads the real `physicsPaintSoloArm` module-level signal.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren } from 'preact';
 import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import type { EfxPaintDocument, BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
@@ -49,7 +49,7 @@ vi.mock('@preact/signals', async () => {
 import { getDocument, registerDocument, requestDeleteTrack } from '../../../stores/efxPaintStore';
 import * as efxPaintStoreModule from '../../../stores/efxPaintStore';
 import { signal } from '@preact/signals';
-import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
+import { PhysicsPaintWorkflowStrip, computeEnsureRowScrollDelta } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 interface TestVNode {
@@ -256,8 +256,79 @@ function createHeaderBand(top = 100) {
   };
 }
 
+/** One tracked row's live geometry, in rows-region CONTENT coordinates. */
+interface RowsRegionRowFixture {
+  readonly trackId: string;
+  readonly contentTop: number;
+  readonly contentBottom: number;
+}
+
+/** The rows-region fake's vertical geometry (47-02 Task 3). */
+interface RowsRegionFixture {
+  readonly clientHeight: number;
+  readonly scrollHeight: number;
+  readonly rows: readonly RowsRegionRowFixture[];
+}
+
+/**
+ * A fake rows-region the strip reads for the vertical scroll machinery: the
+ * scrollbar pill's top/height/visible derivation, the header-band sync, and
+ * the ensure-active-row effect. Each tracked row's visual rect derives from
+ * its CONTENT coordinates minus the current scrollTop, mirroring a real DOM
+ * where scrolling moves the content under a fixed viewport.
+ */
+function createRowsRegion(initial: RowsRegionFixture) {
+  let scrollTop = 0;
+  const state = {
+    clientHeight: initial.clientHeight,
+    scrollHeight: initial.scrollHeight,
+    rows: [...initial.rows],
+  };
+  const region = {
+    get clientHeight() { return state.clientHeight; },
+    set clientHeight(value: number) { state.clientHeight = value; },
+    get scrollHeight() { return state.scrollHeight; },
+    set scrollHeight(value: number) { state.scrollHeight = value; },
+    get scrollTop() { return scrollTop; },
+    set scrollTop(value: number) {
+      scrollTop = Math.max(0, Math.min(value, Math.max(0, state.scrollHeight - state.clientHeight)));
+    },
+    scrollLeft: 0,
+    getBoundingClientRect: vi.fn(() => ({ top: 0, bottom: state.clientHeight, height: state.clientHeight, left: 140, right: 140 })),
+    querySelector: vi.fn((selector: string) => {
+      const match = /^\[data-track-id="(.+)"\]$/.exec(selector);
+      const row = match ? state.rows.find((candidate) => candidate.trackId === match[1]) : undefined;
+      if (!row) return null;
+      return {
+        getBoundingClientRect: () => ({
+          top: row.contentTop - scrollTop,
+          bottom: row.contentBottom - scrollTop,
+          height: row.contentBottom - row.contentTop,
+        }),
+      };
+    }),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    setRowGeometry(trackId: string, contentTop: number, contentBottom: number) {
+      const row = state.rows.find((candidate) => candidate.trackId === trackId);
+      if (row) {
+        row.contentTop = contentTop;
+        row.contentBottom = contentBottom;
+      }
+    },
+  };
+  return region;
+}
+
+/** ResizeObserver stub — the strip's mount effect constructs one. */
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 /** A pointer-capture drag target that records the strip's session listeners. */
-function createDragTarget() {
+function createDragTarget(rect: { top: number; left: number; width: number; height: number } = { top: 0, left: 0, width: 140, height: 30 }) {
   const handlers = new Map<string, (event: unknown) => void>();
   const target = {
     setPointerCapture: vi.fn(),
@@ -268,7 +339,7 @@ function createDragTarget() {
     removeEventListener: vi.fn((type: string) => {
       handlers.delete(type);
     }),
-    getBoundingClientRect: vi.fn(() => ({ top: 0, left: 0, width: 140, height: 30 })),
+    getBoundingClientRect: vi.fn(() => rect),
     fire: (type: string, event: unknown) => handlers.get(type)?.(event),
   };
   return target;
@@ -295,6 +366,8 @@ function makeRegisteredFixture(): RegisteredFixture {
 
 interface StripHarnessOptions {
   readonly fixture: RegisteredFixture;
+  readonly activeTrackId?: string;
+  readonly rows?: RowsRegionFixture;
   readonly onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
   readonly onToggleSolo?: (trackId: string, solo: boolean) => void;
   readonly onRenameTrack?: (trackId: string, name: string) => void;
@@ -359,6 +432,18 @@ function createStripHarness(options: StripHarnessOptions) {
   const scroller = createScroller(47 * 18);
   const content = {};
   const band = createHeaderBand();
+  const rowsRegion = createRowsRegion(options.rows ?? {
+    clientHeight: 90,
+    scrollHeight: 300,
+    rows: [
+      { trackId: fixture.trackA.id, contentTop: 120, contentBottom: 150 },
+      { trackId: fixture.trackB.id, contentTop: 240, contentBottom: 270 },
+    ],
+  });
+  // 47-02 Task 3: the pinned header-column element never scrolls (D-01/D-05);
+  // the band INSIDE it carries the vertical scroll position. The strip owns
+  // this ref and hands it to the hook-free column.
+  const column = { scrollTop: 0 };
   const callbacks = {
     onSelectTrack: vi.fn(),
     onToggleTrackVisible: options.onToggleTrackVisible ?? vi.fn(),
@@ -370,7 +455,7 @@ function createStripHarness(options: StripHarnessOptions) {
   };
   let tree: unknown = null;
 
-  function render(): unknown {
+  function render(overrides: { readonly activeTrackId?: string } = {}): unknown {
     const runtime = runtimeHolder.current;
     if (!runtime) throw new Error('Expected the Preact hook runtime mock.');
     runtime.beginRender();
@@ -392,7 +477,7 @@ function createStripHarness(options: StripHarnessOptions) {
       onSelectRotoLoopClip: vi.fn(),
       rotoPhysicalActions: createPhysicalActions(callbacks.publishStatus),
       tracks: fixture.document.tracks,
-      activeTrackId: fixture.trackA.id,
+      activeTrackId: overrides.activeTrackId ?? options.activeTrackId ?? fixture.trackA.id,
       layerId: fixture.layerId,
       background: fixture.background,
       onSelectTrack: callbacks.onSelectTrack,
@@ -410,6 +495,13 @@ function createStripHarness(options: StripHarnessOptions) {
     assignRef(contentNode.ref ?? contentNode.props.ref, content);
     const headerRowsNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-rows'));
     assignRef(headerRowsNode.ref ?? headerRowsNode.props.ref, band);
+    // 47-02 Task 3: the rows-region and the pinned header column carry refs
+    // the strip reads for the vertical scroll machinery (pill geometry,
+    // ensure-active-row, sync lockstep).
+    const rowsRegionNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-rows-region'));
+    assignRef(rowsRegionNode.ref ?? rowsRegionNode.props.ref, rowsRegion);
+    const headerColumnNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-column'));
+    assignRef(headerColumnNode.ref ?? headerColumnNode.props.ref, column);
     const ruler = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-ruler'));
     const width = Number.parseFloat(String((ruler.props.style as { width?: string } | undefined)?.width ?? '0'));
     scroller.scrollWidth = width;
@@ -446,7 +538,32 @@ function createStripHarness(options: StripHarnessOptions) {
     return found.length === 0 ? null : found[0];
   }
 
-  return { render, callbacks, tree: () => tree, headerCell: headerCellFor, renameInput, grip, insertionIndicator, dialog };
+  function fireRegionScroll(): void {
+    const regionNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-rows-region'));
+    (regionNode.props['onScroll'] as () => void)();
+  }
+
+  function pill(): TestVNode | null {
+    const found = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-vertical-scrollbar'));
+    return found.length === 0 ? null : found[0];
+  }
+
+  return {
+    render,
+    callbacks,
+    tree: () => tree,
+    headerCell: headerCellFor,
+    renameInput,
+    grip,
+    insertionIndicator,
+    dialog,
+    rowsRegion,
+    band,
+    column,
+    fireRegionScroll,
+    pill,
+    flushEffects: () => runtime.flushEffects(),
+  };
 }
 
 function findNode(root: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode {
@@ -785,5 +902,112 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
     expect(onReorderTrack).toHaveBeenCalledWith(fixture.trackA.id, 1);
     harness.render();
     expect(harness.insertionIndicator()).toBeNull();
+  });
+});
+
+describe('physicsPaintTrackHeaderColumn vertical scroll + ensure-active-row (47-02 Task 3)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('computeEnsureRowScrollDelta returns a positive delta below, negative above, and 0 when fully visible (TML-03/D-05)', () => {
+    // Active row BELOW the viewport → scroll DOWN (positive delta), aligning
+    // the row's bottom with the viewport's bottom.
+    expect(computeEnsureRowScrollDelta(180, 210, 60, 150)).toBe(60);
+    // Active row ABOVE the viewport → scroll UP (negative delta), aligning
+    // the row's top with the viewport's top.
+    expect(computeEnsureRowScrollDelta(20, 50, 60, 150)).toBe(-40);
+    // Fully visible → no scroll.
+    expect(computeEnsureRowScrollDelta(70, 140, 60, 150)).toBe(0);
+    // Exactly touching the boundaries still counts as fully visible.
+    expect(computeEnsureRowScrollDelta(60, 150, 60, 150)).toBe(0);
+    expect(computeEnsureRowScrollDelta(90, 150, 60, 150)).toBe(0);
+  });
+
+  it('clamps a row taller than the viewport so its top aligns with the viewport top (D-05 edge)', () => {
+    // Row 180px tall in a 30px viewport: the delta always aligns the row's
+    // top with the viewport's top — never scrolls past the row's own top.
+    expect(computeEnsureRowScrollDelta(30, 210, 60, 90)).toBe(-30);
+    expect(computeEnsureRowScrollDelta(180, 360, 0, 90)).toBe(180);
+    expect(computeEnsureRowScrollDelta(0, 180, 30, 60)).toBe(-30);
+  });
+
+  it('renders the vertical pill scrollbar on rows-region overflow and none when the rows fit (TML-01)', () => {
+    const fixture = makeRegisteredFixture();
+    const harness = createStripHarness({ fixture });
+    harness.render();
+
+    // Overflow (90px viewport, 300px content): the region's scroll handler
+    // derives the pill and a re-render shows it in the pinned column.
+    harness.fireRegionScroll();
+    harness.render();
+    const pill = harness.pill();
+    expect(pill).not.toBeNull();
+    const thumb = findOne(pill!, (vnode) => hasClass(vnode, 'physics-paint-vertical-scrollbar-thumb'));
+    expect(thumb.props.style).toMatchObject({ height: '40px' });
+
+    // Dragging the pill scrolls the rows-region (thumb geometry: clientHeight
+    // 90 → thumbHeight 40, thumbRange 50, maxScroll 300 - 90 = 210). The
+    // pill's rect spans the 90px column height — NOT the default 30px
+    // row-height rect. Pointerdown grabs the thumb at clientY 20 (offset 20),
+    // then a move to clientY 60 drags it to y=40 → scrollTop (40/50)*210 = 168.
+    const target = createDragTarget({ top: 0, left: 140, width: 14, height: 90 });
+    (pill!.props['onPointerDown'] as (event: unknown) => void)({
+      currentTarget: target,
+      pointerId: 7,
+      clientY: 20,
+    });
+    expect(harness.rowsRegion.scrollTop).toBe(0);
+    target.fire('pointermove', { pointerId: 7, clientY: 60 });
+    expect(harness.rowsRegion.scrollTop).toBe(168);
+
+    // No overflow → no pill, and the rows region does not scroll.
+    harness.rowsRegion.clientHeight = 300;
+    harness.rowsRegion.scrollTop = 0;
+    harness.fireRegionScroll();
+    harness.render();
+    expect(harness.pill()).toBeNull();
+  });
+
+  it('keeps the header column pinned: the band follows the rows region 1:1 while the column scrollTop stays 0 (D-01/D-05)', () => {
+    const fixture = makeRegisteredFixture();
+    const harness = createStripHarness({ fixture });
+    harness.render();
+
+    // A user vertical scroll advances the rows region; the header-rows band
+    // mirrors it exactly so every header label stays aligned with its row.
+    harness.rowsRegion.scrollTop = 120;
+    harness.fireRegionScroll();
+    expect(harness.rowsRegion.scrollTop).toBe(120);
+    expect(harness.band.scrollTop).toBe(120);
+    // The pinned column element itself never scrolls.
+    expect(harness.column.scrollTop).toBe(0);
+  });
+
+  it('scrolls the rows region so the active row enters view when activeTrackId changes (TML-03/D-05 effect leg)', () => {
+    const fixture = makeRegisteredFixture();
+    const harness = createStripHarness({ fixture });
+    harness.render();
+
+    // Mount: the active row (Track A, content 120..150) sits below the
+    // 0..90 viewport → the effect scrolls 60px down on first render.
+    expect(harness.rowsRegion.scrollTop).toBe(0);
+    harness.flushEffects();
+    expect(harness.rowsRegion.scrollTop).toBe(60);
+
+    // Switching the active track to Track B (content 240..270) re-runs the
+    // effect: the row is still below the 60..150 viewport → scroll to 180.
+    harness.render({ activeTrackId: fixture.trackB.id });
+    harness.flushEffects();
+    expect(harness.rowsRegion.scrollTop).toBe(180);
+
+    // Switching back to Track A (content 120..150, ABOVE the 180..270
+    // viewport) scrolls back up so the row's top re-enters view.
+    harness.render({ activeTrackId: fixture.trackA.id });
+    harness.flushEffects();
+    expect(harness.rowsRegion.scrollTop).toBe(120);
   });
 });
