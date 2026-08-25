@@ -267,3 +267,21 @@ User-approved geometry changes (no `efxPaintStore` ops, no `previewRenderer` tru
 **Test adjustments:** geometry contracts re-derived in `physicsPaintRailFocus.test.ts` (30px lane / 24px cell / ring 32px span), `PhysicsPaintWorkflowStrip.test.ts` (cell height, pitch, tick, lane height, vertical-scrollbar source-order), `PhysicsPaintWorkflowStrip.viewport.test.ts` (24px pitch, 14,400px scrollWidth, 214px strip height), `PhysicsPaintLoopClipRail.test.tsx` (24px pitch, 96px anchors, 30px lane), `PhysicsPaintKeyRail.test.tsx` (ring -20px).
 
 **Verification:** full suite green (149 files / 2850 passed / 3 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0, no deleted files, no untracked files. Awaiting native visual UAT sign-off ("verified").
+
+---
+
+## UAT Round 5 (2026-08-25) — 3 user-reported fixes
+
+Presentation/geometry fixes only (no `efxPaintStore` ops, no `previewRenderer` truth-table edits, no Phase 43 rail semantics).
+
+**Commit:**
+- `f763de32` — `fix(47-01): UAT round 5 — full track name, 18x22 frames, sidebar vertical scrollbar`
+
+**Per-issue root cause + fix:**
+1. **Track name truncated to "1"** — the hover tools reserved their full ~78px in flow even when hidden (`visibility: hidden` still occupies layout), leaving ~26px for the label in the 140px header column. The tools now collapse to zero width at rest (`max-width: 0` + `overflow: hidden`) and expand to `max-width: 84px` on hover/focus-within, so the resting label reads whole ("Track 1") and the tools appear on hover without covering the name (label truncates only on hover, with the `title` tooltip intact).
+2. **Frames 22px high x 18px wide (user test request)** — `ROTO_CELL_WIDTH_PX`/`ROW_CELL_WIDTH_PX` 24->18, `.physics-paint-roto-cell` height 24->22px (18px grid column, border-box); ruler tick flex-basis 72->54px (3 x 18px cells) and now also set inline from `RULER_STEP x ROTO_CELL_WIDTH_PX`; the 30px row stays, the 22px cell centers with ~4px above/below.
+3. **Vertical scrollbar moved back to the sidebar + no full-height gray track** — the standalone `.physics-paint-rows-scrollbar` at the timeline's right edge (with its `#585a5c` full-height rounded track the user flagged as a "strange div") is removed. The pill scrollbar now lives INSIDE the pinned header column: `.physics-paint-header-rows-wrap` is a flex row holding the header-rows band + the 14px `.physics-paint-vertical-scrollbar`. The track is transparent (no gray bar) — only the inset `#8a8a8a` thumb is visible, matching the horizontal pill design. Rendered only on vertical overflow; drag/click scrolls the rows-region and the band stays in sync via `syncRowsScroll`.
+
+**Test adjustments:** `PhysicsPaintWorkflowStrip.test.ts` (cell height 22px, pitch 18, tick 54px), `PhysicsPaintWorkflowStrip.viewport.test.ts` (`CELL_WIDTH_PX` 18, scrollWidth derived, new full-name label-content assertion), `PhysicsPaintLoopClipRail.test.tsx` (framePitch 18, anchors now pitch-derived), `physicsPaintRailFocus.test.ts` (cell height 22).
+
+**Verification:** viewport + previewRenderer (45 passed), efxPaintStore (26 passed), full suite green (149 files / 2850 passed / 3 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0, no deleted files, no untracked files. Awaiting native visual UAT sign-off ("verified").
