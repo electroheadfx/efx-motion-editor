@@ -29,14 +29,14 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### TML — Multi-track Timeline (Phase 3)
 
-- [ ] **TML-01**: EFX Paint Studio shows a vertically scrollable multi-row Paint timeline with internal Paint track rows
-- [ ] **TML-02**: User can add, rename, duplicate, delete, and reorder internal Paint tracks
-- [ ] **TML-03**: User can select the active Paint track; the active track is always visually unambiguous
-- [ ] **TML-04**: User can hide/solo Paint tracks and set internal track opacity and blend mode
-- [ ] **TML-05**: Frame keys/caches show on the correct row; Paint/Roto/PlayScript/Cut/Copy/Paste/drag route to the active track
+- [x] **TML-01**: EFX Paint Studio shows a vertically scrollable multi-row Paint timeline with internal Paint track rows
+- [x] **TML-02**: User can add, rename, duplicate, delete, and reorder internal Paint tracks
+- [x] **TML-03**: User can select the active Paint track; the active track is always visually unambiguous
+- [x] **TML-04**: User can hide/solo Paint tracks and set internal track opacity and blend mode
+- [x] **TML-05**: Frame keys/caches show on the correct row; Paint/Roto/PlayScript/Cut/Copy/Paste/drag route to the active track
 - [ ] **TML-06**: Hold Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption)
-- [ ] **TML-07**: One visually distinct fixed Background row sits beneath Paint rows with imported clips, gaps/fallback, and "clip suivant — interrompt la boucle" label
-- [ ] **TML-08**: Track CRUD survives save/reopen; reorder changes compositor order but not track identity
+- [x] **TML-07**: One visually distinct fixed Background row sits beneath Paint rows with imported clips, gaps/fallback, and "clip suivant — interrompt la boucle" label
+- [x] **TML-08**: Track CRUD survives save/reopen; reorder changes compositor order but not track identity
 
 ### CMP — Internal Compositor (Phase 4)
 
@@ -142,14 +142,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRK-06 | Phase 46 | Complete |
 | TRK-07 | Phase 46 | Complete |
 | TRK-08 | Phase 46 | Complete |
-| TML-01 | Phase 47 | Pending |
-| TML-02 | Phase 47 | Pending |
-| TML-03 | Phase 47 | Pending |
-| TML-04 | Phase 47 | Pending |
-| TML-05 | Phase 47 | Pending |
+| TML-01 | Phase 47 | Complete |
+| TML-02 | Phase 47 | Complete |
+| TML-03 | Phase 47 | Complete |
+| TML-04 | Phase 47 | Complete |
+| TML-05 | Phase 47 | Complete |
 | TML-06 | Phase 47 | Pending |
-| TML-07 | Phase 47 | Pending |
-| TML-08 | Phase 47 | Pending |
+| TML-07 | Phase 47 | Complete |
+| TML-08 | Phase 47 | Complete |
 | CMP-01 | Phase 48 | Pending |
 | CMP-02 | Phase 48 | Pending |
 | CMP-03 | Phase 48 | Pending |
