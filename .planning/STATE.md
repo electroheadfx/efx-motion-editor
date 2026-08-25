@@ -6,15 +6,15 @@ current_phase: 47
 current_phase_name: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
 status: executing
 stopped_at: Phase 47 UI-SPEC approved
-last_updated: "2026-08-25T19:20:00.000Z"
+last_updated: "2026-08-25T21:30:00.000Z"
 last_activity: 2026-08-25
-last_activity_desc: "Phase 47 plan 03 complete (right-panel Track section — active track opacity slider 0..1 + five-option blend select through fail-closed setters with status-capsule rejections — and guarded Cmd/Ctrl+Shift+N add / Cmd/Ctrl+Shift+D duplicate keyboard shortcuts)"
-state_head: dc77e3c3
+last_activity_desc: "Phase 47 plan 04 complete (filmstrip capsule — shortened/partial-cycle presentation facts with the requested-duration badge held, paint-only capsule component with source-cycle head cells, ×N/×∞ badge, compact/expanded repetition band and diagonal partial-cut, per-row + Background-row capsule mounts)"
+state_head: 0c6042ba
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 11
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 47 (Internal Multi-track Timeline, Filmstrip Capsules, and Controls) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Executing Phase 47
-Last activity: 2026-08-25 — Phase 47 plan 03 complete
+Last activity: 2026-08-25 — Phase 47 plan 04 complete
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -50,7 +50,7 @@ Progress: [█░░░░░░░░░] 11%
 |-------|-------|-------|----------|
 | 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 3 | TBD | - |
-| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 3 | TBD | - |
+| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 4 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
 | 50. Photo/Reference Track | 0 | TBD | - |
@@ -83,6 +83,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P01 | 225 | 3 tasks | 10 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P02 | 190 | 3 tasks | 12 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P03 | 45 | 2 tasks | 6 files |
+| Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P04 | 130 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -151,6 +152,11 @@ Recent decisions affecting current work:
 - [Phase 47 P03]: The right-panel Track section always shows the ACTIVE track — resolved inside the memoized build from getEfxPaintDocument(layerId).activeTrackId with efxPaintVersion.value in the memo deps, so a row-header click re-renders the panel to the new track (D-05 routing); rejections publish to the status capsule via setApplyMessage
 - [Phase 47 P03]: The guarded shortcuts reuse the pointer-path handlers (handleAddTrack/handleDuplicateTrack relocated above the keyboard dispatch hook, TDZ-safe) so the strip '+', the duplicate icon, and Cmd/Ctrl+Shift+N/D all publish failures identically; the new branches skip on mutationLocked BEFORE preventDefault (a blocked shortcut never touches the event) — deliberately different from the pre-existing redo/undo branches; Delete/Backspace track deletion stays acknowledge-and-delete dialog-only (D-17), test-3 contract asserts no deleteTrack binding exists in the dispatch
 - [Phase 47 P03]: The panel contract tests needed three RED-phase harness refinements before green (documented in 47-03-SUMMARY): array-children traversal in textContent, function-vnode expansion in childrenOf, and findById skipping function vnodes whose props.id mirrors the inner element's id — kept as separate test-only commits per the no-amend convention
+- [Phase 47 P04]: The capsule's shortened/partial-cycle facts come straight from the resolver (range.truncated / range.partialCycle, D-32) and NEVER touch the requested badge (Pitfall m2): cycleLabel stays the REQUESTED duration ('Cycle 4f × 3 = 12f' / 'Cycle 4f × ∞') even when a next clip shortens the loop — shortened is a distinct visual + label ('Loop shortened by next clip', D-12/D-14 English); the diagonal cut renders only when partialCycle; repeatInstanceCount = floor(max(0, effectiveEnd − phaseOrigin)/cycleLength)
+- [Phase 47 P04]: Capsule-never-math contract: the filmstrip capsule receives presentation + resolver-derived facts (sourceOffsets/sourceFrameCount/cycleLength/repeat) + geometry + cellWidth and never computes loop math; per-row capsule data comes from the store's memoized getTrackRotoResolutionContext(layerId, trackId) projected through the shared presentation module — no resolver math in the strip (grep gate); capsule paint mounts as a sibling with pointer-events: none at z-index 7
+- [Phase 47 P04]: Background-row clips project through the new projectBackgroundFrameLoopClipCapsule (RESEARCH A3): FrameLoopClip is a document record (startFrame/sourceFrameRefs/repeat), not a Hold resolver input, so its projection reads clip facts only; infinite repeats are bounded by the visible frame window (T-47-04-03 DoS guard) and fully-outside clips return null
+- [Phase 47 P04]: The interruption tooltip line ('next clip — interrupts the loop') is appended at tooltip index 5 right after Status; projectPhysicsPaintLoopClipFragmentPresentation re-slices 0..5 and intentionally drops it — fragment views are out of scope
+- [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-04-SUMMARY.md
 
 ### Pending Todos
 

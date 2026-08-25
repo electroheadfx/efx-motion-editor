@@ -285,7 +285,7 @@ Plans:
   4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
   5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -299,7 +299,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 47-04-PLAN.md — filmstrip capsule (source-cycle cells, ×N/∞ badge, partial-cycle cut, high-zoom expansion) + Bg-row clip display
+- [x] 47-04-PLAN.md — filmstrip capsule (source-cycle cells, ×N/∞ badge, partial-cycle cut, high-zoom expansion) + Bg-row clip display
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
