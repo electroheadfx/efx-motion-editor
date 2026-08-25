@@ -3603,6 +3603,7 @@ button.destructive {
    no rename, no duplicate, no delete. */
 .physics-paint-track-row-header-background {
   background: #3c3e40;
+  cursor: default;
 }
 
 .physics-paint-track-row-header-background:hover {
