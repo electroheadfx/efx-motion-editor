@@ -243,7 +243,7 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     _setPhysicPaintMarkDirtyCallback(() => {});
   });
 
-  it('addTrack creates a Paint 1 track with fresh id, order 1, defaults, and bumps documentRevision once', () => {
+  it('addTrack creates a Paint 1 track with fresh id, order 0 at the TOP, defaults, and bumps documentRevision once', () => {
     const document = makeTrackDocument('layer-crud');
     registerDocument(document);
     const before = efxPaintVersion.value;
@@ -256,7 +256,12 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     expect(added).toBeDefined();
     expect(added?.id).not.toBe(TEST_TRACK_ID);
     expect(added?.name).toBe('Paint 1');
-    expect(added?.order).toBe(1);
+    // 47-01 UAT: the new track lands at the TOP — order 0, first in the array,
+    // and the existing track shifts down to order 1.
+    expect(added?.order).toBe(0);
+    expect(doc.tracks[0]?.id).toBe(addedId);
+    expect(doc.tracks[1]?.id).toBe(TEST_TRACK_ID);
+    expect(doc.tracks[1]?.order).toBe(1);
     expect(added?.visible).toBe(true);
     expect(added?.solo).toBe(false);
     expect(added?.opacity).toBe(1);

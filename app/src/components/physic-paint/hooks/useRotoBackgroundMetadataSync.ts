@@ -7,17 +7,21 @@ import { buildRotoBackgroundMetadata } from '../engine/physicsPaintStudioSetting
 export function persistRotoBackgroundMetadata(
   launchContext: PhysicPaintLaunchContext | null,
   settings: PhysicsPaintStudioSettings,
+  getActiveTrackId: (layerId: string) => string,
 ): void {
   if (!launchContext) return;
-  // 46-01: background metadata is per-track; write the launch's ACTIVE track.
-  physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, launchContext.document?.activeTrackId ?? '', buildRotoBackgroundMetadata(settings));
+  // 46-01: background metadata is per-track; write the DOCUMENT's current
+  // ACTIVE track — 47-01: the live document, not the launch snapshot (an
+  // in-place track switch must target the track being edited).
+  physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, getActiveTrackId(launchContext.layerId), buildRotoBackgroundMetadata(settings));
 }
 
 export function useRotoBackgroundMetadataSync(input: {
   launchContext: PhysicPaintLaunchContext | null;
   settings: PhysicsPaintStudioSettings;
+  getActiveTrackId: (layerId: string) => string;
 }): void {
   useEffect(() => {
-    persistRotoBackgroundMetadata(input.launchContext, input.settings);
-  }, [input.launchContext, input.settings]);
+    persistRotoBackgroundMetadata(input.launchContext, input.settings, input.getActiveTrackId);
+  }, [input.launchContext, input.settings, input.getActiveTrackId]);
 }

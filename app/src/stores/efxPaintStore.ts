@@ -157,11 +157,12 @@ function _projectTrackRuntime(layerId: string, trackId: string): Pick<InternalPa
  * Add a new Paint track to the document (47-01 Task 2, TML-02). Fail-closed on
  * an absent document. The new track gets a fresh UUID, the auto-name `Paint {N}`
  * (next free number not taken by an existing Paint track name, 47-UI-SPEC
- * D-02), `order` = max existing order + 1, and the createDefaultPaintTrack
- * field set. It is mounted into the runtime maps after the document write
- * (mountTrackRuntime never bumps revisions). `activeTrackId` is left unchanged
- * — the UI activates the returned track via setActiveTrackId. Bumps
- * documentRevision by 1 and fires _notifyChange once.
+ * D-02), and `order` 0 — 47-01 UAT: the new track lands at the TOP of the
+ * track list, every existing track shifts down one order, and the tracks
+ * array stays order-sorted. It is mounted into the runtime maps after the
+ * document write (mountTrackRuntime never bumps revisions). `activeTrackId`
+ * is left unchanged — the UI activates the returned track via
+ * setActiveTrackId. Bumps documentRevision by 1 and fires _notifyChange once.
  */
 export function addTrack(layerId: string): TrackMutationResult {
   const document = getDocument(layerId);
@@ -170,7 +171,7 @@ export function addTrack(layerId: string): TrackMutationResult {
   const newTrack: InternalPaintTrack = {
     id: trackId,
     name: `Paint ${_nextPaintTrackNumber(document)}`,
-    order: _maxTrackOrder(document) + 1,
+    order: 0,
     visible: true,
     solo: false,
     opacity: 1,
@@ -180,7 +181,8 @@ export function addTrack(layerId: string): TrackMutationResult {
     rotoPhysical: null,
     loopClips: [],
   };
-  const candidate: EfxPaintDocument = { ...document, tracks: [...document.tracks, newTrack] };
+  const shiftedTracks = document.tracks.map((track) => ({ ...track, order: track.order + 1 }));
+  const candidate: EfxPaintDocument = { ...document, tracks: [newTrack, ...shiftedTracks] };
   const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
   _documents.set(layerId, next);
   mountTrackRuntime(layerId, trackId);

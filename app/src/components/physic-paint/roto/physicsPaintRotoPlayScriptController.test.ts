@@ -128,7 +128,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   }));
   const stopPlayback = vi.fn(); const log = vi.fn();
   const ports: RotoPlayScriptControllerPorts = {
-    library, getLaunchContext: () => context, getSelection: () => selection, getMotion,
+    library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
     getBackgroundMetadata,
     getOperationLocked: () => false,

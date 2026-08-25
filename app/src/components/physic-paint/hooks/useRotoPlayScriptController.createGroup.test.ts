@@ -138,6 +138,7 @@ function ports(): HookPorts {
   return {
     library: { selected: signal({ id: 'script-1' }), selectedId: signal('script-1'), busy: signal(false) } as unknown as RotoPlayScriptControllerPorts['library'],
     getLaunchContext: () => context,
+    getActiveTrackId: () => context.document?.activeTrackId ?? '',
     getSelection: () => ({ kind: 'real-key' as const, keyId: 'k96', appFrame: 96 }),
     getMotion: () => ({ deformation: 0, position: 0 }),
     getBrushColor: () => '#103c65',

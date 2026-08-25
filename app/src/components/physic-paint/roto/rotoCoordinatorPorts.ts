@@ -304,6 +304,9 @@ export interface RotoPhysicalEditEnginePort<EngineState> {
  */
 export interface RotoPhysicalEditLaunchPort {
   getLaunchContext: () => PhysicPaintLaunchContext | null;
+  /** 47-01: resolve the DOCUMENT's current active track — the launch snapshot
+   * is stale after an in-place track switch (row click / add / duplicate). */
+  getActiveTrackId: (layerId: string) => string;
   setLaunchContextStartFrame: (frame: number) => void;
   setLaunchContextCachedFrames: (
     frames: readonly PhysicPaintRotoRealKeyRecord[],

@@ -151,6 +151,9 @@ export interface RotoPlayScriptSourceCycleMatchInput {
 
 export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryController;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
+  /** 47-01: resolve the DOCUMENT's current active track — the launch snapshot
+   * is stale after an in-place track switch (row click / add / duplicate). */
+  getActiveTrackId: (layerId: string) => string;
   getSelection: () => { kind: RotoTimelineSelectionKind; keyId: string | null; appFrame: number };
   getMotion: () => { deformation: number; position: number };
   // D-08R: the ONLY override-color resolution path — reads the live Studio brush color

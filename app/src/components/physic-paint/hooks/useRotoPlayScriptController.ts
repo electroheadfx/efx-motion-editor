@@ -48,6 +48,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
     controllerRef.current = createRotoPlayScriptController({
       library: ports.library,
       getLaunchContext: () => portsRef.current.getLaunchContext(),
+      getActiveTrackId: (layerId) => portsRef.current.getActiveTrackId(layerId),
       getSelection: () => portsRef.current.getSelection(),
       getMotion: () => portsRef.current.getMotion(),
       getBrushColor: () => portsRef.current.getBrushColor(),
@@ -65,9 +66,10 @@ export function useRotoPlayScriptController<EngineState = unknown>(
         if (!context?.project) throw new Error('Project authority is unavailable.');
         const mode = modeRef.current === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : modeRef.current;
         // 46-04: the launch IS the document (D-03) — the child names the
-        // document's active track; the parent revalidates the track dimension
-        // and fails closed on a foreign trackId.
-        await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start, trackId: context.document?.activeTrackId ?? '' }, mode);
+        // document's current active track (47-01: the live document, not the
+        // launch snapshot); the parent revalidates the track dimension and
+        // fails closed on a foreign trackId.
+        await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start, trackId: portsRef.current.getActiveTrackId(context.layerId) }, mode);
       }, authorityFailure(operationId, portsRef.current)),
       commit: async (publication, revalidateUnderLease) => {
         let leaseRejection: string | null = null;
@@ -170,14 +172,14 @@ function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operat
     void send().catch(() => { globalThis.clearTimeout(timeout); pending.delete(operationId); resolve(fallback); });
   });
 }
-function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection'>): PhysicPaintRotoAuthorityResult {
+function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getActiveTrackId' | 'getSelection'>): PhysicPaintRotoAuthorityResult {
   const context = ports.getLaunchContext(); const selection = ports.getSelection();
   return {
     operationId,
     ok: false,
     projectContextId: context?.project?.contextId ?? '',
     layerId: context?.layerId ?? '',
-    trackId: context?.document?.activeTrackId ?? '',
+    trackId: context?.layerId ? ports.getActiveTrackId(context.layerId) : '',
     trackRevision: '',
     documentRevision: '',
     canonicalStart: selection.appFrame,

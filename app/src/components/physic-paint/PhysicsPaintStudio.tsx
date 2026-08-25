@@ -582,6 +582,11 @@ export function PhysicsPaintStudio() {
     launchContext,
     latestFramesRef: latestRotoFramesRef,
     setLaunchContext,
+    // 47-01: the coordinator resolves the DOCUMENT's live active track — the
+    // launch snapshot is stale after an in-place track switch (row click /
+    // add / duplicate), and every paint capture/identity check must target the
+    // track the user is actually editing.
+    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
     store: {
       // 46-01: the persistence port is track-scoped; the coordinator resolves
       // the launch's ACTIVE track itself, so the port passes it straight through.
@@ -1116,6 +1121,7 @@ export function PhysicsPaintStudio() {
     },
     launch: {
       getLaunchContext: () => launchContextRef.current,
+      getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
       setLaunchContextStartFrame: (frame) => { setLaunchContext((current) => current ? { ...current, startFrame: frame } : current); },
       setLaunchContextCachedFrames: (_frames, options) => {
         rotoPersistence.syncCurrentPhysicalDocument(options);
@@ -1531,14 +1537,15 @@ export function PhysicsPaintStudio() {
   const rotoPlayScript = useRotoPlayScriptController({
     library: rotoScriptLibrary,
     getLaunchContext: () => launchContext,
+    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
     getSelection: () => ({
       kind: currentFrameSelectionKind,
       keyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       appFrame: currentFrame,
     }),
     getMotion: () => launchContext ? {
-      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).deform,
-      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).position,
+      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).deform,
+      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).position,
     } : { deformation: 0, position: 0 },
     // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
     // the controller only observes and snapshots settings.color at confirm time.
@@ -1548,13 +1555,13 @@ export function PhysicsPaintStudio() {
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
     // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
     // and the atomic loop ops operate on (43-05 port, wired here).
-    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, trackIdOfLaunch(launchContext)) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
+    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
     // 43-11: opening Loop Edit reads the already-accepted child document
     // synchronously. Mutation commits still request fresh parent authority.
     getLoopEditSnapshot: (placementStart) => {
       if (!launchContext) return null;
-      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext));
-      const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext));
+      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
+      const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId());
       if (!document) return null;
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -1566,7 +1573,7 @@ export function PhysicsPaintStudio() {
     },
     getPhysicalDocument: () => (
       launchContext
-        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext))
+        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())
         : null
     ),
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
@@ -1865,7 +1872,11 @@ export function PhysicsPaintStudio() {
   // stay referentially stable reach it through a ref instead of a hook dep.
   const rotoFrameEditingRef = useRef(rotoFrameEditing);
   rotoFrameEditingRef.current = rotoFrameEditing;
-  useRotoBackgroundMetadataSync({ launchContext, settings });
+  useRotoBackgroundMetadataSync({
+    launchContext,
+    settings,
+    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
+  });
   // 38.1 D-08 link 3: playback availability without a per-render O(N) array
   // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
   // no launch -> false; empty list -> false; all-missing -> false; mixed ->
