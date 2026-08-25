@@ -33,6 +33,27 @@ expected: Track 1 and new tracks keep their keys across save/reopen; painting st
 
 ## Summary
 
+### Round 6 (2026-08-26) — test 3 capsule regression fix (commit 62053516)
+
+User report (screenshot): the capsule evolution added text and number
+pills all over the rails — unacceptable noise on the locked Phase 43
+surface.
+
+- Per-cell number pills on key cells REMOVED: source-cycle and repetition
+  cells are pure visual treatments (background blocks only); no numeric
+  labels stamped on frame cells (UI-SPEC 'long-text dismissed').
+- The duration text ('Cycle 9f × 2 = 18f ×2') is now ONE compact badge at
+  the capsule head, sized to fit: when the full cycle label fits the
+  capsule width it shows 'Cycle 4f × 3 = 12f'; when it does not, it
+  shrinks to the ×N/×∞ form (marker-only violet). The badge is capped at
+  the capsule width (max-width: 100%), so it never paints over frame
+  cells. The duplicated ×N suffix is gone.
+- The 'Loop shortened by next clip' overlay moved from the capsule
+  surface into the tooltip (amber border + diagonal cut keep the
+  shortened visual); capsule carries at most one compact badge.
+
+Re-verification pending user response.
+
 ### Round 5 (2026-08-25) — test 2 regression fix (commit 9f570d9a)
 
 User report (round 4 fix insufficient): the Track option tab still reverts
