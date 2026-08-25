@@ -2867,10 +2867,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
    * value it reads stays in the component body — this function captures
    * the full closure scope, so the lane can be mounted at any row index.
    */
+  // 47-01 hide: the active lane dims as a whole when its track is hidden —
+  // every cell stays rendered, only the fade changes (TML-04 presentation).
+  const activeTrackHidden = props.tracks?.find((candidate) => candidate.id === props.activeTrackId)?.visible === false;
   const renderActiveLane = (): ComponentChildren => (
               <div
                 ref={timelineContentRef}
-                class="physics-paint-lane"
+                class={`physics-paint-lane${activeTrackHidden ? ' physics-paint-lane-hidden' : ''}`}
                 data-track-id={props.activeTrackId || undefined}
                 data-push-armed={pushArmed ? 'true' : undefined}
                 data-push-hover-invalid={pushHoverInvalid ? 'true' : undefined}
@@ -3359,6 +3362,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           trackId={track.id}
                           layerId={props.layerId!}
                           frameCells={frameCells}
+                          visible={track.visible}
                         />
                       ),
                   )}

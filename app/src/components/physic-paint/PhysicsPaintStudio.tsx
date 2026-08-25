@@ -15,6 +15,7 @@ import {
   setTrackVisible,
 } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
@@ -252,7 +253,16 @@ export function PhysicsPaintStudio() {
   // every v1.0 launch carries it, and the store rejects writes to unknown
   // tracks, so a missing document fails closed.
   const trackIdOfLaunch = (lc: PhysicPaintLaunchContext | null | undefined): string => lc?.document?.activeTrackId ?? '';
-  const studioActiveTrackId = () => trackIdOfLaunch(launchContextRef.current);
+  // 47-01 (TML-03): the routing authority follows the DOCUMENT's current active
+  // track — row click / addTrack / duplicateTrack switch it through
+  // setActiveTrackId, and every mutation, lane read, and canvas token
+  // re-resolves the live id. The launch snapshot is only the fallback for
+  // legacy parsing tolerance.
+  const studioActiveTrackId = (): string => {
+    const lc = launchContextRef.current;
+    if (!lc?.layerId) return '';
+    return getEfxPaintDocument(lc.layerId)?.activeTrackId ?? trackIdOfLaunch(lc);
+  };
   const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '', studioActiveTrackId());
   const selectedKeyId = useSignal<string | null>(getCarriedRotoPhysical(launchContext)?.selectedKeyId ?? null);
   const selectedLoopClipId = useSignal<string | null>(null);
@@ -435,13 +445,18 @@ export function PhysicsPaintStudio() {
   // Physical selection state (D-01/D-10): selectedKeyId is the stable real-key
   // identity, rotoKeyRecords and rotoInterpolationState are derived from the
   // store's validated physical records and canonical interpolation state.
-  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, trackIdOfLaunch(launchContext)) : [], [launchContext?.layerId, physicPaintVersion.value]);
+  // 47-01 (TML-03): the active-track reads resolve the LIVE document id and
+  // subscribe to efxPaintVersion too — setActiveTrackId bumps only the
+  // document clock, so a row click / add / duplicate must re-resolve these
+  // residuals against the newly active track ("the Studio re-reads on
+  // efxPaintVersion").
+  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [], [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
   const rotoIncomingInterpolationBreakKeyIds = useMemo(
-    () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, trackIdOfLaunch(launchContext)) : [],
-    [launchContext?.layerId, physicPaintVersion.value],
+    () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId()) : [],
+    [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value],
   );
-  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, trackIdOfLaunch(launchContext)) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
-  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, trackIdOfLaunch(launchContext)) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
+  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
   const keyRailGroupOwnedKeyIds = useMemo(() => {
     const owned = new Set<string>();
     for (const clip of rotoLoopClips) {
@@ -490,7 +505,7 @@ export function PhysicsPaintStudio() {
   // above — the store getter returns a fresh clone per call, and an unstable
   // identity here defeats the useRotoTimelineModel structural memo, forcing a
   // full signal-graph rebuild on every Studio render.
-  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : undefined, [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
   const currentFrame = launchContext?.startFrame ?? 0;
   // UAT-3: persisted operation-result capsule line. An operation publishes its
   // outcome here (survives the operation's own selection aftermath); only a NEW
@@ -782,6 +797,9 @@ export function PhysicsPaintStudio() {
   }, bridgeMode);
   const physicalMutationAvailable = useComputed(() => {
     physicPaintRotoPhysicalOperationLeaseVersion.value;
+    // 47-01: re-resolve the lease for the currently active track — the active
+    // track can change without any lease activity (row click / add / dup).
+    efxPaintVersion.value;
     const projectContextId = launchContext?.project?.contextId;
     return !launchContext || (
       !!projectContextId
@@ -1971,6 +1989,54 @@ export function PhysicsPaintStudio() {
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     return true;
   }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
+  // active track can change with no runtime content mutation (row click,
+  // addTrack, duplicateTrack) and its visibility can flip through
+  // setTrackVisible — both change the displayed frame without touching the
+  // runtime content revisions. This effect re-resolves the reference for the
+  // new display state (active track + hide/solo truth table); plain store
+  // mutations (rename, opacity) hit the same clock but keep the display state
+  // and no-op. The mount run no-ops on the engine: the engine-ready path loads
+  // the current frame through the live active track.
+  const lastReferenceDisplayStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    const lc = launchContextRef.current;
+    if (!lc?.layerId) return;
+    const trackId = studioActiveTrackId();
+    if (!trackId) return;
+    const visible = resolvePhysicPaintTrackVisibility(lc.layerId, trackId);
+    const displayState = `${trackId}:${visible ? 'visible' : 'hidden'}`;
+    if (displayState === lastReferenceDisplayStateRef.current) return;
+    lastReferenceDisplayStateRef.current = displayState;
+    const engine = engineRef.current as PreviewBackgroundEngine | null;
+    setCachedRotoReferenceUrl(null);
+    if (engine) {
+      engine.clearPreviewBaseImage();
+      engine.resetBackground();
+      engine.clear();
+    }
+    // A hidden active track stays a blank canvas (hide/solo truth table); any
+    // other switch reloads the current frame through the newly active track.
+    if (visible) {
+      loadCachedRotoReferenceFrame(currentFrame, engine);
+    }
+    // Re-seed the studio selection on the newly active track at the cursor —
+    // the same resets the launch-replacement path applies, for an in-place
+    // track switch (a stale key/rail selection must never leak across tracks).
+    const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(lc.layerId, trackId, currentFrame);
+    const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+    if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
+    physicPaintStore.setRotoPhysicalSelection(lc.layerId, trackId, selectedKeyId.value, currentFrame);
+    selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
+    selectionAnchorKeyId.value = selectedKeyId.value;
+    rotoSpacingSelection.value = null;
+    railSetSelection.value = null;
+    selectedLoopClipId.value = null;
+    selectedLoopClipIds.value = [];
+    selectedRotoKeyRail.value = null;
+    loopSelectionAnchorId.value = null;
+    activeLinkedLoopClipId.value = null;
+  }, [efxPaintVersion.value, currentFrame, loadCachedRotoReferenceFrame, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
     restoreFrame: (effect) => {

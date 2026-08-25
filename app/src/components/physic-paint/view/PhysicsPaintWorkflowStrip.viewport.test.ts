@@ -900,5 +900,46 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       const headers = harness.rowHeaders();
       expect(headers.map((header) => header.props['data-track-id'])).toEqual([trackA.id, trackB.id, document.background.id]);
     });
+
+    it('fades a hidden Paint row to gray without removing any cell (TML-04 hide presentation)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const hiddenTrack: InternalPaintTrack = { ...trackB, visible: false };
+      const harness = createWorkflowHarness({
+        tracks: [trackA, hiddenTrack],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      const bRow = harness.trackRows().find((row) => row.props['data-track-id'] === trackB.id);
+      expect(bRow).toBeDefined();
+      expect(String(bRow!.props.class)).toContain('physics-paint-track-row-hidden');
+      // The hidden row still renders its full cell lane — hide never removes
+      // elements, it only fades (the fill classes stay resolved).
+      const bCells = harness.rowCells(trackB.id);
+      expect(bCells.length).toBeGreaterThan(0);
+      const aRow = harness.trackRows().find((row) => row.props['data-track-id'] === trackA.id);
+      expect(String(aRow!.props.class)).not.toContain('physics-paint-track-row-hidden');
+    });
+
+    it('dims the active lane when the ACTIVE track is hidden (TML-04)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const hiddenActive = { ...trackA, visible: false };
+      const harness = createWorkflowHarness({
+        tracks: [hiddenActive, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      const tree = harness.render();
+
+      const lane = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-lane'));
+      expect(String(lane.props.class)).toContain('physics-paint-lane-hidden');
+      // The lane still renders its full cell extent (the fade is the only change).
+      expect(findAll(lane, (vnode) => typeof vnode.props.frame === 'number').length).toBeGreaterThan(0);
+    });
   });
 });

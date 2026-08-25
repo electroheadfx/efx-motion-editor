@@ -39,6 +39,12 @@ export interface PhysicsPaintTrackRowProps {
   readonly frameCells: readonly number[];
   /** 'background' renders the fixed muted Bg row skeleton. */
   readonly kind?: PhysicsPaintTrackRowKind;
+  /**
+   * Track visibility (47-01 hide): a hidden track keeps EVERY cell rendered —
+   * the hide op never removes elements — but the row fades to gray so the
+   * hidden state reads at a glance.
+   */
+  readonly visible?: boolean;
 }
 
 type TrackRowCellState = 'cached' | 'generated' | 'empty';
@@ -77,10 +83,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     layerId,
     frameCells,
     kind = 'paint',
+    visible = true,
   } = props;
   const rowClass = [
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
+    visible === false ? 'physics-paint-track-row-hidden' : '',
   ].filter(Boolean).join(' ');
   return (
     <div class={rowClass} data-track-id={trackId}>
