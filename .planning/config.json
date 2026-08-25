@@ -9,7 +9,7 @@
     "verifier": true,
     "_auto_chain_active": false,
     "tdd_mode": true,
-    "use_worktrees": true,
+    "use_worktrees": false,
     "nyquist_validation": true,
     "ai_integration_phase": true,
     "test_command": "pnpm --filter efx-motion-editor exec vitest run"
