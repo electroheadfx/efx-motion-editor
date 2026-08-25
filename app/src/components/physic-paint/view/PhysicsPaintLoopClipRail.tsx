@@ -18,6 +18,7 @@ import {
   projectPhysicsPaintLoopClipGeometry,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+import { PhysicsPaintFilmstripCapsule } from './physicsPaintFilmstripCapsule';
 import {
   dispatchRailTargetKeyDown,
   focusRailTargetOnPointerSelection,
@@ -442,6 +443,23 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           onRailSetDragPointerDown={props.onRailSetDragPointerDown}
           onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
           registerClickSequenceCanceller={props.registerClickSequenceCanceller}
+        />
+      ))}
+      {/* 47-04 D-11: the filmstrip capsule is paint-only (pointer-events:
+          none, z-index 7) mounted as a sibling of the rail targets so the
+          Phase 43 rail semantics (selection/drag/spacing/playback) stay
+          untouched. All facts come from the presentation and the
+          resolver-derived range — never computed here. */}
+      {visibleTargets.map(({ range, presentation, geometry }) => (
+        <PhysicsPaintFilmstripCapsule
+          key={`capsule:${range.loopId}`}
+          presentation={presentation}
+          geometry={geometry}
+          repeat={range.repeat}
+          sourceOffsets={range.sourceOffsets}
+          sourceFrameCount={range.sourceFrameCount}
+          cycleLength={range.cycleLength}
+          cellWidth={props.framePitch}
         />
       ))}
     </div>

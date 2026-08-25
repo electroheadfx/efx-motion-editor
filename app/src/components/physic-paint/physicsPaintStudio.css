@@ -3133,6 +3133,127 @@ button.destructive {
   border-right: 1px solid #f8fafc;
 }
 
+/* 47-04 filmstrip capsule (D-11, D-12, D-13): paint-only layer mounted as a
+   sibling of the rail targets — z-index 7 above the rail paint (4), below
+   the tooltip (60); pointer-events: none so the Phase 43 rail hit targets
+   (6) and their selection/drag/spacing/playback semantics stay untouched. */
+.physics-paint-filmstrip-capsule {
+  position: absolute;
+  top: 8px;
+  height: 20px;
+  z-index: 7;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.physics-paint-capsule-source-cells {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 9px;
+}
+
+.physics-paint-capsule-source-cell {
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #334155;
+  color: #e2e8f0;
+  font-size: 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 9px;
+  text-align: center;
+}
+
+.physics-paint-capsule-badge {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  height: 8px;
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 8px;
+  white-space: nowrap;
+}
+
+.physics-paint-capsule-repeat-marker {
+  margin-left: 4px;
+  color: #c4b5fd;
+}
+
+.physics-paint-capsule-shortened-label {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  height: 8px;
+  overflow: hidden;
+  color: #ffb020;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 8px;
+  white-space: nowrap;
+}
+
+.physics-paint-filmstrip-capsule.shortened {
+  border: 1px solid #ffb020;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.25);
+}
+
+.physics-paint-capsule-repeat-band {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: rgba(139, 92, 246, 0.45);
+}
+
+.physics-paint-capsule-repeat-band.compact {
+  background: repeating-linear-gradient(
+    135deg,
+    #64748b 0 2px,
+    transparent 2px 5px
+  );
+  opacity: 0.85;
+}
+
+.physics-paint-capsule-repeat-cell {
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: #64748b;
+  color: #94a3b8;
+  font-size: 7px;
+  line-height: 4px;
+  text-align: center;
+}
+
+.physics-paint-capsule-repeat-band.partial-cut {
+  background:
+    linear-gradient(
+      135deg,
+      transparent 42%,
+      #ffb020 46% 54%,
+      transparent 58%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(139, 92, 246, 0.45),
+      rgba(6, 182, 212, 0.45)
+    );
+}
+
 /* Shared rail focus ring (43.4 feature 8): ONE full-row rectangle for every
    rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
    focused target's ::after so it wraps the whole compact 34px row (12px band

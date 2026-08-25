@@ -144,6 +144,8 @@ describe('physics paint filmstrip capsule (TML-06)', () => {
   });
 
   it('renders the diagonal cut across the repetition band only when the cycle is partial', () => {
+    expect(cssRule('.physics-paint-capsule-repeat-band.partial-cut')).toContain('background');
+
     const partial = render({ presentation: presentation({ partialCycle: true }) });
     const partialBand = findOne(partial.tree, (node) => hasClass(node, 'physics-paint-capsule-repeat-band'));
     expect(hasClass(partialBand, 'partial-cut')).toBe(true);
@@ -154,6 +156,8 @@ describe('physics paint filmstrip capsule (TML-06)', () => {
   });
 
   it('switches the repetition band between the compact hatched form and expanded linked cells at the cell-width threshold', () => {
+    expect(cssRule('.physics-paint-capsule-repeat-band.compact')).toContain('repeating-linear-gradient');
+
     const compact = render({ cellWidth: FILMSTRIP_CELL_EXPAND_THRESHOLD_PX - 4 });
     const compactBand = findOne(compact.tree, (node) => hasClass(node, 'physics-paint-capsule-repeat-band'));
     expect(hasClass(compactBand, 'compact')).toBe(true);
@@ -172,6 +176,8 @@ describe('physics paint filmstrip capsule (TML-06)', () => {
   });
 
   it('renders the distinct shortened visual and label while keeping the requested badge (D-12)', () => {
+    expect(cssRule('.physics-paint-filmstrip-capsule.shortened')).toContain('#ffb020');
+
     const { tree } = render({
       presentation: presentation({ shortened: true, shortenedLabel: 'Loop shortened by next clip' }),
     });
