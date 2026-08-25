@@ -116,6 +116,11 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     onEraseStrengthChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
+    trackName: 'Paint 1',
+    trackOpacity: 1,
+    trackBlendMode: 'normal',
+    onTrackOpacityChange: vi.fn(),
+    onTrackBlendChange: vi.fn(),
     scripts: { library: { enterScripts: vi.fn() } } as unknown as PhysicsPaintRightPanelProps['scripts'],
     ...overrides,
   };

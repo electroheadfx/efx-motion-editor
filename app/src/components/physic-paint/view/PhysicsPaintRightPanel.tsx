@@ -14,6 +14,7 @@ import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from 
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -42,8 +43,16 @@ export interface PhysicsPaintRightPanelProps {
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
+  trackName: string;
+  trackOpacity: number;
+  trackBlendMode: BlendMode;
+  onTrackOpacityChange: (opacity: number) => void;
+  onTrackBlendChange: (mode: BlendMode) => void;
   scripts: PhysicsPaintScriptsPanelProps;
 }
+
+/** The five BlendMode values offered by the track Blend select (TML-04). */
+const TRACK_BLEND_MODES: readonly BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
 
@@ -104,8 +113,12 @@ function PanelSlider(props: {
   max: number;
   onChange: (value: number) => void;
   suffix?: string;
+  step?: number;
   disabled?: boolean;
 }) {
+  // The track opacity (0..1) can arrive out of range from the document;
+  // the slider display always clamps to the declared min/max (47-03 TML-04).
+  const clampedValue = Math.max(props.min, Math.min(props.max, props.value));
   return (
     <label class="physics-paint-option-row" for={props.id}>
       <span class="physics-paint-right-label">{props.label}</span>
@@ -114,11 +127,12 @@ function PanelSlider(props: {
         type="range"
         min={props.min}
         max={props.max}
-        value={props.value}
+        step={props.step}
+        value={clampedValue}
         disabled={props.disabled}
         onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
       />
-      <output>{props.value}{props.suffix ?? ''}</output>
+      <output>{clampedValue}{props.suffix ?? ''}</output>
     </label>
   );
 }
@@ -174,6 +188,11 @@ export function PhysicsPaintRightPanel({
   onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
+  trackName,
+  trackOpacity,
+  trackBlendMode,
+  onTrackOpacityChange,
+  onTrackBlendChange,
   scripts,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
@@ -534,6 +553,22 @@ export function PhysicsPaintRightPanel({
                 <SmoothingButton label="Med" value={2} disabled={engineControlsDisabled} active={smoothing === 2} onSelect={onSmoothingChange} />
                 <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
               </div>
+            </div>
+
+            <div class="physics-paint-option-group">
+              <span class="physics-paint-right-label">Track: {trackName}</span>
+              <PanelSlider id="physics-track-opacity" label="Opacity" min={0} max={1} step={0.01} value={trackOpacity} onChange={onTrackOpacityChange} />
+              <label class="physics-paint-option-row" for="physics-track-blend">
+                <span class="physics-paint-right-label">Blend</span>
+                <select
+                  id="physics-track-blend"
+                  class="physics-paint-roto-interpolation-select"
+                  value={trackBlendMode}
+                  onChange={(event) => onTrackBlendChange((event.currentTarget as HTMLSelectElement).value as BlendMode)}
+                >
+                  {TRACK_BLEND_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                </select>
+              </label>
             </div>
           </div>
           </section>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
@@ -15,8 +15,11 @@ import {
   requestDeleteTrack,
   serializeRuntimeIntoDocument,
   setActiveTrackId,
+  setTrackBlend,
+  setTrackOpacity,
   setTrackSolo,
   setTrackVisible,
+  type TrackMutationResult,
 } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
@@ -2637,7 +2640,21 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage], () => {
+    // 47-03 TML-04: the Track section always shows the ACTIVE track — the
+    // document's activeTrackId authority (not the launch track) — so a
+    // row-header click re-resolves the memo through efxPaintVersion and the
+    // panel re-renders to the new track's name/opacity/blend.
+    const document = launchContext?.layerId ? getEfxPaintDocument(launchContext.layerId) : undefined;
+    const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
+    const commitTrackDisplay = (mutate: (layerId: string, trackId: string) => TrackMutationResult) => {
+      const layerId = launchContext?.layerId;
+      const trackId = layerId ? getEfxPaintDocument(layerId)?.activeTrackId : undefined;
+      if (!layerId || !trackId) return;
+      const result = mutate(layerId, trackId);
+      if (!result.ok) setApplyMessage(result.error);
+    };
+    return {
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -2653,6 +2670,11 @@ export function PhysicsPaintStudio() {
     playWiggle: rotoLegacyInterpolationSettings
       ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position }
       : { strokeDeformation: 0, strokePosition: 0 },
+    trackName: activeTrack?.name ?? 'Paint 1',
+    trackOpacity: activeTrack?.opacity ?? 1,
+    trackBlendMode: activeTrack?.blendMode ?? 'normal',
+    onTrackOpacityChange: (opacity: number) => commitTrackDisplay((layerId, trackId) => setTrackOpacity(layerId, trackId, opacity)),
+    onTrackBlendChange: (mode: BlendMode) => commitTrackDisplay((layerId, trackId) => setTrackBlend(layerId, trackId, mode)),
     onColorChange: setBrushColor,
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,
@@ -2686,7 +2708,8 @@ export function PhysicsPaintStudio() {
       onApplyScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
-  }));
+    };
+  });
   const playScriptConfirmationOpen = rotoPlayScript.confirmationOpen.value;
   const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playScriptConfirmationOpen, playButtonRef, settings.color], () => ({
     playScript: rotoPlayScript,
@@ -2878,6 +2901,10 @@ export function PhysicsPaintStudio() {
     if (!layerId) return;
     const result = addTrack(layerId);
     if (result.ok) setActiveTrackId(layerId, result.trackId);
+    // 47-03 Task 2: the keyboard shortcut path (Cmd/Ctrl+Shift+N) routes
+    // through the same handle — failures must reach the status capsule just
+    // like the strip's rename/delete rejections (47-02 publishStatus channel).
+    else setApplyMessage(result.error);
   }, [launchContext?.layerId]);
   const handleToggleTrackVisible = useCallback((trackId: string, visible: boolean) => {
     const layerId = launchContext?.layerId;
