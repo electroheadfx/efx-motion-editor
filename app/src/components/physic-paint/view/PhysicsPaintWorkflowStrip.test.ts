@@ -2127,3 +2127,30 @@ describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
     expect(dialog).toContain('Hold reference');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip cross-track drag wiring (47-05 Task 1)', () => {
+  it('wires the cross-track gesture ONLY through the rows-region capture listener, never through the header reorder grab (D-18)', () => {
+    const strip = source();
+    // The gesture hook is mounted in the strip.
+    expect(strip).toContain('usePhysicsPaintCrossTrackDrag');
+    expect(strip).toContain('crossTrackDrag.onPointerDown');
+    // The rows-region is the only entry point for the content gesture.
+    expect(strip).toContain('physics-paint-rows-region');
+    // The reorder grip (47-02) never starts the cross-track session — the
+    // grip wires ONLY handleGripPointerDown, which routes through reorderTrack.
+    expect(strip).not.toContain('onGripPointerDown={crossTrackDrag');
+    expect(strip).not.toContain('onGripPointerDown={(event) => crossTrackDrag');
+  });
+
+  it('passes the read-only destination highlight and insertion preview to the rows (D-16)', () => {
+    const strip = source();
+    expect(strip).toContain('crossDestination={');
+    expect(strip).toContain('crossInsertionFrame={');
+  });
+
+  it('ships the destination-highlight and insertion-preview CSS classes', () => {
+    const stylesheet = css();
+    expect(stylesheet).toContain('.physics-paint-track-row-cross-destination');
+    expect(stylesheet).toContain('.physics-paint-track-row-insertion-preview');
+  });
+});
