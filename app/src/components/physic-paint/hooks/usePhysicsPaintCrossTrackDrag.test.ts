@@ -235,7 +235,9 @@ describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
     expect(harness.capture.captured).toEqual([]);
     expect(harness.commit).not.toHaveBeenCalled();
     // The same-row release path owns the release — the hook cleaned up.
-    expect(harness.windowLike.listeners.size).toBe(0);
+    const liveListenerCount = [...harness.windowLike.listeners.values()]
+      .reduce((total, listeners) => total + listeners.size, 0);
+    expect(liveListenerCount).toBe(0);
   });
 
   it('clears the crossing signals on release and cancels on Escape without committing', () => {

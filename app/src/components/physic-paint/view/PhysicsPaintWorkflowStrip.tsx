@@ -108,6 +108,11 @@ import {
   usePhysicsPaintRailSetDrag,
   type RailSetDragSessionApi,
 } from '../hooks/usePhysicsPaintRailSetDrag';
+import {
+  usePhysicsPaintCrossTrackDrag,
+  type CrossTrackDragSource,
+  type CrossTrackRowBounds,
+} from '../hooks/usePhysicsPaintCrossTrackDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, FrameLoopClip, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
@@ -1983,7 +1988,91 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     windowLike: undefined,
   });
   railSetDragApiRef.current = railSetDragApi;
-  // ── 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
+  // ── 47-05 (TML-05, D-15/D-16/D-18): the cross-track drag gesture ──────────
+  // Every draggable (real keys, Key Rails, Loop Clip Rails, rail-set members)
+  // can cross track rows with NO modifier key. The gesture is a passive rows
+  // observer: while the pointer stays on the source row it does nothing (the
+  // same-row drag owns the interaction — plain-drag preservation, D-16), and
+  // it takes pointer capture on the rows-region the first time the pointer
+  // crosses a row boundary — the same-row drag's source element loses capture
+  // and cancels non-committing, so no same-row drag can commit to a target on
+  // another row. The header reorder grab lives OUTSIDE the rows-region (the
+  // pinned header column), so a grab-drag never reaches onPointerDown (D-18).
+  const collectRailSetMembers = useCallback((): string[] => {
+    const keys: string[] = [];
+    for (const member of railSetMoveMembers) {
+      if (member.kind === 'key-rail') {
+        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
+        if (segment) keys.push(...segment.keyIds);
+      } else {
+        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === member.loopId);
+        if (range) keys.push(...range.sourceKeyIds);
+      }
+    }
+    return keys;
+  }, [railSetMoveMembers, keyRailSegments, loopResolutionContext]);
+  // Source resolution authority: the pressed element's data attributes map to
+  // the dragged items' keyIds (D-17 — membership is never re-derived in the
+  // view). A real key cell carries its identity directly; rails carry only
+  // their first frame, so the strip resolves the segment/range the rail
+  // belongs to. A rail-set move member hands the WHOLE explicit set over —
+  // the same D-17 list the resolver validates.
+  const resolveCrossTrackDragSource = useCallback((event: PointerEvent): CrossTrackDragSource | null => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return null;
+    const rowElement = target.closest<HTMLElement>('[data-track-id]');
+    const fromTrackId = rowElement?.dataset.trackId;
+    if (!fromTrackId) return null;
+    const keyCell = target.closest<HTMLElement>('[data-roto-key-id]');
+    const keyId = keyCell?.dataset.rotoKeyId;
+    if (keyId) return { fromTrackId, keyIds: [keyId] };
+    const rail = target.closest<HTMLElement>('[data-rail-first-frame]');
+    if (!rail) return null;
+    const firstFrame = Number(rail.dataset.railFirstFrame);
+    if (!Number.isInteger(firstFrame)) return null;
+    if (rail.classList.contains('physics-paint-loop-clip-rail-target')) {
+      const range = loopResolutionContext?.ranges.find((candidate) => candidate.placementStart === firstFrame);
+      if (!range) return null;
+      if (railSetMoveMemberLoopIds.includes(range.loopId)) {
+        return { fromTrackId, keyIds: collectRailSetMembers() };
+      }
+      return { fromTrackId, keyIds: range.sourceKeyIds };
+    }
+    if (rail.classList.contains('physics-paint-key-rail-target')) {
+      const segment = keyRailSegments.find((candidate) => candidate.firstKeyFrame === firstFrame);
+      if (!segment) return null;
+      if (railSetMoveMemberKeyRailIds.includes(segment.firstKeyId)) {
+        return { fromTrackId, keyIds: collectRailSetMembers() };
+      }
+      return { fromTrackId, keyIds: segment.keyIds };
+    }
+    return null;
+  }, [keyRailSegments, loopResolutionContext, railSetMoveMemberKeyRailIds, railSetMoveMemberLoopIds, collectRailSetMembers]);
+  const crossTrackDrag = usePhysicsPaintCrossTrackDrag({
+    // The hook falls back to the real window; node-env contract tests render
+    // the strip without a global window (same pattern as the other drags).
+    windowLike: undefined,
+    // Paint-track rows only — the Bg row is never a move destination (the
+    // store owns the fail-closed 'track-missing' contract for it).
+    getRowBounds: () => {
+      const region = rowsRegionRef.current;
+      if (!region || !props.tracks || !props.activeTrackId) return [];
+      const bounds: CrossTrackRowBounds[] = [];
+      for (const track of props.tracks) {
+        const row = region.querySelector<HTMLElement>(`[data-track-id="${track.id}"]`);
+        if (!row) continue;
+        const rect = row.getBoundingClientRect();
+        bounds.push({ trackId: track.id, top: rect.top, bottom: rect.bottom });
+      }
+      return bounds;
+    },
+    getCaptureElement: () => rowsRegionRef.current,
+    getContentLeft: () => timelineScrollRef.current?.getBoundingClientRect().left ?? 0,
+    getScrollLeft: () => timelineScrollRef.current?.scrollLeft ?? 0,
+    framePitch: ROTO_CELL_WIDTH_PX,
+    resolveSource: resolveCrossTrackDragSource,
+  });
+  // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the
   // pushPaintTick signal (bumped in onPreviewChange) subscribes the component
   // to their changes. Ghost destination is NEVER recomputed here — the hook's
@@ -3589,6 +3678,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               class="physics-paint-rows-region"
               data-rows={props.tracks ? 'multi' : 'single'}
               onScroll={handleRowsRegionScroll}
+              onPointerDownCapture={(event) => crossTrackDrag.onPointerDown(event as unknown as PointerEvent)}
               style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
             >
               {props.tracks && props.activeTrackId && props.layerId ? (
@@ -3608,6 +3698,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                             track.id,
                             { startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 },
                           )}
+                          // 47-05 Task 1 (TML-05, D-16): read-only cross-track
+                          // drag feedback — the destination highlight + the
+                          // live insertion preview. The gesture never mutates
+                          // the row; these props are presentation only.
+                          crossDestination={crossTrackDrag.destinationTrackId.value === track.id && crossTrackDrag.isCrossing.value}
+                          crossInsertionFrame={crossTrackDrag.isCrossing.value && crossTrackDrag.destinationTrackId.value === track.id
+                            ? crossTrackDrag.insertionFrame.value
+                            : null}
                           onSelectTrack={props.onSelectTrack}
                           onNavigateToFrame={props.onNavigateToSyncedFrame}
                         />

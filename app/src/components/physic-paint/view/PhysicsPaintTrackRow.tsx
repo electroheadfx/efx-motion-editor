@@ -68,6 +68,14 @@ export interface PhysicsPaintTrackRowProps {
    *  when present). Absent/empty keeps the plain row — the Bg fallback
    *  display remains untouched. */
   readonly loopCapsules?: readonly PhysicsPaintTrackRowLoopCapsule[];
+  /** 47-05 Task 1 (TML-05, D-16): true while this row is the cross-track
+   *  drag destination — read-only highlight feedback, the gesture never
+   *  mutates the row until release commits through moveTrackItems. */
+  readonly crossDestination?: boolean;
+  /** 47-05 Task 1 (TML-05, D-16): the live insertion preview frame inside
+   *  this row, or null — read-only frame-position indicator rendered at the
+   *  same 18px pitch as the frame cells. */
+  readonly crossInsertionFrame?: number | null;
   /**
    * 47-01 UAT round 7: clicking a frame cell on a NON-active track activates
    * that track (the controller routes through setActiveTrackId) and navigates
@@ -116,6 +124,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     kind = 'paint',
     visible = true,
     loopCapsules,
+    crossDestination = false,
+    crossInsertionFrame = null,
     onSelectTrack,
     onNavigateToFrame,
   } = props;
@@ -123,6 +133,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
     visible === false ? 'physics-paint-track-row-hidden' : '',
+    crossDestination ? 'physics-paint-track-row-cross-destination' : '',
   ].filter(Boolean).join(' ');
   // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
   // row's track and navigates to the clicked frame. The frame is read from the
@@ -183,6 +194,17 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
               />
             ))}
           </div>
+        ) : null}
+        {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px
+            accent line at the frame position where the dragged content lands
+            inside this destination row (left = frame × the 18px pitch). Pure
+            feedback: the gesture never mutates the row until release. */}
+        {crossInsertionFrame !== null ? (
+          <span
+            class="physics-paint-track-row-insertion-preview"
+            style={{ left: `${crossInsertionFrame * ROW_CELL_WIDTH_PX}px` }}
+            aria-hidden="true"
+          />
         ) : null}
       </div>
     </div>
