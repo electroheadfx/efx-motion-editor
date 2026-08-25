@@ -264,6 +264,47 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     expect(doc.documentRevision).toBe(document.documentRevision + 1);
     expect(efxPaintVersion.value).toBe(before + 1);
     expect(physicPaintStore.hasTrackRuntime('layer-crud', addedId)).toBe(true);
+    // The new track is a FRESH EMPTY timeline — zero frames, zero Roto keys.
+    // The '+' button never copies the source track; duplication is the
+    // duplicate button's job (47-01 UAT).
+    expect(physicPaintStore.getFrames('layer-crud', addedId).size).toBe(0);
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-crud', addedId)).toEqual([]);
+  });
+
+  it('addTrack creates an empty track; keys painted on it never leak to the source track', () => {
+    const document = makeTrackDocument('layer-crud');
+    registerDocument(document);
+    physicPaintStore.setFrame('layer-crud', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    const replace = physicPaintStore.replaceRotoPhysicalRecords(
+      'layer-crud', TEST_TRACK_ID,
+      [rotoRecord('key-1', 0)],
+      { enabled: false, mode: 'duplicate' },
+      10,
+    );
+    expect(replace.ok).toBe(true);
+
+    const added = addTrack('layer-crud') as { ok: true; trackId: string };
+    expect(added.ok).toBe(true);
+    // The new track starts empty — no frames, no keys.
+    expect(physicPaintStore.getFrames('layer-crud', added.trackId).size).toBe(0);
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-crud', added.trackId)).toEqual([]);
+
+    // Paint a key on the NEW track only.
+    physicPaintStore.setFrame('layer-crud', added.trackId, 5, makeFrame(1, 5));
+    const replaceNew = physicPaintStore.replaceRotoPhysicalRecords(
+      'layer-crud', added.trackId,
+      [rotoRecord('new-key', 5)],
+      { enabled: false, mode: 'duplicate' },
+      10,
+    );
+    expect(replaceNew.ok).toBe(true);
+
+    // The source track keeps exactly its own key; the new track has only its
+    // own — painting is track-scoped, never a cross-track leak.
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-crud', TEST_TRACK_ID).map((record) => record.keyId)).toEqual(['key-1']);
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-crud', added.trackId).map((record) => record.keyId)).toEqual(['new-key']);
+    expect(physicPaintStore.getFrames('layer-crud', TEST_TRACK_ID).size).toBe(1);
+    expect(physicPaintStore.getFrames('layer-crud', added.trackId).size).toBe(1);
   });
 
   it('addTrack names successive tracks Paint 2, Paint 3 at the next free number', () => {

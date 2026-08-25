@@ -665,7 +665,7 @@ export function PhysicsPaintStudio() {
     loop: false,
     fps: Math.max(1, Math.min(60, previewFps)),
   };
-  const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 1;
+  const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1;
   const rotoTimelineModel = useRotoTimelineModel({
     cachedRotoFrames: latestRotoFramesRef.current,
     interpolationSettings: rotoLegacyInterpolationSettings,
@@ -676,7 +676,7 @@ export function PhysicsPaintStudio() {
     selectedKeyId: selectedKeyId.value,
     incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
-    rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0,
+    rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 0,
   });
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   // The single canonical cross-type rail ordering authority (D-01): gestures,
@@ -2036,6 +2036,13 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value = null;
     loopSelectionAnchorId.value = null;
     activeLinkedLoopClipId.value = null;
+    // The lane's cached-frame fills are track-scoped too: re-resolve the newly
+    // active track's runtime frames so the lane never shows the previous
+    // track's cached cells (the "addTrack looks like a duplicate" symptom).
+    const physicalDocument = physicPaintStore.getRotoPhysicalDocument(lc.layerId, trackId);
+    if (physicalDocument) {
+      latestRotoFramesRef.current = recordsAsRuntimeFrames(physicalDocument);
+    }
   }, [efxPaintVersion.value, currentFrame, loadCachedRotoReferenceFrame, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
