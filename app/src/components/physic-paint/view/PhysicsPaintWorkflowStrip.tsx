@@ -2070,6 +2070,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     getContentLeft: () => timelineScrollRef.current?.getBoundingClientRect().left ?? 0,
     getScrollLeft: () => timelineScrollRef.current?.scrollLeft ?? 0,
     framePitch: ROTO_CELL_WIDTH_PX,
+    // The rows only render with a layer, so an empty fallback never commits
+    // (a session cannot start without a resolved row element).
+    layerId: props.layerId ?? '',
+    // The single commit path (D-17): moveTrackItems owns copy-paste-delete —
+    // the hook only captures the destination and calls the store (D-09). The
+    // closure binds the store method (it uses `this`).
+    moveTrackItems: (layerId, fromTrackId, toTrackId, keys) => physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys),
+    publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message),
+    setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status),
     resolveSource: resolveCrossTrackDragSource,
   });
   // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────

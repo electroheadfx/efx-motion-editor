@@ -7,9 +7,12 @@
  * read-only signals (`destinationTrackId`, `insertionFrame`, `isCrossing`)
  * that the strip renders as the destination highlight + live insertion
  * preview; the gesture NEVER mutates any document (D-16). Releasing over a
- * destination row fires `onCommit` exactly once with the captured source,
- * destination, keys, and frame — the strip wires that to
- * `physicPaintStore.moveTrackItems` (D-09 copy-paste-delete, Task 2).
+ * destination row fires the store port exactly once with the captured source,
+ * destination, and keys — the strip wires that to
+ * `physicPaintStore.moveTrackItems` (D-09 copy-paste-delete semantics, D-17):
+ * the result maps to the status-capsule message, success through the move
+ * summary and rejection through the fixed English reason map with the red
+ * warning triangle (identical to the Phase 46 paste rejection UX).
  *
  * Takeover mechanics: the gesture starts as a passive listener on the
  * rows-region pointerdown (the strip's capture listener calls `onPointerDown`).
@@ -42,13 +45,18 @@ export interface CrossTrackDragSource {
   readonly keyIds: readonly string[];
 }
 
-/** The single release-time commit descriptor (wired to moveTrackItems). */
-export interface CrossTrackDragCommit {
-  readonly fromTrackId: string;
-  readonly toTrackId: string;
-  readonly keyIds: readonly string[];
-  readonly insertionFrame: number;
-}
+/** The status-capsule tone the strip's action bundle accepts. */
+export type CrossTrackApplyStatus = 'idle' | 'applying' | 'success' | 'error';
+
+/**
+ * Minimal structural view of the store's commit result
+ * (physicPaintStore.moveTrackItems → RotoTrackPasteResult): the hook never
+ * computes move semantics — it forwards the result to the message mapping
+ * (D-09/D-17).
+ */
+export type CrossTrackMoveResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason?: string };
 
 export interface CrossTrackDragWindowLike {
   addEventListener(type: string, listener: (event: unknown) => void, capture?: boolean): void;
@@ -76,10 +84,16 @@ export interface CrossTrackDragInput {
   /** The px-per-frame pitch of the timeline cells (18px). */
   readonly framePitch: number;
   readonly zoom?: number;
+  /** The layer whose tracks the crossed release moves items between. */
+  readonly layerId: string;
+  /** The single commit path — the strip wires it to physicPaintStore.moveTrackItems. */
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]): CrossTrackMoveResult;
+  /** The status-capsule publication the outcome maps to. */
+  readonly publishStatus: (message: string) => void;
+  /** Marks the capsule error tone for rejections (red warning triangle). */
+  readonly setApplyStatus?: (status: CrossTrackApplyStatus) => void;
   /** Resolve the drag source from the pressed element; null ignores the press. */
   resolveSource(event: PointerEvent): CrossTrackDragSource | null;
-  /** Fired exactly once when a crossed release commits the move (Task 2). */
-  onCommit?(commit: CrossTrackDragCommit): void;
 }
 
 export interface CrossTrackDragApi {
@@ -91,6 +105,29 @@ export interface CrossTrackDragApi {
   readonly isCrossing: Signal<boolean>;
   /** Rows-region pointerdown entry point — the ONLY way a session starts. */
   onPointerDown(event: PointerEvent): void;
+}
+
+/**
+ * The success capsule line for a committed cross-track move (D-17), mirroring
+ * the Phase 46 paste summaries ('Pasted the copied Rails.') with a count.
+ */
+export function buildCrossTrackMoveSuccessMessage(keyCount: number): string {
+  return keyCount === 1 ? 'Moved 1 key to another track.' : `Moved ${keyCount} keys to another track.`;
+}
+
+/** Fixed English reason map — every store rejection surfaces a specific line
+ *  (D-14, T-47-05-03); unmapped or missing reasons never ship empty or French
+ *  copy. */
+const CROSS_TRACK_MOVE_REJECTION_MAP: Readonly<Record<string, string>> = {
+  'track-missing': 'Track not found',
+  'duplicate-destination-frame': 'Destination frame is occupied',
+  'partial-loop-overlap': 'Loop would be partially moved',
+  'empty-set': 'Nothing to move',
+  'missing-key': 'Key not found',
+};
+
+export function mapCrossTrackMoveRejection(reason: string | undefined): string {
+  return (reason && CROSS_TRACK_MOVE_REJECTION_MAP[reason]) || 'Move failed.';
 }
 
 interface CrossTrackDragSession {
@@ -140,7 +177,7 @@ export function computeInsertionFrame(
 /**
  * 47-05 cross-track drag session. The hook is a pure gesture owner: it
  * computes destination + insertion frame from pointer geometry, exposes
- * read-only signals, and calls the injected `onCommit` exactly once on a
+ * read-only signals, and calls the injected store port exactly once on a
  * crossed release. It NEVER computes move semantics — moveTrackItems owns
  * copy-paste-delete (D-09/D-17) and the strip owns the source resolution.
  */
@@ -241,17 +278,21 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
         session.source.fromTrackId,
       );
       if (destination !== null && destination !== session.source.fromTrackId) {
-        active.onCommit?.({
-          fromTrackId: session.source.fromTrackId,
-          toTrackId: destination,
-          keyIds: session.source.keyIds,
-          insertionFrame: computeInsertionFrame(
-            upEvent.clientX - active.getContentLeft(),
-            active.getScrollLeft(),
-            active.zoom ?? 1,
-            active.framePitch,
-          ),
-        });
+        // The single commit path (D-17): the store port runs exactly once per
+        // crossed release with the captured destination — copy-paste-delete
+        // semantics live in moveTrackItems, never here (D-09).
+        const result = active.moveTrackItems(
+          active.layerId,
+          session.source.fromTrackId,
+          destination,
+          session.source.keyIds,
+        );
+        if (result.ok) {
+          active.publishStatus(buildCrossTrackMoveSuccessMessage(session.source.keyIds.length));
+        } else {
+          active.setApplyStatus?.('error');
+          active.publishStatus(mapCrossTrackMoveRejection(result.reason));
+        }
       }
     }
     cleanup(session);

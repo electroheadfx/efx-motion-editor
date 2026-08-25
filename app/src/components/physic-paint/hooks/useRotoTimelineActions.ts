@@ -1371,6 +1371,13 @@ export interface RotoPhysicalTimelineActionBundle {
    * coordinator's resolver failures use (`RotoTimelineActionsInput.publishStatus`).
    */
   readonly publishStatus?: (message: string | null) => void;
+  /**
+   * Status-capsule tone port (47-05 Task 2, D-17): cross-track drag rejections
+   * flip the capsule's red warning triangle through the same setter the
+   * coordinator's resolver failures use — identical to the Phase 46 paste
+   * rejection UX.
+   */
+  readonly setApplyStatus?: (status: 'idle' | 'applying' | 'success' | 'error') => void;
 }
 
 export interface RotoTimelineActionsInput {
@@ -3355,7 +3362,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     canDuplicateRailSet,
     duplicateRailSetDisabledReason,
     publishStatus: input.publishStatus,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus]);
+    setApplyStatus: input.setApplyStatus,
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

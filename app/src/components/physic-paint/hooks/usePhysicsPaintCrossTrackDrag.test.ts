@@ -125,7 +125,7 @@ function createHarness(options: {
   const windowLike = new WindowDouble();
   const capture = new CaptureDouble();
   const document = new DocumentDouble();
-  const moveTrackItems = vi.fn((layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]) => {
+  const moveTrackItems = vi.fn((_layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]) => {
     if (options.rejection) return options.rejection;
     document.move(fromTrackId, toTrackId, keys);
     return { ok: true as const };
