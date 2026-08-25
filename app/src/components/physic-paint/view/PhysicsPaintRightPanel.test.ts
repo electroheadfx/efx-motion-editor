@@ -134,6 +134,13 @@ function childrenOf(node: unknown): unknown[] {
   if (Array.isArray(node)) return node.flatMap(childrenOf);
   if (!node || typeof node !== 'object') return [];
   const vnode = node as AnyVNode;
+  if (typeof vnode.type === 'function') {
+    // The harness invokes components by hand, so function vnodes stay
+    // unexpanded in the returned tree — expand them so lookups and the text
+    // walker reach the elements the component actually renders.
+    const rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
+    return [vnode, ...childrenOf(rendered)];
+  }
   const children = vnode.props?.children;
   return [vnode, ...childrenOf(children)];
 }
@@ -151,7 +158,13 @@ function textContent(node: unknown): string {
 }
 
 function findById(tree: AnyVNode, id: string): AnyVNode {
-  const match = childrenOf(tree).find((node) => (node as AnyVNode).props?.id === id) as AnyVNode | undefined;
+  // Skip function-component vnodes (their props.id mirrors the element's)
+  // so the lookup lands on the rendered host element, e.g. the range input
+  // inside PanelSlider rather than the PanelSlider vnode itself.
+  const match = childrenOf(tree).find((node) => {
+    const vnode = node as AnyVNode;
+    return vnode.props?.id === id && typeof vnode.type !== 'function';
+  }) as AnyVNode | undefined;
   expect(match, `Missing element with id ${id}`).toBeDefined();
   return match!;
 }
