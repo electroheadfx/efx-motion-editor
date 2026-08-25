@@ -285,3 +285,60 @@ Presentation/geometry fixes only (no `efxPaintStore` ops, no `previewRenderer` t
 **Test adjustments:** `PhysicsPaintWorkflowStrip.test.ts` (cell height 22px, pitch 18, tick 54px), `PhysicsPaintWorkflowStrip.viewport.test.ts` (`CELL_WIDTH_PX` 18, scrollWidth derived, new full-name label-content assertion), `PhysicsPaintLoopClipRail.test.tsx` (framePitch 18, anchors now pitch-derived), `physicsPaintRailFocus.test.ts` (cell height 22).
 
 **Verification:** viewport + previewRenderer (45 passed), efxPaintStore (26 passed), full suite green (149 files / 2850 passed / 3 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0, no deleted files, no untracked files. Awaiting native visual UAT sign-off ("verified").
+
+---
+
+## UAT Round 6 (2026-08-25) — 4 user-reported fixes
+
+**Commit:**
+- `876080a0` — `fix(47-01): UAT round 6 — track persistence, frame/rail hit zones, header tools`
+
+**Per-issue root cause + fix:**
+1. **New-track paint lost on project close** — the child's document was pushed but the parent's save path re-projected from the parent's RUNTIME, which never received the new track's records/frames; the new track (and its paint) was absent from the saved .mce. The document sync channel carries the track structure; the round-7/8 mirror work below completed the runtime hand-off.
+2. **Frame cells not clickable on non-active rows** — presentational row cells were `aria-hidden` spans with no click handling; row-click now activates the track and navigates the cursor to the clicked frame.
+3. **Rail hit zones** — rail targets/anchors re-scoped so cells and rails each receive their own pointer events (no overlap steals).
+4. **Header tools UX** — the tools panel opens only from the small more-button (never on header hover/click) and closes when the pointer leaves the panel.
+
+---
+
+## UAT Round 7 (2026-08-25) — sync + geometry + auto-select
+
+**Commit:**
+- `d4fd8975` — `fix(47-01): sync child live runtime to parent + compact rail rows + auto-select track`
+
+**Per-issue root cause + fix:**
+1. **Roto physical edit rejected "revision became stale before commit"** — the child pushed the RAW document (never re-projected), so the parent's runtime mirror + save projection diverged from the child's live records. The child now pushes the LIVE projection (`serializeRuntimeIntoDocument`) and the parent mirrors each pushed track's rotoPhysical into its runtime.
+2. **Rail-to-frame spacing too high** — the 12px rail band sat mostly empty below the 3px rail line; compacted to an 8px band inside 30px rows (cells start at y8, 5px gap).
+3. **Crash destroyed Track 1 keys on auto-save** — save-time divergence from the stale parent runtime (see 1); fixed by the live-projection push + parent runtime mirror.
+4. **Auto-select track on frame/key click** — clicking a frame cell on a NON-active track activates that track and navigates the cursor to the clicked frame.
+
+---
+
+## UAT Round 8 (2026-08-25) — sync storm regressions
+
+**Commit:**
+- `8fb4aad2` — `fix(47-01): silent revision-guarded runtime mirror + debounced push`
+
+**User-reported regressions after Round 7:**
+1. **Paint slowness (unusable)** — the push effect subscribed to `physicPaintVersion` (bumps on EVERY paint event), so each stroke serialized the whole document (all tracks x all frames) over the bridge and the parent re-parsed + re-mirrored it — O(total frames) per paint event.
+2. **Crash + corrupted save** — the parent's mirror used `replaceRotoPhysicalDocument`, which marks the project dirty -> auto-save on EVERY sync; during painting that is a save per paint event, re-entrant mid-mirror -> crash and documents saved with mixed/missing track keys.
+
+**Fix:**
+- Push fires IMMEDIATELY on document-structure changes (`efxPaintVersion`) and on a 500ms DEBOUNCE after paint/roto edits (`physicPaintVersion`); the paint hot path is untouched.
+- New silent `mirrorRotoPhysicalDocument` (same validation as replace, never marks dirty, never bumps revisions, frames preserved); the bridge mirror is revision-guarded (no-op when the pushed content matches the parent's current state).
+- Launch hydration installs EVERY carried track's rotoPhysical, not just the active one — non-active tracks showed empty rows after reopen because their runtime state was never installed.
+
+---
+
+## UAT Round 8.2 (2026-08-25) — paint stutter, cursors, dead webview
+
+**Commit:**
+- `c23369e8` — `fix(47-01): throttle paint-driven Studio renders + pointer cursors + dead-webview recovery`
+
+**Per-issue root cause + fix:**
+1. **Start-paint stutter** — the strip data subscriptions re-rendered the WHOLE Studio on every paint event (600+ cell class strings per render). The five strip subscriptions now read a trailing 150ms throttled paint revision: the chrome freezes while a stroke is in flight (zero re-renders during the stroke) and refreshes right after the burst ends. The canvas and the document push keep the raw revision.
+2. **Grab hand over real keys** — `.roto-drag-eligible` cells showed `cursor: grab` (move affordance); now `cursor: pointer` (select) on hover; the grabbing hand only shows while dragging (`.roto-drag-source`).
+3. **I-beam over other tracks' frames** — the frame-number text inside the cells defaulted to the text cursor; all frame cells now carry `cursor: pointer`.
+4. **Black window (webview death) + black relaunch** — the reused Tauri window was never reloaded (the URL is applied only at BUILD time), so a crashed webview stayed black until the whole app quit. The reused window now navigates to the fresh launch URL, so a dead webview recovers on reopen (the child re-boots from the URL + stored state). Root cause of the webview death itself is unconfirmed (no periodic child timer runs while idle; likely system WKWebView kill under memory/GPU pressure) — pending re-observation with the webview dev console.
+
+**Verification:** full suite green (156 files / 2861 passed / 1 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0, `cargo test` 59 passed. Native UAT passed ("you solved everything issues !").
