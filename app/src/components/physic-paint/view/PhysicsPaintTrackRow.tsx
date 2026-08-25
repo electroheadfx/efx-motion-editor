@@ -25,11 +25,28 @@
 import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
+import { PhysicsPaintFilmstripCapsule } from './physicsPaintFilmstripCapsule';
+import type {
+  PhysicsPaintLoopClipGeometry,
+  PhysicsPaintLoopClipPresentation,
+} from './physicsPaintLoopClipPresentation';
 
 /** 47-01 geometry: shared frame pitch (same 18px as the active track). */
 const ROW_CELL_WIDTH_PX = 18;
 
 export type PhysicsPaintTrackRowKind = 'paint' | 'background';
+
+/** One ready-to-render filmstrip capsule for a track row (47-04 Task 3): all
+ *  facts were projected by the strip's existing projection functions — the
+ *  row is presentational and never computes loop data itself. */
+export interface PhysicsPaintTrackRowLoopCapsule {
+  readonly presentation: PhysicsPaintLoopClipPresentation;
+  readonly geometry: PhysicsPaintLoopClipGeometry;
+  readonly repeat: number | 'infinity';
+  readonly sourceOffsets: readonly number[];
+  readonly sourceFrameCount: number;
+  readonly cycleLength: number;
+}
 
 export interface PhysicsPaintTrackRowProps {
   /** The stable track UUID this row renders — identity, never an array index. */
@@ -38,7 +55,7 @@ export interface PhysicsPaintTrackRowProps {
   readonly layerId: string;
   /** The strip-level shared horizontal extent (frameCells), mapped 1:1 per row. */
   readonly frameCells: readonly number[];
-  /** 'background' renders the fixed muted Bg row skeleton. */
+  /** 'background' renders the darkened Bg row skeleton. */
   readonly kind?: PhysicsPaintTrackRowKind;
   /**
    * Track visibility (47-01 hide): a hidden track keeps EVERY cell rendered —
@@ -46,6 +63,11 @@ export interface PhysicsPaintTrackRowProps {
    * hidden state reads at a glance.
    */
   readonly visible?: boolean;
+  /** 47-04 Task 3: per-loop filmstrip capsules for THIS row's Loop Clips
+   *  (paint rows: store-derived resolver contexts; Bg row: background clips
+   *  when present). Absent/empty keeps the plain row — the Bg fallback
+   *  display remains untouched. */
+  readonly loopCapsules?: readonly PhysicsPaintTrackRowLoopCapsule[];
   /**
    * 47-01 UAT round 7: clicking a frame cell on a NON-active track activates
    * that track (the controller routes through setActiveTrackId) and navigates
@@ -93,6 +115,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     frameCells,
     kind = 'paint',
     visible = true,
+    loopCapsules,
     onSelectTrack,
     onNavigateToFrame,
   } = props;
@@ -132,7 +155,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             return (
               <span
                 key={frame}
-                class={`physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}`}
+                className={`physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}`}
                 data-roto-app-frame={frame}
                 aria-hidden="true"
               >
@@ -141,6 +164,26 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             );
           })}
         </div>
+        {/* 47-04 Task 3: paint-only filmstrip capsules for this row's Loop
+            Clips — the strip projected every fact; the row stays
+            presentational. The capsule layer is pointer-events none so row
+            clicks keep reaching the cells below. */}
+        {loopCapsules && loopCapsules.length > 0 ? (
+          <div class="physics-paint-track-row-capsules" aria-hidden="true">
+            {loopCapsules.map((capsule) => (
+              <PhysicsPaintFilmstripCapsule
+                key={capsule.presentation.loopId}
+                presentation={capsule.presentation}
+                geometry={capsule.geometry}
+                repeat={capsule.repeat}
+                sourceOffsets={capsule.sourceOffsets}
+                sourceFrameCount={capsule.sourceFrameCount}
+                cycleLength={capsule.cycleLength}
+                cellWidth={ROW_CELL_WIDTH_PX}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

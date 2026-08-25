@@ -3666,11 +3666,22 @@ button.destructive {
 }
 
 .physics-paint-track-row-lane {
+  position: relative;
   display: flex;
   align-items: center;
   height: 30px;
   min-width: 0;
   overflow: hidden;
+}
+
+/* 47-04 Task 3: paint-only capsule overlay per row — one per Loop Clip,
+   positioned against the lane (position: relative above) at the same 18px
+   frame pitch as the active lane's rail capsule; pointer-events: none so
+   row-cell clicks keep reaching the cells (row activation + navigation). */
+.physics-paint-track-row-capsules {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 /* 47-01 UAT round 2 (tight packing): the FIRST row in the region carries no

@@ -1,5 +1,6 @@
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
+import type { FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 
 export type PhysicsPaintGroupLifecycle =
   | 'synchronized'
@@ -251,19 +252,105 @@ function regenerateDisabledReasonFor(lifecycle: PhysicsPaintGroupLifecycle): str
 }
 
 export function projectPhysicsPaintLoopClipGeometry(
-  range: PhysicPaintRotoLoopRange,
+  loop: PhysicPaintRotoLoopRange,
   visibleFrameWindow: { readonly startFrame: number; readonly endFrameExclusive: number },
   framePitch: number,
 ): PhysicsPaintLoopClipGeometry | null {
   if (
-    range.effectiveEnd <= visibleFrameWindow.startFrame
-    || range.placementStart >= visibleFrameWindow.endFrameExclusive
+    loop.effectiveEnd <= visibleFrameWindow.startFrame
+    || loop.placementStart >= visibleFrameWindow.endFrameExclusive
   ) return null;
 
-  const clippedStart = Math.max(range.placementStart, visibleFrameWindow.startFrame);
-  const clippedEnd = Math.min(range.effectiveEnd, visibleFrameWindow.endFrameExclusive);
+  const clippedStart = Math.max(loop.placementStart, visibleFrameWindow.startFrame);
+  const clippedEnd = Math.min(loop.effectiveEnd, visibleFrameWindow.endFrameExclusive);
   return {
     left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,
     width: Math.max(framePitch, (clippedEnd - clippedStart) * framePitch),
   };
+}
+
+export interface PhysicsPaintBackgroundCapsuleProjection {
+  readonly presentation: PhysicsPaintLoopClipPresentation;
+  readonly geometry: PhysicsPaintLoopClipGeometry;
+  readonly repeat: number | 'infinity';
+  readonly sourceOffsets: readonly number[];
+  readonly sourceFrameCount: number;
+  readonly cycleLength: number;
+}
+
+/**
+ * Bg-row capsule projection (47-04 Task 3, RESEARCH A3): `FrameLoopClip` is
+ * the document's simplified Background Loop Clip record (`startFrame`,
+ * `sourceFrameRefs`, `repeat`) — NOT a Paint Hold resolver input — so it gets
+ * its own projection instead of `derivePhysicPaintRotoLoopRanges`. Every fact
+ * is read directly from the clip: no modulo or effective-end loop math (the
+ * single-resolver rule covers Paint loops only; A3 flagged this difference).
+ * An infinite repeat's display is bounded by the visible frame window so the
+ * capsule's high-zoom expansion can never generate unbounded cells
+ * (T-47-04-03). Returns null for a clip fully outside the window.
+ */
+export function projectBackgroundFrameLoopClipCapsule(
+  clip: FrameLoopClip,
+  visibleFrameWindow: { readonly startFrame: number; readonly endFrameExclusive: number },
+  framePitch: number,
+): PhysicsPaintBackgroundCapsuleProjection | null {
+  const sourceFrameCount = clip.sourceFrameRefs.length;
+  if (sourceFrameCount < 1) return null;
+  const cycleLength = sourceFrameCount;
+  const sourceOffsets = clip.sourceFrameRefs.map((_, index) => index);
+  const startFrame = clip.startFrame;
+  const repeat: number | 'infinity' = clip.repeat.mode === 'infinite' ? 'infinity' : clip.repeat.count;
+  const requestedDuration = repeat === 'infinity' ? null : cycleLength * repeat;
+  const cycleLabel = repeat === 'infinity'
+    ? `Cycle ${cycleLength}f × ∞`
+    : `Cycle ${cycleLength}f × ${repeat} = ${requestedDuration}f`;
+  const displayEnd = repeat === 'infinity'
+    ? Math.max(startFrame, visibleFrameWindow.endFrameExclusive)
+    : startFrame + requestedDuration!;
+  const effectiveDuration = Math.max(0, displayEnd - startFrame);
+  const repeatInstanceCount = repeat === 'infinity'
+    ? Math.floor(Math.max(0, displayEnd - startFrame) / cycleLength)
+    : repeat;
+  if (
+    displayEnd <= visibleFrameWindow.startFrame
+    || startFrame >= visibleFrameWindow.endFrameExclusive
+  ) return null;
+  const clippedStart = Math.max(startFrame, visibleFrameWindow.startFrame);
+  const clippedEnd = Math.min(displayEnd, visibleFrameWindow.endFrameExclusive);
+  const geometry: PhysicsPaintLoopClipGeometry = {
+    left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,
+    width: Math.max(framePitch, (clippedEnd - clippedStart) * framePitch),
+  };
+  const displayName = 'Background clip';
+  const presentation: PhysicsPaintLoopClipPresentation = {
+    loopId: clip.id,
+    displayName,
+    sourceLabel: 'Background',
+    placementLabel: `F${startFrame}`,
+    cycleLabel,
+    effectiveLabel: `Effective ${effectiveDuration}f`,
+    shortened: false,
+    partialCycle: false,
+    shortenedLabel: null,
+    repeatInstanceCount,
+    interruptionTooltipLine: null,
+    mode: 'static',
+    modeLabel: 'Static',
+    groupTypeLabel: 'Static Rail',
+    lifecycle: 'synchronized',
+    statusLabel: 'Synchronized.',
+    synchronizationDot: 'synchronized',
+    regenerateDisabledReason: null,
+    fragmentLabel: null,
+    linkedDescription: null,
+    tooltipLines: [
+      displayName,
+      'Type: Static',
+      cycleLabel,
+      `Effective ${effectiveDuration}f`,
+      'Status: Synchronized.',
+    ],
+    accessibleName: `${displayName}. Static Rail. ${cycleLabel}. Effective ${effectiveDuration} frames. Synchronized.`,
+  };
+  return { presentation, geometry, repeat, sourceOffsets, sourceFrameCount, cycleLength };
 }
