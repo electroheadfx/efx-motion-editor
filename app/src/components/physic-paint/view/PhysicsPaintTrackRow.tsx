@@ -17,12 +17,15 @@
  *
  * 47-01 mockup redesign (the user's design-direction change): the header
  * column gains the "Tracks N" strip (`PhysicsPaintTrackColumnStrip`) and
- * every Paint header gains the reorder grip + hover tools (eye / pencil /
- * copy / trash-2). The Background row stays a fixed muted row with lock
- * semantics — no reorder grab, no rename, no duplicate, no delete (D-06).
+ * every Paint row shows the reorder grip, the always-visible eye toggle, the
+ * name, and the more-button; the more-button opens the hover tools panel
+ * (solo / copy / trash-2 — 47 UAT: the eye left the panel for the standing
+ * row, the pencil was removed because a double-click on the name renames).
+ * The Background row stays a fixed muted row with lock semantics — no reorder
+ * grab, no rename, no duplicate, no delete (D-06).
  */
 
-import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-preact';
+import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
 import { PhysicsPaintFilmstripCapsule } from './physicsPaintFilmstripCapsule';
@@ -396,31 +399,32 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
               <GripVertical size={12} />
             </span>
           ) : null}
+          {/* 47 UAT: the eye (hide/show) toggle is a standing row control,
+              placed before the name and after the reorder grip — the row's
+              only always-visible controls besides the more-button. */}
+          <button
+            type="button"
+            class="physics-paint-track-row-tool-button"
+            aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+            aria-pressed={!visible}
+            title={visible ? `Hide ${label}` : `Show ${label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleVisible?.(trackId, !visible);
+            }}
+          >
+            {visible ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
+          </button>
           <span
             class="physics-paint-track-row-label physics-paint-track-row-label-ellipsis"
             title={label}
           >{label}</span>
-          {/* 47-02 Task 1: per-row solo (S) toggle — a compact always-visible
-              chip before the tools. Its pressed state reflects the session
-              solo arm (physicsPaintSoloArm, D-20); the click routes through
-              onToggleSolo(trackId) and the strip wires it to setTrackSolo. */}
-          <button
-            type="button"
-            class={`physics-paint-track-row-solo${isSoloArmed() ? ' physics-paint-track-row-solo-armed' : ''}`}
-            aria-label={`Solo ${label}`}
-            aria-pressed={isSoloArmed() ? 'true' : 'false'}
-            title={isSoloArmed() ? `Un-solo ${label}` : `Solo ${label}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleSolo?.(trackId);
-            }}
-          >
-            S
-          </button>
           {/* 47-01 UAT round 6: the tools open ONLY from the small more-button
               at the name's right extreme (never on header hover or click —
               a click on the name selects the track); leaving the panel closes
-              it. */}
+              it. 47 UAT: the panel now holds solo / copy / trash — the pencil
+              was removed because a double-click on the name renames in place,
+              and the eye moved out to the standing row controls. */}
           <span
             class="physics-paint-track-row-tools"
             role="group"
@@ -431,28 +435,16 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           >
             <button
               type="button"
-              class="physics-paint-track-row-tool-button"
-              aria-label={visible ? `Hide ${label}` : `Show ${label}`}
-              aria-pressed={!visible}
-              title={visible ? `Hide ${label}` : `Show ${label}`}
+              class={`physics-paint-track-row-solo${isSoloArmed() ? ' physics-paint-track-row-solo-armed' : ''}`}
+              aria-label={`Solo ${label}`}
+              aria-pressed={isSoloArmed() ? 'true' : 'false'}
+              title={isSoloArmed() ? `Un-solo ${label}` : `Solo ${label}`}
               onClick={(event) => {
                 event.stopPropagation();
-                onToggleVisible?.(trackId, !visible);
+                onToggleSolo?.(trackId);
               }}
             >
-              {visible ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
-            </button>
-            <button
-              type="button"
-              class="physics-paint-track-row-tool-button"
-              aria-label={`Rename ${label}`}
-              title={`Rename ${label}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onStartRename?.(trackId);
-              }}
-            >
-              <Pencil size={12} aria-hidden="true" />
+              S
             </button>
             <button
               type="button"

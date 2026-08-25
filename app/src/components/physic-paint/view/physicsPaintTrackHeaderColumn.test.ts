@@ -610,7 +610,8 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     const root = renderFixture(fixture, { onToggleVisible, onToggleSolo });
     const headerA = headerCell(root, fixture.trackA.id);
 
-    // The hide (eye) toggle lives in the row's tools group.
+    // 47 UAT: the hide (eye) toggle is a standing row control before the name
+    // (no longer inside the hover tools panel).
     const eye = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Hide Track 1');
     (eye.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleVisible).toHaveBeenCalledWith(fixture.trackA.id);

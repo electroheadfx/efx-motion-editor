@@ -3483,7 +3483,10 @@ button.destructive {
 .physics-paint-header-column {
   display: flex;
   flex-direction: column;
-  flex: 0 0 140px;
+  /* 47 UAT: widened 140px -> 160px so the standing row controls (grip + eye +
+     name + more-button) breathe — the eye moved out of the hover tools into
+     the always-visible row controls. */
+  flex: 0 0 160px;
   min-width: 0;
   /* 47-01 UAT round 3: allows the column to shrink to the timeline-body's
      dynamic height so the header-rows band scrolls in lockstep with the
@@ -4849,15 +4852,17 @@ button.destructive {
 }
 
 /* 47-02 Task 2 (TML-02, D-17): the acknowledge-and-delete dialog surface.
-   Rendered inside the strip root (position: relative), so the frame floats
-   above the timeline with no backdrop — the studio stays interactive behind
-   it, mirroring the Play Script floating dialog convention. The title names
-   the exact track; the detail carries the destruction surface verbatim; the
-   refusal turns the Confirm off for the last surviving Paint track. */
+   47 UAT: centered on the EFX Paint window (position: fixed — no transformed
+   ancestor, so the fixed box tracks the webview viewport) with no backdrop —
+   the studio stays interactive behind it, mirroring the Play Script floating
+   dialog convention. The title names the exact track; the summary explains
+   the destruction surface verbatim; the refusal turns the Confirm off for
+   the last surviving Paint track. */
 .physics-paint-delete-track-dialog {
-  position: absolute;
-  top: 32px;
-  right: 16px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 30;
   display: flex;
   flex-direction: column;

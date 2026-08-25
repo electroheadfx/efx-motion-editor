@@ -2,7 +2,7 @@
  * 47-02 Task 1: the pinned header column of the multi-track timeline
  * (TML-01/02/03/07, D-01/D-02/D-04/D-06/D-07/D-08).
  *
- * A fixed ~140px column listing every `InternalPaintTrack` in document order
+ * A fixed 160px column listing every `InternalPaintTrack` in document order
  * plus the fixed Background row always at the bottom (D-06). It sits OUTSIDE
  * the horizontal scroller so it never scrolls away with the frame cells, and
  * its header-rows band shares the rows-region's vertical scroll position
@@ -11,13 +11,14 @@
  * The component is presentational and hook-free: the strip owns the session
  * state (edit-in-place rename draft, more-button tools panel, vertical
  * scrollbar geometry) and flows it down as props, so the viewport test can
- * invoke the column as a plain function like `PhysicsPaintTrackRowHeader`.
+ * invoke the column as a plain component like `PhysicsPaintTrackRowHeader`.
  *
  * Every control binds to the 47-01 store-op surface through the prop bundle
  * — the column never mutates a row it does not target: row click selects via
- * onSelectTrack, the eye and 'S' toggles route visibility/solo intents, the
- * '+' adds a track, and the more-panel holds rename/duplicate/delete. The
- * reorder grab area carries the drag-handle cursor and is deliberately NOT
+ * onSelectTrack, the standing eye toggle and the tools-panel solo toggle
+ * route visibility/solo intents, the '+' adds a track, and the more-panel
+ * holds solo/duplicate/delete (47 UAT: the pencil is gone — a double-click
+ * on the name renames in place). The reorder grab area is deliberately NOT
  * wired to any pointer drag here (the header-drag reorder gesture is 47-02
  * Task 2; content cross-track drag is 47-05 — D-18 keeps the two distinct).
  */
@@ -98,7 +99,7 @@ export interface PhysicsPaintTrackHeaderColumnProps {
 }
 
 /**
- * The pinned 140px header column: the "Tracks N" strip with the '+' add
+ * The pinned 160px header column: the "Tracks N" strip with the '+' add
  * button, then one 30px header cell per Paint track plus the fixed muted
  * 'Bg' row, and the sidebar vertical pill scrollbar that only appears on
  * overflow. Hook-free by contract — the strip (or the test) invokes it as a
