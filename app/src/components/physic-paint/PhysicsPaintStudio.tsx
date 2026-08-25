@@ -2909,13 +2909,15 @@ export function PhysicsPaintStudio() {
   // instead of the raw document — the raw document never re-projects the
   // child's runtime, so Track 1's rotoPhysical stayed at launch state and the
   // main window's runtime mirror + save path diverged from the child's live
-  // records (delete rejections, keys lost on save). Subscribing to
-  // physicPaintVersion too makes every paint/roto edit re-push.
-  useEffect(() => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const mode = bridgeModeRef.current;
-    if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
+  // records (delete rejections, keys lost on save).
+  // 47-01 UAT round 8: the push fires IMMEDIATELY on document-structure
+  // changes (efxPaintVersion) and on a 500ms DEBOUNCE after paint/roto edits
+  // (physicPaintVersion) — round-7 subscribed to every paint event, so every
+  // stroke serialized the whole document over the bridge and the parent's
+  // mirror marked the project dirty (auto-save storm, corrupted saves, paint
+  // slowness). The debounce keeps the parent's runtime eventually consistent
+  // with the child's live state without touching the paint hot path.
+  const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback') => {
     let document: EfxPaintDocumentModel | null = null;
     try {
       document = serializeRuntimeIntoDocument(layerId);
@@ -2926,8 +2928,24 @@ export function PhysicsPaintStudio() {
     void sendEfxPaintDocumentSync(document, mode).catch((error) => {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     });
+  };
+  useEffect(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const mode = bridgeModeRef.current;
+    if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
+    pushLiveProjection(layerId, mode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value]);
+  }, [launchContext?.layerId, efxPaintVersion.value]);
+  useEffect(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const mode = bridgeModeRef.current;
+    if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
+    const timer = window.setTimeout(() => pushLiveProjection(layerId, mode), 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchContext?.layerId, physicPaintVersion.value]);
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,

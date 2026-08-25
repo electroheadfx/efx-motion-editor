@@ -2636,15 +2636,21 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       const current = getEfxPaintDocument(document.parentLayerId);
       if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
       registerEfxPaintDocument(document);
-      // 47-01 UAT round 7: mirror the child's live runtime into the main
+      // 47-01 UAT round 8: mirror the child's live runtime into the main
       // window's runtime maps (rotoPhysical only — frame bytes stay owned by
       // the bridge applies) so the apply validation and the save projection
-      // always see the child's current records for EVERY track. Best-effort
-      // per track: a track under an active operation lease is skipped
-      // (fail closed), and tracks without rotoPhysical state are untouched.
+      // always see the child's current records for EVERY track. The mirror is
+      // revision-guarded (a no-op when the pushed content matches the parent's
+      // current state) and SILENT — it never marks the project dirty and never
+      // bumps revisions, so a document sync can never trigger an auto-save
+      // (round-7 regression: every sync auto-saved, corrupting saves mid-paint).
+      // Best-effort per track: a track under an active operation lease is
+      // skipped (fail closed), and tracks without rotoPhysical state are
+      // untouched.
       for (const track of document.tracks) {
         if (!track.rotoPhysical) continue;
-        const result = physicPaintStore.replaceRotoPhysicalDocument(
+        if (physicPaintStore.getRotoPhysicalContentRevision(document.parentLayerId, track.id) === track.rotoPhysical.revision) continue;
+        const result = physicPaintStore.mirrorRotoPhysicalDocument(
           document.parentLayerId,
           track.id,
           track.rotoPhysical,

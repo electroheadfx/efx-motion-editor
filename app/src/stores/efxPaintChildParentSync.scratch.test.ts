@@ -3,7 +3,7 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
+import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
 import { _setEfxPaintMarkDirtyCallback, addTrack, registerDocument, reset as resetEfxPaint, serializeRuntimeIntoDocument } from './efxPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
@@ -226,11 +226,16 @@ describe('SCRATCH: child document push + parent save preserves Track 1 keys', ()
       .toEqual(['t1-key-1']);
 
     // PARENT receives the push: registers the document AND mirrors the pushed
-    // rotoPhysical into its runtime (the round-7 listener behavior).
+    // rotoPhysical into its runtime (the round-8 listener behavior — silent
+    // mirror, revision-guarded).
+    const versionBefore = physicPaintVersion.value;
+    const dirtySpy = vi.fn();
+    _setPhysicPaintMarkDirtyCallback(dirtySpy);
     registerDocument(pushed);
     for (const track of pushed.tracks) {
       if (!track.rotoPhysical) continue;
-      const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, track.id, track.rotoPhysical);
+      if (physicPaintStore.getRotoPhysicalContentRevision(LAYER_ID, track.id) === track.rotoPhysical.revision) continue;
+      const result = physicPaintStore.mirrorRotoPhysicalDocument(LAYER_ID, track.id, track.rotoPhysical);
       expect(result.ok).toBe(true);
     }
 
@@ -238,8 +243,41 @@ describe('SCRATCH: child document push + parent save preserves Track 1 keys', ()
     // apply's currentRevision equals the child's expectedRevision.
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER_ID, TEST_TRACK_ID).map((record) => record.keyId))
       .toEqual(['t1-key-1', 't1-key-2']);
-    // Frames are preserved by the mirror (replaceRotoPhysicalDocument never
+    // Frames are preserved by the mirror (mirrorRotoPhysicalDocument never
     // touches the frame maps).
     expect(physicPaintStore.getFrames(LAYER_ID, TEST_TRACK_ID).size).toBe(1);
+    // The mirror is SILENT: no project-dirty callback, no version bumps —
+    // a document sync can never trigger an auto-save (round-7 regression).
+    expect(dirtySpy).not.toHaveBeenCalled();
+    expect(physicPaintVersion.value).toBe(versionBefore);
+  });
+
+  it('mirror is a no-op when the pushed revision equals the parent current revision', () => {
+    const LAYER_ID = 'layer-1';
+    const parentDocument = makeTrackDocument(LAYER_ID);
+    registerDocument(parentDocument);
+    physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER_ID, TEST_TRACK_ID,
+      [rotoRecord('t1-key-1', 0)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    const pushed = parseEfxPaintDocument(serializeRuntimeIntoDocument(LAYER_ID));
+    const pushedTrack = pushed.tracks[0];
+    expect(pushedTrack.rotoPhysical).not.toBeNull();
+    const versionBefore = physicPaintVersion.value;
+    const dirtySpy = vi.fn();
+    _setPhysicPaintMarkDirtyCallback(dirtySpy);
+
+    // The parent's current content revision already equals the pushed
+    // revision — the bridge guard skips the mirror entirely.
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER_ID, TEST_TRACK_ID))
+      .toBe(pushedTrack.rotoPhysical!.revision);
+    const result = physicPaintStore.mirrorRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID, pushedTrack.rotoPhysical);
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER_ID, TEST_TRACK_ID).map((record) => record.keyId))
+      .toEqual(['t1-key-1']);
+    expect(dirtySpy).not.toHaveBeenCalled();
+    expect(physicPaintVersion.value).toBe(versionBefore);
   });
 });

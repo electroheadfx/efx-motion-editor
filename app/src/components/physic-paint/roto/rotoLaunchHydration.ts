@@ -71,7 +71,7 @@ export function prepareRotoPhysicalLaunch(
   }
 }
 
-/** Decode canonical PNG sources first, then install exactly one complete physical document. */
+/** Decode canonical PNG sources first, then install every carried track's physical document. */
 export async function hydrateRotoPhysicalLaunchContext(
   context: PhysicPaintLaunchContext,
   store: RotoPhysicalLaunchHydrationStore,
@@ -88,11 +88,22 @@ export async function hydrateRotoPhysicalLaunchContext(
     return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
   }
 
-  // 46-01: install into the launch document's ACTIVE track (the launch IS the
-  // document — D-03 — so the carried activeTrackId is the identity authority).
-  const replacement = store.replaceRotoPhysicalDocument(context.layerId, context.document?.activeTrackId ?? '', prepared.document);
-  if (!replacement.ok) return replacement;
-  return { ok: true, context, document: replacement.document };
+  // 47-01 UAT round 8: install EVERY carried track's physical document, not
+  // just the active one — the strip renders every track's cells from the
+  // child's runtime, so a non-active track with keys would otherwise show an
+  // empty row after reopen. The active track's install is the launch
+  // authority (its cursor/selection were overridden to the requested frame);
+  // the other tracks install their carried state as-is.
+  const activeTrackId = context.document?.activeTrackId ?? '';
+  let activeDocument: PhysicPaintRotoPhysicalDocument | null = null;
+  for (const track of context.document?.tracks ?? []) {
+    if (!track.rotoPhysical) continue;
+    const replacement = store.replaceRotoPhysicalDocument(context.layerId, track.id, track.rotoPhysical);
+    if (!replacement.ok) return replacement;
+    if (track.id === activeTrackId) activeDocument = replacement.document;
+  }
+  if (!activeDocument) return { ok: false, error: 'Launch is missing the complete physical Roto document.' };
+  return { ok: true, context, document: activeDocument };
 }
 
 // These signatures remain temporarily so existing pre-UAT regression sources

@@ -1887,6 +1887,63 @@ export const physicPaintStore = {
     return { ok: true, document };
   },
 
+  /**
+   * Mirror one track's physical document from the child window's live state
+   * (47-01 UAT round 8). Identical to replaceRotoPhysicalDocument except it
+   * never bumps revisions and never fires the project-dirty callback — the
+   * parent's runtime is a passive mirror used by the save projection and the
+   * apply validation, so a sync must not trigger auto-saves or re-renders
+   * (round-7 regression: every document sync marked the project dirty and
+   * auto-saved, corrupting saves mid-paint). Frames are preserved; the
+   * structural memo is invalidated so the next read rebuilds with the new
+   * records.
+   */
+  mirrorRotoPhysicalDocument(
+    layerId: string,
+    trackId: string,
+    value: unknown,
+  ): { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string } {
+    if (!layerId || typeof layerId !== 'string') return { ok: false, error: 'Layer ID must be a non-empty string.' };
+    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, trackId, undefined);
+    if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
+    let document: PhysicPaintRotoPhysicalDocument;
+    try {
+      document = parsePhysicPaintRotoPhysicalDocument(value);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Invalid physical Roto document.' };
+    }
+    if (document.capacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) return { ok: false, error: 'Physical Roto document exceeds maximum capacity.' };
+    const projection = projectPhysicPaintRotoPhysicalTimeline({
+      identities: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      capacity: document.capacity,
+      interpolationEnabled: document.interpolation.enabled,
+      incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
+    });
+    if (!projection.ok) return { ok: false, error: projection.failure.text };
+
+    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
+      trackId,
+      new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
+    );
+    _getOrCreateLayerTrackMap(_rotoGroupOverrideRecords, layerId).set(
+      trackId,
+      new Map((document.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
+    );
+    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, document.interpolation);
+    _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
+    _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
+    _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
+    _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, document.selectedKeyId);
+    _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, document.cursorAppFrame);
+    _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, document.capacity);
+    if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
+    else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
+    _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    return { ok: true, document };
+  },
+
   /** Return the complete canonical physical document for persistence/launch (46-01 track-scoped). */
   getRotoPhysicalDocument(layerId: string, trackId: string): PhysicPaintRotoPhysicalDocument | null {
     if (!_rotoRealKeyRecords.get(layerId)?.has(trackId)) return null;
