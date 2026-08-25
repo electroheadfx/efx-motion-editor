@@ -944,7 +944,7 @@ describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2
     expect(region).toContain('flex: 1 1 auto');
     expect(region).toContain('min-height: 0');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
-    expect(lane).toContain('height: 30px');
+    expect(lane).toContain('height: 34px');
     expect(lane).not.toContain('min-height');
     expect(lane).not.toContain('padding: 8px 0');
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
@@ -1042,7 +1042,10 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
 
   it('removes the Tools dropdown machinery and its CSS outright', () => {
     const code = source();
-    for (const removed of ['toolsOpen', 'setToolsOpen', 'toolsMenuRef', 'aria-haspopup="menu"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown']) {
+    // The obsolete top-bar Tools dropdown is gone. (The 47-01 track-header
+    // more-button state legitimately uses toolsOpen/setToolsOpenTrackId —
+    // those words are the NEW track tools, not the removed dropdown.)
+    for (const removed of ['toolsMenuRef', 'aria-haspopup="menu"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Tools"']) {
       expect(code).not.toContain(removed);
     }
     const styles = css();
@@ -1326,7 +1329,7 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 28px');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('flex: 1 1 auto');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('min-height: 0');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
@@ -1648,7 +1651,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #f2f5f7');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 

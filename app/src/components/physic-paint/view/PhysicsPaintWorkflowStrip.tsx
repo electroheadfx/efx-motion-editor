@@ -381,7 +381,8 @@ const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
    rows), capped at 270px so the canvas keeps room; the top-edge drag handle
    lets the user shrink (vertical scroll appears) or grow up to the full
    content height — never beyond the number of tracks. */
-const STRIP_ROW_HEIGHT_PX = 30;
+// 47-01 UAT round 6: the row is 34px (12px rail band + 22px cells, no overlap).
+const STRIP_ROW_HEIGHT_PX = 34;
 const STRIP_CHROME_HEIGHT_PX = 124;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
@@ -1101,6 +1102,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // and flow down to the matching `PhysicsPaintTrackRowHeader` as props.
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  // 47-01 UAT round 6: the tool panel opens only from the header's more-button
+  // (one open panel at a time); leaving the panel or the header closes it.
+  const [toolsOpenTrackId, setToolsOpenTrackId] = useState<string | null>(null);
   // 47-01 UAT round 3: flexible/resizable strip height. `null` = auto (default
   // = exactly enough for all rows + Bg, capped at 270px); a number = the user's
   // session-local manual resize. Clamped to [1 row, full content height] so the
@@ -1145,6 +1149,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [props.onRenameTrack, renameDraft]);
   const handleCancelRename = useCallback(() => {
     setRenamingTrackId(null);
+  }, []);
+  const handleToggleTrackTools = useCallback((trackId: string) => {
+    setToolsOpenTrackId((current) => (current === trackId ? null : trackId));
+  }, []);
+  const handleCloseTrackTools = useCallback(() => {
+    setToolsOpenTrackId(null);
   }, []);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
@@ -3303,6 +3313,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         onToggleVisible={props.onToggleTrackVisible}
                         onDuplicateTrack={props.onDuplicateTrack}
                         onDeleteTrack={props.onDeleteTrack}
+                        toolsOpen={toolsOpenTrackId === track.id}
+                        onToggleTools={handleToggleTrackTools}
+                        onCloseTools={handleCloseTrackTools}
                       />
                     ))}
                     {props.background ? (

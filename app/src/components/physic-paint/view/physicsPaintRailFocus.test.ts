@@ -15,10 +15,10 @@ function cssRule(selector: string): string {
 }
 
 // Documented rail geometry (43.4-06 plan: zero geometry changes; Defect 8
-// visual contract: the ring wraps the band AND the full cell row).
-// 47-01 UAT round 5: the row is the compact 30px lane (12px band + the
-// 22px-tall cell row), so the ring's bottom offset re-anchors to 30px.
-const LANE_HEIGHT_PX = 30;
+// visual contract: the ring wraps the row AND the full cell row).
+// 47-01 UAT round 6: the row is the compact 34px lane (12px band + the
+// 22px-tall cell row below it), so the ring's bottom offset re-anchors to 34px.
+const LANE_HEIGHT_PX = 34;
 const TARGET_HEIGHT_PX = 12;
 const CELL_HEIGHT_PX = 22;
 const RING_OFFSET_PX = 2;
@@ -42,7 +42,7 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     expect(ringRule).toContain('top: -2px');
     expect(ringRule).toContain('left: -2px');
     expect(ringRule).toContain('right: -2px');
-    expect(ringRule).toContain('bottom: -20px');
+    expect(ringRule).toContain('bottom: -22px');
     expect(ringRule).toContain('border-radius: 8px');
     expect(ringRule).toContain('pointer-events: none');
   });
@@ -53,19 +53,19 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     expect(css).not.toContain('.physics-paint-loop-clip-rail-target:focus-visible {');
   });
 
-  it('full-row ring wraps the compact 30px band + cells with a 2px overhang and never clips', () => {
-    // Ring box from the shared ::after declarations (top: -2px, bottom: -20px
-    // below the 12px target): spans -2..32 relative to the lane top — the
-    // compact 30px row with a 2px breathing overhang on each side.
+  it('full-row ring wraps the compact 34px band + cells with a 2px overhang and never clips', () => {
+    // Ring box from the shared ::after declarations (top: -2px, bottom: -22px
+    // below the 12px target): spans -2..34 relative to the lane top — the
+    // compact 34px row with a 2px breathing overhang on each side.
     const ringTop = -RING_OFFSET_PX;
     const ringBottom = TARGET_HEIGHT_PX + (LANE_HEIGHT_PX - TARGET_HEIGHT_PX + RING_OFFSET_PX);
     expect(ringTop).toBe(-2);
-    expect(ringBottom).toBe(32);
+    expect(ringBottom).toBe(36);
 
-    // The full-height cells fit inside the 30px row (3px margin top/bottom).
+    // The full-height cells fit inside the 34px row (12px band above them).
     expect(CELL_HEIGHT_PX).toBeLessThan(LANE_HEIGHT_PX);
 
-    // Full-row extent: the ring overhangs the 30px row by 2px above and below.
+    // Full-row extent: the ring overhangs the 34px row by 2px above and below.
     expect(ringTop + RING_OFFSET_PX).toBe(0);
     expect(ringBottom - RING_OFFSET_PX).toBe(LANE_HEIGHT_PX);
 

@@ -137,6 +137,23 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('trackId: studioActiveTrackId(),');
     expect(studio).toContain('const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);');
   });
+
+  it('syncs the child document to the main window so track CRUD survives the project save (47-01 persistence)', () => {
+    // The Studio window owns its own efxPaintStore instance; the main window's
+    // save path serializes ITS document. The child must push every document
+    // mutation (track CRUD) to the main window or the added track never lands
+    // in the .mce.
+    expect(studio).toContain('sendEfxPaintDocumentSync(document, mode)');
+    expect(studio).toContain("if (mode !== 'Tauri' && mode !== 'Browser fallback') return;");
+    expect(studio).toContain('// eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [launchContext?.layerId, efxPaintVersion.value]);');
+    expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
+    // The main-window listener is fail-closed (canonical parser) and
+    // idempotency-guarded by document revision (the launch push is a no-op).
+    expect(bridge).toContain("PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document'");
+    expect(bridge).toContain('installPhysicPaintEfxPaintDocumentListener');
+    expect(bridge).toContain('const document = parseEfxPaintDocument(payload);');
+    expect(bridge).toContain('buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)');
+  });
 });
 
 describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)', () => {

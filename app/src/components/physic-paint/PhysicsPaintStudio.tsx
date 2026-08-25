@@ -70,7 +70,7 @@ import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -2895,6 +2895,24 @@ export function PhysicsPaintStudio() {
       onDuplicateTrack: handleDuplicateTrack,
       onDeleteTrack: handleDeleteTrack,
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchContext?.layerId, efxPaintVersion.value]);
+  // 47-01: the Studio window owns its own efxPaintStore instance — track CRUD
+  // mutates the CHILD document only. Push it to the main window on every
+  // document mutation so the main window's save path serializes the same
+  // track list (idempotency is guarded by document revision on the main
+  // side). The push fires for the launch registration too — both windows
+  // already hold that document, so it is a revision no-op.
+  useEffect(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return;
+    const mode = bridgeModeRef.current;
+    if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
+    void sendEfxPaintDocumentSync(document, mode).catch((error) => {
+      console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, efxPaintVersion.value]);
   const viewModel = usePhysicsPaintStudioViewModel({

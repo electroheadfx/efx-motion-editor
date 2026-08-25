@@ -39,13 +39,14 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { proposeRails } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
+import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import { getCarriedRotoPhysical } from '../components/physic-paint/roto/rotoLaunchHydration';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import {
   buildEfxPaintDocumentRevision,
   buildEfxPaintTrackRevision,
 } from '../efx-paint/document/efxPaintDocumentRevision';
-import { getDocument as getEfxPaintDocument } from '../stores/efxPaintStore';
+import { getDocument as getEfxPaintDocument, registerDocument as registerEfxPaintDocument } from '../stores/efxPaintStore';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
@@ -75,6 +76,13 @@ export const PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT = 'physic-paint:audio-ownership'
  */
 export const PHYSIC_PAINT_APPLY_EVENT = 'physic-paint:apply';
 export const PHYSIC_PAINT_APPLY_RESULT_EVENT = 'physic-paint:apply-result';
+/**
+ * 47-01: child→main EFX Paint document sync. The Studio window owns its own
+ * efxPaintStore; track CRUD happens there. The child pushes its current
+ * document on every document mutation so the main window's efxPaintStore (the
+ * save path's serialization authority) never lags the child's track list.
+ */
+export const PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document';
 export const PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT = 'physic-paint:script-library-request';
 export const PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT = 'physic-paint:script-library-result';
 export const PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT = 'physic-paint:roto-authority-request';
@@ -2608,6 +2616,62 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
   window.addEventListener('message', messageListener);
   return () => {
     window.removeEventListener(PHYSIC_PAINT_APPLY_EVENT, customEventListener);
+    window.removeEventListener('message', messageListener);
+  };
+}
+
+/**
+ * 47-01: main-window listener for the child's EFX Paint document sync. The
+ * incoming payload is validated fail-closed by the canonical parser and
+ * re-registered into the main window's efxPaintStore ONLY when the document
+ * actually changed (revision-guarded idempotency — the child pushes its
+ * document at launch too, where both windows already hold the same document).
+ * The save path re-projects frames/rotoPhysical from the main window's own
+ * runtime, so the sync only carries the track structure the child owns.
+ */
+export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() => void> {
+  const applyDocument = (payload: unknown) => {
+    try {
+      const document = parseEfxPaintDocument(payload);
+      const current = getEfxPaintDocument(document.parentLayerId);
+      if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
+      registerEfxPaintDocument(document);
+    } catch (error) {
+      console.warn('[physicPaintBridge] Rejected EFX Paint document sync:', error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  if (isTauriRuntime()) {
+    try {
+      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
+      const unlisten = await eventApi.listen?.(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, (event) => {
+        applyDocument(event.payload);
+      });
+      if (unlisten) return unlisten;
+    } catch (error) {
+      console.warn('[physicPaintBridge] Falling back to browser EFX Paint document listener:', error);
+    }
+  }
+
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    return () => {};
+  }
+
+  const customEventListener = (event: Event) => {
+    applyDocument((event as CustomEvent).detail);
+  };
+  const messageListener = (event: MessageEvent) => {
+    if (event.origin !== window.location?.origin) return;
+    const data = event.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    const message = data as { type?: unknown; payload?: unknown };
+    if (message.type !== PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT) return;
+    applyDocument(message.payload);
+  };
+  window.addEventListener(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, customEventListener);
+  window.addEventListener('message', messageListener);
+  return () => {
+    window.removeEventListener(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, customEventListener);
     window.removeEventListener('message', messageListener);
   };
 }

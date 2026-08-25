@@ -2,6 +2,8 @@ import {effect} from '@preact/signals';
 import {projectStore} from '../stores/projectStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {imageStore} from '../stores/imageStore';
+import {efxPaintVersion} from '../stores/efxPaintStore';
+import {physicPaintVersion} from '../stores/physicPaintStore';
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -36,6 +38,12 @@ export function startAutoSave(): void {
     projectStore.height.value;
     sequenceStore.sequences.value;
     imageStore.images.value;
+    // 47-01: EFX Paint document mutations (track CRUD) and physic paint
+    // runtime mutations (paint strokes, Roto edits) must also re-schedule the
+    // debounced save — without these subscriptions a painted stroke or a new
+    // track waits for the 60s safety-net interval before persisting.
+    efxPaintVersion.value;
+    physicPaintVersion.value;
     // Trigger debounced save
     scheduleSave();
   });

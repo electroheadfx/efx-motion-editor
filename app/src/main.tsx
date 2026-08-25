@@ -13,7 +13,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
 import {setDebugReplayDiff} from './lib/physicPaintBridge';
@@ -42,6 +42,9 @@ if (window.location.pathname === '/physics-paint') {
     startAutoSave();
     mountShortcuts(); // Mount keyboard shortcuts globally
     await installPhysicPaintApplyListener();
+    // 47-01: main window accepts the Studio's EFX Paint document sync (track
+    // CRUD happens in the child window's own efxPaintStore instance).
+    await installPhysicPaintEfxPaintDocumentListener();
     await installPhysicPaintScriptLibraryListener();
     await installPhysicPaintRotoAuthorityListener();
     await installPhysicPaintStateSaveListener();

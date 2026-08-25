@@ -22,7 +22,7 @@
  * semantics — no reorder grab, no rename, no duplicate, no delete (D-06).
  */
 
-import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, Pencil, Plus, Trash2 } from 'lucide-preact';
+import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 
 /** 47-01 geometry: shared frame pitch (same 18px as the active track). */
@@ -159,6 +159,12 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onDuplicateTrack?: (trackId: string) => void;
   /** Trash intent — routes through requestDeleteTrack/commitDeleteTrack. */
   readonly onDeleteTrack?: (trackId: string) => void;
+  /** True while this row's tool panel (eye/pencil/copy/trash) is open. */
+  readonly toolsOpen?: boolean;
+  /** More-button click — toggles the tool panel for this track. */
+  readonly onToggleTools?: (trackId: string) => void;
+  /** Pointer left the tool panel (or the whole header) — closes it. */
+  readonly onCloseTools?: () => void;
 }
 
 /**
@@ -190,6 +196,9 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onToggleVisible,
     onDuplicateTrack,
     onDeleteTrack,
+    toolsOpen = false,
+    onToggleTools,
+    onCloseTools,
   } = props;
   const isActive = activeTrackId === trackId;
   const isBackground = kind === 'background';
@@ -225,6 +234,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     <div
       class={headerClass}
       data-track-id={trackId}
+      data-tools-open={toolsOpen ? 'true' : undefined}
       role="button"
       tabIndex={0}
       aria-label={`Select track ${label}`}
@@ -235,18 +245,9 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           onSelectTrack?.(trackId);
         }
       }}
-      onPointerMove={(event) => {
-        // 47-01 UAT: the hover tools appear only over the RIGHT half of the
-        // header (the label/tools zone) — passing over the grip or the left
-        // half of the name never reveals them. The zone is a DOM attribute,
-        // so the header stays hook-free (the viewport test invokes it as a
-        // plain function).
-        const element = event.currentTarget as HTMLElement;
-        const rect = element.getBoundingClientRect();
-        element.dataset.hoverZone = event.clientX - rect.left >= rect.width / 2 ? 'right' : 'left';
-      }}
-      onPointerLeave={(event) => {
-        delete (event.currentTarget as HTMLElement).dataset.hoverZone;
+      onPointerLeave={() => {
+        // 47-01 UAT round 6: leaving the header closes the tool panel.
+        if (toolsOpen) onCloseTools?.();
       }}
     >
       {editing ? (
@@ -289,7 +290,18 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
             </span>
           ) : null}
           <span class="physics-paint-track-row-label" title={label}>{label}</span>
-          <span class="physics-paint-track-row-tools" role="group" aria-label={`${label} actions`}>
+          {/* 47-01 UAT round 6: the tools open ONLY from the small more-button
+              at the name's right extreme (never on header hover or click —
+              a click on the name selects the track); leaving the panel closes
+              it. */}
+          <span
+            class="physics-paint-track-row-tools"
+            role="group"
+            aria-label={`${label} actions`}
+            onPointerLeave={() => {
+              if (toolsOpen) onCloseTools?.();
+            }}
+          >
             <button
               type="button"
               class="physics-paint-track-row-tool-button"
@@ -342,6 +354,19 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
               <Trash2 size={12} aria-hidden="true" />
             </button>
           </span>
+          <button
+            type="button"
+            class="physics-paint-track-row-tools-toggle"
+            aria-label={toolsOpen ? `Close ${label} actions` : `Open ${label} actions`}
+            aria-expanded={toolsOpen ? 'true' : 'false'}
+            title={toolsOpen ? 'Close actions' : 'Actions'}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleTools?.(trackId);
+            }}
+          >
+            <MoreHorizontal size={14} aria-hidden="true" />
+          </button>
         </>
       )}
     </div>

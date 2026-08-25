@@ -748,10 +748,13 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(activeHeader).toBeDefined();
       expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
       expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
-      // 47-01 UAT round 7: the hover-tools zone is pointer-tracked on the
-      // header (right half only) — the paint header carries the handlers.
-      expect(typeof activeHeader!.props.onPointerMove).toBe('function');
+      // 47-01 UAT round 6: the tools open ONLY from the more-button — the
+      // header never tracks a hover zone; a pointer-leave closes the panel.
+      expect(activeHeader!.props.onPointerMove).toBeUndefined();
       expect(typeof activeHeader!.props.onPointerLeave).toBe('function');
+      expect(activeHeader!.props['data-tools-open']).toBeUndefined();
+      // The more-button (tools toggle) is rendered for every Paint header.
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(1);
       // 47-01 UAT round 5: the header label carries the FULL track name (the
       // "Track 1" vs "1" fix) — the label span text must match the track name.
       const activeLabel = findOne(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
@@ -766,11 +769,11 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(bgHeader!.props.role).toBeUndefined();
       expect(bgHeader!.props.tabIndex).toBeUndefined();
       expect(bgHeader!.props.onClick).toBeUndefined();
-      expect(bgHeader!.props.onPointerMove).toBeUndefined();
       expect(bgHeader!.props.onPointerLeave).toBeUndefined();
       const bgLabel = findOne(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
       expect(String(bgLabel.props.children)).toBe('Background');
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
+      expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
 
       // The header column is a sibling of the horizontal scroller, never a
       // descendant — so it stays pinned while the frame cells scroll (D-05).
@@ -779,8 +782,8 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(headerColumn).toBeDefined();
       const headerRows = harness.headerRows();
       expect(headerRows).toBeDefined();
-      // Header cells live inside the header-rows band, so each 30px header
-      // cell aligns 1:1 with its 30px row.
+      // Header cells live inside the header-rows band, so each 34px header
+      // cell aligns 1:1 with its 34px row.
       expect(harness.headerRowsHeaders()).toHaveLength(3);
     });
 
@@ -818,10 +821,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 2 Paint rows + 1 Bg row = 3 rows × 30px = 90px content; chrome 124px
-      // → default = min(124 + 90, 270) = 214px (all rows visible, no dead
+      // 2 Paint rows + 1 Bg row = 3 rows × 34px = 102px content; chrome 124px
+      // → default = min(124 + 102, 270) = 226px (all rows visible, no dead
       // space, no scroll).
-      expect(String(stripStyle.height)).toBe('214px');
+      expect(String(stripStyle.height)).toBe('226px');
     });
 
     it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
@@ -842,7 +845,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 5 Paint rows + 1 Bg row = 6 rows × 30px = 180px content; default is
+      // 5 Paint rows + 1 Bg row = 6 rows × 34px = 204px content; default is
       // capped at 270px so the canvas keeps room — the rows region scrolls.
       expect(String(stripStyle.height)).toBe('270px');
     });

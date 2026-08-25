@@ -427,7 +427,7 @@ describe('PhysicsPaintKeyRail', () => {
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 2px solid #f2f5f7');
     expect(ringRule).toContain('top: -2px');
-    expect(ringRule).toContain('bottom: -20px');
+    expect(ringRule).toContain('bottom: -22px');
     expect(ringRule).toContain('border-radius: 8px');
     expect(cssRule('.physics-paint-key-rail-target.busy {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('opacity: 0.55');

@@ -3135,7 +3135,7 @@ button.destructive {
 
 /* Shared rail focus ring (43.4 feature 8): ONE full-row rectangle for every
    rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
-   focused target's ::after so it wraps the whole compact 30px row (12px band
+   focused target's ::after so it wraps the whole compact 34px row (12px band
    + full 22px-tall cell row) at a 2px offset instead of only the 12px hit
    target, and no container clips it; pointer-events none keeps the 12px hit
    target unchanged. :focus draws it too so a mouse-clicked rail never falls
@@ -3152,7 +3152,7 @@ button.destructive {
   top: -2px;
   left: -2px;
   right: -2px;
-  bottom: -20px;
+  bottom: -22px;
   z-index: 2;
   border: 2px solid #f2f5f7;
   /* Capsule-ish rounding on the full-row ring (8px reads rounded on the
@@ -3331,10 +3331,12 @@ button.destructive {
   position: relative;
   display: grid;
   align-items: center;
-  /* 47-01 UAT round 5: compact 30px row — the 22px-tall cells sit inside
-     centered with ~4px top/bottom padding. */
-  height: 30px;
-  padding: 0;
+  /* 47-01 UAT round 6: compact 34px row — the 12px rail band sits ABOVE the
+     22px-tall cells (padding-top pushes the cell row below the band). The
+     previous 30px row let the absolute-positioned rail band (top 12px, z 4)
+     overlap the cells' top 8px, so frame/key clicks sometimes hit the rail. */
+  height: 34px;
+  padding-top: 12px;
   background: #37393a;
 }
 
@@ -3476,7 +3478,7 @@ button.destructive {
 }
 
 /* 47-01 mockup redesign rows-region: the region SIZES TO ITS CONTENT — every
-   Track row + the fixed Background row at 30px each — with NO fixed band and
+   Track row + the fixed Background row at 34px each — with NO fixed band and
    no dead space below the Background row.
 
    47-01 UAT round 2: the region carries the FULL frame-capacity width
@@ -3529,12 +3531,12 @@ button.destructive {
   pointer-events: none;
 }
 
-/* One presentational 30px track row: per-track cells lane only. The row's
+/* One presentational 34px track row: per-track cells lane only. The row's
    header cell lives in the pinned header column (PhysicsPaintTrackRowHeader),
    so the row itself carries no label column. */
 .physics-paint-track-row {
-  height: 30px;
-  min-height: 30px;
+  height: 34px;
+  min-height: 34px;
   border-top: 1px solid #47494b;
   background: #3a3c3d;
 }
@@ -3542,7 +3544,7 @@ button.destructive {
 .physics-paint-track-row-lane {
   display: flex;
   align-items: center;
-  height: 30px;
+  height: 34px;
   min-width: 0;
   overflow: hidden;
 }
@@ -3555,20 +3557,20 @@ button.destructive {
   border-top: 0;
 }
 
-/* One 30px header cell in the pinned header column. Every row — including
+/* One 34px header cell in the pinned header column. Every row — including
    the active lane and the fixed Background row — gets exactly one header
-   cell showing its track name (UI-SPEC header column layout). The 30px
-   height matches the compact frame lanes so headers align 1:1 with their
-   rows. 47-01 mockup redesign: reorder grip + truncated name + hover/replace
-   tools (eye/pencil/copy/trash-2); a reserved 3px left border keeps content
+   cell showing its track name (UI-SPEC header column layout). The 34px
+   height matches the frame lanes so headers align 1:1 with their rows.
+   47-01 mockup redesign: reorder grip + truncated name + hover/replace
+   tools (eye/pencil/copy/trash); a reserved 3px left border keeps content
    from shifting when the active accent appears. */
 .physics-paint-track-row-header {
   position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 30px;
-  min-height: 30px;
+  height: 34px;
+  min-height: 34px;
   padding: 0 6px 0 5px;
   border-bottom: 1px solid #4c4e50;
   border-left: 3px solid transparent;
@@ -3673,42 +3675,57 @@ button.destructive {
   transition: opacity 0.12s ease, max-width 0.12s ease;
 }
 
-/* 47-01 UAT round 7: the hover tools reveal only when the pointer is over the
-   RIGHT half of the header (the label/tools zone) — the header's onPointerMove
-   writes data-hover-zone='right'|'left'. Passing over the grip or the left
-   half of the track name never reveals them, and a grip drag (:active on the
-   grab) suppresses them entirely. :focus-within keeps the tools reachable by
-   keyboard. */
-.physics-paint-track-row-header:not(.physics-paint-track-row-header-background)[data-hover-zone='right'] .physics-paint-track-row-tools,
-.physics-paint-track-row-header:not(.physics-paint-track-row-header-background):focus-within .physics-paint-track-row-tools {
+/* 47-01 UAT round 6: the tools open ONLY from the small more-button at the
+   name's right extreme (data-tools-open='true' set by the strip state) — a
+   hover or a click on the name never reveals them (a name click selects the
+   track). Leaving the panel or the header closes them (onPointerLeave in the
+   component). The slide-in animation and the label collapse are unchanged. */
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools {
   max-width: 90px;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 
-.physics-paint-track-row-header:not(.physics-paint-track-row-header-background)[data-hover-zone='right'] .physics-paint-track-row-label,
-.physics-paint-track-row-header:not(.physics-paint-track-row-header-background):focus-within .physics-paint-track-row-label {
+.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-label {
   max-width: 0;
   padding-right: 0;
 }
 
-/* Grip drag (or grip hover) never reveals the tools and never collapses the
-   name — the grab is a drag affordance, the tools slide belongs to the
-   label/tools zone only. :has is supported by the WKWebView/Chromium engines
-   the packaged app and dev browsers use. */
-.physics-paint-track-row-header:has(.physics-paint-track-row-grip:hover) .physics-paint-track-row-tools,
-.physics-paint-track-row-header:has(.physics-paint-track-row-grip:active) .physics-paint-track-row-tools {
-  max-width: 0;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
+/* 47-01 UAT round 6: the more-button lives at the header's right extreme,
+   always visible — the explicit opener for the tool panel. Sized like the
+   tool buttons so the row's action affordance reads as one family. */
+.physics-paint-track-row-tools-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #d8dde3;
+  cursor: pointer;
 }
 
-.physics-paint-track-row-header:has(.physics-paint-track-row-grip:hover) .physics-paint-track-row-label,
-.physics-paint-track-row-header:has(.physics-paint-track-row-grip:active) .physics-paint-track-row-label {
-  max-width: none;
-  padding-right: 4px;
+.physics-paint-track-row-tools-toggle:hover {
+  background: #45505c;
+  border-color: #69727c;
+  color: #e5edf8;
+}
+
+.physics-paint-track-row-tools-toggle:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-track-row-tools-toggle svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
 }
 
 /* 47-01 hide: a hidden Paint track fades its cells to gray — every key and
@@ -3891,8 +3908,8 @@ button.destructive {
   min-width: 0;
   /* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request). The
      width follows the 18px grid column (border-box, ~16px visible interior);
-     the fixed 22px height centers in the compact 30px row (~4px above/below) —
-     never stretched to fill the row. */
+     the fixed 22px height sits flush below the lane's 12px rail band (the
+     lane's padding-top) — never stretched to fill the row. */
   height: 22px;
   padding: 0;
   border: 1px solid #3d454d;

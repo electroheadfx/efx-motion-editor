@@ -1,6 +1,7 @@
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest, PhysicPaintThumbnailEncodeRequest, PhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
 import { isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 
@@ -52,6 +53,30 @@ export async function sendPhysicPaintScriptLibraryRequest(request: PhysicPaintSc
     return;
   }
   throw new Error('Project script library is unavailable');
+}
+
+/**
+ * 47-01: child→main document sync. The Studio window owns its own
+ * efxPaintStore instance; track CRUD (add/rename/reorder/duplicate/delete,
+ * display props, active-track switch) mutates the CHILD document only. The
+ * main window's save path serializes ITS document, so the child pushes its
+ * current document here on every efxPaintVersion bump — the main window
+ * re-registers it (idempotency guarded by revision) and the project save
+ * re-projects frames/rotoPhysical from the main window's own runtime.
+ */
+export async function sendEfxPaintDocumentSync(document: EfxPaintDocument, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
+  if (bridgeMode === 'Tauri') {
+    const eventApi = await import('@tauri-apps/api/event');
+    if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
+    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, document);
+    return;
+  }
+  if (bridgeMode === 'Browser fallback') {
+    if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
+    window.opener.postMessage({ type: PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload: document }, window.location.origin);
+    return;
+  }
+  throw new Error('App bridge is not connected');
 }
 
 export async function sendPhysicPaintRotoAuthorityRequest(request: PhysicPaintRotoAuthorityRequest, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
