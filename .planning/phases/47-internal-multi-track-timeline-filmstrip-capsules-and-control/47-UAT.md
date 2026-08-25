@@ -33,6 +33,18 @@ expected: Track 1 and new tracks keep their keys across save/reopen; painting st
 
 ## Summary
 
+### Round 5 (2026-08-25) — test 2 regression fix (commit 9f570d9a)
+
+User report (round 4 fix insufficient): the Track option tab still reverts
+to Paint option ~1s after a track selection, and manual clicks on the tab
+were reverted too.
+
+Per the user's explicit fallback direction, the tab auto-select is REMOVED:
+track selection, tool changes, and paint activity never move the tab. The
+two tabs are manual-only, so a click on 'Track option' stays until the user
+clicks 'Paint option'. Regression test: manual tab survives track/tool
+changes and paint-revision bumps.
+
 ### Round 4 (2026-08-25) — test 2 regression fix (commit 6ca409ab)
 
 User report: selecting a track opens the Track option tab, then it reverts to
