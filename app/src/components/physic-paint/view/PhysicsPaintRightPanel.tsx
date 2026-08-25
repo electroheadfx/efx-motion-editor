@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { effect } from '@preact/signals';
 import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
-import { physicPaintVersion } from '../../../stores/physicPaintStore';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
 import {
   loadFavoriteColors,
@@ -25,9 +23,6 @@ export interface PhysicsPaintPlayWiggleSettings {
 
 export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
-  /** 47 UAT: the document's active track id — a change auto-selects the
-   *  'Track option' tab. */
-  activeTrackId: string;
   color: string;
   opacity: number;
   edgeDetail: number;
@@ -64,11 +59,6 @@ const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', 
 /** Minimum sidebar section share (%) — every section keeps at least this much
  *  of the flexible height when its neighbors are resized (36.15-12, Gap H-4). */
 const MIN_PANE_SPLIT = 15;
-
-/** 47 UAT: quiet window (ms) after a track selection during which paint
- *  revision bumps are ignored by the tab auto-select — they are side effects
- *  of the selection (sync/re-projection), not user paint strokes. */
-export const TRACK_TAB_SETTLE_MS = 600;
 
 /** Default sidebar shares (36.15-13, UAT Gap I-2; trimmed 36.15 Gap J): brush
  *  color 425×0.85=361.25 : tool 213 : scripts/onion/motion 340×0.8=272 — as
@@ -178,7 +168,6 @@ function SmoothingButton(props: { label: string; value: number; active: boolean;
 // directly-callable implementation the palette contract tests invoke.
 export function PhysicsPaintRightPanel({
   activeTool,
-  activeTrackId,
   color,
   opacity,
   edgeDetail,
@@ -214,36 +203,11 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
-  // 47 tab: the tab auto-selects — choosing a track opens 'Track option';
-  // choosing a tool or painting snaps back to 'Paint option'. The effects
-  // below run in this order, so on mount the final state is the initial
-  // 'paint' tab.
+  // 47 UAT: the tool pane's two tabs are MANUAL ONLY — track selection,
+  // tool changes, and paint activity never move the tab (an earlier
+  // auto-select fought a periodic paint-revision event and reverted the
+  // user's choice ~1s later; the user chose to switch tabs by hand).
   const [toolTab, setToolTab] = useState<'paint' | 'track'>('paint');
-  // 47 UAT bug: clicking a track row ALSO emits paint-revision activity a
-  // fraction of a second later (runtime re-projection, document sync
-  // round-trip), which the paint-flip effect translated into an instant
-  // 'Track option' -> 'Paint option' revert. Paint bumps inside this quiet
-  // window after a track selection are treated as selection side effects and
-  // ignored; a real stroke after the window still snaps the tab.
-  const lastTrackSelectionRef = useRef(0);
-  useEffect(() => {
-    lastTrackSelectionRef.current = Date.now();
-    setToolTab('track');
-  }, [activeTrackId]);
-  useEffect(() => {
-    setToolTab('paint');
-  }, [activeTool]);
-  useEffect(() => {
-    // A paint (or roto) mutation snaps the pane back to the Paint option —
-    // subscribed via a signals effect so the memoized panel flips the tab
-    // without re-rendering on every stroke.
-    const dispose = effect(() => {
-      physicPaintVersion.value;
-      if (Date.now() - lastTrackSelectionRef.current < TRACK_TAB_SETTLE_MS) return;
-      setToolTab('paint');
-    });
-    return dispose;
-  }, []);
   // Three resizable sections (36.15-12, UAT Gap H-4; default shares from
   // 36.15-13 Gap I-2, trimmed by Gap J): brush color, tool, and
   // Scripts/Onion/Motion take 361.25:213:272 of the content height by default;

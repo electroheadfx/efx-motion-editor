@@ -2689,9 +2689,6 @@ export function PhysicsPaintStudio() {
     };
     return {
     activeTool: settings.tool,
-    // 47 UAT: the right panel auto-selects the Track option tab on a change
-    // of the document's active track (row-header click authority).
-    activeTrackId: document?.activeTrackId ?? '',
     color: settings.color,
     opacity: settings.opacity,
     edgeDetail: settings.edgeDetail,

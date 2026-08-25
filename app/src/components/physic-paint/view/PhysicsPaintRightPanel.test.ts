@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
-import { TRACK_TAB_SETTLE_MS } from './PhysicsPaintRightPanel';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -97,7 +96,6 @@ vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null }));
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
     activeTool: 'paint',
-    activeTrackId: 'track-a',
     color: '#103c65',
     opacity: 100,
     edgeDetail: 50,
@@ -290,71 +288,29 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     expect(findById(second, 'physics-track-blend').props.value).toBe('normal');
   });
 
-  it('auto-selects the Track option tab when the active track changes (47 UAT)', () => {
-    renderPanel(baseProps({ activeTrackId: 'track-a' }));
-    // The track-change effect flips the tab during the post-render effect
-    // pass, so the next render settles on the Track option panel.
-    renderPanel(baseProps({ activeTrackId: 'track-b' }));
-    const settled = renderPanel(baseProps({ activeTrackId: 'track-b' }));
-
-    expect(findByClass(settled, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-    expect(textContent(settled)).toContain('Track:');
-    expect(findById(settled, 'physics-track-opacity')).toBeDefined();
-  });
-
-  it('auto-selects the Paint option tab when the tool changes (47 UAT)', () => {
-    renderPanel(baseProps({ activeTrackId: 'track-a' }));
-    renderPanel(baseProps({ activeTrackId: 'track-b' }));
-    const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+  it('keeps the manually selected tab across re-renders — no auto-select fights the user\'s choice (47 UAT)', () => {
+    // Track selection, tool changes, and paint activity must NEVER move the
+    // tab: a manual 'Track option' click sticks through re-renders with
+    // different active tracks/tools, and a paint revision bump does not
+    // revert it.
+    const first = renderPanel(baseProps());
+    clickToolTab(first, 'physics-paint-tab-track-option');
+    const onTrack = renderPanel(baseProps());
     expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
 
-    // Tool change re-runs the tool effect -> Paint option on the next render.
-    renderPanel(baseProps({ activeTrackId: 'track-b', activeTool: 'erase' }));
-    const backToPaint = renderPanel(baseProps({ activeTrackId: 'track-b', activeTool: 'erase' }));
+    // Active track changes + a paint revision bump: the tab stays put.
+    renderPanel(baseProps({ trackName: 'Paint 2' }));
+    physicPaintVersion.value++;
+    const afterPaintBump = renderPanel(baseProps({ trackName: 'Paint 2' }));
 
-    expect(findByClass(backToPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-    expect(findById(backToPaint, 'physics-edge-detail')).toBeDefined();
-    expect(findById(backToPaint, 'physics-erase-strength')).toBeDefined();
-  });
+    expect(findByClass(afterPaintBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+    expect(findById(afterPaintBump, 'physics-track-opacity')).toBeDefined();
 
-  it('ignores paint-revision bumps inside the track-selection quiet window — the Track option tab stays (47 UAT bug)', () => {
-    vi.useFakeTimers();
-    try {
-      renderPanel(baseProps({ activeTrackId: 'track-a' }));
-      renderPanel(baseProps({ activeTrackId: 'track-b' }));
-      const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
-      expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
-
-      // A paint revision bump a fraction of a second after the track click
-      // (selection side effect: re-projection / sync round-trip) must NOT
-      // revert the tab.
-      physicPaintVersion.value++;
-      const afterSideEffectBump = renderPanel(baseProps({ activeTrackId: 'track-b' }));
-
-      expect(findByClass(afterSideEffectBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-      expect(findById(afterSideEffectBump, 'physics-track-opacity')).toBeDefined();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('auto-selects the Paint option tab when a paint mutation bumps the paint revision after the settle window (47 UAT)', () => {
-    vi.useFakeTimers();
-    try {
-      renderPanel(baseProps({ activeTrackId: 'track-a' }));
-      renderPanel(baseProps({ activeTrackId: 'track-b' }));
-      const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
-      expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
-
-      vi.advanceTimersByTime(TRACK_TAB_SETTLE_MS + 1);
-      physicPaintVersion.value++;
-      const afterPaint = renderPanel(baseProps({ activeTrackId: 'track-b' }));
-
-      expect(findByClass(afterPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-      expect(findById(afterPaint, 'physics-edge-detail')).toBeDefined();
-    } finally {
-      vi.useRealTimers();
-    }
+    // Manual 'Paint option' click also sticks.
+    clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
+    const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
+    expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+    expect(findById(onPaint, 'physics-edge-detail')).toBeDefined();
   });
 });
 
