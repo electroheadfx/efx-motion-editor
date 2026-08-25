@@ -235,6 +235,19 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           onSelectTrack?.(trackId);
         }
       }}
+      onPointerMove={(event) => {
+        // 47-01 UAT: the hover tools appear only over the RIGHT half of the
+        // header (the label/tools zone) — passing over the grip or the left
+        // half of the name never reveals them. The zone is a DOM attribute,
+        // so the header stays hook-free (the viewport test invokes it as a
+        // plain function).
+        const element = event.currentTarget as HTMLElement;
+        const rect = element.getBoundingClientRect();
+        element.dataset.hoverZone = event.clientX - rect.left >= rect.width / 2 ? 'right' : 'left';
+      }}
+      onPointerLeave={(event) => {
+        delete (event.currentTarget as HTMLElement).dataset.hoverZone;
+      }}
     >
       {editing ? (
         <input

@@ -748,6 +748,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(activeHeader).toBeDefined();
       expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
       expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
+      // 47-01 UAT round 7: the hover-tools zone is pointer-tracked on the
+      // header (right half only) — the paint header carries the handlers.
+      expect(typeof activeHeader!.props.onPointerMove).toBe('function');
+      expect(typeof activeHeader!.props.onPointerLeave).toBe('function');
       // 47-01 UAT round 5: the header label carries the FULL track name (the
       // "Track 1" vs "1" fix) — the label span text must match the track name.
       const activeLabel = findOne(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
@@ -762,6 +766,8 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(bgHeader!.props.role).toBeUndefined();
       expect(bgHeader!.props.tabIndex).toBeUndefined();
       expect(bgHeader!.props.onClick).toBeUndefined();
+      expect(bgHeader!.props.onPointerMove).toBeUndefined();
+      expect(bgHeader!.props.onPointerLeave).toBeUndefined();
       const bgLabel = findOne(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
       expect(String(bgLabel.props.children)).toBe('Background');
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);

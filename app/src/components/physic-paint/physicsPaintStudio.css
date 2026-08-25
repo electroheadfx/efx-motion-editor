@@ -3673,7 +3673,13 @@ button.destructive {
   transition: opacity 0.12s ease, max-width 0.12s ease;
 }
 
-.physics-paint-track-row-header:not(.physics-paint-track-row-header-background):hover .physics-paint-track-row-tools,
+/* 47-01 UAT round 7: the hover tools reveal only when the pointer is over the
+   RIGHT half of the header (the label/tools zone) — the header's onPointerMove
+   writes data-hover-zone='right'|'left'. Passing over the grip or the left
+   half of the track name never reveals them, and a grip drag (:active on the
+   grab) suppresses them entirely. :focus-within keeps the tools reachable by
+   keyboard. */
+.physics-paint-track-row-header:not(.physics-paint-track-row-header-background)[data-hover-zone='right'] .physics-paint-track-row-tools,
 .physics-paint-track-row-header:not(.physics-paint-track-row-header-background):focus-within .physics-paint-track-row-tools {
   max-width: 90px;
   opacity: 1;
@@ -3681,24 +3687,26 @@ button.destructive {
   pointer-events: auto;
 }
 
-.physics-paint-track-row-header:not(.physics-paint-track-row-header-background):hover .physics-paint-track-row-label,
+.physics-paint-track-row-header:not(.physics-paint-track-row-header-background)[data-hover-zone='right'] .physics-paint-track-row-label,
 .physics-paint-track-row-header:not(.physics-paint-track-row-header-background):focus-within .physics-paint-track-row-label {
   max-width: 0;
   padding-right: 0;
 }
 
-/* 47-01 UAT: hovering the reorder grip must NOT reveal the hover tools nor
-   collapse the track name — the grip is a drag affordance, and the tools
-   slide belongs to the label/tools zone only. :has is supported by the
-   WKWebView/Chromium engines the packaged app and dev browsers use. */
-.physics-paint-track-row-header:has(.physics-paint-track-row-grip:hover) .physics-paint-track-row-tools {
+/* Grip drag (or grip hover) never reveals the tools and never collapses the
+   name — the grab is a drag affordance, the tools slide belongs to the
+   label/tools zone only. :has is supported by the WKWebView/Chromium engines
+   the packaged app and dev browsers use. */
+.physics-paint-track-row-header:has(.physics-paint-track-row-grip:hover) .physics-paint-track-row-tools,
+.physics-paint-track-row-header:has(.physics-paint-track-row-grip:active) .physics-paint-track-row-tools {
   max-width: 0;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
 
-.physics-paint-track-row-header:has(.physics-paint-track-row-grip:hover) .physics-paint-track-row-label {
+.physics-paint-track-row-header:has(.physics-paint-track-row-grip:hover) .physics-paint-track-row-label,
+.physics-paint-track-row-header:has(.physics-paint-track-row-grip:active) .physics-paint-track-row-label {
   max-width: none;
   padding-right: 4px;
 }
