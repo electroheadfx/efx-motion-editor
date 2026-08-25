@@ -10,11 +10,45 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren } from 'preact';
-import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
+import type { EfxPaintDocument, BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { TrackDeletePreview } from '../../../stores/efxPaintStore';
+import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 import { disarmSolo, toggleSolo } from './physicsPaintSoloArm';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
+
+const runtimeHolder = vi.hoisted(() => ({ current: null as PreactHookRuntime | null }));
+
+vi.mock('preact/hooks', async () => {
+  const { PreactHookRuntime } = await import('../../../test/preactHookRuntime');
+  const runtime = new PreactHookRuntime();
+  runtimeHolder.current = runtime;
+  return {
+    useCallback: <Value,>(callback: Value, deps: readonly unknown[]) => runtime.useCallback(callback, deps),
+    useEffect: (effect: () => void | (() => void), deps?: readonly unknown[]) => runtime.useEffect(effect, deps),
+    useLayoutEffect: (effect: () => void | (() => void), deps?: readonly unknown[]) => runtime.useEffect(effect, deps),
+    useMemo: <Value,>(factory: () => Value, deps: readonly unknown[]) => runtime.useMemo(factory, deps),
+    useRef: <Value,>(initial: Value) => runtime.useRef(initial),
+    useState: <Value,>(initial: Value | (() => Value)) => runtime.useState(initial),
+  };
+});
+
+vi.mock('preact/compat', async () => {
+  const actual = await vi.importActual<typeof import('preact/compat')>('preact/compat');
+  return { ...actual, memo: <Value,>(component: Value) => component };
+});
+
+vi.mock('@preact/signals', async () => {
+  const actual = await vi.importActual<typeof import('@preact/signals')>('@preact/signals');
+  return { ...actual, useSignal: <Value,>(initial: Value) => actual.signal(initial) };
+});
+
+import { getDocument, registerDocument, requestDeleteTrack } from '../../../stores/efxPaintStore';
+import * as efxPaintStoreModule from '../../../stores/efxPaintStore';
+import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
+import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 interface TestVNode {
   type: unknown;
@@ -137,6 +171,239 @@ function renderColumn(options: ColumnRenderOptions): TestVNode {
 
 function renderFixture(fixture: ColumnFixture, overrides: Partial<ColumnRenderOptions> = {}): TestVNode {
   return renderColumn({ ...fixture, ...overrides });
+}
+
+/* ---- 47-02 Task 2: strip harness + CRUD behavior tests ---- */
+
+function isVnode(value: unknown): value is TestVNode {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'props' in value;
+}
+
+/**
+ * The strip renders the hook-free `physicsPaintTrackHeaderColumn` as an opaque
+ * vnode whose rendered DOM never appears in the walk (it carries no children).
+ * Expand it in place by calling the component function with its props, so the
+ * row headers / rename input / insertion indicator become reachable.
+ */
+function expandHeaderColumnVnodes(node: TestVNode): TestVNode {
+  const children = childrenOf(node);
+  if (children.length === 0) return node;
+  const expanded = children.map((child) => {
+    if (isVnode(child) && child.type === physicsPaintTrackHeaderColumn) {
+      return (child.type as (props: TestVNode['props']) => TestVNode)(child.props);
+    }
+    return isVnode(child) ? expandHeaderColumnVnodes(child) : child;
+  });
+  return { ...node, props: { ...node.props, children: expanded } };
+}
+
+function assignRef(ref: unknown, value: unknown): void {
+  if (typeof ref === 'function') {
+    ref(value);
+    return;
+  }
+  if (ref && typeof ref === 'object' && 'current' in ref) {
+    (ref as { current: unknown }).current = value;
+  }
+}
+
+function createPhysicalCells(capacity: number): readonly RotoPhysicalTimelineCell[] {
+  return Array.from({ length: capacity }, (_, appFrame): RotoPhysicalTimelineCell => ({ kind: 'empty', appFrame }));
+}
+
+function createScroller(clientWidth: number) {
+  let scrollWidth = 0;
+  let scrollLeft = 0;
+  const scroller = {
+    clientWidth,
+    get scrollWidth() {
+      return scrollWidth;
+    },
+    set scrollWidth(value: number) {
+      scrollWidth = value;
+      scrollLeft = Math.max(0, Math.min(scrollLeft, Math.max(0, scrollWidth - clientWidth)));
+    },
+    get scrollLeft() {
+      return scrollLeft;
+    },
+    set scrollLeft(value: number) {
+      scrollLeft = Math.max(0, Math.min(value, Math.max(0, scrollWidth - clientWidth)));
+    },
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    querySelectorAll: vi.fn(() => []),
+    querySelector: vi.fn(() => null),
+    contains: vi.fn(() => false),
+    focus: vi.fn(),
+    getBoundingClientRect: vi.fn(() => ({ left: 0, right: clientWidth, top: 0, bottom: 38, width: clientWidth, height: 38 })),
+  };
+  return scroller;
+}
+
+/** A fake header-rows band the strip reads for the reorder insertion math. */
+function createHeaderBand(top = 100) {
+  return {
+    getBoundingClientRect: vi.fn(() => ({ top, bottom: top + 270, left: 0, right: 140, width: 140, height: 270 })),
+    scrollTop: 0,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    querySelectorAll: vi.fn(() => []),
+    querySelector: vi.fn(() => null),
+    contains: vi.fn(() => false),
+  };
+}
+
+/** A pointer-capture drag target that records the strip's session listeners. */
+function createDragTarget() {
+  const handlers = new Map<string, (event: unknown) => void>();
+  const target = {
+    setPointerCapture: vi.fn(),
+    releasePointerCapture: vi.fn(),
+    addEventListener: vi.fn((type: string, handler: (event: unknown) => void) => {
+      handlers.set(type, handler);
+    }),
+    removeEventListener: vi.fn((type: string) => {
+      handlers.delete(type);
+    }),
+    getBoundingClientRect: vi.fn(() => ({ top: 0, left: 0, width: 140, height: 30 })),
+    fire: (type: string, event: unknown) => handlers.get(type)?.(event),
+  };
+  return target;
+}
+
+interface RegisteredFixture {
+  readonly layerId: string;
+  readonly document: EfxPaintDocument;
+  readonly trackA: InternalPaintTrack;
+  readonly trackB: InternalPaintTrack;
+  readonly background: BackgroundTrack;
+}
+
+/** A two-track document registered in the store (the CRUD store ops need it). */
+function makeRegisteredFixture(): RegisteredFixture {
+  const layerId = 'header-column-crud-layer';
+  const document = createEfxPaintDocument(layerId);
+  const trackA = document.tracks[0];
+  const trackB: InternalPaintTrack = { ...trackA, id: 'track-b', name: 'Paint 2', order: 1 };
+  const twoTrackDocument: EfxPaintDocument = { ...document, tracks: [trackA, trackB] };
+  registerDocument(layerId, twoTrackDocument);
+  return { layerId, document: twoTrackDocument, trackA, trackB, background: document.background };
+}
+
+interface StripHarnessOptions {
+  readonly fixture: RegisteredFixture;
+  readonly onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
+  readonly onToggleSolo?: (trackId: string, solo: boolean) => void;
+  readonly onRenameTrack?: (trackId: string, name: string) => void;
+  readonly onDuplicateTrack?: (trackId: string) => void;
+  readonly onReorderTrack?: (trackId: string, newOrder: number) => void;
+  readonly publishStatus?: (message: string | null) => void;
+}
+
+/**
+ * Strip-level harness for the CRUD interactions (47-02 Task 2): renders the
+ * real `PhysicsPaintWorkflowStrip` with a registered two-track bundle and
+ * spy intents, then expands the header-column vnode so the tests can reach the
+ * row headers, the rename input, the insertion indicator, and the delete
+ * dialog. The strip's `rotoPhysicalActions` channel carries a capture spy so
+ * rejections are observable.
+ */
+function createStripHarness(options: StripHarnessOptions) {
+  const runtime = runtimeHolder.current;
+  if (!runtime) throw new Error('Expected the Preact hook runtime mock.');
+  runtime.reset();
+  const { fixture } = options;
+  const scroller = createScroller(47 * 18);
+  const content = {};
+  const band = createHeaderBand();
+  const callbacks = {
+    onSelectTrack: vi.fn(),
+    onToggleTrackVisible: options.onToggleTrackVisible ?? vi.fn(),
+    onToggleSolo: options.onToggleSolo ?? vi.fn(),
+    onRenameTrack: options.onRenameTrack ?? vi.fn(),
+    onDuplicateTrack: options.onDuplicateTrack ?? vi.fn(),
+    onReorderTrack: options.onReorderTrack ?? vi.fn(),
+    publishStatus: options.publishStatus ?? vi.fn(),
+  };
+  let tree: unknown = null;
+
+  function render(): unknown {
+    const runtime = runtimeHolder.current;
+    if (!runtime) throw new Error('Expected the Preact hook runtime mock.');
+    runtime.beginRender();
+    tree = PhysicsPaintWorkflowStrip({
+      currentFrame: 154,
+      isPlaying: false,
+      ready: true,
+      onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
+      rotoPhysicalCells: createPhysicalCells(240),
+      onNavigateToSyncedFrame: vi.fn(),
+      onGoToFirstFrame: vi.fn(),
+      onGoToPreviousFrame: vi.fn(),
+      onGoToNextFrame: vi.fn(),
+      onGoToLastFrame: vi.fn(),
+      onOnionChange: vi.fn(),
+      onSelectRotoSpacingProxy: vi.fn(),
+      onClearRotoSpacingSelection: vi.fn(),
+      onClearRotoKeySelection: vi.fn(),
+      onSelectRotoLoopClip: vi.fn(),
+      rotoPhysicalActions: { publishStatus: callbacks.publishStatus },
+      tracks: fixture.document.tracks,
+      activeTrackId: fixture.trackA.id,
+      layerId: fixture.layerId,
+      background: fixture.background,
+      onSelectTrack: callbacks.onSelectTrack,
+      onToggleTrackVisible: callbacks.onToggleTrackVisible,
+      onToggleSolo: callbacks.onToggleSolo,
+      onRenameTrack: callbacks.onRenameTrack,
+      onDuplicateTrack: callbacks.onDuplicateTrack,
+      onReorderTrack: callbacks.onReorderTrack,
+    });
+    tree = expandHeaderColumnVnodes(tree);
+
+    const scrollerNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
+    const contentNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-lane'));
+    assignRef(scrollerNode.ref ?? scrollerNode.props.ref, scroller);
+    assignRef(contentNode.ref ?? contentNode.props.ref, content);
+    const headerRowsNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-rows'));
+    assignRef(headerRowsNode.ref ?? headerRowsNode.props.ref, band);
+    const ruler = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-ruler'));
+    const width = Number.parseFloat(String((ruler.props.style as { width?: string } | undefined)?.width ?? '0'));
+    scroller.scrollWidth = width;
+    return tree;
+  }
+
+  function headerCellFor(trackId: string): TestVNode {
+    return headerCell(tree, trackId);
+  }
+
+  function renameInput(): TestVNode {
+    const expandedHeaders = findAll(tree, (vnode) => vnode.type === PhysicsPaintTrackRowHeader).map(expandComponent);
+    const inputs = expandedHeaders.flatMap((header) => findAll(header, (vnode) => hasClass(vnode, 'physics-paint-track-rename-input')));
+    expect(inputs).toHaveLength(1);
+    return inputs[0];
+  }
+
+  function grip(trackId: string): TestVNode {
+    const header = headerCellFor(trackId);
+    return findOne(header, (vnode) => hasClass(vnode, 'physics-paint-track-row-grip'));
+  }
+
+  function insertionIndicator(): TestVNode | null {
+    const found = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-insertion-indicator'));
+    return found.length === 0 ? null : found[0];
+  }
+
+  function dialog(): TestVNode | null {
+    const found = findAll(tree, (vnode) => vnode.type === PhysicsPaintDeleteTrackDialog);
+    return found.length === 0 ? null : found[0];
+  }
+
+  return { render, callbacks, tree: () => tree, headerCell: headerCellFor, renameInput, grip, insertionIndicator, dialog };
+}
+
+function findNode(root: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode {
+  return findOne(root, predicate);
 }
 
 describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
@@ -270,5 +537,197 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(trash.props['aria-disabled']).toBeUndefined();
     (trash.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onRequestDeleteTrack).toHaveBeenCalledWith(fixture.trackA.id);
+  });
+});
+
+describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)', () => {
+  it('opens rename in place on double-click and commits fail-closed: empty/whitespace/control/over-length rejected with no store call, valid name committed once (TML-02/ASVS V5)', () => {
+    const fixture = makeRegisteredFixture();
+    const onRenameTrack = vi.fn();
+    const publishStatus = vi.fn();
+    const harness = createStripHarness({ fixture, onRenameTrack, publishStatus });
+    harness.render();
+
+    // A double-click on the row header opens the edit field.
+    (harness.headerCell(fixture.trackA.id).props.onDblClick as () => void)();
+    harness.render();
+    expect(harness.renameInput()).toBeDefined();
+
+    // Empty, whitespace-only, control-character, and over-length drafts are
+    // rejected fail-closed: the editor closes, the store intent never fires,
+    // and the rejection reaches the status channel.
+    const rejections = ['', '   ', '\u0007bad', 'x'.repeat(65)];
+    for (const badValue of rejections) {
+      (harness.headerCell(fixture.trackA.id).props.onDblClick as () => void)();
+      harness.render();
+      const input = harness.renameInput();
+      (input.props.onInput as (event: unknown) => void)({ target: { value: badValue } });
+      harness.render();
+      (input.props.onKeyDown as (event: unknown) => void)({
+        key: 'Enter',
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      });
+      harness.render();
+      const inputs = findAll(harness.tree(), (vnode) => hasClass(vnode, 'physics-paint-track-rename-input'));
+      expect(inputs).toHaveLength(0);
+    }
+    expect(onRenameTrack).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledTimes(rejections.length);
+
+    // A valid draft commits exactly once, trimmed.
+    (harness.headerCell(fixture.trackA.id).props.onDblClick as () => void)();
+    harness.render();
+    const input = harness.renameInput();
+    (input.props.onInput as (props: unknown) => void)({ target: { value: '  New Name  ' } });
+    harness.render();
+    (input.props.onKeyDown as (event: unknown) => void)({
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+    expect(onRenameTrack).toHaveBeenCalledTimes(1);
+    expect(onRenameTrack).toHaveBeenCalledWith(fixture.trackA.id, 'New Name');
+    expect(publishStatus).toHaveBeenCalledTimes(rejections.length);
+  });
+
+  it('routes the duplicate intent once from the row tools (TML-02/D-09)', () => {
+    const fixture = makeRegisteredFixture();
+    const onDuplicateTrack = vi.fn();
+    const harness = createStripHarness({ fixture, onDuplicateTrack });
+    harness.render();
+
+    const duplicate = findNode(harness.headerCell(fixture.trackA.id), (vnode) => vnode.props['aria-label'] === 'Duplicate Track 1');
+    (duplicate.props.onClick as (event: unknown) => void)(clickEvent());
+    expect(onDuplicateTrack).toHaveBeenCalledTimes(1);
+    expect(onDuplicateTrack).toHaveBeenCalledWith(fixture.trackA.id);
+  });
+
+  it('opens the acknowledge-and-delete dialog via requestDeleteTrack and confirms with commitDeleteTrack(layerId, trackId, true) once (D-17)', () => {
+    const fixture = makeRegisteredFixture();
+    const commitSpy = vi.spyOn(efxPaintStoreModule, 'commitDeleteTrack');
+    const harness = createStripHarness({ fixture });
+    harness.render();
+
+    const trash = findNode(harness.headerCell(fixture.trackA.id), (vnode) => vnode.props['aria-label'] === 'Delete Track 1');
+    (trash.props.onClick as (event: unknown) => void)(clickEvent());
+    harness.render();
+
+    // The dialog opens with the requestDeleteTrack preview (frame count, loop
+    // clip count, Hold reference count) and the track name.
+    const dialog = harness.dialog();
+    expect(dialog).not.toBeNull();
+    expect(dialog!.props.layerId).toBe(fixture.layerId);
+    expect(dialog!.props.trackName).toBe('Track 1');
+    expect(dialog!.props.preview.trackId).toBe(fixture.trackA.id);
+    expect(dialog!.props.preview.isLastTrack).toBe(false);
+
+    const expanded = expandComponent(dialog!);
+    const title = findNode(expanded, (vnode) => hasClass(vnode, 'physics-paint-delete-track-dialog-title'));
+    expect(String(title.props.children)).toBe('Delete track Track 1?');
+    const detail = findNode(expanded, (vnode) => hasClass(vnode, 'physics-paint-delete-track-dialog-detail'));
+    const detailText = String(detail.props.children);
+    expect(detailText).toContain('0 frames');
+    expect(detailText).toContain('0 loop clips');
+    expect(detailText).toContain('0 Hold references');
+
+    // Confirm commits exactly once with the explicit acknowledgement.
+    const confirm = findNode(expanded, (vnode) => hasClass(vnode, 'physics-paint-delete-track-confirm'));
+    (confirm.props.onClick as () => void)();
+    expect(commitSpy).toHaveBeenCalledTimes(1);
+    expect(commitSpy).toHaveBeenCalledWith(fixture.layerId, fixture.trackA.id, true);
+
+    // The strip closes the dialog after the acknowledged commit.
+    harness.render();
+    expect(harness.dialog()).toBeNull();
+  });
+
+  it('refuses the last-track delete: disabled Confirm, refusal message, never calls commitDeleteTrack (D-17)', () => {
+    const layerId = 'last-track-layer';
+    const document = createEfxPaintDocument(layerId);
+    registerDocument(layerId, document);
+    const onlyTrack = document.tracks[0];
+    const preview = requestDeleteTrack(layerId, onlyTrack.id);
+    expect(preview).not.toBeNull();
+    expect(preview!.isLastTrack).toBe(true);
+
+    const commitSpy = vi.spyOn(efxPaintStoreModule, 'commitDeleteTrack');
+    const root = PhysicsPaintDeleteTrackDialog({
+      layerId,
+      trackName: onlyTrack.name,
+      preview: preview!,
+      onCancel: vi.fn(),
+    });
+
+    const refusal = findNode(root, (vnode) => hasClass(vnode, 'physics-paint-delete-track-dialog-refusal'));
+    expect(String(refusal.props.children)).toBe('At least one Paint track is required.');
+    const confirm = findNode(root, (vnode) => hasClass(vnode, 'physics-paint-delete-track-confirm'));
+    expect(confirm.props.disabled).toBe(true);
+    expect(confirm.props['aria-disabled']).toBe('true');
+    (confirm.props.onClick as () => void)();
+    expect(commitSpy).not.toHaveBeenCalled();
+    // The document is byte-unchanged.
+    expect(getDocument(layerId)!.tracks.map((track) => track.id)).toEqual([onlyTrack.id]);
+  });
+
+  it('cancels the delete dialog without committing (Phase 46 D-14)', () => {
+    const fixture = makeRegisteredFixture();
+    const onCancel = vi.fn();
+    const preview: TrackDeletePreview = {
+      layerId: fixture.layerId,
+      trackId: fixture.trackA.id,
+      frameCount: 12,
+      loopClipCount: 2,
+      holdReferenceCount: 1,
+      isLastTrack: false,
+    };
+    const commitSpy = vi.spyOn(efxPaintStoreModule, 'commitDeleteTrack');
+    const root = PhysicsPaintDeleteTrackDialog({
+      layerId: fixture.layerId,
+      trackName: 'Track 1',
+      preview,
+      onCancel,
+    });
+
+    const cancel = findNode(root, (vnode) => hasClass(vnode, 'physics-paint-delete-track-cancel'));
+    (cancel.props.onClick as () => void)();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(commitSpy).not.toHaveBeenCalled();
+  });
+
+  it('computes the reorder insertion index from the pointer Y, renders the indicator, and commits onReorderTrack once with a numeric order only (TML-05/D-08)', () => {
+    const fixture = makeRegisteredFixture();
+    const onReorderTrack = vi.fn();
+    const harness = createStripHarness({ fixture, onReorderTrack });
+    harness.render();
+
+    // Pointerdown on the grab area starts the session (band top = 100px;
+    // clientY 115 → index 0).
+    const grip = harness.grip(fixture.trackA.id);
+    const dragTarget = createDragTarget();
+    (grip.props.onPointerDown as (event: unknown) => void)({
+      clientY: 115,
+      pointerId: 1,
+      currentTarget: dragTarget,
+      preventDefault: vi.fn(),
+    });
+    harness.render();
+    expect(dragTarget.setPointerCapture).toHaveBeenCalledWith(1);
+    const indicator = harness.insertionIndicator();
+    expect(indicator).not.toBeNull();
+    expect(indicator!.props['data-insertion-index']).toBe(0);
+
+    // Moving the pointer updates the live indicator (clientY 145 → index 1).
+    dragTarget.fire('pointermove', { clientY: 145 });
+    harness.render();
+    expect(harness.insertionIndicator()!.props['data-insertion-index']).toBe(1);
+
+    // Release commits exactly once with the same trackId and the clamped
+    // numeric order (clientY 400 → raw 10 → clamp 1), never rewriting ids.
+    dragTarget.fire('pointerup', { clientY: 400, pointerId: 1 });
+    expect(onReorderTrack).toHaveBeenCalledTimes(1);
+    expect(onReorderTrack).toHaveBeenCalledWith(fixture.trackA.id, 1);
+    harness.render();
+    expect(harness.insertionIndicator()).toBeNull();
   });
 });

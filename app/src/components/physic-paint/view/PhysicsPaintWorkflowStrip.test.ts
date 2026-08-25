@@ -2070,3 +2070,50 @@ describe('Solo armed orange tint source contract (43.6-09: base class joins the 
     expect(code).toContain("const soloArmedClass = soloArmed ? ' physics-paint-push-tool-armed' : '';");
   });
 });
+
+describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
+  const dialogPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintDeleteTrackDialog.tsx');
+  const dialogSource = () => readFileSync(dialogPath, 'utf8');
+  const headerColumnPath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintTrackHeaderColumn.tsx');
+  const headerColumnSource = () => readFileSync(headerColumnPath, 'utf8');
+  // French-only copy tokens never allowed on the CRUD surfaces (D-14); note
+  // 'clips' is intentionally excluded — the English labels 'loop clips' and
+  // the 'rotoLoopClips' identifiers contain it legitimately.
+  const frenchCopyPattern = /copie|supprimer|renommer|bloquant|confirmer|annuler/;
+
+  it('commits rename fail-closed in the strip: trim, 64-char cap, control-char rejection, then the intent (T-47-02-01 / ASVS V5)', () => {
+    const strip = source();
+    expect(strip).toContain('.trim()');
+    expect(strip).toContain('MAX_TRACK_NAME_LENGTH');
+    expect(strip).toContain('TRACK_NAME_CONTROL_CHAR');
+    expect(strip).toContain('props.onRenameTrack?.(');
+  });
+
+  it('opens the acknowledge-and-delete dialog only through requestDeleteTrack; the commit lives only in the dialog (D-17)', () => {
+    const strip = source();
+    expect(strip).toContain('requestDeleteTrack(layerId, trackId)');
+    // The strip never commits — the dialog's Confirm is the only delete entry.
+    expect(strip).not.toContain('commitDeleteTrack');
+    const dialog = dialogSource();
+    expect(dialog).toContain('commitDeleteTrack(layerId, trackId, true)');
+    expect(dialog).toContain('At least one Paint track is required.');
+  });
+
+  it('routes the header-drag reorder through reorderTrack with the stable id and a numeric order only (T-47-02-03 / Pitfall 1)', () => {
+    const strip = source();
+    expect(strip).toContain('onReorderTrack?.(');
+    expect(strip).toContain('physics-paint-track-row-grip');
+    const studio = studioSource();
+    expect(studio).toContain('reorderTrack(layerId, trackId, newOrder)');
+    expect(studio).toContain('setTrackSolo(layerId, trackId, solo)');
+  });
+
+  it('keeps every new CRUD surface copy English (D-14)', () => {
+    const surfaces = `${source()}\n${dialogSource()}\n${headerColumnSource()}`;
+    expect(surfaces).not.toMatch(frenchCopyPattern);
+    const dialog = dialogSource();
+    expect(dialog).toContain('Delete track');
+    expect(dialog).toContain('frames');
+    expect(dialog).toContain('Hold reference');
+  });
+});
