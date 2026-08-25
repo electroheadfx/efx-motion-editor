@@ -19,6 +19,11 @@ export interface PhysicsPaintStudioKeyboardActions {
   toggleShortcuts: () => void;
   undo: () => void;
   redo: () => void;
+  /** 47-03 Task 2: add a Paint track (Cmd/Ctrl+Shift+N). No trackId — the
+   *  store makes the new track active (TML-02). */
+  addTrack?: () => void;
+  /** 47-03 Task 2: duplicate the ACTIVE Paint track (Cmd/Ctrl+Shift+D). */
+  duplicateTrack?: () => void;
   copyRotoKey?: () => void;
   cutRotoKey?: () => void;
   pasteRotoKey?: () => void;
@@ -113,6 +118,23 @@ export function dispatchPhysicsPaintStudioKeyDown(
     event.preventDefault();
     if (state.mutationLocked) return;
     actions.undo();
+    return;
+  }
+  // 47-03 Task 2 (TML-02, Pitfall m4): guarded track CRUD shortcuts — always
+  // the active track, inside the isPhysicsPaintShortcutTarget guard, skipped
+  // while mutations are locked, and preventDefault only when they actually
+  // fire. Delete/Backspace never bind track deletion (D-17) — the roto
+  // delete flow owns those keys below.
+  if (meta && event.shiftKey && key === 'n') {
+    if (state.mutationLocked) return;
+    event.preventDefault();
+    actions.addTrack?.();
+    return;
+  }
+  if (meta && event.shiftKey && key === 'd') {
+    if (state.mutationLocked) return;
+    event.preventDefault();
+    actions.duplicateTrack?.();
     return;
   }
   if (meta && !event.shiftKey && !event.altKey && !event.repeat && (key === 'c' || key === 'x' || key === 'v')) {

@@ -2362,6 +2362,29 @@ export function PhysicsPaintStudio() {
       return transition;
     },
   };
+  // 47-03 Task 2: track CRUD handlers the keyboard shortcuts share with the
+  // pointer paths (strip '+' button / duplicate icon). Each routes through its
+  // store op fail-closed on the layer; refusals publish to the status capsule
+  // (47-02 publishStatus channel) so the user sees why the timeline did not
+  // change. Newly added / duplicated tracks become active so they are
+  // immediately visible in the preview.
+  const handleAddTrack = useCallback(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = addTrack(layerId);
+    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    // 47-03 Task 2: the keyboard shortcut path (Cmd/Ctrl+Shift+N) routes
+    // through the same handle — failures must reach the status capsule just
+    // like the strip's rename/delete rejections (47-02 publishStatus channel).
+    else setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleDuplicateTrack = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = duplicateTrack(layerId, trackId);
+    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    else setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
     state: {
       currentFrame,
@@ -2375,6 +2398,16 @@ export function PhysicsPaintStudio() {
     actions: {
       undo,
       redo,
+      // 47-03 Task 2: guarded track CRUD shortcuts — addTrack is the shared
+      // pointer-path handler; duplicateTrack reads the ACTIVE track from the
+      // document (the shortcut carries no trackId) and reuses the pointer-path
+      // handler so both surfaces publish identically.
+      addTrack: handleAddTrack,
+      duplicateTrack: () => {
+        const layerId = launchContext?.layerId;
+        const trackId = layerId ? getEfxPaintDocument(layerId)?.activeTrackId : undefined;
+        if (layerId && trackId) handleDuplicateTrack(trackId);
+      },
       selectAdjacentRotoKey: (direction) => {
         const layerId = launchContext?.layerId;
         const currentKeyId = selectedKeyId.peek();
@@ -2891,21 +2924,11 @@ export function PhysicsPaintStudio() {
         hasCopiedRotoKey: rotoSession.copiedKey.value !== null,
       }
     : { actionAvailability: sessionKeyAvailability, hasCopiedRotoKey: rotoSession.copiedKey.value !== null };
-  // 47-01 mockup redesign: track CRUD + visibility intents. Each routes
-  // through its store op fail-closed on the layer; refusals (empty rename,
-  // last-track delete) publish to the status capsule so the user sees why the
-  // timeline did not change. Newly added / duplicated tracks become active so
-  // they are immediately visible in the preview.
-  const handleAddTrack = useCallback(() => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const result = addTrack(layerId);
-    if (result.ok) setActiveTrackId(layerId, result.trackId);
-    // 47-03 Task 2: the keyboard shortcut path (Cmd/Ctrl+Shift+N) routes
-    // through the same handle — failures must reach the status capsule just
-    // like the strip's rename/delete rejections (47-02 publishStatus channel).
-    else setApplyMessage(result.error);
-  }, [launchContext?.layerId]);
+  // 47-01 mockup redesign: track CRUD + visibility intents (the add/duplicate
+  // handlers moved up to the keyboard wiring — the pointer paths and the
+  // guarded shortcuts share them). Each routes through its store op
+  // fail-closed on the layer; refusals publish to the status capsule so the
+  // user sees why the timeline did not change.
   const handleToggleTrackVisible = useCallback((trackId: string, visible: boolean) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
@@ -2917,13 +2940,6 @@ export function PhysicsPaintStudio() {
     if (!layerId) return;
     const result = renameTrack(layerId, trackId, name);
     if (!result.ok) setApplyMessage(result.error);
-  }, [launchContext?.layerId]);
-  const handleDuplicateTrack = useCallback((trackId: string) => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const result = duplicateTrack(layerId, trackId);
-    if (result.ok) setActiveTrackId(layerId, result.trackId);
-    else setApplyMessage(result.error);
   }, [launchContext?.layerId]);
   const handleDeleteTrack = useCallback((trackId: string) => {
     const layerId = launchContext?.layerId;
