@@ -30,6 +30,16 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly placementLabel: string;
   readonly cycleLabel: string;
   readonly effectiveLabel: string;
+  /** True when a next clip (or the parent/capacity bound) shortens the loop (D-12). */
+  readonly shortened: boolean;
+  /** True when the effective end lands mid-cycle rather than on a cycle boundary (D-21). */
+  readonly partialCycle: boolean;
+  /** 'Loop shortened by next clip' when shortened, else null (English, D-14). */
+  readonly shortenedLabel: string | null;
+  /** Number of fully completed source cycles within the effective range. */
+  readonly repeatInstanceCount: number;
+  /** 'next clip — interrupts the loop' when shortened, else null (D-14). */
+  readonly interruptionTooltipLine: string | null;
   readonly mode: PhysicPaintRotoLoopClip['mode'];
   readonly modeLabel: 'Motion' | 'Static';
   readonly groupTypeLabel: 'Motion Rail' | 'Static Rail';
@@ -96,12 +106,26 @@ export function projectPhysicsPaintLoopClipPresentation(
   const linkedDescription = linkedActionName
     ? `Linked to selected Action ${linkedActionName}.`
     : null;
+  // Shortened facts come straight from the resolver (D-32): truncated is
+  // already true exactly when the effective end falls short of the natural
+  // bound, and partialCycle distinguishes a mid-cycle truncation from one
+  // landing on a cycle boundary. The badge (cycleLabel) never changes — it
+  // always shows the REQUESTED duration (Pitfall m2); the shortened state is
+  // a distinct visual + label (D-12).
+  const shortened = Boolean(range.truncated);
+  const partialCycle = range.partialCycle;
+  const repeatInstanceCount = Math.floor(
+    Math.max(0, effectiveEnd - range.phaseOrigin) / Math.max(1, range.cycleLength),
+  );
+  const shortenedLabel = shortened ? 'Loop shortened by next clip' : null;
+  const interruptionTooltipLine = shortened ? 'next clip — interrupts the loop' : null;
   const tooltipLines = [
     displayName,
     `Type: ${modeLabel}`,
     cycleLabel,
     `Effective ${effectiveDuration}f`,
     `Status: ${statusLabel}`,
+    ...(interruptionTooltipLine ? [interruptionTooltipLine] : []),
     ...(fragmentLabel ? [fragmentLabel] : []),
   ];
   const accessibleName = fragmentLabel && fragment
@@ -115,6 +139,11 @@ export function projectPhysicsPaintLoopClipPresentation(
     placementLabel: `F${range.phaseOrigin}`,
     cycleLabel,
     effectiveLabel: `Effective ${effectiveDuration}f`,
+    shortened,
+    partialCycle,
+    shortenedLabel,
+    repeatInstanceCount,
+    interruptionTooltipLine,
     mode,
     modeLabel,
     groupTypeLabel,
