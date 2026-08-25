@@ -259,8 +259,8 @@ function createHeaderBand(top = 100) {
 /** One tracked row's live geometry, in rows-region CONTENT coordinates. */
 interface RowsRegionRowFixture {
   readonly trackId: string;
-  readonly contentTop: number;
-  readonly contentBottom: number;
+  contentTop: number;
+  contentBottom: number;
 }
 
 /** The rows-region fake's vertical geometry (47-02 Task 3). */

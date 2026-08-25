@@ -86,6 +86,9 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly onCloseTools?: () => void;
   /** The header-rows band element, synced with the rows-region (D-05). */
   readonly headerRowsRef?: Ref<HTMLDivElement>;
+  /** 47-02 Task 3: the pinned header-column element — never scrolls (D-01).
+   *  The strip owns the ref so the pinned contract stays observable. */
+  readonly headerColumnRef?: Ref<HTMLDivElement>;
   /** Header-band scroll event — mirrors the rows-region scrollTop. */
   readonly onHeaderScroll?: () => void;
   /** The sidebar vertical pill scrollbar geometry (47-01 UAT round 4). */
@@ -125,13 +128,14 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onToggleTools,
     onCloseTools,
     headerRowsRef,
+    headerColumnRef,
     onHeaderScroll,
     verticalScrollbar,
     onVerticalScrollbarPointerDown,
   } = props;
   const deletable = tracks.length > 1;
   return (
-    <div class="physics-paint-header-column">
+    <div ref={headerColumnRef} class="physics-paint-header-column">
       <PhysicsPaintTrackColumnStrip trackCount={tracks.length} onAddTrack={onAddTrack} />
       <div class="physics-paint-header-rows-wrap">
         <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={onHeaderScroll}>

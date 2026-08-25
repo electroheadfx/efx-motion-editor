@@ -405,6 +405,40 @@ const STRIP_ROW_HEIGHT_PX = 30;
 const STRIP_CHROME_HEIGHT_PX = 124;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
+
+/**
+ * 47-02 Task 3 (TML-03/D-05): the pure ensure-active-row-visible delta.
+ * Given one row's lane bounds and the rows-region viewport bounds, all in
+ * CONTENT coordinates (lane = absolute scrollable content position;
+ * viewportTop = current scrollTop; viewportBottom = scrollTop + clientHeight),
+ * returns the scrollTop adjustment that brings the row into view:
+ * - row below the viewport → positive delta aligning the row's bottom with
+ *   the viewport's bottom;
+ * - row above the viewport → negative delta aligning the row's top with the
+ *   viewport's top;
+ * - fully visible → 0.
+ * A row TALLER than the viewport can never be fully visible, so the delta
+ * clamps to align the row's TOP with the viewport's top (never scrolls past
+ * the row's own top). The caller additionally clamps the result to the
+ * scroll extent; this function stays pure so the test can prove the whole
+ * geometry table without a DOM.
+ */
+export function computeEnsureRowScrollDelta(
+  laneTop: number,
+  laneBottom: number,
+  viewportTop: number,
+  viewportBottom: number,
+): number {
+  const laneHeight = laneBottom - laneTop;
+  const viewportHeight = viewportBottom - viewportTop;
+  if (laneHeight >= viewportHeight) {
+    // Taller-than-viewport row: pin the row's top to the viewport's top.
+    return laneTop - viewportTop;
+  }
+  if (laneTop < viewportTop) return laneTop - viewportTop;
+  if (laneBottom > viewportBottom) return laneBottom - viewportBottom;
+  return 0;
+}
 const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresentation> = new Map();
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
@@ -1103,6 +1137,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // the track count fits the band; it keeps header cells aligned with their
   // rows once the region overflows.
   const headerRowsRef = useRef<HTMLDivElement>(null);
+  // 47-02 Task 3: the pinned header-column element itself never scrolls (D-01)
+  // — the band INSIDE it carries the vertical scroll position. The strip owns
+  // the ref so the pinned contract is observable (scrollTop stays 0 while the
+  // rows region scrolls).
+  const headerColumnRef = useRef<HTMLDivElement>(null);
   const rowsRegionRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
@@ -2472,13 +2511,45 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     }
   }, []);
 
-  // Rows-region scroll handler: keeps the header band in lockstep AND keeps
-  // the custom vertical pill scrollbar thumb in sync (single path — no
-  // double derivation).
+  // Rows-region scroll handler: keeps the header band in lockstep AND the
+  // header pill scrollbar thumb in sync (single path — no double derivation).
   const handleRowsRegionScroll = useCallback(() => {
     syncRowsScroll();
     updateVerticalScrollbar();
   }, [syncRowsScroll, updateVerticalScrollbar]);
+
+  // 47-02 Task 3 (TML-03/D-05): ensure-active-row-visible. When the active
+  // track changes (row click, undo auto-activation, keyboard navigation) the
+  // rows-region scrolls so the active row enters view; the band follows
+  // through the existing syncRowsScroll path and the pill thumb re-derives.
+  // The pure computeEnsureRowScrollDelta handles the direction + the
+  // taller-than-viewport clamp; the scroll extent clamp is applied here.
+  const ensureActiveRowVisible = useCallback(() => {
+    const region = rowsRegionRef.current;
+    const activeTrackId = props.activeTrackId;
+    if (!region || !activeTrackId) return;
+    const row = region.querySelector<HTMLElement>(`[data-track-id="${activeTrackId}"]`);
+    if (!row) return;
+    const regionRect = region.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const viewportTop = region.scrollTop;
+    const viewportBottom = viewportTop + region.clientHeight;
+    const delta = computeEnsureRowScrollDelta(
+      viewportTop + (rowRect.top - regionRect.top),
+      viewportTop + (rowRect.bottom - regionRect.top),
+      viewportTop,
+      viewportBottom,
+    );
+    if (delta === 0) return;
+    const maxScrollTop = Math.max(0, region.scrollHeight - region.clientHeight);
+    region.scrollTop = Math.min(maxScrollTop, Math.max(0, region.scrollTop + delta));
+    syncRowsScroll();
+    updateVerticalScrollbar();
+  }, [props.activeTrackId, syncRowsScroll, updateVerticalScrollbar]);
+
+  useEffect(() => {
+    ensureActiveRowVisible();
+  }, [ensureActiveRowVisible]);
 
   const classifyRotoDragTarget = useCallback((clientX: number, clientY: number, movedKeyId: string, sourceAppFrame: number): {
     target: RotoDragTarget | null;
@@ -3428,6 +3499,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             onToggleTools: handleToggleTrackTools,
             onCloseTools: handleCloseTrackTools,
             headerRowsRef: headerRowsRef,
+            headerColumnRef: headerColumnRef,
             onHeaderScroll: syncHeaderScroll,
             verticalScrollbar: verticalScrollbar,
             onVerticalScrollbarPointerDown: handleVerticalScrollbarPointerDown,
