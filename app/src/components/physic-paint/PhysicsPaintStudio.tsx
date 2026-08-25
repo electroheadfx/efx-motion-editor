@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useComputed, useSignal } from '@preact/signals';
+import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -223,6 +223,39 @@ function resolveDeleteOperationIntervals(
   return intervals;
 }
 
+/**
+ * 47-01 UAT round 8: collapse a burst of source revisions into ONE trailing
+ * flush. The Studio's strip subscriptions re-render the whole component on
+ * every paint event (physicPaintVersion bumps per stroke mutation, and the
+ * strip rebuilds 600+ cell class strings per render) — the start-paint
+ * stutter the user reported. A trailing throttle freezes the chrome while a
+ * stroke is in flight and refreshes it shortly after the burst ends.
+ */
+function useTrailingThrottledRevision(source: ReadonlySignal<number>, delayMs: number): ReadonlySignal<number> {
+  const throttled = useRef(signal(source.peek()));
+  const timerRef = useRef<number | null>(null);
+  const latestRef = useRef(source.peek());
+  useEffect(() => {
+    const unsubscribe = effect(() => {
+      const next = source.value;
+      if (next === latestRef.current) return;
+      latestRef.current = next;
+      if (timerRef.current === null) {
+        timerRef.current = window.setTimeout(() => {
+          timerRef.current = null;
+          throttled.current.value = latestRef.current;
+        }, delayMs);
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
+  return throttled.current;
+}
+
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
@@ -240,6 +273,12 @@ export function PhysicsPaintStudio() {
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
+  // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
+  // Studio on every paint event; a trailing 150ms throttle collapses a stroke
+  // burst into one flush so the chrome freezes while painting (the user's
+  // start-paint stutter). The canvas and the push effect keep the RAW
+  // physicPaintVersion — only the strip chrome reads the throttled revision.
+  const throttledPaintRevision = useTrailingThrottledRevision(physicPaintVersion, 150);
   // regression-refresh-multi-paint Layer 2: the completion reconcile paints at
   // the ACCEPTED document's CONTENT token (monotonic, content-derived) instead
   // of a content-agnostic session generation. The reconcile ceiling keeps the
@@ -452,13 +491,13 @@ export function PhysicsPaintStudio() {
   // document clock, so a row click / add / duplicate must re-resolve these
   // residuals against the newly active track ("the Studio re-reads on
   // efxPaintVersion").
-  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [], [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
+  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [], [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
   const rotoIncomingInterpolationBreakKeyIds = useMemo(
     () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId()) : [],
-    [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value],
+    [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value],
   );
-  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
-  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
+  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
+  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
   const keyRailGroupOwnedKeyIds = useMemo(() => {
     const owned = new Set<string>();
     for (const clip of rotoLoopClips) {
@@ -507,7 +546,7 @@ export function PhysicsPaintStudio() {
   // above — the store getter returns a fresh clone per call, and an unstable
   // identity here defeats the useRotoTimelineModel structural memo, forcing a
   // full signal-graph rebuild on every Studio render.
-  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : undefined, [launchContext?.layerId, physicPaintVersion.value, efxPaintVersion.value]);
+  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : undefined, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
   const currentFrame = launchContext?.startFrame ?? 0;
   // UAT-3: persisted operation-result capsule line. An operation publishes its
   // outcome here (survives the operation's own selection aftermath); only a NEW

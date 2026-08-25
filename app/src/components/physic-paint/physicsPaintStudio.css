@@ -3920,8 +3920,13 @@ button.destructive {
   overflow: hidden;
   background: #505860;
   color: transparent;
-  /* 47-01 UAT: each cell is a horizontal snap target so the scroll stops at
-     frame boundaries (the viewport right edge never slices a cell). */
+  /* 47-01 UAT round 8: every frame cell is a click target (select frame /
+     activate track / navigate), so it carries the pointer cursor — without
+     it the frame-number text inside the cell shows the default I-beam on the
+     non-active track rows. */
+  cursor: pointer;
+  /* 47-01 UAT: each cell is a horizontal snap point so the horizontal scroll
+     stops at frame boundaries (the viewport right edge never slices a cell). */
   scroll-snap-align: start;
 }
 
@@ -4077,7 +4082,11 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.roto-drag-eligible {
-  cursor: grab;
+  /* 47-01 UAT round 8: hover shows the SELECT pointer, not a grab hand — the
+     hand implied "move" while the user's intent is "select" (the key still
+     drags on pointer-down; the active drag keeps the grabbing cursor via
+     .roto-drag-source). */
+  cursor: pointer;
   touch-action: none;
 }
 

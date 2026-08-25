@@ -143,6 +143,21 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
 
     let url = physics_paint_url(&context);
     let window = if let Some(window) = app.get_webview_window(label) {
+        // 47-01 UAT round 8: a crashed/dead webview stays black forever when
+        // the window is reused without a reload — the URL is only applied at
+        // BUILD time, so the dead content never recovers. Navigate the reused
+        // window to the fresh launch URL: a dead webview recovers on reopen
+        // (the child re-boots from the URL + stored state) and a live one
+        // simply re-launches the same way it would after a fresh open.
+        let absolute_url = window.url().ok().and_then(|current| current.join(&url).ok());
+        match absolute_url {
+            Some(target) => {
+                if let Err(error) = window.navigate(target) {
+                    println!("[physics-paint] reused window navigate failed: {error}");
+                }
+            }
+            None => println!("[physics-paint] reused window URL resolution failed"),
+        }
         window
     } else {
         tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
