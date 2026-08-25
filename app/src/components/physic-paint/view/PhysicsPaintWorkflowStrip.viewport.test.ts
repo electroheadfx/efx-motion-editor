@@ -761,7 +761,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(String(activeLabel.props.children)).toBe('Track 1');
       const bgHeader = headers.find((h) => h.props['data-track-id'] === document.background.id);
       expect(bgHeader).toBeDefined();
-      expect(bgHeader!.props['aria-label']).toBe('Background row');
+      expect(bgHeader!.props['aria-label']).toBe('Bg row');
       expect(bgHeader!.props.class).toContain('physics-paint-track-row-header-background');
       // The Background row has no hover/selection capability for now — it must
       // NOT be a role=button, must not carry an onSelectTrack handler, and must
@@ -771,7 +771,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(bgHeader!.props.onClick).toBeUndefined();
       expect(bgHeader!.props.onPointerLeave).toBeUndefined();
       const bgLabel = findOne(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
-      expect(String(bgLabel.props.children)).toBe('Background');
+      expect(String(bgLabel.props.children)).toBe('Bg');
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
 

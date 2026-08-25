@@ -183,6 +183,9 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onDuplicateTrack?: (trackId: string) => void;
   /** Trash intent — routes through requestDeleteTrack/commitDeleteTrack. */
   readonly onDeleteTrack?: (trackId: string) => void;
+  /** 47-02 Task 2: the distinct reorder grab's pointerdown intent — the strip
+   *  owns the drag session (D-08/D-18: only the grab area starts a reorder). */
+  readonly onGripPointerDown?: (event: PointerEvent, trackId: string) => void;
   /** True while this row's tool panel (eye/pencil/copy/trash) is open. */
   readonly toolsOpen?: boolean;
   /** More-button click — toggles the tool panel for this track. */
@@ -221,6 +224,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onToggleSolo,
     onDuplicateTrack,
     onDeleteTrack,
+    onGripPointerDown,
     toolsOpen = false,
     onToggleTools,
     onCloseTools,
@@ -264,6 +268,11 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
       tabIndex={0}
       aria-label={`Select track ${label}`}
       onClick={() => onSelectTrack?.(trackId)}
+      // 47-02 Task 2: a double-click on the row opens the edit-in-place rename
+      // field (TML-02, D-03) — the same intent the pencil tool button carries.
+      onDblClick={() => {
+        if (!editing) onStartRename?.(trackId);
+      }}
       onKeyDown={(event) => {
         if ((event.key === 'Enter' || event.key === ' ') && !editing) {
           event.preventDefault();
@@ -310,7 +319,15 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
       ) : (
         <>
           {reorderable ? (
-            <span class="physics-paint-track-row-grip" title="Drag to reorder" aria-hidden="true">
+            // 47-02 Task 2: the grip is the ONLY header element that starts a
+            // drag — the strip's session computes the insertion index and
+            // commits reorderTrack on release (D-08/D-18).
+            <span
+              class="physics-paint-track-row-grip"
+              title="Drag to reorder"
+              aria-hidden="true"
+              onPointerDown={(event) => onGripPointerDown?.(event as unknown as PointerEvent, trackId)}
+            >
               <GripVertical size={12} />
             </span>
           ) : null}

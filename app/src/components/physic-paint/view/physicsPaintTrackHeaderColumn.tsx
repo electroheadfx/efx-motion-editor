@@ -26,6 +26,12 @@ import type { Ref } from 'preact';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
+/** Row pitch of the pinned header cells (mirrors the strip's
+ *  `STRIP_ROW_HEIGHT_PX` — 47-01 UAT round 3 approved 30px rows). The insertion
+ *  indicator positions itself at `index * HEADER_ROW_HEIGHT_PX` inside the
+ *  band, so it lands exactly on the target row boundary. */
+const HEADER_ROW_HEIGHT_PX = 30;
+
 /** Vertical pill-scrollbar geometry produced by the strip's scroll math. */
 export interface PhysicsPaintHeaderVerticalScrollbar {
   readonly top: number;
@@ -52,6 +58,13 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly onDuplicateTrack: (trackId: string) => void;
   /** Delete intent; the strip opens the acknowledge-and-delete dialog. */
   readonly onRequestDeleteTrack: (trackId: string) => void;
+  /** 47-02 Task 2: the reorder grab's pointerdown intent — the strip owns the
+   *  drag session (D-08/D-18); the grab is the ONLY element wired to it. */
+  readonly onGripPointerDown?: (event: PointerEvent, trackId: string) => void;
+  /** 47-02 Task 2: the track whose header-drag is live, or null. */
+  readonly reorderDragTrackId?: string | null;
+  /** 47-02 Task 2: the live insertion index the indicator renders at. */
+  readonly reorderDragIndex?: number | null;
   /* ---- 47-01 approved UX state, owned by the strip, flowing down ---- */
   /** The track currently edited in place, or null. */
   readonly renamingTrackId?: string | null;
@@ -99,6 +112,9 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onAddTrack,
     onDuplicateTrack,
     onRequestDeleteTrack,
+    onGripPointerDown,
+    reorderDragTrackId = null,
+    reorderDragIndex = null,
     renamingTrackId = null,
     renameDraft = '',
     onStartRename,
@@ -142,8 +158,20 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               toolsOpen={toolsOpenTrackId === track.id}
               onToggleTools={onToggleTools}
               onCloseTools={onCloseTools}
+              onGripPointerDown={onGripPointerDown}
             />
           ))}
+          {/* 47-02 Task 2: the live reorder insertion indicator — a 2px line at
+              the target index's row boundary inside the pinned band (TML-05,
+              D-08). Rendered only while a header-grab drag is live. */}
+          {reorderDragTrackId !== null && typeof reorderDragIndex === 'number' ? (
+            <div
+              class="physics-paint-track-row-insertion-indicator"
+              data-insertion-index={reorderDragIndex}
+              style={{ top: `${reorderDragIndex * HEADER_ROW_HEIGHT_PX}px` }}
+              aria-hidden="true"
+            />
+          ) : null}
           {background ? (
             <PhysicsPaintTrackRowHeader
               key={background.id}

@@ -115,8 +115,10 @@ export type TrackMutationResult =
   | { readonly ok: true; readonly trackId: string }
   | { readonly ok: false; readonly error: string };
 
-/** Track name control-character guard (ASVS V5 — reject C0 controls and DEL). */
-const TRACK_NAME_CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
+/** Track name control-character guard (ASVS V5 — reject C0 controls and DEL).
+ *  Exported (47-02 Task 2) so the strip's edit-in-place rename commit reuses
+ *  the exact same rejection rule fail-closed before any store call. */
+export const TRACK_NAME_CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
 
 /** Next free auto-number: the first positive integer not already taken by an existing `Paint N` name (47-UI-SPEC D-02). */
 function _nextPaintTrackNumber(document: EfxPaintDocument): number {

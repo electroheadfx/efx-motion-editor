@@ -2076,10 +2076,14 @@ describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
   const dialogSource = () => readFileSync(dialogPath, 'utf8');
   const headerColumnPath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintTrackHeaderColumn.tsx');
   const headerColumnSource = () => readFileSync(headerColumnPath, 'utf8');
+  const trackRowPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintTrackRow.tsx');
+  const trackRowSource = () => readFileSync(trackRowPath, 'utf8');
   // French-only copy tokens never allowed on the CRUD surfaces (D-14); note
   // 'clips' is intentionally excluded — the English labels 'loop clips' and
-  // the 'rotoLoopClips' identifiers contain it legitimately.
-  const frenchCopyPattern = /copie|supprimer|renommer|bloquant|confirmer|annuler/;
+  // the 'rotoLoopClips' identifiers contain it legitimately. Word boundaries
+  // keep English identifiers like 'copiedAppFrame'/'copiedStrokeCount' (the
+  // roto copy/paste surface) from tripping the 'copie' token.
+  const frenchCopyPattern = /\b(copie|supprimer|renommer|bloquant|confirmer|annuler)\b/;
 
   it('commits rename fail-closed in the strip: trim, 64-char cap, control-char rejection, then the intent (T-47-02-01 / ASVS V5)', () => {
     const strip = source();
@@ -2102,7 +2106,13 @@ describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
   it('routes the header-drag reorder through reorderTrack with the stable id and a numeric order only (T-47-02-03 / Pitfall 1)', () => {
     const strip = source();
     expect(strip).toContain('onReorderTrack?.(');
-    expect(strip).toContain('physics-paint-track-row-grip');
+    // The grip lives on the row surface (PhysicsPaintTrackRowHeader renders
+    // it and fires onGripPointerDown); the column passes the intent through to
+    // the rows, and the strip never renders the grip itself.
+    const rowSource = trackRowSource();
+    expect(rowSource).toContain('physics-paint-track-row-grip');
+    expect(rowSource).toContain('onGripPointerDown');
+    expect(headerColumnSource()).toContain('onGripPointerDown');
     const studio = studioSource();
     expect(studio).toContain('reorderTrack(layerId, trackId, newOrder)');
     expect(studio).toContain('setTrackSolo(layerId, trackId, solo)');

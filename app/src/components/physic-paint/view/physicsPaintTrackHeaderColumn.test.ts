@@ -13,6 +13,7 @@ import type { ComponentChildren } from 'preact';
 import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import type { EfxPaintDocument, BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type { TrackDeletePreview } from '../../../stores/efxPaintStore';
+import type { RotoPhysicalTimelineActionBundle } from '../hooks/useRotoTimelineActions';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
@@ -47,6 +48,7 @@ vi.mock('@preact/signals', async () => {
 
 import { getDocument, registerDocument, requestDeleteTrack } from '../../../stores/efxPaintStore';
 import * as efxPaintStoreModule from '../../../stores/efxPaintStore';
+import { signal } from '@preact/signals';
 import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
@@ -90,9 +92,10 @@ function hasClass(vnode: TestVNode, className: string): boolean {
 
 /** The column renders rows via the hook-free `PhysicsPaintTrackRowHeader`
  *  component and the top strip via `PhysicsPaintTrackColumnStrip`; expand
- *  those vnodes by calling the component function directly. */
+ *  those vnodes by calling the component function directly. The delete dialog
+ *  is hook-free too, so a dialog vnode expands the same way. */
 function expandComponent(vnode: TestVNode): TestVNode {
-  if (vnode.type === PhysicsPaintTrackRowHeader || vnode.type === PhysicsPaintTrackColumnStrip) {
+  if (vnode.type === PhysicsPaintTrackRowHeader || vnode.type === PhysicsPaintTrackColumnStrip || vnode.type === PhysicsPaintDeleteTrackDialog) {
     return (vnode.type as (props: TestVNode['props']) => TestVNode)(vnode.props);
   }
   return vnode;
@@ -286,7 +289,7 @@ function makeRegisteredFixture(): RegisteredFixture {
   const trackA = document.tracks[0];
   const trackB: InternalPaintTrack = { ...trackA, id: 'track-b', name: 'Paint 2', order: 1 };
   const twoTrackDocument: EfxPaintDocument = { ...document, tracks: [trackA, trackB] };
-  registerDocument(layerId, twoTrackDocument);
+  registerDocument(twoTrackDocument);
   return { layerId, document: twoTrackDocument, trackA, trackB, background: document.background };
 }
 
@@ -301,12 +304,52 @@ interface StripHarnessOptions {
 }
 
 /**
+ * A complete `rotoPhysicalActions` surface for the strip harness: every
+ * `.value` member the strip reads during render is backed by a real signal
+ * (the disabled/computed ones start disabled-false), and the interaction
+ * functions are inert spies. The rename/delete status channel is the harness's
+ * `publishStatus` capture spy so rejections are observable.
+ */
+function createPhysicalActions(publishStatus: (message: string | null) => void): RotoPhysicalTimelineActionBundle {
+  const bool = (value = false) => signal(value);
+  // The harness only exercises the members the strip reads during render and
+  // the rename/delete interactions; the rest of the bundle surface is inert.
+  return {
+    canInsertFrame: bool(),
+    canDeleteFrame: bool(),
+    canScissor: bool(),
+    insertDisabledReason: signal<string | null>(null),
+    insertTooltipDescription: signal('Insert key before'),
+    deleteDisabledReason: signal<string | null>(null),
+    deleteScopeLabel: signal('Delete Frame'),
+    scissorDisabledReason: signal<string | null>(null),
+    forceSpacingInput: signal('1'),
+    canApplyForceSpacing: bool(),
+    forceSpacingDisabledReason: signal<string | null>(null),
+    canDragKey: bool(),
+    canAddEmptyKey: bool(),
+    addEmptyKeyDisabledReason: signal<string | null>(null),
+    scissorTooltipDescription: signal('Split the Key Rail before this key.'),
+    canSelectAllKeys: bool(),
+    selectAllKeysDisabledReason: signal<string | null>(null),
+    dragDisabledReason: signal<string | null>(null),
+    publishStatus,
+    prepareRotoPush: vi.fn(),
+    commitRotoPush: vi.fn(async () => false),
+    prepareRailSetMove: vi.fn(),
+    commitRailSetMove: vi.fn(async () => false),
+    setForceSpacingInput: vi.fn(),
+    applyForceSpacing: vi.fn(),
+  } as unknown as RotoPhysicalTimelineActionBundle;
+}
+
+/**
  * Strip-level harness for the CRUD interactions (47-02 Task 2): renders the
  * real `PhysicsPaintWorkflowStrip` with a registered two-track bundle and
- * spy intents, then expands the header-column vnode so the tests can reach the
- * row headers, the rename input, the insertion indicator, and the delete
- * dialog. The strip's `rotoPhysicalActions` channel carries a capture spy so
- * rejections are observable.
+ * spy intents. The strip invokes the hook-free header column as a plain
+ * function, so its DOM (row headers, rename input, insertion indicator) is
+ * directly in the tree; the delete dialog appears appended at the strip root
+ * when a delete preview is live.
  */
 function createStripHarness(options: StripHarnessOptions) {
   const runtime = runtimeHolder.current;
@@ -347,7 +390,7 @@ function createStripHarness(options: StripHarnessOptions) {
       onClearRotoSpacingSelection: vi.fn(),
       onClearRotoKeySelection: vi.fn(),
       onSelectRotoLoopClip: vi.fn(),
-      rotoPhysicalActions: { publishStatus: callbacks.publishStatus },
+      rotoPhysicalActions: createPhysicalActions(callbacks.publishStatus),
       tracks: fixture.document.tracks,
       activeTrackId: fixture.trackA.id,
       layerId: fixture.layerId,
@@ -359,7 +402,7 @@ function createStripHarness(options: StripHarnessOptions) {
       onDuplicateTrack: callbacks.onDuplicateTrack,
       onReorderTrack: callbacks.onReorderTrack,
     });
-    tree = expandHeaderColumnVnodes(tree);
+    tree = expandHeaderColumnVnodes(tree as TestVNode);
 
     const scrollerNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
     const contentNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-lane'));
@@ -381,6 +424,10 @@ function createStripHarness(options: StripHarnessOptions) {
     const expandedHeaders = findAll(tree, (vnode) => vnode.type === PhysicsPaintTrackRowHeader).map(expandComponent);
     const inputs = expandedHeaders.flatMap((header) => findAll(header, (vnode) => hasClass(vnode, 'physics-paint-track-rename-input')));
     expect(inputs).toHaveLength(1);
+    // preact/compat's options.vnode hook normalizes DOM event props: onInput
+    // arrives as 'oninput' and onBlur as 'onfocusout' in the vnode tree
+    // (onClick/onKeyDown stay camelCase — they are not in the special list).
+    expect(inputs[0].props['oninput']).toBeTypeOf('function');
     return inputs[0];
   }
 
@@ -561,9 +608,13 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
       (harness.headerCell(fixture.trackA.id).props.onDblClick as () => void)();
       harness.render();
       const input = harness.renameInput();
-      (input.props.onInput as (event: unknown) => void)({ target: { value: badValue } });
+      (input.props['oninput'] as (event: unknown) => void)({ target: { value: badValue } });
       harness.render();
-      (input.props.onKeyDown as (event: unknown) => void)({
+      // Re-find the input AFTER the draft render: the Enter handler lives on
+      // the freshly rendered vnode, whose onCommitRename closure reads the
+      // NEW draft (the stale pre-draft input would commit the old value).
+      const inputWithDraft = harness.renameInput();
+      (inputWithDraft.props.onKeyDown as (event: unknown) => void)({
         key: 'Enter',
         preventDefault: vi.fn(),
         stopPropagation: vi.fn(),
@@ -579,9 +630,10 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
     (harness.headerCell(fixture.trackA.id).props.onDblClick as () => void)();
     harness.render();
     const input = harness.renameInput();
-    (input.props.onInput as (props: unknown) => void)({ target: { value: '  New Name  ' } });
+    (input.props['oninput'] as (props: unknown) => void)({ target: { value: '  New Name  ' } });
     harness.render();
-    (input.props.onKeyDown as (event: unknown) => void)({
+    const inputWithDraft = harness.renameInput();
+    (inputWithDraft.props.onKeyDown as (event: unknown) => void)({
       key: 'Enter',
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
@@ -619,12 +671,16 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
     expect(dialog).not.toBeNull();
     expect(dialog!.props.layerId).toBe(fixture.layerId);
     expect(dialog!.props.trackName).toBe('Track 1');
-    expect(dialog!.props.preview.trackId).toBe(fixture.trackA.id);
-    expect(dialog!.props.preview.isLastTrack).toBe(false);
+    const preview = dialog!.props.preview as TrackDeletePreview;
+    expect(preview.trackId).toBe(fixture.trackA.id);
+    expect(preview.isLastTrack).toBe(false);
 
     const expanded = expandComponent(dialog!);
     const title = findNode(expanded, (vnode) => hasClass(vnode, 'physics-paint-delete-track-dialog-title'));
-    expect(String(title.props.children)).toBe('Delete track Track 1?');
+    // JSX `Delete track {trackName}?` splits into a children array — join the
+    // pieces before comparing so the copy reads naturally.
+    const titleChildren = Array.isArray(title.props.children) ? title.props.children : [title.props.children];
+    expect(titleChildren.join('')).toBe('Delete track Track 1?');
     const detail = findNode(expanded, (vnode) => hasClass(vnode, 'physics-paint-delete-track-dialog-detail'));
     const detailText = String(detail.props.children);
     expect(detailText).toContain('0 frames');
@@ -645,7 +701,7 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
   it('refuses the last-track delete: disabled Confirm, refusal message, never calls commitDeleteTrack (D-17)', () => {
     const layerId = 'last-track-layer';
     const document = createEfxPaintDocument(layerId);
-    registerDocument(layerId, document);
+    registerDocument(document);
     const onlyTrack = document.tracks[0];
     const preview = requestDeleteTrack(layerId, onlyTrack.id);
     expect(preview).not.toBeNull();

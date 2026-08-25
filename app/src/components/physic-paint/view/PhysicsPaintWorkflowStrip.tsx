@@ -107,7 +107,19 @@ import {
 } from '../hooks/usePhysicsPaintRailSetDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
-import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+// 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
+// requestDeleteTrack preview plus the rename-validation constants — every
+// destructive mutation routes through a controller intent (the delete commit
+// lives exclusively in the PhysicsPaintDeleteTrackDialog leaf).
+import {
+  MAX_TRACK_NAME_LENGTH,
+  requestDeleteTrack,
+  TRACK_NAME_CONTROL_CHAR,
+  type TrackDeletePreview,
+} from '../../../stores/efxPaintStore';
+import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
+import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
+import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -358,12 +370,19 @@ export interface PhysicsPaintWorkflowStripProps {
   onAddTrack?: () => void;
   /** Eye toggle intent (controller routes through setTrackVisible). */
   onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
+  /** 47-02 Task 2: 'S' solo toggle intent (controller routes through setTrackSolo). */
+  onToggleSolo?: (trackId: string, solo: boolean) => void;
   /** Rename commit intent (controller routes through renameTrack). */
   onRenameTrack?: (trackId: string, name: string) => void;
   /** Copy intent (controller routes through duplicateTrack). */
   onDuplicateTrack?: (trackId: string) => void;
-  /** Trash intent (controller routes through requestDeleteTrack/commitDeleteTrack). */
+  /** Trash intent — the strip opens the acknowledge-and-delete dialog through
+   *  the pure requestDeleteTrack preview; the dialog's Confirm is the ONLY
+   *  commit surface (D-17). */
   onDeleteTrack?: (trackId: string) => void;
+  /** 47-02 Task 2: header-drag reorder intent (controller routes through
+   *  reorderTrack(layerId, trackId, newOrder) — writes the order field only). */
+  onReorderTrack?: (trackId: string, newOrder: number) => void;
 }
 
 const RULER_STEP = 3;
@@ -1143,10 +1162,32 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const handleRenameDraftChange = useCallback((_trackId: string, value: string) => {
     setRenameDraft(value);
   }, []);
+  // 47-02 Task 2 (T-47-02-01 / ASVS V5): the rename commit path validates
+  // fail-closed BEFORE any store write — the draft is trimmed and rejected for
+  // empty/whitespace-only, control characters, and over-length names (the same
+  // rules the store's renameTrack applies). A rejected commit keeps the prior
+  // name and publishes the rejection to the status capsule; only a valid draft
+  // reaches the controller intent exactly once.
   const handleCommitRename = useCallback((trackId: string) => {
+    const trimmed = renameDraft.trim();
+    if (trimmed.length === 0) {
+      setRenamingTrackId(null);
+      props.rotoPhysicalActions?.publishStatus?.('Track names cannot be empty.');
+      return;
+    }
+    if (TRACK_NAME_CONTROL_CHAR.test(trimmed)) {
+      setRenamingTrackId(null);
+      props.rotoPhysicalActions?.publishStatus?.('Track names cannot contain control characters.');
+      return;
+    }
+    if (trimmed.length > MAX_TRACK_NAME_LENGTH) {
+      setRenamingTrackId(null);
+      props.rotoPhysicalActions?.publishStatus?.(`Track names are limited to ${MAX_TRACK_NAME_LENGTH} characters.`);
+      return;
+    }
     setRenamingTrackId(null);
-    props.onRenameTrack?.(trackId, renameDraft);
-  }, [props.onRenameTrack, renameDraft]);
+    props.onRenameTrack?.(trackId, trimmed);
+  }, [props.tracks, props.onRenameTrack, renameDraft, props.rotoPhysicalActions]);
   const handleCancelRename = useCallback(() => {
     setRenamingTrackId(null);
   }, []);
@@ -1156,6 +1197,82 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const handleCloseTrackTools = useCallback(() => {
     setToolsOpenTrackId(null);
   }, []);
+  // 47-02 Task 2: 'S' solo toggle intent — the row's armed state reflects the
+  // session solo arm (physicsPaintSoloArm); the click routes the desired
+  // visibility to the controller (setTrackSolo).
+  const handleToggleSolo = useCallback((trackId: string) => {
+    const track = props.tracks?.find((candidate) => candidate.id === trackId);
+    props.onToggleSolo?.(trackId, !track?.solo);
+  }, [props.tracks, props.onToggleSolo]);
+  // 47-02 Task 2: acknowledge-and-delete dialog state. The trash intent opens
+  // the dialog with the pure `requestDeleteTrack` preview (D-17/ASVS V4); the
+  // dialog's Confirm is the ONLY delete commit entry (Phase 46 D-14).
+  const [deletePreview, setDeletePreview] = useState<TrackDeletePreview | null>(null);
+  const handleRequestDeleteTrack = useCallback((trackId: string) => {
+    const layerId = props.layerId;
+    if (!layerId) return;
+    const preview = requestDeleteTrack(layerId, trackId);
+    if (!preview) {
+      props.rotoPhysicalActions?.publishStatus?.('Could not delete track.');
+      return;
+    }
+    setToolsOpenTrackId(null);
+    setDeletePreview(preview);
+  }, [props.layerId, props.rotoPhysicalActions]);
+  const handleCancelDeleteTrack = useCallback(() => {
+    setDeletePreview(null);
+  }, []);
+  const handleDeleteTrackStatus = useCallback((message: string | null) => {
+    setDeletePreview(null);
+    if (message) props.rotoPhysicalActions?.publishStatus?.(message);
+  }, [props.rotoPhysicalActions]);
+  // 47-02 Task 2: header-drag reorder (TML-05/D-08/D-18). Pointerdown on the
+  // distinct grab area starts a captured session on the target; pointermove
+  // recomputes the live insertion index from the pointer Y over the header-rows
+  // band; release commits the order-only intent exactly once (pointercancel
+  // never commits). The drag never attaches to a non-grab area and never fires
+  // during a content drag.
+  const [reorderDrag, setReorderDrag] = useState<{ trackId: string; index: number } | null>(null);
+  const computeReorderInsertionIndex = useCallback((clientY: number): number => {
+    const band = headerRowsRef.current;
+    const paintCount = props.tracks?.length ?? 0;
+    if (!band || paintCount === 0) return 0;
+    const rect = band.getBoundingClientRect();
+    const raw = Math.floor((clientY - rect.top + band.scrollTop) / STRIP_ROW_HEIGHT_PX);
+    return Math.max(0, Math.min(paintCount - 1, raw));
+  }, [props.tracks?.length]);
+  const handleGripPointerDown = useCallback((event: PointerEvent, trackId: string) => {
+    event.preventDefault();
+    const target = event.currentTarget as HTMLElement | null;
+    if (!target) return;
+    target.setPointerCapture?.(event.pointerId);
+    setReorderDrag({ trackId, index: computeReorderInsertionIndex(event.clientY) });
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setReorderDrag((current) => (
+        current ? { ...current, index: computeReorderInsertionIndex(moveEvent.clientY) } : current
+      ));
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture?.(upEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerCancel);
+      setReorderDrag(null);
+      // The release position is the committed insertion index — reorderTrack
+      // writes ONLY the order field on the stable UUID (Pitfall 1).
+      props.onReorderTrack?.(trackId, computeReorderInsertionIndex(upEvent.clientY));
+    };
+    const handlePointerCancel = (cancelEvent: PointerEvent) => {
+      target.releasePointerCapture?.(cancelEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerCancel);
+      setReorderDrag(null);
+    };
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUp);
+    target.addEventListener('pointercancel', handlePointerCancel);
+  }, [computeReorderInsertionIndex, props.onReorderTrack]);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells;
@@ -3274,73 +3391,47 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div class="physics-paint-timeline-body">
-          {/* 47-01 pinned header column (UI-SPEC D-01/D-05): a fixed 140px
-              column listing every row's track name. It sits OUTSIDE the
-              horizontal scroller so it never scrolls away with the frame
-              cells; its 141px header-rows band shares the rows-region's
-              vertical scroll position (syncHeaderScroll/syncRowsScroll). */}
-          <div class="physics-paint-header-column">
-            <PhysicsPaintTrackColumnStrip
-              trackCount={props.tracks?.length ?? 1}
-              onAddTrack={props.onAddTrack}
-            />
-            {/* 47-01 UAT round 5: the vertical pill scrollbar lives in the
-                SIDEBAR — the header-rows band and the scrollbar share one flex
-                row inside the pinned column, so the scrollbar sits ALONGSIDE
-                the track names (not at the timeline's right edge). The thumb
-                drag scrolls the rows-region; the band follows via the shared
-                syncRowsScroll path. */}
-            <div class="physics-paint-header-rows-wrap">
-              <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={syncHeaderScroll}>
-                {props.tracks && props.activeTrackId ? (
-                  <>
-                    {props.tracks.map((track) => (
-                      <PhysicsPaintTrackRowHeader
-                        key={track.id}
-                        trackId={track.id}
-                        label={track.name}
-                        activeTrackId={props.activeTrackId}
-                        onSelectTrack={props.onSelectTrack}
-                        visible={track.visible}
-                        reorderable
-                        deletable={(props.tracks?.length ?? 0) > 1}
-                        editing={renamingTrackId === track.id}
-                        renameValue={renameDraft}
-                        onStartRename={handleStartRename}
-                        onRenameDraftChange={handleRenameDraftChange}
-                        onCommitRename={handleCommitRename}
-                        onCancelRename={handleCancelRename}
-                        onToggleVisible={props.onToggleTrackVisible}
-                        onDuplicateTrack={props.onDuplicateTrack}
-                        onDeleteTrack={props.onDeleteTrack}
-                        toolsOpen={toolsOpenTrackId === track.id}
-                        onToggleTools={handleToggleTrackTools}
-                        onCloseTools={handleCloseTrackTools}
-                      />
-                    ))}
-                    {props.background ? (
-                      <PhysicsPaintTrackRowHeader
-                        trackId={props.background.id}
-                        label="Background"
-                        kind="background"
-                      />
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-              {verticalScrollbar.visible ? (
-                <div
-                  class="physics-paint-vertical-scrollbar"
-                  onPointerDown={(event) => handleVerticalScrollbarPointerDown(event as unknown as PointerEvent)}
-                >
-                  <span
-                    class="physics-paint-vertical-scrollbar-thumb"
-                    style={{ top: `${verticalScrollbar.top}px`, height: `${verticalScrollbar.height}px` }}
-                  />
-                </div>
-              ) : null}
-            </div>
-          </div>
+          {/* 47-01/47-02 pinned header column (UI-SPEC D-01/D-05, Task 1): the
+              hook-free `physicsPaintTrackHeaderColumn` renders the 140px fixed
+              column OUTSIDE the horizontal scroller, listing every row's track
+              name plus the locked 'Bg' row; its header-rows band shares the
+              rows-region's vertical scroll position
+              (syncHeaderScroll/syncRowsScroll). The strip owns the interactive
+              state (rename draft, tools panel, vertical scrollbar geometry,
+              delete preview, reorder drag) and flows it down as props.
+              Invoked as a plain function (hook-free by contract) so the
+              rendered DOM appears directly in the strip's output — a lowercase
+              JSX tag would compile to an intrinsic element and render nothing. */}
+          {physicsPaintTrackHeaderColumn({
+            tracks: props.tracks ?? [],
+            activeTrackId: props.activeTrackId ?? '',
+            background: props.background ?? null,
+            onSelectTrack: props.onSelectTrack ?? (() => {}),
+            onToggleVisible: (trackId) => {
+              const track = props.tracks?.find((candidate) => candidate.id === trackId);
+              props.onToggleTrackVisible?.(trackId, !track?.visible);
+            },
+            onToggleSolo: handleToggleSolo,
+            onAddTrack: props.onAddTrack ?? (() => {}),
+            onDuplicateTrack: props.onDuplicateTrack ?? (() => {}),
+            onRequestDeleteTrack: handleRequestDeleteTrack,
+            onGripPointerDown: handleGripPointerDown,
+            reorderDragTrackId: reorderDrag?.trackId ?? null,
+            reorderDragIndex: reorderDrag?.index ?? null,
+            renamingTrackId: renamingTrackId,
+            renameDraft: renameDraft,
+            onStartRename: handleStartRename,
+            onRenameDraftChange: handleRenameDraftChange,
+            onCommitRename: handleCommitRename,
+            onCancelRename: handleCancelRename,
+            toolsOpenTrackId: toolsOpenTrackId,
+            onToggleTools: handleToggleTrackTools,
+            onCloseTools: handleCloseTrackTools,
+            headerRowsRef: headerRowsRef,
+            onHeaderScroll: syncHeaderScroll,
+            verticalScrollbar: verticalScrollbar,
+            onVerticalScrollbarPointerDown: handleVerticalScrollbarPointerDown,
+          })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
               {rotoRulerTicks.map(frame => (
@@ -3770,6 +3861,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       <PhysicsPaintStyledTooltip visible={pushDragBlocked.value !== null} region="bottom" anchorRef={pushBlockedAnchorRef} topmost>
         {pushHoverGuardCopy}
       </PhysicsPaintStyledTooltip>
+
+      {/* 47-02 Task 2: the acknowledge-and-delete dialog — mounted only while a
+          requestDeleteTrack preview is open; the Confirm is the ONLY delete
+          commit entry in the strip surface (D-17, Phase 46 D-14). */}
+      {deletePreview ? (
+        <PhysicsPaintDeleteTrackDialog
+          layerId={props.layerId!}
+          trackName={props.tracks?.find((track) => track.id === deletePreview.trackId)?.name ?? 'this track'}
+          preview={deletePreview}
+          onCancel={handleCancelDeleteTrack}
+          onStatus={handleDeleteTrackStatus}
+        />
+      ) : null}
    </section>
   );
 }

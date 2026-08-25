@@ -3653,6 +3653,27 @@ button.destructive {
   cursor: grabbing;
 }
 
+/* 47-02 Task 2 (TML-05, D-08): the live reorder insertion indicator — a 2px
+   accent line at the target row boundary inside the pinned header band. The
+   band is the containing block (position: relative), the top lands on the
+   row boundary via the inline style (index * 30px row pitch), and it scrolls
+   with the band's content while a header-grab drag is live. */
+.physics-paint-header-rows {
+  position: relative;
+}
+
+.physics-paint-track-row-insertion-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: #6f90ff;
+  box-shadow: 0 0 4px rgba(111, 144, 255, 0.8);
+  z-index: 2;
+  pointer-events: none;
+}
+
 /* 47-02 Task 1 (D-02): the explicit truncation class on every Paint track
    label — ellipsis truncation with the full name kept in the title tooltip.
    The label's base rule already truncates; this class makes the contract
@@ -4666,4 +4687,102 @@ button.destructive {
   background: #dbe4ff;
   box-shadow: 0 0 0 1px #37393a;
   pointer-events: none;
+}
+
+/* 47-02 Task 2 (TML-02, D-17): the acknowledge-and-delete dialog surface.
+   Rendered inside the strip root (position: relative), so the frame floats
+   above the timeline with no backdrop — the studio stays interactive behind
+   it, mirroring the Play Script floating dialog convention. The title names
+   the exact track; the detail carries the destruction surface verbatim; the
+   refusal turns the Confirm off for the last surviving Paint track. */
+.physics-paint-delete-track-dialog {
+  position: absolute;
+  top: 32px;
+  right: 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  padding: 14px 16px;
+  border: 1px solid #4c4e50;
+  border-radius: 10px;
+  background: #2b2d2f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.physics-paint-delete-track-dialog-title {
+  color: #e5edf8;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.physics-paint-delete-track-dialog-detail {
+  margin: 0;
+  color: #b9c2cc;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.physics-paint-delete-track-dialog-refusal {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #7a5a2e;
+  border-radius: 6px;
+  background: #46361f;
+  color: #e8c98a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.physics-paint-delete-track-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.physics-paint-delete-track-cancel,
+.physics-paint-delete-track-confirm {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.physics-paint-delete-track-cancel {
+  border: 1px solid #58616b;
+  background: #3a424c;
+  color: #b9c2cc;
+}
+
+.physics-paint-delete-track-cancel:hover {
+  background: #45505c;
+  color: #e5edf8;
+}
+
+.physics-paint-delete-track-confirm {
+  border: 1px solid #a54848;
+  background: #7d3535;
+  color: #ffffff;
+}
+
+.physics-paint-delete-track-confirm:hover {
+  background: #8f3e3e;
+}
+
+.physics-paint-delete-track-confirm:disabled {
+  border-color: #4c4e50;
+  background: #3a3c3e;
+  color: #6f7478;
+  cursor: not-allowed;
+}
+
+.physics-paint-delete-track-cancel:focus-visible,
+.physics-paint-delete-track-confirm:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
 }

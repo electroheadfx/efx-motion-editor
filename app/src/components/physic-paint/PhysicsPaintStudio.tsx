@@ -11,9 +11,11 @@ import {
   efxPaintVersion,
   getDocument as getEfxPaintDocument,
   renameTrack,
+  reorderTrack,
   requestDeleteTrack,
   serializeRuntimeIntoDocument,
   setActiveTrackId,
+  setTrackSolo,
   setTrackVisible,
 } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
@@ -2908,6 +2910,22 @@ export function PhysicsPaintStudio() {
     const result = commitDeleteTrack(layerId, trackId, true);
     if (!result.ok) setApplyMessage(result.error);
   }, [launchContext?.layerId]);
+  // 47-02 Task 2: 'S' solo toggle and header-drag reorder routing — both write
+  // the child document through the 47-01 store ops (setTrackSolo writes the
+  // solo display property; reorderTrack writes ONLY the order field, never the
+  // stable UUID — Pitfall 1).
+  const handleToggleSolo = useCallback((trackId: string, solo: boolean) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = setTrackSolo(layerId, trackId, solo);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleReorderTrack = useCallback((trackId: string, newOrder: number) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = reorderTrack(layerId, trackId, newOrder);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
   // 47-01: the multi-track row bundle is document-derived. Reading
   // `efxPaintVersion.value` subscribes the bundle to every store mutation
   // (setActiveTrackId included) so a row-header click flips the active row.
@@ -2916,13 +2934,15 @@ export function PhysicsPaintStudio() {
     if (!layerId) return {
       layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
-      onRenameTrack: undefined, onDuplicateTrack: undefined, onDeleteTrack: undefined,
+      onToggleSolo: undefined, onRenameTrack: undefined, onDuplicateTrack: undefined,
+      onDeleteTrack: undefined, onReorderTrack: undefined,
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
       layerId, tracks: undefined, activeTrackId: undefined, background: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
-      onRenameTrack: undefined, onDuplicateTrack: undefined, onDeleteTrack: undefined,
+      onToggleSolo: undefined, onRenameTrack: undefined, onDuplicateTrack: undefined,
+      onDeleteTrack: undefined, onReorderTrack: undefined,
     };
     return {
       layerId,
@@ -2932,9 +2952,11 @@ export function PhysicsPaintStudio() {
       onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
+      onToggleSolo: handleToggleSolo,
       onRenameTrack: handleRenameTrack,
       onDuplicateTrack: handleDuplicateTrack,
       onDeleteTrack: handleDeleteTrack,
+      onReorderTrack: handleReorderTrack,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, efxPaintVersion.value]);
@@ -3000,9 +3022,11 @@ export function PhysicsPaintStudio() {
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
+        onToggleSolo: multiTrackRowBundle.onToggleSolo,
         onRenameTrack: multiTrackRowBundle.onRenameTrack,
         onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,
         onDeleteTrack: multiTrackRowBundle.onDeleteTrack,
+        onReorderTrack: multiTrackRowBundle.onReorderTrack,
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
