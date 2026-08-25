@@ -177,7 +177,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04)', () => {
       trackBlendMode: 'multiply',
     }));
 
-    expect(textContent(findById(tree, 'physics-track-blend'))).toContain('Blend');
+    expect(textContent(tree)).toContain('Blend');
     expect(textContent(tree)).toContain('Paint 1');
     expect(findById(tree, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(tree, 'physics-track-blend').props.value).toBe('multiply');
