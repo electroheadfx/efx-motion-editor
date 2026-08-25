@@ -196,6 +196,82 @@ describe('canonical Group presentation copy', () => {
   });
 });
 
+describe('capsule presentation — shortened state and partial-cycle facts (TML-06)', () => {
+  it('projects a shortened finite loop with the requested badge and the interruption tooltip line', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(
+      range({ truncated: true, partialCycle: true, effectiveEnd: 22 }),
+      clip(),
+      'Walk Cycle',
+    );
+
+    expect(presentation).toMatchObject({
+      shortened: true,
+      shortenedLabel: 'Loop shortened by next clip',
+      interruptionTooltipLine: 'next clip — interrupts the loop',
+      repeatInstanceCount: 2,
+      // requested badge stays byte-identical (Pitfall m2)
+      cycleLabel: 'Cycle 4f × 3 = 12f',
+      effectiveLabel: 'Effective 10f',
+    });
+    expect(presentation.tooltipLines).toEqual([
+      'Walk Cycle Rail',
+      'Type: Motion',
+      'Cycle 4f × 3 = 12f',
+      'Effective 10f',
+      'Status: Synchronized with Action.',
+      'next clip — interrupts the loop',
+    ]);
+  });
+
+  it('shortens an infinity loop without touching its ×∞ requested badge', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(
+      range({ repeat: 'infinity', requestedEnd: 'infinity', truncated: true, effectiveEnd: 22 }),
+      clip({ repeat: 'infinity', originalEndExclusive: 22 }),
+      'Walk Cycle',
+    );
+
+    expect(presentation).toMatchObject({
+      shortened: true,
+      shortenedLabel: 'Loop shortened by next clip',
+      cycleLabel: 'Cycle 4f × ∞',
+      effectiveLabel: 'Effective 10f',
+    });
+    expect(presentation.tooltipLines).toContain('next clip — interrupts the loop');
+  });
+
+  it('projects no shortened state when the loop ends at its natural bound', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
+
+    expect(presentation).toMatchObject({
+      shortened: false,
+      shortenedLabel: null,
+      interruptionTooltipLine: null,
+      partialCycle: false,
+      repeatInstanceCount: 3,
+    });
+    expect(presentation.tooltipLines).not.toContain('next clip — interrupts the loop');
+  });
+
+  it('distinguishes a mid-cycle truncation from one landing on a cycle boundary', () => {
+    const midCycle = projectPhysicsPaintLoopClipPresentation(
+      range({ truncated: true, partialCycle: true, effectiveEnd: 22 }),
+      clip(),
+      'Walk Cycle',
+    );
+    expect(midCycle).toMatchObject({ partialCycle: true, repeatInstanceCount: 2 });
+
+    const fullCycle = projectPhysicsPaintLoopClipPresentation(
+      range({ truncated: true, effectiveEnd: 20 }),
+      clip(),
+      'Walk Cycle',
+    );
+    expect(fullCycle).toMatchObject({ partialCycle: false, repeatInstanceCount: 2 });
+
+    const complete = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
+    expect(complete).toMatchObject({ partialCycle: false, repeatInstanceCount: 3 });
+  });
+});
+
 describe('canonical Group workflow reasons', () => {
   it('maps exact accepted and rejected workflow-strip copy', () => {
     expect(projectPhysicsPaintGroupProductReason('spacing-source-selected'))
