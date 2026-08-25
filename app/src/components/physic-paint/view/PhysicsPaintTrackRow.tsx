@@ -24,6 +24,7 @@
 
 import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { isSoloArmed } from './physicsPaintSoloArm';
 
 /** 47-01 geometry: shared frame pitch (same 18px as the active track). */
 const ROW_CELL_WIDTH_PX = 18;
@@ -176,6 +177,8 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onCancelRename?: (trackId: string) => void;
   /** Eye toggle intent — routes through setTrackVisible. */
   readonly onToggleVisible?: (trackId: string, visible: boolean) => void;
+  /** 'S' solo toggle intent (47-02 Task 1) — routes through setTrackSolo. */
+  readonly onToggleSolo?: (trackId: string) => void;
   /** Copy intent — routes through duplicateTrack. */
   readonly onDuplicateTrack?: (trackId: string) => void;
   /** Trash intent — routes through requestDeleteTrack/commitDeleteTrack. */
@@ -215,6 +218,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onCommitRename,
     onCancelRename,
     onToggleVisible,
+    onToggleSolo,
     onDuplicateTrack,
     onDeleteTrack,
     toolsOpen = false,
@@ -310,7 +314,27 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
               <GripVertical size={12} />
             </span>
           ) : null}
-          <span class="physics-paint-track-row-label" title={label}>{label}</span>
+          <span
+            class="physics-paint-track-row-label physics-paint-track-row-label-ellipsis"
+            title={label}
+          >{label}</span>
+          {/* 47-02 Task 1: per-row solo (S) toggle — a compact always-visible
+              chip before the tools. Its pressed state reflects the session
+              solo arm (physicsPaintSoloArm, D-20); the click routes through
+              onToggleSolo(trackId) and the strip wires it to setTrackSolo. */}
+          <button
+            type="button"
+            class={`physics-paint-track-row-solo${isSoloArmed() ? ' physics-paint-track-row-solo-armed' : ''}`}
+            aria-label={`Solo ${label}`}
+            aria-pressed={isSoloArmed() ? 'true' : 'false'}
+            title={isSoloArmed() ? `Un-solo ${label}` : `Solo ${label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSolo?.(trackId);
+            }}
+          >
+            S
+          </button>
           {/* 47-01 UAT round 6: the tools open ONLY from the small more-button
               at the name's right extreme (never on header hover or click —
               a click on the name selects the track); leaving the panel closes

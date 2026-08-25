@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren } from 'preact';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
-import { PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 import { disarmSolo, toggleSolo } from './physicsPaintSoloArm';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 
@@ -55,28 +55,33 @@ function hasClass(vnode: TestVNode, className: string): boolean {
 }
 
 /** The column renders rows via the hook-free `PhysicsPaintTrackRowHeader`
- *  component; expand those vnodes by calling the component function directly. */
-function expandHeader(vnode: TestVNode): TestVNode {
-  if (vnode.type === PhysicsPaintTrackRowHeader) {
+ *  component and the top strip via `PhysicsPaintTrackColumnStrip`; expand
+ *  those vnodes by calling the component function directly. */
+function expandComponent(vnode: TestVNode): TestVNode {
+  if (vnode.type === PhysicsPaintTrackRowHeader || vnode.type === PhysicsPaintTrackColumnStrip) {
     return (vnode.type as (props: TestVNode['props']) => TestVNode)(vnode.props);
   }
   return vnode;
 }
 
-/** The expanded header cells in render order (Paint rows then the fixed Bg row). */
+/** A minimal DOM event stub for the component's stopPropagation-preventDefault handlers. */
+function clickEvent(): { stopPropagation: ReturnType<typeof vi.fn> } {
+  return { stopPropagation: vi.fn() };
+}
+
+/** The expanded header cells in DOM order (Paint rows then the fixed Bg row). */
 function headerCells(root: unknown): TestVNode[] {
   return findAll(root, (vnode) => vnode.type === PhysicsPaintTrackRowHeader)
-    .map(expandHeader)
+    .map(expandComponent)
     .filter((vnode) => typeof vnode.props['data-track-id'] === 'string');
 }
 
 function headerCell(root: unknown, trackId: string): TestVNode {
-  const found = findAll(root, (vnode) => (
-    vnode.type === PhysicsPaintTrackRowHeader
-    && vnode.props['data-track-id'] === trackId
-  ));
+  const found = findAll(root, (vnode) => vnode.type === PhysicsPaintTrackRowHeader)
+    .map(expandComponent)
+    .filter((vnode) => vnode.props['data-track-id'] === trackId);
   expect(found).toHaveLength(1);
-  return expandHeader(found[0]);
+  return found[0];
 }
 
 interface ColumnFixture {
@@ -176,13 +181,13 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
 
     // The hide (eye) toggle lives in the row's tools group.
     const eye = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Hide Track 1');
-    (eye.props.onClick as () => void)();
+    (eye.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleVisible).toHaveBeenCalledWith(fixture.trackA.id);
 
     // The solo (S) toggle.
     const solo = findOne(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
     expect(hasClass(solo, 'physics-paint-track-row-solo-armed')).toBe(false);
-    (solo.props.onClick as () => void)();
+    (solo.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleSolo).toHaveBeenCalledWith(fixture.trackA.id);
 
     // The armed state reflects the module-level solo arm (D-20).
@@ -239,15 +244,16 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
 
     // The '+' add button lives in the column strip and routes through onAddTrack.
     const root = renderFixture(fixture, { onAddTrack });
-    const addButton = findOne(root, (vnode) => vnode.props['aria-label'] === 'Add track');
-    (addButton.props.onClick as () => void)();
+    const strip = findOne(root, (vnode) => vnode.type === PhysicsPaintTrackColumnStrip);
+    const addButton = findOne(expandComponent(strip), (vnode) => vnode.props['aria-label'] === 'Add track');
+    (addButton.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onAddTrack).toHaveBeenCalledTimes(1);
 
     // The tools panel opens only from the more-button (47-01 UAT round 6) and
     // exposes the duplicate + delete actions for that row.
     const rootClosed = renderFixture(fixture, { onToggleTools });
     const more = findOne(headerCell(rootClosed, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'));
-    (more.props.onClick as () => void)();
+    (more.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleTools).toHaveBeenCalledWith(fixture.trackA.id);
 
     const rootOpen = renderFixture(fixture, {
@@ -257,12 +263,12 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     });
     const headerA = headerCell(rootOpen, fixture.trackA.id);
     const duplicate = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Duplicate Track 1');
-    (duplicate.props.onClick as () => void)();
+    (duplicate.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onDuplicateTrack).toHaveBeenCalledWith(fixture.trackA.id);
     const trash = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Delete Track 1');
     // Two Paint rows exist, so the row is deletable — no disabled guard.
     expect(trash.props['aria-disabled']).toBeUndefined();
-    (trash.props.onClick as () => void)();
+    (trash.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onRequestDeleteTrack).toHaveBeenCalledWith(fixture.trackA.id);
   });
 });

@@ -3653,6 +3653,59 @@ button.destructive {
   cursor: grabbing;
 }
 
+/* 47-02 Task 1 (D-02): the explicit truncation class on every Paint track
+   label — ellipsis truncation with the full name kept in the title tooltip.
+   The label's base rule already truncates; this class makes the contract
+   explicit and grep-able. */
+.physics-paint-track-row-label-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 47-02 Task 1: per-row solo (S) toggle. A compact always-visible chip before
+   the tools group; its pressed state reflects the session solo arm
+   (physicsPaintSoloArm, D-20) — the armed chip shows the same accent family
+   as the active row so the armed playback filter reads at a glance. */
+.physics-paint-track-row-solo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 5px;
+  background: #3a424c;
+  color: #b9c2cc;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.physics-paint-track-row-solo:hover {
+  background: #45505c;
+  color: #e5edf8;
+}
+
+.physics-paint-track-row-solo-armed {
+  border-color: #6f90ff;
+  background: #2f3a4d;
+  color: #ffffff;
+}
+
+.physics-paint-track-row-solo-armed:hover {
+  background: #33425a;
+}
+
+.physics-paint-track-row-solo:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
 /* Hover-visible tool buttons (eye / pencil / copy / trash-2). 47-01 UAT
    round 5: the tools collapse to ZERO width while hidden (max-width: 0 +
    overflow: hidden) so they reserve no layout space at rest — the track name
