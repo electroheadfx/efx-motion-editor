@@ -6,15 +6,15 @@ current_phase: 47
 current_phase_name: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
 status: executing
 stopped_at: Phase 47 UI-SPEC approved
-last_updated: "2026-08-25T17:55:00.000Z"
+last_updated: "2026-08-25T19:05:00.000Z"
 last_activity: 2026-08-25
-last_activity_desc: "Phase 47 plan 01 complete (multi-track timeline slice: document-order rows, track CRUD + hide/solo truth table, mockup header strip, child-parent runtime sync, UAT rounds 1-8.2)"
-state_head: c23369e8
+last_activity_desc: "Phase 47 plan 02 complete (pinned header column, track CRUD interactions — fail-closed rename, duplicate, acknowledge-and-delete dialog, header-drag reorder — vertical scroll with ensure-active-row-visible)"
+state_head: f3a6ab0c
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 16
   percent: 11
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 47 (Internal Multi-track Timeline, Filmstrip Capsules, and Controls) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Executing Phase 47
-Last activity: 2026-08-25 — Phase 47 plan 01 complete (UAT passed)
+Last activity: 2026-08-25 — Phase 47 plan 02 complete
 
 Progress: [█░░░░░░░░░] 11%
 

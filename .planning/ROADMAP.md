@@ -285,16 +285,16 @@ Plans:
   4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
   5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
 
-**Plans**: 5 plans
+**Plans**: 2/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 47-01-PLAN.md — tracer: multi-row strip slice + track CRUD store ops + hide/solo/opacity/blend setters + preview filter
+- [x] 47-01-PLAN.md — tracer: multi-row strip slice + track CRUD store ops + hide/solo/opacity/blend setters + preview filter
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 47-02-PLAN.md — pinned header column, track CRUD interactions, acknowledge-and-delete dialog, vertical scroll with ensure-active-row-visible
+- [x] 47-02-PLAN.md — pinned header column, track CRUD interactions, acknowledge-and-delete dialog, vertical scroll with ensure-active-row-visible
 - [ ] 47-03-PLAN.md — right-panel track section (opacity/blend) + guarded track CRUD keyboard shortcuts
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -409,7 +409,7 @@ Plans:
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | In Progress|  |
-| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 0/TBD | Not started | - |
+| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 2/5 | In Progress|  |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
