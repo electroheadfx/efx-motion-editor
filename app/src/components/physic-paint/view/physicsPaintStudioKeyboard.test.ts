@@ -66,6 +66,8 @@ function actions() {
     closeToolboxPopover: vi.fn(),
     disarmPushTool: vi.fn(),
     disarmSolo: vi.fn(),
+    addTrack: vi.fn(),
+    duplicateTrack: vi.fn(),
   };
 }
 
@@ -666,10 +668,63 @@ describe('Physics Paint selection-gated real-key frame cycling (43.4 defect 9)',
 });
 
 describe('isPhysicsPaintShortcutTarget', () => {
-  it('allows regular targets and blocks editable controls', () => {
+  it('allows neutral targets and blocks editable controls', () => {
     expect(isPhysicsPaintShortcutTarget(null)).toBe(true);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('div') as unknown as EventTarget)).toBe(true);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('input') as unknown as EventTarget)).toBe(false);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('div', { contentEditable: true }) as unknown as EventTarget)).toBe(false);
+  });
+});
+
+describe('Physics Paint guarded track CRUD shortcuts (47-03, TML-02/Pitfall m4)', () => {
+  it('adds a track on Cmd/Ctrl+Shift+N and stays silent inside editable targets', () => {
+    const { handlers, preventDefault } = dispatch('n', null, { metaKey: true, shiftKey: true });
+    expect(handlers.addTrack).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+
+    const inputTarget = new TestHTMLElement('input');
+    const { handlers: inputHandlers, preventDefault: inputPrevent } = dispatch('n', inputTarget as unknown as EventTarget, { metaKey: true, shiftKey: true });
+    expect(inputHandlers.addTrack).not.toHaveBeenCalled();
+    expect(inputPrevent).not.toHaveBeenCalled();
+  });
+
+  it('duplicates the active track on Cmd/Ctrl+Shift+D and skips while mutationLocked', () => {
+    const { handlers, preventDefault } = dispatch('d', null, { metaKey: true, shiftKey: true });
+    expect(handlers.duplicateTrack).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+
+    const locked = dispatch('d', null, { metaKey: true, shiftKey: true }, { mutationLocked: true });
+    expect(locked.handlers.duplicateTrack).not.toHaveBeenCalled();
+    expect(locked.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('never binds Delete/Backspace to a track-delete action (D-17)', () => {
+    for (const key of ['Delete', 'Backspace']) {
+      const { handlers, preventDefault } = dispatch(key);
+      expect('deleteTrack' in handlers).toBe(false);
+      // The roto delete flow keeps owning the keys.
+      expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+      expect(preventDefault).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('fires only with meta or ctrl held, never on a bare letter', () => {
+    const bare = dispatch('n');
+    expect(bare.handlers.addTrack).not.toHaveBeenCalled();
+    expect(bare.preventDefault).not.toHaveBeenCalled();
+
+    const bareDuplicate = dispatch('d');
+    expect(bareDuplicate.handlers.duplicateTrack).not.toHaveBeenCalled();
+    expect(bareDuplicate.preventDefault).not.toHaveBeenCalled();
+
+    const ctrlAdd = dispatch('n', null, { ctrlKey: true, shiftKey: true });
+    expect(ctrlAdd.handlers.addTrack).toHaveBeenCalledOnce();
+    const metaAdd = dispatch('n', null, { metaKey: true, shiftKey: true });
+    expect(metaAdd.handlers.addTrack).toHaveBeenCalledOnce();
+
+    const ctrlDuplicate = dispatch('d', null, { ctrlKey: true, shiftKey: true });
+    expect(ctrlDuplicate.handlers.duplicateTrack).toHaveBeenCalledOnce();
+    const metaDuplicate = dispatch('d', null, { metaKey: true, shiftKey: true });
+    expect(metaDuplicate.handlers.duplicateTrack).toHaveBeenCalledOnce();
   });
 });
