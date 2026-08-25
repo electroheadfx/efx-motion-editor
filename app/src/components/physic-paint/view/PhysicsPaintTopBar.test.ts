@@ -15,7 +15,11 @@ function getCssRuleBlock(styles: string, selector: string): string {
 
 describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   it('lets the studio top row grow beyond 58px so wrapped controls are never crushed', () => {
-    expect(getCssRuleBlock(css(), '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 264px');
+    // 47-01 UAT round 3: row 3 is `auto` — the workflow strip sets its own
+    // dynamic height (default = exactly enough for all tracks + Bg, capped at
+    // 270px; the top-edge drag handle resizes it). The canvas row absorbs the
+    // difference.
+    expect(getCssRuleBlock(css(), '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
   });
 
   it('reserves no fixed minimum side-column width in the topbar grid at any width', () => {

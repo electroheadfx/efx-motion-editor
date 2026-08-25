@@ -409,7 +409,11 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 264px;
+  /* 47-01 UAT round 3: row 3 is `auto` — the workflow strip sets its own
+     dynamic height (default = exactly enough for all tracks + Bg, capped at
+     270px; the top-edge drag handle resizes it). The canvas row absorbs the
+     difference. */
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto;
   grid-template-columns: 52px minmax(0, 1fr) minmax(316px, 340px);
   width: 100vw;
   height: 100vh;
@@ -1964,14 +1968,15 @@ button.destructive {
 .physics-paint-workflow-strip {
   grid-row: 3;
   grid-column: 2;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0;
-  /* 264px = 47-01 multi-track rows-region: 46 + 1 + 28 + 141 + 34 + 14.
-     The 161px Plan 06 band sum grew because the lane moved INSIDE the
-     dedicated 141px rows region that stacks the active lane plus one row
-     per non-active Paint track and the Background row (TML-01/TML-02). */
-  height: 264px;
+  /* 47-01 UAT round 3: the strip height is DYNAMIC — set inline by the
+     component (default = exactly enough for every track row + the Bg row,
+     capped at 270px so the canvas keeps room; the top-edge drag handle
+     resizes it within [1 row, full content height]). The fixed 264px band is
+     gone; the canvas row absorbs the difference. */
   min-height: 0;
   padding: 0 12px;
   border-top: 1px solid #5a5e63;
@@ -1979,6 +1984,39 @@ button.destructive {
   overflow-y: hidden;
   background: #3e3f41;
   user-select: none;
+}
+
+/* 47-01 UAT round 3: the timeline's top-edge resize handle — a thin grab bar
+   between the canvas and the strip. Dragging up grows the strip (up to the
+   full content height = all rows visible), dragging down shrinks it (down to
+   1 row; the rows-region + header-rows band scroll). Absolutely positioned so
+   it never adds to the strip's chrome band sum. */
+.physics-paint-strip-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.physics-paint-strip-resize-handle::before {
+  content: '';
+  width: 56px;
+  height: 3px;
+  border-radius: 999px;
+  background: #585a5c;
+  transition: background 0.12s ease;
+}
+
+.physics-paint-strip-resize-handle:hover::before,
+.physics-paint-strip-resize-handle:active::before {
+  background: #6f90ff;
 }
 
 .physics-paint-workflow-header,
@@ -2862,6 +2900,10 @@ button.destructive {
 .physics-paint-timeline {
   display: flex;
   flex-direction: column;
+  /* 47-01 UAT round 3: the timeline fills the strip's dynamic height; the
+     rows-region inside scrolls when the strip is too short for all rows. */
+  flex: 1 1 auto;
+  min-height: 0;
   border-top: 1px solid #5a5e63;
   border-radius: 6px;
   overflow: hidden;
@@ -2869,7 +2911,14 @@ button.destructive {
 }
 
 .physics-paint-timeline-scroll {
+  /* 47-01 UAT round 3: a column flex so the ruler stays pinned at 28px and
+     the rows-region fills the remaining height (flex: 1 1 auto; min-height: 0)
+     and scrolls vertically when the strip is too short for all rows. */
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   /* Small left offset shared by the ruler and lane so the selected frame-0
      cell's orange ring (2px outline + 1px offset + 1px shadow) is not clipped
      by the scroll edge (36.15-12, UAT Gap H-5). The 18px pitch and
@@ -2892,6 +2941,7 @@ button.destructive {
 
 .physics-paint-timeline-scrollbar {
   position: relative;
+  flex: 0 0 14px;
   height: 14px;
   margin: 0;
   border: 0;
@@ -2913,6 +2963,7 @@ button.destructive {
 .physics-paint-ruler {
   display: flex;
   align-items: center;
+  flex: 0 0 28px;
   height: 28px;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
@@ -3287,6 +3338,9 @@ button.destructive {
 .physics-paint-timeline-body {
   display: flex;
   flex-direction: row;
+  /* 47-01 UAT round 3: fills the timeline's dynamic height so the rows-region
+     and the pinned header-rows band share the same available space. */
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
 }
@@ -3299,6 +3353,10 @@ button.destructive {
   flex-direction: column;
   flex: 0 0 140px;
   min-width: 0;
+  /* 47-01 UAT round 3: allows the column to shrink to the timeline-body's
+     dynamic height so the header-rows band scrolls in lockstep with the
+     rows-region instead of overflowing. */
+  min-height: 0;
   background: #333536;
   border-right: 1px solid #4c4e50;
 }
@@ -3407,21 +3465,24 @@ button.destructive {
 
 /* 47-01 mockup redesign rows-region: the region SIZES TO ITS CONTENT — every
    Track row + the fixed Background row at 48px each — with NO fixed
-   141px band and no dead space below the Background row. It caps at 141px
-   (46 + 1 + 28 + 141 + 34 + 14 = 264 total strip) and scrolls vertically only
-   when the track count overflows the cap.
+   141px band and no dead space below the Background row.
 
    47-01 UAT round 2: the region carries the FULL frame-capacity width
    (inline width/minWidth set by the strip) so the frame cells extend past the
    viewport and scroll with the ruler instead of clipping at the window width.
    Its native vertical scrollbar is hidden — the only visible vertical scroll
    control lives on the pinned header-rows band (D-05), which overflows exactly
-   when this region does, so no fake static bar is ever drawn. */
+   when this region does, so no fake static bar is ever drawn.
+
+   47-01 UAT round 3: the region's height is driven by the strip's DYNAMIC
+   height (flex: 1 1 auto; min-height: 0 inside the timeline-scroll column) —
+   it fills whatever space the strip leaves below the ruler and scrolls
+   vertically when the strip is too short for all rows. The old 141px cap is
+   gone. */
 .physics-paint-rows-region {
   display: flex;
   flex-direction: column;
-  height: auto;
-  max-height: 141px;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -3520,7 +3581,10 @@ button.destructive {
 .physics-paint-track-row-label {
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: 10px;
+  /* 47-01 UAT round 3: the hover tools now reserve their width in flow, so
+     the label truncates to the remaining space (never covered). A small right
+     padding keeps the ellipsis clear of the tool buttons. */
+  padding-right: 4px;
   color: #d8dde3;
   font-size: 11px;
   font-weight: 600;
@@ -3533,12 +3597,13 @@ button.destructive {
 
 /* Reorder grip: a 6-dot affordance with a DISTINCT cursor. Content drag (a
    plain header click) selects the track and never reorders — the drag gesture
-   itself is plan 47-05 scope. */
+   itself is plan 47-05 scope. 47-01 UAT round 3: lightened from #4c4e50 so
+   the 6 dots read on the #333536 header (dark-on-dark was illegible). */
 .physics-paint-track-row-grip {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  color: #4c4e50;
+  color: #8a939c;
   cursor: grab;
 }
 
@@ -3546,23 +3611,21 @@ button.destructive {
   cursor: grabbing;
 }
 
-/* Hover-visible tool buttons (eye / pencil / copy / trash-2), overlaid on the
-   header's right edge. Hidden by default so the label gets full width; shown
-   on row hover. pointer-events are disabled while hidden so the invisible
-   buttons never swallow header clicks.
+/* Hover-visible tool buttons (eye / pencil / copy / trash-2). 47-01 UAT
+   round 3: the tools are part of the header's flex flow with a RESERVED width
+   (always present in flow, `visibility: hidden` when not hovered → visible on
+   hover), so the label truncates to the remaining space instead of being
+   covered by an overlay. pointer-events are disabled while hidden so the
+   invisible buttons never swallow header clicks.
 
    47-01 UAT round 2: the dark right-to-left gradient is removed — it washed a
    dark veil over the track name. The buttons now carry their own solid
    surfaces (below), so they separate from the label without a gradient. */
 .physics-paint-track-row-tools {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding-left: 4px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -3603,6 +3666,16 @@ button.destructive {
 .physics-paint-track-row-tool-button:focus-visible {
   outline: 2px solid #6f90ff;
   outline-offset: 1px;
+}
+
+/* 47-01 UAT round 3: the lucide icons stay pinned at 12x12 and never
+   flex-shrink inside the 18px buttons (same pattern as the scripts toolbar),
+   so the eye/pencil/copy/trash glyphs actually render instead of collapsing
+   into empty dark boxes. */
+.physics-paint-track-row-tool-button svg {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
 }
 
 /* Edit-in-place rename input (Enter commits, Escape cancels). */
@@ -3669,7 +3742,8 @@ button.destructive {
   gap: 8px;
   /* 34px band (36.15-12, UAT Gap H-6) + 6px bottom padding weighting the
      clearance below the 26px groups (36.15-13, UAT Gap I-1; border-box sizing
-     keeps the 34px band and the 47-01 264px band sum intact). */
+     keeps the 34px band and the 47-01 dynamic band sum intact). */
+  flex: 0 0 34px;
   height: 34px;
   min-width: 0;
   max-width: 100%;
@@ -3727,10 +3801,10 @@ button.destructive {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  /* 47-01 UAT round 2 (tight packing): the cell fills the locked 48px row
-     with a 2px rhythm above and below (mockup density) instead of leaving
-     12px of dead gray on each side. The 18px pitch is unchanged. */
-  height: 44px;
+  /* 47-01 UAT round 3: the cell is a SQUARE ~18x18 (matching the 18px pitch,
+     border-box) centered vertically in the locked 48px row — never stretched
+     to fill the row. The 18px pitch is unchanged. */
+  height: 18px;
   padding: 0;
   border: 1px solid #3d454d;
   border-radius: 1px;

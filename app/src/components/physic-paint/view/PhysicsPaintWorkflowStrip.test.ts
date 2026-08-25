@@ -389,9 +389,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(repeatDot).toContain('height: 4px');
     expect(repeatDot).toContain('top: 2px');
     expect(repeatDot).toContain('right: 2px');
-    // 47-01 UAT round 2: the cell fills the locked 48px row (44px tall = 2px
-    // rhythm above/below), tightened from the old 24px stub height.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 44px');
+    // 47-01 UAT round 3: the cell is a SQUARE ~18px (17px wide + 1px border),
+    // centered vertically in the 48px row — the frames must not stretch to
+    // fill the row height.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 18px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
   });
 
@@ -425,9 +426,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(cut).toContain('pointer-events: none');
     expect(cut).not.toMatch(/background:\s*(?:white|#fff(?:fff)?|#f8fafc|rgba?\(255)/i);
     expect(cut).not.toMatch(/(?:^|\n)\s*(?:height|padding|margin|min-width|max-width):/);
-    // 47-01 UAT round 2: the cell fills the locked 48px row (44px tall = 2px
-    // rhythm above/below), tightened from the old 24px stub height.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 44px');
+    // 47-01 UAT round 3: the cell is a SQUARE ~18px (17px wide + 1px border),
+    // centered vertically in the 48px row — the frames must not stretch to
+    // fill the row height.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 18px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
@@ -780,7 +782,13 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     const map = getRotoMapBlock(code);
     expect(map).toContain('getRotoCellStateTooltipCopy(');
     expect(map).toContain('RotoTimelineCellButton');
-    expect(map).not.toContain('title=');
+    // 47-01 UAT round 3: the strip's resize handle legitimately carries a
+    // native `title=` (strip-level chrome), so the no-native-title guard is
+    // scoped to the cell button usage itself, not the whole map slice.
+    const cellButtonStart = map.indexOf('<RotoTimelineCellButton');
+    const cellButtonEnd = map.indexOf('/>', cellButtonStart) + 2;
+    const cellButton = map.slice(cellButtonStart, cellButtonEnd);
+    expect(cellButton).not.toContain('title=');
     expect(map).not.toContain('dragTitle');
     // Drag machinery untouched: identity attributes and handlers stay.
     expect(map).toContain('handleRotoTimelineCellPointerDown');
@@ -905,19 +913,23 @@ function getMediaQueryBlock(styles: string, query: string): string {
   return styles.slice(start, end);
 }
 
-describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)', () => {
-  it('locks the strip shell and studio grid third track to 264px with no legacy or override height literals', () => {
+describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2 / 47-01 UAT round 3)', () => {
+  it('makes the strip shell and studio grid third track dynamic (auto) with no legacy fixed-height literals', () => {
     const styles = css();
-    // 264px = 47-01 multi-track rows-region geometry: 46 + 1 + 28 + 141 + 34 + 14.
-    // The 161px Plan 06 band sum grew because the lane moved INSIDE the
-    // dedicated 141px rows region (TML-01/TML-02).
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 264px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 264px');
+    // 47-01 UAT round 3: the strip height is DYNAMIC — set inline by the
+    // component (default = exactly enough for every track row + the Bg row,
+    // capped at 270px; the top-edge drag handle resizes within [1 row, full
+    // content height]). The fixed 264px band is gone; the studio grid third
+    // track is `auto` so the canvas row absorbs the difference.
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('position: relative');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
     expect(styles).not.toContain('height: 256px');
     expect(styles).not.toContain('height: 260px');
+    expect(styles).not.toContain('height: 264px');
   });
 
-  it('declares the exact 46/1/28/141/34/14 band geometry with zeroed strip padding and gap', () => {
+  it('declares the dynamic 46/1/28/flex/34/14 band geometry with zeroed strip padding and gap', () => {
     const styles = css();
     const strip = getCssRuleBlock(styles, '.physics-paint-workflow-strip {');
     expect(strip).toContain('gap: 0');
@@ -925,9 +937,10 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-header {')).toContain('height: 46px');
     const timeline = getCssRuleBlock(styles, '.physics-paint-timeline {');
     expect(timeline).toContain('border-top: 1px');
-    expect(timeline).not.toContain('min-height');
+    expect(timeline).toContain('min-height: 0');
     const region = getCssRuleBlock(styles, '.physics-paint-rows-region {');
-    expect(region).toContain('height: 141px');
+    expect(region).toContain('flex: 1 1 auto');
+    expect(region).toContain('min-height: 0');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
     expect(lane).toContain('height: 48px');
     expect(lane).not.toContain('min-height');
@@ -1217,10 +1230,9 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     expect(identity).not.toBe('');
     expect(identity).toContain('border:');
     expect(identity).toContain('background:');
-    // The 34px band and 264px strip geometry stay intact (47-01 rows-region
-    // band sum: 46 + 1 + 28 + 141 + 34 + 14).
+    // The 34px band stays intact; the strip shell is dynamic (47-01 UAT round 3).
     expect(actionRow).toContain('height: 34px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 264px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 
   it('renders bottom-row tool labels lowercase by opting the icon buttons out of the global uppercase button rule', () => {
@@ -1276,9 +1288,8 @@ describe('PhysicsPaintWorkflowStrip Gap G bottom-row polish contract (36.15-11, 
     // icon buttons (the retired pill's padding + border pushed it to 30px,
     // which is what threw the row off-center, UAT Gap G-3).
     expect(getCssRuleBlock(styles, '.physics-paint-roto-key-utilities {')).toContain('height: 26px');
-    // The 34px band and 264px strip geometry stay intact (47-01 rows-region
-    // band sum: 46 + 1 + 28 + 141 + 34 + 14).
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 264px');
+    // The 34px band stays intact; the strip shell is dynamic (47-01 UAT round 3).
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 });
 
@@ -1302,20 +1313,22 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     expect(getCssRuleBlock(styles, '.physics-paint-ruler-tick {')).toContain('54px');
   });
 
-  it('locks the 34px action-row band with the 47-01 264px band sum and every other band unchanged', () => {
+  it('locks the 34px action-row band with the dynamic strip shell and every other band unchanged', () => {
     const styles = css();
-    // 47-01 (TML-01/TML-02): the 161px Plan 06 band sum grew to
-    // 46 + 1 + 28 + 141 + 34 + 14 = 264 because the lane moved INSIDE the
-    // dedicated 141px rows region. The ruler, action row and scrollbar keep
-    // their Plan 06 heights; only the lane grows 38px to 48px.
+    // 47-01 UAT round 3: the fixed 264px band sum is gone — the strip shell
+    // height is DYNAMIC (inline, default = exactly enough for every track row
+    // + the Bg row, capped at 270px; drag handle resizes within [1 row, full
+    // content height]). The ruler, action row and scrollbar keep their Plan 06
+    // heights; the rows-region flex-fills the remaining height and scrolls.
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-header {')).toContain('height: 46px');
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 28px');
-    expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('height: 141px');
+    expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('flex: 1 1 auto');
+    expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('min-height: 0');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 48px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 264px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 264px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
     // No other historical literal may survive: the retired 155px and 161px totals are gone.
     expect(styles).not.toContain('height: 155px');
     expect(styles).not.toContain('height: 161px');
@@ -1336,18 +1349,18 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
 });
 
 describe('PhysicsPaintWorkflowStrip Gap I action-row padding contract (36.15-13, UAT Gap I-1)', () => {
-  it('adds 6px bottom padding to the action row without changing the 34px band or the 264px band sum', () => {
+  it('adds 6px bottom padding to the action row without changing the 34px band or the dynamic strip shell', () => {
     const styles = css();
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
     // UAT Gap I-1 (user's final polish round): padding-bottom: 6px on the
     // action-row div.
     expect(actionRow).toContain('padding-bottom: 6px');
     // The stylesheet sets box-sizing: border-box globally, so the padding
-    // shrinks the content box instead of growing the band: the 34px band, the
-    // 264px strip shell, and the studio grid third track stay intact.
+    // shrinks the content box instead of growing the band: the 34px band stays
+    // intact and the strip shell stays dynamic (47-01 UAT round 3).
     expect(actionRow).toContain('height: 34px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 264px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 264px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
     expect(styles).not.toContain('height: 155px');
   });
 });
@@ -1634,7 +1647,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #f2f5f7');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 48px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 264px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 
   it('keeps rail selection line-only while explicit physical spacing proxies remain visible', () => {
