@@ -248,4 +248,22 @@ User-reported visual issues in the mockup timeline redesign, fixed with presenta
 - `PhysicsPaintWorkflowStrip.test.ts` — two source-contract assertions updated from the old `height: 24px` to the new `height: 44px` (intended UAT geometry).
 - `PhysicsPaintWorkflowStrip.viewport.test.ts` — new assertion: a 600-frame document's rows-region and every presentational track-row cells grid carry the full `capacity × 18px` width/minWidth.
 
-**Verification:** viewport + previewRenderer (43 tests), efxPaintStore (26 tests), full suite (2848 passed / 1 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0.
+**Verification:** viewport + previewRenderer (43 tests), efxPaintStore (28 tests), full suite (2848 passed / 1 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0.
+
+---
+
+## UAT Round 4 (2026-08-24) — geometry pass
+
+User-approved geometry changes (no `efxPaintStore` ops, no `previewRenderer` truth-table edits, ruler stays 28px, strip chrome stays 124px).
+
+**Commit:**
+- `ca3697f0` — `fix(47-01): compact timeline geometry — 24px frames, 30px rows, custom vertical scrollbar`
+
+**Per-change:**
+1. **Vertical scrollbar matches the horizontal pill design** — the rows region's decorative native scrollbar is hidden; a new `.physics-paint-rows-scrollbar` renders at the right edge of the rows region only when rows overflow, with the same pill track (`#585a5c`, radius 999px, 14px) and inset thumb (`#8a8a8a`, 4px inset, min-height 40px, `pointer-events: none`). Drag-to-scroll writes `el.scrollTop`; a ruler-spacer (28px) keeps it aligned under the ruler. Mirror of the horizontal `updateScrollbar` logic, wired through `handleRowsRegionScroll`.
+2. **Frames 18 -> 24px** — `ROTO_CELL_WIDTH_PX`/`ROW_CELL_WIDTH_PX` 18->24, `.physics-paint-roto-cell` height 18->24; ruler tick flex-basis 54->72px (3 x 24px cells); loop-clip anchors and viewport scrollWidth re-derived to the 24px pitch.
+3. **Rows 48 -> 30px** — `.physics-paint-track-row/-lane/-header` and `.physics-paint-lane` 48->30, `STRIP_ROW_HEIGHT_PX` 48->30; sidebar headers align 1:1 with the compact 30px lanes; default strip height = 124 + rows x 30 (cap 270, min 154); rail focus ring `bottom` -24->-20 so it wraps the 30px row with a 2px overhang.
+
+**Test adjustments:** geometry contracts re-derived in `physicsPaintRailFocus.test.ts` (30px lane / 24px cell / ring 32px span), `PhysicsPaintWorkflowStrip.test.ts` (cell height, pitch, tick, lane height, vertical-scrollbar source-order), `PhysicsPaintWorkflowStrip.viewport.test.ts` (24px pitch, 14,400px scrollWidth, 214px strip height), `PhysicsPaintLoopClipRail.test.tsx` (24px pitch, 96px anchors, 30px lane), `PhysicsPaintKeyRail.test.tsx` (ring -20px).
+
+**Verification:** full suite green (149 files / 2850 passed / 3 skipped / 101 todo), `pnpm exec tsc --noEmit` exit 0, no deleted files, no untracked files. Awaiting native visual UAT sign-off ("verified").
