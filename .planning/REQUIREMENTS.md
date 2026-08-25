@@ -34,8 +34,8 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **TML-03**: User can select the active Paint track; the active track is always visually unambiguous
 - [x] **TML-04**: User can hide/solo Paint tracks and set internal track opacity and blend mode
 - [x] **TML-05**: Frame keys/caches show on the correct row; Paint/Roto/PlayScript/Cut/Copy/Paste/drag route to the active track
-- [ ] **TML-06**: Hold Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption)
-- [x] **TML-07**: One visually distinct fixed Background row sits beneath Paint rows with imported clips, gaps/fallback, and "clip suivant — interrompt la boucle" label
+- [x] **TML-06**: Hold Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption)
+- [x] **TML-07**: One visually distinct fixed Background row sits beneath Paint rows with imported clips, gaps/fallback, and "next clip — interrupts the loop" label
 - [x] **TML-08**: Track CRUD survives save/reopen; reorder changes compositor order but not track identity
 
 ### CMP — Internal Compositor (Phase 4)
@@ -147,7 +147,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TML-03 | Phase 47 | Complete |
 | TML-04 | Phase 47 | Complete |
 | TML-05 | Phase 47 | Complete |
-| TML-06 | Phase 47 | Pending |
+| TML-06 | Phase 47 | Complete |
 | TML-07 | Phase 47 | Complete |
 | TML-08 | Phase 47 | Complete |
 | CMP-01 | Phase 48 | Pending |

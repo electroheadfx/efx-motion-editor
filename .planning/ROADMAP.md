@@ -285,7 +285,7 @@ Plans:
   4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
   5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans executed
 
 Plans:
 **Wave 1**
