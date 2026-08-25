@@ -303,7 +303,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 47-05-PLAN.md — cross-track drag gesture with destination highlight, moveTrackItems commit, rejection publication
+- [x] 47-05-PLAN.md — cross-track drag gesture with destination highlight, moveTrackItems commit, rejection publication
 
 **UI hint**: yes
 

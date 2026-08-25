@@ -6,15 +6,15 @@ current_phase: 47
 current_phase_name: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
 status: executing
 stopped_at: Phase 47 UI-SPEC approved
-last_updated: "2026-08-25T21:30:00.000Z"
+last_updated: "2026-08-25T18:20:00.000Z"
 last_activity: 2026-08-25
-last_activity_desc: "Phase 47 plan 04 complete (filmstrip capsule — shortened/partial-cycle presentation facts with the requested-duration badge held, paint-only capsule component with source-cycle head cells, ×N/×∞ badge, compact/expanded repetition band and diagonal partial-cut, per-row + Background-row capsule mounts)"
-state_head: 0c6042ba
+last_activity_desc: "Phase 47 plan 05 complete (cross-track drag — any draggable crosses rows with a plain drag; destination highlight + live insertion preview; exactly-once moveTrackItems commit with fresh identities; English rejection map with the red warning triangle; header reorder drag strictly separate)"
+state_head: e67f622c
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 11
 ---
 
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 47 (Internal Multi-track Timeline, Filmstrip Capsules, and Controls) — EXECUTING
 Plan: 5 of 5
 Status: Executing Phase 47
-Last activity: 2026-08-25 — Phase 47 plan 04 complete
+Last activity: 2026-08-25 — Phase 47 plan 05 complete
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -50,7 +50,7 @@ Progress: [█░░░░░░░░░] 11%
 |-------|-------|-------|----------|
 | 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 3 | TBD | - |
-| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 4 | TBD | - |
+| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 5 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
 | 50. Photo/Reference Track | 0 | TBD | - |
@@ -84,6 +84,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P02 | 190 | 3 tasks | 12 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P03 | 45 | 2 tasks | 6 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P04 | 130 | 3 tasks | 8 files |
+| Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P05 | 120 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -156,7 +157,11 @@ Recent decisions affecting current work:
 - [Phase 47 P04]: Capsule-never-math contract: the filmstrip capsule receives presentation + resolver-derived facts (sourceOffsets/sourceFrameCount/cycleLength/repeat) + geometry + cellWidth and never computes loop math; per-row capsule data comes from the store's memoized getTrackRotoResolutionContext(layerId, trackId) projected through the shared presentation module — no resolver math in the strip (grep gate); capsule paint mounts as a sibling with pointer-events: none at z-index 7
 - [Phase 47 P04]: Background-row clips project through the new projectBackgroundFrameLoopClipCapsule (RESEARCH A3): FrameLoopClip is a document record (startFrame/sourceFrameRefs/repeat), not a Hold resolver input, so its projection reads clip facts only; infinite repeats are bounded by the visible frame window (T-47-04-03 DoS guard) and fully-outside clips return null
 - [Phase 47 P04]: The interruption tooltip line ('next clip — interrupts the loop') is appended at tooltip index 5 right after Status; projectPhysicsPaintLoopClipFragmentPresentation re-slices 0..5 and intentionally drops it — fragment views are out of scope
+- [Phase 47 P05]: The cross-track drag (TML-05, D-15/D-16) is a plain drag with NO modifier: any draggable (real key, Key Rail, Loop Clip Rail, rail-set member) crossing a row boundary exposes read-only destinationTrackId/insertionFrame/isCrossing signals (destination highlight + live insertion preview) and NEVER mutates any document during the gesture; the first row-boundary crossing takes pointer capture on the rows-region, so the same-row drag's source element receives lostpointercapture and cancels non-committing — same-row drags stay plain
+- [Phase 47 P05]: The commit is a store port, not a callback: the release handler calls the injected moveTrackItems(layerId, fromTrackId, toTrackId, keys) exactly once and maps the result through buildCrossTrackMoveSuccessMessage ('Moved N key(s) to another track.') / mapCrossTrackMoveRejection (fixed English map: 'Track not found' / 'Destination frame is occupied' / 'Loop would be partially moved' / 'Nothing to move' / 'Key not found', generic 'Move failed.' fallback — D-14) — the hook never computes copy-paste-delete (D-09/D-17); rejections flip the capsule's red warning triangle via the newly forwarded bundle port setApplyStatus('error') (Phase 46 paste UX)
+- [Phase 47 P05]: D-18 gesture separation is enforced by structure + resolver: the header reorder grab (47-02) lives OUTSIDE the rows-region so a grab-drag never reaches the cross-track pointerdown, and the source resolver only resolves content draggables (data-roto-key-id / data-rail-first-frame with the rail discriminator classes / rail-set move members — membership never re-derived); tests assert the grip handler contains no moveTrackItems/crossTrackDrag and a grab-area release never reaches the store
 - [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-04-SUMMARY.md
+- [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-05-SUMMARY.md
 
 ### Pending Todos
 
