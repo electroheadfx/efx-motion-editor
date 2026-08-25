@@ -16,11 +16,11 @@ function cssRule(selector: string): string {
 
 // Documented rail geometry (43.4-06 plan: zero geometry changes; Defect 8
 // visual contract: the ring wraps the band AND the full cell row).
-// 47-01 UAT round 4: the row is now the compact 30px lane (12px band + the
-// full 24px cell row), so the ring's bottom offset re-anchors to 30px.
+// 47-01 UAT round 5: the row is the compact 30px lane (12px band + the
+// 22px-tall cell row), so the ring's bottom offset re-anchors to 30px.
 const LANE_HEIGHT_PX = 30;
 const TARGET_HEIGHT_PX = 12;
-const CELL_HEIGHT_PX = 24;
+const CELL_HEIGHT_PX = 22;
 const RING_OFFSET_PX = 2;
 
 describe('shared rail focus ring (43.4 defect 8)', () => {

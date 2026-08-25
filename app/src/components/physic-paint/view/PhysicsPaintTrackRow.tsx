@@ -25,8 +25,8 @@
 import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, Pencil, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 
-/** 47-01 geometry: shared frame pitch (same 24px as the active track). */
-const ROW_CELL_WIDTH_PX = 24;
+/** 47-01 geometry: shared frame pitch (same 18px as the active track). */
+const ROW_CELL_WIDTH_PX = 18;
 
 export type PhysicsPaintTrackRowKind = 'paint' | 'background';
 

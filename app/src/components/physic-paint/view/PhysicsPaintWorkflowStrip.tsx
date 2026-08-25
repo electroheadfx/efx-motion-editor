@@ -367,10 +367,12 @@ export interface PhysicsPaintWorkflowStripProps {
 }
 
 const RULER_STEP = 3;
-/* 47-01 UAT round 4: 24px square frames (was 18). This drives lane width,
-   ruler ticks, drag/scroll math, and the per-cell grid; one ruler tick spans
-   RULER_STEP cells (3 × 24px = 72px in CSS). */
-const ROTO_CELL_WIDTH_PX = 24;
+/* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request). This
+   drives lane width, ruler ticks, drag/scroll math, and the per-cell grid; one
+   ruler tick spans RULER_STEP cells (3 × 18px = 54px). */
+const ROTO_CELL_WIDTH_PX = 18;
+/** One ruler tick spans RULER_STEP abutting cells (3 × 18px = 54px). */
+const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
 
 /* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
    46 (header) + 1 (strip border) + 1 (timeline border) + 28 (ruler) + 34
@@ -2788,10 +2790,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     target.addEventListener('pointercancel', handlePointerUp);
   }
 
-  // 47-01 UAT round 4: vertical pill scrollbar drag/click-to-scroll handler,
+  // 47-01 UAT round 5: vertical pill scrollbar drag/click-to-scroll handler,
   // mirroring handleTimelineScrollbarPointerDown for the rows-region's vertical
-  // axis. Thumb drag scrolls the rows-region (the pinned header-rows band
-  // follows through the existing syncRowsScroll path).
+  // axis. The scrollbar lives in the SIDEBAR (header column). Thumb drag
+  // scrolls the rows-region (the pinned header-rows band follows through the
+  // existing syncRowsScroll path).
   function handleVerticalScrollbarPointerDown(event: PointerEvent) {
     const el = rowsRegionRef.current;
     const target = event.currentTarget as HTMLElement;
@@ -3268,47 +3271,66 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               trackCount={props.tracks?.length ?? 1}
               onAddTrack={props.onAddTrack}
             />
-            <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={syncHeaderScroll}>
-              {props.tracks && props.activeTrackId ? (
-                <>
-                  {props.tracks.map((track) => (
-                    <PhysicsPaintTrackRowHeader
-                      key={track.id}
-                      trackId={track.id}
-                      label={track.name}
-                      activeTrackId={props.activeTrackId}
-                      onSelectTrack={props.onSelectTrack}
-                      visible={track.visible}
-                      reorderable
-                      deletable={(props.tracks?.length ?? 0) > 1}
-                      editing={renamingTrackId === track.id}
-                      renameValue={renameDraft}
-                      onStartRename={handleStartRename}
-                      onRenameDraftChange={handleRenameDraftChange}
-                      onCommitRename={handleCommitRename}
-                      onCancelRename={handleCancelRename}
-                      onToggleVisible={props.onToggleTrackVisible}
-                      onDuplicateTrack={props.onDuplicateTrack}
-                      onDeleteTrack={props.onDeleteTrack}
-                    />
-                  ))}
-                  {props.background ? (
-                    <PhysicsPaintTrackRowHeader
-                      trackId={props.background.id}
-                      label="Bg"
-                      kind="background"
-                      activeTrackId={props.activeTrackId}
-                      onSelectTrack={props.onSelectTrack}
-                    />
-                  ) : null}
-                </>
+            {/* 47-01 UAT round 5: the vertical pill scrollbar lives in the
+                SIDEBAR — the header-rows band and the scrollbar share one flex
+                row inside the pinned column, so the scrollbar sits ALONGSIDE
+                the track names (not at the timeline's right edge). The thumb
+                drag scrolls the rows-region; the band follows via the shared
+                syncRowsScroll path. */}
+            <div class="physics-paint-header-rows-wrap">
+              <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={syncHeaderScroll}>
+                {props.tracks && props.activeTrackId ? (
+                  <>
+                    {props.tracks.map((track) => (
+                      <PhysicsPaintTrackRowHeader
+                        key={track.id}
+                        trackId={track.id}
+                        label={track.name}
+                        activeTrackId={props.activeTrackId}
+                        onSelectTrack={props.onSelectTrack}
+                        visible={track.visible}
+                        reorderable
+                        deletable={(props.tracks?.length ?? 0) > 1}
+                        editing={renamingTrackId === track.id}
+                        renameValue={renameDraft}
+                        onStartRename={handleStartRename}
+                        onRenameDraftChange={handleRenameDraftChange}
+                        onCommitRename={handleCommitRename}
+                        onCancelRename={handleCancelRename}
+                        onToggleVisible={props.onToggleTrackVisible}
+                        onDuplicateTrack={props.onDuplicateTrack}
+                        onDeleteTrack={props.onDeleteTrack}
+                      />
+                    ))}
+                    {props.background ? (
+                      <PhysicsPaintTrackRowHeader
+                        trackId={props.background.id}
+                        label="Bg"
+                        kind="background"
+                        activeTrackId={props.activeTrackId}
+                        onSelectTrack={props.onSelectTrack}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              {verticalScrollbar.visible ? (
+                <div
+                  class="physics-paint-vertical-scrollbar"
+                  onPointerDown={(event) => handleVerticalScrollbarPointerDown(event as unknown as PointerEvent)}
+                >
+                  <span
+                    class="physics-paint-vertical-scrollbar-thumb"
+                    style={{ top: `${verticalScrollbar.top}px`, height: `${verticalScrollbar.height}px` }}
+                  />
+                </div>
               ) : null}
             </div>
           </div>
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
               {rotoRulerTicks.map(frame => (
-                <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
+                <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
               ))}
             </div>
 
@@ -3355,25 +3377,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               ) : renderActiveLane()}
             </div>
           </div>
-          {/* 47-01 UAT round 4: custom vertical scrollbar (pill design matching
-              the horizontal scrollbar), rendered only while the rows overflow
-              the strip. Dragging the thumb or clicking the track scrolls the
-              rows-region; the pinned header-rows band follows via the shared
-              vertical sync. */}
-          {verticalScrollbar.visible ? (
-            <div class="physics-paint-rows-scrollbar">
-              <div class="physics-paint-rows-scrollbar-ruler-spacer" aria-hidden="true" />
-              <div
-                class="physics-paint-rows-scrollbar-track"
-                onPointerDown={(event) => handleVerticalScrollbarPointerDown(event as unknown as PointerEvent)}
-              >
-                <span
-                  class="physics-paint-rows-scrollbar-thumb"
-                  style={{ top: `${verticalScrollbar.top}px`, height: `${verticalScrollbar.height}px` }}
-                />
-              </div>
-            </div>
-          ) : null}
         </div>
         <div
           class="physics-paint-roto-action-row"

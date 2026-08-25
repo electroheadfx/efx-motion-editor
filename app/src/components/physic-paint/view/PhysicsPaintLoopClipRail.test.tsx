@@ -501,7 +501,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const rail = findOne(tree, (vnode) => vnode.type === PhysicsPaintLoopClipRail);
 
     expect(rail.props.visibleFrameWindow).toEqual({ startFrame: 0, endFrameExclusive: 600 });
-    expect(rail.props.framePitch).toBe(24);
+    expect(rail.props.framePitch).toBe(18);
 
     hooks.reset();
     const railTree = materializeNamedComponents(
@@ -511,9 +511,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const anchors = findAll(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
     const targets = findAll(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
 
+    // 47-01 UAT round 5: geometry is expressed in the strip's actual pitch
+    // (18px) so a future pitch change never hardcodes stale pixel offsets here.
+    const pitch = rail.props.framePitch as number;
     expect(anchors.map((anchor) => anchor.props.style)).toEqual([
-      { left: '12960px', width: '96px' },
-      { left: '13680px', width: '96px' },
+      { left: `${540 * pitch}px`, width: `${4 * pitch}px` },
+      { left: `${570 * pitch}px`, width: `${4 * pitch}px` },
     ]);
     expect(targets).toHaveLength(2);
     expect(hasClass(targets[0], 'mode-progressive')).toBe(true);

@@ -41,7 +41,7 @@ import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysica
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
-const CELL_WIDTH_PX = 24;
+const CELL_WIDTH_PX = 18;
 
 interface TestVNode {
   type: unknown;
@@ -448,7 +448,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
     harness.render();
 
     expectCompletePhysicalExtent(harness);
-    expect(harness.scroller.scrollWidth).toBe(14_400);
+    expect(harness.scroller.scrollWidth).toBe(capacity * CELL_WIDTH_PX);
 
     harness.dragScrollbarToRatio(1);
     const finalScrollLeft = (capacity - visibleFrameCount) * CELL_WIDTH_PX;
@@ -748,6 +748,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(activeHeader).toBeDefined();
       expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
       expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
+      // 47-01 UAT round 5: the header label carries the FULL track name (the
+      // "Track 1" vs "1" fix) — the label span text must match the track name.
+      const activeLabel = findOne(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
+      expect(String(activeLabel.props.children)).toBe('Track 1');
       const bgHeader = headers.find((h) => h.props['data-track-id'] === document.background.id);
       expect(bgHeader).toBeDefined();
       expect(bgHeader!.props['aria-label']).toBe('Select track Bg');

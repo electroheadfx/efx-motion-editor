@@ -2921,7 +2921,7 @@ button.destructive {
   min-height: 0;
   /* Small left offset shared by the ruler and lane so the selected frame-0
      cell's orange ring (2px outline + 1px offset + 1px shadow) is not clipped
-     by the scroll edge (36.15-12, UAT Gap H-5). The 24px pitch and
+     by the scroll edge (36.15-12, UAT Gap H-5). The 18px pitch and
      ruler-to-cell alignment are unchanged. */
   padding-left: 4px;
   overflow-x: auto;
@@ -2971,10 +2971,11 @@ button.destructive {
 
 .physics-paint-ruler-tick {
   position: relative;
-  /* 47-01 UAT round 4: one tick spans RULER_STEP (3) abutting 24px cells, so
-     its flex basis is 3 × 24px = 72px — the label stays centered on its 3-frame
-     group as the pitch grows. */
-  flex: 0 0 72px;
+  /* 47-01 UAT round 5: one tick spans RULER_STEP (3) abutting 18px cells, so
+     its flex basis is 3 × 18px = 54px — the label stays centered on its 3-frame
+     group as the pitch grows. (The strip also sets the same basis inline from
+     RULER_STEP × ROTO_CELL_WIDTH_PX; this rule is the CSS-level fallback.) */
+  flex: 0 0 54px;
   box-sizing: border-box;
   align-self: stretch;
   padding-left: 2px;
@@ -3135,10 +3136,10 @@ button.destructive {
 /* Shared rail focus ring (43.4 feature 8): ONE full-row rectangle for every
    rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
    focused target's ::after so it wraps the whole compact 30px row (12px band
-   + full 24px cell row) at a 2px offset instead of only the 12px hit target,
-   and no container clips it; pointer-events none keeps the 12px hit target
-   unchanged. :focus draws it too so a mouse-clicked rail never falls back to
-   the UA default outline (Defect 6). */
+   + full 22px-tall cell row) at a 2px offset instead of only the 12px hit
+   target, and no container clips it; pointer-events none keeps the 12px hit
+   target unchanged. :focus draws it too so a mouse-clicked rail never falls
+   back to the UA default outline (Defect 6). */
 .physics-paint-rail-target:focus,
 .physics-paint-rail-target:focus-visible {
   outline: none;
@@ -3330,8 +3331,8 @@ button.destructive {
   position: relative;
   display: grid;
   align-items: center;
-  /* 47-01 UAT round 4: compact 30px row — the 24px cells sit inside with
-     ~3px top/bottom padding. */
+  /* 47-01 UAT round 5: compact 30px row — the 22px-tall cells sit inside
+     centered with ~4px top/bottom padding. */
   height: 30px;
   padding: 0;
   background: #37393a;
@@ -3445,20 +3446,28 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* 141px header-rows band, vertically synced with the rows-region (D-05).
-   47-01 UAT round 2: this pinned band carries the ONLY visible vertical
-   scrollbar (slim 6px). It never scrolls away horizontally and only appears
-   when the header rows overflow the 141px cap — which happens exactly when the
-   rows-region overflows — so it behaves as a real control, never a static
-   decorative bar. */
+/* Pinned header-rows band, vertically synced with the rows-region (D-05).
+   47-01 UAT round 5: the band and the vertical pill scrollbar share one flex
+   row (.physics-paint-header-rows-wrap) inside the pinned column, so the
+   vertical scrollbar lives ALONGSIDE the track names in the sidebar — not at
+   the timeline's right edge. The band's native scrollbar stays hidden; the
+   pill is the single visible vertical control and only appears on overflow
+   (exactly when the rows-region overflows), so it behaves as a real control,
+   never a static decorative bar. */
+.physics-paint-header-rows-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+}
+
 .physics-paint-header-rows {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  /* 47-01 UAT round 4: native scrollbar hidden — the custom pill vertical
-     scrollbar (.physics-paint-rows-scrollbar) is now the timeline's single
-     vertical scroll control, matching the horizontal pill design. */
   scrollbar-width: none;
 }
 
@@ -3497,40 +3506,20 @@ button.destructive {
   display: none;
 }
 
-/* 47-01 UAT round 4: custom vertical scrollbar matching the horizontal pill
-   design. A 14px rounded track column spanning the rows-region height (below a
-   28px ruler spacer that aligns it with the frame ruler); the thumb is the same
-   inset rounded #8a8a8a pill recipe as the horizontal scrollbar, rotated 90°.
-   Rendered only when the rows overflow; the header-rows band and rows-region
-   native scrollbars are hidden. */
-.physics-paint-rows-scrollbar {
+/* 47-01 UAT round 5: vertical pill scrollbar IN THE SIDEBAR (header column),
+   matching the horizontal pill design. The thumb is the visible rounded
+   #8a8a8a pill; the track is transparent (no full-height #585a5c rounded bar —
+   that is the "strange div" the user flagged under the slider). Rendered only
+   on overflow; dragging the thumb / clicking the track scrolls the rows-region
+   and the band together. */
+.physics-paint-vertical-scrollbar {
   position: relative;
-  display: flex;
-  flex-direction: column;
   flex: 0 0 14px;
-  min-width: 0;
   min-height: 0;
-  background: #3e3f41;
-  border-left: 1px solid #4c4e50;
-}
-
-.physics-paint-rows-scrollbar-ruler-spacer {
-  flex: 0 0 28px;
-}
-
-.physics-paint-rows-scrollbar-track {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  width: 14px;
-  margin: 0;
-  border: 0;
-  border-radius: 999px;
-  background: #585a5c;
   cursor: pointer;
 }
 
-.physics-paint-rows-scrollbar-thumb {
+.physics-paint-vertical-scrollbar-thumb {
   position: absolute;
   left: 4px;
   right: 4px;
@@ -3659,28 +3648,33 @@ button.destructive {
 }
 
 /* Hover-visible tool buttons (eye / pencil / copy / trash-2). 47-01 UAT
-   round 3: the tools are part of the header's flex flow with a RESERVED width
-   (always present in flow, `visibility: hidden` when not hovered → visible on
-   hover), so the label truncates to the remaining space instead of being
-   covered by an overlay. pointer-events are disabled while hidden so the
-   invisible buttons never swallow header clicks.
+   round 5: the tools collapse to ZERO width while hidden (max-width: 0 +
+   overflow: hidden) so they reserve no layout space at rest — the track name
+   keeps the full header width and reads whole ("Track 1", not "1"). On hover
+   they expand to their reserved width (max-width: 84px) and push the label
+   left; the label truncates rather than being covered by an overlay.
+   pointer-events are disabled while hidden so the invisible buttons never
+   swallow header clicks.
 
    47-01 UAT round 2: the dark right-to-left gradient is removed — it washed a
    dark veil over the track name. The buttons now carry their own solid
    surfaces (below), so they separate from the label without a gradient. */
 .physics-paint-track-row-tools {
   flex: 0 0 auto;
+  max-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 2px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.12s ease, max-width 0.12s ease;
 }
 
 .physics-paint-track-row-header:hover .physics-paint-track-row-tools,
 .physics-paint-track-row-header:focus-within .physics-paint-track-row-tools {
+  max-width: 84px;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -3848,10 +3842,11 @@ button.destructive {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  /* 47-01 UAT round 4: the cell is a SQUARE 24x24 (matching the 24px pitch,
-     border-box, ~22px visible interior) centered vertically in the compact
-     30px row — never stretched to fill the row. The 24px pitch is unchanged. */
-  height: 24px;
+  /* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request). The
+     width follows the 18px grid column (border-box, ~16px visible interior);
+     the fixed 22px height centers in the compact 30px row (~4px above/below) —
+     never stretched to fill the row. */
+  height: 22px;
   padding: 0;
   border: 1px solid #3d454d;
   border-radius: 1px;
