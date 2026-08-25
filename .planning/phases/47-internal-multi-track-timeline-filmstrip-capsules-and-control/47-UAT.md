@@ -33,6 +33,21 @@ expected: Track 1 and new tracks keep their keys across save/reopen; painting st
 
 ## Summary
 
+### Round 2 (2026-08-25) — test 1 feedback + fixes (commit d437f053)
+
+- Open tools panel now takes over the WHOLE row: grip, eye, blend, name and
+  the more-button hide; the solo / copy / trash buttons stretch across the
+  track's full width (flex: 1 each).
+- Header column widened again: 160px -> 185px.
+- NEW per-track frame-blending toggle after the eye: shows the Blend icon,
+  its pressed state reads that track's canonical interpolation state, the
+  click writes `setRotoPhysicalInterpolationState(layerId, trackId, ...)`
+  (revision bump -> pushed into the parent document via serialize; guarded
+  while a physical edit is pending).
+
+Re-verification of this group is pending user response; remaining UAT items
+(2-5) are still awaiting the user's group-by-group reports.
+
 ### Round 1 (2026-08-25) — test 1 feedback + fixes (commit 6d19e5f6)
 
 User feedback on the header column:
