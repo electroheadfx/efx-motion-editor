@@ -1,5 +1,5 @@
 /**
- * 47-01 multi-track row slice: one 48px Paint (or Background) track row.
+ * 47-01 multi-track row slice: one 30px compact Paint (or Background) track row.
  *
  * The row renders the SHARED `frameCells` extent produced by the strip's
  * structural index (never its own horizontal viewport), but reads cell
@@ -25,8 +25,8 @@
 import { Copy, Eye, EyeOff, GripVertical, Layers, Lock, Pencil, Plus, Trash2 } from 'lucide-preact';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 
-/** 47-01 geometry: shared frame pitch (same 18px as the active track). */
-const ROW_CELL_WIDTH_PX = 18;
+/** 47-01 geometry: shared frame pitch (same 24px as the active track). */
+const ROW_CELL_WIDTH_PX = 24;
 
 export type PhysicsPaintTrackRowKind = 'paint' | 'background';
 
@@ -66,7 +66,7 @@ const TRACK_ROW_CELL_FILL_CLASS: Record<TrackRowCellState, string> = {
 };
 
 /**
- * One 48px track row's cells track. The active track's row keeps the strip's
+ * One 30px track row's cells track. The active track's row keeps the strip's
  * rich lane (rails + interactive cells) in the strip; this component renders
  * the per-track cells grid for every non-active Paint track and the fixed
  * Background row, reading the SAME frameCells through the row's trackId.
@@ -154,7 +154,7 @@ export interface PhysicsPaintTrackRowHeaderProps {
 }
 
 /**
- * One 48 px header cell in the strip's pinned header column. Every row —
+ * One 30px header cell in the strip's pinned header column. Every row —
  * including the active lane and the fixed Background row — gets exactly one
  * header cell showing its track name (UI-SPEC header column layout). The
  * header column never scrolls horizontally with the frame cells (D-05).

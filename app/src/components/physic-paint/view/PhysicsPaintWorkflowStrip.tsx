@@ -367,16 +367,19 @@ export interface PhysicsPaintWorkflowStripProps {
 }
 
 const RULER_STEP = 3;
-const ROTO_CELL_WIDTH_PX = 18;
+/* 47-01 UAT round 4: 24px square frames (was 18). This drives lane width,
+   ruler ticks, drag/scroll math, and the per-cell grid; one ruler tick spans
+   RULER_STEP cells (3 × 24px = 72px in CSS). */
+const ROTO_CELL_WIDTH_PX = 24;
 
 /* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
    46 (header) + 1 (strip border) + 1 (timeline border) + 28 (ruler) + 34
-   (action row) + 14 (scrollbar) = 124px. The strip defaults to exactly enough
-   height for every track row + the Bg row (48px each), capped at 270px so the
-   canvas keeps room; the top-edge drag handle lets the user shrink (vertical
-   scroll appears) or grow up to the full content height — never beyond the
-   number of tracks. */
-const STRIP_ROW_HEIGHT_PX = 48;
+   (action row) + 14 (scrollbar) = 124. The strip defaults to exactly enough
+   height for every track row + the Bg row (30px each, UAT round 4 compact
+   rows), capped at 270px so the canvas keeps room; the top-edge drag handle
+   lets the user shrink (vertical scroll appears) or grow up to the full
+   content height — never beyond the number of tracks. */
+const STRIP_ROW_HEIGHT_PX = 30;
 const STRIP_CHROME_HEIGHT_PX = 124;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
@@ -1061,6 +1064,9 @@ const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
+  // 47-01 UAT round 4: custom vertical scrollbar state (thumb top/height),
+  // mirroring the horizontal pill design for the rows-region.
+  const [verticalScrollbar, setVerticalScrollbar] = useState({ top: 0, height: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   // Group Rail drag preview (plan 03): session-only publication surfaced by the
   // rail's session hook, consumed for the gap preview paint only (Pitfall 5).
@@ -1072,8 +1078,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const timelineContentRef = useRef<HTMLDivElement>(null);
   // 47-01 header column: the pinned header-rows container and the rows-region
   // share the same vertical scroll position (D-05). The sync is a no-op while
-  // the track count fits the 141px band; it keeps header cells aligned with
-  // their rows once the region overflows.
+  // the track count fits the band; it keeps header cells aligned with their
+  // rows once the region overflows.
   const headerRowsRef = useRef<HTMLDivElement>(null);
   const rowsRegionRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
@@ -2300,10 +2306,31 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     });
   }, []);
 
-  // 47-01 header-column vertical sync (D-05): the pinned header-rows and the
-  // rows-region share one vertical scroll position. Each handler mirrors the
-  // other container's scrollTop; the equality guard prevents a ping-pong loop
-  // (setting scrollTop to the same value fires no scroll event).
+  // 47-01 UAT round 4: custom vertical scrollbar thumb state, mirroring
+  // updateScrollbar for the rows-region's vertical axis (top/height/visible).
+  const updateVerticalScrollbar = useCallback(() => {
+    const el = rowsRegionRef.current;
+    if (!el) return;
+    const { clientHeight, scrollTop, scrollHeight } = el;
+    const visible = scrollHeight > clientHeight + 1;
+    if (!visible) {
+      setVerticalScrollbar({ top: 0, height: 0, visible: false });
+      return;
+    }
+    const thumbHeight = Math.max(40, (clientHeight / scrollHeight) * clientHeight);
+    const thumbRange = clientHeight - thumbHeight;
+    const scrollRange = scrollHeight - clientHeight;
+    setVerticalScrollbar({
+      top: scrollRange > 0 ? (scrollTop / scrollRange) * thumbRange : 0,
+      height: thumbHeight,
+      visible,
+    });
+  }, []);
+
+  // 47-01 header-column sync (D-05): the header rows and the rows-region share
+  // one vertical scroll position. Each handler mirrors the other container's
+  // scrollTop; the equality guard prevents a ping-pong loop (setting scrollTop
+  // to the same value fires no scroll event).
   const syncHeaderScroll = useCallback(() => {
     if (headerRowsRef.current && rowsRegionRef.current && headerRowsRef.current.scrollTop !== rowsRegionRef.current.scrollTop) {
       rowsRegionRef.current.scrollTop = headerRowsRef.current.scrollTop;
@@ -2315,6 +2342,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       headerRowsRef.current.scrollTop = rowsRegionRef.current.scrollTop;
     }
   }, []);
+
+  // Rows-region scroll handler: keeps the header band in lockstep AND keeps
+  // the custom vertical pill scrollbar thumb in sync (single path — no
+  // double derivation).
+  const handleRowsRegionScroll = useCallback(() => {
+    syncRowsScroll();
+    updateVerticalScrollbar();
+  }, [syncRowsScroll, updateVerticalScrollbar]);
 
   const classifyRotoDragTarget = useCallback((clientX: number, clientY: number, movedKeyId: string, sourceAppFrame: number): {
     target: RotoDragTarget | null;
@@ -2671,21 +2706,28 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   useEffect(() => {
     const el = timelineScrollRef.current;
     const content = timelineContentRef.current;
-    if (!el || !content) return;
+    const rows = rowsRegionRef.current;
     updateScrollbar();
-    const observer = new ResizeObserver(updateScrollbar);
-    observer.observe(el);
-    observer.observe(content);
+    updateVerticalScrollbar();
+    const refresh = () => {
+      updateScrollbar();
+      updateVerticalScrollbar();
+    };
+    const observer = new ResizeObserver(refresh);
+    if (el) observer.observe(el);
+    if (content) observer.observe(content);
+    if (rows) observer.observe(rows);
     recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install');
     return () => {
       recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup');
       observer.disconnect();
     };
-  }, [updateScrollbar]);
+  }, [updateScrollbar, updateVerticalScrollbar]);
 
   useLayoutEffect(() => {
     updateScrollbar();
-  }, [frameCells, currentPhysicalCells, updateScrollbar]);
+    updateVerticalScrollbar();
+  }, [frameCells, currentPhysicalCells, updateScrollbar, updateVerticalScrollbar]);
 
   // Plain-wheel horizontal scrolling (38-10, 38.1-06 deferred follow-up #2):
   // a vertical wheel delta over the timeline scroller drives scrollLeft.
@@ -2735,6 +2777,40 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     target.setPointerCapture(event.pointerId);
     scrollFromPointer(event.clientX);
     const handlePointerMove = (moveEvent: PointerEvent) => scrollFromPointer(moveEvent.clientX);
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerUp);
+    };
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUp);
+    target.addEventListener('pointercancel', handlePointerUp);
+  }
+
+  // 47-01 UAT round 4: vertical pill scrollbar drag/click-to-scroll handler,
+  // mirroring handleTimelineScrollbarPointerDown for the rows-region's vertical
+  // axis. Thumb drag scrolls the rows-region (the pinned header-rows band
+  // follows through the existing syncRowsScroll path).
+  function handleVerticalScrollbarPointerDown(event: PointerEvent) {
+    const el = rowsRegionRef.current;
+    const target = event.currentTarget as HTMLElement;
+    if (!el) return;
+    const rect = target.getBoundingClientRect();
+    const thumbTop = verticalScrollbar.top;
+    const thumbBottom = verticalScrollbar.top + verticalScrollbar.height;
+    const pointerY = event.clientY - rect.top;
+    const thumbOffset = pointerY >= thumbTop && pointerY <= thumbBottom ? pointerY - thumbTop : verticalScrollbar.height / 2;
+    const scrollFromPointer = (clientY: number) => {
+      const y = Math.max(0, Math.min(rect.height - verticalScrollbar.height, clientY - rect.top - thumbOffset));
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const maxThumb = rect.height - verticalScrollbar.height;
+      el.scrollTop = maxThumb > 0 ? (y / maxThumb) * maxScroll : 0;
+      updateVerticalScrollbar();
+    };
+    target.setPointerCapture(event.pointerId);
+    scrollFromPointer(event.clientY);
+    const handlePointerMove = (moveEvent: PointerEvent) => scrollFromPointer(moveEvent.clientY);
     const handlePointerUp = (upEvent: PointerEvent) => {
       target.releasePointerCapture(upEvent.pointerId);
       target.removeEventListener('pointermove', handlePointerMove);
@@ -3237,10 +3313,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             </div>
 
             {/* 47-01: the active track's rich lane lives INSIDE the shared
-                rows-region (141px) stacked above one presentational row per
-                non-active Paint track and the fixed Background row. When no
-                multi-track bundle is supplied the region holds only the lane,
-                keeping the pre-47 single-lane surface's DOM contract. */}
+                rows-region stacked above one presentational row per non-active
+                Paint track and the fixed Background row. When no multi-track
+                bundle is supplied the region holds only the lane, keeping the
+                pre-47 single-lane surface's DOM contract. */}
             {/* 47-01 UAT round 2: the rows-region carries the SAME full
                 frame-capacity width as the ruler and the active lane, so the
                 per-track frame cells extend past the viewport and scroll with
@@ -3249,7 +3325,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               ref={rowsRegionRef}
               class="physics-paint-rows-region"
               data-rows={props.tracks ? 'multi' : 'single'}
-              onScroll={syncRowsScroll}
+              onScroll={handleRowsRegionScroll}
               style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
             >
               {props.tracks && props.activeTrackId && props.layerId ? (
@@ -3279,6 +3355,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               ) : renderActiveLane()}
             </div>
           </div>
+          {/* 47-01 UAT round 4: custom vertical scrollbar (pill design matching
+              the horizontal scrollbar), rendered only while the rows overflow
+              the strip. Dragging the thumb or clicking the track scrolls the
+              rows-region; the pinned header-rows band follows via the shared
+              vertical sync. */}
+          {verticalScrollbar.visible ? (
+            <div class="physics-paint-rows-scrollbar">
+              <div class="physics-paint-rows-scrollbar-ruler-spacer" aria-hidden="true" />
+              <div
+                class="physics-paint-rows-scrollbar-track"
+                onPointerDown={(event) => handleVerticalScrollbarPointerDown(event as unknown as PointerEvent)}
+              >
+                <span
+                  class="physics-paint-rows-scrollbar-thumb"
+                  style={{ top: `${verticalScrollbar.top}px`, height: `${verticalScrollbar.height}px` }}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
         <div
           class="physics-paint-roto-action-row"

@@ -41,7 +41,7 @@ import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysica
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
-const CELL_WIDTH_PX = 18;
+const CELL_WIDTH_PX = 24;
 
 interface TestVNode {
   type: unknown;
@@ -448,7 +448,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
     harness.render();
 
     expectCompletePhysicalExtent(harness);
-    expect(harness.scroller.scrollWidth).toBe(10_800);
+    expect(harness.scroller.scrollWidth).toBe(14_400);
 
     harness.dragScrollbarToRatio(1);
     const finalScrollLeft = (capacity - visibleFrameCount) * CELL_WIDTH_PX;
@@ -760,12 +760,12 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(headerColumn).toBeDefined();
       const headerRows = harness.headerRows();
       expect(headerRows).toBeDefined();
-      // Header cells live inside the 141px header-rows band, so each 48px
-      // header cell aligns 1:1 with its 48px row.
+      // Header cells live inside the header-rows band, so each 30px header
+      // cell aligns 1:1 with its 30px row.
       expect(harness.headerRowsHeaders()).toHaveLength(3);
     });
 
-    it('keeps the rows-region a distinct 141px band below the active lane (UI-SPEC rows region)', () => {
+    it('keeps the rows-region a distinct band holding the active lane (UI-SPEC rows region)', () => {
       const layerId = 'multi-track-layer';
       const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
       const harness = createWorkflowHarness({
@@ -799,10 +799,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 2 Paint rows + 1 Bg row = 3 rows × 48px = 144px content; chrome 124px
-      // → default = min(124 + 144, 270) = 268px (all rows visible, no dead
+      // 2 Paint rows + 1 Bg row = 3 rows × 30px = 90px content; chrome 124px
+      // → default = min(124 + 90, 270) = 214px (all rows visible, no dead
       // space, no scroll).
-      expect(String(stripStyle.height)).toBe('268px');
+      expect(String(stripStyle.height)).toBe('214px');
     });
 
     it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
@@ -823,7 +823,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 5 Paint rows + 1 Bg row = 6 rows × 48px = 288px content; default is
+      // 5 Paint rows + 1 Bg row = 6 rows × 30px = 180px content; default is
       // capped at 270px so the canvas keeps room — the rows region scrolls.
       expect(String(stripStyle.height)).toBe('270px');
     });

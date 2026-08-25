@@ -2921,7 +2921,7 @@ button.destructive {
   min-height: 0;
   /* Small left offset shared by the ruler and lane so the selected frame-0
      cell's orange ring (2px outline + 1px offset + 1px shadow) is not clipped
-     by the scroll edge (36.15-12, UAT Gap H-5). The 18px pitch and
+     by the scroll edge (36.15-12, UAT Gap H-5). The 24px pitch and
      ruler-to-cell alignment are unchanged. */
   padding-left: 4px;
   overflow-x: auto;
@@ -2971,7 +2971,10 @@ button.destructive {
 
 .physics-paint-ruler-tick {
   position: relative;
-  flex: 0 0 54px;
+  /* 47-01 UAT round 4: one tick spans RULER_STEP (3) abutting 24px cells, so
+     its flex basis is 3 × 24px = 72px — the label stays centered on its 3-frame
+     group as the pitch grows. */
+  flex: 0 0 72px;
   box-sizing: border-box;
   align-self: stretch;
   padding-left: 2px;
@@ -3129,13 +3132,13 @@ button.destructive {
   border-right: 1px solid #f8fafc;
 }
 
-/* Shared rail focus ring (43.4 defect 8): ONE full-row rectangle for every
+/* Shared rail focus ring (43.4 feature 8): ONE full-row rectangle for every
    rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
-   focused target's ::after so it wraps the whole 38px lane (3px band + full
-   24px cell row) at a 2px offset instead of only the 12px hit target, and no
-   container clips it; pointer-events none keeps the 12px hit target
-   unchanged. :focus draws the ring too so a mouse-clicked rail never falls
-   back to the UA default outline (Defect 6). */
+   focused target's ::after so it wraps the whole compact 30px row (12px band
+   + full 24px cell row) at a 2px offset instead of only the 12px hit target,
+   and no container clips it; pointer-events none keeps the 12px hit target
+   unchanged. :focus draws it too so a mouse-clicked rail never falls back to
+   the UA default outline (Defect 6). */
 .physics-paint-rail-target:focus,
 .physics-paint-rail-target:focus-visible {
   outline: none;
@@ -3148,11 +3151,11 @@ button.destructive {
   top: -2px;
   left: -2px;
   right: -2px;
-  bottom: -24px;
+  bottom: -20px;
   z-index: 2;
   border: 2px solid #f2f5f7;
   /* Capsule-ish rounding on the full-row ring (8px reads rounded on the
-     ~38px-tall rectangle without going full pill); identical across every
+     ~32px-tall rectangle without going full pill); identical across every
      rail family via the shared class. */
   border-radius: 8px;
   pointer-events: none;
@@ -3327,7 +3330,9 @@ button.destructive {
   position: relative;
   display: grid;
   align-items: center;
-  height: 48px;
+  /* 47-01 UAT round 4: compact 30px row — the 24px cells sit inside with
+     ~3px top/bottom padding. */
+  height: 30px;
   padding: 0;
   background: #37393a;
 }
@@ -3346,8 +3351,8 @@ button.destructive {
 }
 
 /* Pinned 140px header column (UI-SPEC D-01): lists every row's track name.
-   Its 28px ruler spacer + 141px header-rows band mirror the ruler + rows
-   region heights so header cells align 1:1 with their rows. */
+   Its 28px ruler spacer + header-rows band mirror the ruler + rows region so
+   header cells align 1:1 with their rows. */
 .physics-paint-header-column {
   display: flex;
   flex-direction: column;
@@ -3451,34 +3456,32 @@ button.destructive {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
+  /* 47-01 UAT round 4: native scrollbar hidden — the custom pill vertical
+     scrollbar (.physics-paint-rows-scrollbar) is now the timeline's single
+     vertical scroll control, matching the horizontal pill design. */
+  scrollbar-width: none;
 }
 
 .physics-paint-header-rows::-webkit-scrollbar {
-  width: 6px;
-}
-
-.physics-paint-header-rows::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: #585a5c;
+  display: none;
 }
 
 /* 47-01 mockup redesign rows-region: the region SIZES TO ITS CONTENT — every
-   Track row + the fixed Background row at 48px each — with NO fixed
-   141px band and no dead space below the Background row.
+   Track row + the fixed Background row at 30px each — with NO fixed band and
+   no dead space below the Background row.
 
    47-01 UAT round 2: the region carries the FULL frame-capacity width
    (inline width/minWidth set by the strip) so the frame cells extend past the
    viewport and scroll with the ruler instead of clipping at the window width.
-   Its native vertical scrollbar is hidden — the only visible vertical scroll
-   control lives on the pinned header-rows band (D-05), which overflows exactly
-   when this region does, so no fake static bar is ever drawn.
 
    47-01 UAT round 3: the region's height is driven by the strip's DYNAMIC
    height (flex: 1 1 auto; min-height: 0 inside the timeline-scroll column) —
    it fills whatever space the strip leaves below the ruler and scrolls
-   vertically when the strip is too short for all rows. The old 141px cap is
-   gone. */
+   vertically when the strip is too short for all rows.
+
+   47-01 UAT round 4: the region's native vertical scrollbar stays hidden (it
+   always was); the custom pill scrollbar below is now the single visible
+   vertical control. */
 .physics-paint-rows-region {
   display: flex;
   flex-direction: column;
@@ -3494,12 +3497,55 @@ button.destructive {
   display: none;
 }
 
-/* One presentational 48px track row: per-track cells lane only. The row's
+/* 47-01 UAT round 4: custom vertical scrollbar matching the horizontal pill
+   design. A 14px rounded track column spanning the rows-region height (below a
+   28px ruler spacer that aligns it with the frame ruler); the thumb is the same
+   inset rounded #8a8a8a pill recipe as the horizontal scrollbar, rotated 90°.
+   Rendered only when the rows overflow; the header-rows band and rows-region
+   native scrollbars are hidden. */
+.physics-paint-rows-scrollbar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 14px;
+  min-width: 0;
+  min-height: 0;
+  background: #3e3f41;
+  border-left: 1px solid #4c4e50;
+}
+
+.physics-paint-rows-scrollbar-ruler-spacer {
+  flex: 0 0 28px;
+}
+
+.physics-paint-rows-scrollbar-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 14px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #585a5c;
+  cursor: pointer;
+}
+
+.physics-paint-rows-scrollbar-thumb {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  min-height: 40px;
+  border-radius: 999px;
+  background: #8a8a8a;
+  pointer-events: none;
+}
+
+/* One presentational 30px track row: per-track cells lane only. The row's
    header cell lives in the pinned header column (PhysicsPaintTrackRowHeader),
    so the row itself carries no label column. */
 .physics-paint-track-row {
-  height: 48px;
-  min-height: 48px;
+  height: 30px;
+  min-height: 30px;
   border-top: 1px solid #47494b;
   background: #3a3c3d;
 }
@@ -3507,7 +3553,7 @@ button.destructive {
 .physics-paint-track-row-lane {
   display: flex;
   align-items: center;
-  height: 48px;
+  height: 30px;
   min-width: 0;
   overflow: hidden;
 }
@@ -3520,19 +3566,20 @@ button.destructive {
   border-top: 0;
 }
 
-/* One 48px header cell in the pinned header column. Every row — including
+/* One 30px header cell in the pinned header column. Every row — including
    the active lane and the fixed Background row — gets exactly one header
-   cell showing its track name (UI-SPEC header column layout). 47-01 mockup
-   redesign: reorder grip + truncated name + hover tools (eye/pencil/copy/
-   trash-2); a reserved 3px left border keeps content from shifting when the
-   active accent appears. */
+   cell showing its track name (UI-SPEC header column layout). The 30px
+   height matches the compact frame lanes so headers align 1:1 with their
+   rows. 47-01 mockup redesign: reorder grip + truncated name + hover/replace
+   tools (eye/pencil/copy/trash-2); a reserved 3px left border keeps content
+   from shifting when the active accent appears. */
 .physics-paint-track-row-header {
   position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 48px;
-  min-height: 48px;
+  height: 30px;
+  min-height: 30px;
   padding: 0 6px 0 5px;
   border-bottom: 1px solid #4c4e50;
   border-left: 3px solid transparent;
@@ -3801,10 +3848,10 @@ button.destructive {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  /* 47-01 UAT round 3: the cell is a SQUARE ~18x18 (matching the 18px pitch,
-     border-box) centered vertically in the locked 48px row — never stretched
-     to fill the row. The 18px pitch is unchanged. */
-  height: 18px;
+  /* 47-01 UAT round 4: the cell is a SQUARE 24x24 (matching the 24px pitch,
+     border-box, ~22px visible interior) centered vertically in the compact
+     30px row — never stretched to fill the row. The 24px pitch is unchanged. */
+  height: 24px;
   padding: 0;
   border: 1px solid #3d454d;
   border-radius: 1px;
