@@ -1061,7 +1061,7 @@ export function PhysicsPaintStudio() {
       getCurrentAppFrame: () => currentFrame,
       setCurrentAppFrame: (frame) => {
         const launch = launchContextRef.current;
-        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, trackIdOfLaunch(launch), selectedKeyId.value, frame);
+        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
         setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
       },
     },
@@ -1311,7 +1311,7 @@ export function PhysicsPaintStudio() {
 
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
-      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, trackIdOfLaunch(launch), source.keyId);
+      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);
       return record?.appFrame === source.appFrame
         ? { keyId: record.keyId, appFrame: record.appFrame }
         : null;
@@ -1342,7 +1342,7 @@ export function PhysicsPaintStudio() {
       || accepted.after.selectedAppFrame !== source.appFrame
       || !accepted.after.selectedKeyId
     ) return null;
-    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, trackIdOfLaunch(launch), accepted.after.selectedKeyId);
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);
     return record?.appFrame === source.appFrame
       ? { keyId: record.keyId, appFrame: record.appFrame }
       : null;
@@ -1827,7 +1827,7 @@ export function PhysicsPaintStudio() {
   const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
   beginRotoFrameEditImplRef.current = () => {
     const launch = launchContextRef.current;
-    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, trackIdOfLaunch(launch)) : null;
+    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;
     const paintTarget = document
       ? resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)
       : null;
@@ -1987,10 +1987,10 @@ export function PhysicsPaintStudio() {
       }
     }
     if (launchContext) {
-      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, trackIdOfLaunch(launchContext), frame);
+      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
-      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackIdOfLaunch(launchContext), selectedKeyId.value, frame);
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
     }
     // 38.1 D-04: the startFrame update — the full-Studio-render driver via
     // currentFrame — is rAF-batched so a click burst coalesces to at most one
@@ -2681,7 +2681,7 @@ export function PhysicsPaintStudio() {
     if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
     if (acceptedTarget && !acceptedTarget.publishPixels) return;
     const appFrame = acceptedTarget?.appFrame ?? currentFrame;
-    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext));
+    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
     const completedTarget = acceptedTarget?.keyId
       ? { kind: 'ordinary-key' as const, keyId: acceptedTarget.keyId, appFrame }
       : document

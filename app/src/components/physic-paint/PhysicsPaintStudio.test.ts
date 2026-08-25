@@ -94,7 +94,7 @@ describe('Physics Paint Play Script integration contract', () => {
   it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {
     expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
     expect(studio).toContain('getLoopEditSnapshot: (placementStart) => {');
-    expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, trackIdOfLaunch(launchContext))');
+    expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())');
     expect(studio).toContain('const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId());');
     expect(studio).toContain('layerEndExclusive,');
     expect(studio).toContain('remainingCapacity: Math.max(0, layerEndExclusive - placementStart)');
@@ -107,6 +107,21 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('selectedLoopClipId.value = null;');
     expect(scriptsPanel).toContain('void onOpenLoopEdit(selectedLoopClip.loopId);');
     expect(scriptsPanel).not.toContain('onOpenLoopEdit?.');
+  });
+
+  it('routes every paint-path document and record read through the live active track (47-01 multi-track)', () => {
+    // 47-01 UAT: painting on a NEW track stored nothing — the completed-mutation
+    // handler, the first-paint key promotion, and the script target resolver all
+    // read the LAUNCH track's document/records. Each must resolve the document's
+    // live activeTrackId so a paint on the new track persists to the new track.
+    expect(studio).toContain('const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;');
+    expect(studio).toContain('const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());');
+    expect(studio).toContain('const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);');
+    expect(studio).toContain('const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);');
+    // Navigation selection writes must land on the active track, never the launch track.
+    expect(studio).toContain('if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
+    expect(studio).toContain('const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);');
+    expect(studio).toContain('physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
   });
 });
 
