@@ -33,24 +33,24 @@ expected: Track 1 and new tracks keep their keys across save/reopen; painting st
 
 ## Summary
 
-### Round 6 (2026-08-26) — test 3 capsule regression fix (commit 62053516)
+### Round 6 (2026-08-26) — test 3 capsule regression: FULL removal (commit 346d47bc)
 
-User report (screenshot): the capsule evolution added text and number
-pills all over the rails — unacceptable noise on the locked Phase 43
-surface.
+User report (screenshot + follow-up): the capsule evolution added text
+and pill noise over frames and keys on the Motion/Static rails AND on
+unselected tracks; the demanded outcome is ALL this detail removed from
+the rails. A first attempt (62053516) only stripped the cell numbers and
+compacted the badge — insufficient; the user confirmed the noise was
+STILL there.
 
-- Per-cell number pills on key cells REMOVED: source-cycle and repetition
-  cells are pure visual treatments (background blocks only); no numeric
-  labels stamped on frame cells (UI-SPEC 'long-text dismissed').
-- The duration text ('Cycle 9f × 2 = 18f ×2') is now ONE compact badge at
-  the capsule head, sized to fit: when the full cycle label fits the
-  capsule width it shows 'Cycle 4f × 3 = 12f'; when it does not, it
-  shrinks to the ×N/×∞ form (marker-only violet). The badge is capped at
-  the capsule width (max-width: 100%), so it never paints over frame
-  cells. The duplicated ×N suffix is gone.
-- The 'Loop shortened by next clip' overlay moved from the capsule
-  surface into the tooltip (amber border + diagonal cut keep the
-  shortened visual); capsule carries at most one compact badge.
+Final fix: the filmstrip capsule layer is removed ENTIRELY from the
+timeline — the loop-clip rails (Motion/Static) and every track row
+(including the Background row) return to the locked Phase 43 surface.
+- Deleted the capsule component + its tests + the per-row capsule
+  projection chain (`buildPaintRowLoopCapsules`,
+  `buildBackgroundRowLoopCapsules`) + the background clip projection
+  (`projectBackgroundFrameLoopClipCapsule`) + all capsule CSS.
+- Loop facts (cycle label, effective duration, shortened state) remain
+  available in the rail tooltip only — nothing painted on the rail.
 
 Re-verification pending user response.
 
