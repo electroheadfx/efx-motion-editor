@@ -340,6 +340,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     headerColumn: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-column')),
     headerRows: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-header-rows')),
     rowsRegion: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-rows-region')),
+    stripSection: () => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-workflow-strip')),
     rowsRegionRows: () => {
       const region = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-rows-region'));
       return findAll(region, (vnode) => (
@@ -783,6 +784,48 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       const lane = findOne(rowsRegion, (vnode) => hasClass(vnode, 'physics-paint-lane'));
       expect(lane).toBeDefined();
       expect(harness.rowsRegionRows()).toHaveLength(2);
+    });
+
+    it('defaults the strip height to exactly the rows content, capped at 270px (UAT round 3 flexible height)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      const strip = harness.stripSection();
+      const stripStyle = strip.props.style as { height?: string };
+      // 2 Paint rows + 1 Bg row = 3 rows × 48px = 144px content; chrome 124px
+      // → default = min(124 + 144, 270) = 268px (all rows visible, no dead
+      // space, no scroll).
+      expect(String(stripStyle.height)).toBe('268px');
+    });
+
+    it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const extraTracks: InternalPaintTrack[] = [
+        { ...trackB, id: 'track-c', name: 'Paint 3', order: 2 },
+        { ...trackB, id: 'track-d', name: 'Paint 4', order: 3 },
+        { ...trackB, id: 'track-e', name: 'Paint 5', order: 4 },
+      ];
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB, ...extraTracks],
+        activeTrackId: trackA.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      const strip = harness.stripSection();
+      const stripStyle = strip.props.style as { height?: string };
+      // 5 Paint rows + 1 Bg row = 6 rows × 48px = 288px content; default is
+      // capped at 270px so the canvas keeps room — the rows region scrolls.
+      expect(String(stripStyle.height)).toBe('270px');
     });
 
     it('carries the full frame-capacity width on the rows-region and every track row (UAT round 2 horizontal scroll)', () => {

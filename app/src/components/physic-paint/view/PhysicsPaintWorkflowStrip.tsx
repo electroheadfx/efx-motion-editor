@@ -368,6 +368,18 @@ export interface PhysicsPaintWorkflowStripProps {
 
 const RULER_STEP = 3;
 const ROTO_CELL_WIDTH_PX = 18;
+
+/* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
+   46 (header) + 1 (strip border) + 1 (timeline border) + 28 (ruler) + 34
+   (action row) + 14 (scrollbar) = 124px. The strip defaults to exactly enough
+   height for every track row + the Bg row (48px each), capped at 270px so the
+   canvas keeps room; the top-edge drag handle lets the user shrink (vertical
+   scroll appears) or grow up to the full content height — never beyond the
+   number of tracks. */
+const STRIP_ROW_HEIGHT_PX = 48;
+const STRIP_CHROME_HEIGHT_PX = 124;
+const STRIP_MAX_HEIGHT_PX = 270;
+const STRIP_MIN_ROWS = 1;
 const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresentation> = new Map();
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
@@ -1081,6 +1093,36 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // and flow down to the matching `PhysicsPaintTrackRowHeader` as props.
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  // 47-01 UAT round 3: flexible/resizable strip height. `null` = auto (default
+  // = exactly enough for all rows + Bg, capped at 270px); a number = the user's
+  // session-local manual resize. Clamped to [1 row, full content height] so the
+  // user can never grow the timeline beyond the number of tracks.
+  const [stripHeightOverride, setStripHeightOverride] = useState<number | null>(null);
+  const stripResizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const trackCount = props.tracks?.length ?? 0;
+  const rowCount = trackCount > 0 ? trackCount + (props.background ? 1 : 0) : 1;
+  const contentHeightPx = rowCount * STRIP_ROW_HEIGHT_PX;
+  const maxStripHeightPx = STRIP_CHROME_HEIGHT_PX + contentHeightPx;
+  const minStripHeightPx = STRIP_CHROME_HEIGHT_PX + STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX;
+  const defaultStripHeightPx = Math.min(maxStripHeightPx, STRIP_MAX_HEIGHT_PX);
+  const stripHeightPx = Math.max(minStripHeightPx, Math.min(stripHeightOverride ?? defaultStripHeightPx, maxStripHeightPx));
+  const handleStripResizePointerDown = useCallback((event: PointerEvent) => {
+    event.preventDefault();
+    stripResizeStartRef.current = { startY: event.clientY, startHeight: stripHeightPx };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  }, [stripHeightPx]);
+  const handleStripResizePointerMove = useCallback((event: PointerEvent) => {
+    const start = stripResizeStartRef.current;
+    if (!start) return;
+    // Dragging up (clientY decreases) grows the strip; down shrinks it.
+    const delta = start.startY - event.clientY;
+    const next = Math.max(minStripHeightPx, Math.min(start.startHeight + delta, maxStripHeightPx));
+    setStripHeightOverride(next);
+  }, [minStripHeightPx, maxStripHeightPx]);
+  const handleStripResizePointerEnd = useCallback((event: PointerEvent) => {
+    stripResizeStartRef.current = null;
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
+  }, []);
   const handleStartRename = useCallback((trackId: string) => {
     const track = props.tracks?.find((candidate) => candidate.id === trackId);
     setRenamingTrackId(trackId);
@@ -3084,7 +3126,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       data-push-paint-tick={pushPaintTick.value}
       data-rail-set-paint-tick={railSetPaintTick.value}
       aria-label="Physics Paint workflow strip"
+      style={{ height: `${stripHeightPx}px` }}
     >
+      {/* 47-01 UAT round 3: the timeline's top-edge resize handle. Dragging up
+          grows the strip (up to the full content height), down shrinks it
+          (the rows-region + header-rows band scroll). */}
+      <div
+        class="physics-paint-strip-resize-handle"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize timeline height"
+        title="Drag to resize the timeline height"
+        onPointerDown={handleStripResizePointerDown}
+        onPointerMove={handleStripResizePointerMove}
+        onPointerUp={handleStripResizePointerEnd}
+        onPointerCancel={handleStripResizePointerEnd}
+      />
       <PhysicsPaintWorkflowStaticChrome
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
