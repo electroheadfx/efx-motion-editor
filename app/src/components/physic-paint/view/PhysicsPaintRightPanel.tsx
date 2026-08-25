@@ -65,6 +65,11 @@ const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', 
  *  of the flexible height when its neighbors are resized (36.15-12, Gap H-4). */
 const MIN_PANE_SPLIT = 15;
 
+/** 47 UAT: quiet window (ms) after a track selection during which paint
+ *  revision bumps are ignored by the tab auto-select — they are side effects
+ *  of the selection (sync/re-projection), not user paint strokes. */
+export const TRACK_TAB_SETTLE_MS = 600;
+
 /** Default sidebar shares (36.15-13, UAT Gap I-2; trimmed 36.15 Gap J): brush
  *  color 425×0.85=361.25 : tool 213 : scripts/onion/motion 340×0.8=272 — as
  *  ratios of the content height (sidebar height minus the two fixed 32px grab
@@ -209,13 +214,20 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
-  // 47 UAT: the tool pane hosts two tabs — 'Paint option' (brush/tool
-  // options) and 'Track option' (active track's name/opacity/blend). The tab
-  // auto-selects: choosing a track opens 'Track option'; choosing a tool or
-  // painting snaps back to 'Paint option'. The effects below run in this
-  // order, so on mount the final state is the initial 'paint' tab.
+  // 47 tab: the tab auto-selects — choosing a track opens 'Track option';
+  // choosing a tool or painting snaps back to 'Paint option'. The effects
+  // below run in this order, so on mount the final state is the initial
+  // 'paint' tab.
   const [toolTab, setToolTab] = useState<'paint' | 'track'>('paint');
+  // 47 UAT bug: clicking a track row ALSO emits paint-revision activity a
+  // fraction of a second later (runtime re-projection, document sync
+  // round-trip), which the paint-flip effect translated into an instant
+  // 'Track option' -> 'Paint option' revert. Paint bumps inside this quiet
+  // window after a track selection are treated as selection side effects and
+  // ignored; a real stroke after the window still snaps the tab.
+  const lastTrackSelectionRef = useRef(0);
   useEffect(() => {
+    lastTrackSelectionRef.current = Date.now();
     setToolTab('track');
   }, [activeTrackId]);
   useEffect(() => {
@@ -227,6 +239,7 @@ export function PhysicsPaintRightPanel({
     // without re-rendering on every stroke.
     const dispose = effect(() => {
       physicPaintVersion.value;
+      if (Date.now() - lastTrackSelectionRef.current < TRACK_TAB_SETTLE_MS) return;
       setToolTab('paint');
     });
     return dispose;

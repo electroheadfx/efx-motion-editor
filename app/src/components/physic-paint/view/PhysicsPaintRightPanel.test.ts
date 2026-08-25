@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
+import { TRACK_TAB_SETTLE_MS } from './PhysicsPaintRightPanel';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -316,17 +317,44 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     expect(findById(backToPaint, 'physics-erase-strength')).toBeDefined();
   });
 
-  it('auto-selects the Paint option tab when a paint mutation bumps the paint revision (47 UAT)', () => {
-    renderPanel(baseProps({ activeTrackId: 'track-a' }));
-    renderPanel(baseProps({ activeTrackId: 'track-b' }));
-    const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
-    expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+  it('ignores paint-revision bumps inside the track-selection quiet window — the Track option tab stays (47 UAT bug)', () => {
+    vi.useFakeTimers();
+    try {
+      renderPanel(baseProps({ activeTrackId: 'track-a' }));
+      renderPanel(baseProps({ activeTrackId: 'track-b' }));
+      const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+      expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
 
-    physicPaintVersion.value++;
-    const afterPaint = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+      // A paint revision bump a fraction of a second after the track click
+      // (selection side effect: re-projection / sync round-trip) must NOT
+      // revert the tab.
+      physicPaintVersion.value++;
+      const afterSideEffectBump = renderPanel(baseProps({ activeTrackId: 'track-b' }));
 
-    expect(findByClass(afterPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-    expect(findById(afterPaint, 'physics-edge-detail')).toBeDefined();
+      expect(findByClass(afterSideEffectBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+      expect(findById(afterSideEffectBump, 'physics-track-opacity')).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('auto-selects the Paint option tab when a paint mutation bumps the paint revision after the settle window (47 UAT)', () => {
+    vi.useFakeTimers();
+    try {
+      renderPanel(baseProps({ activeTrackId: 'track-a' }));
+      renderPanel(baseProps({ activeTrackId: 'track-b' }));
+      const onTrack = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+      expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+
+      vi.advanceTimersByTime(TRACK_TAB_SETTLE_MS + 1);
+      physicPaintVersion.value++;
+      const afterPaint = renderPanel(baseProps({ activeTrackId: 'track-b' }));
+
+      expect(findByClass(afterPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+      expect(findById(afterPaint, 'physics-edge-detail')).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
