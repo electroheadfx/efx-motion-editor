@@ -31,8 +31,10 @@ vi.mock('@preact/signals', () => ({
 }));
 
 import {
+  buildCrossTrackMoveSuccessMessage,
   computeCrossTrackDestination,
   computeInsertionFrame,
+  mapCrossTrackMoveRejection,
   usePhysicsPaintCrossTrackDrag,
   type CrossTrackDragCaptureElement,
   type CrossTrackDragSource,
@@ -76,10 +78,23 @@ class CaptureDouble implements CrossTrackDragCaptureElement {
   }
 }
 
-/** A document double the hook must never touch (D-16 read-only gesture). */
+/** A two-row document double: the injected store port mutates it ONLY at
+ *  release time (D-09 copy-paste-delete — source items removed, fresh
+ *  identities in the destination); during the gesture it stays byte-identical
+ *  (D-16 read-only signals). */
 class DocumentDouble {
   readonly sourceKeys: string[] = ['key-1'];
   readonly destinationKeys: string[] = [];
+
+  move(fromTrackId: string, toTrackId: string, keys: readonly string[]) {
+    const from = fromTrackId === 'track-a' ? this.sourceKeys : this.destinationKeys;
+    const to = toTrackId === 'track-b' ? this.destinationKeys : this.sourceKeys;
+    for (const key of keys) {
+      const index = from.indexOf(key);
+      if (index >= 0) from.splice(index, 1);
+    }
+    to.push(...keys.map((key) => `${key}-fresh`));
+  }
 
   snapshot() {
     return JSON.stringify({ sourceKeys: this.sourceKeys, destinationKeys: this.destinationKeys });
@@ -104,12 +119,19 @@ function pointerEvent(overrides: Partial<PointerEvent> = {}): PointerEvent {
 
 function createHarness(options: {
   readonly resolveSource?: (event: PointerEvent) => CrossTrackDragSource | null;
+  readonly rejection?: { readonly ok: false; readonly reason: string };
 } = {}) {
   hookRuntime.reset();
   const windowLike = new WindowDouble();
   const capture = new CaptureDouble();
   const document = new DocumentDouble();
-  const commit = vi.fn();
+  const moveTrackItems = vi.fn((layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]) => {
+    if (options.rejection) return options.rejection;
+    document.move(fromTrackId, toTrackId, keys);
+    return { ok: true as const };
+  });
+  const publishStatus = vi.fn();
+  const setApplyStatus = vi.fn();
   const resolveSource = vi.fn(
     options.resolveSource ?? (() => ({ fromTrackId: 'track-a', keyIds: ['key-1'] } as const)),
   );
@@ -117,6 +139,7 @@ function createHarness(options: {
     hookRuntime.cursor = 0;
     return usePhysicsPaintCrossTrackDrag({
       windowLike,
+      layerId: 'layer-1',
       getRowBounds: () => [
         { trackId: 'track-a', top: 0, bottom: 30 },
         { trackId: 'track-b', top: 30, bottom: 60 },
@@ -127,14 +150,18 @@ function createHarness(options: {
       getScrollLeft: () => 0,
       framePitch: 18,
       resolveSource,
-      onCommit: commit,
+      moveTrackItems,
+      publishStatus,
+      setApplyStatus,
     });
   };
   return {
     windowLike,
     capture,
     document,
-    commit,
+    moveTrackItems,
+    publishStatus,
+    setApplyStatus,
     resolveSource,
     render,
   };
@@ -181,6 +208,25 @@ describe('computeInsertionFrame (47-05 Task 1, TML-05/D-16)', () => {
   });
 });
 
+describe('cross-track move copy (47-05 Task 2, TML-05/D-17/D-14)', () => {
+  it('builds the English success capsule line with singular/plural counts', () => {
+    expect(buildCrossTrackMoveSuccessMessage(1)).toBe('Moved 1 key to another track.');
+    expect(buildCrossTrackMoveSuccessMessage(3)).toBe('Moved 3 keys to another track.');
+  });
+
+  it('maps every moveTrackItems rejection reason to a fixed English message and falls back to a generic failure (T-47-05-03)', () => {
+    expect(mapCrossTrackMoveRejection('track-missing')).toBe('Track not found');
+    expect(mapCrossTrackMoveRejection('duplicate-destination-frame')).toBe('Destination frame is occupied');
+    expect(mapCrossTrackMoveRejection('partial-loop-overlap')).toBe('Loop would be partially moved');
+    expect(mapCrossTrackMoveRejection('empty-set')).toBe('Nothing to move');
+    expect(mapCrossTrackMoveRejection('missing-key')).toBe('Key not found');
+    // Unmapped and missing reasons never ship empty or French copy (D-14).
+    expect(mapCrossTrackMoveRejection('apply-failed')).toBe('Move failed.');
+    expect(mapCrossTrackMoveRejection('anything-else')).toBe('Move failed.');
+    expect(mapCrossTrackMoveRejection(undefined)).toBe('Move failed.');
+  });
+});
+
 describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -204,7 +250,7 @@ describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
 
     // The gesture never mutated the document — byte-unchanged until release.
     expect(harness.document.snapshot()).toBe(snapshotBefore);
-    expect(harness.commit).not.toHaveBeenCalled();
+    expect(harness.moveTrackItems).not.toHaveBeenCalled();
   });
 
   it('clears the crossing signals when the pointer returns to the source row', () => {
@@ -233,7 +279,8 @@ describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
     expect(api.isCrossing.value).toBe(false);
     expect(api.insertionFrame.value).toBeNull();
     expect(harness.capture.captured).toEqual([]);
-    expect(harness.commit).not.toHaveBeenCalled();
+    expect(harness.moveTrackItems).not.toHaveBeenCalled();
+    expect(harness.publishStatus).not.toHaveBeenCalled();
     // The same-row release path owns the release — the hook cleaned up.
     const liveListenerCount = [...harness.windowLike.listeners.values()]
       .reduce((total, listeners) => total + listeners.size, 0);
@@ -251,7 +298,7 @@ describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
     expect(api.destinationTrackId.value).toBeNull();
     expect(api.isCrossing.value).toBe(false);
     expect(api.insertionFrame.value).toBeNull();
-    expect(harness.commit).toHaveBeenCalledTimes(1);
+    expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
 
     api.onPointerDown(pointerEvent({ clientY: 15 }));
     harness.windowLike.emit('pointermove', pointerEvent({ clientY: 45 }));
@@ -260,7 +307,7 @@ describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
       preventDefault: vi.fn(),
       stopImmediatePropagation: vi.fn(),
     });
-    expect(harness.commit).toHaveBeenCalledTimes(1);
+    expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
     expect(api.isCrossing.value).toBe(false);
     expect(api.destinationTrackId.value).toBeNull();
   });
@@ -272,6 +319,72 @@ describe('usePhysicsPaintCrossTrackDrag (47-05 Task 1)', () => {
     harness.windowLike.emit('pointermove', pointerEvent({ clientY: 45 }));
     expect(api.isCrossing.value).toBe(false);
     expect(harness.capture.captured).toEqual([]);
-    expect(harness.commit).not.toHaveBeenCalled();
+    expect(harness.moveTrackItems).not.toHaveBeenCalled();
+  });
+});
+
+describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05/D-17)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('commits the move through moveTrackItems exactly once on a crossed release — source loses the items, the destination gains fresh identities (D-09)', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent({ clientY: 15 }));
+    harness.windowLike.emit('pointermove', pointerEvent({ clientX: 306, clientY: 45 }));
+    harness.windowLike.emit('pointerup', pointerEvent({ clientX: 306, clientY: 45 }));
+
+    expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
+    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1']);
+    expect(harness.document.sourceKeys).toEqual([]);
+    expect(harness.document.destinationKeys).toEqual(['key-1-fresh']);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Moved 1 key to another track.');
+    // The rejection tone never fires on success.
+    expect(harness.setApplyStatus).not.toHaveBeenCalledWith('error');
+    // The destination signals clear on release.
+    expect(api.destinationTrackId.value).toBeNull();
+    expect(api.isCrossing.value).toBe(false);
+    expect(api.insertionFrame.value).toBeNull();
+  });
+
+  it('a rejected move leaves both rows byte-identical and publishes the specific English reason with the red warning triangle (D-17)', () => {
+    const harness = createHarness({ rejection: { ok: false, reason: 'partial-loop-overlap' } });
+    const api = harness.render();
+    const snapshotBefore = harness.document.snapshot();
+
+    api.onPointerDown(pointerEvent({ clientY: 15 }));
+    harness.windowLike.emit('pointermove', pointerEvent({ clientY: 45 }));
+    harness.windowLike.emit('pointerup', pointerEvent({ clientY: 45 }));
+
+    expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
+    expect(harness.document.snapshot()).toBe(snapshotBefore);
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(harness.publishStatus).toHaveBeenCalledWith('Loop would be partially moved');
+  });
+
+  it('never calls moveTrackItems when the release never crossed a row boundary — the same-row drag owns it (D-16)', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent({ clientY: 15 }));
+    harness.windowLike.emit('pointermove', pointerEvent({ clientX: 400, clientY: 20 }));
+    harness.windowLike.emit('pointerup', pointerEvent({ clientX: 400, clientY: 20 }));
+
+    expect(harness.moveTrackItems).not.toHaveBeenCalled();
+    expect(harness.publishStatus).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).not.toHaveBeenCalled();
+    expect(harness.document.snapshot()).toBe(JSON.stringify({ sourceKeys: ['key-1'], destinationKeys: [] }));
+  });
+
+  it('never reaches moveTrackItems when the press resolved no draggable source — the header reorder grab path owns it (D-18)', () => {
+    const harness = createHarness({ resolveSource: () => null });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent({ clientY: 15 }));
+    harness.windowLike.emit('pointermove', pointerEvent({ clientY: 45 }));
+    harness.windowLike.emit('pointerup', pointerEvent({ clientY: 45 }));
+
+    expect(harness.moveTrackItems).not.toHaveBeenCalled();
+    expect(harness.publishStatus).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).not.toHaveBeenCalled();
   });
 });

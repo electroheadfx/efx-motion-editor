@@ -2154,3 +2154,23 @@ describe('PhysicsPaintWorkflowStrip cross-track drag wiring (47-05 Task 1)', () 
     expect(stylesheet).toContain('.physics-paint-track-row-insertion-preview');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', () => {
+  it('routes the crossed release through physicPaintStore.moveTrackItems and publishes through the action bundle (D-17)', () => {
+    const strip = source();
+    expect(strip).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys)');
+    expect(strip).toContain('moveTrackItems: (layerId, fromTrackId, toTrackId, keys) =>');
+    expect(strip).toContain('publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message)');
+    expect(strip).toContain('setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status)');
+  });
+
+  it('keeps the header reorder grab release completely outside the cross-track commit (D-18)', () => {
+    const strip = source();
+    const gripStart = strip.indexOf('const handleGripPointerDown');
+    const gripBlock = strip.slice(gripStart, strip.indexOf('}, [computeReorderInsertionIndex, props.onReorderTrack]);', gripStart));
+    // The grip routes through reorderTrack (47-02) — order-only intent.
+    expect(gripBlock).toContain('onReorderTrack');
+    expect(gripBlock).not.toContain('moveTrackItems');
+    expect(gripBlock).not.toContain('crossTrackDrag');
+  });
+});
