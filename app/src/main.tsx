@@ -71,9 +71,10 @@ if (window.location.pathname === '/physics-paint') {
       window.location.reload();
     }
   }, 1000);
-  import('./components/physic-paint/PhysicsPaintStudio').then(({ PhysicsPaintStudio }) => {
-    render(<PhysicsPaintStudio />, root);
-  });
+  // 47-05 LEAK BISECT (temporary): render a blank page instead of the Studio
+  // to isolate whether the leak is in the Studio page or the window/webview
+  // itself. REVERT after the test.
+  render(<div style={{ color: '#fff', padding: 24 }}>blank page — leak bisect</div>, root);
 } else {
   // Resolve temp project dir from Tauri's app data path before rendering
   initTempProjectDir().then(async () => {
