@@ -79,7 +79,9 @@ import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+// 47-05 LEAK BISECT: checkpoint + sync imports temporarily removed.
+// import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -3052,18 +3054,12 @@ export function PhysicsPaintStudio() {
       document = getEfxPaintDocument(layerId);
     }
     if (!document) return;
-    // Crash-recovery checkpoint: the compositor-death watchdog reloads the
-    // child when the window goes black. sessionStorage survives the reload, so
-    // the Studio rehydrates from THIS document instead of the stale launch
-    // context — the session survives (bounded by the push debounce).
-    try {
-      sessionStorage.setItem(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(document));
-    } catch {
-      // Quota exceeded — the launch-context fallback still applies on reload.
-    }
-    void sendEfxPaintDocumentSync(document, mode).catch((error) => {
-      console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
-    });
+    // 47-05 LEAK BISECT (temporary): checkpoint + bridge push disabled to
+    // test whether the 7.5 MB setItem/stringify or the IPC send is the leak.
+    // REVERT after the test.
+    void layerId;
+    void mode;
+    void document;
   };
   useEffect(() => {
     const layerId = launchContext?.layerId;
