@@ -168,10 +168,6 @@ const STROKE_FINALIZATION_MAX_TURN_MS = 12
 const DISPLAY_COMPOSITE_MIN_INTERVAL_MS = 30
 /** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
 const RENDER_IDLE_MS = 4000
-/** While the loop is paused, one tiny real canvas write per second keeps the
- * WKWebView compositor committing — a fully static webview loses its surface
- * after minutes (black window, web process alive, no crash, display awake). */
-const IDLE_KEEP_ALIVE_MS = 1000
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
@@ -326,8 +322,6 @@ export class EfxPaintEngine {
   private lastCursorRect: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPreviewBbox: { x0: number; y0: number; x1: number; y1: number } | null = null
   private drawnQueuedOutlineCount = 0
-  private idleKeepAliveTimer: ReturnType<typeof setTimeout> | null = null
-  private idleKeepAlivePixel: ImageData | null = null
 
   // --- Typed Array Buffers (owned by this class) ---
   private wet: WetBuffers
@@ -1325,7 +1319,6 @@ export class EfxPaintEngine {
 
   /** Clean up all resources: intervals, rAF, event listeners */
   destroy(): void {
-    this.stopIdleKeepAlive()
     this.flushPendingStrokeFinalizations()
     this.destroyed = true
     this.previewBaseImageCache?.clear()
@@ -1617,49 +1610,15 @@ export class EfxPaintEngine {
       this.rafId = requestAnimationFrame(() => this.render())
     } else {
       this.rafId = 0
-      this.startIdleKeepAlive()
     }
   }
 
   /** Re-arm the display loop when it is paused and something needs redrawing. */
   private requestRender(): void {
-    this.stopIdleKeepAlive()
     if (this.destroyed) return
     if (this.rafId !== 0) return
     if (typeof requestAnimationFrame !== 'function') return
     this.rafId = requestAnimationFrame(() => this.render())
-  }
-
-  /**
-   * One real 1x1 canvas write per second while the loop is paused and the
-   * window is idle. The canvas is marked dirty, so the compositor commits and
-   * uploads the tiny rect — a fully static webview (no layer commits for
-   * minutes) loses its surface on WKWebView: the window goes black with the
-   * web process alive, no crash report, and the display awake. The pixel is
-   * transparent and identical every tick, so nothing is visible on screen.
-   */
-  private startIdleKeepAlive(): void {
-    if (this.idleKeepAliveTimer !== null) return
-    const tick = () => {
-      if (this.rafId !== 0 || this.destroyed) {
-        this.idleKeepAliveTimer = null
-        return
-      }
-      const displayCtx = this.dualCanvas.displayCtx
-      if (displayCtx) {
-        if (!this.idleKeepAlivePixel) this.idleKeepAlivePixel = displayCtx.createImageData(1, 1)
-        displayCtx.putImageData(this.idleKeepAlivePixel, 0, 0)
-      }
-      this.idleKeepAliveTimer = setTimeout(tick, IDLE_KEEP_ALIVE_MS)
-    }
-    this.idleKeepAliveTimer = setTimeout(tick, IDLE_KEEP_ALIVE_MS)
-  }
-
-  private stopIdleKeepAlive(): void {
-    if (this.idleKeepAliveTimer !== null) {
-      clearTimeout(this.idleKeepAliveTimer)
-      this.idleKeepAliveTimer = null
-    }
   }
 
   private shouldKeepRendering(): boolean {

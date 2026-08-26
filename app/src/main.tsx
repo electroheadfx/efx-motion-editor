@@ -44,19 +44,18 @@ if (window.location.pathname === '/physics-paint') {
   let lastRafTick = performance.now();
   let lastActivityAt = performance.now();
   let lastReloadAt = 0;
-  // The tick MUST re-arm itself: a one-shot rAF updates the timestamp once and
-  // never again, so the stall condition below is permanently true and the
-  // watchdog reloads the window on a fake stall (the 5s/15s/20s reload loops).
-  // The tick is throttled to ~10Hz via setTimeout: a 60Hz self-armed rAF keeps
-  // the WKWebView compositor busy for the whole session, and after the engine
-  // loop's sustained churn was removed (dirty-flag composite) an unnecessary
-  // 60Hz compositor wake would remain the only idle GPU load.
-  const rafTick = () => {
-    lastRafTick = performance.now();
-    setTimeout(() => { requestAnimationFrame(rafTick); }, 100);
+  // 47-05: the black-window root cause is a ~45 MB/s leak of the WKWebView's
+  // presented-frame backing buffers, driven by the CONTINUOUS rAF tick that
+  // used to run here (10 Hz x ~4.6 MB window backing = the measured rate; the
+  // editor window, which idles without rAF, never leaks). The watchdog is now
+  // event-driven: each interaction schedules ONE rAF probe. If the compositor
+  // is alive the probe fires within ~16ms (lastRafTick fresh); if it died
+  // (black window), the probe never fires and the stall check below reloads.
+  const probeRaf = () => { lastRafTick = performance.now(); };
+  const onActivity = () => {
+    lastActivityAt = performance.now();
+    requestAnimationFrame(probeRaf);
   };
-  requestAnimationFrame(rafTick);
-  const onActivity = () => { lastActivityAt = performance.now(); };
   window.addEventListener('pointerdown', onActivity, { passive: true });
   window.addEventListener('pointermove', onActivity, { passive: true });
   window.addEventListener('pointerup', onActivity, { passive: true });
