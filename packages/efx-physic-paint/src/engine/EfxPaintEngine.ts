@@ -156,6 +156,8 @@ export type PaintHistoryAvailability = {
 const STROKE_FINALIZATION_IDLE_MS = 500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
+/** Interactive strokes drain at most this many phase steps per visual frame — batches the final render. */
+const MAX_INTERACTIVE_STEPS_PER_FRAME = 6
 /** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
 const RENDER_IDLE_MS = 4000
 
@@ -1697,9 +1699,14 @@ export class EfxPaintEngine {
     const queued = this.pendingStrokeFinalizations
     const allScripted = queued.length > 1 && queued.every((pending) => pending.isScripted)
     if (allScripted) {
-      this.runStrokeFinalizationTurn(true, MAX_COALESCED_STROKES_PER_FRAME)
+      this.runStrokeFinalizationTurn(true, MAX_COALESCED_STROKES_PER_FRAME, Infinity)
     } else {
-      this.runStrokeFinalizationTurn()
+      // Interactive strokes batch a bounded number of phase steps per visual
+      // frame — one step per frame drains at ~1 stroke/second, so a long
+      // painting session's queue takes minutes to finalize. Batching keeps the
+      // final render fast while the per-frame block stays small (the drain
+      // only runs in the 500ms inactivity window, never mid-stroke).
+      this.runStrokeFinalizationTurn(false, Infinity, MAX_INTERACTIVE_STEPS_PER_FRAME)
     }
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.strokeFinalizationScheduled = true
@@ -1709,7 +1716,7 @@ export class EfxPaintEngine {
   public flushPendingStrokeFinalizations(): void {
     this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
-      this.runStrokeFinalizationTurn(true)
+      this.runStrokeFinalizationTurn(true, Infinity, Infinity)
     }
     this.strokeFinalizationScheduled = false
   }
@@ -1742,8 +1749,9 @@ export class EfxPaintEngine {
     }
   }
 
-  private runStrokeFinalizationTurn(flush: boolean = false, maxStrokes: number = Infinity): void {
+  private runStrokeFinalizationTurn(flush: boolean = false, maxStrokes: number = Infinity, maxSteps: number = 1): void {
     let completedStrokes = 0
+    let steps = 0
     do {
       const active = this.activeStrokeFinalization ?? this.startNextStrokeFinalization()
       if (!active) return
@@ -1751,7 +1759,7 @@ export class EfxPaintEngine {
       if (active.generation !== this.strokeFinalizationGeneration) {
         this.activeStrokeFinalization = null
         this.activeMutationId = null
-        continue
+        return
       }
       if (active.phase === 'complete' || active.pending.tool !== 'paint' || !active.pending.color) {
         this.finishActiveStrokeSynchronously(active)
@@ -1760,9 +1768,10 @@ export class EfxPaintEngine {
       }
       do {
         this.stepInteractivePaintFinalization(active)
-      } while (flush && this.activeStrokeFinalization === active)
+        steps++
+      } while (flush && this.activeStrokeFinalization === active && steps < maxSteps)
       completedStrokes++
-    } while (flush && completedStrokes < maxStrokes && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization))
+    } while ((flush || steps < maxSteps) && completedStrokes < maxStrokes && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization))
   }
 
   private finishActiveStrokeSynchronously(active: ActiveStrokeFinalization): void {
