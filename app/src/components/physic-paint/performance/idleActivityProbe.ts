@@ -74,6 +74,11 @@ export function installIdleActivityProbe(): void {
   const originalRenderOption = internalOptions.__r;
   internalOptions.__r = (vnode: unknown) => {
     bump('preact.render');
+    const type = (vnode as { type?: unknown })?.type;
+    if (typeof type === 'function') {
+      const name = (type as { displayName?: string; name?: string }).displayName ?? (type as { name?: string }).name ?? 'anonymous';
+      bump(`render.${name}`);
+    }
     originalRenderOption?.(vnode);
   };
 
