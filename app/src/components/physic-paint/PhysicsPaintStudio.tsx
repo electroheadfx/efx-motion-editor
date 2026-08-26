@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
-import { emit } from '@tauri-apps/api/event';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -86,12 +85,7 @@ import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanva
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
-import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, snapshotPhysicsPaintPerformance } from './performance/physicsPaintPerformanceTrace';
-import { installIdleActivityProbe, snapshotIdleActivity } from './performance/idleActivityProbe';
-
-// IDLE-ACTIVITY-PROBE: install before any engine/component timers are created
-// so the wrappers see every registration (module scope, DEV-only no-op in prod).
-installIdleActivityProbe();
+import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -113,9 +107,6 @@ import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
-// 47-05 leak hunt: total pushLiveProjection invocations (a revision loop
-// would make this climb thousands per minute while the session is idle).
-let debugPushCount = 0;
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
   operationKind: 'delete-group-frame' | 'delete-group';
@@ -3059,7 +3050,6 @@ export function PhysicsPaintStudio() {
   // slowness). The debounce keeps the parent's runtime eventually consistent
   // with the child's live state without touching the paint hot path.
   const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback') => {
-    debugPushCount += 1;
     let document: EfxPaintDocumentModel | null = null;
     try {
       document = serializeRuntimeIntoDocument(layerId);
@@ -3097,54 +3087,6 @@ export function PhysicsPaintStudio() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, physicPaintVersion.value]);
-  useEffect(() => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const timer = window.setInterval(() => {
-      const engine = engineRef.current;
-      const document = getEfxPaintDocument(layerId);
-      let docBytes = 0;
-      try {
-        docBytes = document ? JSON.stringify(document).length : 0;
-      } catch {
-        // Cyclic or oversized — the probe must never break the session.
-      }
-      // The roto frame cache: every rendered frame is a data URL (MBs).
-      let frameCount = 0;
-      let frameDataUrlBytes = 0;
-      try {
-        for (const track of document?.tracks ?? []) {
-          const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
-          for (const frame of runtime.frames.values()) {
-            frameCount += 1;
-            frameDataUrlBytes += (frame.dataUrl?.length ?? 0);
-          }
-        }
-      } catch {
-        // The probe must never break the session.
-      }
-      const payload = {
-        t: Date.now(),
-        docBytes,
-        frameCount,
-        frameDataUrlBytes,
-        pushCount: debugPushCount,
-        engine: engine?.debugMemoryProbe() ?? null,
-        // IDLE-ACTIVITY-PROBE: what executed since the last probe tick.
-        activity: snapshotIdleActivity(),
-        renders: import.meta.env.DEV ? snapshotPhysicsPaintPerformance().counters : null,
-      };
-      if (navigator.storage?.estimate) {
-        void navigator.storage.estimate().then((estimate) => {
-          void emit('physic-paint:debug-memory', { ...payload, storageBytes: estimate.usage ?? 0 });
-        });
-      } else {
-        void emit('physic-paint:debug-memory', { ...payload, storageBytes: 0 });
-      }
-    }, 5000);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId]);
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,

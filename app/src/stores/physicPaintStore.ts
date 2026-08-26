@@ -1,5 +1,4 @@
 import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
-import { recordIdleActivityStoreWrite } from '../components/physic-paint/performance/idleActivityProbe';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
@@ -97,7 +96,6 @@ export function bumpTrackRevision(
   entry.paint.value++;
   entry.roto.value++;
   physicPaintVersion.value++;
-  recordIdleActivityStoreWrite('storebump.trackRevision');
   _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
   if (markDirty) _markProjectDirty?.();
   if (diagnostics) {
@@ -374,7 +372,6 @@ export function resolveContentToken(contentRevision: string | null | undefined):
 
 function _notifyRotoPhysicalOperationLeaseChange(): void {
   physicPaintRotoPhysicalOperationLeaseVersion.value += 1;
-  recordIdleActivityStoreWrite('storebump.lease');
 }
 
 function _rotoPhysicalOperationLeaseScope(projectContextId: string, layerId: string, trackId: string): string {
@@ -736,7 +733,6 @@ function _makeRotoCacheFrame(
 function _notifyVisualChange(diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void }, markDirty = true): void {
   const notificationStartedAt = diagnostics ? performance.now() : 0;
   physicPaintVersion.value++;
-  recordIdleActivityStoreWrite('storebump.visual');
   const dirtyStartedAt = diagnostics ? performance.now() : 0;
   if (markDirty) _markProjectDirty?.();
   if (diagnostics) {
