@@ -1155,6 +1155,17 @@ export const physicPaintStore = {
   },
 
   setRotoBackgroundMetadata(layerId: string, trackId: string, metadata: PhysicPaintRotoBackgroundMetadata): void {
+    // Idempotence guard (47 leak fix): the Studio's settings-sync effect can
+    // re-fire on unstable dep identities; a no-op write must not bump the
+    // revision — the bump re-renders every version subscriber, which re-fires
+    // the effect, which bumps again (a ~65/s render loop that OOM-killed the
+    // paint window's WebContent process at 16 GB).
+    const current = _rotoBackgroundMetadata.get(layerId)?.get(trackId);
+    if (current
+      && current.background === metadata.background
+      && current.paperGrain === metadata.paperGrain
+      && current.grainStrength === metadata.grainStrength
+      && current.color === metadata.color) return;
     _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...metadata });
     bumpTrackRevision(layerId, trackId);
   },

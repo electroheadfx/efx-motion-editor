@@ -270,6 +270,17 @@ function useTrailingThrottledRevision(source: ReadonlySignal<number>, delayMs: n
   return throttled.current;
 }
 
+/**
+ * 47 leak fix: module-level (identity-stable) active-track reader for the
+ * background-metadata sync effect. An inline arrow here got a new identity
+ * every Studio render, re-firing the effect every render — combined with the
+ * store's unconditional revision bump that formed a self-sustaining ~65/s
+ * render loop.
+ */
+function readDocumentActiveTrackId(layerId: string): string {
+  return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+}
+
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
@@ -1930,7 +1941,7 @@ export function PhysicsPaintStudio() {
   useRotoBackgroundMetadataSync({
     launchContext,
     settings,
-    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
+    getActiveTrackId: readDocumentActiveTrackId,
   });
   // 38.1 D-08 link 3: playback availability without a per-render O(N) array
   // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
