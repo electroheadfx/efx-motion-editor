@@ -154,7 +154,8 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, status } = props;
+  void workflow;
   return (
     <main class="demo-shell">
       <section
@@ -178,7 +179,9 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
 
         <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
 
-        <PhysicsPaintWorkflowStrip {...workflow} />
+        {/* 47-05 LEAK BISECT (temporary): the workflow strip is removed to
+            isolate the strip/DOM from the rest of the view. REVERT after. */}
+        {/* <PhysicsPaintWorkflowStrip {...workflow} /> */}
 
         {status.shortcutsVisible ? (
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
