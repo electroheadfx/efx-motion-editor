@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
+import { emit } from '@tauri-apps/api/event';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -3076,6 +3077,30 @@ export function PhysicsPaintStudio() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, physicPaintVersion.value]);
+  // 47-05 leak hunt: every 5s, report the sizes of the retained structures to
+  // the native side (printed in the tauri dev terminal) so a session shows
+  // which structure grows toward the 16 GB WebKit memory-kill threshold.
+  useEffect(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const timer = window.setInterval(() => {
+      const engine = engineRef.current;
+      const document = getEfxPaintDocument(layerId);
+      let docBytes = 0;
+      try {
+        docBytes = document ? JSON.stringify(document).length : 0;
+      } catch {
+        // Cyclic or oversized — the probe must never break the session.
+      }
+      void emit('physic-paint:debug-memory', {
+        t: Date.now(),
+        docBytes,
+        engine: engine?.debugMemoryProbe() ?? null,
+      });
+    }, 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchContext?.layerId]);
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,

@@ -20,7 +20,7 @@ use percent_encoding::percent_decode_str;
 use serde_json::Value;
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
-use tauri::Emitter;
+use tauri::{Emitter, Listener};
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PhysicsPaintRenderedFrame {
@@ -470,6 +470,14 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            // 47-05 leak hunt: the paint window emits structure sizes every 5s;
+            // printed here so a session shows which structure grows toward the
+            // 16 GB WebKit memory-kill threshold.
+            let app_handle = app.handle().clone();
+            app.listen("physic-paint:debug-memory", move |event: tauri::Event| {
+                println!("[physics-paint] memory probe: {}", event.payload());
+            });
+
             // Build a custom menu that replaces the default macOS menu.
             // The default menu includes Edit > Undo (Cmd+Z) and Edit > Redo (Cmd+Shift+Z)
             // as native accelerators that intercept keydown events at the Cocoa layer

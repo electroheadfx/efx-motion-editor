@@ -1304,6 +1304,19 @@ export class EfxPaintEngine {
     this.loadProjectData(json)
   }
 
+  /** Debug memory probe (47-05 leak hunt): sizes of retained engine structures. */
+  debugMemoryProbe(): Record<string, number> {
+    return {
+      allActions: this.allActions.length,
+      undoStack: this.undoStack.length,
+      redoStack: this.redoStack.length,
+      pendingFinalizations: this.pendingStrokeFinalizations.length,
+      previewBaseCache: this.previewBaseImageCache.size,
+      paperTextures: this.paperTextures.size,
+      wetBytes: (this.wet.r.byteLength + this.wet.g.byteLength + this.wet.b.byteLength + this.wet.alpha.byteLength + this.wet.strokeOpacity.byteLength) / 1048576,
+    }
+  }
+
   /** Clean up all resources: intervals, rAF, event listeners */
   destroy(): void {
     this.stopIdleKeepAlive()
