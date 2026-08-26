@@ -369,6 +369,8 @@ export class EfxPaintEngine {
   private savedPhysicsMode: PhysicsMode = null
   private dryingInterval: ReturnType<typeof setInterval> | null = null
   private rafId: number = 0
+  private renderFps: number = 60
+  private lastRenderTime: number = 0
   private destroyed: boolean = false
   private inputLocked: boolean = false
   private animationMode: boolean = false
@@ -402,6 +404,7 @@ export class EfxPaintEngine {
     this.size = this.width * this.height
     this.getStrokeMetadata = config.getStrokeMetadata
     this.paperTextureScale = Number.isFinite(config.paperTextureScale) && config.paperTextureScale && config.paperTextureScale > 0 ? config.paperTextureScale : 1
+    this.renderFps = Number.isFinite(config.renderFps) && config.renderFps && config.renderFps > 0 ? Math.min(60, Math.max(1, config.renderFps)) : 60
 
     // Create dual canvases
     this.dualCanvas = setupDualCanvas(container, this.width, this.height)
@@ -528,16 +531,19 @@ export class EfxPaintEngine {
   /** Set the active tool */
   setTool(tool: ToolType): void {
     this.state.tool = tool
+    this.requestRender()
   }
 
   /** Set brush size (1-80) */
   setBrushSize(size: number): void {
     this.state.brushOpts.size = clamp(size, 1, 80)
+    this.requestRender()
   }
 
   /** Set brush opacity (10-100) */
   setBrushOpacity(opacity: number): void {
     this.state.brushOpts.opacity = clamp(opacity, 10, 100)
+    this.requestRender()
   }
 
   /** Set brush pressure multiplier (10-100) */
@@ -611,10 +617,12 @@ export class EfxPaintEngine {
   /** Set current paint color as hex string */
   setColorHex(hex: string): void {
     this.color = hex
+    this.requestRender()
   }
 
   /** Change background mode and replay strokes */
   setBgMode(mode: BgMode): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.state.bgMode = mode
     // Replay strokes on new background
@@ -633,6 +641,7 @@ export class EfxPaintEngine {
   }
 
   setBackgroundImageUrl(dataUrl: string): void {
+    this.requestRender()
     const requestId = ++this.previewBackgroundRequestId
     const image = new Image()
     image.onload = () => {
@@ -653,6 +662,7 @@ export class EfxPaintEngine {
   }
 
   resetBackground(): void {
+    this.requestRender()
     this.previewBackgroundRequestId += 1
     const inputs = this.lastResetBackgroundInputs
     if (
@@ -681,6 +691,7 @@ export class EfxPaintEngine {
   }
 
   setPreviewBaseImageUrl(dataUrl: string, contentToken?: number, appFrame?: number): void {
+    this.requestRender()
     const requestId = ++this.previewBaseRequestId
     const requestContentToken = contentToken ?? this.nextPreviewBaseContentToken()
     const requestExplicit = contentToken !== undefined
@@ -812,6 +823,7 @@ export class EfxPaintEngine {
   }
 
   clearPreviewBaseImage(): void {
+    this.requestRender()
     this.previewBaseRequestId += 1
     this.previewBaseEnabled = false
     this.previewBackgroundSeparated = false
@@ -828,6 +840,7 @@ export class EfxPaintEngine {
 
   /** Set paper grain for physics (key matches PaperConfig.name) */
   setPaperGrain(key: string): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.currentPaperKey = key
     const tex = this.paperTextures.get(key)
@@ -845,18 +858,21 @@ export class EfxPaintEngine {
 
   /** Set emboss strength (0-1) */
   setEmbossStrength(strength: number): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.state.embossStrength = clamp(strength, 0, 1)
   }
 
   /** Toggle wet/dry paper mode */
   setWetPaper(wet: boolean): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.state.wetPaper = wet
   }
 
   /** Start physics simulation */
   startPhysics(mode: 'local' | 'last' | 'all'): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     if (this.state.physicsRunning) return
     this.savedPhysicsMode = this.state.physicsMode
@@ -953,6 +969,7 @@ export class EfxPaintEngine {
   /** Stop physics simulation and bake result */
   stopPhysics(): void {
     if (!this.state.physicsRunning) return
+    this.requestRender()
     const completedMode = this.state.physicsMode
     this.state.physicsRunning = false
     if (this.physicsInterval !== null) {
@@ -1003,6 +1020,7 @@ export class EfxPaintEngine {
 
   /** Force-dry all wet paint immediately */
   forceDry(): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.stopNaturalDrying()
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
@@ -1022,6 +1040,7 @@ export class EfxPaintEngine {
   /** Start gradual natural drying (research: evaporation over time) */
   private startNaturalDrying(): void {
     if (this.dryingInterval) return // already drying
+    this.requestRender()
     this.dryingInterval = setInterval(() => {
       // Check if there's still wet paint
       let hasWet = false
@@ -1047,6 +1066,7 @@ export class EfxPaintEngine {
 
   /** Undo last accepted stroke without forcing deferred work to finalize first. */
   undo(): boolean {
+    this.requestRender()
     const entry = this.undoStack.at(-1)
     if (!entry) return false
     const actionIndex = this.allActions.findIndex((action) => action.mutationId === entry.mutationId)
@@ -1092,6 +1112,7 @@ export class EfxPaintEngine {
   }
 
   redo(): boolean {
+    this.requestRender()
     const entry = this.redoStack.at(-1)
     if (!entry) return false
 
@@ -1155,6 +1176,7 @@ export class EfxPaintEngine {
 
   /** Clear the canvas and all strokes */
   clear(): void {
+    this.requestRender()
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
     this.strokeFinalizationGeneration++
@@ -1198,6 +1220,7 @@ export class EfxPaintEngine {
 
   /** Load a serialized project (v1.0 document format, D-03) */
   load(json: EfxPaintDocument): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.loadProjectData(json)
   }
@@ -1339,6 +1362,7 @@ export class EfxPaintEngine {
 
   /** Accept one immutable recorded logical brush through the normal mutation pipeline. */
   enqueueRecordedStroke(group: Readonly<RecordedStrokeGroup>): number {
+    this.requestRender()
     const primary = this.cloneRecordedStroke(group.primary)
     if (primary.points.length === 0 || primary.diffusionFrames !== undefined) {
       throw new TypeError('Recorded stroke primary must contain points and cannot be a continuation')
@@ -1366,17 +1390,26 @@ export class EfxPaintEngine {
 
   /** Render all strokes synchronously — public wrapper around redrawAll() */
   renderAllStrokes(): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.redrawAll()
+  }
+
+  /** Update the display loop frame rate (1-60). The loop throttles to this
+   *  rate and pauses entirely when nothing needs redrawing. */
+  setRenderFps(fps: number): void {
+    this.renderFps = Number.isFinite(fps) && fps > 0 ? Math.min(60, Math.max(1, fps)) : 60
   }
 
   /** Enter/exit animation mode — skips compositing in render loop */
   setAnimationMode(mode: boolean): void {
     this.animationMode = mode
+    if (mode) this.requestRender()
   }
 
   /** Render strokes up to specified point counts — used by progressive playback consumers. */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
+    this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.resetReplaySurface(true)
 
@@ -1411,6 +1444,18 @@ export class EfxPaintEngine {
       return
     }
 
+    // Throttle the display loop to the project frame rate: the loop never runs
+    // faster than renderFps (the physics/drying simulators keep their own fixed
+    // tick rates). A hot 60fps rAF keeps the WKWebView compositor busy for the
+    // whole session and is the long-idle webview-death cause.
+    const now = performance.now()
+    const frameInterval = 1000 / this.renderFps
+    if (now - this.lastRenderTime < frameInterval) {
+      this.rafId = requestAnimationFrame(() => this.render())
+      return
+    }
+    this.lastRenderTime = now
+
     const displayCtx = this.dualCanvas.displayCtx
     displayCtx.clearRect(0, 0, this.width, this.height)
 
@@ -1431,7 +1476,34 @@ export class EfxPaintEngine {
     // one retained FIFO continuation after the visible frame has been drawn.
     this.runScheduledStrokeFinalizationFrame()
 
+    // Pause the loop when nothing needs the display (no wet paint, no previews,
+    // no cursor, no pending finalization, no physics). Any state change re-arms
+    // it through requestRender().
+    if (this.shouldKeepRendering()) {
+      this.rafId = requestAnimationFrame(() => this.render())
+    } else {
+      this.rafId = 0
+    }
+  }
+
+  /** Re-arm the display loop when it is paused and something needs redrawing. */
+  private requestRender(): void {
+    if (this.destroyed) return
+    if (this.rafId !== 0) return
+    if (typeof requestAnimationFrame !== 'function') return
     this.rafId = requestAnimationFrame(() => this.render())
+  }
+
+  private shouldKeepRendering(): boolean {
+    if (this.state.physicsRunning) return true
+    if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization !== null) return true
+    if (this.previewStroke !== null) return true
+    if (this.getQueuedStrokePreviews().length > 0) return true
+    if (this.cursorX >= 0) return true
+    for (let i = 0; i < this.size; i += 64) {
+      if (this.wet.alpha[i] > 1) return true
+    }
+    return false
   }
 
   // ================================================================
@@ -1564,6 +1636,7 @@ export class EfxPaintEngine {
   private scheduleStrokeFinalization(): void {
     if (this.strokeFinalizationScheduled || (this.pendingStrokeFinalizations.length === 0 && !this.activeStrokeFinalization)) return
     this.strokeFinalizationScheduled = true
+    this.requestRender()
   }
 
   private hasPendingInput(): boolean {
@@ -1602,6 +1675,7 @@ export class EfxPaintEngine {
   }
 
   public flushPendingStrokeFinalizations(): void {
+    this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.runStrokeFinalizationTurn(true)
     }
@@ -1799,6 +1873,7 @@ export class EfxPaintEngine {
   }
 
   private renderVisibleWetLayer(): void {
+    this.requestRender()
     const displayCtx = this.dualCanvas.displayCtx
     displayCtx.clearRect(0, 0, this.width, this.height)
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
@@ -2047,6 +2122,7 @@ export class EfxPaintEngine {
 
   private onPointerDown(e: PointerEvent): void {
     if (this.inputLocked) return
+    this.requestRender()
     const handlerStartedAt = performance.now()
     if (this.performanceListener) {
       const dispatchDelay = handlerStartedAt - e.timeStamp
@@ -2072,6 +2148,7 @@ export class EfxPaintEngine {
   }
 
   private onPointerMove(e: PointerEvent): void {
+    this.requestRender()
     // Always update cursor position
     const r = this.dualCanvas.dryCanvas.getBoundingClientRect()
     this.cursorX = (e.clientX - r.left) * (this.width / r.width)
@@ -2099,6 +2176,7 @@ export class EfxPaintEngine {
 
   private onPointerUp(e: PointerEvent): void {
     if (!this.state.drawing) return
+    this.requestRender()
     const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
     const mutationId = this.nextMutationId++
     this.lastPointerInputTime = performance.now()
@@ -2138,6 +2216,7 @@ export class EfxPaintEngine {
   private onPointerLeave(e: PointerEvent): void {
     this.cursorX = -1
     if (this.state.drawing) this.onPointerUp(e)
+    else this.requestRender()
   }
 
   private consumePointerSamples(events: readonly PointerEvent[]): void {

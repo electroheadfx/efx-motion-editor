@@ -2758,6 +2758,10 @@ export function PhysicsPaintStudio() {
       rotoMoveHistory.reconcilePaintBarriers(availability);
       rotoScript.notifySourceRevision();
     });
+    // The display loop runs at the project frame rate (never 60fps) and pauses
+    // entirely when idle — a hot rAF keeps the WKWebView compositor busy for
+    // the whole session and is the long-idle webview-death cause.
+    readyEngine.setRenderFps(previewFps);
     handleEngineReady(readyEngine);
     rotoScript.updateEngine(readyEngine);
     if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
@@ -2879,10 +2883,11 @@ export function PhysicsPaintStudio() {
     : mutationLocked
       ? 'Finish the current Roto script operation.'
       : undefined;
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata], () => ({
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, previewFps, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata], () => ({
     width: canvasWidth,
     height: canvasHeight,
     paperTextureScale,
+    renderFps: previewFps,
     onEngineReady: handleCanvasEngineReady,
     onCanvasMounted: setCanvasMounted,
     onNativePenInputReady: handleNativePenInputReady,

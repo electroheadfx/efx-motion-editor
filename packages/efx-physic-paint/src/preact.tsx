@@ -75,6 +75,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
       papers: props.papers,
       defaultPaper: props.defaultPaper,
       paperTextureScale: props.paperTextureScale,
+      renderFps: props.renderFps,
       getStrokeMetadata: props.getStrokeMetadata,
     })
     engineRef.current = engine
