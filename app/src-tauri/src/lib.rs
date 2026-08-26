@@ -168,7 +168,9 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         window
     } else {
         let window = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
-            .title("EFX Physics Paint")
+            // Title carries the build's commit hash (see build.rs): UAT must be
+            // able to prove which build ran a crashing session.
+            .title(format!("EFX Physics Paint [{}]", env!("GIT_SHA")))
             .inner_size(1280.0, 900.0)
             .min_inner_size(960.0, 640.0)
             .resizable(true)
