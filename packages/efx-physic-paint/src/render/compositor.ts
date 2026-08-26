@@ -48,6 +48,7 @@ export function compositeWetLayer(
   width: number,
   height: number,
   sampleHFn: (x: number, y: number) => number,
+  scratch?: ImageData,
 ): void {
   // Sparse check: skip compositing if no wet paint exists
   const size = width * height
@@ -57,7 +58,10 @@ export function compositeWetLayer(
   }
   if (!hasWet) return
 
-  const id = displayCtx.createImageData(width, height)
+  // Reuse a caller-owned scratch buffer instead of allocating a 2.6MB
+  // ImageData every frame — the 60fps composite allocates ~156MB/s otherwise,
+  // churning the GC and the webview process memory.
+  const id = scratch ?? displayCtx.createImageData(width, height)
   const d = id.data
 
   for (let i = 0; i < size; i++) {

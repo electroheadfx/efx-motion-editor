@@ -48,11 +48,44 @@ import { compositeWetLayer, wetDisplayAlpha } from '../render/compositor'
 import { drawBg, drawBrushCursor, drawQueuedStrokePolyline, drawStrokePreview, setupDualCanvas } from '../render/canvas'
 import type { StrokePreview, DualCanvas } from '../render/canvas'
 
+/**
+ * Quantized undo snapshot — the wet/saved buffers are stored at reduced
+ * precision (Uint8 colors, Uint16 scaled scalars) to cut checkpoint memory
+ * from ~34MB to ~14MB per level (10 levels held permanently: 338MB -> 143MB).
+ * Restored values are visually and physically equivalent: colors are exact
+ * (0-255), alpha precision is ±2 on a 0-200000 range (anything above ~800 is
+ * fully opaque), and wetness/dryPos/strokeOpacity keep integer or 1/65535
+ * precision.
+ */
 type UndoSnapshot = {
   mutationId: number
   canvas: ImageData
-  wet: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; w: Float32Array; dp: Float32Array; so: Float32Array }
-  saved: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; so: Float32Array }
+  wet: { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint16Array; w: Uint16Array; dp: Uint16Array; so: Uint16Array }
+  saved: { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint16Array; so: Uint16Array }
+}
+
+const UNDO_ALPHA_SCALE = 4
+const UNDO_OPACITY_SCALE = 65535
+
+function quantizeScaledUint16(src: Float32Array, scale: number): Uint16Array {
+  const out = new Uint16Array(src.length)
+  for (let i = 0; i < src.length; i++) {
+    out[i] = Math.min(65535, Math.max(0, Math.round(src[i] * scale)))
+  }
+  return out
+}
+
+function dequantizeScaled(dst: Float32Array, src: Uint16Array, scale: number): void {
+  for (let i = 0; i < src.length; i++) dst[i] = src[i] * scale
+}
+
+/** Restore a scaled quantized snapshot, or copy a raw Float32 snapshot verbatim (test/legacy snapshots). */
+function restoreScaledOrRaw(dst: Float32Array, src: Uint16Array | Float32Array, scale: number): void {
+  if (src instanceof Uint16Array) {
+    dequantizeScaled(dst, src, scale)
+  } else {
+    dst.set(src)
+  }
 }
 
 type DeferredStrokeFinalization = {
@@ -123,6 +156,8 @@ export type PaintHistoryAvailability = {
 const STROKE_FINALIZATION_IDLE_MS = 500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
+/** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
+const RENDER_IDLE_MS = 4000
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
@@ -261,6 +296,8 @@ export class EfxPaintEngine {
 
   // --- Canvases ---
   private dualCanvas: DualCanvas
+  private wetDisplayScratch: ImageData | null = null
+  private lastRenderActivityTime = 0
   private bgCanvas: HTMLCanvasElement
   private bgCtx: CanvasRenderingContext2D
 
@@ -409,6 +446,7 @@ export class EfxPaintEngine {
 
     // Create dual canvases
     this.dualCanvas = setupDualCanvas(container, this.width, this.height)
+    this.wetDisplayScratch = this.dualCanvas.displayCtx.createImageData(this.width, this.height)
 
     // Create offscreen background canvas
     this.bgCanvas = document.createElement('canvas')
@@ -522,6 +560,7 @@ export class EfxPaintEngine {
    * onEngineReady should fire only after this resolves.
    */
   async init(): Promise<void> {
+    this.lastRenderActivityTime = performance.now()
     await this.loadPaperTextures(this._initPapers, this._initDefaultPaper)
   }
 
@@ -1164,15 +1203,15 @@ export class EfxPaintEngine {
     this.wet.r.set(snap.wet.r)
     this.wet.g.set(snap.wet.g)
     this.wet.b.set(snap.wet.b)
-    this.wet.alpha.set(snap.wet.a)
+    restoreScaledOrRaw(this.wet.alpha, snap.wet.a, UNDO_ALPHA_SCALE)
     this.wet.wetness.set(snap.wet.w)
     this.drying.dryPos.set(snap.wet.dp)
-    this.wet.strokeOpacity.set(snap.wet.so)
+    restoreScaledOrRaw(this.wet.strokeOpacity, snap.wet.so, 1 / UNDO_OPACITY_SCALE)
     this.savedWet.r.set(snap.saved.r)
     this.savedWet.g.set(snap.saved.g)
     this.savedWet.b.set(snap.saved.b)
-    this.savedWet.alpha.set(snap.saved.a)
-    this.savedWet.strokeOpacity.set(snap.saved.so)
+    restoreScaledOrRaw(this.savedWet.alpha, snap.saved.a, UNDO_ALPHA_SCALE)
+    restoreScaledOrRaw(this.savedWet.strokeOpacity, snap.saved.so, 1 / UNDO_OPACITY_SCALE)
   }
 
   /** Clear the canvas and all strokes */
@@ -1444,7 +1483,7 @@ export class EfxPaintEngine {
 
     // Composite wet layer onto display (D-04: per-pixel strokeOpacity, no global userOpacity)
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
+    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, this.wetDisplayScratch ?? undefined)
 
     // Draw queued stroke outlines until their full render finalizes.
     this.drawQueuedStrokePreviews(displayCtx)
@@ -1481,6 +1520,13 @@ export class EfxPaintEngine {
 
   private shouldKeepRendering(): boolean {
     if (this.state.physicsRunning) return true
+    // The drain, queued outlines, and the brush cursor only keep the display
+    // loop alive while the user is present. After RENDER_IDLE_MS without any
+    // pointer input, the loop pauses even with the cursor parked over the
+    // canvas or strokes awaiting finalization — a long-idle session must not
+    // keep the WKWebView compositor busy (the sustained-load black window).
+    // Any input re-arms it through requestRender().
+    if (performance.now() - this.lastRenderActivityTime >= RENDER_IDLE_MS) return false
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization !== null) return true
     if (this.previewStroke !== null) return true
     if (this.getQueuedStrokePreviews().length > 0) return true
@@ -1569,23 +1615,23 @@ export class EfxPaintEngine {
 
     const wetCopyStartedAt = this.performanceListener ? performance.now() : 0
     const wetSnap = {
-      r: new Float32Array(this.wet.r),
-      g: new Float32Array(this.wet.g),
-      b: new Float32Array(this.wet.b),
-      a: new Float32Array(this.wet.alpha),
-      w: new Float32Array(this.wet.wetness),
-      dp: new Float32Array(this.drying.dryPos),
-      so: new Float32Array(this.wet.strokeOpacity),
+      r: new Uint8Array(this.wet.r),
+      g: new Uint8Array(this.wet.g),
+      b: new Uint8Array(this.wet.b),
+      a: quantizeScaledUint16(this.wet.alpha, 1 / UNDO_ALPHA_SCALE),
+      w: new Uint16Array(this.wet.wetness),
+      dp: new Uint16Array(this.drying.dryPos),
+      so: quantizeScaledUint16(this.wet.strokeOpacity, UNDO_OPACITY_SCALE),
     }
     this.recordPerformance('undo-wet-buffer-copy', 'sync-cpu', wetCopyStartedAt, { mutationId })
 
     const savedCopyStartedAt = this.performanceListener ? performance.now() : 0
     const savedSnap = {
-      r: new Float32Array(this.savedWet.r),
-      g: new Float32Array(this.savedWet.g),
-      b: new Float32Array(this.savedWet.b),
-      a: new Float32Array(this.savedWet.alpha),
-      so: new Float32Array(this.savedWet.strokeOpacity),
+      r: new Uint8Array(this.savedWet.r),
+      g: new Uint8Array(this.savedWet.g),
+      b: new Uint8Array(this.savedWet.b),
+      a: quantizeScaledUint16(this.savedWet.alpha, 1 / UNDO_ALPHA_SCALE),
+      so: quantizeScaledUint16(this.savedWet.strokeOpacity, UNDO_OPACITY_SCALE),
     }
     this.recordPerformance('undo-saved-wet-buffer-copy', 'sync-cpu', savedCopyStartedAt, { mutationId })
 
@@ -1866,7 +1912,7 @@ export class EfxPaintEngine {
     const displayCtx = this.dualCanvas.displayCtx
     displayCtx.clearRect(0, 0, this.width, this.height)
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
+    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, this.wetDisplayScratch ?? undefined)
   }
 
   private getDryRestoreData(): ImageData | null {
@@ -2128,6 +2174,7 @@ export class EfxPaintEngine {
     }
     e.preventDefault()
     this.lastPointerInputTime = handlerStartedAt
+    this.lastRenderActivityTime = performance.now()
     this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
     this.state.drawing = true
     this.rawPts = []
@@ -2143,6 +2190,7 @@ export class EfxPaintEngine {
     this.cursorX = (e.clientX - r.left) * (this.width / r.width)
     this.cursorY = (e.clientY - r.top) * (this.height / r.height)
     this.lastPointerInputTime = performance.now()
+    this.lastRenderActivityTime = this.lastPointerInputTime
 
     if (!this.state.drawing) return
     e.preventDefault()
@@ -2169,6 +2217,7 @@ export class EfxPaintEngine {
     const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
     const mutationId = this.nextMutationId++
     this.lastPointerInputTime = performance.now()
+    this.lastRenderActivityTime = this.lastPointerInputTime
     const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : null
     if (coalesced && coalesced.length > 0) this.consumePointerSamples(coalesced)
     this.consumePointerSamples([e])
