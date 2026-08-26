@@ -66,8 +66,12 @@ export function Preview() {
       renderFromFrameMap(globalFrame);
     });
 
-    // rAF render loop: renders during playback using frameMap-derived data
-    let rafId: number;
+    // rAF render loop: renders during playback using frameMap-derived data.
+    // The loop runs ONLY while playing — when idle it stops, so the parent
+    // webview's compositor goes fully cold. A 60Hz no-op rAF keeps the page
+    // marked as animating and is the same long-idle webview-death pattern as
+    // the physics-paint engine loop.
+    let rafId: number | null = null;
     let lastRenderedFrame = -1;
 
     function tick() {
@@ -77,13 +81,22 @@ export function Preview() {
           lastRenderedFrame = currentFrame;
           renderFromFrameMap(currentFrame);
         }
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = null;
       }
-      rafId = requestAnimationFrame(tick);
     }
-    rafId = requestAnimationFrame(tick);
+
+    const disposePlaybackWatcher = effect(() => {
+      timelineStore.isPlaying.value; // subscribe
+      if (timelineStore.isPlaying.peek() && rafId === null) {
+        rafId = requestAnimationFrame(tick);
+      }
+    });
 
     return () => {
-      cancelAnimationFrame(rafId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      disposePlaybackWatcher();
       disposePreload();
       disposeRender();
       renderer.dispose();
