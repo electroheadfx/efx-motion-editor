@@ -157,7 +157,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, status } = props;
+  const { layout, topBar, status } = props;
   return (
     <main class="demo-shell">
       <section
@@ -166,9 +166,9 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         tabIndex={0}
         onKeyDown={(event) => layout.onKeyDown(event as unknown as KeyboardEvent)}
       >
-        {/* 47-05 LEAK BISECT (temporary): all panels removed to isolate the
-            view's own effects from the panel DOM. REVERT after. */}
-        {/* <MemoizedPhysicsPaintTopBar {...topBar} /> */}
+        {/* 47-05 LEAK BISECT (temporary): only the top bar re-enabled to
+            isolate which panel leaks. REVERT after. */}
+        <MemoizedPhysicsPaintTopBar {...topBar} />
         {/* <PhysicsPaintToolRail {...toolRail} /> */}
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
