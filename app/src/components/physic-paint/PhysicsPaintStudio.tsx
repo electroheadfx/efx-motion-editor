@@ -3063,7 +3063,7 @@ export function PhysicsPaintStudio() {
     if (!layerId) return;
     const mode = bridgeModeRef.current;
     if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
-    const timer = window.setTimeout(() => pushLiveProjection(layerId, mode), 500);
+    const timer = window.setTimeout(() => pushLiveProjection(layerId, mode), 2000);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, physicPaintVersion.value]);
