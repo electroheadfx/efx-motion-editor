@@ -33,26 +33,44 @@ function install(): void {
     window.localStorage?.setItem('efx.physicsPaint.profile', '1');
   } catch { /* probe must never break the session */ }
 
+  // Sample the SCHEDULING stack so a self-rescheduling loop names its home
+  // frame (fires alone only show the callback, not the loop's origin).
+  let scheduleCount = 0;
+  const sampleScheduleStack = (prefix: string): void => {
+    scheduleCount += 1;
+    if (scheduleCount % 25 !== 1) return;
+    const lines = (new Error().stack ?? '').split('\n');
+    const frame = lines
+      .map((line) => line.trim())
+      .find((line) => /^(at\s+)?\S+[@(]/.test(line) && !line.includes('idleActivityProbe'));
+    if (!frame) return;
+    const match = frame.match(/^(?:at\s+)?([\w$.<>-]+)/);
+    if (match) bump(`${prefix}.${match[1]}`);
+  };
+
   const originalRaf = window.requestAnimationFrame.bind(window);
-  window.requestAnimationFrame = (callback: FrameRequestCallback): number => (
-    originalRaf((time) => { bump('raf.fire'); callback(time); })
-  );
+  window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+    sampleScheduleStack('raf.schedule');
+    return originalRaf((time) => { bump('raf.fire'); callback(time); });
+  };
 
   const originalSetInterval = window.setInterval.bind(window);
-  window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]): number => (
-    originalSetInterval(() => {
+  window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]): number => {
+    sampleScheduleStack('interval.schedule');
+    return originalSetInterval(() => {
       bump(`interval.${timeout ?? '?'}ms.fire`);
       if (typeof handler === 'function') handler(...args);
-    }, timeout, ...args)
-  )) as typeof window.setInterval;
+    }, timeout, ...args);
+  }) as typeof window.setInterval;
 
   const originalSetTimeout = window.setTimeout.bind(window);
-  window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]): number => (
-    originalSetTimeout(() => {
+  window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]): number => {
+    sampleScheduleStack('timeout.schedule');
+    return originalSetTimeout(() => {
       bump(`timeout.${timeout ?? '?'}ms.fire`);
       if (typeof handler === 'function') handler(...args);
-    }, timeout, ...args)
-  )) as typeof window.setTimeout;
+    }, timeout, ...args);
+  }) as typeof window.setTimeout;
 
   const originalAddEventListener = EventTarget.prototype.addEventListener;
   EventTarget.prototype.addEventListener = function (type, listener, options) {
