@@ -133,8 +133,9 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   );
 }
 
-// 47-05 LEAK BISECT: canvas stack memo temporarily removed.
-// const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);
+const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);
+// 47-05 LEAK BISECT: the memo is kept defined but unused (void reference).
+void MemoizedPhysicsPaintCanvasStack;
 
 export interface PhysicsPaintStudioViewProps {
   layout: {
