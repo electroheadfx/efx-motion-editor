@@ -65,7 +65,7 @@ if (window.location.pathname === '/physics-paint') {
     const now = performance.now();
     if (now - lastActivityAt < 3000 && now - lastRafTick > 5000 && now - lastReloadAt > 15000) {
       lastReloadAt = now;
-      console.warn('[watchdog] compositor stall detected — reloading paint window');
+      console.warn(`[watchdog] compositor stall detected — rAF last tick ${Math.round(now - lastRafTick)}ms ago — reloading paint window`);
       window.location.reload();
     }
   }, 1000);
