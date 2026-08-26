@@ -19,6 +19,15 @@ export function installIdleActivityProbe(): void {
   const w = window as unknown as { __idleActivityProbeInstalled?: boolean };
   if (w.__idleActivityProbeInstalled) return;
   w.__idleActivityProbeInstalled = true;
+  // The probe must NEVER break the session — any wrapper failure is swallowed.
+  try {
+    install();
+  } catch (error) {
+    console.warn('[idle-activity-probe] install failed:', error);
+  }
+}
+
+function install(): void {
 
   try {
     window.localStorage?.setItem('efx.physicsPaint.profile', '1');
@@ -103,27 +112,29 @@ export function installIdleActivityProbe(): void {
   // every 25th write so the hot writer's call site shows up by name.
   let writeCount = 0;
   const valueDescriptor = Object.getOwnPropertyDescriptor(Signal.prototype, 'value');
-  if (valueDescriptor?.set && valueDescriptor.get) {
+  if (valueDescriptor?.set && valueDescriptor.get && valueDescriptor.configurable) {
     const originalSet = valueDescriptor.set;
     Object.defineProperty(Signal.prototype, 'value', {
       configurable: true,
       get: valueDescriptor.get,
       set(this: unknown, next: unknown) {
-        bump('signal.write');
-        writeCount += 1;
-        if (writeCount % 25 === 1) {
-          const lines = (new Error().stack ?? '').split('\n');
-          const frame = lines
-            .map((line) => line.trim())
-            .find((line) => /^(at\s+)?\S+[@(]/.test(line)
-              && !line.includes('idleActivityProbe')
-              && !line.includes('/signals-core/')
-              && !line.includes('Signal.prototype'));
-          if (frame) {
-            const match = frame.match(/^(?:at\s+)?([\w$.<>-]+)/);
-            if (match) bump(`sigwrite.${match[1]}`);
+        try {
+          bump('signal.write');
+          writeCount += 1;
+          if (writeCount % 25 === 1) {
+            const lines = (new Error().stack ?? '').split('\n');
+            const frame = lines
+              .map((line) => line.trim())
+              .find((line) => /^(at\s+)?\S+[@(]/.test(line)
+                && !line.includes('idleActivityProbe')
+                && !line.includes('/signals-core/')
+                && !line.includes('Signal.prototype'));
+            if (frame) {
+              const match = frame.match(/^(?:at\s+)?([\w$.<>-]+)/);
+              if (match) bump(`sigwrite.${match[1]}`);
+            }
           }
-        }
+        } catch { /* never break a signal write */ }
         originalSet.call(this, next);
       },
     });
