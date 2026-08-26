@@ -256,7 +256,10 @@ button.destructive {
   border-color: #4caf70 !important;
   background: #12331f !important;
   color: #4caf70 !important;
-  animation: pulse 2s infinite;
+  /* 47-05: bounded, not infinite — an endlessly animating element keeps the
+     WKWebView compositor presenting frames forever, and each presented frame
+     leaks the window backing (~45 MB/s — the 7-min OOM black window). */
+  animation: pulse 2s 3;
 }
 
 .physics-idle {
@@ -4180,7 +4183,9 @@ button.destructive {
 
 .physics-paint-roto-cell.pending {
   border-style: dashed;
-  animation: roto-cell-pending 1.2s ease-in-out infinite;
+  /* 47-05: bounded — an infinite pulse keeps the compositor presenting and
+     leaks the frame backing (the 7-min OOM black window). */
+  animation: roto-cell-pending 1.2s ease-in-out 4;
 }
 
 .physics-paint-roto-cell.current {
@@ -4278,7 +4283,8 @@ button.destructive {
   border-style: dashed;
   outline: 2px solid rgba(245, 166, 35, 0.86);
   outline-offset: 1px;
-  animation: roto-cell-pending 0.8s ease-in-out infinite;
+  /* 47-05: bounded — see the pending cell note above. */
+  animation: roto-cell-pending 0.8s ease-in-out 4;
 }
 
 /* Single-key ripple Drag preview states (Plan 36.14-07).
