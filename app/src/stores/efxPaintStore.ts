@@ -14,6 +14,7 @@
  */
 
 import { signal } from '@preact/signals';
+import { recordIdleActivityStoreWrite } from '../components/physic-paint/performance/idleActivityProbe';
 import type { BlendMode, CachedFrameReference, EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
@@ -52,6 +53,7 @@ export function takePendingTrackDeletions(layerId: string): readonly string[] {
 
 function _notifyChange(): void {
   efxPaintVersion.value++;
+  recordIdleActivityStoreWrite('storebump.efxDoc');
   _markProjectDirty?.();
 }
 

@@ -131,6 +131,7 @@ function install(): void {
   let writeCount = 0;
   const valueDescriptor = Object.getOwnPropertyDescriptor(Signal.prototype, 'value');
   if (valueDescriptor?.set && valueDescriptor.get && valueDescriptor.configurable) {
+    bump('signalpatch.applied');
     const originalSet = valueDescriptor.set;
     Object.defineProperty(Signal.prototype, 'value', {
       configurable: true,
@@ -156,6 +157,8 @@ function install(): void {
         originalSet.call(this, next);
       },
     });
+  } else {
+    bump(`signalpatch.skipped.${valueDescriptor ? (valueDescriptor.configurable ? 'has-accessor' : 'non-configurable') : 'no-descriptor'}`);
   }
 }
 
@@ -164,4 +167,27 @@ export function snapshotIdleActivity(): Record<string, number> {
   const out = Object.fromEntries(counts);
   counts.clear();
   return out;
+}
+
+/** TEMPORARY: record one occurrence from instrumented store bump sites. */
+export function recordIdleActivity(name: string): void {
+  bump(name);
+}
+
+/** TEMPORARY: sampled stack attribution for store writes — first APP frame. */
+let storeWriteCount = 0;
+export function recordIdleActivityStoreWrite(name: string): void {
+  bump(name);
+  storeWriteCount += 1;
+  if (storeWriteCount % 25 !== 1) return;
+  const lines = (new Error().stack ?? '').split('\n').map((line) => line.trim());
+  const isLibrary = (line: string): boolean => (
+    line.includes('node_modules') || line.includes('.vite') || line.includes('idleActivityProbe')
+      || line.includes('physicPaintStore') || line.includes('efxPaintStore')
+  );
+  const appFrame = lines.find((line) => /^(at\s+)?\S+[@(]/.test(line) && !isLibrary(line));
+  const frame = appFrame ?? lines.find((line) => /^(at\s+)?\S+[@(]/.test(line) && !line.includes('idleActivityProbe'));
+  if (!frame) return;
+  const match = frame.match(/^(?:at\s+)?([\w$.<>-]+)/);
+  if (match) bump(`${name}.at.${match[1]}`);
 }
