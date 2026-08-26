@@ -158,6 +158,14 @@ const STROKE_FINALIZATION_IDLE_MS = 500
 const MAX_COALESCED_STROKES_PER_FRAME = 4
 /** Interactive strokes drain at most this many phase steps per visual frame — batches the final render. */
 const MAX_INTERACTIVE_STEPS_PER_FRAME = 12
+/** Hard cap on the interactive drain turn's synchronous block — the drain runs
+ *  in the gap between strokes; a long turn delays the next stroke's first
+ *  samples (the stroke-start stutter the user felt every few strokes). */
+const STROKE_FINALIZATION_MAX_TURN_MS = 12
+/** Minimum interval between full display composites while a drain is running —
+ * the per-frame full-canvas upload is the main remaining GPU churn during a
+ * painting session; 30fps keeps the final render visibly fast. */
+const DISPLAY_COMPOSITE_MIN_INTERVAL_MS = 30
 /** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
 const RENDER_IDLE_MS = 4000
 
@@ -310,6 +318,7 @@ export class EfxPaintEngine {
   // the whole canvas every frame — the sustained full-canvas upload churn that
   // killed the WKWebView GPU process.
   private displayCompositeDirty = true
+  private lastDisplayCompositeTime = 0
   private lastCursorRect: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPreviewBbox: { x0: number; y0: number; x1: number; y1: number } | null = null
   private drawnQueuedOutlineCount = 0
@@ -1510,7 +1519,7 @@ export class EfxPaintEngine {
     // the previous composite — the compositor then uploads only the small
     // changed regions instead of the whole canvas every frame (the sustained
     // full-canvas upload churn that killed the WKWebView GPU process).
-    if (this.displayCompositeDirty) {
+    if (this.displayCompositeDirty && performance.now() - this.lastDisplayCompositeTime >= DISPLAY_COMPOSITE_MIN_INTERVAL_MS) {
       this.compositeDisplayNow()
       // The composite cleared the canvas — redraw every overlay on top.
       this.drawQueuedStrokePreviews(displayCtx)
@@ -1520,6 +1529,10 @@ export class EfxPaintEngine {
       drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
       this.lastCursorRect = this.overlayBoundsForCursor()
     } else {
+      // When the composite is throttled, the overlays draw incrementally on
+      // the previous composite — the stale wet pixels flush on the next
+      // composite (≤30ms later). The scratch still mirrors the last composite,
+      // so the rect restores stay consistent.
       // 1. New queued stroke outlines. Append-only: the preview list only grows
       // between composites (a finalize re-runs the composite, which clears and
       // redraws every outline from scratch).
@@ -1619,6 +1632,7 @@ export class EfxPaintEngine {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, scratch ?? undefined)
     this.displayCompositeDirty = false
+    this.lastDisplayCompositeTime = performance.now()
     // The composite cleared the display — every overlay must be redrawn from
     // scratch by the next overlay pass.
     this.drawnQueuedOutlineCount = 0
@@ -1855,8 +1869,9 @@ export class EfxPaintEngine {
       // frame — one step per frame drains at ~1 stroke/second, so a long
       // painting session's queue takes minutes to finalize. Batching keeps the
       // final render fast while the per-frame block stays small (the drain
-      // only runs in the 500ms inactivity window, never mid-stroke).
-      this.runStrokeFinalizationTurn(false, Infinity, MAX_INTERACTIVE_STEPS_PER_FRAME)
+      // only runs in the 500ms inactivity window, never mid-stroke; the turn
+      // also yields to a time budget and to pending input between strokes).
+      this.runStrokeFinalizationTurn(false, Infinity, MAX_INTERACTIVE_STEPS_PER_FRAME, STROKE_FINALIZATION_MAX_TURN_MS)
     }
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.strokeFinalizationScheduled = true
@@ -1899,9 +1914,10 @@ export class EfxPaintEngine {
     }
   }
 
-  private runStrokeFinalizationTurn(flush: boolean = false, maxStrokes: number = Infinity, maxSteps: number = 1): void {
+  private runStrokeFinalizationTurn(flush: boolean = false, maxStrokes: number = Infinity, maxSteps: number = 1, maxDurationMs: number = Infinity): void {
     let completedStrokes = 0
     let steps = 0
+    const turnStartedAt = performance.now()
     do {
       const active = this.activeStrokeFinalization ?? this.startNextStrokeFinalization()
       if (!active) return
@@ -1921,7 +1937,15 @@ export class EfxPaintEngine {
         steps++
       } while (flush && this.activeStrokeFinalization === active && steps < maxSteps)
       completedStrokes++
-    } while ((flush || steps < maxSteps) && completedStrokes < maxStrokes && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization))
+      // The interactive turn also yields to pending input between strokes and
+      // to a hard time budget: the drain runs in the gap before the user's next
+      // stroke, and a long synchronous turn delays that stroke's first samples
+      // (the stroke-start stutter).
+    } while (
+      completedStrokes < maxStrokes
+      && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization)
+      && (flush || (steps < maxSteps && performance.now() - turnStartedAt < maxDurationMs && !this.hasPendingInput()))
+    )
   }
 
   private finishActiveStrokeSynchronously(active: ActiveStrokeFinalization): void {
