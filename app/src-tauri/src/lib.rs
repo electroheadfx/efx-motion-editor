@@ -2,6 +2,7 @@ mod commands;
 mod display_sleep;
 mod models;
 mod services;
+mod window_occlusion;
 
 pub use commands::physic_paint_cache as physic_paint_cache_command;
 pub use services::physic_paint_cache;
@@ -186,9 +187,9 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
             .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
             .build()
             .map_err(|error| format!("Could not create physics paint window: {error}"))?;
-        // Release the display-sleep assertion when the paint window is
-        // destroyed; registered once per created window (reused windows keep
-        // the handler from their creation).
+        // Release the display-sleep assertion and stop the occlusion monitor
+        // when the paint window is destroyed; registered once per created
+        // window (reused windows keep the handler from their creation).
         let app_handle = app.clone();
         window.on_window_event(move |event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
@@ -197,8 +198,16 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
                         *held = None;
                     }
                 }
+                if let Some(state) = app_handle.try_state::<window_occlusion::OcclusionStopFlag>() {
+                    state.0.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         });
+        // 47-05: reload the window hidden after 5 min of continuous occlusion
+        // — the WebKit GPU process drops the page's connection ~7 min after
+        // the window goes occluded (black window on return); the reload
+        // resets the connection and is invisible while the window is covered.
+        window_occlusion::start(window.clone(), &app);
         window
     };
 
@@ -453,6 +462,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(PhysicsPaintLaunchState(Mutex::new(None)))
         .manage(DisplaySleepGuardState(Mutex::new(None)))
+        .manage(window_occlusion::OcclusionStopFlag::default())
         .manage(services::script_library::ScriptLibraryState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
