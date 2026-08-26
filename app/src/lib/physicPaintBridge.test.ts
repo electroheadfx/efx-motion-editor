@@ -923,6 +923,7 @@ describe('physicPaintBridge', () => {
       minimizedBefore: false,
       visible: true,
       minimized: false,
+      displaySleepAsserted: true,
     });
     Object.defineProperty(globalThis, 'window', {
       value: {
@@ -956,6 +957,7 @@ describe('physicPaintBridge', () => {
       minimizedBefore: false,
       visible: false,
       minimized: false,
+      displaySleepAsserted: false,
     });
     Object.defineProperty(globalThis, 'window', {
       value: {

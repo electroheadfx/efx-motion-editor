@@ -122,6 +122,8 @@ struct PhysicsPaintWindowLaunchResult {
     minimized_before: bool,
     visible: bool,
     minimized: bool,
+    #[serde(rename = "displaySleepAsserted")]
+    display_sleep_asserted: bool,
 }
 
 #[tauri::command]
@@ -216,17 +218,25 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         return Err(format!("Physics paint window was opened but is not visible (visible={visible}, minimized={minimized})"));
     }
 
-    // 47-05: hold a display-sleep assertion while the paint window is open.
-    // The black-window crash follows macOS display sleep exactly (displaysleep
-    // 10 min, web process alive, no crash report): on wake the WKWebView has
-    // lost its composited surface. Preventing display sleep for the lifetime
-    // of the paint window — the same mechanism as `caffeinate -d` — removes
-    // the trigger; the watchdog reload stays as the recovery net.
-    if let Some(guard) = display_sleep::DisplaySleepGuard::acquire("EFX Physics Paint: display sleep disabled while painting") {
-        if let Ok(mut held) = app.state::<DisplaySleepGuardState>().0.lock() {
-            *held = Some(guard);
-        }
-    }
+    // 47-05: holds a display-sleep assertion while the paint window is open.
+    // The black-window class follows macOS display sleep (displaysleep 10 min,
+    // web process alive, zero crash reports): on wake the WKWebView has lost
+    // its composited surface. Preventing display sleep for the lifetime of the
+    // paint window — the same mechanism as `caffeinate -d` — removes the
+    // trigger; the watchdog reload stays as the recovery net. The asserted
+    // state is surfaced to the frontend so a session proves the guard held.
+    let display_sleep_asserted = match display_sleep::DisplaySleepGuard::acquire(
+        "EFX Physics Paint: display sleep disabled while painting",
+    ) {
+        Some(guard) => match app.state::<DisplaySleepGuardState>().0.lock() {
+            Ok(mut held) => {
+                *held = Some(guard);
+                true
+            }
+            Err(_) => false,
+        },
+        None => false,
+    };
 
     Ok(PhysicsPaintWindowLaunchResult {
         label: label.to_string(),
@@ -234,6 +244,7 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         minimized_before,
         visible,
         minimized,
+        display_sleep_asserted,
     })
 }
 

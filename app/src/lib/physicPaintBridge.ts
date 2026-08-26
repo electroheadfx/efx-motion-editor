@@ -138,6 +138,8 @@ interface TauriPhysicsPaintLaunchResult {
   minimizedBefore: boolean;
   visible: boolean;
   minimized: boolean;
+  /** Native display-sleep assertion held for the paint window's lifetime. */
+  displaySleepAsserted: boolean;
 }
 
 function shouldCloseNativeWindowAfterApply(payload: PhysicPaintApplyPayload): boolean {
@@ -2940,6 +2942,11 @@ async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext):
     if (!result.visible || result.minimized) {
       return { ok: false, error: `Physics paint window did not become visible (visible=${result.visible}, minimized=${result.minimized})` };
     }
+    // 47-05 crash instrumentation: the black-window class follows display
+    // sleep; this line proves whether the native guard was actually held for
+    // this session (false => the display could sleep and the window could
+    // black out regardless of the engine's GPU-load fixes).
+    console.log(`[physics-paint] window open — display-sleep assertion active: ${result.displaySleepAsserted}`);
     return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: String(error) };
@@ -2955,7 +2962,8 @@ function isTauriPhysicsPaintLaunchResult(value: unknown): value is TauriPhysicsP
       typeof (value as TauriPhysicsPaintLaunchResult).visibleBefore === 'boolean' &&
       typeof (value as TauriPhysicsPaintLaunchResult).minimizedBefore === 'boolean' &&
       typeof (value as TauriPhysicsPaintLaunchResult).visible === 'boolean' &&
-      typeof (value as TauriPhysicsPaintLaunchResult).minimized === 'boolean',
+      typeof (value as TauriPhysicsPaintLaunchResult).minimized === 'boolean' &&
+      typeof (value as TauriPhysicsPaintLaunchResult).displaySleepAsserted === 'boolean',
   );
 }
 
