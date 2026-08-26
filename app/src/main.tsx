@@ -30,6 +30,20 @@ import {setDebugReplayDiff} from './lib/physicPaintBridge';
 const root = document.getElementById('app')!;
 
 if (window.location.pathname === '/physics-paint') {
+  // Compositor-death watchdog: when the WKWebView GPU/compositing process
+  // dies, the web process survives (the window goes black) but rAF stops
+  // firing. Reload to recover — the sessionStorage document checkpoint
+  // rehydrates the Studio with the last pushed state (bounded by the 2s push
+  // debounce). Guarded by visibility: an occluded/minimized window legitimately
+  // pauses rAF, so the reload only fires while the document is visible.
+  let lastRafTick = performance.now();
+  const rafTick = () => { lastRafTick = performance.now(); };
+  requestAnimationFrame(rafTick);
+  window.setInterval(() => {
+    if (document.visibilityState === 'visible' && performance.now() - lastRafTick > 5000) {
+      window.location.reload();
+    }
+  }, 1000);
   import('./components/physic-paint/PhysicsPaintStudio').then(({ PhysicsPaintStudio }) => {
     render(<PhysicsPaintStudio />, root);
   });

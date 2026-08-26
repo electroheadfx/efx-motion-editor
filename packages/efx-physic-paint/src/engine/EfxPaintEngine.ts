@@ -157,7 +157,7 @@ const STROKE_FINALIZATION_IDLE_MS = 500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
 /** Interactive strokes drain at most this many phase steps per visual frame — batches the final render. */
-const MAX_INTERACTIVE_STEPS_PER_FRAME = 6
+const MAX_INTERACTIVE_STEPS_PER_FRAME = 12
 /** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
 const RENDER_IDLE_MS = 4000
 

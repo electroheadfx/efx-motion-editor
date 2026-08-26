@@ -11,10 +11,24 @@ import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudi
 import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
 import { registerDocument } from '../../../stores/efxPaintStore';
+import { PHYSIC_PAINT_SESSION_DOCUMENT_KEY } from '../bridge/physicsPaintBridgeTransport';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
+
+/** Read the crash-recovery document checkpoint, scoped to the launching layer. */
+function readSessionDocument(layerId: string): EfxPaintDocument | null {
+  try {
+    const raw = sessionStorage.getItem(PHYSIC_PAINT_SESSION_DOCUMENT_KEY);
+    if (!raw) return null;
+    const document = JSON.parse(raw) as EfxPaintDocument;
+    return document.parentLayerId === layerId ? document : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface PhysicsPaintLaunchReplacementCoordinator {
   request: (context: PhysicPaintLaunchContext) => void;
@@ -111,7 +125,12 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.lifecycle.completeScriptLaunchReplacement();
     input.lifecycle.cancelPhysicalEditForLaunch();
 
-    const hydration = await hydrateRotoPhysicalLaunchContext(context, physicPaintStore);
+    // Crash-recovery: after a compositor-death reload, the sessionStorage
+    // checkpoint (written on every document push) is fresher than the launch
+    // context's carried document. Prefer it when it belongs to this layer.
+    const sessionDocument = readSessionDocument(context.layerId);
+    const hydrationContext = sessionDocument ? { ...context, document: sessionDocument } : context;
+    const hydration = await hydrateRotoPhysicalLaunchContext(hydrationContext, physicPaintStore);
     if (!hydration.ok) {
       input.state.setLastError(hydration.error);
       input.state.setApplyStatus('error');

@@ -732,19 +732,23 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-1')
     enqueue('brush-2')
     enqueue('brush-3')
+    enqueue('brush-4')
+    enqueue('brush-5')
+    enqueue('brush-6')
     engine.lastPointerInputTime = now
     engine.scheduleStrokeFinalization()
 
-    // The harness completes a stroke in 3 steps; the 6-step frame budget
-    // finishes brush-1 and brush-2 in the first post-idle frame, leaving
-    // brush-3 for the next frame — the queue is never drained in one turn.
+    // The harness completes a stroke in 3 steps; the 12-step frame budget
+    // finishes brush-1..brush-4 in the first post-idle frame, leaving
+    // brush-5 and brush-6 for the next frame — the queue is never drained in
+    // one turn, whatever the budget.
     now = 1_500
     engine.runScheduledStrokeFinalizationFrame()
-    expect(finalized).toEqual(['brush-1', 'brush-2'])
-    expect(engine.pendingStrokeFinalizations).toHaveLength(1)
+    expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3', 'brush-4'])
+    expect(engine.pendingStrokeFinalizations).toHaveLength(2)
 
     engine.runScheduledStrokeFinalizationFrame()
-    expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
+    expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3', 'brush-4', 'brush-5', 'brush-6'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
     expect(engine.activeStrokeFinalization).toBeNull()
   })

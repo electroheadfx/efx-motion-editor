@@ -77,7 +77,12 @@ export function setupDualCanvas(
 
   const previewBaseCtx = previewBaseCanvas.getContext('2d')!
   const dryCtx = dryCanvas.getContext('2d', { willReadFrequently: true })!
-  const displayCtx = displayCanvas.getContext('2d')!
+  // CPU-backed display canvas: the wet composite putImageData runs every frame
+  // while paint is wet. On a GPU-backed displayed canvas that uploads 2.6MB to
+  // the GPU per frame — sustained churn that crashes the WKWebView GPU process
+  // after a long session (black window, web process still alive). A CPU-backed
+  // canvas makes putImageData a plain memcpy; the compositor uploads once.
+  const displayCtx = displayCanvas.getContext('2d', { willReadFrequently: true })!
 
   return { previewBaseCanvas, previewBaseCtx, dryCanvas, dryCtx, displayCanvas, displayCtx }
 }

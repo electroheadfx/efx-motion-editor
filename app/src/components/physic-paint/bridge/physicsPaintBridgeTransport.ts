@@ -5,6 +5,9 @@ import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PA
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 
+/** sessionStorage key for the crash-recovery document checkpoint (survives reload). */
+export const PHYSIC_PAINT_SESSION_DOCUMENT_KEY = 'efx-paint-session-document';
+
 export async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
   const message = { type: 'physic-paint:seek-frame' as const, frame };
   if (bridgeMode === 'Tauri') {
