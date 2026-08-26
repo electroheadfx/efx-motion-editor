@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
-import { emit } from '@tauri-apps/api/event';
+// 47-05 LEAK BISECT: emit import temporarily removed with the probe.
+// import { emit } from '@tauri-apps/api/event';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -3081,50 +3082,13 @@ export function PhysicsPaintStudio() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, physicPaintVersion.value]);
-  // 47-05 leak hunt: every 5s, report the sizes of the retained structures to
-  // the native side (printed in the tauri dev terminal) so a session shows
-  // which structure grows toward the 16 GB WebKit memory-kill threshold.
+  // 47-05 LEAK BISECT (temporary): the probe is DISABLED to test whether its
+  // 5s stringify of the 7.5 MB document is the leak. REVERT after the test.
   useEffect(() => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     const timer = window.setInterval(() => {
-      const engine = engineRef.current;
-      const document = getEfxPaintDocument(layerId);
-      let docBytes = 0;
-      try {
-        docBytes = document ? JSON.stringify(document).length : 0;
-      } catch {
-        // Cyclic or oversized — the probe must never break the session.
-      }
-      // The roto frame cache: every rendered frame is a data URL (MBs).
-      let frameCount = 0;
-      let frameDataUrlBytes = 0;
-      try {
-        for (const track of document?.tracks ?? []) {
-          const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
-          for (const frame of runtime.frames.values()) {
-            frameCount += 1;
-            frameDataUrlBytes += (frame.dataUrl?.length ?? 0);
-          }
-        }
-      } catch {
-        // The probe must never break the session.
-      }
-      const payload = {
-        t: Date.now(),
-        docBytes,
-        frameCount,
-        frameDataUrlBytes,
-        pushCount: debugPushCount,
-        engine: engine?.debugMemoryProbe() ?? null,
-      };
-      if (navigator.storage?.estimate) {
-        void navigator.storage.estimate().then((estimate) => {
-          void emit('physic-paint:debug-memory', { ...payload, storageBytes: estimate.usage ?? 0 });
-        });
-      } else {
-        void emit('physic-paint:debug-memory', { ...payload, storageBytes: 0 });
-      }
+      void layerId;
     }, 5000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
