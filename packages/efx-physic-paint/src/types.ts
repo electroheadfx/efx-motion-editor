@@ -43,9 +43,6 @@ export interface EngineConfig {
   papers: PaperConfig[]
   defaultPaper?: string    // key to auto-select
   paperTextureScale?: number
-  /** Display loop frame rate (1-60, default 60). The loop never runs faster
-   *  than this and pauses entirely when nothing needs redrawing. */
-  renderFps?: number
   getStrokeMetadata?: () => StrokeMetadata | null | undefined
 }
 
