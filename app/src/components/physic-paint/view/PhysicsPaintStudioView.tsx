@@ -10,8 +10,7 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
-// 47-05 LEAK BISECT: right panel import temporarily removed.
-// import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
+import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -135,8 +134,6 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
 }
 
 const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);
-// 47-05 LEAK BISECT: the memo is kept defined but unused (void reference).
-void MemoizedPhysicsPaintCanvasStack;
 
 export interface PhysicsPaintStudioViewProps {
   layout: {
@@ -157,7 +154,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, status } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
   return (
     <main class="demo-shell">
       <section
@@ -166,28 +163,22 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         tabIndex={0}
         onKeyDown={(event) => layout.onKeyDown(event as unknown as KeyboardEvent)}
       >
-        {/* 47-05 LEAK BISECT (temporary): only the top bar re-enabled to
-            isolate which panel leaks. REVERT after. */}
         <MemoizedPhysicsPaintTopBar {...topBar} />
-        {/* <PhysicsPaintToolRail {...toolRail} /> */}
+        <PhysicsPaintToolRail {...toolRail} />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
-          {/* 47-05 LEAK BISECT (temporary): the canvas stack is removed to
-              isolate it from the rest of the view. REVERT after. */}
-          {/* <MemoizedPhysicsPaintCanvasStack {...canvas} /> */}
+          <MemoizedPhysicsPaintCanvasStack {...canvas} />
         </section>
 
-        {/* <PhysicsPaintRightPanelRegion
+        <PhysicsPaintRightPanelRegion
           collapsed={layout.rightPanelCollapsed}
           onSetCollapsed={layout.onSetRightPanelCollapsed}
           rightPanel={rightPanel}
-        /> */}
+        />
 
-        {/* <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} /> */}
+        <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
 
-        {/* 47-05 LEAK BISECT (temporary): the workflow strip is removed to
-            isolate the strip/DOM from the rest of the view. REVERT after. */}
-        {/* <PhysicsPaintWorkflowStrip {...workflow} /> */}
+        <PhysicsPaintWorkflowStrip {...workflow} />
 
         {status.shortcutsVisible ? (
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">

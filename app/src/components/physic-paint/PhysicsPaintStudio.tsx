@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
-// 47-05 LEAK BISECT: emit import temporarily removed with the probe.
-// import { emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -79,9 +78,7 @@ import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-// 47-05 LEAK BISECT: checkpoint + sync imports temporarily removed.
-// import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
-import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -3054,12 +3051,18 @@ export function PhysicsPaintStudio() {
       document = getEfxPaintDocument(layerId);
     }
     if (!document) return;
-    // 47-05 LEAK BISECT (temporary): checkpoint + bridge push disabled to
-    // test whether the 7.5 MB setItem/stringify or the IPC send is the leak.
-    // REVERT after the test.
-    void layerId;
-    void mode;
-    void document;
+    // Crash-recovery checkpoint: the compositor-death watchdog reloads the
+    // child when the window goes black. sessionStorage survives the reload, so
+    // the Studio rehydrates from THIS document instead of the stale launch
+    // context — the session survives (bounded by the push debounce).
+    try {
+      sessionStorage.setItem(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(document));
+    } catch {
+      // Quota exceeded — the launch-context fallback still applies on reload.
+    }
+    void sendEfxPaintDocumentSync(document, mode).catch((error) => {
+      console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
+    });
   };
   useEffect(() => {
     const layerId = launchContext?.layerId;
@@ -3078,13 +3081,47 @@ export function PhysicsPaintStudio() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, physicPaintVersion.value]);
-  // 47-05 LEAK BISECT (temporary): the probe is DISABLED to test whether its
-  // 5s stringify of the 7.5 MB document is the leak. REVERT after the test.
   useEffect(() => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     const timer = window.setInterval(() => {
-      void layerId;
+      const engine = engineRef.current;
+      const document = getEfxPaintDocument(layerId);
+      let docBytes = 0;
+      try {
+        docBytes = document ? JSON.stringify(document).length : 0;
+      } catch {
+        // Cyclic or oversized — the probe must never break the session.
+      }
+      // The roto frame cache: every rendered frame is a data URL (MBs).
+      let frameCount = 0;
+      let frameDataUrlBytes = 0;
+      try {
+        for (const track of document?.tracks ?? []) {
+          const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+          for (const frame of runtime.frames.values()) {
+            frameCount += 1;
+            frameDataUrlBytes += (frame.dataUrl?.length ?? 0);
+          }
+        }
+      } catch {
+        // The probe must never break the session.
+      }
+      const payload = {
+        t: Date.now(),
+        docBytes,
+        frameCount,
+        frameDataUrlBytes,
+        pushCount: debugPushCount,
+        engine: engine?.debugMemoryProbe() ?? null,
+      };
+      if (navigator.storage?.estimate) {
+        void navigator.storage.estimate().then((estimate) => {
+          void emit('physic-paint:debug-memory', { ...payload, storageBytes: estimate.usage ?? 0 });
+        });
+      } else {
+        void emit('physic-paint:debug-memory', { ...payload, storageBytes: 0 });
+      }
     }, 5000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
