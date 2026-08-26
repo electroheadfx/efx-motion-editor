@@ -53,8 +53,7 @@ import {
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
-// 47-05 LEAK BISECT: view import temporarily removed.
-// import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
+import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
@@ -3090,8 +3089,7 @@ export function PhysicsPaintStudio() {
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId]);
-  // 47-05 LEAK BISECT: viewModel creation temporarily skipped.
-  void usePhysicsPaintStudioViewModel({
+  const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
     toolRail,
@@ -3174,10 +3172,7 @@ export function PhysicsPaintStudio() {
       };
   return (
     <>
-      {/* 47-05 LEAK BISECT (temporary): the UI view is replaced with an empty
-          div to isolate the view/DOM from the viewModel/signals/effects.
-          REVERT after the test. */}
-      <div style={{ color: '#fff', padding: 24 }}>shell bisect — no UI</div>
+      <PhysicsPaintStudioView {...viewModel} />
       {soleOccurrenceDeleteDialog ? (
         <div class="physics-paint-group-delete-overlay">
           <div
