@@ -6,6 +6,7 @@
 // hunt (search IDLE-ACTIVITY-PROBE).
 
 import { options } from 'preact';
+import { Signal } from '@preact/signals';
 
 const counts = new Map<string, number>();
 
@@ -97,6 +98,36 @@ export function installIdleActivityProbe(): void {
     bump('canvas.toDataURL');
     return (originalToDataURL as (...a: unknown[]) => string).apply(this, args);
   } as typeof HTMLCanvasElement.prototype.toDataURL;
+
+  // Signal-write attribution: count every write; sample the writer's stack
+  // every 25th write so the hot writer's call site shows up by name.
+  let writeCount = 0;
+  const valueDescriptor = Object.getOwnPropertyDescriptor(Signal.prototype, 'value');
+  if (valueDescriptor?.set && valueDescriptor.get) {
+    const originalSet = valueDescriptor.set;
+    Object.defineProperty(Signal.prototype, 'value', {
+      configurable: true,
+      get: valueDescriptor.get,
+      set(this: unknown, next: unknown) {
+        bump('signal.write');
+        writeCount += 1;
+        if (writeCount % 25 === 1) {
+          const lines = (new Error().stack ?? '').split('\n');
+          const frame = lines
+            .map((line) => line.trim())
+            .find((line) => /^(at\s+)?\S+[@(]/.test(line)
+              && !line.includes('idleActivityProbe')
+              && !line.includes('/signals-core/')
+              && !line.includes('Signal.prototype'));
+          if (frame) {
+            const match = frame.match(/^(?:at\s+)?([\w$.<>-]+)/);
+            if (match) bump(`sigwrite.${match[1]}`);
+          }
+        }
+        originalSet.call(this, next);
+      },
+    });
+  }
 }
 
 /** Delta since the last snapshot; clears the counters. */
