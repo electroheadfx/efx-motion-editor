@@ -1314,6 +1314,12 @@ export class EfxPaintEngine {
       previewBaseCache: this.previewBaseImageCache.size,
       paperTextures: this.paperTextures.size,
       wetBytes: (this.wet.r.byteLength + this.wet.g.byteLength + this.wet.b.byteLength + this.wet.alpha.byteLength + this.wet.strokeOpacity.byteLength) / 1048576,
+      // Loop-state: a 60fps render loop or physics tick running while idle is
+      // the prime suspect for a constant-rate JS heap leak.
+      loopActive: this.rafId !== 0 ? 1 : 0,
+      physicsRunning: this.state.physicsRunning ? 1 : 0,
+      dryingActive: this.dryingInterval !== null ? 1 : 0,
+      strokes: this.getStrokes().length,
     }
   }
 

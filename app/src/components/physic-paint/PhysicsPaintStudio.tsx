@@ -3092,11 +3092,34 @@ export function PhysicsPaintStudio() {
       } catch {
         // Cyclic or oversized — the probe must never break the session.
       }
-      void emit('physic-paint:debug-memory', {
+      // The roto frame cache: every rendered frame is a data URL (MBs).
+      let frameCount = 0;
+      let frameDataUrlBytes = 0;
+      try {
+        for (const track of document?.tracks ?? []) {
+          const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+          for (const frame of runtime.frames.values()) {
+            frameCount += 1;
+            frameDataUrlBytes += (frame.dataUrl?.length ?? 0);
+          }
+        }
+      } catch {
+        // The probe must never break the session.
+      }
+      const payload = {
         t: Date.now(),
         docBytes,
+        frameCount,
+        frameDataUrlBytes,
         engine: engine?.debugMemoryProbe() ?? null,
-      });
+      };
+      if (navigator.storage?.estimate) {
+        void navigator.storage.estimate().then((estimate) => {
+          void emit('physic-paint:debug-memory', { ...payload, storageBytes: estimate.usage ?? 0 });
+        });
+      } else {
+        void emit('physic-paint:debug-memory', { ...payload, storageBytes: 0 });
+      }
     }, 5000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
