@@ -86,7 +86,12 @@ import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanva
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
-import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
+import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, snapshotPhysicsPaintPerformance } from './performance/physicsPaintPerformanceTrace';
+import { installIdleActivityProbe, snapshotIdleActivity } from './performance/idleActivityProbe';
+
+// IDLE-ACTIVITY-PROBE: install before any engine/component timers are created
+// so the wrappers see every registration (module scope, DEV-only no-op in prod).
+installIdleActivityProbe();
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -3114,6 +3119,9 @@ export function PhysicsPaintStudio() {
         frameDataUrlBytes,
         pushCount: debugPushCount,
         engine: engine?.debugMemoryProbe() ?? null,
+        // IDLE-ACTIVITY-PROBE: what executed since the last probe tick.
+        activity: snapshotIdleActivity(),
+        renders: import.meta.env.DEV ? snapshotPhysicsPaintPerformance().counters : null,
       };
       if (navigator.storage?.estimate) {
         void navigator.storage.estimate().then((estimate) => {
