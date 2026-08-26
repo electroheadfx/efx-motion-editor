@@ -133,7 +133,8 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   );
 }
 
-const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);
+// 47-05 LEAK BISECT: canvas stack memo temporarily removed.
+// const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);
 
 export interface PhysicsPaintStudioViewProps {
   layout: {
@@ -154,7 +155,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, status } = props;
+  const { layout, topBar, toolRail, rightPanel, playScriptDialog, status } = props;
   return (
     <main class="demo-shell">
       <section
@@ -167,7 +168,9 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         <PhysicsPaintToolRail {...toolRail} />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
-          <MemoizedPhysicsPaintCanvasStack {...canvas} />
+          {/* 47-05 LEAK BISECT (temporary): the canvas stack is removed to
+              isolate it from the rest of the view. REVERT after. */}
+          {/* <MemoizedPhysicsPaintCanvasStack {...canvas} /> */}
         </section>
 
         <PhysicsPaintRightPanelRegion
