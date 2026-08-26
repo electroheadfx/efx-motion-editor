@@ -108,6 +108,9 @@ import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
+// 47-05 leak hunt: total pushLiveProjection invocations (a revision loop
+// would make this climb thousands per minute while the session is idle).
+let debugPushCount = 0;
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
   operationKind: 'delete-group-frame' | 'delete-group';
@@ -3040,6 +3043,7 @@ export function PhysicsPaintStudio() {
   // slowness). The debounce keeps the parent's runtime eventually consistent
   // with the child's live state without touching the paint hot path.
   const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback') => {
+    debugPushCount += 1;
     let document: EfxPaintDocumentModel | null = null;
     try {
       document = serializeRuntimeIntoDocument(layerId);
@@ -3111,6 +3115,7 @@ export function PhysicsPaintStudio() {
         docBytes,
         frameCount,
         frameDataUrlBytes,
+        pushCount: debugPushCount,
         engine: engine?.debugMemoryProbe() ?? null,
       };
       if (navigator.storage?.estimate) {
