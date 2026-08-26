@@ -71,21 +71,8 @@ if (window.location.pathname === '/physics-paint') {
       window.location.reload();
     }
   }, 1000);
-  // 47-05 LEAK BISECT (temporary): engine-only page — canvases + engine +
-  // the checkpoint document, no Studio shell. Isolates the engine/canvas
-  // machinery from the shell. REVERT after the test.
-  import('@efxlab/efx-physic-paint').then(({ EfxPaintEngine }) => {
-    const container = document.createElement('div');
-    container.style.width = '1280px';
-    container.style.height = '900px';
-    root.appendChild(container);
-    const engine = new EfxPaintEngine(container, { width: 1280, height: 900, papers: [] });
-    void engine.init().then(() => {
-      const raw = sessionStorage.getItem('efx-paint-session-document');
-      if (raw) {
-        try { engine.load(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
+  import('./components/physic-paint/PhysicsPaintStudio').then(({ PhysicsPaintStudio }) => {
+    render(<PhysicsPaintStudio />, root);
   });
 } else {
   // Resolve temp project dir from Tauri's app data path before rendering
