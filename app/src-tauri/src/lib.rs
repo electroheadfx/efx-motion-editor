@@ -175,6 +175,13 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
             .visible(true)
             .focused(true)
             .center()
+            // 47-05: never suspend the paint webview when its window is
+            // occluded/backgrounded (WKInactiveSchedulingPolicy::None). A
+            // backgrounded WKWebView stops rAF and, after minutes, loses its
+            // composited surface — the black-window crash: web process alive,
+            // no crash report, display awake, every session crashed while the
+            // user was elsewhere (typing in another app or display asleep).
+            .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
             .build()
             .map_err(|error| format!("Could not create physics paint window: {error}"))?;
         // Release the display-sleep assertion when the paint window is

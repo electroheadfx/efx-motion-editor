@@ -61,6 +61,9 @@ if (window.location.pathname === '/physics-paint') {
   window.addEventListener('pointermove', onActivity, { passive: true });
   window.addEventListener('pointerup', onActivity, { passive: true });
   window.addEventListener('keydown', onActivity, { passive: true });
+  // Regaining focus counts as activity: a window that went black while the
+  // user was elsewhere recovers on return without a mouse move.
+  window.addEventListener('focus', onActivity, { passive: true });
   window.setInterval(() => {
     const now = performance.now();
     if (now - lastActivityAt < 3000 && now - lastRafTick > 5000 && now - lastReloadAt > 15000) {
