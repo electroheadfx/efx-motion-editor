@@ -155,7 +155,6 @@ export interface PhysicsPaintStudioViewProps {
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
   const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, status } = props;
-  void workflow;
   return (
     <main class="demo-shell">
       <section
