@@ -44,7 +44,13 @@ if (window.location.pathname === '/physics-paint') {
   let lastRafTick = performance.now();
   let lastActivityAt = performance.now();
   let lastReloadAt = 0;
-  const rafTick = () => { lastRafTick = performance.now(); };
+  // The tick MUST re-arm itself: a one-shot rAF updates the timestamp once and
+  // never again, so the stall condition below is permanently true and the
+  // watchdog reloads the window on a fake stall (the 5s/15s/20s reload loops).
+  const rafTick = () => {
+    lastRafTick = performance.now();
+    requestAnimationFrame(rafTick);
+  };
   requestAnimationFrame(rafTick);
   const onActivity = () => { lastActivityAt = performance.now(); };
   window.addEventListener('pointerdown', onActivity, { passive: true });
@@ -55,6 +61,7 @@ if (window.location.pathname === '/physics-paint') {
     const now = performance.now();
     if (now - lastActivityAt < 3000 && now - lastRafTick > 5000 && now - lastReloadAt > 15000) {
       lastReloadAt = now;
+      console.warn('[watchdog] compositor stall detected — reloading paint window');
       window.location.reload();
     }
   }, 1000);
