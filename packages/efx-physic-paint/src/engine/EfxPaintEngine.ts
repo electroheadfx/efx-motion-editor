@@ -303,6 +303,17 @@ export class EfxPaintEngine {
   private bgCanvas: HTMLCanvasElement
   private bgCtx: CanvasRenderingContext2D
 
+  // Dirty-flag display composite (GPU-process crash fix): the render loop only
+  // re-composites the full wet layer when the paint pixels actually changed.
+  // Cursor/preview/outline updates draw incrementally on top of the previous
+  // composite, so the compositor uploads only small dirty regions instead of
+  // the whole canvas every frame — the sustained full-canvas upload churn that
+  // killed the WKWebView GPU process.
+  private displayCompositeDirty = true
+  private lastCursorRect: { x0: number; y0: number; x1: number; y1: number } | null = null
+  private lastPreviewBbox: { x0: number; y0: number; x1: number; y1: number } | null = null
+  private drawnQueuedOutlineCount = 0
+
   // --- Typed Array Buffers (owned by this class) ---
   private wet: WetBuffers
   private savedWet: SavedWetBuffers
@@ -698,7 +709,9 @@ export class EfxPaintEngine {
       this.fluid.u.fill(0); this.fluid.v.fill(0)
       this.fluid.u0.fill(0); this.fluid.v0.fill(0)
       this.fluid.p.fill(0); this.fluid.div.fill(0)
-      this.dualCanvas.displayCtx.clearRect(0, 0, this.width, this.height)
+      // The next render frame re-composites the cleared wet layer (the scratch
+      // stays an exact mirror — a direct clearRect here would desync it).
+      this.displayCompositeDirty = true
     }
     image.src = dataUrl
   }
@@ -884,6 +897,8 @@ export class EfxPaintEngine {
   setPaperGrain(key: string): void {
     this.requestRender()
     this.flushPendingStrokeFinalizations()
+    // The paper height modulates the wet composite — re-composite the display.
+    this.displayCompositeDirty = true
     this.currentPaperKey = key
     const tex = this.paperTextures.get(key)
     if (tex) {
@@ -970,6 +985,7 @@ export class EfxPaintEngine {
         this.physicsTickCount, sampleHFn, this.paperHeight,
       )
       this.physicsTickCount++
+      this.displayCompositeDirty = true
     }, 16)
   }
 
@@ -1040,6 +1056,7 @@ export class EfxPaintEngine {
 
     // Bake diffused paint back to canvas
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+    this.displayCompositeDirty = true
 
     // Record physics run as action for deterministic replay
     const completedTickCount = this.physicsTickCount
@@ -1095,6 +1112,9 @@ export class EfxPaintEngine {
       }
       dryStep(this.wet, this.drying, this.dualCanvas.dryCtx,
         this.width, this.height, this.state.drySpeed, this.paperHeight)
+      // Each drying step changes the visible wet — re-composite the display.
+      this.displayCompositeDirty = true
+      this.requestRender()
     }, 100) // 10fps drying
   }
 
@@ -1201,6 +1221,7 @@ export class EfxPaintEngine {
   }
 
   private restoreUndoSnapshot(snap: UndoSnapshot): void {
+    this.displayCompositeDirty = true
     this.dualCanvas.dryCtx.putImageData(snap.canvas, 0, 0)
     this.wet.r.set(snap.wet.r)
     this.wet.g.set(snap.wet.g)
@@ -1249,8 +1270,9 @@ export class EfxPaintEngine {
       const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
       this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
     }
-    // Also force-clear the display canvas so stale wet composite is gone
-    this.dualCanvas.displayCtx.clearRect(0, 0, this.width, this.height)
+    // The next render frame re-composites the cleared wet layer (the scratch
+    // stays consistent — a direct display clearRect here would desync it).
+    this.displayCompositeDirty = true
     this.notifyCompletedMutation('clear')
   }
 
@@ -1481,20 +1503,67 @@ export class EfxPaintEngine {
     }
 
     const displayCtx = this.dualCanvas.displayCtx
-    displayCtx.clearRect(0, 0, this.width, this.height)
 
-    // Composite wet layer onto display (D-04: per-pixel strokeOpacity, no global userOpacity)
-    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, this.wetDisplayScratch ?? undefined)
+    // Full wet composite runs only when the paint pixels changed (a drain step,
+    // a drying step, or an explicit re-render). Overlay-only frames update the
+    // queued outlines, the live stroke, and the cursor incrementally on top of
+    // the previous composite — the compositor then uploads only the small
+    // changed regions instead of the whole canvas every frame (the sustained
+    // full-canvas upload churn that killed the WKWebView GPU process).
+    if (this.displayCompositeDirty) {
+      this.compositeDisplayNow()
+      // The composite cleared the canvas — redraw every overlay on top.
+      this.drawQueuedStrokePreviews(displayCtx)
+      this.drawnQueuedOutlineCount = this.getQueuedStrokePreviews().length
+      drawStrokePreview(displayCtx, this.previewStroke)
+      this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
+      drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+      this.lastCursorRect = this.overlayBoundsForCursor()
+    } else {
+      // 1. New queued stroke outlines. Append-only: the preview list only grows
+      // between composites (a finalize re-runs the composite, which clears and
+      // redraws every outline from scratch).
+      const queued = this.getQueuedStrokePreviews()
+      if (this.drawnQueuedOutlineCount < queued.length) {
+        for (let i = this.drawnQueuedOutlineCount; i < queued.length; i++) this.drawQueuedStrokePreview(displayCtx, queued[i].points)
+        this.drawnQueuedOutlineCount = queued.length
+      }
 
-    // Draw queued stroke outlines until their full render finalizes.
-    this.drawQueuedStrokePreviews(displayCtx)
+      // 2. Live stroke preview: the smoothed ribbon shifts as points are added,
+      // so the previous ribbon must be erased and the full ribbon redrawn.
+      // Skipped while the stroke is stationary (no growth → no pixel change).
+      const preview = this.previewStroke
+      if (preview) {
+        const bbox = this.overlayBoundsForPreview(preview)
+        if (!this.lastPreviewBbox || bbox.x0 !== this.lastPreviewBbox.x0 || bbox.y0 !== this.lastPreviewBbox.y0 || bbox.x1 !== this.lastPreviewBbox.x1 || bbox.y1 !== this.lastPreviewBbox.y1) {
+          if (this.lastPreviewBbox) {
+            this.restoreDisplayRect(this.lastPreviewBbox)
+            this.lastCursorRect = null // the restore erased the cursor at the pen tip — redraw below
+          }
+          drawStrokePreview(displayCtx, preview)
+          this.lastPreviewBbox = bbox
+        }
+      } else if (this.lastPreviewBbox) {
+        // Pen-up: the live ribbon disappears — the queued outline takes over.
+        this.restoreDisplayRect(this.lastPreviewBbox)
+        this.lastPreviewBbox = null
+        this.lastCursorRect = null // the restore erased the cursor at the pen tip — redraw below
+      }
 
-    // Draw stroke preview
-    drawStrokePreview(displayCtx, this.previewStroke)
-
-    // Draw brush cursor
-    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+      // 3. Brush cursor: erase the previous rect (restoring the composite and
+      // the overlays under it), then draw at the new position.
+      const cursorRect = this.overlayBoundsForCursor()
+      if (cursorRect) {
+        if (!this.lastCursorRect || cursorRect.x0 !== this.lastCursorRect.x0 || cursorRect.y0 !== this.lastCursorRect.y0 || cursorRect.x1 !== this.lastCursorRect.x1 || cursorRect.y1 !== this.lastCursorRect.y1) {
+          if (this.lastCursorRect) this.restoreDisplayRect(this.lastCursorRect)
+          drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+          this.lastCursorRect = cursorRect
+        }
+      } else if (this.lastCursorRect) {
+        this.restoreDisplayRect(this.lastCursorRect)
+        this.lastCursorRect = null
+      }
+    }
 
     // Finalized pixels yield to active input and preview rendering. Advance at most
     // one retained FIFO continuation after the visible frame has been drawn.
@@ -1522,18 +1591,99 @@ export class EfxPaintEngine {
 
   private shouldKeepRendering(): boolean {
     if (this.state.physicsRunning) return true
-    // The drain, queued outlines, and the brush cursor only keep the display
-    // loop alive while the user is present. After RENDER_IDLE_MS without any
-    // pointer input, the loop pauses even with the cursor parked over the
-    // canvas or strokes awaiting finalization — a long-idle session must not
-    // keep the WKWebView compositor busy (the sustained-load black window).
-    // Any input re-arms it through requestRender().
-    if (performance.now() - this.lastRenderActivityTime >= RENDER_IDLE_MS) return false
+    // The drain is the render loop's pump: an unfinished finalization queue or
+    // an active natural-drying step must never be paused by the idle gate —
+    // stopping mid-drain froze the remaining strokes until the next input
+    // (strokes rendered in bunches with long gaps). The idle gate applies to
+    // preview/cursor/outline redraws only, which do not need the display while
+    // the user is away. A long-idle session must not keep the WKWebView
+    // compositor busy (the sustained-load black window).
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization !== null) return true
+    if (this.dryingInterval) return true
+    if (performance.now() - this.lastRenderActivityTime >= RENDER_IDLE_MS) return false
     if (this.previewStroke !== null) return true
     if (this.getQueuedStrokePreviews().length > 0) return true
     if (this.cursorX >= 0) return true
     return false
+  }
+
+  /** Full wet composite into the display, keeping the scratch an exact mirror. */
+  private compositeDisplayNow(): void {
+    const displayCtx = this.dualCanvas.displayCtx
+    const scratch = this.wetDisplayScratch
+    // The scratch must mirror the composite EXACTLY: stale wet pixels from a
+    // previous composite would be resurrected by overlay rect restores.
+    if (scratch) scratch.data.fill(0)
+    displayCtx.clearRect(0, 0, this.width, this.height)
+    // Composite wet layer onto display (D-04: per-pixel strokeOpacity, no global userOpacity)
+    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, scratch ?? undefined)
+    this.displayCompositeDirty = false
+    // The composite cleared the display — every overlay must be redrawn from
+    // scratch by the next overlay pass.
+    this.drawnQueuedOutlineCount = 0
+    this.lastPreviewBbox = null
+    this.lastCursorRect = null
+  }
+
+  /**
+   * Restore a display rect to the last composite, then redraw the overlays
+   * clipped to it (the restore erased them). Used to erase the old cursor and
+   * the live ribbon without a full-canvas re-composite — the compositor
+   * uploads only this small region.
+   */
+  private restoreDisplayRect(rect: { x0: number; y0: number; x1: number; y1: number }): void {
+    const x0 = Math.max(0, Math.floor(rect.x0))
+    const y0 = Math.max(0, Math.floor(rect.y0))
+    const x1 = Math.min(this.width, Math.ceil(rect.x1))
+    const y1 = Math.min(this.height, Math.ceil(rect.y1))
+    if (x1 <= x0 || y1 <= y0) return
+    const displayCtx = this.dualCanvas.displayCtx
+    const scratch = this.wetDisplayScratch
+    if (scratch) {
+      const w = x1 - x0
+      const h = y1 - y0
+      const restored = displayCtx.createImageData(w, h)
+      const src = scratch.data
+      const dst = restored.data
+      for (let row = 0; row < h; row++) {
+        const srcOff = ((y0 + row) * this.width + x0) * 4
+        dst.set(src.subarray(srcOff, srcOff + w * 4), row * w * 4)
+      }
+      displayCtx.putImageData(restored, x0, y0)
+    } else {
+      displayCtx.clearRect(x0, y0, x1 - x0, y1 - y0)
+    }
+    // The restore erased the overlays inside the rect — redraw the queued
+    // outlines and the live ribbon clipped to it (exactly one extra draw, so
+    // the dashed outline alpha does not accumulate over frames).
+    displayCtx.save()
+    displayCtx.beginPath()
+    displayCtx.rect(x0, y0, x1 - x0, y1 - y0)
+    displayCtx.clip()
+    for (const pending of this.getQueuedStrokePreviews()) this.drawQueuedStrokePreview(displayCtx, pending.points)
+    if (this.previewStroke) drawStrokePreview(displayCtx, this.previewStroke)
+    displayCtx.restore()
+  }
+
+  private overlayBoundsForCursor(): { x0: number; y0: number; x1: number; y1: number } | null {
+    if (this.cursorX < 0) return null
+    const r = brushRenderRadius(this.state.brushOpts)
+    // The dual-ring cursor (radius + 3px stroke width) and the 6px crosshair
+    // arms both fit inside a r+7 box.
+    const m = Math.max(r + 3, 7)
+    return { x0: this.cursorX - m, y0: this.cursorY - m, x1: this.cursorX + m, y1: this.cursorY + m }
+  }
+
+  private overlayBoundsForPreview(preview: StrokePreview): { x0: number; y0: number; x1: number; y1: number } {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const p of preview.pts) {
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y)
+      x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y)
+    }
+    if (!Number.isFinite(x0)) return { x0: 0, y0: 0, x1: 0, y1: 0 }
+    const m = Math.ceil(preview.radius) + 3
+    return { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m }
   }
 
   // ================================================================
@@ -1801,6 +1951,9 @@ export class EfxPaintEngine {
   }
 
   private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
+    // Every finalization step mutates the wet/dry pixels — the next render
+    // frame re-composites the display.
+    this.displayCompositeDirty = true
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
@@ -1918,10 +2071,7 @@ export class EfxPaintEngine {
 
   private renderVisibleWetLayer(): void {
     this.requestRender()
-    const displayCtx = this.dualCanvas.displayCtx
-    displayCtx.clearRect(0, 0, this.width, this.height)
-    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, this.wetDisplayScratch ?? undefined)
+    this.compositeDisplayNow()
   }
 
   private getDryRestoreData(): ImageData | null {
@@ -2033,6 +2183,7 @@ export class EfxPaintEngine {
     options: StrokeApplicationOptions = {},
   ): void {
     if (points.length === 0) return
+    this.displayCompositeDirty = true
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined

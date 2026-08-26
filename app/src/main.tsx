@@ -47,9 +47,13 @@ if (window.location.pathname === '/physics-paint') {
   // The tick MUST re-arm itself: a one-shot rAF updates the timestamp once and
   // never again, so the stall condition below is permanently true and the
   // watchdog reloads the window on a fake stall (the 5s/15s/20s reload loops).
+  // The tick is throttled to ~10Hz via setTimeout: a 60Hz self-armed rAF keeps
+  // the WKWebView compositor busy for the whole session, and after the engine
+  // loop's sustained churn was removed (dirty-flag composite) an unnecessary
+  // 60Hz compositor wake would remain the only idle GPU load.
   const rafTick = () => {
     lastRafTick = performance.now();
-    requestAnimationFrame(rafTick);
+    setTimeout(() => { requestAnimationFrame(rafTick); }, 100);
   };
   requestAnimationFrame(rafTick);
   const onActivity = () => { lastActivityAt = performance.now(); };
