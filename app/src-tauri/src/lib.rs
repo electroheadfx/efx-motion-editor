@@ -1,4 +1,5 @@
 mod commands;
+mod display_sleep;
 mod models;
 mod services;
 
@@ -108,6 +109,10 @@ struct PhysicsPaintProjectContext {
 
 struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
 
+/// Display-sleep assertion held while the physics-paint window is open (see
+/// display_sleep.rs). Dropped when the window is destroyed.
+struct DisplaySleepGuardState(Mutex<Option<display_sleep::DisplaySleepGuard>>);
+
 #[derive(serde::Serialize)]
 struct PhysicsPaintWindowLaunchResult {
     label: String,
@@ -160,7 +165,7 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         }
         window
     } else {
-        tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
+        let window = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
             .title("EFX Physics Paint")
             .inner_size(1280.0, 900.0)
             .min_inner_size(960.0, 640.0)
@@ -169,7 +174,21 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
             .focused(true)
             .center()
             .build()
-            .map_err(|error| format!("Could not create physics paint window: {error}"))?
+            .map_err(|error| format!("Could not create physics paint window: {error}"))?;
+        // Release the display-sleep assertion when the paint window is
+        // destroyed; registered once per created window (reused windows keep
+        // the handler from their creation).
+        let app_handle = app.clone();
+        window.on_window_event(move |event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                if let Some(state) = app_handle.try_state::<DisplaySleepGuardState>() {
+                    if let Ok(mut held) = state.0.lock() {
+                        *held = None;
+                    }
+                }
+            }
+        });
+        window
     };
 
     let visible_before = window.is_visible().map_err(|error| format!("Could not inspect physics paint window visibility: {error}"))?;
@@ -195,6 +214,18 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
     );
     if !visible || minimized {
         return Err(format!("Physics paint window was opened but is not visible (visible={visible}, minimized={minimized})"));
+    }
+
+    // 47-05: hold a display-sleep assertion while the paint window is open.
+    // The black-window crash follows macOS display sleep exactly (displaysleep
+    // 10 min, web process alive, no crash report): on wake the WKWebView has
+    // lost its composited surface. Preventing display sleep for the lifetime
+    // of the paint window — the same mechanism as `caffeinate -d` — removes
+    // the trigger; the watchdog reload stays as the recovery net.
+    if let Some(guard) = display_sleep::DisplaySleepGuard::acquire("EFX Physics Paint: display sleep disabled while painting") {
+        if let Ok(mut held) = app.state::<DisplaySleepGuardState>().0.lock() {
+            *held = Some(guard);
+        }
     }
 
     Ok(PhysicsPaintWindowLaunchResult {
@@ -401,6 +432,7 @@ fn efxasset_allowed_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 pub fn run() {
     tauri::Builder::default()
         .manage(PhysicsPaintLaunchState(Mutex::new(None)))
+        .manage(DisplaySleepGuardState(Mutex::new(None)))
         .manage(services::script_library::ScriptLibraryState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

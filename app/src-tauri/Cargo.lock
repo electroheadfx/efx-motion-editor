@@ -973,6 +973,7 @@ version = "0.9.0"
 dependencies = [
  "block2",
  "chrono",
+ "core-foundation 0.10.1",
  "dispatch",
  "image",
  "libc",
