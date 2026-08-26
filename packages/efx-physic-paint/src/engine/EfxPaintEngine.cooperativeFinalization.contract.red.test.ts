@@ -73,11 +73,11 @@ function createHarness() {
     },
   })
 
-  function enqueue(id: string, tool: 'paint' | 'erase' = 'paint', playFrame = 0) {
+  function enqueue(id: string, tool: 'paint' | 'erase' = 'paint', playFrame = 0, isScripted = false) {
     const mutationId = Number(id.replace(/\D/g, '')) || 1
     const pending = {
       id, tool, color: tool === 'paint' ? '#123456' : null, points: [{ x: 1, y: 1 }], opts: {},
-      hasPenInput: false, mutationId, queuedAt: performance.now(), playFrame,
+      hasPenInput: false, mutationId, queuedAt: performance.now(), playFrame, isScripted,
     }
     engine.pendingStrokeFinalizations.push(pending)
     engine.undoStack.push({ mutationId, actions: [{ mutationId }], checkpoint: null, deferred: pending })
@@ -700,21 +700,22 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.activeStrokeFinalization.steps).toBe(1)
   })
 
-  it('Layer 3: coalesces a continuous multi-stroke sequence into ONE post-idle drain (single render, no intermediate per-stroke finalizations)', () => {
+  it('Layer 3: coalesces a continuous SCRIPTED multi-stroke sequence into ONE post-idle drain (single render, no intermediate per-stroke finalizations)', () => {
     const { engine, finalized, enqueue } = createHarness()
     let now = 1_000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
-    // A continuous Action/Play sequence: every stroke enqueued inside the
-    // inactivity window — live outlines are the only feedback while drawing.
-    enqueue('brush-1')
-    enqueue('brush-2')
-    enqueue('brush-3')
+    // A continuous scripted sequence (Roto script apply): every stroke enqueued
+    // inside the inactivity window — live outlines are the only feedback while
+    // the script runs.
+    enqueue('brush-1', 'paint', 0, true)
+    enqueue('brush-2', 'paint', 0, true)
+    enqueue('brush-3', 'paint', 0, true)
     engine.lastPointerInputTime = now
     engine.scheduleStrokeFinalization()
 
     // The single idle rule: exactly ONE post-idle drain publishes the WHOLE
-    // sequence — the canvas must never show intermediate per-stroke renders
-    // (the 'last strokes missing until a click' regression-amplifier).
+    // scripted sequence — the canvas must never show intermediate per-stroke
+    // renders (the 'last strokes missing until a click' regression-amplifier).
     now = 1_500
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
@@ -725,6 +726,38 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     now = 1_600
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
+  })
+
+  it('paces INTERACTIVE strokes one phase step per frame — a user burst never coalesces into a blocking drain', () => {
+    const { engine, finalized, enqueue } = createHarness()
+    let now = 1_000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    // Interactive strokes (pointer input) are NOT scripted: a burst must pace
+    // one safe step per visual frame so the main thread never blocks for a
+    // multi-stroke synchronous drain (broken curves / long-idle black window).
+    enqueue('brush-1')
+    enqueue('brush-2')
+    enqueue('brush-3')
+    engine.lastPointerInputTime = now
+    engine.scheduleStrokeFinalization()
+
+    now = 1_500
+    engine.runScheduledStrokeFinalizationFrame()
+    expect(finalized).toEqual([])
+    expect(engine.activeStrokeFinalization.pending.id).toBe('brush-1')
+    expect(engine.activeStrokeFinalization.steps).toBe(1)
+
+    // One step per frame: brush-1 completes on its third step, then brush-2
+    // starts on the next turn — never the whole queue in a single turn.
+    engine.runScheduledStrokeFinalizationFrame()
+    expect(engine.activeStrokeFinalization.steps).toBe(2)
+    engine.runScheduledStrokeFinalizationFrame()
+    expect(finalized).toEqual(['brush-1'])
+    expect(engine.activeStrokeFinalization).toBeNull()
+    expect(engine.pendingStrokeFinalizations).toHaveLength(2)
+    engine.runScheduledStrokeFinalizationFrame()
+    expect(engine.activeStrokeFinalization.pending.id).toBe('brush-2')
+    expect(engine.activeStrokeFinalization.steps).toBe(1)
   })
 
   it('resumes queued FIFO work on the first visual frame after the inactivity window', () => {

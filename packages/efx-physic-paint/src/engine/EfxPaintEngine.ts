@@ -65,6 +65,8 @@ type DeferredStrokeFinalization = {
   continuationFrames: number
   mutationId: number
   queuedAt: number
+  /** Scripted strokes (enqueueRecordedStroke) coalesce into one drain; interactive strokes pace one step per frame. */
+  isScripted: boolean
 }
 
 export type RecordedStrokeGroup = {
@@ -119,6 +121,8 @@ export type PaintHistoryAvailability = {
 }
 
 const STROKE_FINALIZATION_IDLE_MS = 500
+/** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
+const MAX_COALESCED_STROKES_PER_FRAME = 4
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
@@ -1377,7 +1381,7 @@ export class EfxPaintEngine {
       return cloned
     })
 
-    return this.acceptStroke(primary, continuations)
+    return this.acceptStroke(primary, continuations, undefined, true)
   }
 
   /** Lock/unlock pointer input (per D-11: painting disabled during animation) */
@@ -1509,6 +1513,7 @@ export class EfxPaintEngine {
     primaryInput: Readonly<PaintStroke>,
     continuationInputs: readonly Readonly<PaintStroke>[] = [],
     reservedMutationId?: number,
+    isScripted: boolean = false,
   ): number {
     const mutationId = reservedMutationId ?? this.nextMutationId++
     const primary = this.cloneRecordedStroke(primaryInput)
@@ -1537,6 +1542,7 @@ export class EfxPaintEngine {
       continuationFrames: continuations.reduce((total, continuation) => total + Math.max(0, Math.min(600, Math.trunc(continuation.diffusionFrames ?? 0))), 0),
       mutationId,
       queuedAt: performance.now(),
+      isScripted,
     }
 
     this.redoStack = []
@@ -1633,17 +1639,19 @@ export class EfxPaintEngine {
       this.hasPendingInput()
     ) return
     this.strokeFinalizationScheduled = false
-    // regression-refresh-multi-paint Layer 3: a continuous stroke sequence
-    // (Action/Play generating many strokes inside the inactivity window) is
-    // coalesced into ONE post-idle drain — every queued stroke finalizes in the
-    // same turn and the canvas shows a single completed render, never
-    // intermediate per-stroke physics renders ('the last strokes missing until
-    // a click' amplifier). The pending queue INCLUDES the active stroke, so a
-    // single stroke keeps the cooperative one-safe-step-per-visual-frame pacing
-    // and only a real burst (2+ strokes awaiting finalization) drains at once.
-    // The lifecycle flush path (flushPendingStrokeFinalizations) is unchanged.
-    if (this.pendingStrokeFinalizations.length > 1) {
-      this.runStrokeFinalizationTurn(true)
+    // Layer 3 coalescing is now SCRIPTED-ONLY: a scripted burst (Roto script
+    // apply enqueueing many strokes inside the inactivity window) drains in one
+    // turn so the canvas shows a single completed render, never intermediate
+    // per-stroke physics renders. Interactive strokes NEVER coalesce — a burst
+    // of user strokes must pace one phase step per visual frame, because a
+    // synchronous multi-stroke drain blocks the main thread for hundreds of ms
+    // (breaking the next stroke's curve) and a large queue blocks for seconds
+    // (the long-idle black window). The drain is also bounded per frame so even
+    // a huge scripted burst cannot stall the webview.
+    const queued = this.pendingStrokeFinalizations
+    const allScripted = queued.length > 1 && queued.every((pending) => pending.isScripted)
+    if (allScripted) {
+      this.runStrokeFinalizationTurn(true, MAX_COALESCED_STROKES_PER_FRAME)
     } else {
       this.runStrokeFinalizationTurn()
     }
@@ -1688,7 +1696,8 @@ export class EfxPaintEngine {
     }
   }
 
-  private runStrokeFinalizationTurn(flush: boolean = false): void {
+  private runStrokeFinalizationTurn(flush: boolean = false, maxStrokes: number = Infinity): void {
+    let completedStrokes = 0
     do {
       const active = this.activeStrokeFinalization ?? this.startNextStrokeFinalization()
       if (!active) return
@@ -1700,12 +1709,14 @@ export class EfxPaintEngine {
       }
       if (active.phase === 'complete' || active.pending.tool !== 'paint' || !active.pending.color) {
         this.finishActiveStrokeSynchronously(active)
+        completedStrokes++
         continue
       }
       do {
         this.stepInteractivePaintFinalization(active)
       } while (flush && this.activeStrokeFinalization === active)
-    } while (flush && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization))
+      completedStrokes++
+    } while (flush && completedStrokes < maxStrokes && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization))
   }
 
   private finishActiveStrokeSynchronously(active: ActiveStrokeFinalization): void {
