@@ -34,18 +34,26 @@ if (window.location.pathname === '/physics-paint') {
   // dies, the web process survives (the window goes black) but rAF stops
   // firing. Reload to recover — the sessionStorage document checkpoint
   // rehydrates the Studio with the last pushed state (bounded by the 2s push
-  // debounce). The reload only fires while the window is FOCUSED: WKWebView
-  // pauses rAF for occluded/background windows even when visibilityState still
-  // reports 'visible', so an unfocused window must never reload (the paint
-  // window reloaded every 5s while the user typed in another app). A 15s
-  // cooldown prevents a reload loop if the GPU process does not restart.
+  // debounce). The reload ONLY fires while the user is actively interacting
+  // with the paint window: WKWebView pauses rAF for occluded/background
+  // windows even when visibilityState reports 'visible' and the document
+  // reports focus, so an idle window must never reload (the paint window
+  // reloaded every 5-15s while the user typed in another app). Active
+  // interaction + rAF stall = the compositor is dead. A 15s cooldown
+  // prevents a reload loop if the GPU process does not restart.
   let lastRafTick = performance.now();
+  let lastActivityAt = performance.now();
   let lastReloadAt = 0;
   const rafTick = () => { lastRafTick = performance.now(); };
   requestAnimationFrame(rafTick);
+  const onActivity = () => { lastActivityAt = performance.now(); };
+  window.addEventListener('pointerdown', onActivity, { passive: true });
+  window.addEventListener('pointermove', onActivity, { passive: true });
+  window.addEventListener('pointerup', onActivity, { passive: true });
+  window.addEventListener('keydown', onActivity, { passive: true });
   window.setInterval(() => {
     const now = performance.now();
-    if (document.visibilityState === 'visible' && document.hasFocus() && now - lastRafTick > 5000 && now - lastReloadAt > 15000) {
+    if (now - lastActivityAt < 3000 && now - lastRafTick > 5000 && now - lastReloadAt > 15000) {
       lastReloadAt = now;
       window.location.reload();
     }

@@ -214,7 +214,11 @@ export default defineConfig({
     // fixes (paste boundary law, capsule warning UX, cursor-capture undo) added
     // the boundary-extent and capsule-state code to the main chunk, measured
     // 1155.32 kB. Budget raised to 1165 (measured value + ~9.7 kB headroom).
-    chunkSizeWarningLimit: 1165,
+    // Measurement note (2026-08-26): the 47 compositor-death watchdog
+    // (rAF-stall detection + sessionStorage recovery) added to the main chunk,
+    // measured 1165.15 kB. Budget raised to 1170 (measured value + ~4.9 kB
+    // headroom).
+    chunkSizeWarningLimit: 1170,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

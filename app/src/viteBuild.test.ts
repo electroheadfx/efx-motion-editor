@@ -135,7 +135,7 @@ describe('production vite build', () => {
     'resolved chunkSizeWarningLimit is exactly the documented 1140 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1165 desktop budget').toBe(1165);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1170 desktop budget').toBe(1170);
     },
   );
 
