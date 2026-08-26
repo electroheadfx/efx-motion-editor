@@ -1444,19 +1444,12 @@ export class EfxPaintEngine {
       return
     }
 
-    // Stroke finalization advances on EVERY rAF tick, independent of the
-    // display throttle: a single stroke's physics finalization is paced one
-    // step per visual frame, so throttling it to the project FPS made the
-    // drain 5x slower and janked the UI while heavy synchronous steps churned.
-    this.runScheduledStrokeFinalizationFrame()
-
-    // Throttle the display compositing to the project frame rate when idle;
-    // during an active stroke the display runs at full cadence so the wet
-    // preview and brush cursor stay fluid. A hot 60fps rAF kept the WKWebView
-    // compositor busy for the whole session — the long-idle webview-death
-    // cause — so the loop also pauses entirely when nothing needs redrawing.
+    // Throttle the display loop to the project frame rate: the loop never runs
+    // faster than renderFps (the physics/drying simulators keep their own fixed
+    // tick rates). A hot 60fps rAF keeps the WKWebView compositor busy for the
+    // whole session and is the long-idle webview-death cause.
     const now = performance.now()
-    const frameInterval = this.state.drawing ? 0 : 1000 / this.renderFps
+    const frameInterval = 1000 / this.renderFps
     if (now - this.lastRenderTime < frameInterval) {
       this.rafId = requestAnimationFrame(() => this.render())
       return
@@ -1478,6 +1471,10 @@ export class EfxPaintEngine {
 
     // Draw brush cursor
     drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+
+    // Finalized pixels yield to active input and preview rendering. Advance at most
+    // one retained FIFO continuation after the visible frame has been drawn.
+    this.runScheduledStrokeFinalizationFrame()
 
     // Pause the loop when nothing needs the display (no wet paint, no previews,
     // no cursor, no pending finalization, no physics). Any state change re-arms
