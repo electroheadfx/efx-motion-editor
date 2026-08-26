@@ -27,9 +27,11 @@ impl Default for OcclusionStopFlag {
     }
 }
 
-/// Reload cadence while occluded: 5 min keeps the page's GPU connection well
-/// under the ~7 min WebKit eviction threshold.
-const OCCLUDED_RELOAD_AFTER: Duration = Duration::from_secs(5 * 60);
+/// Reload cadence while occluded. The WebKit GPU connection eviction is not
+/// a fixed timer: measured 6:10 after occlusion (session F) and 4:26 (session
+/// G, under YouTube GPU load) — the earliest observed eviction is ~4.5 min,
+/// so 3 min leaves a margin while keeping the hidden-reload churn low.
+const OCCLUDED_RELOAD_AFTER: Duration = Duration::from_secs(3 * 60);
 /// Poll cadence for the window occlusion state.
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -85,7 +87,7 @@ pub fn start(window: WebviewWindow, app: &AppHandle) {
                     *since = Some(start);
                     if now.duration_since(start) >= OCCLUDED_RELOAD_AFTER {
                         println!(
-                            "[physics-paint] window occluded for 5 min — hidden reload resets the WebKit GPU connection"
+                            "[physics-paint] window occluded for 3 min — hidden reload resets the WebKit GPU connection"
                         );
                         let _ = window.eval("window.location.reload()");
                         // Restart the cycle from this reload: the fresh page's
