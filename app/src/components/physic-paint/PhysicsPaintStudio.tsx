@@ -555,6 +555,13 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value,
     keyRailSegments,
   );
+  // TEMP probe (47 close-out — rail selection paint): remove after diagnosis.
+  if (selectedRotoKeyRail.value !== null) console.log('[EFX-CLICK] reconcileKeyRail', {
+    selected: selectedRotoKeyRail.value.firstKeyId,
+    effective: effectiveSelectedRotoKeyRail?.firstKeyId ?? null,
+    selectedKeyId: selectedKeyId.value,
+    segmentCount: keyRailSegments.length,
+  });
   if (selectedRotoKeyRail.peek() !== null
     && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {
     selectedRotoKeyRail.value = null;
@@ -1689,6 +1696,8 @@ export function PhysicsPaintStudio() {
     selection: RotoKeyRailSelection,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
+    // TEMP probe (47 close-out — rail selection paint): remove after diagnosis.
+    console.log('[EFX-CLICK] handleSelectRotoKeyRail', { firstKeyId: selection.firstKeyId, gesture });
     publishOperationResult(null);
     if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
       // Modifier gestures route through the rail-set reducer (D-01): a Key Rail
@@ -1754,6 +1763,8 @@ export function PhysicsPaintStudio() {
     loopId: string | null,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
+    // TEMP probe (47 close-out — rail selection paint): remove after diagnosis.
+    console.log('[EFX-CLICK] handleSelectRotoLoopClip', { loopId, gesture });
     publishOperationResult(null);
     if (loopId === null) {
       clearRotoLoopSelection();
