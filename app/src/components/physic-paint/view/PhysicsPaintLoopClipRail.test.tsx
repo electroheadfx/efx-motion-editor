@@ -685,12 +685,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     ['synchronized', '#34d399'],
     ['modified', '#fb923c'],
     ['detached', '#9ca3af'],
-    ['unavailable', '#6b7280'],
+    ['unavailable', '#8da6d7'],
   ] as const)('pins the passive %s lifecycle dot geometry and color', (lifecycle, color) => {
     const dotRule = cssRule(`.physics-paint-loop-clip-lifecycle-dot.${lifecycle} {`);
     expect(dotRule).toContain(`background: ${color}`);
     const baseRule = cssRule('.physics-paint-loop-clip-lifecycle-dot {');
-    expect(baseRule).toContain('width: 8px');
+    expect(baseRule).toContain('width: 20px');
     expect(baseRule).toContain('height: 5px');
     expect(baseRule).toContain('border-radius: 0');
     expect(baseRule).toContain('pointer-events: none');

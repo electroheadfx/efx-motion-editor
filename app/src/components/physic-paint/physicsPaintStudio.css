@@ -3088,7 +3088,7 @@ button.destructive {
   top: 3px;
   left: 50%;
   z-index: 1;
-  width: 8px;
+  width: 20px;
   height: 5px;
   border-radius: 0;
   pointer-events: none;
@@ -3108,7 +3108,7 @@ button.destructive {
 }
 
 .physics-paint-loop-clip-lifecycle-dot.unavailable {
-  background: #6b7280;
+  background: #8da6d7;
 }
 
 /* Shared rail boundary treatment (43.4 follow-up): every rail family
