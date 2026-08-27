@@ -1689,15 +1689,17 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       css(),
       '.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {',
     );
-    expect(proxySelection).toContain('background: #4b6382');
+    // 47 close-out UAT round 11: the proxy selection paints as an orange
+    // background fill like frame/key selection — the old outer box is gone.
+    expect(proxySelection).toContain('background: #f5a623');
     expect(proxySelection).toContain('border-color: #f5a623');
-    expect(proxySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
+    expect(proxySelection).not.toContain('outline:');
     const selectedRepeat = getCssRuleBlock(
       css(),
       '.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {',
     );
-    expect(selectedRepeat).toContain('background: #4b6382');
-    expect(selectedRepeat).not.toContain('#f5a623');
+    // Repeat cells get the same orange fill when their rail is selected.
+    expect(selectedRepeat).toContain('background: #f5a623');
     expect(selectedRepeat).not.toContain('outline:');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
     expect(ordinarySelection).toContain('border-color: #f5a623');

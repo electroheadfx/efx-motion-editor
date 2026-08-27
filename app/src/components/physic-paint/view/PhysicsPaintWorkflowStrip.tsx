@@ -2494,6 +2494,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
   };
   const handleRotoTimelineCellClick = useCallback((frame: number, vm: RotoCellViewModel, event: MouseEvent) => {
+    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
+    console.log('[EFX-CLICK] cellClick', { frame, suppressed: suppressNextRotoClickRef.current, baseMeaning: vm.baseMeaning });
     if (suppressNextRotoClickRef.current) {
       suppressNextRotoClickRef.current = false;
       return;
@@ -2878,6 +2880,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         return;
       }
       suppressNextRotoClickRef.current = true;
+      // TEMP probe (47 close-out): a wobble >= 6px armed the drag — the next
+      // click is swallowed (suspected 2-click cause). Remove after diagnosis.
+      console.log('[EFX-CLICK] dragSessionArmed → next click suppressed', { movedKeyId: session.movedKeyId });
       updateRotoDragCandidate(session);
       startRotoEdgeScroll(session);
     };

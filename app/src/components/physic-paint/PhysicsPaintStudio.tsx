@@ -2085,6 +2085,8 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+      // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
+      console.log('[EFX-CLICK] navigation selects', { frame, nextSelectedKeyId, previous: selectedKeyId.peek() });
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
     }
@@ -2114,6 +2116,8 @@ export function PhysicsPaintStudio() {
     const visible = resolvePhysicPaintTrackVisibility(lc.layerId, trackId);
     const displayState = `${trackId}:${visible ? 'visible' : 'hidden'}`;
     if (displayState === lastReferenceDisplayStateRef.current) return;
+    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
+    console.log('[EFX-CLICK] resetEffect clears selection', { displayState, currentFrame });
     lastReferenceDisplayStateRef.current = displayState;
     const engine = engineRef.current as PreviewBackgroundEngine | null;
     setCachedRotoReferenceUrl(null);
@@ -2640,6 +2644,8 @@ export function PhysicsPaintStudio() {
   // through the canonical plain-selection handlers (all 43.6 invariants).
   useEffect(() => {
     const pending = pendingCrossTrackSelection.peek();
+    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
+    if (pending) console.log('[EFX-CLICK] seamEffect', { kind: pending.kind, trackId: pending.trackId, activeTrack: studioActiveTrackId() });
     if (!pending) return;
     if (studioActiveTrackId() !== pending.trackId) return;
     pendingCrossTrackSelection.value = null;

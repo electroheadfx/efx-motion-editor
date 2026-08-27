@@ -305,6 +305,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     const target = event.target as HTMLElement | null;
     const cell = target?.closest?.('[data-roto-app-frame]') as HTMLElement | null;
     const frame = cell ? Number(cell.dataset.rotoAppFrame) : NaN;
+    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
+    console.log('[EFX-CLICK] rowClick', { trackId, frame, hasOneClick: Boolean(onSelectTrackFrame) });
     if (onSelectTrackFrame && Number.isInteger(frame)) {
       onSelectTrackFrame(trackId, frame);
       return;

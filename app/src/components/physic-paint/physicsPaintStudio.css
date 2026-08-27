@@ -4237,16 +4237,16 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
-  z-index: 1;
+  /* 47 close-out UAT round 11: the spacing-proxy selection (the frames of a
+     selected Motion/Static rail) uses the SAME orange background fill as
+     frame/key selection — the old outer orange box is gone. */
   border-color: #f5a623;
-  background: #4b6382;
-  outline: 2px solid rgba(245, 166, 35, 0.9);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
+  background: #f5a623;
 }
 
 .physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {
-  background: #4b6382;
+  border-color: #f5a623;
+  background: #f5a623;
 }
 
 .physics-paint-roto-cell.roto-loop-boundary-start {
