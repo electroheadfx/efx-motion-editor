@@ -73,6 +73,7 @@ No accepted risks.
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
 | 2026-08-27 | 18 | 18 | 0 | gsd-security-auditor (ASVS L1) |
+| 2026-08-27 | 18 | 18 | 0 | orchestrator re-verification (L1 grep) — no code drift |
 
 ---
 
