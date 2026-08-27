@@ -110,6 +110,7 @@ import {
   type CrossTrackDragSource,
   type CrossTrackRowBounds,
 } from '../hooks/usePhysicsPaintCrossTrackDrag';
+import { usePhysicsPaintRulerScrub } from '../hooks/usePhysicsPaintRulerScrub';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
@@ -2035,6 +2036,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status),
     resolveSource: resolveCrossTrackDragSource,
   });
+  // 260827-s52 Task 1 (NLE ruler seek): a pointer-down on the time ruler seeks
+  // the playhead through the SAME cursor-only navigation port the armed-Push
+  // click uses (handleLanePushClickCapture) — never selection, never the active
+  // track. Past the 4px threshold the hook rAF-throttles scrub seeks to at most
+  // one navigation call per animation frame (the Studio render path is already
+  // rAF-batched, so flushLivePixels never runs per pointer event).
+  const rulerScrub = usePhysicsPaintRulerScrub({
+    frameCount: () => frameCells.length,
+    cellWidthPx: ROTO_CELL_WIDTH_PX,
+    onSeek: (frame) => props.onNavigateToSyncedFrame?.(frame),
+  });
   // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the
   // pushPaintTick signal (bumped in onPreviewChange) subscribes the component
@@ -3639,7 +3651,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             onVerticalScrollbarPointerDown: handleVerticalScrollbarPointerDown,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
-            <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
+            {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
+                the playhead cursor-only (usePhysicsPaintRulerScrub). No
+                role="slider": without a live aria-valuenow that would be an
+                ARIA violation, and wiring valuenow would re-render the strip
+                per frame; the nav pill already announces the current frame. */}
+            <div
+              class="physics-paint-ruler"
+              style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
+              title="Seek playhead"
+              onPointerDown={(event) => rulerScrub.onPointerDown(event as unknown as PointerEvent)}
+            >
               {rotoRulerTicks.map(frame => (
                 <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
               ))}
