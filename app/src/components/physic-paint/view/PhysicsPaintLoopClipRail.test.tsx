@@ -805,11 +805,9 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
-    const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 1px solid #cccccc');
-    expect(ringRule).toContain('top: 4px');
-    expect(ringRule).toContain('bottom: -24px');
-    expect(ringRule).toContain('border-radius: 0');
+    // 47 close-out UAT round 10: the selection box is gone — the orange
+    // segment is the whole selected treatment for every rail family.
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
@@ -1276,7 +1274,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target::after');
     // 43.4 defect 8: the shared full-row focus ring is the target's only
     // pseudo — the same ::after rule serves the Key Rail target too.
-    expect(physicsPaintStudioCss).toContain('.physics-paint-rail-target:focus-visible::after');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-rail-target:focus-visible::after');
 
     (anchor.props.onPointerEnter as () => void)();
     expect(typeof target.props.onfocusin).toBe('function');
@@ -1575,7 +1573,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(clicked.focused).toBe(true);
     expect(clicked.tabIndex).toBe(0);
     // A focused rail target draws the ring through the shared :focus rule.
-    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 1px solid #cccccc');
+    expect(cssRule('.physics-paint-rail-target:focus,')).toContain('outline: none');
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     vi.useRealTimers();

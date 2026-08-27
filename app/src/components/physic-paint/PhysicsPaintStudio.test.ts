@@ -510,11 +510,13 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
   });
 
-  it('pins the shared full-row rail focus ring on both :focus and :focus-visible (43.4 defect 6/8)', () => {
+  it('pins the shared rail focus treatment on both :focus and :focus-visible — no selection box (43.4 defect 6/8, 47 close-out UAT round 10)', () => {
     const focusRule = css.slice(css.indexOf('.physics-paint-rail-target:focus,'));
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
-    expect(css).toContain('.physics-paint-rail-target:focus-visible::after');
+    // The selection ring was removed: every rail family selects with the same
+    // orange segment, and frames/keys paint an orange background fill.
+    expect(css).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(css).not.toContain('.physics-paint-key-rail-target:focus,');
     expect(css).not.toContain('.physics-paint-key-rail-target:focus-visible {\n  outline: 2px solid #2d5be3');
   });

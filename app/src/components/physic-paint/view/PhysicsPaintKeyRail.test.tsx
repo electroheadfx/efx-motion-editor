@@ -229,8 +229,9 @@ describe('PhysicsPaintKeyRail', () => {
     });
     expect(clicked.focused).toBe(true);
     expect(clicked.tabIndex).toBe(0);
-    // A focused rail target draws the ring through the shared :focus rule.
-    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 1px solid #cccccc');
+    // A focused rail target never falls back to the UA outline; the selection
+    // is the orange segment, not a box (47 close-out UAT round 10).
+    expect(cssRule('.physics-paint-rail-target:focus,')).toContain('outline: none');
   });
 
   it('supports Space selection, leaves Enter inert, and hides the tooltip on Escape', () => {
@@ -418,20 +419,15 @@ describe('PhysicsPaintKeyRail', () => {
     expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,')).toContain('background: #a7b0b9');
     expect(cssRule('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {')).toContain('background: #f59e0b');
-    // 43.4 defect 6 + defect 8: the shared rail focus ring (2px #F2F5F7, full
-    // row) applies to BOTH :focus and :focus-visible through the shared
-    // physics-paint-rail-target class, so a mouse-clicked Key Rail never
-    // falls back to the UA default outline and renders the same rectangle as
-    // the Motion/Static Rails.
+    // 43.4 defect 6 + defect 8 / 47 close-out UAT round 10: the shared rail
+    // focus class suppresses the UA outline for BOTH :focus and :focus-visible
+    // — and the selection box is GONE: a selected Key Rail shows the same
+    // orange segment as the Motion/Static Rails, no ring.
     expect(hasClass(target, 'physics-paint-rail-target')).toBe(true);
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
-    const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 1px solid #cccccc');
-    expect(ringRule).toContain('top: 4px');
-    expect(ringRule).toContain('bottom: -24px');
-    expect(ringRule).toContain('border-radius: 0');
+    expect(css).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(cssRule('.physics-paint-key-rail-target.busy {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('pointer-events: none');

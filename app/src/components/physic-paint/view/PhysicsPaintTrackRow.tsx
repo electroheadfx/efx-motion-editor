@@ -29,7 +29,11 @@ import { Blend, Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, P
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
-import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  type PhysicPaintRotoFrameResolution,
+} from '../roto/physicsPaintRotoPhysicalResolver';
+import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
 import { projectPhysicsPaintLoopClipGeometry } from './physicsPaintLoopClipPresentation';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
@@ -152,18 +156,52 @@ function resolveTrackRowRailSegments(layerId: string, trackId: string): readonly
   });
 }
 
+interface TrackRowLoopVisuals {
+  readonly lines: readonly TrackRowLoopLine[];
+  /** Per-frame linked-loop classes identical to the active lane's cells
+   *  (repeat gray + dot, source key/gap/generated) — UAT round 10 parity. */
+  readonly linkedClassByFrame: ReadonlyMap<number, string>;
+}
+
+const EMPTY_TRACK_ROW_LOOP_VISUALS: TrackRowLoopVisuals = Object.freeze({
+  lines: EMPTY_TRACK_ROW_LOOP_LINES,
+  linkedClassByFrame: new Map(),
+});
+
 /**
- * Always-on Loop Clip rail lines (47 close-out UAT round 3): the same ranges
- * the active lane's Loop Clip rails paint, derived from THIS track's records +
- * clips — a motion rail shows its line on every track, not only the active one.
+ * Map one frame's loop resolution to the same cell classes the active lane
+ * paints (PhysicsPaintWorkflowStrip): linked occurrences past the first repeat
+ * are the gray dotted repeats; the source cycle keeps its own treatments.
  */
-function resolveTrackRowLoopLines(
+function mapTrackRowLinkedClass(resolution: PhysicPaintRotoFrameResolution, isGenerated: boolean): string {
+  const kind = resolution.kind;
+  const isLinkedRepeat = kind === 'linked-unresolved'
+    || ((kind === 'linked' || kind === 'linked-generated' || kind === 'linked-gap') && resolution.repeatInstance > 0);
+  if (isLinkedRepeat) {
+    return kind === 'linked' && resolution.repeatInstance > 0 && !isGenerated
+      ? 'roto-linked-repeat roto-linked-repeat-source-key'
+      : 'roto-linked-repeat';
+  }
+  if (kind === 'linked-generated' || (kind === 'linked' && isGenerated)) return 'roto-linked-source-generated';
+  if (kind === 'linked') return 'roto-linked-source-key';
+  if (kind === 'linked-gap') return 'roto-linked-source-gap';
+  return '';
+}
+
+/**
+ * Always-on Loop Clip visuals (47 close-out UAT rounds 3+10): the rail lines
+ * the active lane's Loop Clip rails paint AND the per-frame linked-repeat
+ * cell classes, derived from THIS track's records + clips — a motion rail and
+ * its repeat cells read identically on every track, selected or not.
+ */
+function resolveTrackRowLoopVisuals(
   layerId: string,
   trackId: string,
-  capacity: number,
-): readonly TrackRowLoopLine[] {
+  frameCells: readonly number[],
+): TrackRowLoopVisuals {
+  const capacity = frameCells.length;
   const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
-  if (loopClips.length === 0 || capacity < 1) return EMPTY_TRACK_ROW_LOOP_LINES;
+  if (loopClips.length === 0 || capacity < 1) return EMPTY_TRACK_ROW_LOOP_VISUALS;
   const records = physicPaintStore.getRotoRealKeyRecords(layerId, trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
   let context;
@@ -177,7 +215,7 @@ function resolveTrackRowLoopLines(
   } catch {
     // An unprojectable clip collection never breaks the row render — the
     // active lane remains the authority for anything exotic.
-    return EMPTY_TRACK_ROW_LOOP_LINES;
+    return EMPTY_TRACK_ROW_LOOP_VISUALS;
   }
   const lines: TrackRowLoopLine[] = [];
   // Same drawn extent as the active lane's loop rail: one target per loop
@@ -205,7 +243,19 @@ function resolveTrackRowLoopLines(
       unresolved: Boolean(continuousRange.unresolved),
     });
   }
-  return lines;
+  // Per-frame linked-loop cell classes — the same mapping the active lane's
+  // cells use (repeat frames paint gray with the dot, source cycle frames keep
+  // their key/generated treatments), so a loop's repeat design never changes
+  // when the track is selected or not.
+  const resolutions = resolveRotoVisibleFrameResolutions(context, frameCells);
+  const linkedClassByFrame = new Map<number, string>();
+  for (const [frame, resolution] of resolutions) {
+    if (resolution.kind === 'empty' || resolution.kind === 'real') continue;
+    const state = resolveTrackRowCellState(layerId, trackId, frame);
+    const linkedClass = mapTrackRowLinkedClass(resolution, state === 'generated');
+    if (linkedClass !== '') linkedClassByFrame.set(frame, linkedClass);
+  }
+  return { lines, linkedClassByFrame };
 }
 
 /**
@@ -243,9 +293,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   const railSegments = kind === 'paint' && layerId
     ? resolveTrackRowRailSegments(layerId, trackId)
     : EMPTY_TRACK_ROW_RAIL_SEGMENTS;
-  const loopLines = kind === 'paint' && layerId
-    ? resolveTrackRowLoopLines(layerId, trackId, frameCells.length)
-    : EMPTY_TRACK_ROW_LOOP_LINES;
+  const loopVisuals = kind === 'paint' && layerId
+    ? resolveTrackRowLoopVisuals(layerId, trackId, frameCells)
+    : EMPTY_TRACK_ROW_LOOP_VISUALS;
+  const loopLines = loopVisuals.lines;
   // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
   // row's track and navigates to the clicked frame. 47 close-out UAT round 5:
   // with onSelectTrackFrame wired the SAME click also selects the frame/key —
@@ -279,10 +330,15 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
         >
           {frameCells.map((frame) => {
             const state = resolveTrackRowCellState(layerId, trackId, frame);
+            // UAT round 10: linked-loop cells carry the same repeat/source
+            // classes as the active lane — the repeat design (gray + dot)
+            // never changes when the track is selected or not.
+            const linkedClass = loopVisuals.linkedClassByFrame.get(frame);
+            const cellClass = `physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}${linkedClass ? ` ${linkedClass}` : ''}`;
             return (
               <span
                 key={frame}
-                className={`physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}`}
+                className={cellClass}
                 data-roto-app-frame={frame}
                 aria-hidden="true"
               >

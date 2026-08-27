@@ -1198,7 +1198,7 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     // frames) — no outer outline box, and no z-index lift (the lift existed
     // to clear the removed outline's right edge; with a plain border it only
     // doubled the abutting neighbors' borders).
-    expect(current).toContain('border-color: #f5a623');
+    expect(current).toContain('background: #f5a623');
     expect(current).not.toContain('outline:');
     expect(current).not.toMatch(/z-index:\s*[1-9]\d*;/);
   });
@@ -1652,7 +1652,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 1px solid #cccccc');
+    expect(styles).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');

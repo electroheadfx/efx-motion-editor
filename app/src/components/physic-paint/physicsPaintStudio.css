@@ -3144,38 +3144,15 @@ button.destructive {
   border-right: 1px solid #f8fafc;
 }
 
-/* Shared rail focus ring (43.4 feature 8): ONE rectangle for every rail
-   family (Motion/Static/Key Rail). The 2px ring is drawn on the focused
-   target's ::after hugging the rail band at a 2px offset (47 close-out UAT:
-   square corners, #4D677E, no bottom extension — the frames have no rounding
-   and the near-white full-row ring was too loud); pointer-events none keeps
-   the hit target unchanged. :focus draws it too so a mouse-clicked rail never
-   falls back to the UA default outline (Defect 6). */
+/* Shared rail focus treatment (43.4 feature 8; 47 close-out UAT round 10):
+   NO selection box — the ring was removed. Selection paints as an orange
+   background fill (cells) / orange segment (rails, identical across the Key
+   Rail and Motion/Static Loop Clip families). The outline suppression stays
+   so a mouse-clicked rail never falls back to the UA default outline
+   (Defect 6). */
 .physics-paint-rail-target:focus,
 .physics-paint-rail-target:focus-visible {
   outline: none;
-}
-
-.physics-paint-rail-target:focus::after,
-.physics-paint-rail-target:focus-visible::after {
-  content: '';
-  position: absolute;
-  /* 47 close-out UAT round 5: the top edge sits exactly ON the rail line
-     (4px into the band, the segment's own top) instead of 2px above the
-     target — the ring no longer overlaps the track above. */
-  top: 4px;
-  left: -2px;
-  right: -2px;
-  bottom: -24px;
-  z-index: 2;
-  border: 1px solid #cccccc;
-  /* 47 close-out UAT rounds 2-4: square corners (the frame cells have none),
-     #CCCCCC instead of the near-white #F2F5F7 family, and the ring still
-     wraps the WHOLE row — band + full 22px cell row (+2px overhang). The
-     bottom offset re-anchored from -24px to -20px only because the band
-     grew 8px -> 12px (12 + 20 = 32, the same 2px below the 30px lane). */
-  border-radius: 0;
-  pointer-events: none;
 }
 
 /* 43.6 D-01 anchor tick: painted on the set anchor rail's leading edge so the
@@ -4232,15 +4209,16 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.current {
-  /* 47 close-out UAT round 7: the selection paints INSIDE the frame — the
-     cell's own border turns orange (green stays for real keys, blue + the
-     '-' dash for interpolated frames) instead of an outer orange box around
-     the cell. z-index keeps the right edge unpainted by the abutting cell. */
+  /* 47 close-out UAT round 10: selection paints as an ORANGE BACKGROUND FILL
+     — no box, no border recolor. Identical for keys and interpolated frames
+     (the white '-' dash still paints on top of generated fills). */
   border-color: #f5a623;
+  background: #f5a623;
 }
 
 .physics-paint-roto-cell.selected {
   border-color: #f5a623;
+  background: #f5a623;
 }
 
 /* 47 close-out UAT round 8: the cell buttons' default blue focus ring hid
