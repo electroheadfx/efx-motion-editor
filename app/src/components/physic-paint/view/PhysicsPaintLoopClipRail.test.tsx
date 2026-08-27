@@ -800,7 +800,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
     expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 3px');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
@@ -808,7 +808,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 1px solid #cccccc');
     expect(ringRule).toContain('top: 4px');
-    expect(ringRule).toContain('bottom: -20px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(ringRule).toContain('border-radius: 0');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
@@ -1268,7 +1268,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(railSelectedRule).toContain('background: #f59e0b');
     expect(physicsPaintStudioCss).not.toContain('background: #a78bfa');
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     const railTargetHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(:disabled),');
     expect(railTargetHoverRule).toContain('background: transparent');
     expect(railTargetHoverRule).toContain('box-shadow: none');
@@ -2403,7 +2403,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       const barRule = cssRule('.physics-paint-loop-clip-rail-ghost-blocked-edge {');
       expect(barRule).toContain('background: #ff6b6b');
       expect(barRule).toContain('width: 2px');
-      expect(barRule).toContain('height: 12px');
+      expect(barRule).toContain('height: 8px');
     });
 
     it('renders no blocked-edge bar when the ghost is unclamped', () => {

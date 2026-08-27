@@ -2548,7 +2548,7 @@ button.destructive {
   position: absolute;
   top: 0;
   width: 2px;
-  height: 12px;
+  height: 8px;
   background: #ff6b6b;
   pointer-events: none;
 }
@@ -3011,14 +3011,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 12px;
+  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-loop-clip-rail-anchor {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3027,7 +3027,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3166,7 +3166,7 @@ button.destructive {
   top: 4px;
   left: -2px;
   right: -2px;
-  bottom: -20px;
+  bottom: -24px;
   z-index: 2;
   border: 1px solid #cccccc;
   /* 47 close-out UAT rounds 2-4: square corners (the frame cells have none),
@@ -3180,7 +3180,7 @@ button.destructive {
 
 /* 43.6 D-01 anchor tick: painted on the set anchor rail's leading edge so the
    user can always identify which member anchors the range/union expansion.
-   2px wide x 8px high #F2F5F7 at 70% opacity, top: 4px inside the 12px band;
+   2px wide x 8px high #F2F5F7 at 70% opacity, top: 4px inside the 8px band;
    aria-hidden in markup and pointer-events none here so the 12px hit target
    stays unchanged. Shared across every rail family via the shared class. */
 .physics-paint-rail-anchor-tick {
@@ -3226,7 +3226,7 @@ button.destructive {
 .physics-paint-loop-clip-rail-ghost-blocked-edge {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   width: 2px;
   background: #ff6b6b;
   pointer-events: none;
@@ -3241,14 +3241,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 12px;
+  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-key-rail-anchor {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3257,7 +3257,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3280,7 +3280,7 @@ button.destructive {
 .physics-paint-key-rail-segment {
   position: absolute;
   /* 47 close-out UAT round 4: the line sits 1px above the cells (4px into the
-     12px band) instead of at the band's top — the freed 4px reads as the
+     8px band) instead of at the band's top — the freed 4px reads as the
      vertical gap between stacked tracks. */
   inset: 4px 0 auto 0;
   height: 3px;
@@ -3354,9 +3354,9 @@ button.destructive {
      22px-tall cells (padding-top pushes the cell row below the band's visual
      line). The previous 30px row let the absolute-positioned rail band (top
      12px, z 4) overlap the cells' top 8px, so frame/key clicks sometimes hit
-     the rail. 47-01 UAT round 7 shrank the band 12px -> 8px; 47 close-out UAT
-     widened it back to 12px (rails were hard to grab). The 4px overlap only
-     exists INSIDE a rail's frame span, where selecting the rail is the intent.
+     the rail. 47-01 UAT round 7 shrank the band 12px -> 8px; the 47 close-out
+     briefly re-widened it to 12px and UAT round 9 confirmed the original
+     finding (cell clicks stolen) — 8px, no cell overlap, is final.
   */
   height: 30px;
   padding-top: 8px;
@@ -3632,7 +3632,7 @@ button.destructive {
 .physics-paint-track-row-rail {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   cursor: pointer;
   z-index: 1;
 }
@@ -4236,12 +4236,10 @@ button.destructive {
      cell's own border turns orange (green stays for real keys, blue + the
      '-' dash for interpolated frames) instead of an outer orange box around
      the cell. z-index keeps the right edge unpainted by the abutting cell. */
-  z-index: 1;
   border-color: #f5a623;
 }
 
 .physics-paint-roto-cell.selected {
-  z-index: 1;
   border-color: #f5a623;
 }
 

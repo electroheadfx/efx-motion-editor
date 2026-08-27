@@ -20,7 +20,7 @@ function cssRule(selector: string): string {
 // around the 12px band only — no bottom extension (the frames have no
 // rounding and the near-white full-row ring was too loud).
 const LANE_HEIGHT_PX = 30;
-const TARGET_HEIGHT_PX = 12;
+const TARGET_HEIGHT_PX = 8;
 const CELL_HEIGHT_PX = 22;
 const RING_OFFSET_PX = 2;
 const SEGMENT_TOP_PX = 4;
@@ -45,7 +45,7 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     expect(ringRule).toContain('top: 4px');
     expect(ringRule).toContain('left: -2px');
     expect(ringRule).toContain('right: -2px');
-    expect(ringRule).toContain('bottom: -20px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(ringRule).toContain('border-radius: 0');
     expect(ringRule).toContain('pointer-events: none');
   });

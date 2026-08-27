@@ -383,6 +383,8 @@ export function PhysicsPaintStudio() {
   const railSetClipboardWriteRef = useRef<(payload: RotoRailSetCopyPayload | null) => void>(() => {});
   const initialCarried = launchContext ? getCarriedRotoPhysical(launchContext) : null;
   const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFrames(initialCarried) : []);
+  // 47 close-out UAT round 9: which track latestRotoFramesRef currently holds.
+  const latestRotoFramesTrackRef = useRef<string>(trackIdOfLaunch(launchContext));
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
       const next = typeof update === 'function' ? update(current) : update;
@@ -748,6 +750,21 @@ export function PhysicsPaintStudio() {
     fps: Math.max(1, Math.min(60, previewFps)),
   };
   const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1;
+  // 47 close-out UAT round 9: the lane's cached-frame fills are track-scoped —
+  // reseed the ref SYNCHRONOUSLY when the active track changes, before the
+  // model below reads it. The post-render reseed effect let the previous
+  // track's cells paint for one render (the stale-keys flash the user saw).
+  // Guarded compare-then-write; refs never notify.
+  if (launchContext?.layerId) {
+    const activeTrackIdNow = studioActiveTrackId();
+    if (latestRotoFramesTrackRef.current !== activeTrackIdNow) {
+      const physicalDocument = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, activeTrackIdNow);
+      if (physicalDocument) {
+        latestRotoFramesRef.current = recordsAsRuntimeFrames(physicalDocument);
+        latestRotoFramesTrackRef.current = activeTrackIdNow;
+      }
+    }
+  }
   const rotoTimelineModel = useRotoTimelineModel({
     cachedRotoFrames: latestRotoFramesRef.current,
     interpolationSettings: rotoLegacyInterpolationSettings,
@@ -2055,7 +2072,9 @@ export function PhysicsPaintStudio() {
       // once so it picks up the just-flushed neighbor key pixels. The kind
       // check reads the O(1) cached projection — never
       // getRotoPhysicalRenderSource, which would run the interpolation render.
-      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, trackIdOfLaunch(launchContext))?.cells[frame]?.kind === 'generated') {
+      // 47 close-out UAT round 9: read the LIVE active track — after a track
+      // switch the launch snapshot still points at the previous track.
+      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind === 'generated') {
         setCachedRotoReferenceUrl(null);
         engine.clearPreviewBaseImage();
         (engine as PreviewBackgroundEngine).resetBackground();
@@ -2124,13 +2143,9 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value = null;
     loopSelectionAnchorId.value = null;
     activeLinkedLoopClipId.value = null;
-    // The lane's cached-frame fills are track-scoped too: re-resolve the newly
-    // active track's runtime frames so the lane never shows the previous
-    // track's cached cells (the "addTrack looks like a duplicate" symptom).
-    const physicalDocument = physicPaintStore.getRotoPhysicalDocument(lc.layerId, trackId);
-    if (physicalDocument) {
-      latestRotoFramesRef.current = recordsAsRuntimeFrames(physicalDocument);
-    }
+    // The lane's cached-frame fills are track-scoped too: the synchronous
+    // guard above useRotoTimelineModel owns latestRotoFramesRef on the switch
+    // render (47 close-out UAT round 9 — no one-render stale paint).
   }, [efxPaintVersion.value, currentFrame, loadCachedRotoReferenceFrame, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({

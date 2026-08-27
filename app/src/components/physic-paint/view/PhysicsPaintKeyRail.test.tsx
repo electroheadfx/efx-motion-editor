@@ -404,7 +404,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(cssRule('.physics-paint-rail-set-ghost.key-rail {')).toContain('background: #8a939c');
     expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('background: #ff6b6b');
     expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('width: 2px');
-    expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-rail-set-ghost-layer {')).toContain('z-index: 8');
   });
 
@@ -415,7 +415,7 @@ describe('PhysicsPaintKeyRail', () => {
 
     expect(cssRule('.physics-paint-key-rail-segment {')).toContain('height: 3px');
     expect(cssRule('.physics-paint-key-rail-segment {')).toContain('background: #8a939c');
-    expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,')).toContain('background: #a7b0b9');
     expect(cssRule('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {')).toContain('background: #f59e0b');
     // 43.4 defect 6 + defect 8: the shared rail focus ring (2px #F2F5F7, full
@@ -430,7 +430,7 @@ describe('PhysicsPaintKeyRail', () => {
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 1px solid #cccccc');
     expect(ringRule).toContain('top: 4px');
-    expect(ringRule).toContain('bottom: -20px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(ringRule).toContain('border-radius: 0');
     expect(cssRule('.physics-paint-key-rail-target.busy {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('opacity: 0.55');

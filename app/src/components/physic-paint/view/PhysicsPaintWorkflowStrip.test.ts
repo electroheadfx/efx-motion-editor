@@ -1189,15 +1189,18 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     expect(apply).toContain('border-radius: 4px');
   });
 
-  it('raises the selected key cell above its right neighbor so the full orange selection border renders', () => {
+  it('paints the selected key cell as an in-frame orange border with no outline or lift', () => {
     const styles = css();
     const current = getCssRuleBlock(styles, '.physics-paint-roto-cell.current {');
     expect(current).not.toBe('');
-    // Abutting 18px cells paint in DOM order, so the next cell covered the
-    // selected cell's right outline edge; a positive z-index on the selected
-    // state lifts the full four-side outline above the neighbor without
-    // touching the 18px pitch or the band geometry.
-    expect(current).toMatch(/z-index:\s*[1-9]\d*;/);
+    // 47 close-out UAT round 7/9: the selection is the cell's own orange
+    // border (green fill stays for keys, blue + '-' dash for interpolated
+    // frames) — no outer outline box, and no z-index lift (the lift existed
+    // to clear the removed outline's right edge; with a plain border it only
+    // doubled the abutting neighbors' borders).
+    expect(current).toContain('border-color: #f5a623');
+    expect(current).not.toContain('outline:');
+    expect(current).not.toMatch(/z-index:\s*[1-9]\d*;/);
   });
 });
 
@@ -1557,7 +1560,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#8b5cf6/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#c4b5fd/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\.selected[^}]*background:\s*#f59e0b/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*8px/s);
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 

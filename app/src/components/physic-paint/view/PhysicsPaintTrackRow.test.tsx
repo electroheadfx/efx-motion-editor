@@ -218,7 +218,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // UAT round 5: the band is clickable (select rail + activate track) with
     // the select cursor; cells carry the select cursor too.
     expect(cssRule('.physics-paint-track-row-rail {')).toContain('cursor: pointer');
-    expect(cssRule('.physics-paint-track-row-rail {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-track-row-rail {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-track-row:not(.physics-paint-track-row-background) {')).toContain('cursor: pointer');
 
     physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [makeRecord('k0', 2, 'a@2')], INTERPOLATION, CAPACITY);

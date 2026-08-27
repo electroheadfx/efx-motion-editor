@@ -308,8 +308,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             role="button"
             aria-label={`Key Rail frames ${segment.firstKeyFrame}–${segment.lastKeyFrame}`}
             onClick={(event) => {
+              // Only consume the click when the selection intent is wired —
+              // otherwise let it bubble to the row's cell click (a rail click
+              // without a handler must never be a dead click).
+              if (!onSelectTrackRail) return;
               event.stopPropagation();
-              onSelectTrackRail?.(trackId, {
+              onSelectTrackRail(trackId, {
                 kind: 'key',
                 firstKeyId: segment.firstKeyId,
                 keyIds: segment.keyIds,
@@ -328,8 +332,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             role="button"
             aria-label={`Loop Clip rail at frame ${line.placementFrame}`}
             onClick={(event) => {
+              // Same as the key-rail wrapper: only consume when wired.
+              if (!onSelectTrackRail) return;
               event.stopPropagation();
-              onSelectTrackRail?.(trackId, { kind: 'loop', loopId: line.loopId, placementFrame: line.placementFrame });
+              onSelectTrackRail(trackId, { kind: 'loop', loopId: line.loopId, placementFrame: line.placementFrame });
             }}
           >
             <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" />
