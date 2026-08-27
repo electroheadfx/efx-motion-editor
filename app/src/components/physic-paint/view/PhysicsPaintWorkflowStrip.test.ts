@@ -1698,7 +1698,11 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(selectedRepeat).not.toContain('outline:');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
     expect(ordinarySelection).toContain('border-color: #f5a623');
-    expect(ordinarySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
+    // 47 close-out UAT round 7: the selection paints INSIDE the frame — the
+    // cell's own border turns orange (green fill stays for keys, blue + '-'
+    // for interpolated frames); no outer orange box anymore.
+    expect(ordinarySelection).not.toContain('outline:');
+    expect(ordinarySelection).not.toContain('box-shadow:');
   });
 });
 
@@ -2174,21 +2178,29 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     expect(strip).toContain('onSelectTrackRail={props.onSelectTrackRail}');
   });
 
-  it('wires the one-click cross-track selection intents in the Studio bundle (47 close-out UAT round 5)', () => {
+  it('wires the one-click cross-track selection intents in the Studio bundle (47 close-out UAT rounds 5+7)', () => {
     const studio = studioSource();
-    // The Studio owns the intents: activate the track, then run the same
-    // selection semantics as the active lane (real key selects; rails route
-    // through the canonical plain-selection handlers).
+    // The Studio owns the intents: the click activates the track and records
+    // the pending intent; a deferred seam effect applies the selection once
+    // the switched lane has settled (applying it synchronously in the click
+    // raced the lane-switch reconcile — keys needed a second click).
     expect(studio).toContain('onSelectTrackFrame: handleSelectTrackFrame');
     expect(studio).toContain('onSelectTrackRail: handleSelectTrackRail');
     expect(studio).toContain('const handleSelectTrackFrame');
     expect(studio).toContain('const handleSelectTrackRail');
-    // The frame intent navigates AND selects the real key at the frame.
     const frameStart = studio.indexOf('const handleSelectTrackFrame');
     const frameBlock = studio.slice(frameStart, studio.indexOf('const handleSelectTrackRail', frameStart));
     expect(frameBlock).toContain('setActiveTrackId(layerId, trackId)');
-    expect(frameBlock).toContain('handleNavigateToSyncedFrame(frame)');
-    expect(frameBlock).toContain('getRotoRealKeyRecordByAppFrame');
+    expect(frameBlock).toContain('pendingCrossTrackSelection.value = { kind: \'frame\', trackId, frame }');
+    // The deferred seam consumes the intent and runs the same selection
+    // semantics as the active lane (real key selects; rails route through the
+    // canonical plain-selection handlers).
+    const seamStart = studio.indexOf('the deferred cross-track selection seam');
+    const seamBlock = studio.slice(seamStart, studio.indexOf('}, [clearRotoLoopSelection', seamStart));
+    expect(seamBlock).toContain('handleNavigateToSyncedFrame(pending.frame)');
+    expect(seamBlock).toContain('getRotoRealKeyRecordByAppFrame');
+    expect(seamBlock).toContain("handleSelectRotoKeyRail({ firstKeyId: pending.firstKeyId, keyIds: pending.keyIds }, 'plain')");
+    expect(seamBlock).toContain("handleSelectRotoLoopClip(pending.loopId, 'plain')");
   });
 
   it('activates the destination track after a committed move (47 close-out UAT)', () => {

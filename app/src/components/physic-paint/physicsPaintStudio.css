@@ -4232,23 +4232,17 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.current {
-  /* Lift the selected cell above its abutting right neighbor so the orange
-     selection outline renders on all four sides instead of being painted
-     over at the right edge (36.15-09, UAT Gap E-3). The 18px pitch and band
-     geometry are unchanged. */
+  /* 47 close-out UAT round 7: the selection paints INSIDE the frame — the
+     cell's own border turns orange (green stays for real keys, blue + the
+     '-' dash for interpolated frames) instead of an outer orange box around
+     the cell. z-index keeps the right edge unpainted by the abutting cell. */
   z-index: 1;
   border-color: #f5a623;
-  outline: 2px solid rgba(245, 166, 35, 0.9);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
 }
 
 .physics-paint-roto-cell.selected {
   z-index: 1;
   border-color: #f5a623;
-  outline: 2px solid rgba(245, 166, 35, 0.9);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
 }
 
 .physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {

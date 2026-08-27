@@ -43,8 +43,8 @@ export type PhysicsPaintTrackRowKind = 'paint' | 'background';
  * activates the track and selects the rail in the same click.
  */
 export type TrackRowRailSelection =
-  | { readonly kind: 'key'; readonly firstKeyId: string; readonly keyIds: readonly string[] }
-  | { readonly kind: 'loop'; readonly loopId: string };
+  | { readonly kind: 'key'; readonly firstKeyId: string; readonly keyIds: readonly string[]; readonly firstKeyFrame: number }
+  | { readonly kind: 'loop'; readonly loopId: string; readonly placementFrame: number };
 
 export interface PhysicsPaintTrackRowProps {
   /** The stable track UUID this row renders — identity, never an array index. */
@@ -123,6 +123,7 @@ interface TrackRowLoopLine {
   readonly loopId: string;
   readonly left: number;
   readonly width: number;
+  readonly placementFrame: number;
   readonly mode: 'progressive' | 'static';
   readonly unresolved: boolean;
 }
@@ -199,6 +200,7 @@ function resolveTrackRowLoopLines(
       loopId: range.loopId,
       left: geometry.left,
       width: geometry.width,
+      placementFrame: continuousRange.placementStart,
       mode: clip?.mode ?? 'progressive',
       unresolved: Boolean(continuousRange.unresolved),
     });
@@ -307,7 +309,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             aria-label={`Key Rail frames ${segment.firstKeyFrame}–${segment.lastKeyFrame}`}
             onClick={(event) => {
               event.stopPropagation();
-              onSelectTrackRail?.(trackId, { kind: 'key', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+              onSelectTrackRail?.(trackId, {
+                kind: 'key',
+                firstKeyId: segment.firstKeyId,
+                keyIds: segment.keyIds,
+                firstKeyFrame: segment.firstKeyFrame,
+              });
             }}
           >
             <span class="physics-paint-rail-segment physics-paint-key-rail-segment" />
@@ -319,10 +326,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
             style={{ left: `${line.left}px`, width: `${line.width}px` }}
             role="button"
-            aria-label={`Loop Clip rail at frame ${line.left / ROW_CELL_WIDTH_PX}`}
+            aria-label={`Loop Clip rail at frame ${line.placementFrame}`}
             onClick={(event) => {
               event.stopPropagation();
-              onSelectTrackRail?.(trackId, { kind: 'loop', loopId: line.loopId });
+              onSelectTrackRail?.(trackId, { kind: 'loop', loopId: line.loopId, placementFrame: line.placementFrame });
             }}
           >
             <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" />

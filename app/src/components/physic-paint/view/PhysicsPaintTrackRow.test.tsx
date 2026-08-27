@@ -274,11 +274,11 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       && !hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(keyRails).toHaveLength(1);
     (keyRails[0].props as { onClick: (event: unknown) => void }).onClick({ stopPropagation: vi.fn() });
-    expect(onSelectTrackRail).toHaveBeenCalledWith(TRACK, { kind: 'key', firstKeyId: 'k0', keyIds: ['k0', 'k1'] });
+    expect(onSelectTrackRail).toHaveBeenCalledWith(TRACK, { kind: 'key', firstKeyId: 'k0', keyIds: ['k0', 'k1'], firstKeyFrame: 2 });
 
     const loopRails = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(loopRails).toHaveLength(1);
     (loopRails[0].props as { onClick: (event: unknown) => void }).onClick({ stopPropagation: vi.fn() });
-    expect(onSelectTrackRail).toHaveBeenCalledWith(TRACK, { kind: 'loop', loopId: 'loop-motion' });
+    expect(onSelectTrackRail).toHaveBeenCalledWith(TRACK, { kind: 'loop', loopId: 'loop-motion', placementFrame: 12 });
   });
 });
