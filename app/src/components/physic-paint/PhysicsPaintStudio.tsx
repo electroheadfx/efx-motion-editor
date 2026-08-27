@@ -3186,6 +3186,12 @@ export function PhysicsPaintStudio() {
         onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,
         onDeleteTrack: multiTrackRowBundle.onDeleteTrack,
         onReorderTrack: multiTrackRowBundle.onReorderTrack,
+        // 47 close-out UAT round 7: the one-click cross-track selection intents
+        // — an EXPLICIT field list, so a bundle field that isn't forwarded here
+        // silently dies (rounds 5-7's intents were computed but dropped, and
+        // rail clicks were swallowed by the wrapper's stopPropagation).
+        onSelectTrackFrame: multiTrackRowBundle.onSelectTrackFrame,
+        onSelectTrackRail: multiTrackRowBundle.onSelectTrackRail,
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,

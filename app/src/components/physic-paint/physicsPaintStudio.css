@@ -4245,6 +4245,21 @@ button.destructive {
   border-color: #f5a623;
 }
 
+/* 47 close-out UAT round 8: the cell buttons' default blue focus ring hid
+   the orange in-frame selection border; the border IS the selection now, so
+   suppress the default outline and keep the orange border on hover/focus. */
+.physics-paint-roto-cell:focus,
+.physics-paint-roto-cell:focus-visible {
+  outline: none;
+}
+
+.physics-paint-roto-cell.selected:hover,
+.physics-paint-roto-cell.current:hover,
+.physics-paint-roto-cell.selected:focus-visible,
+.physics-paint-roto-cell.current:focus-visible {
+  border-color: #f5a623;
+}
+
 .physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
   z-index: 1;
   border-color: #f5a623;
