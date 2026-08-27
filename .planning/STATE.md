@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 47
-current_phase_name: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
-status: executing
-stopped_at: Phase 47 UI-SPEC approved
-last_updated: "2026-08-25T18:20:00.000Z"
-last_activity: 2026-08-25
-last_activity_desc: "Phase 47 plan 05 complete (cross-track drag — any draggable crosses rows with a plain drag; destination highlight + live insertion preview; exactly-once moveTrackItems commit with fresh identities; English rejection map with the red warning triangle; header reorder drag strictly separate)"
-state_head: e67f622c
+current_phase: 48
+current_phase_name: Internal Compositor and Flattened Parent Result
+status: planning
+stopped_at: Phase 47 complete — UAT passed, security verified, Nyquist validated
+last_updated: "2026-08-27T00:00:00.000Z"
+last_activity: 2026-08-27
+last_activity_desc: "Phase 47 closed (UAT round 7 passed — overall regression confirmed; rail status dot close-out; watchdog reload disabled; 18/18 threats verified; 8/8 requirements Nyquist-validated)"
+state_head: 5e4a1d3b
 progress:
   total_phases: 9
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 19
   completed_plans: 19
-  percent: 11
+  percent: 22
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 47 — Internal Multi-track Timeline, Filmstrip Capsules, and Controls
+**Current focus:** Phase 48 — Internal Compositor and Flattened Parent Result
 
 ## Current Position
 
-Phase: 47 (Internal Multi-track Timeline, Filmstrip Capsules, and Controls) — EXECUTING
-Plan: 5 of 5
-Status: Executing Phase 47
-Last activity: 2026-08-25 — Phase 47 plan 05 complete
+Phase: 48 (Internal Compositor and Flattened Parent Result) — PLANNING
+Plan: 0 of TBD
+Status: Phase 47 closed — planning Phase 48
+Last activity: 2026-08-27 — Phase 47 closed (UAT passed, security verified, Nyquist validated)
 
-Progress: [█░░░░░░░░░] 11%
+Progress: [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
@@ -48,8 +48,8 @@ Progress: [█░░░░░░░░░] 11%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 45. New EFX Paint Document and Clean Cutover | 5 | TBD | - |
-| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 3 | TBD | - |
+| 45. New EFX Paint Document and Clean Cutover | 8 | TBD | - |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | 6 | TBD | - |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | 5 | TBD | - |
 | 48. Internal Compositor and Flattened Parent Result | 0 | TBD | - |
 | 49. Fixed Background Track and Imported Loop Clips | 0 | TBD | - |
@@ -162,6 +162,7 @@ Recent decisions affecting current work:
 - [Phase 47 P05]: D-18 gesture separation is enforced by structure + resolver: the header reorder grab (47-02) lives OUTSIDE the rows-region so a grab-drag never reaches the cross-track pointerdown, and the source resolver only resolves content draggables (data-roto-key-id / data-rail-first-frame with the rail discriminator classes / rail-set move members — membership never re-derived); tests assert the grip handler contains no moveTrackItems/crossTrackDrag and a grab-area release never reaches the store
 - [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-04-SUMMARY.md
 - [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-05-SUMMARY.md
+- [Phase 47 close-out]: The filmstrip capsule rendering layer was REMOVED by user demand in UAT Round 6 (commit 346d47bc) — the rails return to the locked Phase 43 surface and loop facts live in the rail tooltip only; the rail status dot became a 20x4px rectangle over the 4px line on ALL tracks with the synchronized #A6D334 / modified #FBBF24 / detached #BBC0C8 / unavailable #FF2E56 palette and a tooltip status swatch; the lifecycle reads the clip's own scriptId (never the resolved library name) so the active lane and non-active rows agree; the compositor-death watchdog's window.location.reload() is DISABLED by request (commit ce1008af) — the stall detection stays live as a cooldown-bounded console warn so a future compositor death is traceable and the reload can be re-enabled. Phase 47 UAT passed (round 7), 18/18 threats verified (47-SECURITY.md), 8/8 requirements Nyquist-validated (47-VALIDATION.md).
 
 ### Pending Todos
 
@@ -187,6 +188,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-24T15:24:49.913Z
-Stopped at: Phase 47 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-UI-SPEC.md
+Last session: 2026-08-27
+Stopped at: Phase 47 complete — UAT passed, security verified, Nyquist validated
+Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning

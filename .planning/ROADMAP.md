@@ -179,8 +179,8 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 **Milestone Goal:** Allow one parent Paint layer to contain a complete multi-track frame animation document inside EFX Paint — multiple internal Paint frame tracks composited into one flattened parent-layer result. Clean format break; pre-v1.0 Paint data rejected explicitly. Source spec: `SPECS/milestone-v1.0.0-plan.md` (locked).
 
 - [x] **Phase 45: New EFX Paint Document and Clean Cutover** - Versioned v1.0 document owned by one parent layer, clean-break creation, explicit pre-v1.0 rejection (completed 2026-08-23)
-- [ ] **Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches** - Track-local addressing, revisions, dirty state, and async authority
-- [ ] **Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls** - Multi-row Paint timeline with track CRUD, active selection, hide/solo, opacity/blend
+- [x] **Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches** - Track-local addressing, revisions, dirty state, and async authority (completed 2026-08-27; UAT deferred items re-run in Phase 47 UAT)
+- [x] **Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls** - Multi-row Paint timeline with track CRUD, active selection, hide/solo, opacity/blend (completed 2026-08-27; filmstrip capsule layer removed by user demand, rail status dot close-out)
 - [ ] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster
 - [ ] **Phase 49: Fixed Background Track and Imported Loop Clips** - Background clips with finite/infinite repeat, gaps, and fallback
 - [ ] **Phase 50: Photo/Reference Track** - Reference-only / reveal-source / masked-transform-source modes
@@ -285,7 +285,7 @@ Plans:
   4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
   5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
 
-**Plans**: 5/5 plans executed
+**Plans**: 5/5 plans executed — COMPLETED 2026-08-27 (UAT passed, 18/18 threats verified, 8/8 requirements Nyquist-validated)
 
 Plans:
 **Wave 1**
@@ -306,6 +306,8 @@ Plans:
 - [x] 47-05-PLAN.md — cross-track drag gesture with destination highlight, moveTrackItems commit, rejection publication
 
 **UI hint**: yes
+
+**Close-out notes (2026-08-27):** The filmstrip capsule rendering layer was REMOVED by user demand in UAT Round 6 (commit 346d47bc) — the rails return to the locked Phase 43 surface and loop facts live in the rail tooltip only. The rail status dot became a 20x4px rectangle over the 4px line on ALL tracks (synchronized #A6D334 / modified #FBBF24 / detached #BBC0C8 / unavailable #FF2E56) with a tooltip status swatch; the lifecycle reads the clip's own scriptId so the active lane and non-active rows agree. The compositor-death watchdog's reload is DISABLED by request (commit ce1008af) — detection stays live as a diagnostic warn.
 
 ### Phase 48: Internal Compositor and Flattened Parent Result
 
@@ -408,8 +410,8 @@ Plans:
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
-| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | In Progress|  |
-| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 3/5 | In Progress|  |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
+| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
