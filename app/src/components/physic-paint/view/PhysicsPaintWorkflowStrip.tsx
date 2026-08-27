@@ -2519,6 +2519,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       }
     }
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
+      // 47 close-out UAT round 11: selecting an interpolated frame owns the
+      // selection — a previously selected key clears, never two orange cells.
+      current.onClearRotoKeySelection?.();
+      current.onClearRotoSpacingSelection?.();
       current.onNavigateToSyncedFrame(frame);
       return;
     }

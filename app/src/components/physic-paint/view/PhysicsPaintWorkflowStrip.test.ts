@@ -1689,23 +1689,24 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       css(),
       '.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {',
     );
-    // 47 close-out UAT round 11: the proxy selection paints as an orange
-    // background fill like frame/key selection — the old outer box is gone.
-    expect(proxySelection).toContain('background: #f5a623');
-    expect(proxySelection).toContain('border-color: #f5a623');
+    // 47 close-out UAT round 11: the mirror frames of a selected loop key
+    // stay SUBTLE (#4B6382) — never the orange selection fill, never a box.
+    expect(proxySelection).toContain('background: #4b6382');
+    expect(proxySelection).not.toContain('#f5a623');
     expect(proxySelection).not.toContain('outline:');
     const selectedRepeat = getCssRuleBlock(
       css(),
       '.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {',
     );
-    // Repeat cells get the same orange fill when their rail is selected.
-    expect(selectedRepeat).toContain('background: #f5a623');
+    // Repeat cells stay subtle too when their rail is selected.
+    expect(selectedRepeat).toContain('background: #4b6382');
+    expect(selectedRepeat).not.toContain('#f5a623');
     expect(selectedRepeat).not.toContain('outline:');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
-    expect(ordinarySelection).toContain('border-color: #f5a623');
-    // 47 close-out UAT round 7: the selection paints INSIDE the frame — the
-    // cell's own border turns orange (green fill stays for keys, blue + '-'
-    // for interpolated frames); no outer orange box anymore.
+    // 47 close-out UAT rounds 10-11: the selection is an orange background
+    // fill only — no border recolor, no box, no hover variant.
+    expect(ordinarySelection).toContain('background: #f5a623');
+    expect(ordinarySelection).not.toContain('border-color:');
     expect(ordinarySelection).not.toContain('outline:');
     expect(ordinarySelection).not.toContain('box-shadow:');
   });

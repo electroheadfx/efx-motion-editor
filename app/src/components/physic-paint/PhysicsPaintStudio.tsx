@@ -2134,6 +2134,10 @@ export function PhysicsPaintStudio() {
     // Re-seed the studio selection on the newly active track at the cursor —
     // the same resets the launch-replacement path applies, for an in-place
     // track switch (a stale key/rail selection must never leak across tracks).
+    // 47 close-out UAT round 11: a pending cross-track selection intent owns
+    // the selection this cycle — reseeding to the OLD cursor would paint the
+    // selection on the wrong frame for a moment before the seam navigates.
+    if (pendingCrossTrackSelection.peek() !== null) return;
     const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(lc.layerId, trackId, currentFrame);
     const nextSelectedKeyId = selectedRecord?.keyId ?? null;
     if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;

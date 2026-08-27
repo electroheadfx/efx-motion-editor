@@ -4209,44 +4209,32 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.current {
-  /* 47 close-out UAT round 10: selection paints as an ORANGE BACKGROUND FILL
-     — no box, no border recolor. Identical for keys and interpolated frames
-     (the white '-' dash still paints on top of generated fills). */
-  border-color: #f5a623;
+  /* 47 close-out UAT rounds 10-11: selection paints as an ORANGE BACKGROUND
+     FILL only — no box, no border recolor, no hover variant. Identical for
+     keys and interpolated frames (the white '-' dash still paints on top). */
   background: #f5a623;
 }
 
 .physics-paint-roto-cell.selected {
-  border-color: #f5a623;
   background: #f5a623;
 }
 
-/* 47 close-out UAT round 8: the cell buttons' default blue focus ring hid
-   the orange in-frame selection border; the border IS the selection now, so
-   suppress the default outline and keep the orange border on hover/focus. */
+/* The cell buttons' default blue focus outline is suppressed — the orange
+   background fill is the whole selection/focus treatment. */
 .physics-paint-roto-cell:focus,
 .physics-paint-roto-cell:focus-visible {
   outline: none;
 }
 
-.physics-paint-roto-cell.selected:hover,
-.physics-paint-roto-cell.current:hover,
-.physics-paint-roto-cell.selected:focus-visible,
-.physics-paint-roto-cell.current:focus-visible {
-  border-color: #f5a623;
-}
-
 .physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
-  /* 47 close-out UAT round 11: the spacing-proxy selection (the frames of a
-     selected Motion/Static rail) uses the SAME orange background fill as
-     frame/key selection — the old outer orange box is gone. */
-  border-color: #f5a623;
-  background: #f5a623;
+  /* 47 close-out UAT round 11: the mirror frames of a selected loop key
+     paint SUBTLE — never the orange selection. Only the clicked cell itself
+     is orange; mirrors stay the quiet blue-gray they always were. */
+  background: #4b6382;
 }
 
 .physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {
-  border-color: #f5a623;
-  background: #f5a623;
+  background: #4b6382;
 }
 
 .physics-paint-roto-cell.roto-loop-boundary-start {

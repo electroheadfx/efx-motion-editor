@@ -1702,8 +1702,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(boundaryEnd.props.cellClass).toContain('roto-loop-boundary-end');
     expect(cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-linked-repeat-source-key {')).toContain('background: #43494f');
     const selectedRepeat = cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {');
-    expect(selectedRepeat).toContain('background: #f5a623');
-    expect(selectedRepeat).toContain('#f5a623');
+    expect(selectedRepeat).toContain('background: #4b6382');
+    expect(selectedRepeat).not.toContain('#f5a623');
     expect(selectedRepeat).not.toContain('outline:');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
