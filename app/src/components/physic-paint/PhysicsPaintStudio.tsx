@@ -52,6 +52,7 @@ import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysic
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
+import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
@@ -2597,6 +2598,35 @@ export function PhysicsPaintStudio() {
     publishOperationResult(null);
     void requestRotoFrameNavigationRef.current(frame);
   }, [publishOperationResult]);
+  // 47 close-out UAT round 5: ONE-click cross-track selection. Clicking a
+  // frame/key cell or a rail on a NON-active row selects it and activates the
+  // track in the same click — the previous flow needed a second click after
+  // the lane swap. The rail intents reuse the canonical plain-selection
+  // handlers (all 43.6 invariants) after the activation; the frame intent
+  // mirrors the active lane's cell click (real key selects, anything else
+  // navigates with a cleared selection).
+  const handleSelectTrackFrame = useCallback((trackId: string, frame: number) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    setActiveTrackId(layerId, trackId);
+    handleNavigateToSyncedFrame(frame);
+    railSetSelection.value = null;
+    clearRotoLoopSelection();
+    selectedRotoKeyRail.value = null;
+    rotoSpacingSelection.value = null;
+    const key = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
+    selectedKeyId.value = key?.keyId ?? null;
+    selectedKeyIds.value = key ? [key.keyId] : [];
+    selectionAnchorKeyId.value = key?.keyId ?? null;
+    physicPaintStore.setRotoPhysicalSelection(layerId, trackId, key?.keyId ?? null, frame);
+  }, [clearRotoLoopSelection, handleNavigateToSyncedFrame, launchContext?.layerId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedRotoKeyRail, selectionAnchorKeyId]);
+  const handleSelectTrackRail = useCallback((trackId: string, rail: TrackRowRailSelection) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    setActiveTrackId(layerId, trackId);
+    if (rail.kind === 'key') handleSelectRotoKeyRail({ firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }, 'plain');
+    else handleSelectRotoLoopClip(rail.loopId, 'plain');
+  }, [handleSelectRotoKeyRail, handleSelectRotoLoopClip, launchContext?.layerId]);
   const navigateLinkedGroup = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
     const target = linkedRotoGroups[targetIndex];
@@ -3006,6 +3036,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined,
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
@@ -3013,6 +3044,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined,
     };
     return {
       layerId,
@@ -3020,6 +3052,8 @@ export function PhysicsPaintStudio() {
       activeTrackId: document.activeTrackId,
       background: document.background,
       onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
+      onSelectTrackFrame: handleSelectTrackFrame,
+      onSelectTrackRail: handleSelectTrackRail,
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
       onToggleSolo: handleToggleSolo,

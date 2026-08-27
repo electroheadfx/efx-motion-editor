@@ -23,6 +23,8 @@ const LANE_HEIGHT_PX = 30;
 const TARGET_HEIGHT_PX = 12;
 const CELL_HEIGHT_PX = 22;
 const RING_OFFSET_PX = 2;
+const SEGMENT_TOP_PX = 4;
+const SEGMENT_HEIGHT_PX = 3;
 
 describe('shared rail focus ring (43.4 defect 8)', () => {
   it('draws ONE identical ring for every rail family through the shared focus class', () => {
@@ -40,7 +42,7 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     const ringRule = cssRule('.physics-paint-rail-target:focus::after,');
     expect(ringRule).toContain('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 1px solid #cccccc');
-    expect(ringRule).toContain('top: -2px');
+    expect(ringRule).toContain('top: 4px');
     expect(ringRule).toContain('left: -2px');
     expect(ringRule).toContain('right: -2px');
     expect(ringRule).toContain('bottom: -20px');
@@ -54,22 +56,24 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     expect(css).not.toContain('.physics-paint-loop-clip-rail-target:focus-visible {');
   });
 
-  it('full-row ring wraps the 12px band + cells with a 2px overhang and never clips', () => {
-    // Ring box from the shared ::after declarations (top: -2px, bottom: -20px
-    // below the 12px target): spans -2..32 relative to the band top — the
-    // compact 30px row (band + cells) with a 2px breathing overhang on each
-    // side. The bottom offset is 20px (not the pre-47 24px) because the band
-    // grew 8px -> 12px.
-    const ringTop = -RING_OFFSET_PX;
+  it('ring starts on the rail line and wraps down past the cells without clipping', () => {
+    // Ring box from the shared ::after declarations (top: 4px — exactly on the
+    // rail line, the segment's own top — and bottom: -20px below the 12px
+    // target): spans 4..32 relative to the band top. The top edge never
+    // overlaps the track above (UAT round 5); the bottom keeps the 2px
+    // overhang past the 30px lane. The bottom offset is 20px (not the pre-47
+    // 24px) because the band grew 8px -> 12px.
+    const ringTop = SEGMENT_TOP_PX;
     const ringBottom = TARGET_HEIGHT_PX + (LANE_HEIGHT_PX - TARGET_HEIGHT_PX) + RING_OFFSET_PX;
-    expect(ringTop).toBe(-2);
+    expect(ringTop).toBe(4);
     expect(ringBottom).toBe(32);
 
-    // The full-height cells fit inside the 30px row (12px band above them).
+    // The rail line (3px segment) sits inside the ring's top edge; the
+    // full-height cells fit inside the 30px row below the band.
+    expect(ringTop).toBeLessThan(ringTop + SEGMENT_HEIGHT_PX);
     expect(CELL_HEIGHT_PX).toBeLessThan(LANE_HEIGHT_PX);
 
-    // Full-row extent: the ring overhangs the 30px row by 2px above and below.
-    expect(ringTop + RING_OFFSET_PX).toBe(0);
+    // Full-row extent: the ring overhangs the 30px row by 2px below only.
     expect(ringBottom - RING_OFFSET_PX).toBe(LANE_HEIGHT_PX);
 
     // No overflow clipping: the active lane is the rows-region's FIRST row, so

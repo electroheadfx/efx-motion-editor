@@ -37,6 +37,15 @@ const ROW_CELL_WIDTH_PX = 18;
 
 export type PhysicsPaintTrackRowKind = 'paint' | 'background';
 
+/**
+ * One rail identity on a non-active row, carried to the controller by a
+ * one-click rail selection (47 close-out UAT round 5): the controller
+ * activates the track and selects the rail in the same click.
+ */
+export type TrackRowRailSelection =
+  | { readonly kind: 'key'; readonly firstKeyId: string; readonly keyIds: readonly string[] }
+  | { readonly kind: 'loop'; readonly loopId: string };
+
 export interface PhysicsPaintTrackRowProps {
   /** The stable track UUID this row renders — identity, never an array index. */
   readonly trackId: string;
@@ -68,6 +77,14 @@ export interface PhysicsPaintTrackRowProps {
    */
   readonly onSelectTrack?: (trackId: string) => void;
   readonly onNavigateToFrame?: (frame: number) => void;
+  /** 47 close-out UAT round 5: one-click cross-track selection — clicking a
+   *  frame/key cell on a NON-active row selects it and activates the track in
+   *  the same click (no second click after the lane swap). Absent falls back
+   *  to the onSelectTrack + onNavigateToFrame pair. */
+  readonly onSelectTrackFrame?: (trackId: string, frame: number) => void;
+  /** One-click rail selection on a non-active row: activates the track and
+   *  selects the clicked Key Rail / Loop Clip rail in the same click. */
+  readonly onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
 }
 
 type TrackRowCellState = 'cached' | 'generated' | 'empty';
@@ -206,6 +223,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     crossInsertionFrame = null,
     onSelectTrack,
     onNavigateToFrame,
+    onSelectTrackFrame,
+    onSelectTrackRail,
   } = props;
   const rowClass = [
     'physics-paint-track-row',
@@ -226,13 +245,18 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     ? resolveTrackRowLoopLines(layerId, trackId, frameCells.length)
     : EMPTY_TRACK_ROW_LOOP_LINES;
   // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
-  // row's track and navigates to the clicked frame. The frame is read from the
-  // clicked cell's data-roto-app-frame (the row itself carries no frame).
+  // row's track and navigates to the clicked frame. 47 close-out UAT round 5:
+  // with onSelectTrackFrame wired the SAME click also selects the frame/key —
+  // one click, never two.
   const handleRowClick = (event: MouseEvent) => {
-    if (!onSelectTrack && !onNavigateToFrame) return;
     const target = event.target as HTMLElement | null;
     const cell = target?.closest?.('[data-roto-app-frame]') as HTMLElement | null;
     const frame = cell ? Number(cell.dataset.rotoAppFrame) : NaN;
+    if (onSelectTrackFrame && Number.isInteger(frame)) {
+      onSelectTrackFrame(trackId, frame);
+      return;
+    }
+    if (!onSelectTrack && !onNavigateToFrame) return;
     onSelectTrack?.(trackId);
     if (Number.isInteger(frame)) onNavigateToFrame?.(frame);
   };
@@ -279,7 +303,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
               left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
               width: `${(segment.lastKeyFrame + 1 - segment.firstKeyFrame) * ROW_CELL_WIDTH_PX}px`,
             }}
-            aria-hidden="true"
+            role="button"
+            aria-label={`Key Rail frames ${segment.firstKeyFrame}–${segment.lastKeyFrame}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectTrackRail?.(trackId, { kind: 'key', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+            }}
           >
             <span class="physics-paint-rail-segment physics-paint-key-rail-segment" />
           </span>
@@ -289,7 +318,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             key={line.loopId}
             class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
             style={{ left: `${line.left}px`, width: `${line.width}px` }}
-            aria-hidden="true"
+            role="button"
+            aria-label={`Loop Clip rail at frame ${line.left / ROW_CELL_WIDTH_PX}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectTrackRail?.(trackId, { kind: 'loop', loopId: line.loopId });
+            }}
           >
             <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" />
           </span>

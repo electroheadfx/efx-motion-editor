@@ -807,7 +807,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(focusRule).toContain('outline: none');
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
     expect(ringRule).toContain('border: 1px solid #cccccc');
-    expect(ringRule).toContain('top: -2px');
+    expect(ringRule).toContain('top: 4px');
     expect(ringRule).toContain('bottom: -20px');
     expect(ringRule).toContain('border-radius: 0');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');

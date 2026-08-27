@@ -3160,7 +3160,10 @@ button.destructive {
 .physics-paint-rail-target:focus-visible::after {
   content: '';
   position: absolute;
-  top: -2px;
+  /* 47 close-out UAT round 5: the top edge sits exactly ON the rail line
+     (4px into the band, the segment's own top) instead of 2px above the
+     target — the ring no longer overlaps the track above. */
+  top: 4px;
   left: -2px;
   right: -2px;
   bottom: -20px;
@@ -3565,6 +3568,12 @@ button.destructive {
   background: #3a3c3d;
 }
 
+/* 47 close-out UAT round 5: Paint rows are one-click select targets — the
+   select cursor over the frames/keys (the Bg row stays locked). */
+.physics-paint-track-row:not(.physics-paint-track-row-background) {
+  cursor: pointer;
+}
+
 .physics-paint-track-row-lane {
   position: relative;
   display: flex;
@@ -3608,16 +3617,16 @@ button.destructive {
 
 /* Always-on rail lines (47 close-out UAT round 4): every non-active Paint row
    renders its rails with the ACTIVE lane's own classes — a read-only
-   .physics-paint-rail-target wrapper (12px band, pointer-events none) holding
-   the family's .physics-paint-rail-segment. All colors, boundary caps and
-   full-height cell edges come from the shared rules, so a rail is
-   pixel-identical on every track and selecting a track changes nothing in the
-   timeline. left/width are set inline from the rail's frame span. */
+   .physics-paint-rail-target wrapper (12px band) holding the family's
+   .physics-paint-rail-segment. All colors, boundary caps and full-height cell
+   edges come from the shared rules, so a rail is pixel-identical on every
+   track and selecting a track changes nothing in the timeline. UAT round 5:
+   the band is clickable — one click selects the rail AND activates the track. */
 .physics-paint-track-row-rail {
   position: absolute;
   top: 0;
   height: 12px;
-  pointer-events: none;
+  cursor: pointer;
   z-index: 1;
 }
 

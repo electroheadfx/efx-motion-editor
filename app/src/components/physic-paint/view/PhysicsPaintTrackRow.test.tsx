@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
 import {
   _setPhysicPaintMarkDirtyCallback,
@@ -214,12 +214,71 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(staticLine[0].props.class)).toContain('mode-static');
   });
 
-  it('keeps the rails read-only and the background row rail-free', () => {
-    expect(cssRule('.physics-paint-track-row-rail {')).toContain('pointer-events: none');
+  it('keeps the rails one-click selectable and the background row rail-free', () => {
+    // UAT round 5: the band is clickable (select rail + activate track) with
+    // the select cursor; cells carry the select cursor too.
+    expect(cssRule('.physics-paint-track-row-rail {')).toContain('cursor: pointer');
     expect(cssRule('.physics-paint-track-row-rail {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-track-row:not(.physics-paint-track-row-background) {')).toContain('cursor: pointer');
 
     physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [makeRecord('k0', 2, 'a@2')], INTERPOLATION, CAPACITY);
     const backgroundTree = render({ trackId: 'bg-row', kind: 'background' });
     expect(findAll(backgroundTree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'))).toHaveLength(0);
+  });
+
+  it('fires the one-click frame selection intent with the clicked frame (UAT round 5)', () => {
+    const onSelectTrackFrame = vi.fn();
+    const tree = PhysicsPaintTrackRow({
+      trackId: TRACK,
+      layerId: LAYER,
+      frameCells: FRAME_CELLS,
+      onSelectTrackFrame,
+    }) as TestVNode;
+    const row = findAll(materialize(tree), (vnode) => hasClass(vnode, 'physics-paint-track-row'))[0];
+    const rowProps = row.props as { onClick: (event: MouseEvent) => void };
+    const clickEvent = (target: unknown) => ({ target, stopPropagation: vi.fn() }) as unknown as MouseEvent;
+    // No clicked cell (header-style click) → no frame intent.
+    rowProps.onClick(clickEvent(null));
+    expect(onSelectTrackFrame).not.toHaveBeenCalled();
+    // A cell click carries the frame from data-roto-app-frame.
+    const cell = { dataset: { rotoAppFrame: '7' } };
+    rowProps.onClick(clickEvent({ closest: () => cell }));
+    expect(onSelectTrackFrame).toHaveBeenCalledWith(TRACK, 7);
+  });
+
+  it('fires the one-click rail selection intents with the rail identity (UAT round 5)', () => {
+    // k0/k1 form an ordinary Key Rail; k2/k3 are the loop's source keys
+    // (group-owned keys paint no ordinary rail line).
+    seedTrack(TRACK, [
+      makeRecord('k0', 2, 'a@2'),
+      makeRecord('k1', 5, 'a@5'),
+      makeRecord('k2', 8, 'a@8'),
+      makeRecord('k3', 10, 'a@10'),
+    ]);
+    physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: 'loop-motion',
+      placementStart: 12,
+      sourceKeyIds: ['k2', 'k3'],
+      repeat: 2,
+      mode: 'progressive',
+    }]);
+    const onSelectTrackRail = vi.fn();
+    const tree = materialize(PhysicsPaintTrackRow({
+      trackId: TRACK,
+      layerId: LAYER,
+      frameCells: FRAME_CELLS,
+      onSelectTrackRail,
+    }));
+    const keyRails = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail')
+      && hasClass(vnode, 'physics-paint-rail-target')
+      && !hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(keyRails).toHaveLength(1);
+    (keyRails[0].props as { onClick: (event: unknown) => void }).onClick({ stopPropagation: vi.fn() });
+    expect(onSelectTrackRail).toHaveBeenCalledWith(TRACK, { kind: 'key', firstKeyId: 'k0', keyIds: ['k0', 'k1'] });
+
+    const loopRails = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(loopRails).toHaveLength(1);
+    (loopRails[0].props as { onClick: (event: unknown) => void }).onClick({ stopPropagation: vi.fn() });
+    expect(onSelectTrackRail).toHaveBeenCalledWith(TRACK, { kind: 'loop', loopId: 'loop-motion' });
   });
 });

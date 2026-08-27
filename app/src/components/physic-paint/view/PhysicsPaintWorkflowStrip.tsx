@@ -123,7 +123,7 @@ import {
   type TrackDeletePreview,
 } from '../../../stores/efxPaintStore';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import { PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackRow, type TrackRowRailSelection } from './PhysicsPaintTrackRow';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
@@ -372,6 +372,13 @@ export interface PhysicsPaintWorkflowStripProps {
   background?: BackgroundTrack | null;
   /** Row-header click intent; the controller routes it through setActiveTrackId. */
   onSelectTrack?: (trackId: string) => void;
+  /** 47 close-out UAT round 5: one-click cross-track selection — a click on a
+   *  non-active row's frame/key cell selects it and activates the track in the
+   *  same click (controller routes through setActiveTrackId + selection). */
+  onSelectTrackFrame?: (trackId: string, frame: number) => void;
+  /** One-click rail selection on a non-active row — activates the track and
+   *  selects the clicked Key Rail / Loop Clip rail (controller-owned). */
+  onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
   /** 47-01 mockup redesign: '+' add-track intent (controller routes through addTrack). */
   onAddTrack?: () => void;
   /** Eye toggle intent (controller routes through setTrackVisible). */
@@ -3663,6 +3670,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                             : null}
                           onSelectTrack={props.onSelectTrack}
                           onNavigateToFrame={props.onNavigateToSyncedFrame}
+                          onSelectTrackFrame={props.onSelectTrackFrame}
+                          onSelectTrackRail={props.onSelectTrackRail}
                         />
                       ),
                   )}
