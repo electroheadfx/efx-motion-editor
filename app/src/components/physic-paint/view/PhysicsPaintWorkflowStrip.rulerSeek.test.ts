@@ -7,6 +7,29 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPain
 const source = () => readFileSync(sourcePath, 'utf8');
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
+const trackRowPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintTrackRow.tsx');
+const trackRowSource = () => readFileSync(trackRowPath, 'utf8');
+const hookPath = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/usePhysicsPaintRulerScrub.ts');
+const hookSource = () => readFileSync(hookPath, 'utf8');
+
+function getMatchingDivEnd(code: string, start: number): number {
+  const tag = /<div\b|<\/div>/g;
+  tag.lastIndex = start;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tag.exec(code)) !== null) {
+    depth += match[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return tag.lastIndex;
+  }
+  return -1;
+}
+function getRulerBlock(code: string): string {
+  const anchor = code.indexOf('class="physics-paint-ruler"');
+  if (anchor === -1) return '';
+  const start = code.lastIndexOf('<div', anchor);
+  const end = getMatchingDivEnd(code, start);
+  return end === -1 ? '' : code.slice(start, end);
+}
 
 function getPlayheadComponentBlock(code: string): string {
   const start = code.indexOf('function PhysicsPaintPlayheadBar');
@@ -79,5 +102,50 @@ describe('PhysicsPaintPlayheadBar contract', () => {
     const rulerStart = code.indexOf('.physics-paint-ruler {');
     const rulerBlock = code.slice(rulerStart, code.indexOf('}', rulerStart) + 1);
     expect(rulerBlock).toContain('cursor: pointer');
+  });
+});
+
+describe('Ruler seek hard contract (selection immunity)', () => {
+  it('binds the ruler-scrub pointerdown while referencing NO selection or track-activation prop', () => {
+    // Region-scoped to the ruler div only: the ruler gesture structurally
+    // cannot mutate frame/key/rail selection or the active track.
+    const block = getRulerBlock(source());
+    expect(block).toContain('rulerScrub.onPointerDown');
+    for (const forbidden of [
+      'onSelectTrack',
+      'onSelectTrackFrame',
+      'onSelectTrackRail',
+      'onSelectRotoKeyRail',
+      'onSelectRotoLoopClip',
+      'onToggleRotoKeySelection',
+      'onCollapseRotoSelectionToKey',
+      'onExtendRotoKeySelection',
+      'onSelectAllRotoKeys',
+      'onClearRotoKeySelection',
+      'onSelectRotoSpacingProxy',
+      'onClearRotoSpacingSelection',
+    ]) {
+      expect(block).not.toContain(forbidden);
+    }
+  });
+
+  it('keeps the ruler-scrub hook a pure gesture hook — no store import, no selection reference', () => {
+    const code = hookSource();
+    expect(code).not.toContain('physicPaintStore');
+    expect(code).not.toContain('efxPaintStore');
+    expect(code).not.toContain('onSelect');
+  });
+
+  it('keeps the non-active row click select-then-navigate pair intact', () => {
+    // Positive-shape gate: the existing row click behavior is asserted
+    // unchanged (cell click selects the frame/key AND navigates).
+    const code = trackRowSource();
+    const start = code.indexOf('const handleRowClick');
+    expect(start).toBeGreaterThan(-1);
+    const end = code.indexOf('};', start);
+    const block = code.slice(start, end + 2);
+    expect(block).toContain('onSelectTrackFrame(trackId, frame)');
+    expect(block).toContain('onSelectTrack?.(trackId)');
+    expect(block).toContain('onNavigateToFrame?.(frame)');
   });
 });

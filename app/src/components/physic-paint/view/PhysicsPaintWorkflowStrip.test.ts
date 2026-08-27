@@ -150,6 +150,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
   });
 
+  it('260827-s52: onNavigateToSyncedFrame is the ONLY navigation port the ruler seek path uses', () => {
+    // Region-scoped to the rulerScrub hook instantiation: the ruler gesture
+    // navigates the cursor through the single cursor-only port and nothing
+    // else — never the go-to navigation quartet, never a selection prop.
+    const code = source();
+    const start = code.indexOf('usePhysicsPaintRulerScrub({');
+    expect(start).toBeGreaterThan(-1);
+    const end = code.indexOf('});', start);
+    const block = code.slice(start, end + 3);
+    expect(block).toContain('onNavigateToSyncedFrame');
+    for (const forbidden of ['onGoToFirstFrame', 'onGoToPreviousFrame', 'onGoToNextFrame', 'onGoToLastFrame', 'onSelectTrack']) {
+      expect(block).not.toContain(forbidden);
+    }
+  });
+
   it('uses the same dynamic Delete scope for the accessible name and guarded tooltip while keeping the button icon-only', () => {
     const code = source();
     const row = getActionRowBlock(code);
