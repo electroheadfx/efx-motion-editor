@@ -4210,27 +4210,26 @@ button.destructive {
 
 .physics-paint-roto-cell.current {
   /* 47 close-out UAT rounds 10-12: selection paints as an ORANGE BACKGROUND
-     FILL only — no box, no border recolor, no hover variant — and it wins
-     over every cell fill/linked class by order (this rule sits after them):
-     ALL frames and keys, in every rail type, fill orange when selected. */
-  background: #f5a623;
+     FILL only — no box, no border recolor — and it MUST win over every cell
+     fill/linked treatment. The global button:hover rule (background #2a5a8a)
+     and the linked-repeat source-key grey (background #43494f, specificity
+     (0,3,0)) both out-rank a single-class rule by specificity, so the fill is
+     !important: ALL frames and keys, in every rail type, stay orange when
+     selected/current, on hover and focus included. */
+  background: #f5a623 !important;
 }
 
 .physics-paint-roto-cell.selected {
-  background: #f5a623;
+  background: #f5a623 !important;
 }
 
-/* 47 close-out: the global button:hover rule (background #2a5a8a, higher
-   specificity than a single class) turned a hovered selected/current cell
-   blue and hid the orange fill. Selected/current cells keep orange on hover
-   and focus — the orange fill IS the selection treatment. */
 .physics-paint-roto-cell.current:hover,
 .physics-paint-roto-cell.current:focus,
 .physics-paint-roto-cell.current:focus-visible,
 .physics-paint-roto-cell.selected:hover,
 .physics-paint-roto-cell.selected:focus,
 .physics-paint-roto-cell.selected:focus-visible {
-  background: #f5a623;
+  background: #f5a623 !important;
 }
 
 /* The cell buttons' default blue focus outline is suppressed — the orange
