@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 48 (Internal Compositor and Flattened Parent Result) — PLANNING
 Plan: 0 of TBD
 Status: Phase 47 closed — planning Phase 48
-Last activity: 2026-08-27 — Phase 47 closed (UAT passed, security verified, Nyquist validated)
+Last activity: 2026-08-27 - Completed quick task 260827-s52: NLE ruler seek + playhead bar (Physics Paint Studio timeline)
 
 Progress: [██░░░░░░░░] 22%
 
@@ -172,6 +172,12 @@ None yet.
 
 - Research flags for planning: exact `.mce` v1.0 schema field-level design (Phase 45), opacity/blend application order + full pixel acceptance matrix enumeration (Phase 48), Reveal result track semantics (Phase 52), track-aware `paintVersion` reactivity model (Phase 46).
 - v0.9.0 audit-accepted tech debt and deferred items carried forward (see Deferred Items below).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260827-s52 | NLE ruler seek + playhead bar (Physics Paint Studio timeline) | 2026-08-27 | bbb1908a | [260827-s52-nle-ruler-seek-playhead-bar-physics-pain](./quick/260827-s52-nle-ruler-seek-playhead-bar-physics-pain/) |
 
 ## Deferred Items
 
