@@ -346,7 +346,7 @@ describe('PhysicsPaintStyledTooltip surface contract', () => {
     expect(TOOLTIP_PILL_MAX_WIDTH).toBe(280);
     expect(surface).toContain('position: fixed');
     expect(surface).toContain('max-width: 280px');
-    expect(surface).toContain('max-height: 96px');
+    expect(surface).toContain('max-height: 200px');
     expect(surface).toContain('white-space: normal');
     expect(surface).toContain('pointer-events: none');
     expect(indexCss()).toContain('--color-tooltip-bg: #17191c');

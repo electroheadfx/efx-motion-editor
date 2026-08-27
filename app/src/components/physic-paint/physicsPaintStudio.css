@@ -2592,7 +2592,7 @@ button.destructive {
   position: fixed;
   z-index: 60;
   max-width: 280px;
-  max-height: 96px;
+  max-height: 200px;
   padding: 5px 10px 6px;
   border: 0;
   border-radius: 4px;
@@ -3096,7 +3096,7 @@ button.destructive {
 }
 
 .physics-paint-loop-clip-lifecycle-dot.synchronized {
-  background: #34d399;
+  background: #a6d334;
 }
 
 .physics-paint-loop-clip-lifecycle-dot.modified {
@@ -3104,11 +3104,11 @@ button.destructive {
 }
 
 .physics-paint-loop-clip-lifecycle-dot.detached {
-  background: #9ca3af;
+  background: #bbc0c8;
 }
 
 .physics-paint-loop-clip-lifecycle-dot.unavailable {
-  background: #8da6d7;
+  background: #ff2e56;
 }
 
 /* Shared rail boundary treatment (43.4 follow-up): every rail family
@@ -3320,6 +3320,37 @@ button.destructive {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Status row in the loop-clip tooltip: the lifecycle color swatch sits before
+   the "Status: …" line so the status reads at a glance (47 close-out). */
+.physics-paint-loop-clip-tooltip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.synchronized {
+  background: #a6d334;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.modified {
+  background: #fb923c;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.detached {
+  background: #bbc0c8;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.unavailable {
+  background: #ff2e56;
 }
 
 .physics-paint-lane {

@@ -682,10 +682,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
   });
 
   it.each([
-    ['synchronized', '#34d399'],
+    ['synchronized', '#a6d334'],
     ['modified', '#fb923c'],
-    ['detached', '#9ca3af'],
-    ['unavailable', '#8da6d7'],
+    ['detached', '#bbc0c8'],
+    ['unavailable', '#ff2e56'],
   ] as const)('pins the passive %s lifecycle dot geometry and color', (lifecycle, color) => {
     const dotRule = cssRule(`.physics-paint-loop-clip-lifecycle-dot.${lifecycle} {`);
     expect(dotRule).toContain(`background: ${color}`);
@@ -694,6 +694,19 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(baseRule).toContain('height: 4px');
     expect(baseRule).toContain('border-radius: 0');
     expect(baseRule).toContain('pointer-events: none');
+  });
+
+  it('pins the tooltip status swatch to the lifecycle palette', () => {
+    for (const [lifecycle, color] of [
+      ['synchronized', '#a6d334'],
+      ['modified', '#fb923c'],
+      ['detached', '#bbc0c8'],
+      ['unavailable', '#ff2e56'],
+    ] as const) {
+      const swatchRule = cssRule(`.physics-paint-loop-clip-tooltip-status-dot.${lifecycle} {`);
+      expect(swatchRule).toContain(`background: ${color}`);
+    }
+    expect(cssRule('.physics-paint-loop-clip-tooltip-status {')).toContain('display: inline-flex');
   });
 
   it('omits the dot for unresolved fragments and gives unresolved copy precedence', () => {

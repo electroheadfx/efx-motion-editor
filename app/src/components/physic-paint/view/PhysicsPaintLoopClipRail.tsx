@@ -359,9 +359,20 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       ) : null}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
-          {tooltipLines.map((line, index) => index === 0
-            ? <strong key={line}>{line}</strong>
-            : <span key={`${index}:${line}`}>{line}</span>)}
+          {tooltipLines.map((line, index) => {
+            if (index === 0) return <strong key={line}>{line}</strong>;
+            if (line.startsWith('Status:')) {
+              return (
+                <span key={`${index}:${line}`} class="physics-paint-loop-clip-tooltip-status">
+                  {presentation.synchronizationDot ? (
+                    <span class={`physics-paint-loop-clip-tooltip-status-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
+                  ) : null}
+                  {line}
+                </span>
+              );
+            }
+            return <span key={`${index}:${line}`}>{line}</span>;
+          })}
         </span>
       </PhysicsPaintStyledTooltip>
     </span>
