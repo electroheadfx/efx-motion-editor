@@ -1610,7 +1610,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyBranch).toContain('current.onNavigateToSyncedFrame(frame);');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
     expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
-    expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;');
+    expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
   });
 
@@ -1682,7 +1682,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('&& !isPrimarySelected;');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
     expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
-    expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;');
+    expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
     // 47 close-out UAT round 12: the spacing-proxy paint rules are GONE —

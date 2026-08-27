@@ -3371,7 +3371,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       && rotoSelectedKeyIdSet.size >= 2
                       && !isPrimarySelected;
                     const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
-                    const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;
+                    // 47 close-out: the current-frame cell paints orange even
+                    // when it is a real key — real keys previously painted ONLY
+                    // via the primary-selection match, so a key at the playhead
+                    // stayed dark when that match didn't land (the persistent
+                    // "real keys never turn orange" bug). The selection match
+                    // still applies for non-current selected keys.
+                    const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;
                     const cellBaseTooltipCopy = isSpacingProxySelected
                       ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
                       : isSecondarySelected
