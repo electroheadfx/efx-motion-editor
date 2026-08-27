@@ -29,6 +29,8 @@ import { Blend, Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, P
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
+import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
+import { projectPhysicsPaintLoopClipGeometry } from './physicsPaintLoopClipPresentation';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
@@ -93,6 +95,19 @@ const TRACK_ROW_CELL_FILL_CLASS: Record<TrackRowCellState, string> = {
 };
 
 const EMPTY_TRACK_ROW_RAIL_SEGMENTS: readonly KeyRailSegment[] = Object.freeze([]);
+const EMPTY_TRACK_ROW_LOOP_LINES: readonly TrackRowLoopLine[] = Object.freeze([]);
+
+/**
+ * One read-only Loop Clip rail line on a non-active row: same geometry as the
+ * active lane's loop rail (projectPhysicsPaintLoopClipGeometry over the row's
+ * full frame extent) with the family colors (motion purple / static cyan).
+ */
+interface TrackRowLoopLine {
+  readonly loopId: string;
+  readonly left: number;
+  readonly width: number;
+  readonly mode: 'motion' | 'static';
+}
 
 /**
  * Always-on rail line source (47 close-out): this row's own read-only Key Rail
@@ -116,6 +131,48 @@ function resolveTrackRowRailSegments(layerId: string, trackId: string): readonly
     ),
     groupOwnedKeyIds,
   });
+}
+
+/**
+ * Always-on Loop Clip rail lines (47 close-out UAT round 3): the same ranges
+ * the active lane's Loop Clip rails paint, derived from THIS track's records +
+ * clips — a motion rail shows its line on every track, not only the active one.
+ */
+function resolveTrackRowLoopLines(
+  layerId: string,
+  trackId: string,
+  capacity: number,
+): readonly TrackRowLoopLine[] {
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
+  if (loopClips.length === 0 || capacity < 1) return EMPTY_TRACK_ROW_LOOP_LINES;
+  const records = physicPaintStore.getRotoRealKeyRecords(layerId, trackId);
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
+  let context;
+  try {
+    context = derivePhysicPaintRotoLoopRanges({
+      identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      loopClips: [...loopClips],
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+    });
+  } catch {
+    // An unprojectable clip collection never breaks the row render — the
+    // active lane remains the authority for anything exotic.
+    return EMPTY_TRACK_ROW_LOOP_LINES;
+  }
+  const lines: TrackRowLoopLine[] = [];
+  for (const range of context.ranges) {
+    const geometry = projectPhysicsPaintLoopClipGeometry(range, { startFrame: 0, endFrameExclusive: capacity }, 18);
+    if (!geometry) continue;
+    const clip = loopClips.find((candidate) => candidate.loopId === range.loopId);
+    lines.push({
+      loopId: range.loopId,
+      left: geometry.left,
+      width: geometry.width,
+      mode: clip?.mode === 'static' ? 'static' : 'motion',
+    });
+  }
+  return lines;
 }
 
 /**
@@ -151,6 +208,9 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   const railSegments = kind === 'paint' && layerId
     ? resolveTrackRowRailSegments(layerId, trackId)
     : EMPTY_TRACK_ROW_RAIL_SEGMENTS;
+  const loopLines = kind === 'paint' && layerId
+    ? resolveTrackRowLoopLines(layerId, trackId, frameCells.length)
+    : EMPTY_TRACK_ROW_LOOP_LINES;
   // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
   // row's track and navigates to the clicked frame. The frame is read from the
   // clicked cell's data-roto-app-frame (the row itself carries no frame).
@@ -192,8 +252,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           })}
         </div>
         {/* Always-on read-only rail lines (47 close-out): one 3px bar per Key
-            Rail segment of THIS track, at the same 18px pitch as the cells.
-            Pure feedback — pointer-events none, row cell clicks keep working. */}
+            Rail segment of THIS track, at the same 18px pitch as the cells,
+            then one family-colored bar per Loop Clip range (motion purple /
+            static cyan — UAT round 3). Pure feedback — pointer-events none,
+            row cell clicks keep working. */}
         {railSegments.map((segment) => (
           <span
             key={segment.firstKeyId}
@@ -202,6 +264,14 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
               left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
               width: `${(segment.lastKeyFrame + 1 - segment.firstKeyFrame) * ROW_CELL_WIDTH_PX}px`,
             }}
+            aria-hidden="true"
+          />
+        ))}
+        {loopLines.map((line) => (
+          <span
+            key={line.loopId}
+            class={`physics-paint-track-row-rail-line physics-paint-track-row-loop-line${line.mode === 'static' ? ' physics-paint-track-row-loop-line-static' : ''}`}
+            style={{ left: `${line.left}px`, width: `${line.width}px` }}
             aria-hidden="true"
           />
         ))}

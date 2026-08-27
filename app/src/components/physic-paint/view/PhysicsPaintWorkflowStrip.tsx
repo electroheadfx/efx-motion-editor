@@ -3216,6 +3216,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     onRailFocus={handleKeyRailFocus}
                     onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
                     onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                    suppressTooltip={crossTrackDrag.isCrossing.value}
                   />
                 ) : null}
                 {loopResolutionContext !== null
@@ -3243,6 +3244,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     onPreviewChange={setRotoGroupDragPreview}
                     onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
                     onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                    suppressTooltip={crossTrackDrag.isCrossing.value}
                     registerClickSequenceCanceller={(canceller) => {
                       railClickSequenceCancellersRef.current.add(canceller);
                       return () => {

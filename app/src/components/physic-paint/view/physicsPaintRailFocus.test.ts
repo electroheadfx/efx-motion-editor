@@ -39,11 +39,11 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     // row so the rectangle encloses band + cells instead of only the band.
     const ringRule = cssRule('.physics-paint-rail-target:focus::after,');
     expect(ringRule).toContain('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 2px solid #4d677e');
+    expect(ringRule).toContain('border: 2px solid #f1f1f1');
     expect(ringRule).toContain('top: -2px');
     expect(ringRule).toContain('left: -2px');
     expect(ringRule).toContain('right: -2px');
-    expect(ringRule).toContain('bottom: -2px');
+    expect(ringRule).toContain('bottom: -20px');
     expect(ringRule).toContain('border-radius: 0');
     expect(ringRule).toContain('pointer-events: none');
   });
@@ -54,20 +54,26 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     expect(css).not.toContain('.physics-paint-loop-clip-rail-target:focus-visible {');
   });
 
-  it('band ring wraps the 12px rail band with a 2px overhang and never clips', () => {
-    // Ring box from the shared ::after declarations (top: -2px, bottom: -2px
-    // around the 12px target): spans -2..14 relative to the band top — the
-    // rail band with a 2px breathing overhang on each side.
+  it('full-row ring wraps the 12px band + cells with a 2px overhang and never clips', () => {
+    // Ring box from the shared ::after declarations (top: -2px, bottom: -20px
+    // below the 12px target): spans -2..32 relative to the band top — the
+    // compact 30px row (band + cells) with a 2px breathing overhang on each
+    // side. The bottom offset is 20px (not the pre-47 24px) because the band
+    // grew 8px -> 12px.
     const ringTop = -RING_OFFSET_PX;
-    const ringBottom = TARGET_HEIGHT_PX + RING_OFFSET_PX;
+    const ringBottom = TARGET_HEIGHT_PX + (LANE_HEIGHT_PX - TARGET_HEIGHT_PX) + RING_OFFSET_PX;
     expect(ringTop).toBe(-2);
-    expect(ringBottom).toBe(14);
+    expect(ringBottom).toBe(32);
 
     // The full-height cells fit inside the 30px row (12px band above them).
     expect(CELL_HEIGHT_PX).toBeLessThan(LANE_HEIGHT_PX);
 
-    // Band extent: the ring stays inside the 30px row below its 2px top overhang.
+    // Full-row extent: the ring overhangs the 30px row by 2px above and below.
     expect(ringTop + RING_OFFSET_PX).toBe(0);
-    expect(ringBottom).toBeLessThan(LANE_HEIGHT_PX);
+    expect(ringBottom - RING_OFFSET_PX).toBe(LANE_HEIGHT_PX);
+
+    // No overflow clipping: the active lane is the rows-region's FIRST row, so
+    // the +2px bottom overhang lands on the next row below — never clipped.
+    expect(ringBottom).toBeGreaterThan(LANE_HEIGHT_PX);
   });
 });

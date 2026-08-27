@@ -175,6 +175,38 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(cachedCells).toHaveLength(0);
   });
 
+  it('renders motion and static Loop Clip rail lines with the family colors (UAT round 3)', () => {
+    physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [
+      makeRecord('k0', 0, 'a@0'),
+      makeRecord('k1', 2, 'a@2'),
+    ], INTERPOLATION, CAPACITY);
+    const motion = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: 'loop-motion',
+      placementStart: 6,
+      sourceKeyIds: ['k0', 'k1'],
+      repeat: 3,
+      mode: 'progressive',
+    }]);
+    if (!motion.ok) throw new Error(`motion loop seed failed: ${motion.error}`);
+    const motionLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-track-row-loop-line'));
+    expect(motionLine).toHaveLength(1);
+    expect(String(motionLine[0].props.class)).not.toContain('physics-paint-track-row-loop-line-static');
+    expect(cssRule('.physics-paint-track-row-loop-line {')).toContain('background: #8b5cf6');
+
+    const staticClip = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: 'loop-static',
+      placementStart: 6,
+      sourceKeyIds: ['k0', 'k1'],
+      repeat: 1,
+      mode: 'static',
+    }]);
+    if (!staticClip.ok) throw new Error(`static loop seed failed: ${staticClip.error}`);
+    const staticLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-track-row-loop-line'));
+    expect(staticLine).toHaveLength(1);
+    expect(String(staticLine[0].props.class)).toContain('physics-paint-track-row-loop-line-static');
+    expect(cssRule('.physics-paint-track-row-loop-line.physics-paint-track-row-loop-line-static {')).toContain('background: #06b6d4');
+  });
+
   it('keeps the rail line non-interactive and the background row line-free', () => {
     expect(cssRule('.physics-paint-track-row-rail-line {')).toContain('pointer-events: none');
     expect(cssRule('.physics-paint-track-row-rail-line {')).toContain('height: 3px');

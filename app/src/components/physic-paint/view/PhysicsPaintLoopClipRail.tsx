@@ -88,6 +88,9 @@ export interface PhysicsPaintLoopClipRailProps {
    *  must not collapse or mutate the set mid-drag. Returns the unregister
    *  function. */
   readonly registerClickSequenceCanceller?: (canceller: () => void) => () => void;
+  /** 47 close-out UAT round 3: true while a cross-track drag session is
+   *  crossing rows — the rail pill never pops mid-drag. */
+  readonly suppressTooltip?: boolean;
 }
 
 interface RailMouseEvent {
@@ -147,11 +150,20 @@ interface RailTargetProps {
   readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
   readonly onRailSetDragClickSuppressed?: () => boolean;
   readonly registerClickSequenceCanceller?: (canceller: () => void) => () => void;
+  /** 47 close-out UAT round 3: true while a cross-track drag session is
+   *  crossing rows — the rail pill never pops mid-drag. */
+  readonly suppressTooltip?: boolean;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
+  // 47 close-out UAT round 3: a hover timer armed before the cross-track drag
+  // took the pointer capture would pop the pill mid-drag (pointerleave never
+  // fires under capture) — hide it the moment a session starts crossing.
+  useEffect(() => {
+    if (props.suppressTooltip) tooltip.hide();
+  }, [props.suppressTooltip]);
   const pendingSingleClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickTimestampRef = useRef<number | null>(null);
   const { range, presentation } = props;
@@ -292,7 +304,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       ref={anchorRef}
       class="physics-paint-loop-clip-rail-anchor"
       style={{ left: `${props.left}px`, width: `${props.width}px` }}
-      onPointerEnter={tooltip.onPointerEnter}
+      onPointerEnter={props.suppressTooltip ? tooltip.hide : tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
       <button
@@ -441,6 +453,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           windowLike={props.windowLike}
           onRailSetDragPointerDown={props.onRailSetDragPointerDown}
           onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
+          suppressTooltip={props.suppressTooltip}
           registerClickSequenceCanceller={props.registerClickSequenceCanceller}
         />
       ))}
