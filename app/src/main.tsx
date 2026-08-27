@@ -15,6 +15,7 @@ import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
 import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
+import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
 import {setDebugReplayDiff} from './lib/physicPaintBridge';
 // 46 UAT debug hook: enable per-clause apply-payload rejection logging from the
@@ -34,12 +35,12 @@ if (window.location.pathname === '/physics-paint') {
   // dies, the web process survives (the window goes black) but rAF stops
   // firing. Reload to recover — the sessionStorage document checkpoint
   // rehydrates the Studio with the last pushed state (bounded by the 2s push
-  // debounce). The reload ONLY fires while the user is actively interacting
-  // with the paint window: WKWebView pauses rAF for occluded/background
-  // windows even when visibilityState reports 'visible' and the document
-  // reports focus, so an idle window must never reload (the paint window
-  // reloaded every 5-15s while the user typed in another app). Active
-  // interaction + rAF stall = the compositor is dead. A 15s cooldown
+  // debounce). The reload ONLY fires while the paint window is focused AND
+  // the user is actively interacting with it: WKWebView pauses rAF for
+  // occluded/background windows even when visibilityState reports 'visible',
+  // so an idle or out-of-focus window must never reload (the paint window
+  // reloaded every 5-15s while the user typed in another app). Focused +
+  // active interaction + rAF stall = the compositor is dead. A 15s cooldown
   // prevents a reload loop if the GPU process does not restart.
   let lastRafTick = performance.now();
   let lastActivityAt = performance.now();
@@ -60,12 +61,28 @@ if (window.location.pathname === '/physics-paint') {
   window.addEventListener('pointermove', onActivity, { passive: true });
   window.addEventListener('pointerup', onActivity, { passive: true });
   window.addEventListener('keydown', onActivity, { passive: true });
-  // Regaining focus counts as activity: a window that went black while the
-  // user was elsewhere recovers on return without a mouse move.
-  window.addEventListener('focus', onActivity, { passive: true });
+  // Regaining focus is NOT proof of a dead compositor: WKWebView pauses rAF
+  // for occluded windows, so lastRafTick is stale by the time the user
+  // returns. Counting focus as plain activity re-armed the stall check in the
+  // gap before rAF resumed and reloaded a healthy window (the "UI reloads in a
+  // fraction of a second on focus regain" report). Assume the compositor is
+  // alive on return (optimistic tick) and let the probe confirm; a genuinely
+  // dead compositor re-arms the stall check on the user's next interaction.
+  const onFocus = () => {
+    lastActivityAt = performance.now();
+    lastRafTick = performance.now();
+    requestAnimationFrame(probeRaf);
+  };
+  window.addEventListener('focus', onFocus, { passive: true });
   window.setInterval(() => {
     const now = performance.now();
-    if (now - lastActivityAt < 3000 && now - lastRafTick > 5000 && now - lastReloadAt > 15000) {
+    if (shouldReloadPaintWindow({
+      now,
+      lastActivityAt,
+      lastRafTick,
+      lastReloadAt,
+      hasFocus: document.hasFocus(),
+    })) {
       lastReloadAt = now;
       console.warn(`[watchdog] compositor stall detected — rAF last tick ${Math.round(now - lastRafTick)}ms ago — reloading paint window`);
       window.location.reload();
