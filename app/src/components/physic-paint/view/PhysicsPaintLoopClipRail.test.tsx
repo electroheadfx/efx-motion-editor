@@ -691,7 +691,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(dotRule).toContain(`background: ${color}`);
     const baseRule = cssRule('.physics-paint-loop-clip-lifecycle-dot {');
     expect(baseRule).toContain('width: 6px');
-    expect(baseRule).toContain('height: 6px');
+    expect(baseRule).toContain('height: 3px');
+    expect(baseRule).toContain('border-radius: 0');
     expect(baseRule).toContain('pointer-events: none');
   });
 
