@@ -3084,12 +3084,12 @@ button.destructive {
 
 .physics-paint-loop-clip-lifecycle-dot {
   position: absolute;
-  /* Rectangle over the 4px rail segment: covers the line, pokes 1px above. */
-  top: 3px;
+  /* Rectangle over the 4px rail segment: same height, exactly covering it. */
+  top: 4px;
   left: 50%;
   z-index: 1;
   width: 20px;
-  height: 5px;
+  height: 4px;
   border-radius: 0;
   pointer-events: none;
   transform: translate(-50%, 0);
@@ -3259,7 +3259,7 @@ button.destructive {
      8px band) instead of at the band's top — the freed 4px reads as the
      vertical gap between stacked tracks. */
   inset: 4px 0 auto 0;
-  height: 3px;
+  height: 4px;
   background: #8a939c;
   pointer-events: none;
 }

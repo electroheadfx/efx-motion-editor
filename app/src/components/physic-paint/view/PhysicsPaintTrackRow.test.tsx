@@ -214,6 +214,26 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(staticLine[0].props.class)).toContain('mode-static');
   });
 
+  it('renders the lifecycle status dot on non-active rows (show always)', () => {
+    physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [
+      makeRecord('k0', 0, 'a@0'),
+      makeRecord('k1', 2, 'a@2'),
+    ], INTERPOLATION, CAPACITY);
+    const seeded = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: 'loop-unavailable',
+      placementStart: 6,
+      sourceKeyIds: ['k0', 'k1'],
+      repeat: 3,
+      mode: 'progressive',
+    }]);
+    if (!seeded.ok) throw new Error(`loop seed failed: ${seeded.error}`);
+    const line = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(line).toHaveLength(1);
+    const dot = findAll(line[0], (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
+    expect(dot).toHaveLength(1);
+    expect(String(dot[0].props.class)).toContain('unavailable');
+  });
+
   it('keeps the rails one-click selectable and the background row rail-free', () => {
     // UAT round 5: the band is clickable (select rail + activate track) with
     // the select cursor; cells carry the select cursor too.

@@ -32,9 +32,14 @@ import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRai
 import {
   derivePhysicPaintRotoLoopRanges,
   type PhysicPaintRotoFrameResolution,
+  type PhysicPaintRotoLoopRange,
 } from '../roto/physicsPaintRotoPhysicalResolver';
+import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
-import { projectPhysicsPaintLoopClipGeometry } from './physicsPaintLoopClipPresentation';
+import {
+  projectPhysicsPaintLoopClipGeometry,
+  type PhysicsPaintGroupSynchronizationDot,
+} from './physicsPaintLoopClipPresentation';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
@@ -130,6 +135,25 @@ interface TrackRowLoopLine {
   readonly placementFrame: number;
   readonly mode: 'progressive' | 'static';
   readonly unresolved: boolean;
+  /** The status dot class (or null when unresolved) — the same lifecycle the
+   *  active lane's loop rail paints, so the status reads on every track. */
+  readonly lifecycle: PhysicsPaintGroupSynchronizationDot | null;
+}
+
+/**
+ * The row's own lifecycle resolution (47 close-out): mirrors the active lane's
+ * resolveGroupLifecycle from the clip's own fields. A missing scriptId reads
+ * 'unavailable' — the row has no script-library access, so a scriptId that no
+ * longer resolves is the only case that can drift from the active lane.
+ */
+function resolveTrackRowLoopLifecycle(
+  range: PhysicPaintRotoLoopRange,
+  clip: PhysicPaintRotoLoopClip | undefined,
+): PhysicsPaintGroupSynchronizationDot | null {
+  if (range.unresolved) return null;
+  if (clip?.provenanceState === 'detached') return 'detached';
+  if (!clip?.scriptId) return 'unavailable';
+  return clip.syncState === 'modified' ? 'modified' : 'synchronized';
 }
 
 /**
@@ -241,6 +265,7 @@ function resolveTrackRowLoopVisuals(
       placementFrame: continuousRange.placementStart,
       mode: clip?.mode ?? 'progressive',
       unresolved: Boolean(continuousRange.unresolved),
+      lifecycle: resolveTrackRowLoopLifecycle(continuousRange, clip),
     });
   }
   // Per-frame linked-loop cell classes — the same mapping the active lane's
@@ -395,6 +420,9 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             }}
           >
             <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" />
+            {line.lifecycle ? (
+              <span class={`physics-paint-loop-clip-lifecycle-dot ${line.lifecycle}`} aria-hidden="true" />
+            ) : null}
           </span>
         ))}
         {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px

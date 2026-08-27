@@ -414,7 +414,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(target.props['aria-busy']).toBe('true');
     expect(hasClass(target, 'busy')).toBe(true);
 
-    expect(cssRule('.physics-paint-key-rail-segment {')).toContain('height: 3px');
+    expect(cssRule('.physics-paint-key-rail-segment {')).toContain('height: 4px');
     expect(cssRule('.physics-paint-key-rail-segment {')).toContain('background: #8a939c');
     expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,')).toContain('background: #a7b0b9');
