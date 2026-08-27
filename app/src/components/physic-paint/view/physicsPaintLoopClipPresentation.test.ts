@@ -125,13 +125,26 @@ describe('canonical Group presentation copy', () => {
       regenerate: 'Regenerate unavailable — Action detached.',
     },
     {
-      name: 'attached but unavailable',
-      clip: clip(),
+      name: 'no source action',
+      clip: clip({ scriptId: undefined }),
       sourceName: null,
       lifecycle: 'unavailable',
       status: 'Source Action unavailable.',
       dot: 'unavailable',
       regenerate: 'Regenerate unavailable — Source Action unavailable.',
+    },
+    {
+      // 47 close-out: the lifecycle reads the clip's own scriptId, never the
+      // resolved library name — a rail linked to an Action stays Synchronized
+      // even when the script library isn't loaded (active lane and non-active
+      // rows must agree).
+      name: 'scriptId present, library not loaded',
+      clip: clip(),
+      sourceName: null,
+      lifecycle: 'synchronized',
+      status: 'Synchronized with Action.',
+      dot: 'synchronized',
+      regenerate: 'Already synchronized with Action.',
     },
   ])('maps $name without exposing authority data', ({ clip: value, sourceName, lifecycle, status, dot, regenerate }) => {
     const presentation = projectPhysicsPaintLoopClipPresentation(range(), value, sourceName);

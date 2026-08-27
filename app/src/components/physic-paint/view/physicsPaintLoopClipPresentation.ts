@@ -94,7 +94,7 @@ export function projectPhysicsPaintLoopClipPresentation(
   const groupDisplayName = options.groupDisplayName?.trim();
   const displayName = groupDisplayName
     || (sourceActionName ? `${sourceActionName} Rail` : `${groupTypeLabel} at F${range.phaseOrigin}`);
-  const lifecycle = resolveGroupLifecycle(range, clip, sourceActionName);
+  const lifecycle = resolveGroupLifecycle(range, clip);
   const statusLabel = statusLabelFor(lifecycle);
   const synchronizationDot = lifecycle === 'unresolved' ? null : lifecycle;
   const regenerateDisabledReason = regenerateDisabledReasonFor(lifecycle);
@@ -225,11 +225,14 @@ export function projectPhysicsPaintGroupAcceptedFeedback(
 function resolveGroupLifecycle(
   range: PhysicPaintRotoLoopRange,
   clip: PhysicPaintRotoLoopClip | undefined,
-  sourceActionName: string | null,
 ): PhysicsPaintGroupLifecycle {
   if (range.unresolved) return 'unresolved';
   if (clip?.provenanceState === 'detached') return 'detached';
-  if (!sourceActionName) return 'unavailable';
+  // The lifecycle reads the clip's own scriptId — never the resolved library
+  // name — so a rail linked to an Action stays Synchronized/Modified even when
+  // the script library isn't loaded (the active lane and the non-active rows
+  // must agree; the library state is not a lifecycle signal).
+  if (!clip?.scriptId) return 'unavailable';
   return clip?.syncState === 'modified' ? 'modified' : 'synchronized';
 }
 
