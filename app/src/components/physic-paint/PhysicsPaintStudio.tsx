@@ -323,25 +323,12 @@ export function PhysicsPaintStudio() {
   };
   const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '', studioActiveTrackId());
   const selectedKeyId = useSignal<string | null>(getCarriedRotoPhysical(launchContext)?.selectedKeyId ?? null);
-  // 47 close-out UAT round 7: a one-click cross-track selection intent — the
-  // click activates the track first, and this pending intent is applied by the
-  // deferred seam effect once the switched lane has settled.
-  const pendingCrossTrackSelection = useSignal<null | {
-    readonly kind: 'frame';
-    readonly trackId: string;
-    readonly frame: number;
-  } | {
-    readonly kind: 'key-rail';
-    readonly trackId: string;
-    readonly frame: number;
-    readonly firstKeyId: string;
-    readonly keyIds: readonly string[];
-  } | {
-    readonly kind: 'loop';
-    readonly trackId: string;
-    readonly loopId: string;
-    readonly frame: number;
-  }>(null);
+  // 47 close-out: a one-click cross-track selection is applied SYNCHRONOUSLY
+  // in the click handler — the deferred seam effect ran after the paint, so
+  // the first click's selection was never visible (the 2-click bug). This ref
+  // is a "don't reseed" guard for the track-switch reset effect: the click
+  // handler sets it, and the reset effect consumes it on the switch commit.
+  const crossTrackSelectionPendingRef = useRef(false);
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
   // Session-local Key Rail selection: exact first-key plus ordered members,
@@ -555,13 +542,6 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value,
     keyRailSegments,
   );
-  // TEMP probe (47 close-out — rail selection paint): remove after diagnosis.
-  if (selectedRotoKeyRail.value !== null) console.log('[EFX-CLICK] reconcileKeyRail', {
-    selected: selectedRotoKeyRail.value.firstKeyId,
-    effective: effectiveSelectedRotoKeyRail?.firstKeyId ?? null,
-    selectedKeyId: selectedKeyId.value,
-    segmentCount: keyRailSegments.length,
-  });
   if (selectedRotoKeyRail.peek() !== null
     && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {
     selectedRotoKeyRail.value = null;
@@ -1696,8 +1676,6 @@ export function PhysicsPaintStudio() {
     selection: RotoKeyRailSelection,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
-    // TEMP probe (47 close-out — rail selection paint): remove after diagnosis.
-    console.log('[EFX-CLICK] handleSelectRotoKeyRail', { firstKeyId: selection.firstKeyId, gesture });
     publishOperationResult(null);
     if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
       // Modifier gestures route through the rail-set reducer (D-01): a Key Rail
@@ -1763,8 +1741,6 @@ export function PhysicsPaintStudio() {
     loopId: string | null,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
-    // TEMP probe (47 close-out — rail selection paint): remove after diagnosis.
-    console.log('[EFX-CLICK] handleSelectRotoLoopClip', { loopId, gesture });
     publishOperationResult(null);
     if (loopId === null) {
       clearRotoLoopSelection();
@@ -2096,8 +2072,6 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
-      // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
-      console.log('[EFX-CLICK] navigation selects', { frame, nextSelectedKeyId, previous: selectedKeyId.peek() });
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
     }
@@ -2127,8 +2101,6 @@ export function PhysicsPaintStudio() {
     const visible = resolvePhysicPaintTrackVisibility(lc.layerId, trackId);
     const displayState = `${trackId}:${visible ? 'visible' : 'hidden'}`;
     if (displayState === lastReferenceDisplayStateRef.current) return;
-    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
-    console.log('[EFX-CLICK] resetEffect clears selection', { displayState, currentFrame });
     lastReferenceDisplayStateRef.current = displayState;
     const engine = engineRef.current as PreviewBackgroundEngine | null;
     setCachedRotoReferenceUrl(null);
@@ -2145,10 +2117,13 @@ export function PhysicsPaintStudio() {
     // Re-seed the studio selection on the newly active track at the cursor —
     // the same resets the launch-replacement path applies, for an in-place
     // track switch (a stale key/rail selection must never leak across tracks).
-    // 47 close-out UAT round 11: a pending cross-track selection intent owns
-    // the selection this cycle — reseeding to the OLD cursor would paint the
-    // selection on the wrong frame for a moment before the seam navigates.
-    if (pendingCrossTrackSelection.peek() !== null) return;
+    // 47 close-out: a cross-track click applied its selection synchronously in
+    // the click handler — reseeding to the OLD cursor would overwrite it, so
+    // the ref guard skips the reseed for exactly this switch commit.
+    if (crossTrackSelectionPendingRef.current) {
+      crossTrackSelectionPendingRef.current = false;
+      return;
+    }
     const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(lc.layerId, trackId, currentFrame);
     const nextSelectedKeyId = selectedRecord?.keyId ?? null;
     if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
@@ -2651,62 +2626,55 @@ export function PhysicsPaintStudio() {
     publishOperationResult(null);
     void requestRotoFrameNavigationRef.current(frame);
   }, [publishOperationResult]);
-  // 47 close-out UAT round 7: the deferred cross-track selection seam. The
-  // intent is consumed once the document's active track matches — the same
-  // tick's reconcile has already run, so the applied selection sticks. The
-  // frame intent mirrors the active lane's cell click (a real key selects,
-  // anything else navigates with a cleared selection); rail intents route
-  // through the canonical plain-selection handlers (all 43.6 invariants).
-  useEffect(() => {
-    const pending = pendingCrossTrackSelection.peek();
-    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
-    if (pending) console.log('[EFX-CLICK] seamEffect', { kind: pending.kind, trackId: pending.trackId, activeTrack: studioActiveTrackId() });
-    if (!pending) return;
-    if (studioActiveTrackId() !== pending.trackId) return;
-    pendingCrossTrackSelection.value = null;
-    const layerId = launchContextRef.current?.layerId;
-    if (!layerId) return;
-    if (pending.kind === 'key-rail') {
-      handleSelectRotoKeyRail({ firstKeyId: pending.firstKeyId, keyIds: pending.keyIds }, 'plain');
-      return;
-    }
-    if (pending.kind === 'loop') {
-      handleSelectRotoLoopClip(pending.loopId, 'plain');
-      return;
-    }
-    handleNavigateToSyncedFrame(pending.frame);
-    railSetSelection.value = null;
-    clearRotoLoopSelection();
-    selectedRotoKeyRail.value = null;
-    rotoSpacingSelection.value = null;
-    const key = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, pending.trackId, pending.frame);
-    selectedKeyId.value = key?.keyId ?? null;
-    selectedKeyIds.value = key ? [key.keyId] : [];
-    selectionAnchorKeyId.value = key?.keyId ?? null;
-    physicPaintStore.setRotoPhysicalSelection(layerId, pending.trackId, key?.keyId ?? null, pending.frame);
-  }, [clearRotoLoopSelection, efxPaintVersion.value, handleNavigateToSyncedFrame, handleSelectRotoKeyRail, handleSelectRotoLoopClip, pendingCrossTrackSelection, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedRotoKeyRail, selectionAnchorKeyId]);
-  // 47 close-out UAT round 5/7: ONE-click cross-track selection. Clicking a
-  // frame/key cell or a rail on a NON-active row activates the track and
-  // selects the target in the SAME click. The selection is applied DEFERRED
-  // (round 7): the click handler only activates the track and records the
-  // intent — applying it synchronously in the click raced the lane-switch
-  // reconcile and the selection never stuck (keys needed a second click,
-  // rails never selected). The effect below consumes the intent once the
-  // switched lane has settled, through the canonical selection semantics.
+  // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
+  // or a rail on a NON-active row activates the track and selects the target
+  // in the SAME click. The selection is applied SYNCHRONOUSLY in the click
+  // handler — the deferred seam effect ran after the paint, so the first
+  // click's selection was never visible (the 2-click bug). The ref guard
+  // keeps the track-switch reset effect from reseeding over it.
   const handleSelectTrackFrame = useCallback((trackId: string, frame: number) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     setActiveTrackId(layerId, trackId);
-    pendingCrossTrackSelection.value = { kind: 'frame', trackId, frame };
-  }, [launchContext?.layerId, pendingCrossTrackSelection]);
+    crossTrackSelectionPendingRef.current = true;
+    handleNavigateToSyncedFrame(frame);
+    railSetSelection.value = null;
+    clearRotoLoopSelection();
+    selectedRotoKeyRail.value = null;
+    rotoSpacingSelection.value = null;
+    const key = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
+    selectedKeyId.value = key?.keyId ?? null;
+    selectedKeyIds.value = key ? [key.keyId] : [];
+    selectionAnchorKeyId.value = key?.keyId ?? null;
+    physicPaintStore.setRotoPhysicalSelection(layerId, trackId, key?.keyId ?? null, frame);
+  }, [clearRotoLoopSelection, handleNavigateToSyncedFrame, launchContext?.layerId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedRotoKeyRail, selectionAnchorKeyId]);
   const handleSelectTrackRail = useCallback((trackId: string, rail: TrackRowRailSelection) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     setActiveTrackId(layerId, trackId);
-    pendingCrossTrackSelection.value = rail.kind === 'key'
-      ? { kind: 'key-rail', trackId, frame: rail.firstKeyFrame, firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }
-      : { kind: 'loop', trackId, loopId: rail.loopId, frame: rail.placementFrame };
-  }, [launchContext?.layerId, pendingCrossTrackSelection]);
+    crossTrackSelectionPendingRef.current = true;
+    if (rail.kind === 'key') {
+      handleSelectRotoKeyRail({ firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }, 'plain');
+      return;
+    }
+    // Loop rail: apply the plain single-rail selection directly. The canonical
+    // handler validates the loopId against the ACTIVE track's loop clips, but
+    // the click just switched the track — the loopId comes from this row's own
+    // loop line, so it is guaranteed present on the newly active track.
+    railSetSelection.value = null;
+    disarmSolo();
+    selectedRotoKeyRail.value = null;
+    selectedKeyId.value = null;
+    selectedKeyIds.value = [];
+    selectionAnchorKeyId.value = null;
+    rotoSpacingSelection.value = null;
+    if (launchContext) {
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackIdOfLaunch(launchContext), null, currentFrame);
+    }
+    selectedLoopClipIds.value = [rail.loopId];
+    loopSelectionAnchorId.value = rail.loopId;
+    selectedLoopClipId.value = rail.loopId;
+  }, [clearRotoLoopSelection, disarmSolo, handleSelectRotoKeyRail, launchContext?.layerId, loopSelectionAnchorId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedLoopClipId, selectedLoopClipIds, selectedRotoKeyRail, selectionAnchorKeyId]);
   const navigateLinkedGroup = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
     const target = linkedRotoGroups[targetIndex];

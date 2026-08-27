@@ -2494,8 +2494,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
   };
   const handleRotoTimelineCellClick = useCallback((frame: number, vm: RotoCellViewModel, event: MouseEvent) => {
-    // TEMP probe (47 close-out — 2-click key selection): remove after diagnosis.
-    console.log('[EFX-CLICK] cellClick', { frame, suppressed: suppressNextRotoClickRef.current, baseMeaning: vm.baseMeaning });
     if (suppressNextRotoClickRef.current) {
       suppressNextRotoClickRef.current = false;
       return;
@@ -2884,9 +2882,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         return;
       }
       suppressNextRotoClickRef.current = true;
-      // TEMP probe (47 close-out): a wobble >= 6px armed the drag — the next
-      // click is swallowed (suspected 2-click cause). Remove after diagnosis.
-      console.log('[EFX-CLICK] dragSessionArmed → next click suppressed', { movedKeyId: session.movedKeyId });
       updateRotoDragCandidate(session);
       startRotoEdgeScroll(session);
     };
@@ -2918,7 +2913,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       const releaseMatchesRetained = release.valid && release.target !== null && retainedPublication !== null && targetSignaturesEqual(release.target, retainedPublication.targetSignature);
       if (!releaseMatchesRetained) {
         cleanup();
-        clearSuppressionSoon();
+        // 47 close-out: clear the click suppression SYNCHRONOUSLY. The old
+        // setTimeout(0) clear ran AFTER the click event, so any click whose
+        // pointer wobbled >= ROTO_DRAG_THRESHOLD_PX armed the drag and then
+        // had its click swallowed even though no key moved — the 2-click bug.
+        suppressNextRotoClickRef.current = false;
         // Release-time group-drag reject publication (D-07/D-09, 37-03
         // contract): fires exactly once per rejected group release and only
         // for resolver-level failures (candidateDetail non-null).
