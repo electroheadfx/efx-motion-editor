@@ -651,6 +651,26 @@ function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; p
   return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>;
 }
 
+/**
+ * 260827-s52 Task 2: the full-height playhead bar — a 2px accent line overlaying
+ * the ruler, every track row, and the Bg row at the current frame. It derives
+ * from the EXISTING current-frame signal plus (only while playback is active)
+ * the per-tick playback signal — mirroring RotoPlaybackCurrentFrameOutput, so
+ * an idle strip holds zero per-tick subscriptions and only this leaf re-renders
+ * per tick during playback. No new position state exists here: cursorAppFrame
+ * (props.currentFrame, fed by launchContext.startFrame) stays the single
+ * position source, so the bar follows seeks, cell navigation, playback ticks,
+ * and undo/redo restores for free. CSS enforces pointer-events: none (T-s52-03).
+ */
+function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
+  const frame = props.playbackActive ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value) : props.currentFrame.value;
+  const clampedFrame = Math.max(0, Math.min(frame, Math.max(0, props.frameCount - 1)));
+  // 4 = the timeline-scroll padding-left (the ruler/cell origin); +8 = half a
+  // cell (18/2 = 9) minus half the 2px line → the bar centers on the frame.
+  const left = 4 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
+  return <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }} />;
+}
+
 function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean }) {
   const tooltip = useStyledTooltip();
   const capsuleText = props.capsuleText.value;
@@ -3723,6 +3743,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 </>
               ) : renderActiveLane()}
             </div>
+            {/* 260827-s52 Task 2: the playhead bar is the LAST child so it
+                overlays the ruler + every row + the Bg row; pointer-events:
+                none keeps every cell/rail/capsule/ruler gesture untouched. */}
+            <PhysicsPaintPlayheadBar
+              currentFrame={currentFrameSignal}
+              playbackActive={props.isPlaying}
+              playbackTick={props.rotoCachedPlaybackTick}
+              frameCount={frameCells.length}
+            />
           </div>
         </div>
         <div

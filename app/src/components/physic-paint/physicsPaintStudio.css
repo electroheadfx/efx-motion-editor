@@ -2926,6 +2926,9 @@ button.destructive {
      and scrolls vertically when the strip is too short for all rows. */
   display: flex;
   flex-direction: column;
+  /* 260827-s52 Task 2: positioning context for the full-height playhead bar
+     (absolute overlay spanning the ruler through the visible Bg-row band). */
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -2977,6 +2980,8 @@ button.destructive {
   height: 28px;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
+  /* 260827-s52: the ruler is the NLE seek/scrub surface. */
+  cursor: pointer;
 }
 
 .physics-paint-ruler-tick {
@@ -3004,6 +3009,23 @@ button.destructive {
   height: 7px;
   background: #8b9096;
   content: '';
+}
+
+/* 260827-s52 Task 2: full-height playhead bar. top:0/bottom:0 spans exactly
+   the visible ruler-through-Bg band (the rows-region scrolls vertically
+   INSIDE itself; timeline-scroll only scrolls horizontally, so the bar rides
+   the horizontal scroll with the content). #A6D334 is the locked synchronized
+   accent (47 close-out palette); z-index 30 clears the cell/rail layers while
+   staying under tooltips. pointer-events: none is the hard contract (T-s52-03):
+   cells, rails, capsules, and the ruler receive every click/drag as before. */
+.physics-paint-playhead-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #A6D334;
+  pointer-events: none;
+  z-index: 30;
 }
 
 .physics-paint-loop-clip-rail {
