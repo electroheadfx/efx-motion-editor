@@ -2776,7 +2776,7 @@ export const physicPaintStore = {
    * frames; a partially-overlapping Hold fails the move before anything is
    * written (the same guard as cut).
    */
-  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]): RotoTrackPasteResult {
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame?: number): RotoTrackPasteResult {
     if (!layerId || !fromTrackId || !toTrackId) return { ok: false, reason: 'track-missing' };
     if (fromTrackId === toTrackId) return { ok: false, reason: 'duplicate-destination-frame' };
     const sourceDocument = this.getRotoPhysicalDocument(layerId, fromTrackId);
@@ -2801,15 +2801,18 @@ export const physicPaintStore = {
     if (!copied.ok) return copied;
     const destinationDocument = this.getRotoPhysicalDocument(layerId, toTrackId);
     if (!destinationDocument) return { ok: false, reason: 'track-missing' };
-    // Paste half FIRST with the payload's own anchor: D-09 preserves timing —
-    // the fresh destination copies land on the exact source appFrames. Any
-    // failure here (occupied destination frame, impossible Hold re-pointing)
-    // rejects the whole move with the source untouched.
+    // Paste half FIRST. Default (paste/cut parity): the payload's own anchor —
+    // D-09 preserves timing, the fresh copies land on the exact source
+    // appFrames. The cross-track drag passes the PREVIEWED insertion frame
+    // (47 close-out UAT round 2): the move lands where the user released, with
+    // the payload's anchor exactly at the preview line. Any failure here
+    // (occupied destination frame, impossible Hold re-pointing) rejects the
+    // whole move with the source untouched.
     const pasted = proposeRails({
       document: destinationDocument,
       payload: copied.payload,
       placementMode: 'paste',
-      destinationAppFrame: copied.payload.anchorAppFrame,
+      destinationAppFrame: destinationAppFrame ?? copied.payload.anchorAppFrame,
       targetTrackId: toTrackId,
     });
     if (!pasted.ok) return { ok: false, reason: pasted.reason };

@@ -3143,13 +3143,13 @@ button.destructive {
   border-right: 1px solid #f8fafc;
 }
 
-/* Shared rail focus ring (43.4 feature 8): ONE full-row rectangle for every
-   rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
-   focused target's ::after so it wraps the whole compact 34px row (12px band
-   + full 22px-tall cell row) at a 2px offset instead of only the 12px hit
-   target, and no container clips it; pointer-events none keeps the 12px hit
-   target unchanged. :focus draws it too so a mouse-clicked rail never falls
-   back to the UA default outline (Defect 6). */
+/* Shared rail focus ring (43.4 feature 8): ONE rectangle for every rail
+   family (Motion/Static/Key Rail). The 2px ring is drawn on the focused
+   target's ::after hugging the rail band at a 2px offset (47 close-out UAT:
+   square corners, #4D677E, no bottom extension — the frames have no rounding
+   and the near-white full-row ring was too loud); pointer-events none keeps
+   the hit target unchanged. :focus draws it too so a mouse-clicked rail never
+   falls back to the UA default outline (Defect 6). */
 .physics-paint-rail-target:focus,
 .physics-paint-rail-target:focus-visible {
   outline: none;
@@ -3162,13 +3162,13 @@ button.destructive {
   top: -2px;
   left: -2px;
   right: -2px;
-  bottom: -24px;
+  bottom: -2px;
   z-index: 2;
-  border: 2px solid #f2f5f7;
-  /* Capsule-ish rounding on the full-row ring (8px reads rounded on the
-     ~30px-tall rectangle without going full pill); identical across every
-     rail family via the shared class. */
-  border-radius: 8px;
+  border: 2px solid #4d677e;
+  /* 47 close-out UAT: square corners (the frame cells have none), a subtler
+     desaturated blue instead of the near-white ring, and no downward
+     extension — the ring hugs the rail band instead of spanning the row. */
+  border-radius: 0;
   pointer-events: none;
 }
 
@@ -3596,18 +3596,36 @@ button.destructive {
 }
 
 /* Always-on rail lines (47 close-out): every non-active Paint row draws its
-   Key Rail segments as read-only 3px bars at the same 18px pitch as the cells
-   (left/width set inline from the segment's frame span). Same gray family as
-   the active lane's key-rail segment so a rail reads identically on both row
+   Key Rail segments as read-only bars at the same 18px pitch as the cells
+   (left/width set inline from the segment's frame span). Same geometry and
+   colors as the active lane's key-rail segment — 3px #8a939c bar with the
+   2×3px #F8FAFC boundary caps — so a rail reads identically on both row
    kinds; pointer-events none keeps row cell clicks working underneath. */
 .physics-paint-track-row-rail-line {
   position: absolute;
-  top: 4px;
+  top: 0;
   height: 3px;
-  border-radius: 1.5px;
   background: #8a939c;
   pointer-events: none;
   z-index: 1;
+}
+
+.physics-paint-track-row-rail-line::before,
+.physics-paint-track-row-rail-line::after {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 3px;
+  background: #f8fafc;
+  content: '';
+}
+
+.physics-paint-track-row-rail-line::before {
+  left: 0;
+}
+
+.physics-paint-track-row-rail-line::after {
+  right: 0;
 }
 
 /* 47-01 UAT round 2 (tight packing): the FIRST row in the region carries no

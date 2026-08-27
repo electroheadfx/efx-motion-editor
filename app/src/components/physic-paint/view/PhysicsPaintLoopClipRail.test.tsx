@@ -806,10 +806,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 2px solid #f2f5f7');
+    expect(ringRule).toContain('border: 2px solid #4d677e');
     expect(ringRule).toContain('top: -2px');
-    expect(ringRule).toContain('bottom: -24px');
-    expect(ringRule).toContain('border-radius: 8px');
+    expect(ringRule).toContain('bottom: -2px');
+    expect(ringRule).toContain('border-radius: 0');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
@@ -1575,7 +1575,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(clicked.focused).toBe(true);
     expect(clicked.tabIndex).toBe(0);
     // A focused rail target draws the ring through the shared :focus rule.
-    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 2px solid #f2f5f7');
+    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 2px solid #4d677e');
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     vi.useRealTimers();

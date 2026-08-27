@@ -125,7 +125,7 @@ function createHarness(options: {
   const windowLike = new WindowDouble();
   const capture = new CaptureDouble();
   const document = new DocumentDouble();
-  const moveTrackItems = vi.fn((_layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]) => {
+  const moveTrackItems = vi.fn((_layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], _destinationAppFrame: number) => {
     if (options.rejection) return options.rejection;
     document.move(fromTrackId, toTrackId, keys);
     return { ok: true as const };
@@ -336,7 +336,9 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     harness.windowLike.emit('pointerup', pointerEvent({ clientX: 306, clientY: 45 }));
 
     expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
-    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1']);
+    // The commit carries the PREVIEWED insertion frame (47 close-out UAT round
+    // 2): clientX 306 - contentLeft 270 = 36px → frame 2 at the 18px pitch.
+    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 2);
     expect(harness.document.sourceKeys).toEqual([]);
     expect(harness.document.destinationKeys).toEqual(['key-1-fresh']);
     expect(harness.publishStatus).toHaveBeenCalledWith('Moved 1 key to another track.');
@@ -346,6 +348,18 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     expect(api.destinationTrackId.value).toBeNull();
     expect(api.isCrossing.value).toBe(false);
     expect(api.insertionFrame.value).toBeNull();
+  });
+
+  it('passes the release-point frame so the rail lands exactly where the preview showed (47 close-out UAT round 2)', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent({ clientY: 15 }));
+    // Release at clientX 342 → (342-270)/18 = frame 4 — the commit frame comes
+    // from the SAME resolver the insertion preview uses, so the landed rail
+    // starts exactly at the line the user saw.
+    harness.windowLike.emit('pointermove', pointerEvent({ clientX: 342, clientY: 45 }));
+    harness.windowLike.emit('pointerup', pointerEvent({ clientX: 342, clientY: 45 }));
+    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 4);
   });
 
   it('a rejected move leaves both rows byte-identical and publishes the specific English reason with the red warning triangle (D-17)', () => {

@@ -1649,7 +1649,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #f2f5f7');
+    expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #4d677e');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
@@ -2158,8 +2158,8 @@ describe('PhysicsPaintWorkflowStrip cross-track drag wiring (47-05 Task 1)', () 
 describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', () => {
   it('routes the crossed release through physicPaintStore.moveTrackItems and publishes through the action bundle (D-17)', () => {
     const strip = source();
-    expect(strip).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys)');
-    expect(strip).toContain('moveTrackItems: (layerId, fromTrackId, toTrackId, keys) =>');
+    expect(strip).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame)');
+    expect(strip).toContain('moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) =>');
     expect(strip).toContain('publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message)');
     expect(strip).toContain('setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status)');
   });
@@ -2169,10 +2169,10 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     // The commit wrapper activates the destination through the same
     // onSelectTrack route a row click uses — only on success, never on a
     // rejection (the source track stays active on a failed move).
-    const portStart = strip.indexOf('moveTrackItems: (layerId, fromTrackId, toTrackId, keys) => {');
+    const portStart = strip.indexOf('moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {');
     const portEnd = strip.indexOf('publishStatus: (message)', portStart);
     const port = strip.slice(portStart, portEnd);
-    expect(port).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys)');
+    expect(port).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame)');
     expect(port).toContain('if (result.ok) props.onSelectTrack?.(toTrackId)');
   });
 

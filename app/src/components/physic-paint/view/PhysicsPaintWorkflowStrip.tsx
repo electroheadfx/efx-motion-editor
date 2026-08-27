@@ -2019,8 +2019,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // activates the destination track (47 close-out UAT) through the same
     // onSelectTrack route a row click uses — the drop lands where the user
     // is looking, with the canvas and lane following the new active track.
-    moveTrackItems: (layerId, fromTrackId, toTrackId, keys) => {
-      const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys);
+    moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {
+      const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame);
       if (result.ok) props.onSelectTrack?.(toTrackId);
       return result;
     },

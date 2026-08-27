@@ -8,11 +8,13 @@
  * that the strip renders as the destination highlight + live insertion
  * preview; the gesture NEVER mutates any document (D-16). Releasing over a
  * destination row fires the store port exactly once with the captured source,
- * destination, and keys — the strip wires that to
- * `physicPaintStore.moveTrackItems` (D-09 copy-paste-delete semantics, D-17):
- * the result maps to the status-capsule message, success through the move
- * summary and rejection through the fixed English reason map with the red
- * warning triangle (identical to the Phase 46 paste rejection UX).
+ * destination, keys, and the PREVIEWED insertion frame — the strip wires that
+ * to `physicPaintStore.moveTrackItems` (D-09 copy-paste-delete semantics,
+ * D-17): the commit is preview-is-the-commit (47 close-out UAT round 2 — the
+ * payload's anchor lands exactly at the insertion line the user saw, never at
+ * the source frames). The result maps to the status-capsule message, success
+ * through the move summary and rejection through the fixed English reason map
+ * with the red warning triangle (identical to the Phase 46 paste rejection UX).
  *
  * Takeover mechanics: the gesture starts as a passive listener on the
  * rows-region pointerdown (the strip's capture listener calls `onPointerDown`).
@@ -86,8 +88,11 @@ export interface CrossTrackDragInput {
   readonly zoom?: number;
   /** The layer whose tracks the crossed release moves items between. */
   readonly layerId: string;
-  /** The single commit path — the strip wires it to physicPaintStore.moveTrackItems. */
-  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[]): CrossTrackMoveResult;
+  /** The single commit path — the strip wires it to physicPaintStore.moveTrackItems.
+   *  `destinationAppFrame` is the previewed insertion frame: the commit lands
+   *  the payload's anchor exactly where the preview line was (47 close-out UAT
+   *  round 2 — the rail lands where released, never at the source frames). */
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame: number): CrossTrackMoveResult;
   /** The status-capsule publication the outcome maps to. */
   readonly publishStatus: (message: string) => void;
   /** Marks the capsule error tone for rejections (red warning triangle). */
@@ -280,12 +285,21 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
       if (destination !== null && destination !== session.source.fromTrackId) {
         // The single commit path (D-17): the store port runs exactly once per
         // crossed release with the captured destination — copy-paste-delete
-        // semantics live in moveTrackItems, never here (D-09).
+        // semantics live in moveTrackItems, never here (D-09). The commit
+        // lands the payload's anchor at the SAME frame the insertion preview
+        // showed (preview-is-the-commit, 47 close-out UAT round 2): the rail
+        // drops where released, not at the source frames.
         const result = active.moveTrackItems(
           active.layerId,
           session.source.fromTrackId,
           destination,
           session.source.keyIds,
+          computeInsertionFrame(
+            upEvent.clientX - active.getContentLeft(),
+            active.getScrollLeft(),
+            active.zoom ?? 1,
+            active.framePitch,
+          ),
         );
         if (result.ok) {
           active.publishStatus(buildCrossTrackMoveSuccessMessage(session.source.keyIds.length));
