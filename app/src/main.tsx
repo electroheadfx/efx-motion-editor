@@ -33,15 +33,17 @@ const root = document.getElementById('app')!;
 if (window.location.pathname === '/physics-paint') {
   // Compositor-death watchdog: when the WKWebView GPU/compositing process
   // dies, the web process survives (the window goes black) but rAF stops
-  // firing. Reload to recover — the sessionStorage document checkpoint
-  // rehydrates the Studio with the last pushed state (bounded by the 2s push
-  // debounce). The reload ONLY fires while the paint window is focused AND
-  // the user is actively interacting with it: WKWebView pauses rAF for
-  // occluded/background windows even when visibilityState reports 'visible',
-  // so an idle or out-of-focus window must never reload (the paint window
-  // reloaded every 5-15s while the user typed in another app). Focused +
-  // active interaction + rAF stall = the compositor is dead. A 15s cooldown
-  // prevents a reload loop if the GPU process does not restart.
+  // firing. The detection stays live as a diagnostic (console warn on a
+  // stall), but the automatic reload is DISABLED by request (47 close-out):
+  // a false-positive reload on focus regain was worse than a black window.
+  // If the compositor ever dies again, the warn traces the stall and the
+  // reload can be re-enabled below. The detection ONLY fires while the paint
+  // window is focused AND the user is actively interacting with it: WKWebView
+  // pauses rAF for occluded/background windows even when visibilityState
+  // reports 'visible', so an idle or out-of-focus window must never count as
+  // a stall. Focused + active interaction + rAF stall = the compositor is
+  // dead. A 15s cooldown prevents a warn loop if the GPU process does not
+  // restart.
   let lastRafTick = performance.now();
   let lastActivityAt = performance.now();
   let lastReloadAt = 0;
@@ -84,8 +86,12 @@ if (window.location.pathname === '/physics-paint') {
       hasFocus: document.hasFocus(),
     })) {
       lastReloadAt = now;
-      console.warn(`[watchdog] compositor stall detected — rAF last tick ${Math.round(now - lastRafTick)}ms ago — reloading paint window`);
-      window.location.reload();
+      // 47 close-out: automatic reload is DISABLED by request — a false-positive
+      // reload on focus regain was worse than a black window. The detection
+      // stays live as a diagnostic: if the compositor ever dies again, this
+      // warn traces the stall and the reload can be re-enabled below.
+      console.warn(`[watchdog] compositor stall detected — rAF last tick ${Math.round(now - lastRafTick)}ms ago — reload DISABLED`);
+      // window.location.reload();
     }
   }, 1000);
   import('./components/physic-paint/PhysicsPaintStudio').then(({ PhysicsPaintStudio }) => {
