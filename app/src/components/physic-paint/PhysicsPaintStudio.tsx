@@ -2025,6 +2025,15 @@ export function PhysicsPaintStudio() {
     // navigation started during the flush supersedes this one.
     const generation = rotoNavigationGeneration.begin();
     if (launchContext) {
+      // 47 close-out: set the primary key selection SYNCHRONOUSLY, before the
+      // flush — the post-flush write ran after the paint, so the first click's
+      // selection was never visible (the 2-click bug) and a second click
+      // superseded the first navigation. The store read is synchronous; a
+      // superseded navigation re-sets it for the newer frame.
+      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
+      const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+      if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
       engine?.flushPendingStrokeFinalizations();
       // 38.1-07 D-03 (strengthened): INITIATE the save-before-leave flush
       // WITHOUT awaiting. The flush operates on ALREADY-CAPTURED live-pixel
@@ -2068,12 +2077,6 @@ export function PhysicsPaintStudio() {
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       }
-    }
-    if (launchContext) {
-      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
-      const nextSelectedKeyId = selectedRecord?.keyId ?? null;
-      if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
-      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
     }
     // 38.1 D-04: the startFrame update — the full-Studio-render driver via
     // currentFrame — is rAF-batched so a click burst coalesces to at most one
