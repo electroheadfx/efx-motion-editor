@@ -1,18 +1,18 @@
 ---
-status: testing
+status: passed
 phase: 47-internal-multi-track-timeline-filmstrip-capsules-and-control
 source: [47-VERIFICATION.md]
 started: 2026-08-25T20:15:00.000Z
-updated: 2026-08-25T20:15:00.000Z
+updated: 2026-08-27T00:00:00.000Z
 ---
 
 ## Current Test
 
-number: 1
-name: Header column + track CRUD UI (47-02)
+number: 5
+name: Phase 47 overall (regression)
 expected: |
-  The pinned header column shows the "Tracks N" strip with '+' button; each Paint row shows its name with the active accent, eye / 'S' solo buttons, and a hover panel with pencil/copy/trash. Rename is edit-in-place; duplicate creates '<name> Copy'; delete opens the acknowledge dialog (frame count, loop clip count, Hold count) and refuses deleting the last Paint track. The Bg row is locked at the bottom with the lock indicator. The header-drag reorder shows a live insertion indicator.
-awaiting: user response
+  Track 1 and new tracks keep their keys across save/reopen; painting stays fluid (no stutter at stroke start); hover cursors are the select pointer on frames/keys; no black window on reopen after a long idle.
+awaiting: user response — CONFIRMED PASSED 2026-08-27 (user: "5. Overall regression part are fixed now")
 
 ## Tests
 
@@ -32,6 +32,35 @@ expected: Dragging real keys from one track's row onto another track's row highl
 expected: Track 1 and new tracks keep their keys across save/reopen; painting stays fluid (no stutter at stroke start); hover cursors are the select pointer on frames/keys; no black window on reopen after a long idle.
 
 ## Summary
+
+### Round 7 (2026-08-27) — test 5 overall regression PASSED + rail status dot close-out
+
+User confirmed "5. Overall regression part" is fixed (crash + paint slowness
+resolved; keys persist across save/reopen; no black window on reopen after a
+long idle). This closes the last open UAT item — Phase 47 is ready to close.
+
+Rail status dot close-out (session fixes, commits 166b1d9d → ce1008af):
+- The 6x6 sphere status indicator on Motion/Static rails is now a 20x4px
+  rectangle stacked OVER the 4px rail line (covering it), shown on ALL tracks
+  (not just the active/selected one); the Key Rail line height was raised to
+  4px to match the Motion rail.
+- Status palette: synchronized #A6D334 (green), modified #FBBF24
+  (yellowish-amber, distinct from the orange selection line), detached
+  #BBC0C8 (gray), unavailable #FF2E56 (red).
+- The rail tooltip now shows a colored status swatch before the "Status:"
+  line; tooltip max-height raised 96px → 200px so the multi-line loop-clip
+  tooltip keeps its bottom padding.
+- Lifecycle consistency: the active lane and the non-active track rows now
+  resolve the lifecycle from the clip's own scriptId (never the resolved
+  library name), so a rail linked to an Action stays Synchronized/Modified
+  even when the script library isn't loaded — no more red-when-selected /
+  green-when-unselected flip.
+
+Watchdog reload disabled (user request, commit ce1008af):
+- The compositor-death watchdog's window.location.reload() is commented out —
+  the paint window never auto-reloads. The stall detection stays live as a
+  cooldown-bounded console warn so a future compositor death is traceable and
+  the reload can be re-enabled.
 
 ### Round 6 (2026-08-26) — test 3 capsule regression: FULL removal (commit 346d47bc)
 
