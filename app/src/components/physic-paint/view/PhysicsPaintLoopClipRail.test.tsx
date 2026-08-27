@@ -683,7 +683,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it.each([
     ['synchronized', '#a6d334'],
-    ['modified', '#fb923c'],
+    ['modified', '#fbbf24'],
     ['detached', '#bbc0c8'],
     ['unavailable', '#ff2e56'],
   ] as const)('pins the passive %s lifecycle dot geometry and color', (lifecycle, color) => {
@@ -699,7 +699,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
   it('pins the tooltip status swatch to the lifecycle palette', () => {
     for (const [lifecycle, color] of [
       ['synchronized', '#a6d334'],
-      ['modified', '#fb923c'],
+      ['modified', '#fbbf24'],
       ['detached', '#bbc0c8'],
       ['unavailable', '#ff2e56'],
     ] as const) {
