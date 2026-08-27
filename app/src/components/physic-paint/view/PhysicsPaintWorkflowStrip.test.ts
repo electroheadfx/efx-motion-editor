@@ -2164,6 +2164,33 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     expect(strip).toContain('setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status)');
   });
 
+  it('wires one-click cross-track frame/rail selection through the rows (47 close-out UAT round 5)', () => {
+    const strip = source();
+    expect(strip).toContain('onSelectTrackFrame?: (trackId: string, frame: number) => void');
+    expect(strip).toContain('onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void');
+    // Every non-active row receives both intents — a click selects AND
+    // activates the track in one gesture.
+    expect(strip).toContain('onSelectTrackFrame={props.onSelectTrackFrame}');
+    expect(strip).toContain('onSelectTrackRail={props.onSelectTrackRail}');
+  });
+
+  it('wires the one-click cross-track selection intents in the Studio bundle (47 close-out UAT round 5)', () => {
+    const studio = studioSource();
+    // The Studio owns the intents: activate the track, then run the same
+    // selection semantics as the active lane (real key selects; rails route
+    // through the canonical plain-selection handlers).
+    expect(studio).toContain('onSelectTrackFrame: handleSelectTrackFrame');
+    expect(studio).toContain('onSelectTrackRail: handleSelectTrackRail');
+    expect(studio).toContain('const handleSelectTrackFrame');
+    expect(studio).toContain('const handleSelectTrackRail');
+    // The frame intent navigates AND selects the real key at the frame.
+    const frameStart = studio.indexOf('const handleSelectTrackFrame');
+    const frameBlock = studio.slice(frameStart, studio.indexOf('const handleSelectTrackRail', frameStart));
+    expect(frameBlock).toContain('setActiveTrackId(layerId, trackId)');
+    expect(frameBlock).toContain('handleNavigateToSyncedFrame(frame)');
+    expect(frameBlock).toContain('getRotoRealKeyRecordByAppFrame');
+  });
+
   it('activates the destination track after a committed move (47 close-out UAT)', () => {
     const strip = source();
     // The commit wrapper activates the destination through the same
