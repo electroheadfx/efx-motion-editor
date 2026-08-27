@@ -2015,8 +2015,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     layerId: props.layerId ?? '',
     // The single commit path (D-17): moveTrackItems owns copy-paste-delete —
     // the hook only captures the destination and calls the store (D-09). The
-    // closure binds the store method (it uses `this`).
-    moveTrackItems: (layerId, fromTrackId, toTrackId, keys) => physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys),
+    // closure binds the store method (it uses `this`). A committed move also
+    // activates the destination track (47 close-out UAT) through the same
+    // onSelectTrack route a row click uses — the drop lands where the user
+    // is looking, with the canvas and lane following the new active track.
+    moveTrackItems: (layerId, fromTrackId, toTrackId, keys) => {
+      const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys);
+      if (result.ok) props.onSelectTrack?.(toTrackId);
+      return result;
+    },
     publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message),
     setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status),
     resolveSource: resolveCrossTrackDragSource,

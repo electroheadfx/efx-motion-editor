@@ -3011,14 +3011,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 8px;
+  height: 12px;
   pointer-events: none;
 }
 
 .physics-paint-loop-clip-rail-anchor {
   position: absolute;
   top: 0;
-  height: 8px;
+  height: 12px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3027,7 +3027,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 8px;
+  height: 12px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3235,14 +3235,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 8px;
+  height: 12px;
   pointer-events: none;
 }
 
 .physics-paint-key-rail-anchor {
   position: absolute;
   top: 0;
-  height: 8px;
+  height: 12px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3251,7 +3251,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 8px;
+  height: 12px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3341,13 +3341,14 @@ button.destructive {
   position: relative;
   display: grid;
   align-items: center;
-  /* 47-01 UAT round 6: compact 30px row — the 8px rail band sits ABOVE the
-     22px-tall cells (padding-top pushes the cell row below the band). The
-     previous 30px row let the absolute-positioned rail band (top 12px, z 4)
-     overlap the cells' top 8px, so frame/key clicks sometimes hit the rail.
-     47-01 UAT round 7: the band shrank 12px -> 8px (the rail line + key
-     markers only need 8px) so the cells start at y8 — a 5px gap under the
-     rail line instead of the round-6 9px gap. */
+  /* 47-01 UAT round 6: compact 30px row — the rail band sits ABOVE the
+     22px-tall cells (padding-top pushes the cell row below the band's visual
+     line). The previous 30px row let the absolute-positioned rail band (top
+     12px, z 4) overlap the cells' top 8px, so frame/key clicks sometimes hit
+     the rail. 47-01 UAT round 7 shrank the band 12px -> 8px; 47 close-out UAT
+     widened it back to 12px (rails were hard to grab). The 4px overlap only
+     exists INSIDE a rail's frame span, where selecting the rail is the intent.
+  */
   height: 30px;
   padding-top: 8px;
   background: #37393a;
@@ -3592,6 +3593,21 @@ button.destructive {
   box-shadow: 0 0 4px rgba(111, 144, 255, 0.8);
   pointer-events: none;
   z-index: 2;
+}
+
+/* Always-on rail lines (47 close-out): every non-active Paint row draws its
+   Key Rail segments as read-only 3px bars at the same 18px pitch as the cells
+   (left/width set inline from the segment's frame span). Same gray family as
+   the active lane's key-rail segment so a rail reads identically on both row
+   kinds; pointer-events none keeps row cell clicks working underneath. */
+.physics-paint-track-row-rail-line {
+  position: absolute;
+  top: 4px;
+  height: 3px;
+  border-radius: 1.5px;
+  background: #8a939c;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* 47-01 UAT round 2 (tight packing): the FIRST row in the region carries no

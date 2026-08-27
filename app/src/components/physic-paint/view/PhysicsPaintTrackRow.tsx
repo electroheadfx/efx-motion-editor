@@ -26,8 +26,9 @@
  */
 
 import { Blend, Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
-import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
+import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
@@ -91,6 +92,32 @@ const TRACK_ROW_CELL_FILL_CLASS: Record<TrackRowCellState, string> = {
   empty: 'roto-fill-empty',
 };
 
+const EMPTY_TRACK_ROW_RAIL_SEGMENTS: readonly KeyRailSegment[] = Object.freeze([]);
+
+/**
+ * Always-on rail line source (47 close-out): this row's own read-only Key Rail
+ * segments, derived from THIS track's store state — every non-active Paint row
+ * shows its rail lines at all times, so seeing a track's rails never waits for
+ * selecting it (the rich-lane swap).
+ */
+function resolveTrackRowRailSegments(layerId: string, trackId: string): readonly KeyRailSegment[] {
+  const orderedRealKeys = [...physicPaintStore.getRotoRealKeyRecords(layerId, trackId)]
+    .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId));
+  if (orderedRealKeys.length === 0) return EMPTY_TRACK_ROW_RAIL_SEGMENTS;
+  const groupOwnedKeyIds = new Set<string>();
+  for (const clip of physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId)) {
+    clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+    (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+  }
+  return deriveKeyRailSegments({
+    orderedRealKeys,
+    incomingInterpolationBreakKeyIds: new Set(
+      physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
+    ),
+    groupOwnedKeyIds,
+  });
+}
+
 /**
  * One 30px track row's cells track. The active track's row keeps the strip's
  * rich lane (rails + interactive cells) in the strip; this component renders
@@ -115,6 +142,15 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     visible === false ? 'physics-paint-track-row-hidden' : '',
     crossDestination ? 'physics-paint-track-row-cross-destination' : '',
   ].filter(Boolean).join(' ');
+  // Narrow per-track subscription (efx-preact-reactivity rule 5): reading THIS
+  // track's revision subscribes only this row — a store bump to the track (e.g.
+  // a cross-track move's removal half) re-renders it immediately instead of
+  // waiting for the Studio's 150ms chrome throttle. The row stays a leaf: it
+  // never subscribes to the global version signals.
+  if (kind === 'paint' && layerId) getTrackRotorRevision(layerId, trackId).value;
+  const railSegments = kind === 'paint' && layerId
+    ? resolveTrackRowRailSegments(layerId, trackId)
+    : EMPTY_TRACK_ROW_RAIL_SEGMENTS;
   // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
   // row's track and navigates to the clicked frame. The frame is read from the
   // clicked cell's data-roto-app-frame (the row itself carries no frame).
@@ -155,6 +191,20 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             );
           })}
         </div>
+        {/* Always-on read-only rail lines (47 close-out): one 3px bar per Key
+            Rail segment of THIS track, at the same 18px pitch as the cells.
+            Pure feedback — pointer-events none, row cell clicks keep working. */}
+        {railSegments.map((segment) => (
+          <span
+            key={segment.firstKeyId}
+            class="physics-paint-track-row-rail-line"
+            style={{
+              left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
+              width: `${(segment.lastKeyFrame + 1 - segment.firstKeyFrame) * ROW_CELL_WIDTH_PX}px`,
+            }}
+            aria-hidden="true"
+          />
+        ))}
         {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px
             accent line at the frame position where the dragged content lands
             inside this destination row (left = frame × the 18px pitch). Pure

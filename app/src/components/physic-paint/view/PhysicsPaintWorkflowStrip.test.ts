@@ -1557,7 +1557,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#8b5cf6/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#c4b5fd/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\.selected[^}]*background:\s*#f59e0b/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*8px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 
@@ -2162,6 +2162,18 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     expect(strip).toContain('moveTrackItems: (layerId, fromTrackId, toTrackId, keys) =>');
     expect(strip).toContain('publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message)');
     expect(strip).toContain('setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status)');
+  });
+
+  it('activates the destination track after a committed move (47 close-out UAT)', () => {
+    const strip = source();
+    // The commit wrapper activates the destination through the same
+    // onSelectTrack route a row click uses — only on success, never on a
+    // rejection (the source track stays active on a failed move).
+    const portStart = strip.indexOf('moveTrackItems: (layerId, fromTrackId, toTrackId, keys) => {');
+    const portEnd = strip.indexOf('publishStatus: (message)', portStart);
+    const port = strip.slice(portStart, portEnd);
+    expect(port).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys)');
+    expect(port).toContain('if (result.ok) props.onSelectTrack?.(toTrackId)');
   });
 
   it('keeps the header reorder grab release completely outside the cross-track commit (D-18)', () => {
