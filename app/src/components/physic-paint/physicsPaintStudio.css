@@ -4220,6 +4220,19 @@ button.destructive {
   background: #f5a623;
 }
 
+/* 47 close-out: the global button:hover rule (background #2a5a8a, higher
+   specificity than a single class) turned a hovered selected/current cell
+   blue and hid the orange fill. Selected/current cells keep orange on hover
+   and focus — the orange fill IS the selection treatment. */
+.physics-paint-roto-cell.current:hover,
+.physics-paint-roto-cell.current:focus,
+.physics-paint-roto-cell.current:focus-visible,
+.physics-paint-roto-cell.selected:hover,
+.physics-paint-roto-cell.selected:focus,
+.physics-paint-roto-cell.selected:focus-visible {
+  background: #f5a623;
+}
+
 /* The cell buttons' default blue focus outline is suppressed — the orange
    background fill is the whole selection/focus treatment. */
 .physics-paint-roto-cell:focus,
