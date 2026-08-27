@@ -3165,9 +3165,9 @@ button.destructive {
   right: -2px;
   bottom: -20px;
   z-index: 2;
-  border: 1px solid #f1f1f1;
-  /* 47 close-out UAT rounds 2-3: square corners (the frame cells have none),
-     #F1F1F1 instead of the near-white #F2F5F7 family, and the ring still
+  border: 1px solid #cccccc;
+  /* 47 close-out UAT rounds 2-4: square corners (the frame cells have none),
+     #CCCCCC instead of the near-white #F2F5F7 family, and the ring still
      wraps the WHOLE row — band + full 22px cell row (+2px overhang). The
      bottom offset re-anchored from -24px to -20px only because the band
      grew 8px -> 12px (12 + 20 = 32, the same 2px below the 30px lane). */
