@@ -690,8 +690,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const dotRule = cssRule(`.physics-paint-loop-clip-lifecycle-dot.${lifecycle} {`);
     expect(dotRule).toContain(`background: ${color}`);
     const baseRule = cssRule('.physics-paint-loop-clip-lifecycle-dot {');
-    expect(baseRule).toContain('width: 6px');
-    expect(baseRule).toContain('height: 3px');
+    expect(baseRule).toContain('width: 8px');
+    expect(baseRule).toContain('height: 5px');
     expect(baseRule).toContain('border-radius: 0');
     expect(baseRule).toContain('pointer-events: none');
   });
@@ -800,7 +800,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
   });
 
   it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
-    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 3px');
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 4px');
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
@@ -1259,7 +1259,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
     expect(cssRule('.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
-    expect(railSegmentRule).toContain('height: 3px');
+    expect(railSegmentRule).toContain('height: 4px');
     expect(railSegmentRule).toContain('background: #8b5cf6');
     const railHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,');
     expect(railHoverRule).toContain('background: #c4b5fd');

@@ -3047,7 +3047,7 @@ button.destructive {
   position: absolute;
   /* Same 4px drop as the Key Rail segment (UAT round 4): 1px above the cells. */
   inset: 4px 0 auto 0;
-  height: 3px;
+  height: 4px;
   background: #8b5cf6;
   pointer-events: none;
 }
@@ -3084,12 +3084,12 @@ button.destructive {
 
 .physics-paint-loop-clip-lifecycle-dot {
   position: absolute;
-  /* Rectangle stacked on top of the 3px rail segment (segment top is 4px). */
-  top: 1px;
+  /* Rectangle over the 4px rail segment: covers the line, pokes 1px above. */
+  top: 3px;
   left: 50%;
   z-index: 1;
-  width: 6px;
-  height: 3px;
+  width: 8px;
+  height: 5px;
   border-radius: 0;
   pointer-events: none;
   transform: translate(-50%, 0);
@@ -3113,7 +3113,7 @@ button.destructive {
 
 /* Shared rail boundary treatment (43.4 follow-up): every rail family
    (Motion/Static Loop Clip and Key Rail) draws the same boundary edges on its
-   first and last covered cells — the 2px x 3px band cap on the rail segment
+   first and last covered cells — the 2px x 4px band cap on the rail segment
    plus the 1px #F8FAFC full-height cell edge. One rule set consumed by both
    hosts via the shared physics-paint-rail-target / physics-paint-rail-segment
    classes; per-family base colors stay untouched. */
@@ -3122,7 +3122,7 @@ button.destructive {
   position: absolute;
   top: 0;
   width: 2px;
-  height: 3px;
+  height: 4px;
   background: #f8fafc;
   content: '';
 }
