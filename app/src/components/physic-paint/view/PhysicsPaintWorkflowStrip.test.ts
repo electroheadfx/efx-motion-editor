@@ -1685,23 +1685,10 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
-    const proxySelection = getCssRuleBlock(
-      css(),
-      '.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {',
-    );
-    // 47 close-out UAT round 11: the mirror frames of a selected loop key
-    // stay SUBTLE (#4B6382) — never the orange selection fill, never a box.
-    expect(proxySelection).toContain('background: #4b6382');
-    expect(proxySelection).not.toContain('#f5a623');
-    expect(proxySelection).not.toContain('outline:');
-    const selectedRepeat = getCssRuleBlock(
-      css(),
-      '.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {',
-    );
-    // Repeat cells stay subtle too when their rail is selected.
-    expect(selectedRepeat).toContain('background: #4b6382');
-    expect(selectedRepeat).not.toContain('#f5a623');
-    expect(selectedRepeat).not.toContain('outline:');
+    // 47 close-out UAT round 12: the spacing-proxy paint rules are GONE —
+    // mirror cells keep their base (subtle) fills, and ONLY the selected /
+    // current cell paints the orange background fill, in every rail type.
+    expect(css()).not.toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
     // 47 close-out UAT rounds 10-11: the selection is an orange background
     // fill only — no border recolor, no box, no hover variant.

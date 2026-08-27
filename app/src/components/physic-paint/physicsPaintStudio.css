@@ -4209,9 +4209,10 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.current {
-  /* 47 close-out UAT rounds 10-11: selection paints as an ORANGE BACKGROUND
-     FILL only — no box, no border recolor, no hover variant. Identical for
-     keys and interpolated frames (the white '-' dash still paints on top). */
+  /* 47 close-out UAT rounds 10-12: selection paints as an ORANGE BACKGROUND
+     FILL only — no box, no border recolor, no hover variant — and it wins
+     over every cell fill/linked class by order (this rule sits after them):
+     ALL frames and keys, in every rail type, fill orange when selected. */
   background: #f5a623;
 }
 
@@ -4224,17 +4225,6 @@ button.destructive {
 .physics-paint-roto-cell:focus,
 .physics-paint-roto-cell:focus-visible {
   outline: none;
-}
-
-.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
-  /* 47 close-out UAT round 11: the mirror frames of a selected loop key
-     paint SUBTLE — never the orange selection. Only the clicked cell itself
-     is orange; mirrors stay the quiet blue-gray they always were. */
-  background: #4b6382;
-}
-
-.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {
-  background: #4b6382;
 }
 
 .physics-paint-roto-cell.roto-loop-boundary-start {

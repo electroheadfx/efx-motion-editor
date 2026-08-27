@@ -1701,10 +1701,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(boundaryEnd.props.cellClass).not.toContain('roto-loop-boundary-start');
     expect(boundaryEnd.props.cellClass).toContain('roto-loop-boundary-end');
     expect(cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-linked-repeat-source-key {')).toContain('background: #43494f');
-    const selectedRepeat = cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {');
-    expect(selectedRepeat).toContain('background: #4b6382');
-    expect(selectedRepeat).not.toContain('#f5a623');
-    expect(selectedRepeat).not.toContain('outline:');
+    // 47 close-out UAT round 12: no proxy paint — repeats keep the base gray.
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
   });
