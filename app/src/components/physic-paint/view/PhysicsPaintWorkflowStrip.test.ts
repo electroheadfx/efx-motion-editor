@@ -1685,10 +1685,11 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
-    // 47 close-out UAT round 12: the spacing-proxy paint rules are GONE —
-    // mirror cells keep their base (subtle) fills, and ONLY the selected /
-    // current cell paints the orange background fill, in every rail type.
-    expect(css()).not.toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
+    // 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
+    // lighter blue-gray (NOT the orange selection — only the selected/current
+    // cell is orange). Restored after the round-12 deletion.
+    expect(css()).toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
+    expect(css()).toContain('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current)');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
     // 47 close-out UAT rounds 10-11: the selection is an orange background
     // fill only — no border recolor, no box, no hover variant.

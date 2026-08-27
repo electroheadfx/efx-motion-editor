@@ -4239,6 +4239,18 @@ button.destructive {
   outline: none;
 }
 
+/* 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
+   lighter blue-gray — they are NOT the selection itself (which stays orange
+   via .current/.selected !important) but show WHICH frames are the mirrors
+   of the clicked key. Restored after the round-12 deletion. */
+.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
+  background: #4b6382;
+}
+
+.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {
+  background: #4b6382;
+}
+
 .physics-paint-roto-cell.roto-loop-boundary-start {
   border-left-width: 2px;
   border-left-color: #f8fafc;
