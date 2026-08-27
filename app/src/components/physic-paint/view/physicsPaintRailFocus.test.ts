@@ -39,7 +39,7 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     // row so the rectangle encloses band + cells instead of only the band.
     const ringRule = cssRule('.physics-paint-rail-target:focus::after,');
     expect(ringRule).toContain('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 2px solid #f1f1f1');
+    expect(ringRule).toContain('border: 1px solid #f1f1f1');
     expect(ringRule).toContain('top: -2px');
     expect(ringRule).toContain('left: -2px');
     expect(ringRule).toContain('right: -2px');

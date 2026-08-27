@@ -98,15 +98,16 @@ const EMPTY_TRACK_ROW_RAIL_SEGMENTS: readonly KeyRailSegment[] = Object.freeze([
 const EMPTY_TRACK_ROW_LOOP_LINES: readonly TrackRowLoopLine[] = Object.freeze([]);
 
 /**
- * One read-only Loop Clip rail line on a non-active row: same geometry as the
- * active lane's loop rail (projectPhysicsPaintLoopClipGeometry over the row's
- * full frame extent) with the family colors (motion purple / static cyan).
+ * One read-only Loop Clip rail line on a non-active row: the same drawn extent
+ * the active lane's loop rail paints (phaseOrigin placement + max resolved end
+ * per loop identity, projected over the row's full frame extent).
  */
 interface TrackRowLoopLine {
   readonly loopId: string;
   readonly left: number;
   readonly width: number;
-  readonly mode: 'motion' | 'static';
+  readonly mode: 'progressive' | 'static';
+  readonly unresolved: boolean;
 }
 
 /**
@@ -161,15 +162,28 @@ function resolveTrackRowLoopLines(
     return EMPTY_TRACK_ROW_LOOP_LINES;
   }
   const lines: TrackRowLoopLine[] = [];
+  // Same drawn extent as the active lane's loop rail: one target per loop
+  // identity, placement at the phase origin, drawn to the max resolved end.
+  const authorityByLoop = new Map<string, { range: (typeof context.ranges)[number]; resolvedEnd: number }>();
   for (const range of context.ranges) {
-    const geometry = projectPhysicsPaintLoopClipGeometry(range, { startFrame: 0, endFrameExclusive: capacity }, 18);
+    const current = authorityByLoop.get(range.loopId);
+    if (current) {
+      current.resolvedEnd = Math.max(current.resolvedEnd, range.effectiveEnd);
+    } else {
+      authorityByLoop.set(range.loopId, { range, resolvedEnd: range.effectiveEnd });
+    }
+  }
+  for (const { range, resolvedEnd } of authorityByLoop.values()) {
+    const continuousRange = { ...range, placementStart: range.phaseOrigin, effectiveEnd: resolvedEnd };
+    const geometry = projectPhysicsPaintLoopClipGeometry(continuousRange, { startFrame: 0, endFrameExclusive: capacity }, 18);
     if (!geometry) continue;
     const clip = loopClips.find((candidate) => candidate.loopId === range.loopId);
     lines.push({
       loopId: range.loopId,
       left: geometry.left,
       width: geometry.width,
-      mode: clip?.mode === 'static' ? 'static' : 'motion',
+      mode: clip?.mode ?? 'progressive',
+      unresolved: Boolean(continuousRange.unresolved),
     });
   }
   return lines;
@@ -251,29 +265,34 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             );
           })}
         </div>
-        {/* Always-on read-only rail lines (47 close-out): one 3px bar per Key
-            Rail segment of THIS track, at the same 18px pitch as the cells,
-            then one family-colored bar per Loop Clip range (motion purple /
-            static cyan — UAT round 3). Pure feedback — pointer-events none,
-            row cell clicks keep working. */}
+        {/* Always-on read-only rails (47 close-out UAT round 4): the SAME
+            classes the active lane's rails render — a read-only rail-target
+            wrapper (12px band) holding the family's segment, so caps, colors
+            and cell edges come from the shared rules and every track's rails
+            are pixel-identical. Pure feedback: pointer-events none, row cell
+            clicks keep working. */}
         {railSegments.map((segment) => (
           <span
             key={segment.firstKeyId}
-            class="physics-paint-track-row-rail-line"
+            class="physics-paint-track-row-rail physics-paint-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end"
             style={{
               left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
               width: `${(segment.lastKeyFrame + 1 - segment.firstKeyFrame) * ROW_CELL_WIDTH_PX}px`,
             }}
             aria-hidden="true"
-          />
+          >
+            <span class="physics-paint-rail-segment physics-paint-key-rail-segment" />
+          </span>
         ))}
         {loopLines.map((line) => (
           <span
             key={line.loopId}
-            class={`physics-paint-track-row-rail-line physics-paint-track-row-loop-line${line.mode === 'static' ? ' physics-paint-track-row-loop-line-static' : ''}`}
+            class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
             style={{ left: `${line.left}px`, width: `${line.width}px` }}
             aria-hidden="true"
-          />
+          >
+            <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" />
+          </span>
         ))}
         {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px
             accent line at the frame position where the dragged content lands

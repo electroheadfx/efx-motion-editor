@@ -3045,7 +3045,8 @@ button.destructive {
 
 .physics-paint-loop-clip-rail-segment {
   position: absolute;
-  inset: 0 0 auto;
+  /* Same 4px drop as the Key Rail segment (UAT round 4): 1px above the cells. */
+  inset: 4px 0 auto 0;
   height: 3px;
   background: #8b5cf6;
   pointer-events: none;
@@ -3164,7 +3165,7 @@ button.destructive {
   right: -2px;
   bottom: -20px;
   z-index: 2;
-  border: 2px solid #f1f1f1;
+  border: 1px solid #f1f1f1;
   /* 47 close-out UAT rounds 2-3: square corners (the frame cells have none),
      #F1F1F1 instead of the near-white #F2F5F7 family, and the ring still
      wraps the WHOLE row — band + full 22px cell row (+2px overhang). The
@@ -3275,7 +3276,10 @@ button.destructive {
 
 .physics-paint-key-rail-segment {
   position: absolute;
-  inset: 0 0 auto;
+  /* 47 close-out UAT round 4: the line sits 1px above the cells (4px into the
+     12px band) instead of at the band's top — the freed 4px reads as the
+     vertical gap between stacked tracks. */
+  inset: 4px 0 auto 0;
   height: 3px;
   background: #8a939c;
   pointer-events: none;
@@ -3602,48 +3606,19 @@ button.destructive {
   z-index: 2;
 }
 
-/* Always-on rail lines (47 close-out): every non-active Paint row draws its
-   Key Rail segments as read-only bars at the same 18px pitch as the cells
-   (left/width set inline from the segment's frame span). Same geometry and
-   colors as the active lane's key-rail segment — 3px #8a939c bar with the
-   2×3px #F8FAFC boundary caps — so a rail reads identically on both row
-   kinds; pointer-events none keeps row cell clicks working underneath. */
-.physics-paint-track-row-rail-line {
+/* Always-on rail lines (47 close-out UAT round 4): every non-active Paint row
+   renders its rails with the ACTIVE lane's own classes — a read-only
+   .physics-paint-rail-target wrapper (12px band, pointer-events none) holding
+   the family's .physics-paint-rail-segment. All colors, boundary caps and
+   full-height cell edges come from the shared rules, so a rail is
+   pixel-identical on every track and selecting a track changes nothing in the
+   timeline. left/width are set inline from the rail's frame span. */
+.physics-paint-track-row-rail {
   position: absolute;
   top: 0;
-  height: 3px;
-  background: #8a939c;
+  height: 12px;
   pointer-events: none;
   z-index: 1;
-}
-
-.physics-paint-track-row-rail-line::before,
-.physics-paint-track-row-rail-line::after {
-  position: absolute;
-  top: 0;
-  width: 2px;
-  height: 3px;
-  background: #f8fafc;
-  content: '';
-}
-
-.physics-paint-track-row-rail-line::before {
-  left: 0;
-}
-
-.physics-paint-track-row-rail-line::after {
-  right: 0;
-}
-
-/* Loop Clip rail lines on non-active rows (47 close-out UAT round 3): the
-   same family colors as the active lane's loop rails — motion purple, static
-   cyan — so every track shows identical rail lines at the same position. */
-.physics-paint-track-row-loop-line {
-  background: #8b5cf6;
-}
-
-.physics-paint-track-row-loop-line.physics-paint-track-row-loop-line-static {
-  background: #06b6d4;
 }
 
 /* 47-01 UAT round 2 (tight packing): the FIRST row in the region carries no

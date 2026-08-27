@@ -142,16 +142,21 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(body).toMatch(/getTrackRotorRevision\(layerId,\s*trackId\)\.value/);
   });
 
-  it('renders always-on read-only rail lines from THIS track records', () => {
+  it('renders always-on read-only rails from THIS track records with the active lane shared classes', () => {
     seedTrack(TRACK, [
       makeRecord('k0', 2, 'a@2'),
       makeRecord('k1', 5, 'a@5'),
     ]);
     const tree = render();
-    const lines = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail-line'));
-    expect(lines).toHaveLength(1);
+    const rails = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'));
+    expect(rails).toHaveLength(1);
     // Segment spans frames 2..5 inclusive → left 2×18, width 4×18.
-    expect(lines[0].props.style).toMatchObject({ left: '36px', width: '72px' });
+    expect(rails[0].props.style).toMatchObject({ left: '36px', width: '72px' });
+    // The shared active-lane classes carry the visuals (caps, cell edges,
+    // colors) — pixel-identical rails on every track.
+    expect(String(rails[0].props.class)).toContain('physics-paint-rail-target');
+    expect(String(rails[0].props.class)).toContain('boundary-start');
+    expect(findAll(rails[0], (vnode) => hasClass(vnode, 'physics-paint-key-rail-segment'))).toHaveLength(1);
   });
 
   it('re-renders fresh store state per render: removing the moved rail drops the line and empties the cells', () => {
@@ -159,7 +164,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       makeRecord('k0', 2, 'a@2'),
       makeRecord('k1', 5, 'a@5'),
     ]);
-    expect(findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-track-row-rail-line'))).toHaveLength(1);
+    expect(findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'))).toHaveLength(1);
 
     // The cross-track move's removal half: records replaced without the moved
     // keys, runtime bytes removed — then the row re-renders (its revision
@@ -170,12 +175,12 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     physicPaintStore.removeRealRotoKeyFrame(LAYER, TRACK, 5);
 
     const tree = render();
-    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail-line'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'))).toHaveLength(0);
     const cachedCells = findAll(tree, (vnode) => hasClass(vnode, 'roto-fill-cached'));
     expect(cachedCells).toHaveLength(0);
   });
 
-  it('renders motion and static Loop Clip rail lines with the family colors (UAT round 3)', () => {
+  it('renders motion and static Loop Clip rails with the shared family colors (UAT round 3)', () => {
     physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [
       makeRecord('k0', 0, 'a@0'),
       makeRecord('k1', 2, 'a@2'),
@@ -188,10 +193,13 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       mode: 'progressive',
     }]);
     if (!motion.ok) throw new Error(`motion loop seed failed: ${motion.error}`);
-    const motionLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-track-row-loop-line'));
+    const motionLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(motionLine).toHaveLength(1);
-    expect(String(motionLine[0].props.class)).not.toContain('physics-paint-track-row-loop-line-static');
-    expect(cssRule('.physics-paint-track-row-loop-line {')).toContain('background: #8b5cf6');
+    expect(String(motionLine[0].props.class)).toContain('mode-progressive');
+    // Colors come from the shared family rules — the same ones the active
+    // lane's loop rails paint with.
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('background: #8b5cf6');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {')).toContain('background: #06b6d4');
 
     const staticClip = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
       loopId: 'loop-static',
@@ -201,19 +209,17 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       mode: 'static',
     }]);
     if (!staticClip.ok) throw new Error(`static loop seed failed: ${staticClip.error}`);
-    const staticLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-track-row-loop-line'));
+    const staticLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(staticLine).toHaveLength(1);
-    expect(String(staticLine[0].props.class)).toContain('physics-paint-track-row-loop-line-static');
-    expect(cssRule('.physics-paint-track-row-loop-line.physics-paint-track-row-loop-line-static {')).toContain('background: #06b6d4');
+    expect(String(staticLine[0].props.class)).toContain('mode-static');
   });
 
-  it('keeps the rail line non-interactive and the background row line-free', () => {
-    expect(cssRule('.physics-paint-track-row-rail-line {')).toContain('pointer-events: none');
-    expect(cssRule('.physics-paint-track-row-rail-line {')).toContain('height: 3px');
-    expect(cssRule('.physics-paint-track-row-rail-line {')).toContain('background: #8a939c');
+  it('keeps the rails read-only and the background row rail-free', () => {
+    expect(cssRule('.physics-paint-track-row-rail {')).toContain('pointer-events: none');
+    expect(cssRule('.physics-paint-track-row-rail {')).toContain('height: 12px');
 
     physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [makeRecord('k0', 2, 'a@2')], INTERPOLATION, CAPACITY);
     const backgroundTree = render({ trackId: 'bg-row', kind: 'background' });
-    expect(findAll(backgroundTree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail-line'))).toHaveLength(0);
+    expect(findAll(backgroundTree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'))).toHaveLength(0);
   });
 });

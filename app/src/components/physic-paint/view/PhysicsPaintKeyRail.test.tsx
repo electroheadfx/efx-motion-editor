@@ -230,7 +230,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(clicked.focused).toBe(true);
     expect(clicked.tabIndex).toBe(0);
     // A focused rail target draws the ring through the shared :focus rule.
-    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 2px solid #f1f1f1');
+    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 1px solid #f1f1f1');
   });
 
   it('supports Space selection, leaves Enter inert, and hides the tooltip on Escape', () => {
@@ -428,7 +428,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
     const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 2px solid #f1f1f1');
+    expect(ringRule).toContain('border: 1px solid #f1f1f1');
     expect(ringRule).toContain('top: -2px');
     expect(ringRule).toContain('bottom: -20px');
     expect(ringRule).toContain('border-radius: 0');
