@@ -45,7 +45,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **CMP-03**: Internal track opacity and blend mode are applied once inside EFX Paint; parent opacity/blend is applied once by the main editor (never double-applied)
 - [x] **CMP-04**: Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes
 - [x] **CMP-05**: Missing source/asset states are explicit and recoverable
-- [ ] **CMP-06**: The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend)
+- [x] **CMP-06**: The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend)
 
 ### BKG — Background Track (Phase 5)
 
@@ -155,7 +155,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMP-03 | Phase 48 | Complete |
 | CMP-04 | Phase 48 | Complete |
 | CMP-05 | Phase 48 | Complete |
-| CMP-06 | Phase 48 | Pending |
+| CMP-06 | Phase 48 | Complete |
 | BKG-01 | Phase 49 | Pending |
 | BKG-02 | Phase 49 | Pending |
 | BKG-03 | Phase 49 | Pending |

@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 48
 current_phase_name: Internal Compositor and Flattened Parent Result
 status: executing
-stopped_at: Completed 48-01-PLAN.md
-last_updated: "2026-08-28T09:42:06.673Z"
+stopped_at: Completed 48-02-PLAN.md
+last_updated: "2026-08-28T09:53:42.163Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 48 execution started
-state_head: 8fae771638c0a80acae1716ba607ff14e01e1597
+state_head: c2172aea74afab17661c715639fbddd3767b1722
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 25
-  completed_plans: 20
+  completed_plans: 21
   percent: 11
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 48 (Internal Compositor and Flattened Parent Result) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-28 — Phase 48 execution started
 
@@ -86,6 +86,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P04 | 130 | 3 tasks | 8 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P05 | 120 | 2 tasks | 6 files |
 | Phase 48 P01 | 15 | 3 tasks | 6 files |
+| Phase 48 P02 | 9 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -167,6 +168,10 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-01: compositor cache ports are caller-opt-in (memo/trackRasterMemo/trackContentRevisions/backgroundClipRevisions optional in EfxPaintCompositorPorts) — uncached path byte-identical to Task 1; 48-03 supplies the complete cache group with store-owned memo lifetimes per layerId
 - [Phase 48]: 48-01: flattened cache key wraps buildEfxPaintCompositeRevision output in encodeCanonicalString before hashing with config/track/bg/clip/frame terms; the unwired document.compositeRevision counter is never read (48-RESEARCH finding c)
 - [Phase 48]: 48-01: per-track raster memo caches whatever resolution object the port produced (content OR missing) — the pure side never decodes dataUrls; decode lives store-side in 48-03 (D-07)
+- [Phase 48]: mode 'progressive' unconditionally for Background clips: the resolver's static/progressive distinction is a Hold/PlayScript concern, not a Background one
+- [Phase 48]: interpolationEnabled false for Background derivation: Background gaps reveal the document fallback, generated frames are never produced
+- [Phase 48]: knownSources-miss report carries the single unresolved sourceRef; the 'linked-unresolved' defensive path stays for resolver dangling-refs
+- [Phase 48]: Synthetic identities dedupe by keyId/appFrame at the resolver — cross-clip shared refs surface the duplicate-identity throw at derivation (fail-closed)
 
 ### Pending Todos
 
@@ -200,6 +205,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-08-28T09:42:04.883Z
-Stopped at: Completed 48-01-PLAN.md
+Last session: 2026-08-28T09:53:41.867Z
+Stopped at: Completed 48-02-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
