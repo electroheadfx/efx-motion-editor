@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 48
 current_phase_name: Internal Compositor and Flattened Parent Result
 status: executing
-stopped_at: Completed 48-03-PLAN.md
-last_updated: "2026-08-28T11:13:15.232Z"
+stopped_at: Completed 48-05-PLAN.md
+last_updated: "2026-08-28T11:57:06.303Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 48 execution started
-state_head: 736981569f08a94e9e207dc68803821168abdccf
+state_head: 60b56342c39e1eebb022f07072208245c685476a
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 11
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 48 (Internal Compositor and Flattened Parent Result) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-08-28 — Phase 48 execution started
 
@@ -89,6 +89,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 48 P02 | 9 | 2 tasks | 2 files |
 | Phase 48 P04 | 6 | 2 tasks | 4 files |
 | Phase 48-internal-compositor-and-flattened-parent-result P48-03 | 42min | 3 tasks | 13 files |
+| Phase 48 P05 | 20 | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,10 @@ Recent decisions affecting current work:
 - [Phase 48]: CMP-03/Pitfall 6: parent opacity/blend applied exactly once at the unchanged parent draw sites (50% x 50% = 25%); the compositor never reads parent layer properties
 - [Phase 48]: CMP-05/P-48-4 retention: the export preflight stays a hard block, generalized to participatingPaintTracks(document); flagged for user confirmation at 48-06 UAT
 - [Phase 48]: Parent project canvas dims (projectStore width/height) are the flattened raster size authority, with FALLBACK_COMPOSITE_SIZE 1920x1080
+- [Phase 48]: Phase 48 P05: The program monitor consumes the SAME shared flattened seam as main preview and export (CMP-01) — its only math is 'which frame do I show'; no second composition path exists in the Studio
+- [Phase 48]: Phase 48 P05: The monitor subscribes to BOTH physicPaintVersion and efxPaintVersion — the plan named only physicPaintVersion, but document-only mutations bump only efxPaintVersion; both clocks are required so hide/solo/blend edits AND document changes reflect
+- [Phase 48]: Phase 48 P05: During playback currentFrame is constant, so the monitor resolves the playing frame through the per-tick playbackTick signal reference (38.1-D-01) — the literal getFlattenedFrame(layerId, currentFrame) instruction would freeze playback
+- [Phase 48]: Phase 48 P05: The missing-source capsule publish reads the FULL including path (not excluding) so an active-track Hold source missing is still reported, gated on !isPlaying, compare-then-write in both directions
 
 ### Pending Todos
 
@@ -214,6 +219,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-08-28T11:13:14.956Z
-Stopped at: Completed 48-03-PLAN.md
+Last session: 2026-08-28T11:56:59.498Z
+Stopped at: Completed 48-05-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
