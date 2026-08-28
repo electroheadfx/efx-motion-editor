@@ -60,6 +60,15 @@ export interface EfxPaintFlattenedCacheKeyInput {
   /** Per-clip `${clip.id}:${clip.revision}` terms (48-03 derives them). */
   readonly backgroundClipRevisions: readonly string[];
   readonly frame: number;
+  /**
+   * 48-05: engine-supplied track ids excluded from the participating set (the
+   * Studio editing base). Empty/absent = the full participating set. The
+   * `excl:` key term is emitted ONLY when non-empty so existing including-path
+   * keys stay byte-identical (48-01/48-04 contract). An including call and an
+   * excluding call for the same frame MUST NOT share a key even when the
+   * excluded track has no content at that frame — the missing reports differ.
+   */
+  readonly excludeTrackIds?: readonly string[];
 }
 
 /**
@@ -96,11 +105,19 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     .map((term) => encodeCanonicalString(term))
     .join('');
 
+  // 48-05 exclusion term (sorted, length-prefixed) — emitted ONLY when the
+  // caller excludes engine-supplied tracks, so the including path's keys are
+  // byte-identical to the 48-01/48-04 derivation.
+  const excludedIds = input.excludeTrackIds ? [...input.excludeTrackIds].sort() : [];
+
   const source = [
     `config:${configTerm}`,
     `tracks:${encodeCanonicalNumber(participatingEntries.length)}:${trackTerms}`,
     `bg:${encodeCanonicalNumber(document.background.revision)}`,
     `clips:${encodeCanonicalNumber(backgroundClipRevisions.length)}:${clipTerms}`,
+    ...(excludedIds.length > 0
+      ? [`excl:${encodeCanonicalNumber(excludedIds.length)}:${excludedIds.map((id) => encodeCanonicalString(id)).join('')}`]
+      : []),
     `frame:${encodeCanonicalNumber(frame)}`,
   ].join('');
 

@@ -15,6 +15,8 @@ import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
+import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
+import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -31,6 +33,16 @@ interface PhysicsPaintCanvasStackViewProps {
   inputDisabledMessage?: string;
   onionOverlay: ComponentChildren;
   onInputIntent?: () => void;
+  /**
+   * Phase 48-05 (D-05): the program monitor config. Present when the Studio
+   * has a launch layer. The monitor is mounted BELOW the engine canvas (the
+   * engine supplies the active track's live pixels; the monitor draws the
+   * composite of everything else during editing). While present, the legacy
+   * playback background + playback image slots are suppressed — the flattened
+   * composite already carries the paper and every participating track, so they
+   * would double-draw.
+   */
+  programMonitor?: PhysicsPaintProgramMonitorProps | null;
 }
 
 /**
@@ -111,6 +123,11 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   return (
     <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
       <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
+      {canvasBounds && props.programMonitor ? (
+        <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
+          <PhysicsPaintProgramMonitor {...props.programMonitor} />
+        </div>
+      ) : null}
       {canvasBounds ? (
         <div
           class="physics-paint-onion-overlay canvas-region"
@@ -118,14 +135,14 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           {!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
-          {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition ? (
+          {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && !props.programMonitor ? (
             <PhysicsPaintRotoPlaybackBackground
               width={props.cachedRotoPlaybackComposition.width}
               height={props.cachedRotoPlaybackComposition.height}
               background={props.cachedRotoPlaybackComposition.background}
             />
           ) : null}
-          <PhysicsPaintRotoPlaybackImage tick={props.cachedRotoPlaybackTick} />
+          {!props.programMonitor ? <PhysicsPaintRotoPlaybackImage tick={props.cachedRotoPlaybackTick} /> : null}
           {!props.cachedRotoPlaybackActive ? props.onionOverlay : null}
         </div>
       ) : null}

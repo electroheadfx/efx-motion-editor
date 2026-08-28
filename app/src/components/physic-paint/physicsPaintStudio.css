@@ -4620,6 +4620,23 @@ button.destructive {
   z-index: 4 !important;
 }
 
+/* 48-05 (D-05): the program monitor sits BELOW the engine canvas (the engine
+   canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
+   engine < onion. It draws the flattened composite only — pointer-events none
+   so every interaction passes through to the engine canvas above. */
+.physics-paint-program-monitor {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.physics-paint-program-monitor > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .physics-paint-cached-roto-reference,
 .physics-paint-cached-roto-playback-background,
 .physics-paint-cached-roto-playback {

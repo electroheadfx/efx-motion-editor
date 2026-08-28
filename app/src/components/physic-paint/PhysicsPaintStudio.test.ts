@@ -745,21 +745,25 @@ function countOccurrences(source: string, literal: string): number {
   return source.split(literal).length - 1;
 }
 
-// Phase 43 Plan 09 Task 3 (D-28, audit finding 6): the Studio consumes the
-// 'loop-placeholder' render-source variant explicitly — the playback
-// availability path excludes it without blocking, the display path falls back
-// to the established non-blocking clear, and the frame is never offered as
-// real key content.
-describe('Physics Paint Studio loop placeholder contract (D-28)', () => {
-  it('handles the placeholder variant explicitly in the playback availability memo', () => {
-    expect(studio).toContain("case 'loop-placeholder':");
-    // The placeholder frame never contributes playback payload.
-    expect(studio).not.toContain("source.kind !== 'loop-placeholder' ? [{ appFrame, frame: source.renderedFrame }]");
+// Phase 43 Plan 09 Task 3 (D-28, audit finding 6) re-sourced by Phase 48-05
+// (CMP-01): Studio playback availability now derives from the FLATTENED path —
+// getFlattenedFrame returns a record whenever the document resolves the frame,
+// so a placeholder frame plays transparent (the 48-03 D-09 missing-source
+// report carries the reason) instead of being excluded from availability. The
+// frame is still never offered as real key content (key identity derives from
+// the projection cell only).
+describe('Physics Paint Studio loop placeholder contract (D-28, flattened-sourced)', () => {
+  it('sources the playback availability memo from the flattened path so Studio playback and the program monitor never diverge from the main editor', () => {
+    expect(studio).toContain('physicPaintStore.getFlattenedFrame(rotoPlaybackLayerId, appFrame)');
+    // The flattened path has no render-source switch: a record is available,
+    // null (pending decode) is not — never a per-track active-track probe.
+    expect(studio).toContain("return [{ appFrame, frame: record.renderedFrame }];");
+    expect(studio).not.toContain('getRotoPhysicalRenderSource(rotoPlaybackLayerId');
+    expect(studio).not.toContain('Unhandled Roto physical render-source kind');
   });
 
-  it('keeps the never-fallback exhaustiveness arm so a future render-source variant is a compile-time error', () => {
-    expect(studio).toContain('Unhandled Roto physical render-source kind');
-    expect(studio).toContain('const exhaustive: never = source');
+  it('keeps the availability memo deps and return shape so the playback transport consumer contract is unchanged', () => {
+    expect(studio).toContain('}, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);');
   });
 
   it('never offers a placeholder frame as key content — key identity derives from the projection cell only', () => {

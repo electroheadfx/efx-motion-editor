@@ -1341,97 +1341,133 @@ export type RotoTrackClearResult =
   | { ok: true }
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
+/** 48-05: the empty exclusion set — the including path (byte-identical to 48-03). */
+const EMPTY_EXCLUDED_TRACKS: ReadonlySet<string> = new Set();
+
+/**
+ * 48-03 D-11/CMP-01 + 48-05 D-05: one flattened straight-alpha raster per
+ * (layerId, frame) over the participating set EXCLUDING `excludeTrackIds`
+ * (empty set = the full participating set). Guard-first; on success the
+ * flattened memo (D-08/CMP-04) is consulted by the derived key (config +
+ * participating-only track content + background revision + sorted clip terms +
+ * exclusion term + frame); a hit returns the frozen cached record with zero
+ * recompute. On miss, every participating track AND the background are
+ * pre-resolved BEFORE the flattened canvas is allocated: any pending decode
+ * returns null this tick (Tests 7/10). The record carries the missing-source
+ * report (D-09) — never placeholder pixels. The exclusion threads through the
+ * compositor ports (never by rewriting the document) so the editing base's
+ * participating set is filtered identically in the pure pipeline.
+ */
+function _resolveFlattenedFrame(
+  layerId: string,
+  frame: number,
+  excludeTrackIds: ReadonlySet<string>,
+): EfxPaintFlattenedFrameRecord | null {
+  if (!Number.isInteger(frame) || frame < 0) return null;
+  const efxDocument = getEfxPaintDocument(layerId);
+  if (!efxDocument) return null;
+  const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+
+  const participating = participatingPaintTracks(efxDocument)
+    .filter((track) => !excludeTrackIds.has(track.id));
+  const trackContentRevisions = new Map<string, string>();
+  for (const track of participating) {
+    const revision = _trackContentRevision(layerId, track.id, frame);
+    if (revision !== null) trackContentRevisions.set(track.id, revision);
+  }
+  const backgroundClipRevisions = efxDocument.background.clips.map((clip) => `${clip.id}:${clip.revision}`);
+  const flattenedKey = deriveEfxPaintFlattenedCacheKey({
+    document: efxDocument,
+    trackContentRevisions,
+    backgroundClipRevisions,
+    frame,
+    excludeTrackIds: excludeTrackIds.size > 0 ? [...excludeTrackIds].sort() : undefined,
+  });
+
+  const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
+  const cached = flattenedMemo.get(flattenedKey);
+  if (cached) return cached;
+
+  const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
+  const preResolved = new Map<string, EfxPaintTrackContentResolution>();
+  for (const track of participating) {
+    const resolution = _preResolveTrackContent(layerId, track.id, frame, size.width, size.height);
+    if (resolution === null) return null;
+    preResolved.set(track.id, resolution);
+    const revision = trackContentRevisions.get(track.id);
+    if (revision !== undefined) {
+      trackRasterMemo.set(deriveEfxPaintTrackContentKey(track.id, revision, frame), resolution);
+    }
+  }
+
+  const knownSources = new Set(_backgroundSourceImages.keys());
+  let backgroundContext: PhysicPaintRotoLoopResolutionContext | null = null;
+  if (backgroundParticipates(efxDocument)) {
+    backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
+    const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
+    if (backgroundResolution.kind === 'content' && _resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
+      return null;
+    }
+  }
+
+  const ports: EfxPaintCompositorPorts = {
+    createCanvas: (width, height) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
+      return { canvas, ctx };
+    },
+    resolveTrackContent: (trackId) => preResolved.get(trackId) ?? { kind: 'missing', missingRefs: [] },
+    resolveBackgroundFrame: (targetFrame) => resolveEfxPaintBackgroundFrame(backgroundContext!, targetFrame, knownSources),
+    resolveBackgroundSourceImage: (sourceRef) => _resolveBackgroundSourceImage(sourceRef),
+    compositeOp: blendModeToCompositeOp,
+    trackRasterMemo,
+    trackContentRevisions,
+    backgroundClipRevisions,
+    excludeTrackIds,
+  };
+
+  const result = compositeFrame(efxDocument, frame, size, ports);
+  const dataUrl = (result.raster as HTMLCanvasElement).toDataURL();
+  const record: EfxPaintFlattenedFrameRecord = Object.freeze({
+    layerId,
+    frame,
+    cacheKey: flattenedKey,
+    renderedFrame: Object.freeze({
+      frameIndex: frame,
+      appFrame: frame,
+      dataUrl,
+      width: size.width,
+      height: size.height,
+    }),
+    missing: result.missing,
+  });
+  flattenedMemo.set(flattenedKey, record);
+  return record;
+}
+
 export const physicPaintStore = {
   getFrame(layerId: string, trackId: string, frame: number): PhysicPaintRenderedFrame | null {
     return _frames.get(layerId)?.get(trackId)?.get(frame) ?? null;
   },
 
-  /**
-   * 48-03 D-11/CMP-01: one flattened straight-alpha raster per (layerId, frame)
-   * — the ONLY content seam the main renderer calls for physic-paint layers
-   * (Task 2). Guard-first; on success the flattened memo (D-08/CMP-04) is
-   * consulted by the derived key (config + participating-only track content +
-   * background revision + sorted clip terms + frame); a hit returns the frozen
-   * cached record with zero recompute. On miss, every participating track AND
-   * the background are pre-resolved BEFORE the flattened canvas is allocated:
-   * any pending decode returns null this tick (Tests 7/10). The record carries
-   * the missing-source report (D-09) — never placeholder pixels.
-   */
+  /** 48-03 D-11/CMP-01: the full flattened composite (see {@link _resolveFlattenedFrame}). */
   getFlattenedFrame(layerId: string, frame: number): EfxPaintFlattenedFrameRecord | null {
-    if (!Number.isInteger(frame) || frame < 0) return null;
-    const efxDocument = getEfxPaintDocument(layerId);
-    if (!efxDocument) return null;
-    const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+    return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS);
+  },
 
-    const trackContentRevisions = new Map<string, string>();
-    for (const track of participatingPaintTracks(efxDocument)) {
-      const revision = _trackContentRevision(layerId, track.id, frame);
-      if (revision !== null) trackContentRevisions.set(track.id, revision);
-    }
-    const backgroundClipRevisions = efxDocument.background.clips.map((clip) => `${clip.id}:${clip.revision}`);
-    const flattenedKey = deriveEfxPaintFlattenedCacheKey({ document: efxDocument, trackContentRevisions, backgroundClipRevisions, frame });
-
-    const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
-    const cached = flattenedMemo.get(flattenedKey);
-    if (cached) return cached;
-
-    const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
-    const preResolved = new Map<string, EfxPaintTrackContentResolution>();
-    for (const track of participatingPaintTracks(efxDocument)) {
-      const resolution = _preResolveTrackContent(layerId, track.id, frame, size.width, size.height);
-      if (resolution === null) return null;
-      preResolved.set(track.id, resolution);
-      const revision = trackContentRevisions.get(track.id);
-      if (revision !== undefined) {
-        trackRasterMemo.set(deriveEfxPaintTrackContentKey(track.id, revision, frame), resolution);
-      }
-    }
-
-    const knownSources = new Set(_backgroundSourceImages.keys());
-    let backgroundContext: PhysicPaintRotoLoopResolutionContext | null = null;
-    if (backgroundParticipates(efxDocument)) {
-      backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
-      const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
-      if (backgroundResolution.kind === 'content' && _resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
-        return null;
-      }
-    }
-
-    const ports: EfxPaintCompositorPorts = {
-      createCanvas: (width, height) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('getFlattenedFrame: 2d rendering context unavailable');
-        return { canvas, ctx };
-      },
-      resolveTrackContent: (trackId) => preResolved.get(trackId) ?? { kind: 'missing', missingRefs: [] },
-      resolveBackgroundFrame: (targetFrame) => resolveEfxPaintBackgroundFrame(backgroundContext!, targetFrame, knownSources),
-      resolveBackgroundSourceImage: (sourceRef) => _resolveBackgroundSourceImage(sourceRef),
-      compositeOp: blendModeToCompositeOp,
-      trackRasterMemo,
-      trackContentRevisions,
-      backgroundClipRevisions,
-    };
-
-    const result = compositeFrame(efxDocument, frame, size, ports);
-    const dataUrl = (result.raster as HTMLCanvasElement).toDataURL();
-    const record: EfxPaintFlattenedFrameRecord = Object.freeze({
-      layerId,
-      frame,
-      cacheKey: flattenedKey,
-      renderedFrame: Object.freeze({
-        frameIndex: frame,
-        appFrame: frame,
-        dataUrl,
-        width: size.width,
-        height: size.height,
-      }),
-      missing: result.missing,
-    });
-    flattenedMemo.set(flattenedKey, record);
-    return record;
+  /**
+   * 48-05 D-05: the Studio editing base — the flattened composite over the
+   * participating set EXCLUDING the engine-supplied tracks (`excludeTrackIds`,
+   * the live engine canvas stacked above supplies their pixels). Same seam as
+   * {@link getFlattenedFrame}; the exclude set threads through the compositor
+   * ports and the flattened cache key (its own `excl:` term), so an including
+   * and an excluding call for the same frame never share a cache entry.
+   */
+  getFlattenedFrameExcluding(layerId: string, frame: number, excludeTrackIds: ReadonlySet<string>): EfxPaintFlattenedFrameRecord | null {
+    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds);
   },
 
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {

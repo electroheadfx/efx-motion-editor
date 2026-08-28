@@ -2010,5 +2010,45 @@ describe('physicPaintStore', () => {
       expect(record!.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
       expect(record!.missing).toEqual([]);
     });
+
+    // 48-05 D-05: the excluding store variant threads the engine-supplied
+    // track ids through the compositor ports and the flattened cache key (its
+    // own `excl:` term) — an including and an excluding call for the same frame
+    // never share a cache entry (different participating sets / missing
+    // reports), and an empty exclude set stays byte-identical to the including
+    // path (the 48-01/48-04 including-key contract).
+    it('getFlattenedFrameExcluding omits the engine-supplied track pixels and uses its own `excl:` key term', () => {
+      const frameA = makeFrame(0, 5).dataUrl;
+      const frameB = makeFrame(1, 5).dataUrl;
+      registerDocument(flatDocument([
+        flatTrack('track-a', { order: 0 }),
+        flatTrack('track-b', { order: 1 }),
+      ], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+
+      const including = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const excluding = physicPaintStore.getFlattenedFrameExcluding(FLAT_LAYER, 5, new Set(['track-b']))!;
+
+      expect(including.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(2);
+      expect(excluding.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
+      expect(excluding.renderedFrame.dataUrl).toContain(frameA);
+      expect(excluding.renderedFrame.dataUrl).not.toContain(frameB);
+      expect(excluding.missing).toEqual([]);
+      // Distinct cache keys: the `excl:` term separates the two paths.
+      expect(excluding.cacheKey).not.toBe(including.cacheKey);
+    });
+
+    it('getFlattenedFrameExcluding with an empty set is byte-identical to getFlattenedFrame', () => {
+      const frameA = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a', { order: 0 })], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+
+      const including = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const excludingEmpty = physicPaintStore.getFlattenedFrameExcluding(FLAT_LAYER, 5, new Set())!;
+
+      expect(excludingEmpty.cacheKey).toBe(including.cacheKey);
+      expect(excludingEmpty.renderedFrame.dataUrl).toBe(including.renderedFrame.dataUrl);
+    });
   });
 });

@@ -1961,34 +1961,25 @@ export function PhysicsPaintStudio() {
   // 38.1 D-08 link 3: playback availability without a per-render O(N) array
   // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
   // no launch -> false; empty list -> false; all-missing -> false; mixed ->
-  // true iff any frame resolves — the physical-input branch reads the same
-  // getRenderSource truth loadCachedRotoReferenceFrame and findCachedRotoDisplayFrame
-  // consult, so availability cannot diverge from the frames the canvas would
-  // actually paint. Recomputes only when the structural frame list or launch
-  // identity changes, never on a pure Studio render.
+  // true iff any frame resolves.
+  // 48-05 (CMP-01): the source is the FLATTENED path — a frame is available
+  // when getFlattenedFrame(layerId, appFrame) returns a record. The flattened
+  // raster always exists when the document does, so availability becomes
+  // document-presence per frame in the playback range, and the program monitor
+  // and playback transport can never diverge from the frames the main editor
+  // would paint (the 48-03 D-09 seam: a placeholder frame now plays transparent
+  // rather than being excluded — the missing-source report carries the reason).
+  // The memo's return shape and the selectRotoPlaybackAvailable consumer
+  // contract are unchanged; recomputes only when the structural frame list or
+  // launch identity changes, never on a pure Studio render.
   const rotoPlaybackFrameNumbers = rotoSession.playbackFrameNumbers.value;
   const rotoPlaybackLayerId = launchContext?.layerId ?? null;
   const rotoCachedPlaybackAvailableFrames = useMemo(() => {
     if (rotoPlaybackLayerId === null) return [];
     return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, trackIdOfLaunch(launchContext), appFrame);
-      if (!source) return [];
-      // Phase 43 (D-28, audit finding 6): the loop placeholder never
-      // contributes playback payload — the preview surface renders it as the
-      // marked placeholder and Studio playback continues past it without
-      // blocking. A future render-source variant is a compile-time error at
-      // this consumer (Pitfall 7 never-fallback convention).
-      switch (source.kind) {
-        case 'loop-placeholder':
-          return [];
-        case 'real':
-        case 'generated':
-          return [{ appFrame, frame: source.renderedFrame }];
-        default: {
-          const exhaustive: never = source;
-          throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
-        }
-      }
+      const record = physicPaintStore.getFlattenedFrame(rotoPlaybackLayerId, appFrame);
+      if (!record) return [];
+      return [{ appFrame, frame: record.renderedFrame }];
     });
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({
@@ -2983,18 +2974,37 @@ export function PhysicsPaintStudio() {
     beforeEngineDestroy: rotoScript.prepareEngineDisposal,
     getStrokeMetadata,
   }));
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount], () => ({
-    cachedRotoReferenceUrl,
-    cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
-    cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
-    cachedRotoPlaybackComposition,
-    inputDisabled: rotoInputDisabled,
-    inputDisabledMessage: rotoInputDisabledMessage,
-    onInputIntent: beginRotoFrameEdit,
-    onionOverlay,
-    canvasKey,
-    mount: canvasMount,
-  }));
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight], () => {
+    // 48-05 (D-05): the program monitor config — concrete values only. The
+    // monitor subscribes to the store version clocks in its OWN effect; this
+    // memo re-resolves on document changes (efxPaintVersion.value) so a
+    // row-click active-track switch re-targets the editing base promptly.
+    const programMonitorLayerId = launchContext?.layerId ?? null;
+    const programMonitorActiveTrackId = programMonitorLayerId
+      ? getEfxPaintDocument(programMonitorLayerId)?.activeTrackId ?? null
+      : null;
+    return {
+      cachedRotoReferenceUrl,
+      cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
+      cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
+      cachedRotoPlaybackComposition,
+      inputDisabled: rotoInputDisabled,
+      inputDisabledMessage: rotoInputDisabledMessage,
+      onInputIntent: beginRotoFrameEdit,
+      onionOverlay,
+      canvasKey,
+      mount: canvasMount,
+      programMonitor: programMonitorLayerId ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying,
+        activeTrackId: programMonitorActiveTrackId,
+        width: canvasWidth,
+        height: canvasHeight,
+        playbackTick: rotoCachedPlayback.playbackTick,
+      } : null,
+    };
+  });
   // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active
   // rail set the strip's Copy/Duplicate/Paste buttons reflect SET scope —
   // Copy and Duplicate enable on the EFFECTIVE rail-set scope (a single rail is

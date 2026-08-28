@@ -127,6 +127,14 @@ export interface EfxPaintCompositorPorts {
   trackContentRevisions?: ReadonlyMap<string, string>;
   /** Per-clip `${clip.id}:${clip.revision}` terms, the flattened-key term. */
   backgroundClipRevisions?: readonly string[];
+  /**
+   * 48-05 (D-05): engine-supplied track ids to EXCLUDE from the participating
+   * set — the Studio editing base. The monitor threads the active track through
+   * this port (never by rewriting the document); the live engine canvas stacked
+   * above supplies that track's pixels, so including it here would double-apply
+   * semi-transparent strokes (T-48-16). Empty/absent = full participating set.
+   */
+  excludeTrackIds?: ReadonlySet<string>;
 }
 
 /** One missing-source report entry (CMP-05, D-09). */
@@ -180,6 +188,9 @@ export function compositeFrame(
           trackContentRevisions: ports.trackContentRevisions ?? EMPTY_TRACK_CONTENT_REVISIONS,
           backgroundClipRevisions: ports.backgroundClipRevisions ?? EMPTY_BACKGROUND_CLIP_REVISIONS,
           frame,
+          excludeTrackIds: ports.excludeTrackIds && ports.excludeTrackIds.size > 0
+            ? [...ports.excludeTrackIds].sort()
+            : undefined,
         })
       : null;
   if (flattenedKey !== null) {
@@ -232,8 +243,12 @@ export function compositeFrame(
 
   // 4-8. Participating Paint tracks in stable bottom-to-top order. Opacity is
   // applied BEFORE blend mode (D-01, After Effects convention); the draw state
-  // is save/restore-wrapped per track.
-  const participating = participatingPaintTracks(document);
+  // is save/restore-wrapped per track. 48-05: the exclude set (engine-supplied
+  // tracks) filters the participating set here — the pure compositor enforces
+  // the D-05 editing-base exclusion regardless of how the caller built its
+  // content terms.
+  const participating = participatingPaintTracks(document)
+    .filter((track) => !ports.excludeTrackIds?.has(track.id));
   for (const track of participating) {
     // D-07: per-track raster memo — a track's resolved raster survives when
     // only a SIBLING track changed. The per-track key is derived from the

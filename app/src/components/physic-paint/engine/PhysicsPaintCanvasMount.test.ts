@@ -69,7 +69,7 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
   });
 
-  it('keeps CanvasStack identity semantic and excludes frame-navigation values', () => {
+  it('keeps CanvasStack identity semantic and passes the program monitor its real inputs', () => {
     const stackBlock = resolveBlock(
       studio,
       'const canvasStack = canvasStackPropsMemo.resolve(',
@@ -87,8 +87,18 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
       'onionOverlay',
       'canvasKey',
       'canvasMount',
+      // 48-05 (D-05): the program monitor config's real inputs — the stack
+      // re-resolves on navigation / playback / document changes so the leaf
+      // draws the current composite, while the engine canvas stays memoized
+      // behind the stable canvasMount identity + canvasKey.
+      'launchContext?.layerId',
+      'currentFrame',
+      'isPlaying',
+      'efxPaintVersion.value',
+      'canvasWidth',
+      'canvasHeight',
     ]) expect(deps).toContain(dependency);
-    for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
+    for (const invalidator of ['startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
   });
 
   it('updates parent callback refs during render and exposes stable Efx forwarders', () => {
