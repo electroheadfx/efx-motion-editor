@@ -647,7 +647,10 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     compositeFrame(doc, 19, { width: 4, height: 3 }, ports);
     compositeFrame(doc, 20, { width: 4, height: 3 }, ports);
 
-    const bgDraws = ops.filter((op) => op.type === 'drawImage' && op.source.startsWith('bg-'));
+    const bgDraws = ops.filter(
+      (op): op is RecordedCanvasOp & { type: 'drawImage' } =>
+        op.type === 'drawImage' && op.source.startsWith('bg-'),
+    );
     expect(bgDraws).toHaveLength(2); // 0 and 19 draw; 20 draws nothing (gap)
     expect(bgDraws[0].source).toBe('bg-a'); // frame 0 → ref-a
     expect(bgDraws[1].source).toBe('bg-d'); // frame 19 → 19 % 4 = 3 → ref-d

@@ -10,7 +10,10 @@
  *
  * Composition order (spec-locked, SPECS/milestone-v1.0.0-plan.md §Phase 4):
  *  1. document fallback — solid fill, or transparency (cleared canvas);
- *  2. Background contribution via `resolveBackgroundFrame` (gap = fallback);
+ *  2. Background contribution via `resolveBackgroundFrame`, consuming the
+ *     48-02 resolution union (D-03) — content names a source ref the decode
+ *     port resolves to a raster (gap = fallback; a null decode contributes
+ *     transparent pixels this tick);
  *  3. the Background contribution composites beneath all Paint tracks;
  *  4-8. each participating Paint track (hide/solo truth table, D-04) resolves
  *     content via `resolveTrackContent`; opacity is applied BEFORE blend mode
@@ -32,6 +35,7 @@
  * alive when only a sibling track changed.
  */
 
+import type { EfxPaintBackgroundFrameResolution } from './efxPaintBackgroundResolution';
 import type { BlendMode, EfxPaintDocument } from '../document/efxPaintDocument';
 import {
   deriveEfxPaintFlattenedCacheKey,
@@ -45,11 +49,13 @@ export type EfxPaintTrackContentResolution =
   | { readonly kind: 'content'; readonly raster: CanvasImageSource }
   | { readonly kind: 'missing'; readonly missingRefs: readonly string[] };
 
-/** Background contribution resolved by the injected port (D-03 seam). */
-export type EfxPaintBackgroundResolution =
-  | { readonly kind: 'content'; readonly raster: CanvasImageSource }
-  | { readonly kind: 'gap' }
-  | { readonly kind: 'missing'; readonly missingRefs: readonly string[] };
+/**
+ * The Background contribution resolved by the injected port (D-03 seam).
+ * This is the 48-02 union ({@link EfxPaintBackgroundFrameResolution}): content
+ * names the owning clip's source ref — the compositor NEVER maps FrameLoopClip
+ * records itself (Pitfall P-48-2); the raster arrives through the separate
+ * `resolveBackgroundSourceImage` decode port.
+ */
 
 /** Canvas handle produced by the injected canvas factory. */
 export interface EfxPaintCanvasHandle {
@@ -68,7 +74,20 @@ export interface EfxPaintCanvasHandle {
 export interface EfxPaintCompositorPorts {
   createCanvas(width: number, height: number): EfxPaintCanvasHandle;
   resolveTrackContent(trackId: string, frame: number): EfxPaintTrackContentResolution;
-  resolveBackgroundFrame(frame: number): EfxPaintBackgroundResolution;
+  /**
+   * The per-frame Background contribution (D-03): consumes the 48-02 resolution
+   * union — `content` names the owning clip's source ref (decoded via
+   * {@link resolveBackgroundSourceImage}), `gap` reveals the fallback, `missing`
+   * renders transparent + a report entry (D-09). The production wiring is the
+   * 48-02 adapter through the 48-03 store port.
+   */
+  resolveBackgroundFrame(frame: number): EfxPaintBackgroundFrameResolution;
+  /**
+   * Decode one Background source ref to a raster (48-03 owns the production
+   * implementation). Returns null while the decode is pending — this tick the
+   * compositor contributes transparent pixels for that frame.
+   */
+  resolveBackgroundSourceImage(sourceRef: string): CanvasImageSource | null;
   compositeOp(blendMode: BlendMode): GlobalCompositeOperation;
   /**
    * Optional per-frame flattened memo wiring (D-08/CMP-04). The store side
@@ -159,13 +178,25 @@ export function compositeFrame(
 
   // 2-3. Background contribution beneath all Paint tracks. Governed only by
   // `background.visible` (D-04); a 'gap' reveals the already-painted fallback.
+  // The union comes from the 48-02 adapter (D-03) — content names the clip's
+  // source ref, decoded through the port (a null decode this tick contributes
+  // transparent pixels, the 48-03 pending-decode semantics); 'missing'
+  // contributes transparent pixels AND a report entry keyed by the background
+  // track id (D-09).
   const backgroundActive = backgroundParticipates(document);
   if (backgroundActive) {
     const backgroundResolution = ports.resolveBackgroundFrame(frame);
     if (backgroundResolution.kind === 'content') {
-      ctx.save();
-      ctx.drawImage(backgroundResolution.raster, 0, 0);
-      ctx.restore();
+      const raster = ports.resolveBackgroundSourceImage(backgroundResolution.sourceRef);
+      if (raster !== null) {
+        // D-04: the Background has no opacity/blend — its draw is a plain
+        // source-over at globalAlpha 1, never re-scaled by track opacity.
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(raster, 0, 0);
+        ctx.restore();
+      }
     } else if (backgroundResolution.kind === 'missing') {
       missing.push({
         trackId: document.background.id,
