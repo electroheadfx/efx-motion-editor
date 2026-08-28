@@ -446,6 +446,65 @@ describe('physicPaintBridge', () => {
     });
   });
 
+  it('carries the parent LIVE runtime for non-active tracks — never the persisted document stale state (48-06 P1)', () => {
+    // The document's persisted rotoPhysical for the non-active track lags the
+    // parent's live runtime by a whole previous session (an apply that never
+    // reached a save). A child hydrated from the stale document fails every
+    // parent revalidation on that track ("revision became stale"), freezing
+    // it; the launch must carry the live runtime for EVERY track.
+    const staleRecords = [0, 5].map((appFrame) => makePhysicalRecord(`stale-${appFrame}`, appFrame));
+    const liveRecords = [0, 5, 7].map((appFrame) => makePhysicalRecord(`live-${appFrame}`, appFrame));
+    const staleInterpolation = { enabled: false, mode: 'duplicate' as const };
+    const liveInterpolation = { enabled: false, mode: 'duplicate' as const };
+    const baseDocument = makeTrackDocument('phys-layer-1');
+    registerDocument({
+      ...baseDocument,
+      tracks: [
+        baseDocument.tracks[0],
+        {
+          ...baseDocument.tracks[0],
+          id: 'track-2',
+          name: 'Paint 1',
+          order: 1,
+          rotoPhysical: {
+            capacity: 600,
+            realKeyRecords: staleRecords,
+            groupOverrideRecords: [],
+            interpolation: staleInterpolation,
+            scriptMotion: { deformation: 0, position: 0 },
+            background: null,
+            selectedKeyId: null,
+            cursorAppFrame: 0,
+            revision: buildPhysicPaintRotoPhysicalRevision(staleRecords, staleInterpolation, []),
+            loopClips: [],
+            incomingInterpolationBreakKeyIds: [],
+          },
+        },
+      ],
+    });
+    const liveResult = physicPaintStore.replaceRotoPhysicalDocument('phys-layer-1', 'track-2', {
+      capacity: 600,
+      realKeyRecords: liveRecords,
+      interpolation: liveInterpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(liveRecords, liveInterpolation, []),
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!liveResult.ok) throw new Error(liveResult.error);
+
+    const context = createPhysicPaintLaunchContext(physicLayer(), 0);
+    if (!context.document) throw new Error('Expected the launch context to carry the v1.0 document.');
+
+    const carriedTrack2 = context.document.tracks.find((track) => track.id === 'track-2');
+    expect(carriedTrack2?.rotoPhysical?.realKeyRecords.map((record) => record.appFrame)).toEqual([0, 5, 7]);
+    expect(carriedTrack2?.rotoPhysical?.revision).toBe(
+      buildPhysicPaintRotoPhysicalRevision(liveRecords, liveInterpolation, []),
+    );
+  });
+
   it('converts and clamps later global launch frames in layer-local coordinates', () => {
     const layer = physicLayer();
     sequenceStore.sequences.value = [];

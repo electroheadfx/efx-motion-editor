@@ -1529,19 +1529,6 @@ function applyPhysicPaintRotoPhysicalMap(
     }
   }
   if (currentRevision !== payload.expectedRevision) {
-    // P1-debug (temporary): mirror-mismatch diagnosis — the parent's content
-    // summary at rejection time, to compare against the child's build log.
-    console.debug('[P1-debug] parent stale rejection', {
-      trackId: payload.trackId,
-      expectedRevision: payload.expectedRevision,
-      currentRevision,
-      recordCount: currentRecords.length,
-      recordFrames: currentRecords.map((record) => record.appFrame).slice(0, 6),
-      interpolation: currentInterpolation,
-      loopClipCount: currentLoopClips.length,
-      breakCount: currentIncomingInterpolationBreakKeyIds.length,
-      overrideCount: currentGroupOverrideRecords.length,
-    });
     return reject('Roto physical revision became stale before commit.');
   }
   if (payload.records.length > capacity) {
@@ -2844,9 +2831,17 @@ export function createPhysicPaintLaunchContext(
   }
   const carrier: EfxPaintDocument = {
     ...baseDocument,
-    tracks: baseDocument.tracks.map((track) => track.id === baseDocument.activeTrackId
-      ? { ...track, rotoPhysical: physical }
-      : track),
+    tracks: baseDocument.tracks.map((track) => {
+      if (track.id === baseDocument.activeTrackId) return { ...track, rotoPhysical: physical };
+      // 48-06 (P1): EVERY track rides the parent's LIVE runtime — the apply
+      // and save authority — never the persisted document's rotoPhysical. The
+      // document can lag the runtime by an entire previous session (an apply
+      // that never reached a save), and a child hydrated from the stale
+      // document fails every parent revalidation on that track ("Roto
+      // physical revision became stale before commit"), freezing it.
+      const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+      return { ...track, rotoPhysical: runtime.rotoPhysical ?? track.rotoPhysical };
+    }),
   };
   const playbackSettings = physicPaintStore.getRotoPlaybackSettings(layerId, trackId) ?? {
     loop: false,
