@@ -48,6 +48,7 @@ function makeDocument(
   const base = createEfxPaintDocument('layer-1');
   return {
     ...base,
+    activeTrackId: tracks[0]?.id ?? base.activeTrackId,
     tracks,
     background: { ...base.background, ...backgroundOverrides },
   };
