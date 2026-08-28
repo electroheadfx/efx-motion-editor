@@ -103,15 +103,19 @@ afterEach(() => {
 });
 
 describe('physics paint cache-first preview/export contract', () => {
-  it('uses cached physics paint frame lookup and subscribes to physics paint mutations in previewRenderer', () => {
+  it('subscribes to physics paint mutations and resolves physic-paint content ONLY through the flattened delivery (48-03)', () => {
     const source = readSource('src/lib/previewRenderer.ts');
 
     expect(source).toContain('void physicPaintVersion.value');
-    expect(source).toContain('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)');
-    expect(source).toContain('physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame)');
-    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)');
-    expect(source).toContain('physicPaintStore.getRotoRealKeyRecords(paintLayerId, getActiveTrackId(paintLayerId))');
-    expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source)');
+    // 48-03 D-11/CMP-01: the renderer's sole physic-paint seam is the flattened
+    // delivery — internal-track resolution (getRotoPhysicalRenderSource /
+    // getFrame) and the renderer-owned paper background composite are gone.
+    expect(source).toContain('physicPaintStore.getFlattenedFrame(paintLayerId, physicPaintLookupFrame)');
+    expect(source).toContain('export {blendModeToCompositeOp}');
+    expect(source).not.toMatch(/resolvePhysicPaintFrameSource/);
+    expect(source).not.toMatch(/getRotoPhysicalRenderSource\(layerId, getActiveTrackId\(layerId\), frame\)/);
+    expect(source).not.toMatch(/resolveMissingRotoFrameDrawForLayer/);
+    expect(source).not.toMatch(/drawRotoFrameComposite/);
     expect(source).not.toMatch(/renderFromStrokes/);
   });
 

@@ -13,19 +13,16 @@ import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
-import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
+import {physicPaintStore, physicPaintVersion, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
 import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
 import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
-import type {PhysicPaintRotoPhysicalRenderSource} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {projectStore} from '../stores/projectStore';
 import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
 import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
-import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw';
-import type {MissingRotoFrameBackgroundState} from './rotoFrameDraw';
-import {clearProjectPaperRasterCache, getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperCanvas} from './projectPaperRaster';
+import {clearProjectPaperRasterCache, isProjectPaperTextureResolved, subscribeProjectPaperCanvas} from './projectPaperRaster';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -91,9 +88,9 @@ function getActiveTrackId(layerId: string): string {
  * - any solo armed → only tracks that are `visible !== false` AND soloed show;
  * - hide always wins over solo (`visible: false` is hidden even when soloed);
  * - unknown track id or absent document fails closed to hidden.
- * The preview resolver applies this ONLY to the ACTIVE track at the top of
- * `resolvePhysicPaintFrameSource` — a hidden active track renders an empty
- * (transparent) preview frame for the whole layer.
+ * 48-03: this filter is consumed by the Studio active-track editing surface
+ * (PhysicsPaintStudio.tsx) until 48-05; the flattened delivery itself applies
+ * the same truth table store-side via participatingPaintTracks (efxPaintHideSolo).
  */
 export function resolvePhysicPaintTrackVisibility(layerId: string, trackId: string): boolean {
   const document = getEfxPaintDocument(layerId);
@@ -103,27 +100,6 @@ export function resolvePhysicPaintTrackVisibility(layerId: string, trackId: stri
   const soloArmed = document.tracks.some((candidate) => candidate.solo === true);
   if (!soloArmed) return true;
   return track.solo === true;
-}
-
-function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackgroundState {
-  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const metadata = physicPaintStore.getRotoBackgroundMetadata(paintLayerId, getActiveTrackId(paintLayerId));
-  if (metadata) return { mode: 'paper', metadata };
-  const color = layer.paintBgColor;
-  if (!color || color === 'transparent') return { mode: 'transparent' };
-  return { mode: 'color', color };
-}
-
-function isPhysicalRotoWorkflowLayer(layerId: string): boolean {
-  return physicPaintStore.getRotoPhysicalContentRevision(layerId, getActiveTrackId(layerId)) !== null;
-}
-
-function resolveMissingRotoFrameDrawForLayer(layer: Layer, frame: number) {
-  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  return resolveMissingRotoFrameDraw(paintLayerId, frame, {
-    backgroundState: getMissingRotoBackgroundState(layer),
-    realKeyRecords: physicPaintStore.getRotoRealKeyRecords(paintLayerId, getActiveTrackId(paintLayerId)),
-  });
 }
 
 export interface PreviewPhysicPaintFrameSource {
@@ -136,90 +112,6 @@ export interface PreviewPhysicPaintFrameSource {
 
 export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFrameSource): string {
   return source.cacheKey ?? `physic-paint:${source.layerId}:${source.frame}:${source.renderedFrame.dataUrl.slice(0, 96)}:${source.renderedFrame.dataUrl.length}`;
-}
-
-/** Resolve one exact physical Roto cell, or preserve the non-Roto Physics Paint lookup. */
-function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewPhysicPaintFrameSource | null {
-  // 47-01 TML-04/M8: the hide/solo preview filter applies ONLY at the top of
-  // the ACTIVE-track resolution. A hidden active track resolves null so the
-  // canvas renders an empty preview frame (the layer contributes no pixels).
-  if (!resolvePhysicPaintTrackVisibility(layerId, getActiveTrackId(layerId))) return null;
-  if (isPhysicalRotoWorkflowLayer(layerId)) {
-    const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame);
-    // Phase 43 (D-28): the 'loop-placeholder' variant carries no payload — it
-    // renders through the marked placeholder path below, and export blocks the
-    // range in its preflight before any frame renders (43-09).
-    if (!source || source.kind === 'loop-placeholder' || source.layerId !== layerId || source.appFrame !== frame) return null;
-    return {
-      layerId,
-      frame,
-      cacheKey: `physic-paint:${layerId}:physical:${source.cacheRevision}`,
-      renderedFrame: source.renderedFrame,
-    };
-  }
-  const renderedFrame = physicPaintStore.getFrame(layerId, getActiveTrackId(layerId), frame);
-  if (!renderedFrame) return null;
-  return {
-    layerId,
-    frame,
-    cacheKey: `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`,
-    renderedFrame,
-  };
-}
-
-type PhysicPaintLoopPlaceholderSource = Extract<PhysicPaintRotoPhysicalRenderSource, { kind: 'loop-placeholder' }>;
-
-/**
- * Resolve the D-28 loop placeholder for a frame inside an unresolvable Loop
- * Clip range, or null. Preview/playback render this as a marked, visible
- * placeholder frame (never blank, never blocking); export never reaches it —
- * the export preflight blocks the range before the first frame renders.
- */
-function resolvePhysicPaintLoopPlaceholder(layerId: string, frame: number): PhysicPaintLoopPlaceholderSource | null {
-  if (!isPhysicalRotoWorkflowLayer(layerId)) return null;
-  const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, getActiveTrackId(layerId), frame);
-  return source && source.kind === 'loop-placeholder' && source.layerId === layerId && source.appFrame === frame
-    ? source
-    : null;
-}
-
-// D-28 placeholder fill discipline — the same alternating placeholder pair the
-// filmstrip/timeline renderer uses (TimelineRenderer PLACEHOLDER_BG_A/B), so
-// an unresolved loop frame reads as "marked placeholder" on every surface and
-// never as an empty frame or real Paint content.
-const LOOP_PLACEHOLDER_BG_A = '#1A1A2A';
-const LOOP_PLACEHOLDER_BG_B = '#1A2A1A';
-const LOOP_PLACEHOLDER_MARKER = 'Loop source missing';
-
-/** Paint the marked loop placeholder frame: base fill + alternating marker stripes + marker text. */
-function drawLoopClipPlaceholder(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  ctx.fillStyle = LOOP_PLACEHOLDER_BG_A;
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = LOOP_PLACEHOLDER_BG_B;
-  const stripe = 8;
-  for (let y = 0; y < h; y += stripe * 2) {
-    ctx.fillRect(0, y, w, Math.min(stripe, h - y));
-  }
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(LOOP_PLACEHOLDER_MARKER, w / 2, h / 2);
-}
-
-function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
-  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  if (!isPhysicalRotoWorkflowLayer(paintLayerId)) return false;
-  return resolveMissingRotoFrameDrawForLayer(layer, frame).kind === 'background-only';
-}
-
-function resolvePhysicalRotoFrameBackgroundDrawForLayer(layer: Layer): Extract<ReturnType<typeof resolveMissingRotoFrameDraw>, { kind: 'background-only' }> | null {
-  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  if (!isPhysicalRotoWorkflowLayer(paintLayerId)) return null;
-  const backgroundState = getMissingRotoBackgroundState(layer);
-  if (backgroundState.mode !== 'paper') return null;
-  const instruction = resolveMissingRotoFrameDraw(paintLayerId, 0, backgroundState);
-  return instruction.kind === 'background-only' ? instruction : null;
 }
 
 const PHYSIC_PAINT_PAPER_TEXTURE_URLS: Record<string, string> = {
@@ -304,9 +196,12 @@ export class PreviewRenderer {
     const frameSources: PreviewPhysicPaintFrameSource[] = [];
     for (const layer of layers) {
       if (!layer.visible || layer.type !== 'physic-paint') continue;
-      const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-      const source = resolvePhysicPaintFrameSource(layerId, frame);
-      if (source) frameSources.push(source);
+      const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+      // 48-03 D-11/CMP-01: the flattened delivery IS the preload source — the
+      // main renderer never resolves internal tracks (the store's
+      // getFlattenedFrame applies the participating-track truth table).
+      const flattened = physicPaintStore.getFlattenedFrame(paintLayerId, frame);
+      if (flattened) frameSources.push(flattened);
     }
     return frameSources;
   }
@@ -346,6 +241,17 @@ export class PreviewRenderer {
     // keyed in the owning sequence's local coordinate space.
     const paintLookupFrame = globalFrame ?? frame;
     const physicPaintLookupFrame = physicPaintFrame ?? frame;
+    // 48-03 D-11/CMP-01: ONE flattened delivery per physic-paint layer per
+    // render. The hasDrawable scan and the draw loop share this per-call memo
+    // so getFlattenedFrame runs exactly once (seam contract) — a null delivery
+    // this tick (no document / decode pending) is not drawable.
+    const flattenedByLayer = new Map<string, EfxPaintFlattenedFrameRecord | null>();
+    const resolveFlattened = (paintLayerId: string): EfxPaintFlattenedFrameRecord | null => {
+      if (!flattenedByLayer.has(paintLayerId)) {
+        flattenedByLayer.set(paintLayerId, physicPaintStore.getFlattenedFrame(paintLayerId, physicPaintLookupFrame));
+      }
+      return flattenedByLayer.get(paintLayerId) ?? null;
+    };
     // Integer frame index for frames[] array lookups — fractional frames from
     // export sub-frame accumulation must not be used as array indices.
     const frameIdx = Math.floor(frame);
@@ -383,8 +289,7 @@ export class PreviewRenderer {
           continue;
         } else if (layer.type === 'physic-paint') {
           const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-          const frameSource = resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame);
-          if (frameSource || hasMissingRotoBackground(layer, physicPaintLookupFrame) || resolvePhysicPaintLoopPlaceholder(paintLayerId, physicPaintLookupFrame)) {
+          if (resolveFlattened(paintLayerId)) {
             hasDrawable = true;
             break;
           }
@@ -486,33 +391,24 @@ export class PreviewRenderer {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'physic-paint') {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-        const frameSource = resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame);
-        // D-28: an unresolved Loop Clip frame paints as a marked, visible
-        // placeholder — never a blank frame, never blocking; playback and the
-        // scrubber continue past it. Export never reaches this arm (the 43-09
-        // preflight blocks the range before the first frame renders).
-        const loopPlaceholder = frameSource ? null : resolvePhysicPaintLoopPlaceholder(paintLayerId, physicPaintLookupFrame);
-        if (loopPlaceholder) {
-          ctx.save();
-          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-          ctx.globalAlpha = effectiveOpacity;
-          drawLoopClipPlaceholder(ctx, logicalW, logicalH);
-          ctx.restore();
-          continue;
-        }
-        const missingDraw = isPhysicalRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame) : null;
-        const physicalBackgroundDraw = frameSource ? resolvePhysicalRotoFrameBackgroundDrawForLayer(layer) : null;
-        const source = frameSource ? this.getPhysicPaintImageSource(frameSource) : null;
-        const backgroundDraw = physicalBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
-        if (backgroundDraw || source) {
-          const paperCanvas = backgroundDraw ? getProjectPaperCanvas(backgroundDraw.paperTexture, projectStore.width.peek(), projectStore.height.peek()) : null;
-          ctx.save();
-          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-          ctx.globalAlpha = effectiveOpacity;
-          if (backgroundDraw) drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source);
-          else if (source) ctx.drawImage(source, 0, 0, logicalW, logicalH);
-          ctx.restore();
-        }
+        // 48-03 D-11/CMP-01: the ONLY physic-paint content seam — the flattened
+        // straight-alpha raster carries every participating track + the
+        // background (D-02). A null delivery (no document / decode pending)
+        // draws nothing this tick; the decode-complete physicPaintVersion bump
+        // re-renders (subscription at the top of this loop).
+        const flattened = resolveFlattened(paintLayerId);
+        if (!flattened) continue;
+        const source = this.getPhysicPaintImageSource(flattened);
+        // CMP-03/Pitfall 6: the parent applies ITS opacity/blend exactly once
+        // around the flattened raster — internal track properties are never
+        // re-applied here (D-01/D-02 live store-side inside compositeFrame).
+        // Missing sources are transparent in the raster and surface via the
+        // Studio capsule (D-09) — no placeholder pixels can reach this path.
+        ctx.save();
+        ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+        ctx.globalAlpha = effectiveOpacity;
+        if (source) ctx.drawImage(source, 0, 0, logicalW, logicalH);
+        ctx.restore();
       } else if (layer.type === 'paint') {
         // Always render paint layer (solid bg even when no strokes)
         const paintFrame = paintStore.getFrame(layer.id, paintLookupFrame);

@@ -130,6 +130,14 @@ class TestCanvas {
   getContext(contextId: string): RecordingCanvasContext | null {
     return contextId === '2d' ? new RecordingCanvasContext(this.operations) : null;
   }
+
+  // 48-03: the store's flattened path calls canvas.toDataURL() to produce the
+  // raster payload. Serializing the recorded op log makes the flattened
+  // dataUrl deterministic per scenario — tests can decode it to assert WHICH
+  // content was baked into the raster.
+  toDataURL(): string {
+    return `data:image/png;base64,${Buffer.from(JSON.stringify(this.operations)).toString('base64')}`;
+  }
 }
 
 class TestImage {
@@ -219,31 +227,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('PreviewRenderer missing Roto frame source contract', () => {
-  it('owns the shared missing-frame resolver and background draw path', () => {
+describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
+  it('owns the flattened-only content seam, the exported blend map, and no placeholder helpers', () => {
     const source = readSource('src/lib/previewRenderer.ts');
 
-    expect(source).toContain("import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw'");
-    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)');
-    expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source)');
+    expect(source).toContain('physicPaintStore.getFlattenedFrame(paintLayerId, physicPaintLookupFrame)');
+    expect(source).toContain("export {blendModeToCompositeOp}");
+    expect(source).not.toMatch(/resolvePhysicPaintFrameSource/);
+    expect(source).not.toMatch(/resolveMissingRotoFrameDraw/);
+    expect(source).not.toMatch(/drawRotoFrameComposite/);
+    expect(source).not.toMatch(/drawLoopClipPlaceholder/);
   });
 
-  it('checks cached real frames before resolving missing transparent or background-only frames', () => {
+  it('the physic-paint branch resolves ONLY through the flattened delivery', () => {
     const source = readSource('src/lib/previewRenderer.ts');
     const branchStart = source.lastIndexOf("layer.type === 'physic-paint'");
     const physicPaintBranch = source.slice(branchStart, source.indexOf("} else if (layer.type === 'paint')", branchStart));
 
-    expect(physicPaintBranch).toContain('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)');
-    expect(physicPaintBranch.indexOf('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)')).toBeLessThan(
-      physicPaintBranch.indexOf('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)'),
-    );
-    expect(physicPaintBranch).toContain("const backgroundDraw = physicalBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null)");
+    expect(physicPaintBranch).toContain('resolveFlattened(paintLayerId)');
+    expect(physicPaintBranch).not.toContain('resolvePhysicPaintFrameSource(');
+    expect(physicPaintBranch).not.toContain('drawLoopClipPlaceholder(');
+    expect(physicPaintBranch).not.toContain('drawRotoFrameComposite(');
     expect(physicPaintBranch).not.toContain('setFrame(');
     expect(physicPaintBranch).not.toContain('upsertRealRotoKeyFrame(');
     expect(physicPaintBranch).not.toContain('replaceGeneratedRotoCache(');
   });
 
-  it('renders the real paper texture for an interior missing Roto frame in the main app renderer', () => {
+  it('an interior missing Roto frame renders as a transparent flattened raster — never renderer-side paper (D-09)', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
       { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
@@ -254,26 +264,17 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({
-      type: 'fillRect',
-      x: 0,
-      y: 0,
-      w: 4,
-      h: 3,
-      fillStyle: '#fff',
-      globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
-    }));
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({
-      type: 'createPattern',
-      source: '/img/paper_1.jpg',
-      repetition: 'repeat',
-    }));
-    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas', args: [0, 0, 4, 3] }));
+    // The store resolves the missing frame to a flattened raster with no track
+    // contribution (transparent + missing report): no paper is baked, and the
+    // renderer never paints paper itself. The flattened raster IS drawn.
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'fillRect' }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'createPattern' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
   });
 
-  it('draws paper baseline before transparent real Roto frame pixels in the main app renderer', () => {
+  it('a real Roto frame with paper metadata bakes paper + frame into ONE flattened raster (per-track parity)', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
     ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
@@ -283,15 +284,18 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
-    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    const imageIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0x');
-
-    expect(paperIndex).toBeGreaterThanOrEqual(0);
-    expect(imageIndex).toBeGreaterThanOrEqual(0);
-    expect(paperIndex).toBeLessThan(imageIndex);
+    // Store-side: the paper color-fill fallback and the frame pixels are both
+    // composited into the flattened raster (paperCanvas deliberately null).
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    // Renderer-side: ONE flattened draw — never a separate paper canvas + frame.
+    const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
+    expect(flattenedDraws.length).toBeGreaterThanOrEqual(1);
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
   });
 
-  it('draws renderer-owned paper before generated interpolation alpha cache output', () => {
+  it('an interpolated interior frame bakes paper + generated alpha into ONE flattened raster', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
       { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
@@ -302,18 +306,19 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
-    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    // The physically derived duplicate interior republishes the left real key's alpha at the interior frame.
-    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0x');
-
-    expect(paperIndex).toBeGreaterThanOrEqual(0);
-    expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
-    expect(paperIndex).toBeLessThan(generatedAlphaIndex);
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
+    // Store-side: paper + the duplicate-mode generated alpha (left key) baked.
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
     expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
+    // Renderer-side: ONE flattened draw — no separate paper/content draws.
+    const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
+    expect(flattenedDraws.length).toBeGreaterThanOrEqual(1);
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
   });
 
-  it('36.12-GENERATED-FRAMES draws published generated interpolation alpha cache after close/reopen load', () => {
+  it('36.12-GENERATED-FRAMES bakes published generated interpolation alpha into the flattened raster after close/reopen load', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
       { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
@@ -327,21 +332,20 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
-    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0x');
-
-    expect(paperIndex).toBeGreaterThanOrEqual(0);
-    expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
-    expect(paperIndex).toBeLessThan(generatedAlphaIndex);
+    // The store's projection still resolves the generated interior, and the
+    // per-track paper composite survives the reopen (metadata is projected).
     expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', TEST_TRACK_ID, 2)).toMatchObject({
       kind: 'generated',
       appFrame: 2,
       leftKeyId: 'key-1',
       rightKeyId: 'key-3',
     });
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
   });
 
-  it('36.13-PREVIEW-EXPORT-PARITY draws store-regenerated 2 -> 6 span output at direct physical appFrame positions after save/load', () => {
+  it('36.13-PREVIEW-EXPORT-PARITY bakes store-regenerated 2 -> 6 span output at direct physical appFrame positions after save/load', () => {
     seedPhysicalRoto([
       { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' },
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
@@ -365,15 +369,12 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
       rightKeyId: 'key-6',
       renderedFrame: { dataUrl: 'data:image/png;base64,cmVhbC0y' },
     });
-    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0y');
-
-    expect(paperIndex).toBeGreaterThanOrEqual(0);
-    expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
-    expect(paperIndex).toBeLessThan(generatedAlphaIndex);
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0y' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
   });
 
-  it('36.11 draws renderer-owned paper before merged real-key alpha repaint output', () => {
+  it('36.11 bakes renderer-owned paper + merged real-key alpha repaint into ONE flattened raster', () => {
     seedPhysicalRoto([
       { keyId: 'key-5', appFrame: 5, dataUrl: 'data:image/png;base64,cmVhbC01' },
     ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 } });
@@ -417,13 +418,13 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 5, [], 24, true, 1, 5);
     renderer.renderFrame([makeRotoLayer()], 5, [], 24, true, 1, 5);
 
-    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    const mergedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=');
-
-    expect(paperIndex).toBeGreaterThanOrEqual(0);
-    expect(mergedAlphaIndex).toBeGreaterThanOrEqual(0);
-    expect(paperIndex).toBeLessThan(mergedAlphaIndex);
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'createPattern', source: '/img/paper_1.jpg' }));
+    // The flattened raster bakes paper (color-fill fallback) + the merged
+    // real-key repaint; the renderer paints the single raster.
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=' }));
   });
 
   it('renders content Physics Paint in layer-local frames while ordinary Paint stays sequence-global', () => {
@@ -522,7 +523,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
   });
 
-  it('draws the real key normally when no solo is armed and the active track is visible', () => {
+  it('draws the flattened raster when no solo is armed and the active track is visible', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
     ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
@@ -532,7 +533,11 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
-    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    // The store bakes the real key into the flattened raster; the renderer
+    // paints the single flattened raster (never the raw key dataUrl).
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
   });
 });
 
@@ -584,6 +589,9 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
+    // Load-then-draw: the first pass decodes the flattened raster, the second
+    // paints it from the image cache.
+    renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
     renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
 
     const parentDraw = ctx.operations.find(
@@ -592,9 +600,9 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(parentDraw).toBeDefined();
     // Parent 0.5 × internal 0.5 = 0.25 effective; the renderer never re-applies
     // the internal track property (that would double the product to 0.0625).
-    expect(parentDraw.globalAlpha).toBe(0.5);
-    expect(parentDraw.globalAlpha * INTERNAL_OPACITY).toBe(0.25);
-    expect(parentDraw.globalCompositeOperation).toBe(blendModeToCompositeOp(layer.blendMode));
+    expect(parentDraw!.globalAlpha).toBe(0.5);
+    expect(parentDraw!.globalAlpha * INTERNAL_OPACITY).toBe(0.25);
+    expect(parentDraw!.globalCompositeOperation).toBe(blendModeToCompositeOp(layer.blendMode));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: FLAT_1, globalAlpha: 0.25 }));
   });
 
@@ -646,6 +654,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#1A1A2A' }));
