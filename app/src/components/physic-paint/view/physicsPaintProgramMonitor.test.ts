@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import { PhysicsPaintProgramMonitor, type PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
@@ -14,6 +16,24 @@ import type { EfxPaintDocument, InternalPaintTrack } from '../../../efx-paint/do
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import { clearProjectPaperRasterCache } from '../../../lib/projectPaperRaster';
+
+// Task 2 source-contract fixtures (the D-06 onion projection and the D-09
+// capsule copy live in the Studio, not the monitor — read the sources to pin
+// the active-track source seam and the monitor < engine < onion z-order).
+const studioPath = fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url));
+const viewPath = fileURLToPath(new URL('./PhysicsPaintStudioView.tsx', import.meta.url));
+const cssPath = fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url));
+const studio = readFileSync(studioPath, 'utf8');
+const view = readFileSync(viewPath, 'utf8');
+const css = readFileSync(cssPath, 'utf8');
+
+function resolveBlock(source: string, declaration: string, nextDeclaration: string): string {
+  const start = source.indexOf(declaration);
+  const end = source.indexOf(nextDeclaration, start);
+  expect(start, declaration).toBeGreaterThanOrEqual(0);
+  expect(end, nextDeclaration).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
 
 let runtime = new PreactHookRuntime();
 
@@ -387,5 +407,103 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(record.renderedFrame.dataUrl).not.toContain(frameA);
     expect(record.renderedFrame.dataUrl).toContain(frameB);
     expect(drawCount(canvas)).toBe(1);
+  });
+
+  describe('Task 2 (D-06/D-09): onion pinning + missing-source capsule publication', () => {
+    it('(a) a missing report publishes the error capsule exactly once', () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      // track-a has a real key at frame 0 only — frame 5 resolves null, so the
+      // flattened record reports it as missing (the RED 5 store contract).
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      const summaryMock = vi.fn();
+
+      const canvas = renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+
+      // The capsule effect reads the FULL including path (an active-track Hold
+      // source missing is still reported) and publishes the structured summary
+      // exactly once.
+      expect(summaryMock).toHaveBeenCalledTimes(1);
+      expect(summaryMock).toHaveBeenCalledWith({ frame: 5, missingCount: 1, firstTrackId: 'track-a' });
+      // The Studio maps the summary to the existing red-warning capsule: error
+      // status + the fixed English copy naming the document track when
+      // resolvable and the id otherwise; a null summary restores idle (D-09).
+      expect(studio).toContain('const handleProgramMonitorMissingChange = useCallback((summary: EfxPaintProgramMonitorMissingSummary | null) => {');
+      expect(studio).toContain("setApplyStatus('error');");
+      expect(studio).toContain('setApplyMessage(`Missing source on ${summary.missingCount} track(s) — first: ${trackName ?? summary.firstTrackId}`);');
+      expect(studio).toContain('getEfxPaintDocument(layerId)?.tracks.find((track) => track.id === summary.firstTrackId)?.name');
+      expect(studio).toContain("setApplyStatus('idle');");
+      expect(studio).toContain('setApplyMessage(null);');
+      // The editing base excludes the only (active) track, so the monitor draws
+      // an empty composite while the capsule still reports the missing source.
+      expect(drawCount(canvas)).toBe(1);
+    });
+
+    it('(b) a repeated identical missing report does not re-publish', () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      const summaryMock = vi.fn();
+
+      renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+      expect(summaryMock).toHaveBeenCalledTimes(1);
+
+      // A version-clock bump re-runs the publish effect, but the flattened
+      // record (same cacheKey) reports the same missing state → same publish
+      // key → compare-then-write skips the duplicate publication.
+      physicPaintVersion.value++;
+      rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+
+      expect(summaryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('(c) a cleared report restores the idle capsule exactly once', () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      const summaryMock = vi.fn();
+
+      renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+      expect(summaryMock).toHaveBeenCalledTimes(1);
+
+      // Resolve the missing source: replace track-a with a real key AT frame 5.
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+      physicPaintVersion.value++;
+      rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+
+      // Exactly one clear publication — the idle restore.
+      expect(summaryMock).toHaveBeenCalledTimes(2);
+      expect(summaryMock).toHaveBeenLastCalledWith(null);
+
+      // A subsequent identical clear is a no-op (compare-then-write).
+      physicPaintVersion.value++;
+      rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+      expect(summaryMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('(d) onion ghosts stay above the monitor and source the active track raw frames', () => {
+      // D-06: the onion projection's getRenderSource reads the ACTIVE track's
+      // RAW frames via getRotoPhysicalRenderSource(launchContext.layerId,
+      // trackIdOfLaunch(launchContext), appFrame) — the ghost projection is NOT
+      // re-sourced through the flattened path.
+      const onionProjection = resolveBlock(
+        studio,
+        'const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({',
+        'const rotoCachedPlaybackAvailable =',
+      );
+      expect(onionProjection).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
+      expect(onionProjection).not.toContain('getFlattenedFrame');
+
+      // z-order pin: program monitor (z-index 0) below the engine canvases
+      // (z-index 2/4) below the onion overlay (z-index 5) — and the stack JSX
+      // renders engine mount, then program monitor, then onion overlay on top.
+      expect(css).toContain('.physics-paint-program-monitor {\n  position: absolute;\n  z-index: 0;');
+      expect(css).toContain('.demo-canvas-shell .paint-canvas canvas {\n  z-index: 2 !important;');
+      expect(css).toContain('.demo-canvas-shell .paint-canvas canvas + canvas {\n  z-index: 4 !important;');
+      expect(css).toContain('.physics-paint-onion-overlay.canvas-region {\n  inset: auto;\n  z-index: 5;');
+      const mountIndex = view.indexOf('<MemoizedPhysicsPaintCanvasMount');
+      const monitorIndex = view.indexOf('<div class="physics-paint-program-monitor"');
+      const onionIndex = view.indexOf('class="physics-paint-onion-overlay canvas-region"');
+      expect(mountIndex).toBeGreaterThanOrEqual(0);
+      expect(monitorIndex).toBeGreaterThan(mountIndex);
+      expect(onionIndex).toBeGreaterThan(monitorIndex);
+    });
   });
 });

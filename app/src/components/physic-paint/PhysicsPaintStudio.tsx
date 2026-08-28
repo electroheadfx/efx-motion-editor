@@ -52,6 +52,7 @@ import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysic
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
+import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
@@ -2974,6 +2975,28 @@ export function PhysicsPaintStudio() {
     beforeEngineDestroy: rotoScript.prepareEngineDisposal,
     getStrokeMetadata,
   }));
+  // 48-05 (D-09): the missing-source capsule publication handler — maps the
+  // program monitor's compare-then-write summary to the existing red-warning
+  // status-capsule surface (the statusMessage/statusIsError bundle), naming the
+  // document track when resolvable and the id otherwise. A null summary restores
+  // the idle capsule. The monitor already dedupes steady/cleared state, so every
+  // call here is a genuine state transition (idempotent setter law; never a
+  // render-body write). Identity-stable per launch context — navigation re-runs
+  // the monitor's publish effect against the new document, which is a no-op when
+  // the missing state is unchanged.
+  const handleProgramMonitorMissingChange = useCallback((summary: EfxPaintProgramMonitorMissingSummary | null) => {
+    if (summary === null) {
+      setApplyStatus('idle');
+      setApplyMessage(null);
+      return;
+    }
+    const layerId = launchContext?.layerId ?? null;
+    const trackName = layerId
+      ? getEfxPaintDocument(layerId)?.tracks.find((track) => track.id === summary.firstTrackId)?.name
+      : undefined;
+    setApplyStatus('error');
+    setApplyMessage(`Missing source on ${summary.missingCount} track(s) — first: ${trackName ?? summary.firstTrackId}`);
+  }, [launchContext, setApplyStatus, setApplyMessage]);
   const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
@@ -3002,6 +3025,7 @@ export function PhysicsPaintStudio() {
         width: canvasWidth,
         height: canvasHeight,
         playbackTick: rotoCachedPlayback.playbackTick,
+        onMissingSourcesChange: handleProgramMonitorMissingChange,
       } : null,
     };
   });
