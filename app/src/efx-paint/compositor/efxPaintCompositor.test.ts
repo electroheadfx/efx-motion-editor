@@ -656,3 +656,66 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     expect(bgDraws[1].source).toBe('bg-d'); // frame 19 → 19 % 4 = 3 → ref-d
   });
 });
+
+// --- Phase 48-04 Task 2: CMP-04 invalidation matrix — composite-level rows ---
+
+describe('CMP-04 invalidation matrix — composite-level recompute isolation (48-04 Task 2)', () => {
+  it('row 6 — per-track memo isolation at frame 5: bump only track B content → A raster reused (0 new resolve), B recomputed exactly once (D-07)', () => {
+    const { ports, calls, revisions } = makeCachedHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+      trackContentRevisions: new Map([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const size = { width: 4, height: 3 };
+
+    compositeFrame(doc, 5, size, ports);
+    expect(calls.get('track-a')).toBe(1);
+    expect(calls.get('track-b')).toBe(1);
+
+    revisions.set('track-b', 'rev-b2');
+    compositeFrame(doc, 5, size, ports);
+    expect(calls.get('track-a')).toBe(1); // A's cached raster reused
+    expect(calls.get('track-b')).toBe(2); // B recomputed exactly once
+  });
+
+  it('row 7 — a HIDDEN track content edit does not churn the flattened cache: identical frozen result (participating-only content terms)', () => {
+    const { ports, calls, revisions } = makeCachedHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+      trackContentRevisions: new Map([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1, visible: false }),
+    ]);
+    const size = { width: 4, height: 3 };
+
+    const first = compositeFrame(doc, 5, size, ports);
+    expect(first.participates.trackIds).toEqual(['track-a']);
+    expect(first.participates.background).toBe(true);
+
+    // Hidden track B's content revision bumps — its term is absent from the
+    // participating key, so the flattened cache hits and the SAME frozen
+    // result returns (zero recompute, zero draw ops). The config hash already
+    // flips on visibility, so re-showing B re-composites (row 2 'visible').
+    revisions.set('track-b', 'rev-b2');
+    const second = compositeFrame(doc, 5, size, ports);
+    expect(second).toBe(first);
+    expect(calls.get('track-a')).toBe(1);
+    expect(calls.get('track-b') ?? 0).toBe(0); // hidden → never resolved
+  });
+});

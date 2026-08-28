@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createEfxPaintDocument } from '../document/efxPaintDocument';
-import type { EfxPaintDocument, InternalPaintTrack } from '../document/efxPaintDocument';
+import type { EfxPaintDocument, FrameLoopClip, InternalPaintTrack } from '../document/efxPaintDocument';
 import {
   createKeyedMemo,
   deriveEfxPaintFlattenedCacheKey,
@@ -224,5 +224,140 @@ describe('deriveEfxPaintFlattenedCacheKey — CMP-04 dependency coverage (D-08)'
 
     memo.clear();
     expect(memo.size).toBe(0);
+  });
+});
+
+function makeClip(overrides: Partial<FrameLoopClip> = {}): FrameLoopClip {
+  return {
+    id: 'clip-1',
+    startFrame: 0,
+    sourceFrameRefs: Object.freeze(['ref-1']),
+    repeat: { mode: 'finite', count: 1 },
+    sourceKind: 'imported-background',
+    revision: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * CMP-04 invalidation matrix (48-04 Task 2) — one failing-then-passing row per
+ * dependency class: track content, order, visibility, solo, opacity, blendMode,
+ * background clip add/edit/repeat, background fallback, background visibility,
+ * and frame. Row 5 pins the participating-only content-term semantics (a hidden
+ * track's content term is absent from the key — the config hash already covers
+ * visibility, so re-showing re-composites).
+ */
+describe('CMP-04 invalidation matrix — key-level rows (48-04 Task 2)', () => {
+  it('row 1 — track content: editing track B content changes the flattened key while track A content-key term is byte-identical', () => {
+    const doc = makeDocument([makeTrack('track-a'), makeTrack('track-b')]);
+    const base = {
+      document: doc,
+      trackContentRevisions: contentRevisions([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+      backgroundClipRevisions: [] as string[],
+      frame: 5,
+    };
+    const keyBase = deriveEfxPaintFlattenedCacheKey(base);
+    const keyBumped = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackContentRevisions: contentRevisions([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b2'],
+      ]),
+    });
+    expect(keyBumped).not.toBe(keyBase);
+    expect(deriveEfxPaintTrackContentKey('track-a', 'rev-a', 5)).toBe(
+      deriveEfxPaintTrackContentKey('track-a', 'rev-a', 5),
+    );
+  });
+
+  it('row 2 — config: visible / solo / opacity / blendMode / order each rotate the flattened key (5 sub-cases)', () => {
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const revisions = contentRevisions([
+      ['track-a', 'rev-a'],
+      ['track-b', 'rev-b'],
+    ]);
+    const base = { trackContentRevisions: revisions, backgroundClipRevisions: [] as string[], frame: 0 };
+    const keyBase = deriveEfxPaintFlattenedCacheKey({ document: doc, ...base });
+
+    const cases: ReadonlyArray<[string, EfxPaintDocument]> = [
+      ['visible', makeDocument([makeTrack('track-a', { order: 0 }), makeTrack('track-b', { order: 1, visible: false })])],
+      ['solo', makeDocument([makeTrack('track-a', { order: 0 }), makeTrack('track-b', { order: 1, solo: true })])],
+      ['opacity', makeDocument([makeTrack('track-a', { order: 0 }), makeTrack('track-b', { order: 1, opacity: 0.5 })])],
+      ['blendMode', makeDocument([makeTrack('track-a', { order: 0 }), makeTrack('track-b', { order: 1, blendMode: 'multiply' })])],
+      ['order', makeDocument([makeTrack('track-a', { order: 1 }), makeTrack('track-b', { order: 0 })])],
+    ];
+    for (const [name, mutated] of cases) {
+      expect(deriveEfxPaintFlattenedCacheKey({ document: mutated, ...base }), `config sub-case: ${name}`).not.toBe(keyBase);
+    }
+  });
+
+  it('row 3 — background clip add / repeat-count / revision each rotate the flattened key', () => {
+    const doc = makeDocument([makeTrack('track-a')]);
+    const revisions = contentRevisions([['track-a', 'rev-a']]);
+    const base = { document: doc, trackContentRevisions: revisions, backgroundClipRevisions: [] as string[], frame: 0 };
+    const keyBase = deriveEfxPaintFlattenedCacheKey(base);
+
+    const clipAdded = makeDocument(
+      [makeTrack('track-a')],
+      { clips: [makeClip({ repeat: { mode: 'finite', count: 1 }, revision: 1 })], revision: 1 },
+    );
+    const keyClipAdded = deriveEfxPaintFlattenedCacheKey({ ...base, document: clipAdded, backgroundClipRevisions: ['clip-1:1'] });
+    expect(keyClipAdded).not.toBe(keyBase);
+
+    const repeatChanged = makeDocument(
+      [makeTrack('track-a')],
+      { clips: [makeClip({ repeat: { mode: 'finite', count: 2 }, revision: 2 })], revision: 2 },
+    );
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: repeatChanged, backgroundClipRevisions: ['clip-1:2'] })).not.toBe(keyClipAdded);
+
+    const revisionChanged = makeDocument(
+      [makeTrack('track-a')],
+      { clips: [makeClip({ repeat: { mode: 'finite', count: 1 }, revision: 2 })], revision: 2 },
+    );
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: revisionChanged, backgroundClipRevisions: ['clip-1:2'] })).not.toBe(keyClipAdded);
+  });
+
+  it('row 4 — background fallback flip and visible toggle each rotate the flattened key', () => {
+    const doc = makeDocument([makeTrack('track-a')]);
+    const revisions = contentRevisions([['track-a', 'rev-a']]);
+    const base = { document: doc, trackContentRevisions: revisions, backgroundClipRevisions: [] as string[], frame: 0 };
+    const keyBase = deriveEfxPaintFlattenedCacheKey(base);
+
+    const solid = makeDocument([makeTrack('track-a')], { fallback: { mode: 'solid', color: '#112233' } });
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: solid })).not.toBe(keyBase);
+
+    const hidden = makeDocument([makeTrack('track-a')], { visible: false });
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: hidden })).not.toBe(keyBase);
+  });
+
+  it('row 5 — non-participating isolation: a HIDDEN track content revision does NOT appear in the key (participating-only content terms)', () => {
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1, visible: false }),
+    ]);
+    const base = {
+      document: doc,
+      trackContentRevisions: contentRevisions([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+      backgroundClipRevisions: [] as string[],
+      frame: 0,
+    };
+    const keyBase = deriveEfxPaintFlattenedCacheKey(base);
+    const keyBumped = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackContentRevisions: contentRevisions([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b2'],
+      ]),
+    });
+    expect(keyBumped).toBe(keyBase);
   });
 });
