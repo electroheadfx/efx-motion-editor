@@ -322,12 +322,12 @@ Plans:
   4. Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes.
   5. The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend).
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 48-01-PLAN.md — tracer: pure compositor core (hide/solo truth table, opacity-before-blend pass, straight-alpha result, missing report) + derived flattened cache key/memo (TDD)
+- [x] 48-01-PLAN.md — tracer: pure compositor core (hide/solo truth table, opacity-before-blend pass, straight-alpha result, missing report) + derived flattened cache key/memo (TDD)
 - [ ] 48-02-PLAN.md — Background FrameLoopClip → Loop Clip resolver adapter + per-frame content/gap/missing resolution (TDD)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -431,7 +431,7 @@ Plans:
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
-| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/6 | Planned | - |
+| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 1/6 | In Progress|  |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |

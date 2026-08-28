@@ -4,17 +4,17 @@ milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 48
 current_phase_name: Internal Compositor and Flattened Parent Result
-status: planning
-stopped_at: Phase 48 context gathered
-last_updated: "2026-08-28T09:10:01.774Z"
-last_activity: 2026-08-27
-last_activity_desc: Phase 47 closed (UAT round 7 passed — overall regression confirmed; rail status dot close-out; watchdog reload disabled; 18/18 threats verified; 8/8 requirements Nyquist-validated)
-state_head: d6843fe1981ee82dffa62f8bac15713583dd8405
+status: executing
+stopped_at: Completed 48-01-PLAN.md
+last_updated: "2026-08-28T09:42:06.673Z"
+last_activity: 2026-08-28
+last_activity_desc: Phase 48 execution started
+state_head: 8fae771638c0a80acae1716ba607ff14e01e1597
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 25
-  completed_plans: 19
+  completed_plans: 20
   percent: 11
 ---
 
@@ -29,12 +29,12 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 48 (Internal Compositor and Flattened Parent Result) — READY TO EXECUTE
-Plan: 0 of TBD
-Status: Phase 47 closed — planning Phase 48
-Last activity: 2026-08-27 - Completed quick task 260827-s52: NLE ruler seek + playhead bar (Physics Paint Studio timeline)
+Phase: 48 (Internal Compositor and Flattened Parent Result) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-08-28 — Phase 48 execution started
 
-Progress: [██░░░░░░░░] 22%
+Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [██░░░░░░░░] 22%
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P03 | 45 | 2 tasks | 6 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P04 | 130 | 3 tasks | 8 files |
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P05 | 120 | 2 tasks | 6 files |
+| Phase 48 P01 | 15 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,9 @@ Recent decisions affecting current work:
 - [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-04-SUMMARY.md
 - [Phase 47]: .planning/phases/47-internal-multi-track-timeline-filmstrip-capsules-and-control/47-05-SUMMARY.md
 - [Phase 47 close-out]: The filmstrip capsule rendering layer was REMOVED by user demand in UAT Round 6 (commit 346d47bc) — the rails return to the locked Phase 43 surface and loop facts live in the rail tooltip only; the rail status dot became a 20x4px rectangle over the 4px line on ALL tracks with the synchronized #A6D334 / modified #FBBF24 / detached #BBC0C8 / unavailable #FF2E56 palette and a tooltip status swatch; the lifecycle reads the clip's own scriptId (never the resolved library name) so the active lane and non-active rows agree; the compositor-death watchdog's window.location.reload() is DISABLED by request (commit ce1008af) — the stall detection stays live as a cooldown-bounded console warn so a future compositor death is traceable and the reload can be re-enabled. Phase 47 UAT passed (round 7), 18/18 threats verified (47-SECURITY.md), 8/8 requirements Nyquist-validated (47-VALIDATION.md).
+- [Phase 48]: 48-01: compositor cache ports are caller-opt-in (memo/trackRasterMemo/trackContentRevisions/backgroundClipRevisions optional in EfxPaintCompositorPorts) — uncached path byte-identical to Task 1; 48-03 supplies the complete cache group with store-owned memo lifetimes per layerId
+- [Phase 48]: 48-01: flattened cache key wraps buildEfxPaintCompositeRevision output in encodeCanonicalString before hashing with config/track/bg/clip/frame terms; the unwired document.compositeRevision counter is never read (48-RESEARCH finding c)
+- [Phase 48]: 48-01: per-track raster memo caches whatever resolution object the port produced (content OR missing) — the pure side never decodes dataUrls; decode lives store-side in 48-03 (D-07)
 
 ### Pending Todos
 
@@ -194,8 +198,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** /Users/lmarques/Dev/efx-motion-editor/.planning/phases/48-internal-compositor-and-flattened-parent-result/48-CONTEXT.md
+**Resume file:** None
 
-Last session: 2026-08-28T07:27:41.865Z
-Stopped at: Phase 48 context gathered
+Last session: 2026-08-28T09:42:04.883Z
+Stopped at: Completed 48-01-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning

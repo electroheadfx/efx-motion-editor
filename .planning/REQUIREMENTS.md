@@ -40,11 +40,11 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### CMP — Internal Compositor (Phase 4)
 
-- [ ] **CMP-01**: One shared internal composition path resolves all Paint tracks into one deterministic per-frame flattened raster for Studio preview and flattened output
-- [ ] **CMP-02**: Internal hide/solo truth table is applied (no solo → all visible; solo → visible+soloed only; hide wins over solo)
-- [ ] **CMP-03**: Internal track opacity and blend mode are applied once inside EFX Paint; parent opacity/blend is applied once by the main editor (never double-applied)
-- [ ] **CMP-04**: Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes
-- [ ] **CMP-05**: Missing source/asset states are explicit and recoverable
+- [x] **CMP-01**: One shared internal composition path resolves all Paint tracks into one deterministic per-frame flattened raster for Studio preview and flattened output
+- [x] **CMP-02**: Internal hide/solo truth table is applied (no solo → all visible; solo → visible+soloed only; hide wins over solo)
+- [x] **CMP-03**: Internal track opacity and blend mode are applied once inside EFX Paint; parent opacity/blend is applied once by the main editor (never double-applied)
+- [x] **CMP-04**: Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes
+- [x] **CMP-05**: Missing source/asset states are explicit and recoverable
 - [ ] **CMP-06**: The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend)
 
 ### BKG — Background Track (Phase 5)
@@ -150,11 +150,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TML-06 | Phase 47 | Complete |
 | TML-07 | Phase 47 | Complete |
 | TML-08 | Phase 47 | Complete |
-| CMP-01 | Phase 48 | Pending |
-| CMP-02 | Phase 48 | Pending |
-| CMP-03 | Phase 48 | Pending |
-| CMP-04 | Phase 48 | Pending |
-| CMP-05 | Phase 48 | Pending |
+| CMP-01 | Phase 48 | Complete |
+| CMP-02 | Phase 48 | Complete |
+| CMP-03 | Phase 48 | Complete |
+| CMP-04 | Phase 48 | Complete |
+| CMP-05 | Phase 48 | Complete |
 | CMP-06 | Phase 48 | Pending |
 | BKG-01 | Phase 49 | Pending |
 | BKG-02 | Phase 49 | Pending |
