@@ -355,6 +355,15 @@ export class EfxPaintEngine {
   private previewBaseRequestId: number = 0
   private previewBaseEnabled: boolean = false
   private previewBackgroundSeparated: boolean = false
+  /**
+   * v1.0 compositor law (Phase 48-06): when an external composite surface owns
+   * the visible background (the Studio program monitor draws the flattened
+   * composite, paper fond included), the engine keeps its background SEMANTICS
+   * (bgData for erase/wet internals) but never paints the background fill into
+   * any VISIBLE canvas — the preview-base and dry canvases stay transparent so
+   * the composite stacked beneath shows through.
+   */
+  private visibleBackgroundSuppressed: boolean = false
   private previewBaseImage: HTMLImageElement | null = null
   // 38.1-07: decoded-Image cache keyed by dataUrl — a frame revisit applies
   // the already-decoded image synchronously (zero new decode round-trips).
@@ -682,6 +691,20 @@ export class EfxPaintEngine {
     this.requestRender()
   }
 
+  /**
+   * Suppress (or restore) every VISIBLE background fill draw. Background
+   * semantics (bgData for erase/wet internals) are unaffected — only the
+   * preview-base and dry canvas paints are gated, so an external composite
+   * surface stacked beneath the engine canvases owns the visible background.
+   * Default false: standalone consumers keep the engine-drawn background.
+   */
+  setVisibleBackgroundSuppressed(suppressed: boolean): void {
+    if (this.visibleBackgroundSuppressed === suppressed) return
+    this.visibleBackgroundSuppressed = suppressed
+    this.redrawPreviewBase()
+    this.resetReplaySurface()
+  }
+
   /** Change background mode and replay strokes */
   setBgMode(mode: BgMode): void {
     this.requestRender()
@@ -693,7 +716,7 @@ export class EfxPaintEngine {
     this.redrawPreviewBase()
     // Clear dry canvas first — drawImage of transparent bg doesn't erase existing pixels
     this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-    this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+    if (!this.visibleBackgroundSuppressed) this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
     clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
     this.fluid.u.fill(0); this.fluid.v.fill(0)
     this.fluid.u0.fill(0); this.fluid.v0.fill(0)
@@ -713,7 +736,7 @@ export class EfxPaintEngine {
       this.bgCtx.drawImage(image, 0, 0, this.width, this.height)
       this.bgData = this.bgCtx.getImageData(0, 0, this.width, this.height)
       this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-      this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+      if (!this.visibleBackgroundSuppressed) this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
       clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
       this.fluid.u.fill(0); this.fluid.v.fill(0)
       this.fluid.u0.fill(0); this.fluid.v0.fill(0)
@@ -2124,7 +2147,7 @@ export class EfxPaintEngine {
   private redrawPreviewBase(): void {
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     if (!this.previewBaseEnabled || !this.previewBaseImage) return
-    this.dualCanvas.previewBaseCtx.drawImage(this.bgCanvas, 0, 0)
+    if (!this.visibleBackgroundSuppressed) this.dualCanvas.previewBaseCtx.drawImage(this.bgCanvas, 0, 0)
     this.dualCanvas.previewBaseCtx.drawImage(this.previewBaseImage, 0, 0, this.width, this.height)
   }
 
@@ -2133,7 +2156,7 @@ export class EfxPaintEngine {
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
     this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-    if (!this.previewBaseEnabled) {
+    if (!this.previewBaseEnabled && !this.visibleBackgroundSuppressed) {
       if (usePutImageData) {
         const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
         this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
@@ -2703,7 +2726,7 @@ export class EfxPaintEngine {
     // Redraw background with loaded textures
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
-    this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+    if (!this.visibleBackgroundSuppressed) this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
   }
 
 }

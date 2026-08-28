@@ -11,7 +11,7 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPaintCompositeCache';
-import { clearProjectPaperRasterCache } from '../lib/projectPaperRaster';
+import { resetProjectPaperRasterForTests } from '../lib/projectPaperRaster';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -1753,7 +1753,7 @@ describe('physicPaintStore', () => {
       resetEfxPaintStore();
       DeferredFlatTestImage.instances = [];
       createdCanvases = [];
-      clearProjectPaperRasterCache();
+      resetProjectPaperRasterForTests();
       _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
       vi.stubGlobal('document', {
         createElement: (tag: string) => {

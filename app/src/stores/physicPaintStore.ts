@@ -3,6 +3,7 @@ import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRender
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
+import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
@@ -852,6 +853,26 @@ function _resolveDocumentFondInstruction(
 }
 
 /**
+ * Fond paper textures load asynchronously; while loading the fond draws the
+ * deterministic color-fill fallback. One module-level resolve subscription per
+ * texture watches the arrival: the flattened memos clear (the fond is not a
+ * flattened-key term) and the paint clock bumps so narrow leaf subscribers
+ * (the program monitor) re-query and every surface recomposites with the real
+ * texture. Resolve-only delivery — the query path never pre-warms the cache,
+ * so the fallback draw is deterministic while the texture is unresolved.
+ */
+const _fondTextureSubscriptions = new Set<string>();
+function _ensureFondTextureSubscription(paperTexture: string | undefined): void {
+  if (!paperTexture || isProjectPaperTextureResolved(paperTexture)) return;
+  if (_fondTextureSubscriptions.has(paperTexture)) return;
+  _fondTextureSubscriptions.add(paperTexture);
+  subscribeProjectPaperTextureResolve(paperTexture, () => {
+    _flattenedMemo.clear();
+    physicPaintVersion.value++;
+  });
+}
+
+/**
  * 48-03 D-10 content precedence for ONE track (the D-10 seam the compositor's
  * resolveTrackContent port wires): roto tracks resolve via
  * getRotoPhysicalRenderSource with the loop-placeholder/null → { kind:'missing' }
@@ -1441,12 +1462,19 @@ function _resolveFlattenedFrame(
     : null;
   let raster = result.raster as HTMLCanvasElement;
   if (fondInstruction) {
+    // The fond pixel-matches the engine's own paper draw (white + tiled
+    // texture at 0.18) when the texture is resolved; while the texture loads
+    // the deterministic color-fill fallback draws instead, and the texture
+    // subscription below rotates the flattened memo + bumps the paint clock
+    // so every surface recomposites with the real texture on resolve.
+    _ensureFondTextureSubscription(fondInstruction.paperTexture);
+    const fondPaperCanvas = getProjectPaperCanvas(fondInstruction.paperTexture, size.width, size.height);
     const fondCanvas = document.createElement('canvas');
     fondCanvas.width = size.width;
     fondCanvas.height = size.height;
     const fondCtx = fondCanvas.getContext('2d');
     if (!fondCtx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
-    drawMissingRotoBackground(fondCtx, fondInstruction, size.width, size.height, null, null);
+    drawMissingRotoBackground(fondCtx, fondInstruction, size.width, size.height, null, fondPaperCanvas);
     fondCtx.drawImage(result.raster, 0, 0);
     raster = fondCanvas;
   }

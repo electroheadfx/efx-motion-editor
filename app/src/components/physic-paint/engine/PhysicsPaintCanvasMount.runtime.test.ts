@@ -155,7 +155,7 @@ describe('PhysicsPaintCanvasMount directly executed hook behavior', () => {
       expect(rerendered.child.props[name], name).toBe(mounted.child.props[name]);
     }
 
-    const engine = { setTool: vi.fn() } as unknown as EfxPaintEngine;
+    const engine = { setTool: vi.fn(), setVisibleBackgroundSuppressed: vi.fn() } as unknown as EfxPaintEngine;
     const penHandler = vi.fn() as unknown as NativePenInputHandler;
     const mutation = {} as CompletedPaintMutation;
     const sample = {} as PaintPerformanceSample;
@@ -167,6 +167,9 @@ describe('PhysicsPaintCanvasMount directly executed hook behavior', () => {
 
     expect(mounted.child.props.getStrokeMetadata()).toEqual({ playFrame: 22 });
     expect(engine.setTool).toHaveBeenCalledWith('paint');
+    // 48-06: the program monitor owns the visible background — the engine's
+    // canvases stay transparent so the flattened composite shows through.
+    expect(engine.setVisibleBackgroundSuppressed).toHaveBeenCalledWith(true);
     expect(latest.onEngineReady).toHaveBeenCalledWith(engine);
     expect(latest.onCanvasMounted).toHaveBeenCalledWith(true);
     expect(latest.onNativePenInputReady).toHaveBeenCalledWith(penHandler);

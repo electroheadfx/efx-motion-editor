@@ -66,6 +66,10 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   } as JSX.CSSProperties;
   const handleEngineReady = useCallback((engine: EfxPaintEngine) => {
     engine.setTool('paint');
+    // 48-06: the program monitor owns the visible background (the flattened
+    // composite carries the paper fond) — the engine's canvases stay
+    // transparent so the composite stacked beneath shows through.
+    engine.setVisibleBackgroundSuppressed(true);
     setMountError(null);
     onCanvasMountedRef.current(true);
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');

@@ -24,7 +24,7 @@ vi.mock('../stores/projectStore', () => ({
 
 import { PreviewRenderer, blendModeToCompositeOp, resolvePhysicPaintTrackVisibility } from './previewRenderer';
 import { renderGlobalFrame } from './exportRenderer';
-import { clearProjectPaperRasterCache } from './projectPaperRaster';
+import { resetProjectPaperRasterForTests } from './projectPaperRaster';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -212,7 +212,7 @@ beforeEach(() => {
   physicPaintStore.reset();
   resetEfxPaintStore();
   registerDocument(makeTrackDocument('roto-layer'));
-  clearProjectPaperRasterCache();
+  resetProjectPaperRasterForTests();
   offscreenOperations = [];
   vi.stubGlobal('window', { devicePixelRatio: 1 });
   vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas(offscreenOperations) : {} });
