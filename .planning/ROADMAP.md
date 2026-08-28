@@ -322,7 +322,26 @@ Plans:
   4. Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes.
   5. The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend).
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 48-01-PLAN.md — tracer: pure compositor core (hide/solo truth table, opacity-before-blend pass, straight-alpha result, missing report) + derived flattened cache key/memo (TDD)
+- [ ] 48-02-PLAN.md — Background FrameLoopClip → Loop Clip resolver adapter + per-frame content/gap/missing resolution (TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 48-03-PLAN.md — store getFlattenedFrame delivery + previewRenderer flattened seam + export preflight generalized to participating tracks (TDD)
+- [ ] 48-04-PLAN.md — Background step in the composite pass + per-track raster cache + CMP-04 invalidation matrix (TDD)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 48-05-PLAN.md — Studio program monitor (composite base + playback) + onion ghosts over composite + missing-source status capsule
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 48-06-PLAN.md — pixel acceptance matrix contract suite + blocking native UAT (parity, missing-source surface, playback smoothness)
 
 ### Phase 49: Fixed Background Track and Imported Loop Clips
 
@@ -412,7 +431,7 @@ Plans:
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
-| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/TBD | Not started | - |
+| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 0/6 | Planned | - |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
