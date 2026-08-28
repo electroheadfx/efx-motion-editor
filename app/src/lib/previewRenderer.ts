@@ -1,4 +1,4 @@
-import type {Layer, BlendMode} from '../types/layer';
+import type {Layer} from '../types/layer';
 import {isGeneratorLayer, isAdjustmentLayer, isFxLayer} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
 import type {GradientData, Sequence} from '../types/sequence';
@@ -15,6 +15,7 @@ import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
+import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
 import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
 import type {PhysicPaintRotoPhysicalRenderSource} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {projectStore} from '../stores/projectStore';
@@ -71,24 +72,13 @@ export function createCanvasGradient(
 }
 
 /**
- * Map our BlendMode enum to Canvas 2D globalCompositeOperation values.
+ * 48-03: the blend map lives in the pure compositor layer (single source of
+ * truth, Pitfall 8 — the store's compositeOp port and this renderer import the
+ * SAME function). This re-export preserves the plan's export surface
+ * ("blendModeToCompositeOp is exported from previewRenderer.ts") without a
+ * second switch.
  */
-function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
-  switch (mode) {
-    case 'normal':
-      return 'source-over';
-    case 'screen':
-      return 'screen';
-    case 'multiply':
-      return 'multiply';
-    case 'overlay':
-      return 'overlay';
-    case 'add':
-      return 'lighter';
-    default:
-      return 'source-over';
-  }
-}
+export {blendModeToCompositeOp};
 
 /** 46-01: runtime state is per-track; preview resolves the ACTIVE track. */
 function getActiveTrackId(layerId: string): string {

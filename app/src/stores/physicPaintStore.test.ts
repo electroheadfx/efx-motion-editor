@@ -1612,7 +1612,8 @@ describe('physicPaintStore', () => {
       | { type: 'drawImage'; source: string; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation };
 
     class FlatRecordingContext {
-      readonly ops: FlatOp[] = [];
+      readonly ops: FlatOp[];
+      constructor(ops: FlatOp[] = []) { this.ops = ops; }
       fillStyle: string | CanvasGradient | CanvasPattern = '#000000';
       globalAlpha = 1;
       globalCompositeOperation: GlobalCompositeOperation = 'source-over';
@@ -1632,8 +1633,13 @@ describe('physicPaintStore', () => {
       }
       clearRect(): void { this.ops.push({ type: 'clearRect' }); }
       fillRect(): void { this.ops.push({ type: 'fillRect', fillStyle: String(this.fillStyle), globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation }); }
-      drawImage(source?: CanvasImageSource, ..._args: number[]): void {
-        this.ops.push({ type: 'drawImage', source: source instanceof FlatTestImage ? source.src : 'canvas', globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
+      drawImage(source?: unknown, ..._args: number[]): void {
+        // Label any src-bearing image (FlatTestImage OR DeferredFlatTestImage)
+        // by its src; canvases and other sources log as 'canvas'.
+        const sourceLabel = source !== null && typeof source === 'object' && 'src' in source
+          ? String((source as { src: unknown }).src)
+          : 'canvas';
+        this.ops.push({ type: 'drawImage', source: sourceLabel, globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
       }
       createPattern(): CanvasPattern { return 'pattern' as unknown as CanvasPattern; }
     }
@@ -1702,10 +1708,15 @@ describe('physicPaintStore', () => {
 
     function flatDocument(tracks: InternalPaintTrack[], background?: Partial<EfxPaintDocument['background']>): EfxPaintDocument {
       const base = createEfxPaintDocument(FLAT_LAYER);
+      // The document model requires activeTrackId to match a track, so a
+      // "background-only" document carries a hidden ghost track (hidden →
+      // non-participating: it never draws and never appears in the missing
+      // report or the flattened key).
+      const effectiveTracks = tracks.length > 0 ? tracks : [flatTrack('ghost-track', { visible: false })];
       return {
         ...base,
-        activeTrackId: tracks[0]?.id ?? base.activeTrackId,
-        tracks,
+        activeTrackId: effectiveTracks[0]?.id ?? base.activeTrackId,
+        tracks: effectiveTracks,
         background: { ...base.background, ...background },
       };
     }
@@ -1820,9 +1831,11 @@ describe('physicPaintStore', () => {
       const secondDraw = log.indexOf('draw(', firstDraw + 1);
       expect(firstDraw).toBeGreaterThan(-1);
       expect(secondDraw).toBeGreaterThan(firstDraw);
-      expect(log.slice(firstDraw, firstDraw + 40)).toContain('source-over');
-      expect(log.slice(secondDraw, secondDraw + 40)).toContain('multiply');
-      expect(log.slice(secondDraw, secondDraw + 40)).toContain('0.5');
+      // Window sized for the full `draw(<34-char dataUrl>,<alpha>,<op>)` record
+      // (a 40-char window cannot fit the ops after the dataUrl).
+      expect(log.slice(firstDraw, firstDraw + 60)).toContain('source-over');
+      expect(log.slice(secondDraw, secondDraw + 60)).toContain('multiply');
+      expect(log.slice(secondDraw, secondDraw + 60)).toContain('0.5');
 
       const expectedKey = deriveEfxPaintFlattenedCacheKey({
         document: getEfxPaintDocument(FLAT_LAYER)!,
@@ -1838,7 +1851,9 @@ describe('physicPaintStore', () => {
 
     it('RED 4 hidden track excluded: hiding track B removes its pixels and its content term from the key', () => {
       const frameA = makeFrame(0, 5).dataUrl;
-      const frameB = makeFrame(0, 5).dataUrl;
+      // Distinct dataUrl from track A so the hidden-track assertion can
+      // distinguish whose pixels remain in the flattened log.
+      const frameB = makeFrame(1, 5).dataUrl;
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
         flatTrack('track-b', { order: 1 }),
@@ -1937,7 +1952,17 @@ describe('physicPaintStore', () => {
       if (instruction.kind !== 'background-only') throw new Error('expected a background-only instruction');
       const sourceImg = new FlatTestImage();
       sourceImg.src = frameDataUrl;
-      drawRotoFrameComposite(refCtx, instruction, 4, 3, null, null, sourceImg);
+      // The recording context / test image are structurally not the DOM types
+      // drawRotoFrameComposite declares — cast for the parity harness.
+      drawRotoFrameComposite(
+        refCtx as unknown as CanvasRenderingContext2D,
+        instruction,
+        4,
+        3,
+        null,
+        null,
+        sourceImg as unknown as CanvasImageSource,
+      );
 
       expect(perTrackCanvas.toDataURL()).toBe(reference.toDataURL());
       // The flattened raster consumed the per-track composite as a single image.

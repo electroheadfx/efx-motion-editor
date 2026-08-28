@@ -2,8 +2,32 @@ import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
-import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
+import { drawRotoFrameComposite, resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
+// 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
+// pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
+// efxPaintStore document registry. The efxPaintStore ↔ physicPaintStore import
+// cycle is safe: efxPaintStore references physicPaintStore ONLY inside function
+// bodies (never in its module body), so no TDZ `let` is written mid-evaluation.
+import { getDocument as getEfxPaintDocument } from './efxPaintStore';
+import {
+  blendModeToCompositeOp,
+  compositeFrame,
+  type EfxPaintCompositorPorts,
+  type EfxPaintMissingSourceEntry,
+  type EfxPaintTrackContentResolution,
+} from '../efx-paint/compositor/efxPaintCompositor';
+import {
+  createKeyedMemo,
+  deriveEfxPaintFlattenedCacheKey,
+  deriveEfxPaintTrackContentKey,
+  type EfxPaintKeyedMemo,
+} from '../efx-paint/compositor/efxPaintCompositeCache';
+import {
+  deriveEfxPaintBackgroundResolution,
+  resolveEfxPaintBackgroundFrame,
+} from '../efx-paint/compositor/efxPaintBackgroundResolution';
+import { backgroundParticipates, participatingPaintTracks } from '../efx-paint/compositor/efxPaintHideSolo';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
@@ -370,6 +394,61 @@ export function resolveContentToken(contentRevision: string | null | undefined):
   return token;
 }
 
+// --- 48-03 flattened compositor delivery (D-11 / CMP-01) -------------------
+// The store owns the production ports compositeFrame consumes (D-08/CMP-04
+// memoization, D-07 per-track raster memos, D-10 content precedence, D-03
+// background adapter, 48-04 source-image decode) plus the size authority.
+// Open Question 1 resolution: the parent project canvas dims are injected via
+// `_setPhysicPaintCompositorSizeProvider` (wired from projectStore) because the
+// store cannot import projectStore without an ESM module-body cycle; the
+// fallback is the 1920×1080 project default.
+const FALLBACK_COMPOSITE_SIZE = Object.freeze({ width: 1920, height: 1080 });
+let _compositorSizeProvider: (() => { width: number; height: number }) | null = null;
+export function _setPhysicPaintCompositorSizeProvider(cb: (() => { width: number; height: number }) | null): void {
+  _compositorSizeProvider = cb;
+}
+
+/** Per-layer flattened memo (D-08/CMP-04) + per-track raster memo (D-07). */
+const _flattenedMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintFlattenedFrameRecord>>();
+const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>>();
+
+/** Store-side dataUrl decode cache (mirrors previewRenderer's imageCache idiom). */
+const _compositorImageCache = new Map<string, HTMLImageElement>();
+const _compositorImageLoading = new Set<string>();
+const _compositorImageFailed = new Set<string>();
+
+/**
+ * Background sourceRef → dataUrl registry (48-04 port wiring; Phase 49's import
+ * UI is the production writer). Registering bytes for a previously-missing ref
+ * clears the flattened memo (T-48-07) — the flattened key's clip terms don't
+ * cover runtime bytes, so a stale record must not survive a bytes arrival.
+ */
+const _backgroundSourceImages = new Map<string, string>();
+export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string): void {
+  if (_backgroundSourceImages.get(sourceRef) === dataUrl) return;
+  _backgroundSourceImages.set(sourceRef, dataUrl);
+  _flattenedMemo.clear();
+}
+
+/**
+ * Background resolution capacity bound. The plan's "parent sequence frame
+ * count" is not reachable from this store without an ESM cycle, so the store's
+ * own universal parent-end bound (PHYSIC_PAINT_MAX_APPLY_FRAMES, the same
+ * D-25/Q4 fold getRotoPhysicalRenderSource uses) is used instead — a larger
+ * bound is always safe for per-frame resolution, since the resolver computes
+ * ranges once and resolves per queried frame.
+ */
+const BACKGROUND_RESOLUTION_CAPACITY = PHYSIC_PAINT_MAX_APPLY_FRAMES;
+
+/** 48-03 D-11: the flattened straight-alpha delivery record (PreviewPhysicPaintFrameSource-compatible + missing). */
+export interface EfxPaintFlattenedFrameRecord {
+  readonly layerId: string;
+  readonly frame: number;
+  readonly cacheKey: string;
+  readonly renderedFrame: PhysicPaintRenderedFrame;
+  readonly missing: readonly EfxPaintMissingSourceEntry[];
+}
+
 function _notifyRotoPhysicalOperationLeaseChange(): void {
   physicPaintRotoPhysicalOperationLeaseVersion.value += 1;
 }
@@ -580,6 +659,11 @@ function _clearLayerState(layerId: string): boolean {
   // Derived structural memo entries — pruned with the layer's source state
   // so a torn-down layer never leaves its cached projections resident.
   _deleteLayerRotoPhysicalStructuralCache(layerId);
+  // 48-03: the flattened compositor memos are layer-scoped — torn down with
+  // the layer's source state so a removed layer never leaves cached rasters
+  // resident (and a re-registered layer id can never be served stale output).
+  _flattenedMemo.delete(layerId);
+  _trackRasterMemo.delete(layerId);
   changed = _frames.delete(layerId) || changed;
   changed = _rotoBackgroundMetadata.delete(layerId) || changed;
   changed = _rotoCacheMetadata.delete(layerId) || changed;
@@ -684,6 +768,134 @@ function _getOrCreateLayerTrackMap<const T>(outer: Map<string, Map<string, T>>, 
     outer.set(layerId, layerTracks);
   }
   return layerTracks;
+}
+
+/** Create-or-fetch a layer's keyed compositor memo (48-03 D-08/D-07). */
+function _getOrCreateCompositorMemo<K, V>(outer: Map<string, EfxPaintKeyedMemo<K, V>>, layerId: string): EfxPaintKeyedMemo<K, V> {
+  let memo = outer.get(layerId);
+  if (!memo) {
+    memo = createKeyedMemo<K, V>();
+    outer.set(layerId, memo);
+  }
+  return memo;
+}
+
+/**
+ * 48-03 store-side decode cache (mirrors previewRenderer's imageCache idiom):
+ * dataUrl → HTMLImageElement, with loading/failed sets and an onload/onerror
+ * that bump the existing physicPaintVersion clock (never a new subscription
+ * surface, MEMORY: always bump AND subscribe). Returns null while pending or
+ * failed; re-checks the cache after setting src so synchronous decodes (test
+ * stubs / hot decodes) resolve in the same tick.
+ */
+function _compositorDecode(dataUrl: string): HTMLImageElement | null {
+  const cached = _compositorImageCache.get(dataUrl);
+  if (cached) return cached;
+  if (_compositorImageLoading.has(dataUrl) || _compositorImageFailed.has(dataUrl)) return null;
+  const image = new Image();
+  _compositorImageLoading.add(dataUrl);
+  image.onload = () => {
+    _compositorImageLoading.delete(dataUrl);
+    _compositorImageCache.set(dataUrl, image);
+    physicPaintVersion.value++;
+  };
+  image.onerror = () => {
+    _compositorImageLoading.delete(dataUrl);
+    _compositorImageFailed.add(dataUrl);
+    physicPaintVersion.value++;
+  };
+  image.src = dataUrl;
+  if (_compositorImageCache.has(dataUrl)) {
+    _compositorImageLoading.delete(dataUrl);
+    return _compositorImageCache.get(dataUrl)!;
+  }
+  return null;
+}
+
+/**
+ * One track's content term for the flattened key (48-03): the roto track's
+ * structural contentRevision, or the cached-frame dataUrl-slice idiom for
+ * non-roto tracks (previewRenderer.ts:175). Null when the track has no content
+ * at this frame — its term is then absent from the key.
+ */
+function _trackContentRevision(layerId: string, trackId: string, frame: number): string | null {
+  const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+  if (structural) return structural.contentRevision;
+  const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
+  if (!renderedFrame) return null;
+  return `${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
+}
+
+/**
+ * 48-03 per-track paper-background composite (drawRotoFrameComposite semantics
+ * moved per-track, Test 8). Resolves the paper instruction exactly like the
+ * renderer's resolvePhysicalRotoFrameBackgroundDrawForLayer (frame 0, paper
+ * metadata, no realKeyRecords) and composites paper + frame onto a fresh
+ * canvas. paperCanvas is deliberately null — the store's flattened path uses
+ * the same deterministic color-fill fallback drawRotoFrameComposite produces
+ * while a paper texture is loading (the 48-03 RED Test 8 reference pins
+ * `drawRotoFrameComposite(ctx, instruction, w, h, null, null, source)`).
+ */
+function _composeTrackPaperBackground(
+  layerId: string,
+  trackId: string,
+  width: number,
+  height: number,
+  paintSource: CanvasImageSource,
+): HTMLCanvasElement | null {
+  const metadata = _rotoBackgroundMetadata.get(layerId)?.get(trackId);
+  if (!metadata || metadata.background === 'transparent') return null;
+  const instruction = resolveMissingRotoFrameDraw(layerId, 0, { backgroundState: { mode: 'paper', metadata } });
+  if (instruction.kind !== 'background-only') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  drawRotoFrameComposite(ctx, instruction, width, height, null, null, paintSource);
+  return canvas;
+}
+
+/**
+ * 48-03 D-10 content precedence for ONE track (the D-10 seam the compositor's
+ * resolveTrackContent port wires): roto tracks resolve via
+ * getRotoPhysicalRenderSource with the loop-placeholder/null → { kind:'missing' }
+ * mapping (D-09), then paper-composite per the track's OWN _rotoBackgroundMetadata;
+ * non-roto tracks resolve the cached frame via getFrame. Returns null ONLY when
+ * a decode is pending this tick — the whole flattened call must return null
+ * (Tests 7/10), never a fabricated raster.
+ */
+function _preResolveTrackContent(
+  layerId: string,
+  trackId: string,
+  frame: number,
+  width: number,
+  height: number,
+): EfxPaintTrackContentResolution | null {
+  const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+  if (structural) {
+    const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, frame);
+    if (!source) return { kind: 'missing', missingRefs: [] };
+    if (source.kind === 'loop-placeholder') {
+      return { kind: 'missing', missingRefs: source.missingSourceKeyIds ?? source.sourceKeyIds ?? [] };
+    }
+    const image = _compositorDecode(source.renderedFrame.dataUrl);
+    if (!image) return null;
+    const paper = _composeTrackPaperBackground(layerId, trackId, width, height, image);
+    return { kind: 'content', raster: paper ?? image };
+  }
+  const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
+  if (!renderedFrame) return { kind: 'missing', missingRefs: [] };
+  const image = _compositorDecode(renderedFrame.dataUrl);
+  if (!image) return null;
+  return { kind: 'content', raster: image };
+}
+
+/** 48-03 store-side implementation of the 48-04 resolveBackgroundSourceImage port. */
+function _resolveBackgroundSourceImage(sourceRef: string): HTMLImageElement | null {
+  const dataUrl = _backgroundSourceImages.get(sourceRef);
+  if (!dataUrl) return null;
+  return _compositorDecode(dataUrl);
 }
 
 function _getCombinedRotoMetadata(layerId: string, trackId: string): PhysicPaintRotoCacheFrame[] {
@@ -1134,6 +1346,94 @@ export const physicPaintStore = {
     return _frames.get(layerId)?.get(trackId)?.get(frame) ?? null;
   },
 
+  /**
+   * 48-03 D-11/CMP-01: one flattened straight-alpha raster per (layerId, frame)
+   * — the ONLY content seam the main renderer calls for physic-paint layers
+   * (Task 2). Guard-first; on success the flattened memo (D-08/CMP-04) is
+   * consulted by the derived key (config + participating-only track content +
+   * background revision + sorted clip terms + frame); a hit returns the frozen
+   * cached record with zero recompute. On miss, every participating track AND
+   * the background are pre-resolved BEFORE the flattened canvas is allocated:
+   * any pending decode returns null this tick (Tests 7/10). The record carries
+   * the missing-source report (D-09) — never placeholder pixels.
+   */
+  getFlattenedFrame(layerId: string, frame: number): EfxPaintFlattenedFrameRecord | null {
+    if (!Number.isInteger(frame) || frame < 0) return null;
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return null;
+    const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+
+    const trackContentRevisions = new Map<string, string>();
+    for (const track of participatingPaintTracks(efxDocument)) {
+      const revision = _trackContentRevision(layerId, track.id, frame);
+      if (revision !== null) trackContentRevisions.set(track.id, revision);
+    }
+    const backgroundClipRevisions = efxDocument.background.clips.map((clip) => `${clip.id}:${clip.revision}`);
+    const flattenedKey = deriveEfxPaintFlattenedCacheKey({ document: efxDocument, trackContentRevisions, backgroundClipRevisions, frame });
+
+    const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
+    const cached = flattenedMemo.get(flattenedKey);
+    if (cached) return cached;
+
+    const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
+    const preResolved = new Map<string, EfxPaintTrackContentResolution>();
+    for (const track of participatingPaintTracks(efxDocument)) {
+      const resolution = _preResolveTrackContent(layerId, track.id, frame, size.width, size.height);
+      if (resolution === null) return null;
+      preResolved.set(track.id, resolution);
+      const revision = trackContentRevisions.get(track.id);
+      if (revision !== undefined) {
+        trackRasterMemo.set(deriveEfxPaintTrackContentKey(track.id, revision, frame), resolution);
+      }
+    }
+
+    const knownSources = new Set(_backgroundSourceImages.keys());
+    let backgroundContext: PhysicPaintRotoLoopResolutionContext | null = null;
+    if (backgroundParticipates(efxDocument)) {
+      backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
+      const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
+      if (backgroundResolution.kind === 'content' && _resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
+        return null;
+      }
+    }
+
+    const ports: EfxPaintCompositorPorts = {
+      createCanvas: (width, height) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('getFlattenedFrame: 2d rendering context unavailable');
+        return { canvas, ctx };
+      },
+      resolveTrackContent: (trackId) => preResolved.get(trackId) ?? { kind: 'missing', missingRefs: [] },
+      resolveBackgroundFrame: (targetFrame) => resolveEfxPaintBackgroundFrame(backgroundContext!, targetFrame, knownSources),
+      resolveBackgroundSourceImage: (sourceRef) => _resolveBackgroundSourceImage(sourceRef),
+      compositeOp: blendModeToCompositeOp,
+      trackRasterMemo,
+      trackContentRevisions,
+      backgroundClipRevisions,
+    };
+
+    const result = compositeFrame(efxDocument, frame, size, ports);
+    const dataUrl = (result.raster as HTMLCanvasElement).toDataURL();
+    const record: EfxPaintFlattenedFrameRecord = Object.freeze({
+      layerId,
+      frame,
+      cacheKey: flattenedKey,
+      renderedFrame: Object.freeze({
+        frameIndex: frame,
+        appFrame: frame,
+        dataUrl,
+        width: size.width,
+        height: size.height,
+      }),
+      missing: result.missing,
+    });
+    flattenedMemo.set(flattenedKey, record);
+    return record;
+  },
+
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {
     const displayFrame = _getRotoDisplayFrame(layerId, trackId, frame);
     if (!displayFrame) return null;
@@ -1163,6 +1463,12 @@ export const physicPaintStore = {
       && current.grainStrength === metadata.grainStrength
       && current.color === metadata.color) return;
     _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...metadata });
+    // 48-03 T-48-07: paper metadata is NOT part of the flattened key (the key's
+    // config/content/clip terms never cover it), so a paper change must rotate
+    // the per-track raster AND the flattened memo — a stale paper composite must
+    // not survive a settings update.
+    _flattenedMemo.delete(layerId);
+    _trackRasterMemo.delete(layerId);
     bumpTrackRevision(layerId, trackId);
   },
 
@@ -1623,7 +1929,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -1648,6 +1954,14 @@ export const physicPaintStore = {
     _rotoPhysicalStructuralCache.clear();
     _rotoPhysicalContentTokens.clear();
     _rotoPhysicalContentTokenCounter = 0;
+    // 48-03: the flattened compositor state is session runtime — wiped with the
+    // rest of the store (decode caches clear here only, per the plan).
+    _flattenedMemo.clear();
+    _trackRasterMemo.clear();
+    _compositorImageCache.clear();
+    _compositorImageLoading.clear();
+    _compositorImageFailed.clear();
+    _backgroundSourceImages.clear();
     trackRevisions.clear();
     _notifyVisualChange();
   },

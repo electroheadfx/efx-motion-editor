@@ -23,7 +23,7 @@ import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
 import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
-import {physicPaintStore, _setPhysicPaintMarkDirtyCallback} from './physicPaintStore';
+import {physicPaintStore, _setPhysicPaintMarkDirtyCallback, _setPhysicPaintCompositorSizeProvider} from './physicPaintStore';
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
@@ -941,6 +941,12 @@ _setPaintMarkDirtyCallback(() => projectStore.markDirty());
 // Wire physicPaintStore's markDirty callback to projectStore
 // This ensures auto-save notices rendered physics paint output changes
 _setPhysicPaintMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire physicPaintStore's flattened-compositor size provider to the parent
+// project canvas dims (48-03 Open Question 1 — the parent project canvas is
+// the size authority for getFlattenedFrame; injected here because the store
+// cannot import projectStore without an ESM module-body cycle).
+_setPhysicPaintCompositorSizeProvider(() => ({width: width.value, height: height.value}));
 
 // Wire efxPaintStore's markDirty callback to projectStore
 // This ensures auto-save notices v1.0 document mutations

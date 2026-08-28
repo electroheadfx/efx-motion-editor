@@ -44,6 +44,30 @@ import {
 import type { EfxPaintKeyedMemo } from './efxPaintCompositeCache';
 import { backgroundParticipates, participatingPaintTracks } from './efxPaintHideSolo';
 
+/**
+ * Map the main-editor BlendMode enum to Canvas 2D globalCompositeOperation
+ * values (48-03 relocation: this single source of truth moved here from
+ * previewRenderer.ts:76-91 so the pure compositor layer owns the mapping and
+ * the store's compositeOp port imports it — the switch is NEVER duplicated,
+ * Pitfall 8, grep "case 'multiply'" finds exactly one mapping).
+ */
+export function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
+  switch (mode) {
+    case 'normal':
+      return 'source-over';
+    case 'screen':
+      return 'screen';
+    case 'multiply':
+      return 'multiply';
+    case 'overlay':
+      return 'overlay';
+    case 'add':
+      return 'lighter';
+    default:
+      return 'source-over';
+  }
+}
+
 /** Per-track content resolution surfaced by the injected port (D-10 seam). */
 export type EfxPaintTrackContentResolution =
   | { readonly kind: 'content'; readonly raster: CanvasImageSource }
