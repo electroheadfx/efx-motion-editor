@@ -98,6 +98,11 @@ class TestRaster {
   constructor(public readonly id: string) {}
 }
 
+/** A TestRaster widened to the CanvasImageSource port type (cast is test-only). */
+function raster(id: string): CanvasImageSource {
+  return new TestRaster(id) as unknown as CanvasImageSource;
+}
+
 function makeHarness(options: {
   content?: Record<string, EfxPaintTrackContentResolution>;
   background?: 'content' | 'gap' | 'missing';
@@ -106,14 +111,14 @@ function makeHarness(options: {
   const content = options.content ?? {};
   const backgroundMode = options.background ?? 'gap';
   const ports: EfxPaintCompositorPorts = {
-    createCanvas: (width, height) => {
-      const canvas = new TestRaster('canvas') as unknown as CanvasImageSource;
+    createCanvas: (_width, _height) => {
+      const canvas = raster('canvas');
       const ctx = new RecordingCanvasContext(ops) as unknown as CanvasRenderingContext2D;
       return { canvas, ctx };
     },
-    resolveTrackContent: (trackId) => content[trackId] ?? { kind: 'content', raster: new TestRaster(trackId) },
+    resolveTrackContent: (trackId) => content[trackId] ?? { kind: 'content', raster: raster(trackId) },
     resolveBackgroundFrame: () => {
-      if (backgroundMode === 'content') return { kind: 'content', raster: new TestRaster('background') };
+      if (backgroundMode === 'content') return { kind: 'content', raster: raster('background') };
       if (backgroundMode === 'missing') return { kind: 'missing', missingRefs: ['bg-ref'] };
       return { kind: 'gap' };
     },
@@ -155,8 +160,8 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
   it('applies opacity before blend per track: save → alpha → compositeOp → drawImage → restore, lower track first (D-01)', () => {
     const { ops, ports } = makeHarness({
       content: {
-        'track-a': { kind: 'content', raster: new TestRaster('track-a') },
-        'track-b': { kind: 'content', raster: new TestRaster('track-b') },
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
       },
     });
     const doc = makeDocument([
@@ -183,7 +188,7 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
   it('a missing source contributes transparent pixels AND a missing[] entry — zero draw ops, never a placeholder fill (D-09)', () => {
     const { ops, ports } = makeHarness({
       content: {
-        'track-a': { kind: 'content', raster: new TestRaster('track-a') },
+        'track-a': { kind: 'content', raster: raster('track-a') },
         'track-b': { kind: 'missing', missingRefs: ['ref-1'] },
       },
     });
@@ -219,7 +224,7 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
 
   it('solid fallback fills the canvas before any track draw (spec step 1)', () => {
     const { ops, ports } = makeHarness({
-      content: { 'track-a': { kind: 'content', raster: new TestRaster('track-a') } },
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
     });
     const doc = makeDocument(
       [makeTrack('track-a', { order: 0 })],
