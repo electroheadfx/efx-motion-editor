@@ -2,7 +2,7 @@ import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
-import { drawRotoFrameComposite, resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
+import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
@@ -28,6 +28,7 @@ import {
   resolveEfxPaintBackgroundFrame,
 } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import { backgroundParticipates, participatingPaintTracks } from '../efx-paint/compositor/efxPaintHideSolo';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
@@ -827,50 +828,44 @@ function _trackContentRevision(layerId: string, trackId: string, frame: number):
 }
 
 /**
- * 48-03 per-track paper-background composite (drawRotoFrameComposite semantics
- * moved per-track, Test 8). Resolves the paper instruction exactly like the
- * renderer's resolvePhysicalRotoFrameBackgroundDrawForLayer (frame 0, paper
- * metadata, no realKeyRecords) and composites paper + frame onto a fresh
- * canvas. paperCanvas is deliberately null — the store's flattened path uses
- * the same deterministic color-fill fallback drawRotoFrameComposite produces
- * while a paper texture is loading (the 48-03 RED Test 8 reference pins
- * `drawRotoFrameComposite(ctx, instruction, w, h, null, null, source)`).
+ * v1.0 rendering law (locked): the paper fond is NOT track content. Per-track
+ * rasters stay transparent where unpainted so upper tracks composite normally
+ * (opacity+blend) instead of masking lower ones; the paper is drawn ONCE
+ * beneath the flattened composite as the document fond. The fond metadata is
+ * the lowest-order track's non-transparent paper setting — stable across
+ * active-track switches, hide/solo, and the monitor's active-track exclusion.
+ * The texture-less deterministic draw (color fill + grain) matches the 48-03
+ * flattened-path reference (paperCanvas deliberately null).
  */
-function _composeTrackPaperBackground(
+function _resolveDocumentFondInstruction(
   layerId: string,
-  trackId: string,
-  width: number,
-  height: number,
-  paintSource: CanvasImageSource,
-): HTMLCanvasElement | null {
-  const metadata = _rotoBackgroundMetadata.get(layerId)?.get(trackId);
-  if (!metadata || metadata.background === 'transparent') return null;
-  const instruction = resolveMissingRotoFrameDraw(layerId, 0, { backgroundState: { mode: 'paper', metadata } });
-  if (instruction.kind !== 'background-only') return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  drawRotoFrameComposite(ctx, instruction, width, height, null, null, paintSource);
-  return canvas;
+  efxDocument: EfxPaintDocument,
+): Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }> | null {
+  const orderedTracks = [...efxDocument.tracks].sort((left, right) => left.order - right.order);
+  for (const track of orderedTracks) {
+    const metadata = _rotoBackgroundMetadata.get(layerId)?.get(track.id);
+    if (!metadata || metadata.background === 'transparent') continue;
+    const instruction = resolveMissingRotoFrameDraw(layerId, 0, { backgroundState: { mode: 'paper', metadata } });
+    if (instruction.kind === 'background-only') return instruction;
+  }
+  return null;
 }
 
 /**
  * 48-03 D-10 content precedence for ONE track (the D-10 seam the compositor's
  * resolveTrackContent port wires): roto tracks resolve via
  * getRotoPhysicalRenderSource with the loop-placeholder/null → { kind:'missing' }
- * mapping (D-09), then paper-composite per the track's OWN _rotoBackgroundMetadata;
- * non-roto tracks resolve the cached frame via getFrame. Returns null ONLY when
- * a decode is pending this tick — the whole flattened call must return null
- * (Tests 7/10), never a fabricated raster.
+ * mapping (D-09); non-roto tracks resolve the cached frame via getFrame. The
+ * raster is the track's own pixels ONLY — the v1.0 rendering law keeps the
+ * paper fond out of the per-track raster (it is drawn once beneath the
+ * flattened composite, see {@link _resolveDocumentFondInstruction}). Returns
+ * null ONLY when a decode is pending this tick — the whole flattened call must
+ * return null (Tests 7/10), never a fabricated raster.
  */
 function _preResolveTrackContent(
   layerId: string,
   trackId: string,
   frame: number,
-  width: number,
-  height: number,
 ): EfxPaintTrackContentResolution | null {
   const structural = _resolveRotoPhysicalStructural(layerId, trackId);
   if (structural) {
@@ -881,8 +876,7 @@ function _preResolveTrackContent(
     }
     const image = _compositorDecode(source.renderedFrame.dataUrl);
     if (!image) return null;
-    const paper = _composeTrackPaperBackground(layerId, trackId, width, height, image);
-    return { kind: 'content', raster: paper ?? image };
+    return { kind: 'content', raster: image };
   }
   const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
   if (!renderedFrame) return { kind: 'missing', missingRefs: [] };
@@ -1391,7 +1385,7 @@ function _resolveFlattenedFrame(
   const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
   const preResolved = new Map<string, EfxPaintTrackContentResolution>();
   for (const track of participating) {
-    const resolution = _preResolveTrackContent(layerId, track.id, frame, size.width, size.height);
+    const resolution = _preResolveTrackContent(layerId, track.id, frame);
     if (resolution === null) return null;
     preResolved.set(track.id, resolution);
     const revision = trackContentRevisions.get(track.id);
@@ -1402,11 +1396,15 @@ function _resolveFlattenedFrame(
 
   const knownSources = new Set(_backgroundSourceImages.keys());
   let backgroundContext: PhysicPaintRotoLoopResolutionContext | null = null;
+  let backgroundDrew = false;
   if (backgroundParticipates(efxDocument)) {
     backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
     const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
-    if (backgroundResolution.kind === 'content' && _resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
-      return null;
+    if (backgroundResolution.kind === 'content') {
+      if (_resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
+        return null;
+      }
+      backgroundDrew = true;
     }
   }
 
@@ -1430,7 +1428,29 @@ function _resolveFlattenedFrame(
   };
 
   const result = compositeFrame(efxDocument, frame, size, ports);
-  const dataUrl = (result.raster as HTMLCanvasElement).toDataURL();
+  // v1.0 rendering law: the paper fond lives BENEATH the final composite —
+  // drawn once under the flattened raster so per-track rasters stay
+  // paper-free and upper tracks never mask lower ones. The D-09 missing-frame
+  // law still holds: a frame with NO content anywhere (every participating
+  // track missing, no Background contribution) stays fully transparent — the
+  // fond only draws beneath actual content.
+  const missingTrackIds = new Set(result.missing.map((entry) => entry.trackId));
+  const anyTrackContent = result.participates.trackIds.some((trackId) => !missingTrackIds.has(trackId));
+  const fondInstruction = (anyTrackContent || backgroundDrew)
+    ? _resolveDocumentFondInstruction(layerId, efxDocument)
+    : null;
+  let raster = result.raster as HTMLCanvasElement;
+  if (fondInstruction) {
+    const fondCanvas = document.createElement('canvas');
+    fondCanvas.width = size.width;
+    fondCanvas.height = size.height;
+    const fondCtx = fondCanvas.getContext('2d');
+    if (!fondCtx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
+    drawMissingRotoBackground(fondCtx, fondInstruction, size.width, size.height, null, null);
+    fondCtx.drawImage(result.raster, 0, 0);
+    raster = fondCanvas;
+  }
+  const dataUrl = raster.toDataURL();
   const record: EfxPaintFlattenedFrameRecord = Object.freeze({
     layerId,
     frame,

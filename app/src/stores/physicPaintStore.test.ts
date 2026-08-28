@@ -11,7 +11,6 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPaintCompositeCache';
-import { drawRotoFrameComposite } from '../lib/rotoFrameDraw';
 import { clearProjectPaperRasterCache } from '../lib/projectPaperRaster';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -1932,7 +1931,7 @@ describe('physicPaintStore', () => {
       expect(record!.renderedFrame.dataUrl).toContain('draw(');
     });
 
-    it('RED 8 paper background parity: the per-track contribution composites paper + frame exactly as drawRotoFrameComposite', () => {
+    it('RED 8 paper fond law: the per-track raster excludes paper; the fond draws once beneath the flattened composite', () => {
       const frameDataUrl = makeFrame(0, 5).dataUrl;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
@@ -1940,33 +1939,38 @@ describe('physicPaintStore', () => {
       });
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      // The first created canvas is the per-track paper composite (pre-resolved
-      // before the main flattened canvas).
-      const perTrackCanvas = createdCanvases[0];
-      expect(perTrackCanvas).toBeDefined();
+      // The composite canvas consumed the track's BARE frame image — no paper
+      // composite, no fill: an upper track can never mask a lower one.
+      const compositeCanvas = createdCanvases[0];
+      expect(compositeCanvas.toDataURL()).toBe(`data:image/png;base64,clear|save|draw(${frameDataUrl},1,source-over)|restore`);
+      // The paper fond is drawn ONCE beneath the flattened raster (the
+      // deterministic color-fill + grain fallback, texture-less by contract).
+      expect(record.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)');
+    });
 
-      const reference = new FlatTestCanvas([]);
-      const refCtx = reference.getContext('2d')!;
-      const metadata = { background: 'canvas1' as const, paperGrain: 'canvas1', grainStrength: 0 };
-      const instruction = resolveMissingRotoFrameDraw(FLAT_LAYER, 0, { backgroundState: { mode: 'paper', metadata } });
-      if (instruction.kind !== 'background-only') throw new Error('expected a background-only instruction');
-      const sourceImg = new FlatTestImage();
-      sourceImg.src = frameDataUrl;
-      // The recording context / test image are structurally not the DOM types
-      // drawRotoFrameComposite declares — cast for the parity harness.
-      drawRotoFrameComposite(
-        refCtx as unknown as CanvasRenderingContext2D,
-        instruction,
-        4,
-        3,
-        null,
-        null,
-        sourceImg as unknown as CanvasImageSource,
-      );
+    it('RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath', () => {
+      const frameA = makeFrame(0, 5).dataUrl;
+      const frameB = makeFrame(1, 5).dataUrl;
+      registerDocument(flatDocument([
+        flatTrack('track-a', { order: 0 }),
+        flatTrack('track-b', { order: 1 }),
+      ], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
 
-      expect(perTrackCanvas.toDataURL()).toBe(reference.toDataURL());
-      // The flattened raster consumed the per-track composite as a single image.
-      expect(record.renderedFrame.dataUrl).toContain('draw(canvas,');
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      // Both tracks' bare frames draw in bottom-to-top order — no per-track
+      // paper composite masking the lower track.
+      const compositeCanvas = createdCanvases[0];
+      expect(compositeCanvas.toDataURL()).toBe(`data:image/png;base64,clear|save|draw(${frameA},1,source-over)|restore|save|draw(${frameB},1,source-over)|restore`);
+      // Exactly ONE fond fill beneath the composite, resolved from the
+      // lowest-order track's paper metadata.
+      expect(record.renderedFrame.dataUrl.match(/fill\(#f4efe3/g)?.length).toBe(1);
+      expect(record.renderedFrame.dataUrl).toContain('draw(canvas,1,source-over)');
     });
 
     it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', () => {
