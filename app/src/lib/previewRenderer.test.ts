@@ -22,7 +22,7 @@ vi.mock('../stores/projectStore', () => ({
   },
 }));
 
-import { PreviewRenderer, resolvePhysicPaintTrackVisibility } from './previewRenderer';
+import { PreviewRenderer, blendModeToCompositeOp, resolvePhysicPaintTrackVisibility } from './previewRenderer';
 import { renderGlobalFrame } from './exportRenderer';
 import { clearProjectPaperRasterCache } from './projectPaperRaster';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -44,7 +44,7 @@ let offscreenOperations: RecordedCanvasOp[] = [];
 
 type RecordedCanvasOp =
   | { type: 'fillRect'; x: number; y: number; w: number; h: number; fillStyle: string; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation }
-  | { type: 'drawImage'; source: string; args: number[] }
+  | { type: 'drawImage'; source: string; args: number[]; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation }
   | { type: 'createPattern'; source: string; repetition: string | null }
   | { type: 'clearRect' }
   | { type: 'save' }
@@ -102,7 +102,13 @@ class RecordingCanvasContext {
   }
 
   drawImage(source?: CanvasImageSource, ...args: number[]): void {
-    this.operations.push({ type: 'drawImage', source: source instanceof TestImage ? source.src : source instanceof TestCanvas ? 'canvas' : 'unknown', args });
+    this.operations.push({
+      type: 'drawImage',
+      source: source instanceof TestImage ? source.src : source instanceof TestCanvas ? 'canvas' : 'unknown',
+      args,
+      globalAlpha: this.globalAlpha,
+      globalCompositeOperation: this.globalCompositeOperation,
+    });
   }
 
   createPattern(source: CanvasImageSource, repetition: string | null): CanvasPattern {
@@ -209,6 +215,7 @@ beforeEach(() => {
 
 afterEach(() => {
   physicPaintStore.reset();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -526,5 +533,126 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+  });
+});
+
+describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
+  const FLAT_1 = 'data:image/png;base64,ZmxhdC0x';
+  const FLAT_2 = 'data:image/png;base64,ZmxhdC0y';
+
+  it('seam contract: resolves physic-paint content only through getFlattenedFrame, exactly once per render', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ]);
+    const flattened = {
+      layerId: 'roto-layer',
+      frame: 1,
+      cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
+      renderedFrame: { frameIndex: 0, appFrame: 1, dataUrl: FLAT_1 },
+      missing: [],
+    };
+    const getFlattened = vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
+    const getRotoPhysical = vi.spyOn(physicPaintStore, 'getRotoPhysicalRenderSource');
+    const getFrame = vi.spyOn(physicPaintStore, 'getFrame');
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+
+    expect(getFlattened).toHaveBeenCalledTimes(1);
+    expect(getFlattened).toHaveBeenCalledWith('roto-layer', 1);
+    expect(getRotoPhysical).not.toHaveBeenCalled();
+    expect(getFrame).not.toHaveBeenCalled();
+  });
+
+  it('parent application: draws the flattened raster at the parent effectiveOpacity and blend only (CMP-03)', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ]);
+    // The internal track opacity (0.5) is baked into the flattened raster
+    // store-side (straight alpha, D-02); the parent applies only ITS 50%.
+    const INTERNAL_OPACITY = 0.5;
+    const flattened = {
+      layerId: 'roto-layer',
+      frame: 1,
+      cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
+      renderedFrame: { frameIndex: 0, appFrame: 1, dataUrl: FLAT_1 },
+      missing: [],
+    };
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
+    const layer: Layer = { ...makeRotoLayer(), opacity: 0.5, blendMode: 'multiply' };
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
+
+    const parentDraw = ctx.operations.find(
+      (op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.source === FLAT_1,
+    );
+    expect(parentDraw).toBeDefined();
+    // Parent 0.5 × internal 0.5 = 0.25 effective; the renderer never re-applies
+    // the internal track property (that would double the product to 0.0625).
+    expect(parentDraw.globalAlpha).toBe(0.5);
+    expect(parentDraw.globalAlpha * INTERNAL_OPACITY).toBe(0.25);
+    expect(parentDraw.globalCompositeOperation).toBe(blendModeToCompositeOp(layer.blendMode));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: FLAT_1, globalAlpha: 0.25 }));
+  });
+
+  it('null flattened delivery draws nothing and contributes false to hasDrawable', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ]);
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(null);
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+
+    expect(ctx.operations).toEqual([]);
+  });
+
+  it('collectPhysicPaintFrameSources returns the flattened record and preload decodes its dataUrl', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ]);
+    const flattened = {
+      layerId: 'roto-layer',
+      frame: 1,
+      cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
+      renderedFrame: { frameIndex: 0, appFrame: 1, dataUrl: FLAT_1 },
+      missing: [],
+    };
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
+    const renderer = new PreviewRenderer(makeCanvas(new RecordingCanvasContext()));
+
+    const sources = renderer.collectPhysicPaintFrameSources([makeRotoLayer()], 1);
+    expect(sources).toEqual([flattened]);
+
+    renderer.preloadPhysicPaintFrames(sources);
+    expect(renderer.isPhysicPaintFrameResolved(flattened)).toBe(true);
+  });
+
+  it('a missing Hold frame renders transparent through the flattened raster — never the stripe placeholder (D-09)', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ]);
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue({
+      layerId: 'roto-layer',
+      frame: 2,
+      cacheKey: 'physic-paint:roto-layer:flattened:rev-2',
+      renderedFrame: { frameIndex: 0, appFrame: 2, dataUrl: FLAT_2 },
+      missing: [{ trackId: TEST_TRACK_ID, frame: 2, missingRefs: ['hold-ref'] }],
+    });
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#1A1A2A' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#1A2A1A' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({
+      type: 'drawImage',
+      source: FLAT_2,
+    }));
   });
 });
