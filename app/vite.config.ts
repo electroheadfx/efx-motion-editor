@@ -218,7 +218,12 @@ export default defineConfig({
     // (rAF-stall detection + sessionStorage recovery) added to the main chunk,
     // measured 1165.15 kB. Budget raised to 1170 (measured value + ~4.9 kB
     // headroom).
-    chunkSizeWarningLimit: 1170,
+    // Measurement note (2026-08-28): 48-03's flattened-compositor delivery
+    // (efxPaintCompositor + efxPaintCompositeCache + efxPaintBackgroundResolution
+    // + efxPaintHideSolo + the store's getFlattenedFrame seam) entered the main
+    // chunk via physicPaintStore, measured 1171.47 kB. Budget raised to 1180
+    // (measured value + ~8.5 kB headroom).
+    chunkSizeWarningLimit: 1180,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
