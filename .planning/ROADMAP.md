@@ -322,7 +322,7 @@ Plans:
   4. Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes.
   5. The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend).
 
-**Plans**: 3/6 plans executed
+**Plans**: 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -332,7 +332,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 48-03-PLAN.md — store getFlattenedFrame delivery + previewRenderer flattened seam + export preflight generalized to participating tracks (TDD)
+- [x] 48-03-PLAN.md — store getFlattenedFrame delivery + previewRenderer flattened seam + export preflight generalized to participating tracks (TDD)
 - [x] 48-04-PLAN.md — Background step in the composite pass + per-track raster cache + CMP-04 invalidation matrix (TDD)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -431,7 +431,7 @@ Plans:
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
-| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 3/6 | In Progress|  |
+| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 4/6 | In Progress|  |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
