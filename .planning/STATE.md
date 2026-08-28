@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 48
 current_phase_name: Internal Compositor and Flattened Parent Result
 status: executing
-stopped_at: Completed 48-02-PLAN.md
-last_updated: "2026-08-28T09:53:42.163Z"
+stopped_at: Completed 48-04-PLAN.md
+last_updated: "2026-08-28T10:06:06.364Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 48 execution started
-state_head: c2172aea74afab17661c715639fbddd3767b1722
+state_head: b60c587c91c3d8d883cfdefc52ab7e571f925597
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 25
-  completed_plans: 21
+  completed_plans: 22
   percent: 11
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 48 (Internal Compositor and Flattened Parent Result) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-28 — Phase 48 execution started
 
@@ -87,6 +87,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 47-internal-multi-track-timeline-filmstrip-capsules-and-control P05 | 120 | 2 tasks | 6 files |
 | Phase 48 P01 | 15 | 3 tasks | 6 files |
 | Phase 48 P02 | 9 | 2 tasks | 2 files |
+| Phase 48 P04 | 6 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -172,6 +173,8 @@ Recent decisions affecting current work:
 - [Phase 48]: interpolationEnabled false for Background derivation: Background gaps reveal the document fallback, generated frames are never produced
 - [Phase 48]: knownSources-miss report carries the single unresolved sourceRef; the 'linked-unresolved' defensive path stays for resolver dangling-refs
 - [Phase 48]: Synthetic identities dedupe by keyId/appFrame at the resolver — cross-clip shared refs surface the duplicate-identity throw at derivation (fail-closed)
+- [Phase 48]: Background port contract moves to the 48-02 source-ref union: resolveBackgroundFrame returns EfxPaintBackgroundFrameResolution (content carries clipId+sourceRef); new resolveBackgroundSourceImage(sourceRef) decode port (null = pending decode, transparent this tick); local raster-based EfxPaintBackgroundResolution type removed
+- [Phase 48]: Flattened-key content terms cover participating tracks only (CMP-04): deriveEfxPaintFlattenedCacheKey filters trackContentRevisions through participatingPaintTracks — hidden/non-soloed track content edits never churn the flattened cache; config term covers visibility/solo so re-showing re-composites
 
 ### Pending Todos
 
@@ -205,6 +208,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-08-28T09:53:41.867Z
-Stopped at: Completed 48-02-PLAN.md
+Last session: 2026-08-28T10:06:06.106Z
+Stopped at: Completed 48-04-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
