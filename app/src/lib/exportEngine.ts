@@ -9,6 +9,7 @@ import { soloStore } from '../stores/soloStore';
 import { audioEngine } from './audioEngine';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { getDocument as getEfxPaintDocument } from '../stores/efxPaintStore';
+import { participatingPaintTracks } from '../efx-paint/compositor/efxPaintHideSolo';
 import type { PhysicPaintRotoPhysicalUnresolvedLoop } from '../stores/physicPaintStore';
 import type { Sequence } from '../types/sequence';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
@@ -71,7 +72,7 @@ function findUnresolvedExportLoop(
   fromFrame: number,
   toFrame: number,
 ): string | null {
-  const hits: Array<{ layerId: string; seqStart: number; loop: PhysicPaintRotoPhysicalUnresolvedLoop }> = [];
+  const hits: Array<{ layerId: string; trackId: string; seqStart: number; loop: PhysicPaintRotoPhysicalUnresolvedLoop }> = [];
   for (const seq of sequences) {
     // Loop ranges are layer-local (0-based within the sequence's authored
     // span, offset by seq.inFrame); translate the global export window into
@@ -84,25 +85,35 @@ function findUnresolvedExportLoop(
     for (const layer of seq.layers) {
       if (layer.type !== 'physic-paint') continue;
       const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-      // 46-01: loop runtime is per-track; resolve the layer's ACTIVE track.
-      const trackId = getEfxPaintDocument(paintLayerId)?.activeTrackId ?? '';
-      for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, trackId, localFrom, localTo)) {
-        hits.push({ layerId: paintLayerId, seqStart, loop });
+      // 48-03 (CMP-05, Pitfall P-48-4 retention): the preflight scans EXACTLY
+      // the tracks the compositor would draw — participatingPaintTracks, the
+      // 48-01 hide/solo truth table — no longer only the document's active
+      // track. A visible non-active track's unresolvable Hold loop still blocks
+      // export (stricter than D-09 transparency, consistent with CMP-05
+      // 'explicit and recoverable'); hidden tracks and tracks excluded by a
+      // solo never false-block (the scan set equals the participating set).
+      const document = getEfxPaintDocument(paintLayerId);
+      if (!document) continue;
+      for (const track of participatingPaintTracks(document)) {
+        for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, track.id, localFrom, localTo)) {
+          hits.push({ layerId: paintLayerId, trackId: track.id, seqStart, loop });
+        }
       }
     }
   }
   if (hits.length === 0) return null;
   // Earliest global placement names first; fixing it and re-exporting surfaces
-  // the next (loopId tiebreak keeps the order deterministic).
+  // the next (loopId, then track.id tiebreaks keep the order deterministic).
   hits.sort((a, b) =>
     (a.loop.placementStart + a.seqStart) - (b.loop.placementStart + b.seqStart)
-    || a.loop.loopId.localeCompare(b.loop.loopId));
+    || a.loop.loopId.localeCompare(b.loop.loopId)
+    || a.trackId.localeCompare(b.trackId));
   const first = hits[0];
   const globalPlacement = first.loop.placementStart + first.seqStart;
   if (first.loop.invalidSourceTiming) {
     return `Export blocked — Group at frame ${globalPlacement} has invalid source timing. Repair or unlink the Group, then export again.`;
   }
-  const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId, getEfxPaintDocument(first.layerId)?.activeTrackId ?? '')
+  const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId, first.trackId)
     .find((candidate) => candidate.loopId === first.loop.loopId);
   const firstMissingKeyId = first.loop.missingSourceKeyIds[0];
   const sourceIndex = clip && firstMissingKeyId !== undefined
