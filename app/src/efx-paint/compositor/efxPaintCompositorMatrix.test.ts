@@ -348,9 +348,35 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     expect(result.missing).toEqual([]);
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
-      { type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-b', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'source-over' },
     ]);
+  });
+
+  it('matrix row 22 — working-resolution rasters draw SCALED to the project-space composite size (48-06 Studio scale law)', () => {
+    // The Studio engine paints on a long-edge-capped WORKING canvas (smaller
+    // than the project canvas), so track rasters arrive at working resolution
+    // while the flattened raster is project-space. A natural-size draw would
+    // shrink and top-left-anchor the composite (the native UAT "other track
+    // at 50%" defect): every track draw carries the composite size explicitly.
+    const { ops, ports } = makeHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+
+    compositeFrame(doc, 0, SIZE, ports);
+
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws.length).toBe(2);
+    for (const draw of draws) {
+      expect(draw.args).toEqual([0, 0, SIZE.width, SIZE.height]);
+    }
   });
 
   it('matrix row 2 — semi-transparent upper Paint track: upper drawn with globalAlpha 0.5 (opacity BEFORE blend, D-01)', () => {
@@ -369,8 +395,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
 
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
-      { type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 0.5, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-b', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 0.5, globalCompositeOperation: 'source-over' },
     ]);
   });
 
@@ -389,7 +415,7 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     compositeFrame(doc, 0, SIZE, ports);
 
     const upper = ops.find((op): op is RecordedCanvasOp & { type: 'drawImage' } => op.type === 'drawImage' && op.source === 'track-b');
-    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'multiply' });
+    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'multiply' });
   });
 
   it('matrix row 4 — screen: upper track drawn with globalCompositeOperation screen', () => {
@@ -407,7 +433,7 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     compositeFrame(doc, 0, SIZE, ports);
 
     const upper = ops.find((op): op is RecordedCanvasOp & { type: 'drawImage' } => op.type === 'drawImage' && op.source === 'track-b');
-    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'screen' });
+    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'screen' });
   });
 
   it('matrix row 5 — overlay: upper track drawn with globalCompositeOperation overlay', () => {
@@ -425,7 +451,7 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     compositeFrame(doc, 0, SIZE, ports);
 
     const upper = ops.find((op): op is RecordedCanvasOp & { type: 'drawImage' } => op.type === 'drawImage' && op.source === 'track-b');
-    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'overlay' });
+    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'overlay' });
   });
 
   it('matrix row 6 — add/lighter: upper track drawn with globalCompositeOperation lighter', () => {
@@ -443,7 +469,7 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     compositeFrame(doc, 0, SIZE, ports);
 
     const upper = ops.find((op): op is RecordedCanvasOp & { type: 'drawImage' } => op.type === 'drawImage' && op.source === 'track-b');
-    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'lighter' });
+    expect(upper).toEqual({ type: 'drawImage', source: 'track-b', args: [0, 0, SIZE.width, SIZE.height], globalAlpha: 1, globalCompositeOperation: 'lighter' });
   });
 
   it('matrix row 7 — hidden upper track: no draw op for the upper track', () => {

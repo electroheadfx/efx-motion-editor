@@ -226,10 +226,12 @@ export function compositeFrame(
       if (raster !== null) {
         // D-04: the Background has no opacity/blend — its draw is a plain
         // source-over at globalAlpha 1, never re-scaled by track opacity.
+        // Like track rasters, the source image draws scaled to the
+        // project-space composite size.
         ctx.save();
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(raster, 0, 0);
+        ctx.drawImage(raster, 0, 0, size.width, size.height);
         ctx.restore();
       }
     } else if (backgroundResolution.kind === 'missing') {
@@ -273,7 +275,10 @@ export function compositeFrame(
     ctx.save();
     ctx.globalAlpha = track.opacity;
     ctx.globalCompositeOperation = ports.compositeOp(track.blendMode);
-    ctx.drawImage(resolution.raster, 0, 0);
+    // Track rasters arrive at the engine's WORKING resolution (the Studio
+    // paints on a long-edge-capped canvas); the flattened raster is
+    // project-space, so the draw scales the raster to the composite size.
+    ctx.drawImage(resolution.raster, 0, 0, size.width, size.height);
     ctx.restore();
   }
 

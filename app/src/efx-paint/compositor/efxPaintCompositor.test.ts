@@ -226,10 +226,10 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     expect(ops[0]).toEqual({ type: 'clearRect', w: 4, h: 3 });
     expect(ops.slice(1)).toEqual([
       { type: 'save' },
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
       { type: 'restore' },
       { type: 'save' },
-      { type: 'drawImage', source: 'track-b', args: [0, 0], globalAlpha: 0.5, globalCompositeOperation: 'multiply' },
+      { type: 'drawImage', source: 'track-b', args: [0, 0, 4, 3], globalAlpha: 0.5, globalCompositeOperation: 'multiply' },
       { type: 'restore' },
     ]);
   });
@@ -251,7 +251,7 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     expect(result.missing).toEqual([{ trackId: 'track-b', frame: 5, missingRefs: ['ref-1'] }]);
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
     ]);
   });
 
@@ -505,14 +505,14 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     expect(ops[2]).toEqual({
       type: 'drawImage',
       source: 'bg-raster',
-      args: [0, 0],
+      args: [0, 0, 4, 3],
       globalAlpha: 1,
       globalCompositeOperation: 'source-over',
     });
     expect(ops[5]).toEqual({
       type: 'drawImage',
       source: 'track-a',
-      args: [0, 0],
+      args: [0, 0, 4, 3],
       globalAlpha: 1,
       globalCompositeOperation: 'source-over',
     });
@@ -544,7 +544,7 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     });
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
     ]);
   });
 
@@ -565,7 +565,7 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     expect(fills).toHaveLength(1); // only the fallback fill — no extra fill
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
     ]);
   });
 
@@ -581,7 +581,7 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     expect(result.missing).toEqual([{ trackId: doc.background.id, frame: 5, missingRefs: ['bg-ref'] }]);
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
     ]);
   });
 
