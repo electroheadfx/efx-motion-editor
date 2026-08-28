@@ -1,11 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage } from './physicPaintStore';
+import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
+import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPaintCompositeCache';
+import { drawRotoFrameComposite } from '../lib/rotoFrameDraw';
+import { clearProjectPaperRasterCache } from '../lib/projectPaperRaster';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -1584,6 +1591,399 @@ describe('physicPaintStore', () => {
       expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', TEST_TRACK_ID, docB).ok).toBe(true);
       const tokenB = physicPaintStore.getContentToken('layer-1', TEST_TRACK_ID);
       expect(tokenB, 'replaced content advances the layer content token').toBeGreaterThan(tokenA);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 48-03 getFlattenedFrame — flattened straight-alpha delivery (D-11). The
+  // store's composite path needs browser globals the rest of this file never
+  // touches, so the nested beforeEach installs them (document.createElement →
+  // recording canvas, Image → synchronous/deferred test images) and wires the
+  // compositor size provider to 4×3. FlatTestCanvas.toDataURL is a
+  // DETERMINISTIC serialization of the recorded draw log — not real pixels —
+  // so the flattened renderedFrame.dataUrl IS the observable op log.
+  // -------------------------------------------------------------------------
+  describe('getFlattenedFrame', () => {
+    type FlatOp =
+      | { type: 'clearRect' }
+      | { type: 'save' }
+      | { type: 'restore' }
+      | { type: 'fillRect'; fillStyle: string; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation }
+      | { type: 'drawImage'; source: string; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation };
+
+    class FlatRecordingContext {
+      readonly ops: FlatOp[] = [];
+      fillStyle: string | CanvasGradient | CanvasPattern = '#000000';
+      globalAlpha = 1;
+      globalCompositeOperation: GlobalCompositeOperation = 'source-over';
+      private stack: Array<Pick<FlatRecordingContext, 'fillStyle' | 'globalAlpha' | 'globalCompositeOperation'>> = [];
+
+      save(): void {
+        this.ops.push({ type: 'save' });
+        this.stack.push({ fillStyle: this.fillStyle, globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
+      }
+      restore(): void {
+        this.ops.push({ type: 'restore' });
+        const top = this.stack.pop();
+        if (!top) return;
+        this.fillStyle = top.fillStyle;
+        this.globalAlpha = top.globalAlpha;
+        this.globalCompositeOperation = top.globalCompositeOperation;
+      }
+      clearRect(): void { this.ops.push({ type: 'clearRect' }); }
+      fillRect(): void { this.ops.push({ type: 'fillRect', fillStyle: String(this.fillStyle), globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation }); }
+      drawImage(source?: CanvasImageSource, ..._args: number[]): void {
+        this.ops.push({ type: 'drawImage', source: source instanceof FlatTestImage ? source.src : 'canvas', globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
+      }
+      createPattern(): CanvasPattern { return 'pattern' as unknown as CanvasPattern; }
+    }
+
+    class FlatTestCanvas {
+      width = 0;
+      height = 0;
+      constructor(readonly ops: FlatOp[]) {}
+      getContext(kind: string): FlatRecordingContext | null { return kind === '2d' ? new FlatRecordingContext(this.ops) : null; }
+      toDataURL(): string {
+        const log = this.ops.map((op) => {
+          switch (op.type) {
+            case 'clearRect': return 'clear';
+            case 'save': return 'save';
+            case 'restore': return 'restore';
+            case 'fillRect': return `fill(${op.fillStyle},${op.globalAlpha},${op.globalCompositeOperation})`;
+            case 'drawImage': return `draw(${op.source},${op.globalAlpha},${op.globalCompositeOperation})`;
+          }
+        }).join('|');
+        return `data:image/png;base64,${log}`;
+      }
+    }
+
+    class FlatTestImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      crossOrigin = '';
+      width = 4;
+      height = 3;
+      private currentSrc = '';
+      set src(value: string) { this.currentSrc = value; this.onload?.(); }
+      get src(): string { return this.currentSrc; }
+    }
+
+    class DeferredFlatTestImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      crossOrigin = '';
+      width = 4;
+      height = 3;
+      static instances: DeferredFlatTestImage[] = [];
+      private currentSrc = '';
+      constructor() { DeferredFlatTestImage.instances.push(this); }
+      set src(value: string) { this.currentSrc = value; }
+      get src(): string { return this.currentSrc; }
+    }
+
+    const FLAT_LAYER = 'flat-layer';
+
+    function flatTrack(id: string, overrides: Partial<Omit<InternalPaintTrack, 'id'>> = {}): InternalPaintTrack {
+      return {
+        id,
+        name: id,
+        order: 0,
+        visible: true,
+        solo: false,
+        opacity: 1,
+        blendMode: 'normal',
+        revision: 0,
+        frames: {},
+        rotoPhysical: null,
+        loopClips: [],
+        ...overrides,
+      };
+    }
+
+    function flatDocument(tracks: InternalPaintTrack[], background?: Partial<EfxPaintDocument['background']>): EfxPaintDocument {
+      const base = createEfxPaintDocument(FLAT_LAYER);
+      return {
+        ...base,
+        activeTrackId: tracks[0]?.id ?? base.activeTrackId,
+        tracks,
+        background: { ...base.background, ...background },
+      };
+    }
+
+    function seedRoto(
+      trackId: string,
+      keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>,
+      options: { background?: { background: 'canvas1' | 'canvas2' | 'canvas3' | 'transparent'; paperGrain: string; grainStrength: number } | null; loopClips?: PhysicPaintRotoLoopClip[] } = {},
+    ): void {
+      const records = keys.map((key) => ({
+        keyId: key.keyId,
+        appFrame: key.appFrame,
+        kind: 'real-key' as const,
+        payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+      }));
+      const loopClips = options.loopClips ?? [];
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const result = physicPaintStore.replaceRotoPhysicalDocument(FLAT_LAYER, trackId, {
+        capacity: 600,
+        realKeyRecords: records,
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: options.background ?? null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        loopClips,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+      });
+      if (!result.ok) throw new Error(result.error);
+    }
+
+    let createdCanvases: FlatTestCanvas[];
+
+    beforeEach(() => {
+      resetEfxPaintStore();
+      DeferredFlatTestImage.instances = [];
+      createdCanvases = [];
+      clearProjectPaperRasterCache();
+      _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+      vi.stubGlobal('document', {
+        createElement: (tag: string) => {
+          if (tag === 'canvas') {
+            const canvas = new FlatTestCanvas([]);
+            createdCanvases.push(canvas);
+            return canvas;
+          }
+          return {};
+        },
+      });
+      vi.stubGlobal('Image', FlatTestImage);
+      vi.stubGlobal('HTMLImageElement', FlatTestImage);
+      vi.stubGlobal('HTMLCanvasElement', FlatTestCanvas);
+    });
+
+    afterEach(() => {
+      _setPhysicPaintCompositorSizeProvider(null);
+      vi.unstubAllGlobals();
+    });
+
+    it('RED 1 guard: returns null for an unknown layer and for non-integer/negative frames', () => {
+      expect(physicPaintStore.getFlattenedFrame('unknown-layer', 5)).toBeNull();
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 1.5)).toBeNull();
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, -1)).toBeNull();
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, NaN)).toBeNull();
+    });
+
+    it('RED 2 single-track parity: flattened dataUrl is the composite of fallback + the track frame', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+      expect(record).not.toBeNull();
+      expect(record!.layerId).toBe(FLAT_LAYER);
+      expect(record!.frame).toBe(5);
+      expect(record!.cacheKey).toMatch(/^flattened-/);
+      expect(record!.missing).toEqual([]);
+      expect(record!.renderedFrame.frameIndex).toBe(5);
+      expect(record!.renderedFrame.appFrame).toBe(5);
+      expect(record!.renderedFrame.width).toBe(4);
+      expect(record!.renderedFrame.height).toBe(3);
+
+      // Reference: transparent fallback (clear) + a plain source-over draw of
+      // the frame at the track's own opacity — NOT the old active-track accessor.
+      const reference = new FlatTestCanvas([]);
+      const refCtx = reference.getContext('2d')!;
+      refCtx.clearRect();
+      refCtx.save();
+      refCtx.globalAlpha = 1;
+      refCtx.globalCompositeOperation = 'source-over';
+      const frameImage = new FlatTestImage();
+      frameImage.src = frameDataUrl;
+      refCtx.drawImage(frameImage);
+      refCtx.restore();
+      expect(record!.renderedFrame.dataUrl).toBe(reference.toDataURL());
+    });
+
+    it('RED 3 multi-track: draws both visible tracks bottom-to-top and cacheKey equals deriveEfxPaintFlattenedCacheKey', () => {
+      const frameA = makeFrame(0, 5).dataUrl;
+      const frameB = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([
+        flatTrack('track-b', { order: 1, opacity: 0.5, blendMode: 'multiply' }),
+        flatTrack('track-a', { order: 0 }),
+      ], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const log = record.renderedFrame.dataUrl;
+      const firstDraw = log.indexOf('draw(');
+      const secondDraw = log.indexOf('draw(', firstDraw + 1);
+      expect(firstDraw).toBeGreaterThan(-1);
+      expect(secondDraw).toBeGreaterThan(firstDraw);
+      expect(log.slice(firstDraw, firstDraw + 40)).toContain('source-over');
+      expect(log.slice(secondDraw, secondDraw + 40)).toContain('multiply');
+      expect(log.slice(secondDraw, secondDraw + 40)).toContain('0.5');
+
+      const expectedKey = deriveEfxPaintFlattenedCacheKey({
+        document: getEfxPaintDocument(FLAT_LAYER)!,
+        trackContentRevisions: new Map([
+          ['track-a', physicPaintStore.getRotoPhysicalContentRevision(FLAT_LAYER, 'track-a')!],
+          ['track-b', physicPaintStore.getRotoPhysicalContentRevision(FLAT_LAYER, 'track-b')!],
+        ]),
+        backgroundClipRevisions: [],
+        frame: 5,
+      });
+      expect(record.cacheKey).toBe(expectedKey);
+    });
+
+    it('RED 4 hidden track excluded: hiding track B removes its pixels and its content term from the key', () => {
+      const frameA = makeFrame(0, 5).dataUrl;
+      const frameB = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([
+        flatTrack('track-a', { order: 0 }),
+        flatTrack('track-b', { order: 1 }),
+      ], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+
+      const visibleRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(visibleRecord.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(2);
+
+      setTrackVisible(FLAT_LAYER, 'track-b', false);
+      const hiddenRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(hiddenRecord.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
+      expect(hiddenRecord.renderedFrame.dataUrl).not.toContain(frameB);
+
+      const expectedKey = deriveEfxPaintFlattenedCacheKey({
+        document: getEfxPaintDocument(FLAT_LAYER)!,
+        trackContentRevisions: new Map([['track-a', physicPaintStore.getRotoPhysicalContentRevision(FLAT_LAYER, 'track-a')!]]),
+        backgroundClipRevisions: [],
+        frame: 5,
+      });
+      expect(hiddenRecord.cacheKey).toBe(expectedKey);
+    });
+
+    it('RED 5 missing content renders transparent + a report and never contributes pixels', () => {
+      const frameA = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([
+        flatTrack('track-a', { order: 0 }),
+        flatTrack('track-b', { order: 1 }),
+      ], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+      // track-b has a real key at frame 0 only — frame 5 resolves null.
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(record.missing).toEqual([{ trackId: 'track-b', frame: 5, missingRefs: [] }]);
+      expect(record.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
+      expect(record.renderedFrame.dataUrl).toContain(frameA);
+
+      // Loop-placeholder case: a loop clip whose source ref has no resolvable
+      // real key reports the missing refs (D-09) and contributes nothing.
+      registerDocument(flatDocument([flatTrack('track-c')], { visible: false }));
+      seedRoto('track-c', [{ keyId: 'kc', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+        loopClips: [{ loopId: 'loop-1', placementStart: 3, sourceKeyIds: ['missing-ref-1'], repeat: 'infinity', mode: 'progressive' }],
+      });
+      const loopRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(loopRecord.missing).toEqual([{ trackId: 'track-c', frame: 5, missingRefs: ['missing-ref-1'] }]);
+      expect(loopRecord.renderedFrame.dataUrl.match(/draw\(/g)).toBeNull();
+    });
+
+    it('RED 6 cache hit: unchanged inputs return the identical cached record with zero recompute', () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+
+      const first = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const canvasCountAfterFirst = createdCanvases.length;
+      const second = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+      expect(second).toBe(first);
+      expect(second!.renderedFrame).toBe(first.renderedFrame);
+      expect(createdCanvases.length).toBe(canvasCountAfterFirst);
+      expect(second!.renderedFrame.dataUrl).toBe(first.renderedFrame.dataUrl);
+    });
+
+    it('RED 7 decode pending: returns null for that tick and the raster after the decode completes', () => {
+      vi.stubGlobal('Image', DeferredFlatTestImage);
+      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)).toBeNull();
+      const pendingImage = DeferredFlatTestImage.instances[0];
+      expect(pendingImage).toBeDefined();
+      pendingImage.onload?.();
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+      expect(record).not.toBeNull();
+      expect(record!.renderedFrame.dataUrl).toContain('draw(');
+    });
+
+    it('RED 8 paper background parity: the per-track contribution composites paper + frame exactly as drawRotoFrameComposite', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      // The first created canvas is the per-track paper composite (pre-resolved
+      // before the main flattened canvas).
+      const perTrackCanvas = createdCanvases[0];
+      expect(perTrackCanvas).toBeDefined();
+
+      const reference = new FlatTestCanvas([]);
+      const refCtx = reference.getContext('2d')!;
+      const metadata = { background: 'canvas1' as const, paperGrain: 'canvas1', grainStrength: 0 };
+      const instruction = resolveMissingRotoFrameDraw(FLAT_LAYER, 0, { backgroundState: { mode: 'paper', metadata } });
+      if (instruction.kind !== 'background-only') throw new Error('expected a background-only instruction');
+      const sourceImg = new FlatTestImage();
+      sourceImg.src = frameDataUrl;
+      drawRotoFrameComposite(refCtx, instruction, 4, 3, null, null, sourceImg);
+
+      expect(perTrackCanvas.toDataURL()).toBe(reference.toDataURL());
+      // The flattened raster consumed the per-track composite as a single image.
+      expect(record.renderedFrame.dataUrl).toContain('draw(canvas,');
+    });
+
+    it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', () => {
+      const bgDataUrl = makeFrame(0, 0).dataUrl;
+      registerBackgroundSourceImage('bg-ref-1', bgDataUrl);
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-1'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      expect(record.missing).toEqual([]);
+      expect(record.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
+
+      const badRef = 'missing-bg-ref';
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [{ id: 'clip-2', startFrame: 0, sourceFrameRefs: [badRef], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+      const missingRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      expect(missingRecord.missing).toEqual([{ trackId: getEfxPaintDocument(FLAT_LAYER)!.background.id, frame: 0, missingRefs: [badRef] }]);
+      expect(missingRecord.renderedFrame.dataUrl).not.toContain('draw(');
+    });
+
+    it('RED 10 background source-image port: pending decode returns null this tick, raster after the decode completes', () => {
+      vi.stubGlobal('Image', DeferredFlatTestImage);
+      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+      const bgDataUrl = makeFrame(0, 0).dataUrl;
+      registerBackgroundSourceImage('bg-ref-1', bgDataUrl);
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-1'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)).toBeNull();
+      const pendingImage = DeferredFlatTestImage.instances[0];
+      expect(pendingImage).toBeDefined();
+      pendingImage.onload?.();
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
+      expect(record).not.toBeNull();
+      expect(record!.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
+      expect(record!.missing).toEqual([]);
     });
   });
 });
