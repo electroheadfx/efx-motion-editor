@@ -1724,6 +1724,19 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           currentIncomingInterpolationBreakKeyIds,
           currentGroupOverrideRecords,
         );
+        // P1-debug (temporary): mirror-mismatch diagnosis — the child's content
+        // summary at expectedRevision build time, to compare against the
+        // parent's rejection log.
+        console.debug('[P1-debug] child expectedRevision', {
+          trackId: portsRef.current.launch.getActiveTrackId(revalidatedLaunch.layerId),
+          expectedRevision,
+          recordCount: currentRecords.length,
+          recordFrames: currentRecords.map((record) => record.appFrame).slice(0, 6),
+          interpolation: currentInterpolation,
+          loopClipCount: currentLoopClips.length,
+          breakCount: currentIncomingInterpolationBreakKeyIds.length,
+          overrideCount: currentGroupOverrideRecords.length,
+        });
         let groupFramePaintProposal: PhysicPaintRotoPhysicalDocument | null = null;
         let groupFramePaintImpact: PhysicPaintRotoGroupFramePaintImpact | null = null;
         let groupLifecycleDeleteProposal: PhysicPaintRotoPhysicalDocument | null = null;

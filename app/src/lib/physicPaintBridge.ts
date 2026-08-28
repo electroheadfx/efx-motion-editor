@@ -1529,6 +1529,19 @@ function applyPhysicPaintRotoPhysicalMap(
     }
   }
   if (currentRevision !== payload.expectedRevision) {
+    // P1-debug (temporary): mirror-mismatch diagnosis — the parent's content
+    // summary at rejection time, to compare against the child's build log.
+    console.debug('[P1-debug] parent stale rejection', {
+      trackId: payload.trackId,
+      expectedRevision: payload.expectedRevision,
+      currentRevision,
+      recordCount: currentRecords.length,
+      recordFrames: currentRecords.map((record) => record.appFrame).slice(0, 6),
+      interpolation: currentInterpolation,
+      loopClipCount: currentLoopClips.length,
+      breakCount: currentIncomingInterpolationBreakKeyIds.length,
+      overrideCount: currentGroupOverrideRecords.length,
+    });
     return reject('Roto physical revision became stale before commit.');
   }
   if (payload.records.length > capacity) {
