@@ -12,7 +12,18 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createEfxPaintDocument } from '../document/efxPaintDocument';
-import type { EfxPaintDocument, InternalPaintTrack } from '../document/efxPaintDocument';
+import type {
+  BackgroundTrack,
+  BlendMode,
+  EfxPaintDocument,
+  FrameLoopClip,
+  InternalPaintTrack,
+} from '../document/efxPaintDocument';
+import {
+  deriveEfxPaintBackgroundResolution,
+  resolveEfxPaintBackgroundFrame,
+} from './efxPaintBackgroundResolution';
+import type { EfxPaintBackgroundFrameResolution } from './efxPaintBackgroundResolution';
 import { createKeyedMemo } from './efxPaintCompositeCache';
 import { compositeFrame } from './efxPaintCompositor';
 import type {
@@ -108,25 +119,36 @@ function raster(id: string): CanvasImageSource {
 function makeHarness(options: {
   content?: Record<string, EfxPaintTrackContentResolution>;
   background?: 'content' | 'gap' | 'missing';
+  backgroundResolutions?: ReadonlyMap<number, EfxPaintBackgroundFrameResolution>;
+  backgroundSourceImages?: Record<string, CanvasImageSource>;
 } = {}): { ops: RecordedCanvasOp[]; ports: EfxPaintCompositorPorts } {
   const ops: RecordedCanvasOp[] = [];
   const content = options.content ?? {};
   const backgroundMode = options.background ?? 'gap';
-  const ports: EfxPaintCompositorPorts = {
-    createCanvas: (_width, _height) => {
+  const ports = {
+    createCanvas: (_width: number, _height: number) => {
       const canvas = raster('canvas');
       const ctx = new RecordingCanvasContext(ops) as unknown as CanvasRenderingContext2D;
       return { canvas, ctx };
     },
-    resolveTrackContent: (trackId) => content[trackId] ?? { kind: 'content', raster: raster(trackId) },
-    resolveBackgroundFrame: () => {
-      if (backgroundMode === 'content') return { kind: 'content', raster: raster('background') };
-      if (backgroundMode === 'missing') return { kind: 'missing', missingRefs: ['bg-ref'] };
+    resolveTrackContent: (trackId: string) => content[trackId] ?? { kind: 'content', raster: raster(trackId) },
+    // D-03 seam: the port consumes the 48-02 resolution union — content names
+    // the clip's source ref, decoded through resolveBackgroundSourceImage.
+    resolveBackgroundFrame: (frame: number): EfxPaintBackgroundFrameResolution => {
+      if (options.backgroundResolutions) {
+        return options.backgroundResolutions.get(frame) ?? Object.freeze({ kind: 'gap' });
+      }
+      if (backgroundMode === 'content') return { kind: 'content', clipId: 'bg-clip', sourceRef: 'bg-ref' };
+      if (backgroundMode === 'missing') return { kind: 'missing', clipId: 'bg-clip', missingRefs: Object.freeze(['bg-ref']) };
       return { kind: 'gap' };
     },
-    compositeOp: (mode) => BLEND_OPS[mode] ?? 'source-over',
+    resolveBackgroundSourceImage: (sourceRef: string) => options.backgroundSourceImages?.[sourceRef] ?? raster(sourceRef),
+    compositeOp: (mode: BlendMode) => BLEND_OPS[mode] ?? 'source-over',
   };
-  return { ops, ports };
+  // Cast through unknown: the RED-phase harness already speaks the 48-04 port
+  // shape (source-ref union + decode port) while the source interface still
+  // declares the 48-01 raster union — the GREEN implementation closes the gap.
+  return { ops, ports: ports as unknown as EfxPaintCompositorPorts };
 }
 
 function makeTrack(id: string, overrides: Partial<InternalPaintTrack> = {}): InternalPaintTrack {
@@ -156,6 +178,30 @@ function makeDocument(
     activeTrackId: tracks[0]?.id ?? base.activeTrackId,
     tracks,
     background: { ...base.background, ...backgroundOverrides },
+  };
+}
+
+function makeClip(overrides: Partial<FrameLoopClip> = {}): FrameLoopClip {
+  return {
+    id: 'clip-1',
+    startFrame: 0,
+    sourceFrameRefs: Object.freeze(['ref-1']),
+    repeat: { mode: 'finite', count: 1 },
+    sourceKind: 'imported-background',
+    revision: 0,
+    ...overrides,
+  };
+}
+
+function makeBackground(
+  clips: readonly FrameLoopClip[] = [],
+  overrides: Partial<BackgroundTrack> = {},
+): BackgroundTrack {
+  const base = createEfxPaintDocument('layer-1').background;
+  return {
+    ...base,
+    clips: Object.freeze([...clips]),
+    ...overrides,
   };
 }
 
@@ -273,6 +319,8 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
 function makeCachedHarness(options: {
   content?: Record<string, EfxPaintTrackContentResolution>;
   background?: 'content' | 'gap' | 'missing';
+  backgroundResolutions?: ReadonlyMap<number, EfxPaintBackgroundFrameResolution>;
+  backgroundSourceImages?: Record<string, CanvasImageSource>;
   trackContentRevisions?: ReadonlyMap<string, string>;
   backgroundClipRevisions?: readonly string[];
 } = {}): {
@@ -281,7 +329,12 @@ function makeCachedHarness(options: {
   calls: Map<string, number>;
   revisions: Map<string, string>;
 } {
-  const base = makeHarness({ content: options.content, background: options.background });
+  const base = makeHarness({
+    content: options.content,
+    background: options.background,
+    backgroundResolutions: options.backgroundResolutions,
+    backgroundSourceImages: options.backgroundSourceImages,
+  });
   const calls = new Map<string, number>();
   const revisions = new Map(options.trackContentRevisions ?? []);
   const resolveTrackContent = (trackId: string, frame: number): EfxPaintTrackContentResolution => {
@@ -422,5 +475,181 @@ describe('compositeFrame — per-frame flattened memo (D-08, CMP-04)', () => {
     expect(second).toBe(first);
     expect(second.missing).toBe(first.missing); // identical frozen report
     expect(calls.get('track-b')).toBe(1); // missing source resolved exactly once
+  });
+});
+
+// --- Phase 48-04 Task 1: Background step — spec steps 1-3 (D-03/D-04/D-09) ---
+
+describe('compositeFrame — Background contribution beneath all Paint tracks (48-04 Task 1)', () => {
+  it('Background content draws beneath all Paint tracks: fallback fill → background drawImage(0,0, alpha 1, source-over) → track draws (spec steps 1-3)', () => {
+    const { ops, ports } = makeHarness({
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
+      background: 'content',
+      backgroundSourceImages: { 'bg-ref': raster('bg-raster') },
+    });
+    const doc = makeDocument(
+      [makeTrack('track-a', { order: 0 })],
+      { fallback: { mode: 'solid', color: '#112233' } },
+    );
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    expect(result.missing).toEqual([]);
+    // D-04: the Background has no opacity/blend — its draw is a plain
+    // source-over at globalAlpha 1, never re-scaled by track opacity.
+    expect(ops.map((op) => op.type)).toEqual([
+      'fillRect', 'save', 'drawImage', 'restore',
+      'save', 'drawImage', 'restore',
+    ]);
+    expect(ops[1]).toEqual({ type: 'save' });
+    expect(ops[2]).toEqual({
+      type: 'drawImage',
+      source: 'bg-raster',
+      args: [0, 0],
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+    });
+    expect(ops[5]).toEqual({
+      type: 'drawImage',
+      source: 'track-a',
+      args: [0, 0],
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+    });
+  });
+
+  it('a hidden Background is not drawn while the document fallback still paints (D-04 — governed only by background.visible)', () => {
+    const { ops, ports } = makeHarness({
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
+      background: 'content', // would draw if visible
+      backgroundSourceImages: { 'bg-ref': raster('bg-raster') },
+    });
+    const doc = makeDocument(
+      [makeTrack('track-a', { order: 0 })],
+      { visible: false, fallback: { mode: 'solid', color: '#112233' } },
+    );
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    expect(result.participates.background).toBe(false);
+    expect(ops[0]).toEqual({
+      type: 'fillRect',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      fillStyle: '#112233',
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+    });
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+  });
+
+  it('a Background gap reveals the fallback — no background draw op and no extra fill over the fallback', () => {
+    const { ops, ports } = makeHarness({
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
+      background: 'gap',
+    });
+    const doc = makeDocument(
+      [makeTrack('track-a', { order: 0 })],
+      { fallback: { mode: 'solid', color: '#112233' } },
+    );
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    expect(result.missing).toEqual([]);
+    const fills = ops.filter((op) => op.type === 'fillRect');
+    expect(fills).toHaveLength(1); // only the fallback fill — no extra fill
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+  });
+
+  it('a missing Background source contributes transparent pixels AND a report entry keyed by the background track id (D-09)', () => {
+    const { ops, ports } = makeHarness({
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
+      background: 'missing',
+    });
+    const doc = makeDocument([makeTrack('track-a', { order: 0 })]);
+
+    const result = compositeFrame(doc, 5, { width: 4, height: 3 }, ports);
+
+    expect(result.missing).toEqual([{ trackId: doc.background.id, frame: 5, missingRefs: ['bg-ref'] }]);
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'track-a', args: [0, 0], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+  });
+
+  it('a soloed Paint track never suppresses the Background — the Background draw stays beneath the soloed track (D-04)', () => {
+    const { ops, ports } = makeHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+      background: 'content',
+      backgroundSourceImages: { 'bg-ref': raster('bg-raster') },
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1, solo: true }),
+    ]);
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    expect(result.participates.trackIds).toEqual(['track-b']);
+    expect(result.participates.background).toBe(true);
+    const bgDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'bg-raster');
+    const trackDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'track-b');
+    expect(bgDrawIndex).toBeGreaterThanOrEqual(0);
+    expect(trackDrawIndex).toBeGreaterThanOrEqual(0);
+    expect(bgDrawIndex).toBeLessThan(trackDrawIndex);
+  });
+
+  it('an infinite Background loop is capacity-bounded: frames 0 and 19 draw content, frame 20 resolves gap at the parent end (Pitfall 11)', () => {
+    const background = makeBackground([makeClip({
+      id: 'clip-1',
+      startFrame: 0,
+      sourceFrameRefs: Object.freeze(['ref-a', 'ref-b', 'ref-c', 'ref-d']),
+      repeat: { mode: 'infinite' },
+      sourceKind: 'imported-background',
+      revision: 1,
+    })]);
+    // The 48-02 adapter is the derivation authority (Pitfall 10): the
+    // compositor consumes its per-frame union — 0 and 19 resolve content
+    // inside [0, capacity), 20 resolves gap at the parent end.
+    const context = deriveEfxPaintBackgroundResolution(background, 20);
+    const knownSources = new Set(['ref-a', 'ref-b', 'ref-c', 'ref-d']);
+    const resolutions = new Map<number, EfxPaintBackgroundFrameResolution>([
+      [0, resolveEfxPaintBackgroundFrame(context, 0, knownSources)],
+      [19, resolveEfxPaintBackgroundFrame(context, 19, knownSources)],
+      [20, resolveEfxPaintBackgroundFrame(context, 20, knownSources)],
+    ]);
+    expect(resolutions.get(20)).toEqual({ kind: 'gap' });
+
+    const { ops, ports } = makeHarness({
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
+      backgroundResolutions: resolutions,
+      backgroundSourceImages: {
+        'ref-a': raster('bg-a'),
+        'ref-b': raster('bg-b'),
+        'ref-c': raster('bg-c'),
+        'ref-d': raster('bg-d'),
+      },
+    });
+    const doc = makeDocument([makeTrack('track-a', { order: 0 })], { clips: background.clips });
+
+    compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+    compositeFrame(doc, 19, { width: 4, height: 3 }, ports);
+    compositeFrame(doc, 20, { width: 4, height: 3 }, ports);
+
+    const bgDraws = ops.filter((op) => op.type === 'drawImage' && op.source.startsWith('bg-'));
+    expect(bgDraws).toHaveLength(2); // 0 and 19 draw; 20 draws nothing (gap)
+    expect(bgDraws[0].source).toBe('bg-a'); // frame 0 → ref-a
+    expect(bgDraws[1].source).toBe('bg-d'); // frame 19 → 19 % 4 = 3 → ref-d
   });
 });
