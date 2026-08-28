@@ -10,7 +10,11 @@
  *             fallback);
  *   content — per-track content revision strings (store-side, 48-03: the roto
  *             physical `contentRevision` or the cached-frame dataUrl-slice
- *             idiom, previewRenderer.ts:175), sorted by track.id;
+ *             idiom, previewRenderer.ts:175), sorted by track.id, LIMITED to
+ *             the currently participating tracks (CMP-04 participating-only
+ *             semantics — a hidden/non-soloed track's content term is absent,
+ *             so its edits never churn the flattened cache; visibility/solo
+ *             are already covered by the config term);
  *   bg      — `document.background.revision`;
  *   clips   — per-clip `${clip.id}:${clip.revision}` revision terms, sorted;
  *   frame   — the requested frame.
@@ -32,6 +36,7 @@ import {
   hashCanonicalPhysicalValue,
 } from '../document/efxPaintCanonicalEncoder';
 import type { EfxPaintDocument } from '../document/efxPaintDocument';
+import { participatingPaintTracks } from './efxPaintHideSolo';
 
 /**
  * One track's content-key term. Deterministic per (trackId, contentRevision,
@@ -71,9 +76,17 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
   const configTerm = encodeCanonicalString(buildEfxPaintCompositeRevision(document));
 
   // Per-track content terms sorted by track.id (localeCompare) so the key is
-  // independent of the caller's Map insertion order.
-  const trackTerms = [...trackContentRevisions.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+  // independent of the caller's Map insertion order — LIMITED to the currently
+  // participating tracks (CMP-04 participating-only semantics, pinned by the
+  // 48-04 invalidation matrix): a hidden or non-soloed track's content cannot
+  // affect the composite, so its term is absent and a content edit to it never
+  // churns the flattened cache. The config term already covers visibility/solo,
+  // so re-showing a track rotates the key and forces the re-composite.
+  const participatingIds = new Set(participatingPaintTracks(document).map((track) => track.id));
+  const participatingEntries = [...trackContentRevisions.entries()]
+    .filter(([trackId]) => participatingIds.has(trackId))
+    .sort(([a], [b]) => a.localeCompare(b));
+  const trackTerms = participatingEntries
     .map(([trackId, revision]) => encodeCanonicalString(trackId) + encodeCanonicalString(revision))
     .join('');
 
@@ -85,7 +98,7 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
 
   const source = [
     `config:${configTerm}`,
-    `tracks:${encodeCanonicalNumber(trackContentRevisions.size)}:${trackTerms}`,
+    `tracks:${encodeCanonicalNumber(participatingEntries.length)}:${trackTerms}`,
     `bg:${encodeCanonicalNumber(document.background.revision)}`,
     `clips:${encodeCanonicalNumber(backgroundClipRevisions.length)}:${clipTerms}`,
     `frame:${encodeCanonicalNumber(frame)}`,
