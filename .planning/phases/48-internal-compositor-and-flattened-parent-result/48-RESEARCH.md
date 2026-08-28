@@ -456,24 +456,24 @@ if (!source || source.kind === 'loop-placeholder') {
 | A3 | The flattened raster's canvas dimensions are not defined in the document model (`EfxPaintDocument` has no width/height [VERIFIED: efxPaintDocument.ts:71-80]); frames carry per-frame `width`/`height` (CachedFrameReference, efxPaintDocument.ts:40-44) | Open Questions | If no frame exists at F on any track, the compositor needs a size authority — assumption: parent layer/sequence canvas size supplies it; planner must confirm with the user or existing Studio canvas sizing |
 | A4 | Studio composite transport cost (canvas → the Studio playback surface) is assumed acceptable via direct canvas/ImageBitmap handoff rather than `toDataURL` round-trips per frame | Open Questions | If the Studio surface requires dataUrl PNG payloads (like `PhysicPaintRenderedFrame`), per-frame encode cost may force a transport decision; planner should inspect `cachedRotoPlaybackComposition` before locking D-11's return shape |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Raster size authority for empty frames/documents**
+1. **Raster size authority for empty frames/documents** — RESOLVED in 48-01 must_haves truth ("Open Question 1 resolved: the parent project canvas dimensions are the size authority"; compositeFrame takes an explicit `size` parameter sourced from the same dims `renderFrame` uses, previewRenderer.ts:362-375); store-side consumption in 48-03 Task 1 (`projectStore.width/height.peek()`).
    - What we know: frames carry width/height; the document carries none; the Studio canvas stack sizes itself from mounted canvases.
    - What's unclear: what size the flattened raster takes when no participating track has content at frame F (pure fallback/gap frames).
    - Recommendation: use the parent layer's canvas dimensions (same source `renderFrame` uses for its canvas sync, previewRenderer.ts:362-375); confirm with user.
 
-2. **Missing-source Studio surface (Pitfall P-48-4)**
+2. **Missing-source Studio surface (Pitfall P-48-4)** — RESOLVED (partial, flagged for user confirmation): 48-01 flagged assumption in must_haves (flattened path renders transparent + status capsule per D-09; the 43-09 export preflight block is RETAINED and generalized to all participating tracks in 48-03 Task 3); user confirmation rides the 48-06 UAT part 4.
    - What we know: D-28 placeholder rendering (preview) + 43-09 export preflight block exist; D-09 locks transparent + capsule for flattened output/export.
    - What's unclear: whether Studio's program monitor keeps placeholder stripes (as view chrome over transparency) or goes transparent+capsule only, and whether the export preflight block is retained for Hold-loop ranges.
    - Recommendation: planner adds a `checkpoint:human-verify` — this is user-visible behavior on a previously locked surface.
 
-3. **Where `getFlattenedFrame` lives and its return shape**
+3. **Where `getFlattenedFrame` lives and its return shape** — RESOLVED in 48-03 must_haves truth ("Open Question 3 resolved: physicPaintStore location, existing renderer-facing shape extended, no new transport"): `getFlattenedFrame(layerId, frame)` lives in physicPaintStore and returns the `PreviewPhysicPaintFrameSource`-compatible record extended with a missing-source report field (dataUrl transport, D-11).
    - What we know: D-11 says "a new store function … mirroring the current `getRotoPhysicalRenderSource` pattern"; `PreviewPhysicPaintFrameSource` (previewRenderer.ts:139-145) is the renderer-facing shape (`layerId`, `frame`, `cacheKey?`, `renderedFrame`).
    - What's unclear: whether the flattened raster crosses the seam as a canvas/ImageBitmap or as a `PhysicPaintRenderedFrame` dataUrl (performance, A4).
    - Recommendation: return the existing `PreviewPhysicPaintFrameSource`-compatible shape so `previewRenderer` changes stay minimal; measure before introducing a new transport.
 
-4. **Pixel-matrix verification strategy**
+4. **Pixel-matrix verification strategy** — RESOLVED in 48-06 must_haves truth ("Open Question 4 resolution: recording-context unit gates + native UAT pixel truth; no canvas test dependency added"): unit gates are recording-context contract assertions per matrix row; pixel truth is native UAT per matrix row (project precedent: "Accept summarized render UAT evidence"); no `canvas`/`node-canvas` devDependency introduced.
    - What we know: vitest runs in node env with mocked canvas (no pixel truth); spec demands "Studio flattened pixels, main preview, and export must satisfy the existing pixel tolerance policy."
    - What's unclear: the "existing pixel tolerance policy" has no in-repo implementation found this session (only recording-mock tests; `tolerance` appears only in `paintRenderer.test.ts` for fill logic) — the policy may be a UAT/visual convention rather than code.
    - Recommendation: unit gates = recording-context contract tests (op order, alpha values, cache keys, truth table); pixel truth = native UAT per matrix row (project precedent: "Accept summarized render UAT evidence"). Do not add a canvas dependency without user approval (A2).
