@@ -24,9 +24,20 @@
  * main editor's compositor performs the alpha math — no manual alpha-channel
  * math happens here. The parent layer's opacity/blend/transform are NEVER read
  * or applied by this module (CMP-03, Pitfall 6).
+ *
+ * The pass is memoized per frame when the caller wires the flattened memo +
+ * key terms through the ports (D-08/CMP-04): an identical second call returns
+ * the frozen cached result with zero content queries and zero draw ops, and a
+ * per-track raster memo (D-07) keeps an unchanged track's resolved raster
+ * alive when only a sibling track changed.
  */
 
 import type { BlendMode, EfxPaintDocument } from '../document/efxPaintDocument';
+import {
+  deriveEfxPaintFlattenedCacheKey,
+  deriveEfxPaintTrackContentKey,
+} from './efxPaintCompositeCache';
+import type { EfxPaintKeyedMemo } from './efxPaintCompositeCache';
 import { backgroundParticipates, participatingPaintTracks } from './efxPaintHideSolo';
 
 /** Per-track content resolution surfaced by the injected port (D-10 seam). */
@@ -59,6 +70,20 @@ export interface EfxPaintCompositorPorts {
   resolveTrackContent(trackId: string, frame: number): EfxPaintTrackContentResolution;
   resolveBackgroundFrame(frame: number): EfxPaintBackgroundResolution;
   compositeOp(blendMode: BlendMode): GlobalCompositeOperation;
+  /**
+   * Optional per-frame flattened memo wiring (D-08/CMP-04). The store side
+   * (48-03) owns the concrete memo lifetimes per layerId and supplies the
+   * key terms; supply `memo`, `trackRasterMemo`, `trackContentRevisions`, and
+   * `backgroundClipRevisions` TOGETHER. When `memo` is absent the pipeline
+   * runs uncached (Task 1 behavior).
+   */
+  memo?: EfxPaintKeyedMemo<string, EfxPaintCompositeResult>;
+  /** Per-track raster memo keyed by {@link deriveEfxPaintTrackContentKey} (D-07). */
+  trackRasterMemo?: EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>;
+  /** trackId → content revision string, the per-track key term (48-03). */
+  trackContentRevisions?: ReadonlyMap<string, string>;
+  /** Per-clip `${clip.id}:${clip.revision}` terms, the flattened-key term. */
+  backgroundClipRevisions?: readonly string[];
 }
 
 /** One missing-source report entry (CMP-05, D-09). */
@@ -100,6 +125,25 @@ export function compositeFrame(
   size: EfxPaintCompositeSize,
   ports: EfxPaintCompositorPorts,
 ): EfxPaintCompositeResult {
+  // D-08/CMP-04: when the caller wires the flattened memo, consult it FIRST
+  // by the derived key (config + per-track content + background + clips +
+  // frame). A hit returns the frozen cached result — zero content queries,
+  // zero draw ops (Pitfall P-48-6). The key terms come from the caller; the
+  // unwired compositeRevision counter is never read (Task 2 gate).
+  const flattenedKey =
+    ports.memo !== undefined
+      ? deriveEfxPaintFlattenedCacheKey({
+          document,
+          trackContentRevisions: ports.trackContentRevisions ?? EMPTY_TRACK_CONTENT_REVISIONS,
+          backgroundClipRevisions: ports.backgroundClipRevisions ?? EMPTY_BACKGROUND_CLIP_REVISIONS,
+          frame,
+        })
+      : null;
+  if (flattenedKey !== null) {
+    const cached = ports.memo!.get(flattenedKey);
+    if (cached) return cached;
+  }
+
   const handle = ports.createCanvas(size.width, size.height);
   const ctx = handle.ctx;
   const missing: EfxPaintMissingSourceEntry[] = [];
@@ -136,7 +180,21 @@ export function compositeFrame(
   // is save/restore-wrapped per track.
   const participating = participatingPaintTracks(document);
   for (const track of participating) {
-    const resolution = ports.resolveTrackContent(track.id, frame);
+    // D-07: per-track raster memo — a track's resolved raster survives when
+    // only a SIBLING track changed. The per-track key is derived from the
+    // caller-supplied content revision; the actual dataUrl→image decode lives
+    // store-side (48-03) — this pure side caches whatever resolution object
+    // the port produced.
+    const trackRevision = ports.trackContentRevisions?.get(track.id);
+    const trackKey =
+      trackRevision !== undefined && ports.trackRasterMemo !== undefined
+        ? deriveEfxPaintTrackContentKey(track.id, trackRevision, frame)
+        : null;
+    let resolution = trackKey !== null ? ports.trackRasterMemo!.get(trackKey) : undefined;
+    if (resolution === undefined) {
+      resolution = ports.resolveTrackContent(track.id, frame);
+      if (trackKey !== null) ports.trackRasterMemo!.set(trackKey, resolution);
+    }
     if (resolution.kind === 'missing') {
       // D-09: transparent pixels + a report entry — never a placeholder fill.
       missing.push({ trackId: track.id, frame, missingRefs: resolution.missingRefs });
@@ -149,8 +207,9 @@ export function compositeFrame(
     ctx.restore();
   }
 
-  // 9. Flattened raster + report. All output is deep-frozen.
-  return Object.freeze({
+  // 9. Flattened raster + report. All output is deep-frozen; the caller's
+  // memo stores the frozen result for the derived flattened key.
+  const result = Object.freeze({
     raster: handle.canvas,
     missing: Object.freeze(missing),
     participates: Object.freeze({
@@ -158,4 +217,9 @@ export function compositeFrame(
       background: backgroundActive,
     }),
   });
+  if (flattenedKey !== null) ports.memo!.set(flattenedKey, result);
+  return result;
 }
+
+const EMPTY_TRACK_CONTENT_REVISIONS: ReadonlyMap<string, string> = new Map();
+const EMPTY_BACKGROUND_CLIP_REVISIONS: readonly string[] = Object.freeze([]);
