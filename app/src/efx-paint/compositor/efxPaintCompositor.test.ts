@@ -13,9 +13,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createEfxPaintDocument } from '../document/efxPaintDocument';
 import type { EfxPaintDocument, InternalPaintTrack } from '../document/efxPaintDocument';
+import { createKeyedMemo } from './efxPaintCompositeCache';
 import { compositeFrame } from './efxPaintCompositor';
 import type {
   EfxPaintCompositorPorts,
+  EfxPaintCompositeResult,
   EfxPaintTrackContentResolution,
 } from './efxPaintCompositor';
 
@@ -257,5 +259,167 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     expect(source).not.toContain('premultiply');
     expect(source).not.toContain('putImageData');
     expect(source).not.toContain('getImageData');
+  });
+});
+
+// --- Phase 48-01 Task 3: per-frame flattened memo integration (D-08, P-48-6) ---
+
+/**
+ * Harness that wires the caller-supplied flattened memo + track raster memo +
+ * key terms into the ports, and counts `resolveTrackContent` consultations so
+ * tests can prove the second identical call performs zero content-port queries.
+ */
+function makeCachedHarness(options: {
+  content?: Record<string, EfxPaintTrackContentResolution>;
+  background?: 'content' | 'gap' | 'missing';
+  trackContentRevisions?: ReadonlyMap<string, string>;
+  backgroundClipRevisions?: readonly string[];
+} = {}): {
+  ops: RecordedCanvasOp[];
+  ports: EfxPaintCompositorPorts;
+  calls: Map<string, number>;
+  revisions: Map<string, string>;
+} {
+  const base = makeHarness({ content: options.content, background: options.background });
+  const calls = new Map<string, number>();
+  const revisions = new Map(options.trackContentRevisions ?? []);
+  const resolveTrackContent = (trackId: string, frame: number): EfxPaintTrackContentResolution => {
+    calls.set(trackId, (calls.get(trackId) ?? 0) + 1);
+    return base.ports.resolveTrackContent(trackId, frame);
+  };
+  const ports: EfxPaintCompositorPorts = {
+    ...base.ports,
+    resolveTrackContent,
+    memo: createKeyedMemo<string, EfxPaintCompositeResult>(),
+    trackRasterMemo: createKeyedMemo<string, EfxPaintTrackContentResolution>(),
+    trackContentRevisions: revisions,
+    backgroundClipRevisions: options.backgroundClipRevisions ?? [],
+  };
+  return { ops: base.ops, ports, calls, revisions };
+}
+
+describe('compositeFrame — per-frame flattened memo (D-08, CMP-04)', () => {
+  it('an identical second call returns the cached frozen result — zero content queries, zero draw ops (P-48-6)', () => {
+    const { ops, ports, calls } = makeCachedHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+      trackContentRevisions: new Map([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const size = { width: 4, height: 3 };
+
+    const first = compositeFrame(doc, 0, size, ports);
+    expect(calls.get('track-a')).toBe(1);
+    expect(calls.get('track-b')).toBe(1);
+    const opsAfterFirst = ops.length;
+    const drawsAfterFirst = ops.filter((op) => op.type === 'drawImage').length;
+
+    const second = compositeFrame(doc, 0, size, ports);
+    expect(second.raster).toBe(first.raster); // SAME canvas reference
+    expect(calls.get('track-a')).toBe(1); // never re-queried
+    expect(calls.get('track-b')).toBe(1);
+    expect(ops.length).toBe(opsAfterFirst); // zero new draw ops
+    expect(ops.filter((op) => op.type === 'drawImage').length).toBe(drawsAfterFirst);
+    expect(Object.isFrozen(second)).toBe(true);
+  });
+
+  it('bumping ONE track content revision re-runs the pass; the sibling track is served from the track raster memo (per-track isolation)', () => {
+    const { ports, calls, revisions } = makeCachedHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+      trackContentRevisions: new Map([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const size = { width: 4, height: 3 };
+
+    compositeFrame(doc, 0, size, ports);
+    expect(calls.get('track-a')).toBe(1);
+    expect(calls.get('track-b')).toBe(1);
+
+    // Track B content revision bumps → flattened key changes → the pass runs
+    // again, but track A's content key is unchanged → served from the track
+    // raster memo (no re-query).
+    revisions.set('track-b', 'rev-b2');
+    compositeFrame(doc, 0, size, ports);
+    expect(calls.get('track-a')).toBe(1);
+    expect(calls.get('track-b')).toBe(2);
+  });
+
+  it('toggling a track config (solo) flips the flattened key → full re-run with the new participating set', () => {
+    const { ops, ports, calls } = makeCachedHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+      trackContentRevisions: new Map([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const size = { width: 4, height: 3 };
+
+    const first = compositeFrame(doc, 0, size, ports);
+    expect(first.participates.trackIds).toEqual(['track-a', 'track-b']);
+
+    const soloDoc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1, solo: true }),
+    ]);
+    const opsBefore = ops.length;
+    const second = compositeFrame(soloDoc, 0, size, ports);
+    expect(second.participates.trackIds).toEqual(['track-b']);
+    // Re-run happened: a new draw pass produced ops.
+    expect(ops.length).toBeGreaterThan(opsBefore);
+    // Track B content key unchanged → served from the track raster memo; A no
+    // longer participates and is never re-queried.
+    expect(calls.get('track-b')).toBe(1);
+    expect(calls.get('track-a')).toBe(1);
+  });
+
+  it('a missing-source frame caches the frozen missing[] report; a cache hit returns the identical frozen report', () => {
+    const { ports, calls } = makeCachedHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'missing', missingRefs: ['ref-1'] },
+      },
+      trackContentRevisions: new Map([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+    });
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const size = { width: 4, height: 3 };
+
+    const first = compositeFrame(doc, 0, size, ports);
+    expect(first.missing).toEqual([{ trackId: 'track-b', frame: 0, missingRefs: ['ref-1'] }]);
+    expect(Object.isFrozen(first.missing)).toBe(true);
+
+    const second = compositeFrame(doc, 0, size, ports);
+    expect(second).toBe(first);
+    expect(second.missing).toBe(first.missing); // identical frozen report
+    expect(calls.get('track-b')).toBe(1); // missing source resolved exactly once
   });
 });
