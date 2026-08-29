@@ -711,23 +711,21 @@ describe('pixel acceptance matrix — Background loop/gap rows (SPECS rows 13-15
     expect(bgDraws[1].source).toBe('bg-s3');
   });
 
-  it('matrix row 16 — Background gap over solid fallback: fallback fill op, no background draw', () => {
+  it('matrix row 16 — Background gap over solid fallback: fallback fill op (destination-over), no background draw', () => {
     const { ops, ports } = makeHarness({ background: 'gap' });
     const doc = makeDocument([], { fallback: { mode: 'solid', color: '#334455' } });
 
     compositeFrame(doc, 0, SIZE, ports);
 
-    const fills = ops.filter((op) => op.type === 'fillRect');
-    expect(fills).toEqual([{
-      type: 'fillRect',
-      x: 0,
-      y: 0,
-      w: 4,
-      h: 3,
-      fillStyle: '#334455',
-      globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
-    }]);
+    // 48-06 UAT-C: the solid fallback fills the cleared working canvas via
+    // destination-over — beneath the (empty) track stage, never a blend
+    // backdrop. With no tracks and no Background, the pixels are the fill.
+    expect(ops).toEqual([
+      { type: 'clearRect', w: 4, h: 3 },
+      { type: 'save' },
+      { type: 'fillRect', x: 0, y: 0, w: 4, h: 3, fillStyle: '#334455', globalAlpha: 1, globalCompositeOperation: 'destination-over' },
+      { type: 'restore' },
+    ]);
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toHaveLength(0);
   });

@@ -8,19 +8,23 @@
  * construction, and store access: all canvas/raster/blend work arrives through
  * injected ports (the `efxPaintDocument.ts:1-9` purity contract).
  *
- * Composition order (spec-locked, SPECS/milestone-v1.0.0-plan.md §Phase 4):
- *  1. document fallback — solid fill, or transparency (cleared canvas);
- *  2. Background contribution via `resolveBackgroundFrame`, consuming the
- *     48-02 resolution union (D-03) — content names a source ref the decode
- *     port resolves to a raster (gap = fallback; a null decode contributes
- *     transparent pixels this tick);
- *  3. the Background contribution composites beneath all Paint tracks;
- *  4-8. each participating Paint track (hide/solo truth table, D-04) resolves
+ * Composition order (48-06 UAT-C law: the tracks blend among THEMSELVES first,
+ * then the result is placed over the background/fond — never blended against
+ * it):
+ *  1. a transparent working canvas (the cleared start);
+ *  2-3. each participating Paint track (hide/solo truth table, D-04) resolves
  *     content via `resolveTrackContent`; opacity is applied BEFORE blend mode
  *     (D-01, After Effects convention) as save → globalAlpha = opacity →
- *     globalCompositeOperation = mapped blend → drawImage → restore; a missing
- *     source contributes transparent pixels AND a report entry (D-09, CMP-05);
- *  9. one flattened raster + missing-source report.
+ *     globalCompositeOperation = mapped blend → drawImage → restore. The FIRST
+ *     participating track establishes the stage with source-over (a blend over
+ *     transparency would erase it); a missing source contributes transparent
+ *     pixels AND a report entry (D-09, CMP-05);
+ *  4. the Background contribution (D-03, `resolveBackgroundFrame`) composites
+ *     BENEATH all Paint tracks via destination-over — it never enters the
+ *     track blend modes;
+ *  5. the document fallback (solid fill) composites BENEATH everything via
+ *     destination-over; transparency is the already-cleared canvas;
+ *  6. one flattened raster + missing-source report.
  *
  * The flattened raster carries STRAIGHT (unmultiplied) alpha at the boundary
  * to the main editor (D-02): each track's alpha is preserved as-is and the
@@ -202,55 +206,24 @@ export function compositeFrame(
   const ctx = handle.ctx;
   const missing: EfxPaintMissingSourceEntry[] = [];
 
-  // 1. Document fallback: a solid fill covers the whole canvas; transparency
-  // is the cleared canvas. (Solid needs no clear — fillRect covers it all.)
-  if (document.background.fallback.mode === 'solid') {
-    ctx.fillStyle = document.background.fallback.color;
-    ctx.fillRect(0, 0, size.width, size.height);
-  } else {
-    ctx.clearRect(0, 0, size.width, size.height);
-  }
-
-  // 2-3. Background contribution beneath all Paint tracks. Governed only by
-  // `background.visible` (D-04); a 'gap' reveals the already-painted fallback.
-  // The union comes from the 48-02 adapter (D-03) — content names the clip's
-  // source ref, decoded through the port (a null decode this tick contributes
-  // transparent pixels, the 48-03 pending-decode semantics); 'missing'
-  // contributes transparent pixels AND a report entry keyed by the background
-  // track id (D-09).
-  const backgroundActive = backgroundParticipates(document);
-  if (backgroundActive) {
-    const backgroundResolution = ports.resolveBackgroundFrame(frame);
-    if (backgroundResolution.kind === 'content') {
-      const raster = ports.resolveBackgroundSourceImage(backgroundResolution.sourceRef);
-      if (raster !== null) {
-        // D-04: the Background has no opacity/blend — its draw is a plain
-        // source-over at globalAlpha 1, never re-scaled by track opacity.
-        // Like track rasters, the source image draws scaled to the
-        // project-space composite size.
-        ctx.save();
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(raster, 0, 0, size.width, size.height);
-        ctx.restore();
-      }
-    } else if (backgroundResolution.kind === 'missing') {
-      missing.push({
-        trackId: document.background.id,
-        frame,
-        missingRefs: backgroundResolution.missingRefs,
-      });
-    }
-  }
+  // 1. Start from a transparent working canvas. 48-06 (UAT-C): the document
+  // fallback and the Background now composite BENEATH the tracks at the end
+  // (destination-over) — the tracks blend among THEMSELVES first and the
+  // result is placed over the background/fond, never blended against it.
+  ctx.clearRect(0, 0, size.width, size.height);
 
   // 4-8. Participating Paint tracks in stable bottom-to-top order. Opacity is
   // applied BEFORE blend mode (D-01, After Effects convention); the draw state
   // is save/restore-wrapped per track. 48-05: the exclude set (engine-supplied
   // tracks) filters the participating set here — the pure compositor enforces
   // the D-05 editing-base exclusion regardless of how the caller built its
-  // content terms.
+  // content terms. 48-06 (UAT-C): the FIRST participating track establishes
+  // the transparent stage with source-over — a non-normal blend over
+  // transparency would erase it (multiply over transparent = transparent);
+  // every track above keeps its own blend mode, applied between tracks only.
   const participating = participatingPaintTracks(document)
     .filter((track) => !ports.excludeTrackIds?.has(track.id));
+  let firstTrack = true;
   for (const track of participating) {
     // D-07: per-track raster memo — a track's resolved raster survives when
     // only a SIBLING track changed. The per-track key is derived from the
@@ -274,11 +247,60 @@ export function compositeFrame(
     }
     ctx.save();
     ctx.globalAlpha = track.opacity;
-    ctx.globalCompositeOperation = ports.compositeOp(track.blendMode);
+    ctx.globalCompositeOperation = firstTrack ? 'source-over' : ports.compositeOp(track.blendMode);
     // Track rasters arrive at the engine's WORKING resolution (the Studio
     // paints on a long-edge-capped canvas); the flattened raster is
     // project-space, so the draw scales the raster to the composite size.
     ctx.drawImage(resolution.raster, 0, 0, size.width, size.height);
+    ctx.restore();
+    firstTrack = false;
+  }
+
+  // 2-3. Background contribution BENEATH all Paint tracks (48-06 UAT-C).
+  // Drawn with destination-over so the track blend modes never see it — the
+  // tracks composite above it with plain source-over. Governed only by
+  // `background.visible` (D-04); a 'gap' reveals the already-clear canvas and
+  // the fallback to come. The union comes from the 48-02 adapter (D-03) —
+  // content names the clip's source ref, decoded through the port (a null
+  // decode this tick contributes transparent pixels, the 48-03 pending-decode
+  // semantics); 'missing' contributes transparent pixels AND a report entry
+  // keyed by the background track id (D-09).
+  const backgroundActive = backgroundParticipates(document);
+  if (backgroundActive) {
+    const backgroundResolution = ports.resolveBackgroundFrame(frame);
+    if (backgroundResolution.kind === 'content') {
+      const raster = ports.resolveBackgroundSourceImage(backgroundResolution.sourceRef);
+      if (raster !== null) {
+        // D-04: the Background has no opacity/blend — its draw is a plain
+        // destination-over at globalAlpha 1, never re-scaled by track opacity.
+        // Like track rasters, the source image draws scaled to the
+        // project-space composite size.
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.drawImage(raster, 0, 0, size.width, size.height);
+        ctx.restore();
+      }
+    } else if (backgroundResolution.kind === 'missing') {
+      missing.push({
+        trackId: document.background.id,
+        frame,
+        missingRefs: backgroundResolution.missingRefs,
+      });
+    }
+  }
+
+  // 4. Document fallback (solid) BENEATH everything (48-06 UAT-C): again
+  // destination-over so the solid paper never enters the track blends.
+  // Transparent fallback is the already-cleared canvas. A solid fill covers
+  // the whole canvas (no partial alpha), but destination-over still lets every
+  // track composite normally above it.
+  if (document.background.fallback.mode === 'solid') {
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = document.background.fallback.color;
+    ctx.fillRect(0, 0, size.width, size.height);
     ctx.restore();
   }
 

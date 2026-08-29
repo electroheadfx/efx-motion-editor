@@ -271,7 +271,7 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     expect(ops).toEqual([{ type: 'clearRect', w: 4, h: 3 }]);
   });
 
-  it('solid fallback fills the canvas before any track draw (spec step 1)', () => {
+  it('48-06 UAT-C: the solid fallback composites BENEATH the tracks via destination-over — the track never blends against it', () => {
     const { ops, ports } = makeHarness({
       content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
     });
@@ -283,9 +283,15 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
 
     expect(result.missing).toEqual([]);
-    // The first recorded op is the solid fallback fill (no clips → background
-    // resolves 'gap' → fallback already painted), before any track draw.
-    expect(ops[0]).toEqual({
+    // The working canvas clears first; the track draws ON the stage (blend
+    // modes apply between tracks only); the solid fallback then fills BENEATH
+    // via destination-over — it is never a blend backdrop for the tracks.
+    expect(ops[0]).toEqual({ type: 'clearRect', w: 4, h: 3 });
+    const drawIndex = ops.findIndex((op) => op.type === 'drawImage');
+    const fillIndex = ops.findIndex((op) => op.type === 'fillRect');
+    expect(drawIndex).toBeGreaterThanOrEqual(0);
+    expect(fillIndex).toBeGreaterThan(drawIndex);
+    expect(ops[fillIndex]).toEqual({
       type: 'fillRect',
       x: 0,
       y: 0,
@@ -293,11 +299,33 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
       h: 3,
       fillStyle: '#112233',
       globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
+      globalCompositeOperation: 'destination-over',
     });
-    const fillIndex = ops.findIndex((op) => op.type === 'fillRect');
-    const drawIndex = ops.findIndex((op) => op.type === 'drawImage');
-    expect(fillIndex).toBeLessThan(drawIndex);
+  });
+
+  it('48-06 UAT-C: track blend modes apply BETWEEN tracks only — the lowest track establishes the stage with source-over', () => {
+    const { ops, ports } = makeHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+    });
+    const doc = makeDocument([
+      // Bottom track with a NON-normal blend: over an empty backdrop it would
+      // erase itself (multiply over transparent = transparent), so the stage
+      // law promotes it to the source-over base…
+      makeTrack('track-a', { order: 0, blendMode: 'multiply' }),
+      // …and every track above blends onto the accumulated stage with its own
+      // declared mode (opacity applied first, D-01).
+      makeTrack('track-b', { order: 1, opacity: 0.5, blendMode: 'screen' }),
+    ]);
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    expect(result.missing).toEqual([]);
+    const drawA = ops.find((op) => op.type === 'drawImage' && op.source === 'track-a');
+    const drawB = ops.find((op) => op.type === 'drawImage' && op.source === 'track-b');
+    expect(drawA).toMatchObject({ globalCompositeOperation: 'source-over', globalAlpha: 1 });
+    expect(drawB).toMatchObject({ globalCompositeOperation: 'screen', globalAlpha: 0.5 });
   });
 
   it('documents the straight-alpha boundary and never manually premultiplies (D-02)', () => {
@@ -481,7 +509,7 @@ describe('compositeFrame — per-frame flattened memo (D-08, CMP-04)', () => {
 // --- Phase 48-04 Task 1: Background step — spec steps 1-3 (D-03/D-04/D-09) ---
 
 describe('compositeFrame — Background contribution beneath all Paint tracks (48-04 Task 1)', () => {
-  it('Background content draws beneath all Paint tracks: fallback fill → background drawImage(0,0, alpha 1, source-over) → track draws (spec steps 1-3)', () => {
+  it('48-06 UAT-C: the Background and the solid fallback composite BENEATH the tracks via destination-over — the tracks blend only among themselves', () => {
     const { ops, ports } = makeHarness({
       content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
       background: 'content',
@@ -495,26 +523,37 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
 
     expect(result.missing).toEqual([]);
-    // D-04: the Background has no opacity/blend — its draw is a plain
-    // source-over at globalAlpha 1, never re-scaled by track opacity.
+    // Clear → track (source-over stage base) → Background (destination-over,
+    // D-04: plain alpha 1, never track-scaled) → solid fallback (destination-
+    // over, beneath everything). The track's blend never sees either underlay.
     expect(ops.map((op) => op.type)).toEqual([
-      'fillRect', 'save', 'drawImage', 'restore',
+      'clearRect', 'save', 'drawImage', 'restore',
       'save', 'drawImage', 'restore',
+      'save', 'fillRect', 'restore',
     ]);
-    expect(ops[1]).toEqual({ type: 'save' });
     expect(ops[2]).toEqual({
       type: 'drawImage',
-      source: 'bg-raster',
+      source: 'track-a',
       args: [0, 0, 4, 3],
       globalAlpha: 1,
       globalCompositeOperation: 'source-over',
     });
     expect(ops[5]).toEqual({
       type: 'drawImage',
-      source: 'track-a',
+      source: 'bg-raster',
       args: [0, 0, 4, 3],
       globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
+      globalCompositeOperation: 'destination-over',
+    });
+    expect(ops[8]).toEqual({
+      type: 'fillRect',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      fillStyle: '#112233',
+      globalAlpha: 1,
+      globalCompositeOperation: 'destination-over',
     });
   });
 
@@ -532,7 +571,15 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
 
     expect(result.participates.background).toBe(false);
-    expect(ops[0]).toEqual({
+    expect(ops[0]).toEqual({ type: 'clearRect', w: 4, h: 3 });
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+    // The hidden Background is not drawn, but the solid fallback still fills
+    // BENEATH the track via destination-over (48-06 UAT-C).
+    const filling = ops.find((op) => op.type === 'fillRect');
+    expect(filling).toEqual({
       type: 'fillRect',
       x: 0,
       y: 0,
@@ -540,12 +587,8 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
       h: 3,
       fillStyle: '#112233',
       globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
+      globalCompositeOperation: 'destination-over',
     });
-    const draws = ops.filter((op) => op.type === 'drawImage');
-    expect(draws).toEqual([
-      { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
-    ]);
   });
 
   it('a Background gap reveals the fallback — no background draw op and no extra fill over the fallback', () => {
@@ -603,11 +646,14 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
 
     expect(result.participates.trackIds).toEqual(['track-b']);
     expect(result.participates.background).toBe(true);
-    const bgDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'bg-raster');
+    // 48-06 UAT-C: the soloed track draws first (stage base); the Background
+    // then composites BENEATH it via destination-over — it never enters the
+    // soloed track's blend mode, but still renders under the lone track.
     const trackDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'track-b');
-    expect(bgDrawIndex).toBeGreaterThanOrEqual(0);
+    const bgDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'bg-raster');
     expect(trackDrawIndex).toBeGreaterThanOrEqual(0);
-    expect(bgDrawIndex).toBeLessThan(trackDrawIndex);
+    expect(bgDrawIndex).toBeGreaterThanOrEqual(0);
+    expect(bgDrawIndex).toBeGreaterThan(trackDrawIndex);
   });
 
   it('an infinite Background loop is capacity-bounded: frames 0 and 19 draw content, frame 20 resolves gap at the parent end (Pitfall 11)', () => {
