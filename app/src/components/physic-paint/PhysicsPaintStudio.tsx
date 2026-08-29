@@ -400,8 +400,16 @@ export function PhysicsPaintStudio() {
         loopSelectionAnchorId.value = null;
         activeLinkedLoopClipId.value = null;
       } else if (next && next.startFrame !== current?.startFrame) {
-        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, trackIdOfLaunch(next), next.startFrame)?.keyId ?? null;
-        physicPaintStore.setRotoPhysicalSelection(next.layerId, trackIdOfLaunch(next), selectedKeyId.value, next.startFrame);
+        // 48-06 (R-2click): reseed against the LIVE document's active track —
+        // the launch snapshot's activeTrackId still points at the track that
+        // was active at the last launch replacement, so after a track switch
+        // the rAF startFrame propagation looked up the key on the WRONG track,
+        // found nothing, and cleared the synchronous click selection (the
+        // first click selected, the reseed cleared, only the second click on
+        // the same frame survived — startFrame unchanged, no reseed branch).
+        const liveTrackId = getEfxPaintDocument(next.layerId)?.activeTrackId ?? trackIdOfLaunch(next);
+        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
+        physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
         const spacingSelection = rotoSpacingSelection.peek();
         selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
           ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
@@ -2963,18 +2971,30 @@ export function PhysicsPaintStudio() {
     : mutationLocked
       ? 'Finish the current Roto script operation.'
       : undefined;
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata], () => ({
-    width: canvasWidth,
-    height: canvasHeight,
-    paperTextureScale,
-    onEngineReady: handleCanvasEngineReady,
-    onCanvasMounted: setCanvasMounted,
-    onNativePenInputReady: handleNativePenInputReady,
-    onCompletedMutation: handleCanvasCompletedMutation,
-    onPerformanceSample: recordEnginePerformance,
-    beforeEngineDestroy: rotoScript.prepareEngineDisposal,
-    getStrokeMetadata,
-  }));
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value], () => {
+    // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
+    // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
+    // active track out of the monitor's composite, so without this the Studio
+    // never shows the edited track's display properties. efxPaintVersion in
+    // the deps re-resolves the memo on setTrackOpacity/setTrackBlend.
+    const mountLayerId = launchContext?.layerId;
+    const mountDocument = mountLayerId ? getEfxPaintDocument(mountLayerId) : null;
+    const mountActiveTrack = mountDocument?.tracks.find((track) => track.id === mountDocument.activeTrackId);
+    return {
+      width: canvasWidth,
+      height: canvasHeight,
+      paperTextureScale,
+      onEngineReady: handleCanvasEngineReady,
+      onCanvasMounted: setCanvasMounted,
+      onNativePenInputReady: handleNativePenInputReady,
+      onCompletedMutation: handleCanvasCompletedMutation,
+      onPerformanceSample: recordEnginePerformance,
+      beforeEngineDestroy: rotoScript.prepareEngineDisposal,
+      getStrokeMetadata,
+      trackOpacity: mountActiveTrack?.opacity ?? 1,
+      trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',
+    };
+  });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the
   // program monitor's compare-then-write summary to the existing red-warning
   // status-capsule surface (the statusMessage/statusIsError bundle), naming the

@@ -4620,6 +4620,16 @@ button.destructive {
   z-index: 4 !important;
 }
 
+/* 48-06 (N2/N3): the engine shell can carry the active track's opacity/blend
+   as CSS group opacity + mix-blend-mode (the D-05 exclusion keeps the active
+   track out of the monitor's composite). The standalone white .paint-canvas
+   background must not join that blend group (screen would read it as white,
+   opacity would wash the monitor out) — the program monitor owns the visible
+   background, so the wrapper stays transparent in the Studio shell. */
+.demo-canvas-shell .paint-canvas {
+  background-color: transparent;
+}
+
 /* 48-05 (D-05): the program monitor sits BELOW the engine canvas (the engine
    canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
    engine < onion. It draws the flattened composite only — pointer-events none

@@ -122,6 +122,14 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
     expect(studio).toContain('const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);');
     expect(studio).toContain('physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
+    // 48-06 (R-2click): the startFrame propagation reseed must also read the
+    // LIVE active track — the launch snapshot's activeTrackId is stale after a
+    // track switch, so the rAF reseed looked up the key on the wrong track,
+    // found nothing, and cleared the synchronous click selection (the first
+    // click selected, the reseed cleared, only the second click survived).
+    expect(studio).toContain('const liveTrackId = getEfxPaintDocument(next.layerId)?.activeTrackId ?? trackIdOfLaunch(next);');
+    expect(studio).toContain('physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null');
+    expect(studio).not.toContain('physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, trackIdOfLaunch(next), next.startFrame)');
     // The timeline-actions resolver ports (capacity, parent end, loop clips,
     // interpolation breaks) feed the first-paint key promotion — the launch
     // track's breaks/clips fail validation against the new track's empty key

@@ -126,6 +126,36 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     }
   });
 
+  it('carries the active track opacity/blend to the engine shell as CSS group opacity + mix-blend (48-06 N2/N3)', () => {
+    // The active track is EXCLUDED from the program monitor's composite (D-05),
+    // so its D-01 display properties would never reach the Studio surface
+    // without this seam: the engine shell wears them as CSS group opacity +
+    // mix-blend-mode over the monitor beneath.
+    expect(mount).toContain('trackOpacity?: number;');
+    expect(mount).toContain('trackBlendMode?: BlendMode');
+    expect(mount).toContain("add: 'plus-lighter',");
+    expect(mount).toContain('mixBlendMode: TRACK_BLEND_TO_CSS_MIX[trackBlendMode]');
+    // The tint group must stay above the z-0 monitor while non-default (a new
+    // stacking context would otherwise paint in tree order, beneath it).
+    expect(mount).toContain("position: 'relative',");
+    const mountBlock = resolveBlock(
+      studio,
+      'const canvasMount = canvasMountPropsMemo.resolve(',
+      'const canvasStack = canvasStackPropsMemo.resolve(',
+    );
+    expect(mountBlock).toContain('trackOpacity: mountActiveTrack?.opacity ?? 1,');
+    expect(mountBlock).toContain("trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',");
+    // The memo re-resolves on document display-property mutations
+    // (setTrackOpacity/setTrackBlend bump the efxPaintVersion clock).
+    const deps = mountBlock.slice(0, mountBlock.indexOf('], () =>'));
+    expect(deps).toContain('efxPaintVersion.value');
+    // The standalone white .paint-canvas background must not join the blend
+    // group — the Studio shell keeps it transparent (the monitor owns the
+    // visible background).
+    const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+    expect(css).toContain('.demo-canvas-shell .paint-canvas {\n  background-color: transparent;');
+  });
+
   it('preserves engine-ready ordering and latest callback invocation', () => {
     const readyStart = mount.indexOf('const handleEngineReady = useCallback(');
     const readyEnd = mount.indexOf('const handleNativePenInputReady', readyStart);
