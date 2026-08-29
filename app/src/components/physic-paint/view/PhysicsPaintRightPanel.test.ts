@@ -248,8 +248,9 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
     expect(props.onTrackOpacityChange).not.toHaveBeenCalled();
 
-    // Releasing the thumb commits exactly once.
-    findById(tree, 'physics-track-opacity').props.onChange({ target: { value: '0.8' } });
+    // Releasing the thumb commits exactly once (pointerup — the native change
+    // event fires on every move in WebKit, so it must never commit).
+    findById(tree, 'physics-track-opacity').props.onPointerUp({ currentTarget: { value: '0.8' } });
     expect(props.onTrackOpacityChange).toHaveBeenCalledOnce();
     expect(props.onTrackOpacityChange).toHaveBeenCalledWith(0.8);
     expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);

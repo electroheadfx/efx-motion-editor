@@ -153,9 +153,24 @@ function PanelSlider(props: {
             props.onChange(next);
           }
         }}
-        onChange={(event) => {
+        // 48-06 (UAT): the release commit is on pointerup/keyup/blur — NOT the
+        // native change event, which WebKit fires on EVERY move for range
+        // inputs (a Tauri/WebKit app would otherwise recomposite per pixel).
+        onPointerUp={(event) => {
           if (!props.commitOnRelease) return;
-          const next = Number((event.target as HTMLInputElement).value);
+          const next = Number((event.currentTarget as HTMLInputElement).value);
+          draft.value = null;
+          props.onChange(next);
+        }}
+        onKeyUp={(event) => {
+          if (!props.commitOnRelease) return;
+          const next = Number((event.currentTarget as HTMLInputElement).value);
+          draft.value = null;
+          props.onChange(next);
+        }}
+        onBlur={(event) => {
+          if (!props.commitOnRelease) return;
+          const next = Number((event.currentTarget as HTMLInputElement).value);
           draft.value = null;
           props.onChange(next);
         }}
