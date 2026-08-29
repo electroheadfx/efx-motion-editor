@@ -146,6 +146,32 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);');
   });
 
+  it('resets the track-scoped edit buffers on an in-place active-track switch (48-06 UAT-A)', () => {
+    // UAT-A: any physical edit after a track switch failed closed with
+    // "Frame-indexed child state is not completely owned by the pre-state
+    // real-key identities", and the failed edit's recovery lease then disabled
+    // every paint tool. The frame-indexed edit state holds TRACK-scoped content
+    // in studio-wide buffers; the track-switch effect must reset it exactly
+    // like a launch replacement does. A visibility flip of the SAME track keeps
+    // the buffers (same content authority).
+    const effectStart = studio.indexOf('const lastReferenceDisplayStateRef = useRef');
+    const effectEnd = studio.indexOf('rotoNavigation.configureRuntimePort', effectStart);
+    expect(effectStart).toBeGreaterThanOrEqual(0);
+    expect(effectEnd).toBeGreaterThan(effectStart);
+    const effect = studio.slice(effectStart, effectEnd);
+    expect(effect).toContain('const lastEditStateTrackIdRef = useRef<string | null>(null);');
+    expect(effect).toContain('if (lastEditStateTrackIdRef.current !== trackId) {');
+    expect(effect).toContain('rotoEditBuffer.resetForLaunch();');
+    expect(effect).toContain('rotoPersistence.confirmedFramesRef.current = new Map();');
+    expect(effect).toContain('rotoEditableFramesRef.current = [];');
+    expect(effect).toContain('cachedRotoReferenceUrlRef.current = null;');
+    expect(effect).toContain('cachedRotoRepaintBaseFrameRef.current = null;');
+    expect(effect).toContain('setCachedRotoRepaintBaseFrame(null);');
+    // The reset must run BEFORE the cross-track selection guard's early return
+    // so a cross-track click (crossTrackSelectionPendingRef) never skips it.
+    expect(effect.indexOf('rotoEditBuffer.resetForLaunch();')).toBeLessThan(effect.indexOf('crossTrackSelectionPendingRef.current'));
+  });
+
   it('syncs the child document to the main window so track CRUD survives the project save (47-01 persistence)', () => {
     // The Studio window owns its own efxPaintStore instance; the main window's
     // save path serializes ITS document. The child must push every document

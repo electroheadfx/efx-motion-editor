@@ -2096,6 +2096,8 @@ export function PhysicsPaintStudio() {
   // and no-op. The mount run no-ops on the engine: the engine-ready path loads
   // the current frame through the live active track.
   const lastReferenceDisplayStateRef = useRef<string | null>(null);
+  // 48-06 (UAT-A): the last track the frame-indexed edit state was built for.
+  const lastEditStateTrackIdRef = useRef<string | null>(null);
   useEffect(() => {
     const lc = launchContextRef.current;
     if (!lc?.layerId) return;
@@ -2105,6 +2107,28 @@ export function PhysicsPaintStudio() {
     const displayState = `${trackId}:${visible ? 'visible' : 'hidden'}`;
     if (displayState === lastReferenceDisplayStateRef.current) return;
     lastReferenceDisplayStateRef.current = displayState;
+    // 48-06 (UAT-A): the frame-indexed edit state (frameStates, preview/captured/
+    // confirmed frames, dirty/editable sets, live-overlay counts, cached repaint
+    // base) holds TRACK-scoped content in studio-wide buffers. An in-place
+    // active-track switch (row click, cross-track click, add, duplicate) must
+    // reset it exactly like a launch replacement does — otherwise the next
+    // physical edit's ownership rebuild reads the previous track's frames as
+    // unowned and fails closed ("Frame-indexed child state is not completely
+    // owned by the pre-state real-key identities"), and the failed edit's
+    // recovery lease then disables every paint tool. A visibility flip of the
+    // SAME track keeps the buffers (same content authority, same track).
+    if (lastEditStateTrackIdRef.current !== trackId) {
+      const hadPreviousTrack = lastEditStateTrackIdRef.current !== null;
+      lastEditStateTrackIdRef.current = trackId;
+      if (hadPreviousTrack) {
+        rotoEditBuffer.resetForLaunch();
+        rotoPersistence.confirmedFramesRef.current = new Map();
+        rotoEditableFramesRef.current = [];
+        cachedRotoReferenceUrlRef.current = null;
+        cachedRotoRepaintBaseFrameRef.current = null;
+        setCachedRotoRepaintBaseFrame(null);
+      }
+    }
     const engine = engineRef.current as PreviewBackgroundEngine | null;
     setCachedRotoReferenceUrl(null);
     if (engine) {
@@ -3026,6 +3050,15 @@ export function PhysicsPaintStudio() {
     const programMonitorActiveTrackId = programMonitorLayerId
       ? getEfxPaintDocument(programMonitorLayerId)?.activeTrackId ?? null
       : null;
+    // 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks
+    // the engine canvas by law, but the cleared engine surface can still carry
+    // the engine's own background paint and would occlude the program monitor
+    // beneath — the monitor owns the remaining visible tracks + the document
+    // fond. The flag mirrors the cached-roto-playback treatment: the engine
+    // canvases step aside (visibility: hidden) so the monitor owns the surface.
+    const engineSurfaceHidden = programMonitorLayerId !== null
+      && programMonitorActiveTrackId !== null
+      && !resolvePhysicPaintTrackVisibility(programMonitorLayerId, programMonitorActiveTrackId);
     return {
       cachedRotoReferenceUrl,
       cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
@@ -3037,6 +3070,7 @@ export function PhysicsPaintStudio() {
       onionOverlay,
       canvasKey,
       mount: canvasMount,
+      engineSurfaceHidden,
       programMonitor: programMonitorLayerId ? {
         layerId: programMonitorLayerId,
         currentFrame,

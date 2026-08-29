@@ -156,6 +156,26 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(css).toContain('.demo-canvas-shell .paint-canvas {\n  background-color: transparent;');
   });
 
+  it('hides the engine surface when the active track is hidden so the monitor owns the composite (48-06 UAT-B)', () => {
+    // UAT-B: hiding Track 1 while it was the active track blanked the WHOLE
+    // canvas even though Paint 1 stayed visible — the cleared engine surface
+    // can still carry the engine's own background paint and occludes the
+    // program monitor beneath. The stack mirrors the cached-roto-playback
+    // treatment: the engine canvases step aside until the track is visible
+    // again. Hiding a NON-active track never arms the flag.
+    const stackBlock = resolveBlock(
+      studio,
+      'const canvasStack = canvasStackPropsMemo.resolve(',
+      'const viewModel = usePhysicsPaintStudioViewModel',
+    );
+    expect(stackBlock).toContain('!resolvePhysicPaintTrackVisibility(programMonitorLayerId, programMonitorActiveTrackId)');
+    expect(stackBlock).toContain('engineSurfaceHidden,');
+    expect(view).toContain("props.engineSurfaceHidden ? ' active-track-hidden' : ''");
+    const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas {\n  background-color: transparent;');
+    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas > canvas {\n  visibility: hidden;');
+  });
+
   it('preserves engine-ready ordering and latest callback invocation', () => {
     const readyStart = mount.indexOf('const handleEngineReady = useCallback(');
     const readyEnd = mount.indexOf('const handleNativePenInputReady', readyStart);

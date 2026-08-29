@@ -4647,6 +4647,20 @@ button.destructive {
   visibility: hidden;
 }
 
+/* 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks the
+   engine canvas by law, but the cleared engine surface can still carry the
+   engine's own background paint and would occlude the program monitor beneath
+   (the monitor owns the remaining visible tracks + the document fond). Mirror
+   the cached-roto-playback treatment: the engine canvases step aside so the
+   monitor owns the surface until the track is visible again. */
+.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas {
+  background-color: transparent;
+}
+
+.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas > canvas {
+  visibility: hidden;
+}
+
 .physics-paint-onion-overlay.canvas-region {
   inset: auto;
   z-index: 5;

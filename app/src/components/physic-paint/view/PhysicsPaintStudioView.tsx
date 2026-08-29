@@ -43,6 +43,13 @@ interface PhysicsPaintCanvasStackViewProps {
    * would double-draw.
    */
   programMonitor?: PhysicsPaintProgramMonitorProps | null;
+  /**
+   * 48-06 (UAT-B): the active track is hidden (or non-soloed under solo) — the
+   * engine canvas is blank by law, so its surface must step aside
+   * (visibility: hidden, the cached-roto-playback treatment) and let the
+   * program monitor own the visible composite of the remaining tracks.
+   */
+  engineSurfaceHidden?: boolean;
 }
 
 /**
@@ -121,7 +128,7 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
 
   return (
-    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
       <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
       {canvasBounds && props.programMonitor ? (
         <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
