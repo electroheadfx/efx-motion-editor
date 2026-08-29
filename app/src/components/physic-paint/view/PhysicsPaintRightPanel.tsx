@@ -115,10 +115,22 @@ function PanelSlider(props: {
   suffix?: string;
   step?: number;
   disabled?: boolean;
+  /**
+   * 48-06 (UAT): commit the value only when the thumb is RELEASED (the native
+   * change event), not on every input move. The thumb still follows the mouse
+   * through a local draft; the parent's value only updates on release. Used by
+   * the track opacity slider, whose commit recomposites the whole surface.
+   */
+  commitOnRelease?: boolean;
 }) {
   // The track opacity (0..1) can arrive out of range from the document;
   // the slider display always clamps to the declared min/max (47-03 TML-04).
   const clampedValue = Math.max(props.min, Math.min(props.max, props.value));
+  // 48-06 (UAT): while commitOnRelease is dragging, the thumb position lives
+  // in this local draft so the slider stays responsive; the committed value
+  // (and the parent's recomposite) only happens on release.
+  const [draft, setDraft] = useState<number | null>(null);
+  const displayValue = draft ?? clampedValue;
   return (
     <label class="physics-paint-option-row" for={props.id}>
       <span class="physics-paint-right-label">{props.label}</span>
@@ -128,11 +140,24 @@ function PanelSlider(props: {
         min={props.min}
         max={props.max}
         step={props.step}
-        value={clampedValue}
+        value={displayValue}
         disabled={props.disabled}
-        onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
+        onInput={(event) => {
+          const next = Number((event.target as HTMLInputElement).value);
+          if (props.commitOnRelease) {
+            setDraft(next);
+          } else {
+            props.onChange(next);
+          }
+        }}
+        onChange={(event) => {
+          if (!props.commitOnRelease) return;
+          const next = Number((event.target as HTMLInputElement).value);
+          setDraft(null);
+          props.onChange(next);
+        }}
       />
-      <output>{clampedValue}{props.suffix ?? ''}</output>
+      <output>{displayValue}{props.suffix ?? ''}</output>
     </label>
   );
 }
@@ -585,7 +610,7 @@ export function PhysicsPaintRightPanel({
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-track" role="tabpanel" aria-label="Track options">
             <div class="physics-paint-option-group">
               <span class="physics-paint-right-label">Track: {trackName}</span>
-              <PanelSlider id="physics-track-opacity" label="Opacity" min={0} max={1} step={0.01} value={trackOpacity} onChange={onTrackOpacityChange} />
+              <PanelSlider id="physics-track-opacity" label="Opacity" min={0} max={1} step={0.01} value={trackOpacity} onChange={onTrackOpacityChange} commitOnRelease />
               <label class="physics-paint-option-row" for="physics-track-blend">
                 <span class="physics-paint-right-label">Blend</span>
                 <select
