@@ -226,6 +226,30 @@ function seedRoto(
   if (!result.ok) throw new Error(result.error);
 }
 
+/**
+ * 48-06 (UAT-E): a canonical synchronized Loop Clip whose source cycle mixes an
+ * existing key ('ka' owned at frame 0) with an UNRESOLVED id ('missing-1').
+ * Odd cycle slots therefore resolve as 'linked-unresolved' → the
+ * 'loop-placeholder' render source → a GENUINE dangling missing entry with
+ * non-empty missingRefs (the only case the D-09 capsule publishes). Even
+ * slots resolve via the owned key.
+ */
+function danglingLoopClip(sourceKeyIds: readonly string[] = ['ka', 'missing-1']): PhysicPaintRotoLoopClip {
+  return {
+    loopId: 'loop-x',
+    placementStart: 0,
+    sourceKeyIds,
+    repeat: 3,
+    mode: 'progressive',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: sourceKeyIds.length * 3,
+    visibleRanges: [{ start: 0, endExclusive: sourceKeyIds.length * 3 }],
+    frameOverrides: [],
+  };
+}
+
 /** Invoke the component and mount the recording canvas onto its canvas ref. */
 function renderMonitor(props: PhysicsPaintProgramMonitorProps): MonitorTestCanvas {
   runtime.beginRender();
@@ -410,18 +434,22 @@ describe('PhysicsPaintProgramMonitor', () => {
   });
 
   describe('Task 2 (D-06/D-09): onion pinning + missing-source capsule publication', () => {
-    it('(a) a missing report publishes the error capsule exactly once', () => {
+    it('(a) a genuine dangling source (a loop ref that cannot resolve) publishes the capsule exactly once', () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      // track-a has a real key at frame 0 only — frame 5 resolves null, so the
-      // flattened record reports it as missing (the RED 5 store contract).
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      // track-a owns key ka at frame 0; a synchronized Loop Clip spans
+      // [0, 6) with cycle ['ka', 'missing-1'] — frame 5 resolves the second
+      // cycle slot whose source ref 'missing-1' does not exist: a GENUINE
+      // dangling source with non-empty missingRefs (the capsule case).
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+        loopClips: [danglingLoopClip()],
+      });
       const summaryMock = vi.fn();
 
       const canvas = renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
 
       // The capsule effect reads the FULL including path (an active-track Hold
       // source missing is still reported) and publishes the structured summary
-      // exactly once.
+      // exactly once for the dangling ref.
       expect(summaryMock).toHaveBeenCalledTimes(1);
       expect(summaryMock).toHaveBeenCalledWith({ frame: 5, missingCount: 1, firstTrackId: 'track-a' });
       // The Studio maps the summary to the existing red-warning capsule: error
@@ -434,20 +462,44 @@ describe('PhysicsPaintProgramMonitor', () => {
       expect(studio).toContain("setApplyStatus('idle');");
       expect(studio).toContain('setApplyMessage(null);');
       // The editing base excludes the only (active) track, so the monitor draws
-      // an empty composite while the capsule still reports the missing source.
+      // an empty composite while the capsule still reports the dangling source.
       expect(drawCount(canvas)).toBe(1);
     });
 
-    it('(b) a repeated identical missing report does not re-publish', () => {
+    it('(b) an empty-coverage frame publishes nothing — normal absence is not a missing-source alert', () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      // track-a has a real key at frame 0 only — frame 5 has NO content and NO
+      // loop: the flattened record reports a missingRefs-EMPTY entry (the raw
+      // D-09 accounting, UAT-E's false positive). The monitor seam filters it.
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
+      const summaryMock = vi.fn();
+
+      const canvas = renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+
+      // The store-side flattened record is UNCHANGED: the empty-refs entry is
+      // still part of the raw report (store tests pin it). Only the monitoring
+      // seam treats absence as absence.
+      const record = getFlattenedFrame.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
+      expect(record).not.toBeNull();
+      expect(record.missing).toEqual([{ trackId: 'track-a', frame: 5, missingRefs: [] }]);
+      // …yet nothing publishes — the empty-coverage case raises no alert.
+      expect(summaryMock).not.toHaveBeenCalled();
+      expect(drawCount(canvas)).toBe(1);
+    });
+
+    it('(c) a repeated identical genuine-dangling report does not re-publish', () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+        loopClips: [danglingLoopClip()],
+      });
       const summaryMock = vi.fn();
 
       renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
       expect(summaryMock).toHaveBeenCalledTimes(1);
 
       // A version-clock bump re-runs the publish effect, but the flattened
-      // record (same cacheKey) reports the same missing state → same publish
+      // record (same cacheKey) reports the same dangling state → same publish
       // key → compare-then-write skips the duplicate publication.
       physicPaintVersion.value++;
       rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
@@ -455,15 +507,18 @@ describe('PhysicsPaintProgramMonitor', () => {
       expect(summaryMock).toHaveBeenCalledTimes(1);
     });
 
-    it('(c) a cleared report restores the idle capsule exactly once', () => {
+    it('(d) a resolved genuine-dangling report restores the idle capsule exactly once', () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+        loopClips: [danglingLoopClip()],
+      });
       const summaryMock = vi.fn();
 
       renderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
       expect(summaryMock).toHaveBeenCalledTimes(1);
 
-      // Resolve the missing source: replace track-a with a real key AT frame 5.
+      // Resolve the dangling ref: replace track-a with a real key AT frame 5
+      // (the Loop Clip is gone, so frame 5 now resolves to real content).
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
       physicPaintVersion.value++;
       rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
@@ -478,7 +533,7 @@ describe('PhysicsPaintProgramMonitor', () => {
       expect(summaryMock).toHaveBeenCalledTimes(2);
     });
 
-    it('(d) onion ghosts stay above the monitor and source the active track raw frames', () => {
+    it('(e) onion ghosts stay above the monitor and source the active track raw frames', () => {
       // D-06: the onion projection's getRenderSource reads the ACTIVE track's
       // RAW frames via getRotoPhysicalRenderSource(launchContext.layerId,
       // trackIdOfLaunch(launchContext), appFrame) — the ghost projection is NOT

@@ -33,6 +33,11 @@
  * then-write in both directions (steady missing fires once, cleared restores
  * once), gated on !isPlaying and reading the FULL including path so active-track
  * Hold sources are still reported. The caller maps the summary to the capsule.
+ *
+ * 48-06 (UAT-E): only genuine dangling sources publish — an entry whose
+ * missingRefs is non-empty (a loop ref that cannot resolve to real content).
+ * An empty refs entry (a track with no content at this frame — normal end of
+ * rail) is absence, not a missing source, and never raises the capsule.
  */
 import { useEffect, useRef } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
@@ -47,7 +52,9 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
  * `${frame}:${missingCount}:${firstTrackId}` so a steady missing state fires
  * exactly once and a cleared state restores exactly once; the caller maps the
  * summary to the status-capsule copy (setApplyStatus('error') + the fixed
- * 'Missing source on N track(s) — first: <name or id>' message).
+ * 'Missing source on N track(s) — first: <name or id>' message). 48-06 (UAT-E):
+ * the summary only ever covers genuine dangling sources — entries whose
+ * missingRefs is non-empty — never empty-coverage frames.
  */
 export interface EfxPaintProgramMonitorMissingSummary {
   readonly frame: number;
@@ -73,7 +80,9 @@ export interface PhysicsPaintProgramMonitorProps {
    * report. The monitor owns the compare-then-write publication state (a steady
    * missing report fires exactly once, a cleared report restores exactly once);
    * the caller maps the summary to the status capsule (error status + the fixed
-   * English copy). Leave undefined to disable the publication entirely.
+   * English copy). Only genuine dangling sources (non-empty missingRefs) ever
+   * publish — an empty-coverage frame is absence, not a missing source. Leave
+   * undefined to disable the publication entirely.
    */
   readonly onMissingSourcesChange?: (summary: EfxPaintProgramMonitorMissingSummary | null) => void;
 }
@@ -173,14 +182,23 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     const record = physicPaintStore.getFlattenedFrame(layerId, resolvedFrame);
     if (!record) return; // pending decode — keep the capsule as-is
     const missing = record.missing;
-    if (missing.length > 0) {
-      const firstTrackId = missing[0].trackId;
-      const nextKey = `${resolvedFrame}:${missing.length}:${firstTrackId}`;
+    // 48-06 (UAT-E): only GENUINE dangling sources raise the capsule — an entry
+    // whose missingRefs is non-empty (a loop ref that cannot resolve to real
+    // content, e.g. a severed Hold or a deleted source key). An empty refs
+    // entry (a track that simply has no content at this frame — a rail ending,
+    // a frame past every key) is normal absence: informational at most, never a
+    // missing-source alert. The flattened record still reports BOTH kinds (the
+    // raw D-09 accounting pinned store-side); this seam filters the user-facing
+    // publication only.
+    const dangling = missing.filter((entry) => entry.missingRefs.length > 0);
+    if (dangling.length > 0) {
+      const firstTrackId = dangling[0].trackId;
+      const nextKey = `${resolvedFrame}:${dangling.length}:${firstTrackId}`;
       if (publishedMissingKeyRef.current === nextKey) return;
       publishedMissingKeyRef.current = nextKey;
       props.onMissingSourcesChange({
         frame: resolvedFrame,
-        missingCount: missing.length,
+        missingCount: dangling.length,
         firstTrackId,
       });
     } else if (publishedMissingKeyRef.current !== CLEARED_PUBLICATION_KEY) {

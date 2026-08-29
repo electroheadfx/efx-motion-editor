@@ -3026,11 +3026,14 @@ export function PhysicsPaintStudio() {
   // program monitor's compare-then-write summary to the existing red-warning
   // status-capsule surface (the statusMessage/statusIsError bundle), naming the
   // document track when resolvable and the id otherwise. A null summary restores
-  // the idle capsule. The monitor already dedupes steady/cleared state, so every
-  // call here is a genuine state transition (idempotent setter law; never a
-  // render-body write). Identity-stable per launch context — navigation re-runs
-  // the monitor's publish effect against the new document, which is a no-op when
-  // the missing state is unchanged.
+  // the idle capsule. 48-06 (UAT-E): the monitor only ever publishes GENUINE
+  // dangling sources (non-empty missingRefs) — a track that merely has no
+  // content at the frame (normal end of rail) never raises the capsule. The
+  // monitor already dedupes steady/cleared state, so every call here is a
+  // genuine state transition (idempotent setter law; never a render-body write).
+  // Identity-stable per launch context — navigation re-runs the monitor's
+  // publish effect against the new document, which is a no-op when the missing
+  // state is unchanged.
   const handleProgramMonitorMissingChange = useCallback((summary: EfxPaintProgramMonitorMissingSummary | null) => {
     if (summary === null) {
       setApplyStatus('idle');
