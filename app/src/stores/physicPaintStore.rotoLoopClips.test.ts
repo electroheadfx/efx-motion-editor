@@ -440,6 +440,43 @@ describe('loop-aware end frame (Pitfall 3, D-25/Q4)', () => {
   });
 });
 
+describe('composite content extent (48-06 UAT-D)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+  });
+
+  function installTwoTrackDocument(): void {
+    const base = makeTrackDocument(LAYER);
+    registerDocument({
+      ...base,
+      tracks: [
+        base.tracks[0],
+        { ...base.tracks[0], id: 'track-2', name: 'Paint 2', order: 1 },
+      ],
+    } as unknown as EfxPaintDocument);
+  }
+
+  it('returns null for an absent layer and for a document with no content on any track', () => {
+    expect(physicPaintStore.getRotoPhysicalCompositeEndFrame('absent-layer')).toBeNull();
+    registerDocument(makeTrackDocument(LAYER));
+    expect(physicPaintStore.getRotoPhysicalCompositeEndFrame(LAYER)).toBeNull();
+  });
+
+  it('returns the max end across EVERY Paint track, not the launch/active track alone', () => {
+    // UAT-D: keys/rails up to frame 17 played only 0-10 — the range came from
+    // the launch track's end (10). The composite plays every participating
+    // track, so the extent is the max per-track end.
+    installTwoTrackDocument();
+    installRecords([record('A', 0), record('B', 9)]);
+    const second = physicPaintStore.replaceRotoPhysicalRecords(LAYER, 'track-2', [record('C', 0), record('D', 17)], INTERPOLATION, CAPACITY);
+    if (!second.ok) throw new Error(second.error);
+    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(10);
+    expect(physicPaintStore.getRotoPhysicalCompositeEndFrame(LAYER)).toBe(18);
+  });
+});
+
 describe('unresolved-loop query (D-28 wiring)', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});

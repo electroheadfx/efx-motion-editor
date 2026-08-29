@@ -73,8 +73,12 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('rotoCachedPlayback');
   });
 
-  it('extends Studio cached playback through the loop-aware physical end frame', () => {
-    expect(studio).toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,');
+  it('extends Studio cached playback through the composite content extent (48-06 UAT-D)', () => {
+    // UAT-D: keys/rails up to frame 17 played only 0-10 — the range came from
+    // the LAUNCH track's end alone. Playback enumerates the flattened composite
+    // (CMP-01), so the range must be the max end across EVERY Paint track.
+    expect(studio).toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalCompositeEndFrame(launchContext.layerId) : null,');
+    expect(studio).not.toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,');
     expect(studio).toContain('getFrame: findCachedRotoDisplayFrame,');
     expect(navigationCoordinator).toContain('const playbackEndFrame = input.playback.getEndFrame();');
     expect(navigationCoordinator).toContain('Array.from({ length: playbackEndFrame }');

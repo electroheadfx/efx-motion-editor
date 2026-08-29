@@ -1469,7 +1469,10 @@ export function PhysicsPaintStudio() {
     },
     playback: {
       initialSettings: initialRotoPlaybackSettings,
-      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,
+      // 48-06 (UAT-D): the playback range is the COMPOSITE's content extent —
+      // the max end across every Paint track, never the launch track's alone
+      // (a sibling track's longer rail must play in full).
+      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalCompositeEndFrame(launchContext.layerId) : null,
       getFrame: findCachedRotoDisplayFrame,
       // 43.6-06 (D-19): the solo window derives from the Plan 01 set, or the
       // single-rail selection as a set of one (D-15), through the Task 1 pure

@@ -2662,6 +2662,25 @@ export const physicPaintStore = {
   },
 
   /**
+   * 48-06 (UAT-D): the composite's content extent — the max end frame across
+   * EVERY Paint track. Playback enumerates the flattened composite (CMP-01:
+   * all participating tracks), so a single track's end truncates the range
+   * whenever a sibling track carries longer content (keys/rails to 17 played
+   * only 0-10 when the launch track ended at 10). Null when no track has
+   * content (the playback start path treats null like an empty range).
+   */
+  getRotoPhysicalCompositeEndFrame(layerId: string): number | null {
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return null;
+    let end: number | null = null;
+    for (const track of document.tracks) {
+      const trackEnd = this.getRotoPhysicalEndFrame(layerId, track.id);
+      if (trackEnd !== null) end = end === null ? trackEnd : Math.max(end, trackEnd);
+    }
+    return end;
+  },
+
+  /**
    * Unresolvable Loop Clips over a half-open frame window (Phase 43, D-28
    * wiring). One compact entry per intersecting loop whose source references
    * dangle — computed from the memoized interval records' missingSourceKeyIds
