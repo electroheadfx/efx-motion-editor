@@ -1417,7 +1417,6 @@ function _resolveFlattenedFrame(
 
   const knownSources = new Set(_backgroundSourceImages.keys());
   let backgroundContext: PhysicPaintRotoLoopResolutionContext | null = null;
-  let backgroundDrew = false;
   if (backgroundParticipates(efxDocument)) {
     backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
     const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
@@ -1425,7 +1424,6 @@ function _resolveFlattenedFrame(
       if (_resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
         return null;
       }
-      backgroundDrew = true;
     }
   }
 
@@ -1449,17 +1447,15 @@ function _resolveFlattenedFrame(
   };
 
   const result = compositeFrame(efxDocument, frame, size, ports);
-  // v1.0 rendering law: the paper fond lives BENEATH the final composite —
-  // drawn once under the flattened raster so per-track rasters stay
-  // paper-free and upper tracks never mask lower ones. The D-09 missing-frame
-  // law still holds: a frame with NO content anywhere (every participating
-  // track missing, no Background contribution) stays fully transparent — the
-  // fond only draws beneath actual content.
-  const missingTrackIds = new Set(result.missing.map((entry) => entry.trackId));
-  const anyTrackContent = result.participates.trackIds.some((trackId) => !missingTrackIds.has(trackId));
-  const fondInstruction = (anyTrackContent || backgroundDrew)
-    ? _resolveDocumentFondInstruction(layerId, efxDocument)
-    : null;
+  // v1.0 rendering law (48-06 N1): the paper fond is the DOCUMENT FALLBACK —
+  // like the solid-color fallback (compositeFrame step 1, unconditional), it
+  // draws beneath EVERY frame's composite whenever a non-transparent paper
+  // metadata exists, including frames no Paint track covers (an empty Bg row
+  // still renders the configured background; 'transparent' metadata yields no
+  // instruction and stays transparent). The D-09 missing-source report is
+  // unaffected: missing track contributions stay transparent ON TOP of the
+  // fond and still surface in `result.missing`.
+  const fondInstruction = _resolveDocumentFondInstruction(layerId, efxDocument);
   let raster = result.raster as HTMLCanvasElement;
   if (fondInstruction) {
     // The fond pixel-matches the engine's own paper draw (white + tiled

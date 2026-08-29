@@ -253,7 +253,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     expect(physicPaintBranch).not.toContain('replaceGeneratedRotoCache(');
   });
 
-  it('an interior missing Roto frame renders as a transparent flattened raster — never renderer-side paper (D-09)', () => {
+  it('an interior frame no track covers renders the document paper fond beneath the content-free composite (48-06 N1)', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
       { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
@@ -264,14 +264,20 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
-    // The store resolves the missing frame to a flattened raster with no track
-    // contribution (transparent + missing report): no paper is baked, and the
-    // renderer never paints paper itself. The flattened raster IS drawn.
-    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'fillRect' }));
-    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'createPattern' }));
+    // 48-06 N1: the fond is the DOCUMENT FALLBACK — like the solid-color
+    // fallback it draws beneath EVERY frame, including ones no Paint track
+    // covers (the empty Bg row renders the configured background). No track
+    // pixels composite on top (the frame stays a missing report entry), and
+    // the renderer never paints paper itself — the fond arrives INSIDE the
+    // flattened raster.
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    expect(physicPaintStore.getFlattenedFrame('roto-layer', 2)?.missing).toEqual([
+      { trackId: TEST_TRACK_ID, frame: 2, missingRefs: [] },
+    ]);
   });
 
   it('a real Roto frame with paper metadata bakes paper + frame into ONE flattened raster (per-track parity)', () => {
