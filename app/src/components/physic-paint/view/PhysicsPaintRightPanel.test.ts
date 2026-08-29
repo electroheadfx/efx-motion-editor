@@ -231,29 +231,22 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     expect(textContent(tree)).not.toContain('Track:');
   });
 
-  it('commits the track opacity only when the thumb is released (48-06 UAT)', () => {
-    // Clamping first (fresh draft slot): the slider display always clamps to
-    // the declared 0..1 range (47-03 TML-04).
+  it('commits the dragged opacity once and clamps the slider display to 0..1', () => {
+    const props = baseProps({ trackOpacity: 0.5 });
+    const tree = renderPanelWithTrackTab(props);
+
+    findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
+
+    expect(props.onTrackOpacityChange).toHaveBeenCalledOnce();
+    expect(props.onTrackOpacityChange).toHaveBeenCalledWith(0.8);
+    expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);
+    expect(findById(tree, 'physics-track-opacity').props.max).toBe(1);
+
     const clampedUp = renderPanelWithTrackTab(baseProps({ trackOpacity: 1.5 }));
     expect(findById(clampedUp, 'physics-track-opacity').props.value).toBe(1);
 
     const clampedDown = renderPanelWithTrackTab(baseProps({ trackOpacity: -0.2 }));
     expect(findById(clampedDown, 'physics-track-opacity').props.value).toBe(0);
-
-    const props = baseProps({ trackOpacity: 0.5 });
-    const tree = renderPanelWithTrackTab(props);
-
-    // Dragging updates the local draft (the thumb follows the mouse) but does
-    // NOT commit — the opacity recomposite is deferred to release.
-    findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
-    expect(props.onTrackOpacityChange).not.toHaveBeenCalled();
-
-    // Releasing the thumb commits exactly once.
-    findById(tree, 'physics-track-opacity').props.onChange({ target: { value: '0.8' } });
-    expect(props.onTrackOpacityChange).toHaveBeenCalledOnce();
-    expect(props.onTrackOpacityChange).toHaveBeenCalledWith(0.8);
-    expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);
-    expect(findById(tree, 'physics-track-opacity').props.max).toBe(1);
   });
 
   it('commits the selected blend mode once and offers exactly the five BlendMode options', () => {
