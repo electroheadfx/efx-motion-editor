@@ -1377,6 +1377,7 @@ function _resolveFlattenedFrame(
   layerId: string,
   frame: number,
   excludeTrackIds: ReadonlySet<string>,
+  includeFond = true,
 ): EfxPaintFlattenedFrameRecord | null {
   if (!Number.isInteger(frame) || frame < 0) return null;
   const efxDocument = getEfxPaintDocument(layerId);
@@ -1397,6 +1398,7 @@ function _resolveFlattenedFrame(
     backgroundClipRevisions,
     frame,
     excludeTrackIds: excludeTrackIds.size > 0 ? [...excludeTrackIds].sort() : undefined,
+    includeFond,
   });
 
   const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
@@ -1455,7 +1457,13 @@ function _resolveFlattenedFrame(
   // instruction and stays transparent). The D-09 missing-source report is
   // unaffected: missing track contributions stay transparent ON TOP of the
   // fond and still surface in `result.missing`.
-  const fondInstruction = _resolveDocumentFondInstruction(layerId, efxDocument);
+  //
+  // 48-06 (UAT-C): `includeFond=false` skips the fond step — the Studio's
+  // program monitor reads the fond-less composite because the paper is drawn
+  // on a SEPARATE layer beneath an isolated tracks group (the active track's
+  // CSS blend must never meet the paper). The `fond:0` key term keeps the two
+  // variants in distinct memo entries.
+  const fondInstruction = includeFond ? _resolveDocumentFondInstruction(layerId, efxDocument) : null;
   let raster = result.raster as HTMLCanvasElement;
   if (fondInstruction) {
     // The fond pixel-matches the engine's own paper draw (white + tiled
@@ -1497,9 +1505,15 @@ export const physicPaintStore = {
     return _frames.get(layerId)?.get(trackId)?.get(frame) ?? null;
   },
 
-  /** 48-03 D-11/CMP-01: the full flattened composite (see {@link _resolveFlattenedFrame}). */
-  getFlattenedFrame(layerId: string, frame: number): EfxPaintFlattenedFrameRecord | null {
-    return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS);
+  /**
+   * 48-03 D-11/CMP-01: the full flattened composite (see
+   * {@link _resolveFlattenedFrame}). `includeFond` (default true) controls
+   * whether the record carries the document paper fond; the Studio monitor
+   * passes false (the fond lives on its own layer beneath the isolated tracks
+   * group, 48-06 UAT-C).
+   */
+  getFlattenedFrame(layerId: string, frame: number, includeFond = true): EfxPaintFlattenedFrameRecord | null {
+    return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS, includeFond);
   },
 
   /**
@@ -1510,8 +1524,13 @@ export const physicPaintStore = {
    * ports and the flattened cache key (its own `excl:` term), so an including
    * and an excluding call for the same frame never share a cache entry.
    */
-  getFlattenedFrameExcluding(layerId: string, frame: number, excludeTrackIds: ReadonlySet<string>): EfxPaintFlattenedFrameRecord | null {
-    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds);
+  getFlattenedFrameExcluding(
+    layerId: string,
+    frame: number,
+    excludeTrackIds: ReadonlySet<string>,
+    includeFond = true,
+  ): EfxPaintFlattenedFrameRecord | null {
+    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond);
   },
 
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {

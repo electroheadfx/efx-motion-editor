@@ -172,8 +172,36 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(stackBlock).toContain('engineSurfaceHidden,');
     expect(view).toContain("props.engineSurfaceHidden ? ' active-track-hidden' : ''");
     const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
-    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas {\n  background-color: transparent;');
-    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas > canvas {\n  visibility: hidden;');
+    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {\n  background-color: transparent;');
+    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {\n  visibility: hidden;');
+  });
+
+  it('isolates the tracks group from a dedicated fond layer so the active-track blend never meets the paper (48-06 UAT-C)', () => {
+    // The montage: a fond layer (paper) beneath an ISOLATED tracks group that
+    // holds the engine shell (active track, CSS blend) and the program monitor
+    // (fond-less composite). isolation: isolate confines the shell's
+    // mix-blend-mode to the monitor — the paper is outside the group's stacking
+    // context, so the active track's blend never meets it.
+    const fondIndex = view.indexOf('<div class="physics-paint-fond-layer"');
+    const groupIndex = view.indexOf('<div class="physics-paint-tracks-group">');
+    const mountIndex = view.indexOf('<MemoizedPhysicsPaintCanvasMount');
+    const monitorIndex = view.indexOf('<div class="physics-paint-program-monitor"');
+    expect(fondIndex).toBeGreaterThanOrEqual(0);
+    expect(groupIndex).toBeGreaterThan(fondIndex);
+    expect(mountIndex).toBeGreaterThan(groupIndex);
+    expect(monitorIndex).toBeGreaterThan(mountIndex);
+    // The fond layer draws the paper through the playback-background subscriber.
+    expect(view).toContain('<PhysicsPaintRotoPlaybackBackground');
+    expect(view).toContain('background={props.fondBackground}');
+    // The Studio derives the fond metadata (lowest-order track's non-transparent
+    // paper setting) and threads it through the canvasStack memo.
+    expect(studio).toContain('physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id)');
+    expect(studio).toContain('fondBackground,');
+    // The CSS: the group is an isolated stacking context; the fond layer sits
+    // beneath it (z-index 0, pointer-events none).
+    const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+    expect(css).toContain('.physics-paint-tracks-group {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  isolation: isolate;');
+    expect(css).toContain('.physics-paint-fond-layer {\n  position: absolute;\n  z-index: 0;\n  pointer-events: none;\n  overflow: hidden;');
   });
 
   it('preserves engine-ready ordering and latest callback invocation', () => {

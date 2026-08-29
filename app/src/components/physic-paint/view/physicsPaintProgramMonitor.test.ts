@@ -321,8 +321,10 @@ describe('PhysicsPaintProgramMonitor', () => {
 
     const canvas = renderMonitor(baseProps({ isPlaying: true }));
 
-    // The full flattened path (INCLUDING the active track) is the only source.
-    expect(getFlattenedFrame).toHaveBeenCalledWith(FLAT_LAYER, 5);
+    // The full flattened path (INCLUDING the active track) is the only source,
+    // read FOND-LESS (48-06 UAT-C: the paper lives on its own layer beneath the
+    // isolated tracks group).
+    expect(getFlattenedFrame).toHaveBeenCalledWith(FLAT_LAYER, 5, false);
     expect(getFlattenedFrameExcluding).not.toHaveBeenCalled();
     const record = getFlattenedFrame.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
     expect(record).not.toBeNull();

@@ -28,6 +28,12 @@
  * drawn frame — no flicker-to-blank. The component never filters tracks itself
  * and never runs its own composition path (CMP-01 single path).
  *
+ * 48-06 (UAT-C): every read here is the FOND-LESS composite (includeFond=false)
+ * — the paper fond is drawn on a separate layer beneath the isolated tracks
+ * group, so the active track's CSS blend (the engine shell stacked above) never
+ * meets the paper. The missing-source report is identical either way (the fond
+ * never contributes a missing entry).
+ *
  * Task 2 (D-09): a second narrow effect publishes the current frame's missing-
  * source report to the status capsule through onMissingSourcesChange — compare-
  * then-write in both directions (steady missing fires once, cleared restores
@@ -123,12 +129,16 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     if (!ctx) return;
     const { layerId } = props;
     if (!layerId) return;
+    // 48-06 (UAT-C): the monitor reads the FOND-LESS composite — the paper is
+    // drawn on a separate layer beneath the isolated tracks group, so the
+    // active track's CSS blend (the engine shell above) never meets the fond.
     const record = props.isPlaying
-      ? physicPaintStore.getFlattenedFrame(layerId, resolvedFrame)
+      ? physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false)
       : physicPaintStore.getFlattenedFrameExcluding(
           layerId,
           resolvedFrame,
           props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
+          false,
         );
     // Pending decode: the store returns null this tick. Keep the last drawn
     // frame — no flicker-to-blank; the next version-clock bump re-runs the
@@ -179,7 +189,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     if (props.isPlaying || !props.onMissingSourcesChange) return;
     const { layerId } = props;
     if (!layerId) return;
-    const record = physicPaintStore.getFlattenedFrame(layerId, resolvedFrame);
+    const record = physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false);
     if (!record) return; // pending decode — keep the capsule as-is
     const missing = record.missing;
     // 48-06 (UAT-E): only GENUINE dangling sources raise the capsule — an entry

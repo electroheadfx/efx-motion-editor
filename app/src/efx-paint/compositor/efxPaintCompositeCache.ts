@@ -69,6 +69,15 @@ export interface EfxPaintFlattenedCacheKeyInput {
    * excluded track has no content at that frame — the missing reports differ.
    */
   readonly excludeTrackIds?: readonly string[];
+  /**
+   * 48-06 (UAT-C): whether the flattened record carries the document paper fond
+   * (default true). The Studio's program monitor draws the fond on a SEPARATE
+   * layer beneath an isolated tracks group (so the active track's CSS blend
+   * never meets the paper), so it reads the fond-less composite. The `fond:0`
+   * term is emitted ONLY when false so existing with-fond keys stay
+   * byte-identical (the 48-01/48-04 contract).
+   */
+  readonly includeFond?: boolean;
 }
 
 /**
@@ -118,6 +127,9 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     ...(excludedIds.length > 0
       ? [`excl:${encodeCanonicalNumber(excludedIds.length)}:${excludedIds.map((id) => encodeCanonicalString(id)).join('')}`]
       : []),
+    // 48-06 (UAT-C): emitted ONLY when the caller wants the fond-less
+    // composite (the Studio monitor) — with-fond keys stay byte-identical.
+    ...(input.includeFond === false ? ['fond:0'] : []),
     `frame:${encodeCanonicalNumber(frame)}`,
   ].join('');
 

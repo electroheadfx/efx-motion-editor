@@ -50,6 +50,14 @@ interface PhysicsPaintCanvasStackViewProps {
    * program monitor own the visible composite of the remaining tracks.
    */
   engineSurfaceHidden?: boolean;
+  /**
+   * 48-06 (UAT-C): the document paper fond metadata (the lowest-order track's
+   * non-transparent paper setting). When present, the stack draws it on a
+   * dedicated fond layer BENEATH the isolated tracks group — the program
+   * monitor reads the fond-less composite, so the active track's CSS blend
+   * (the engine shell inside the group) never meets the paper.
+   */
+  fondBackground?: PhysicPaintRotoBackgroundMetadata | null;
 }
 
 /**
@@ -129,12 +137,27 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
 
   return (
     <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
-      <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
-      {canvasBounds && props.programMonitor ? (
-        <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
-          <PhysicsPaintProgramMonitor {...props.programMonitor} />
+      {/* 48-06 (UAT-C): the paper fond lives on its OWN layer beneath the
+          isolated tracks group — the monitor reads the fond-less composite, so
+          the active track's CSS blend (the engine shell inside the group) never
+          meets the paper. */}
+      {canvasBounds && props.programMonitor && props.fondBackground ? (
+        <div class="physics-paint-fond-layer" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
+          <PhysicsPaintRotoPlaybackBackground
+            width={canvasBounds.width}
+            height={canvasBounds.height}
+            background={props.fondBackground}
+          />
         </div>
       ) : null}
+      <div class="physics-paint-tracks-group">
+        <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
+        {canvasBounds && props.programMonitor ? (
+          <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
+            <PhysicsPaintProgramMonitor {...props.programMonitor} />
+          </div>
+        ) : null}
+      </div>
       {canvasBounds ? (
         <div
           class="physics-paint-onion-overlay canvas-region"

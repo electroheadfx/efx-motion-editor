@@ -1973,6 +1973,28 @@ describe('physicPaintStore', () => {
       expect(record.renderedFrame.dataUrl).toContain('draw(canvas,1,source-over)');
     });
 
+    it('RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+
+      const withFond = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const noFond = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5, false)!;
+
+      // The with-fond record carries the paper beneath the composite…
+      expect(withFond.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)');
+      // …the fond-less record is the bare composite (the Studio monitor reads
+      // this; the paper lives on its own layer beneath the isolated tracks
+      // group, so the active track's CSS blend never meets it).
+      expect(noFond.renderedFrame.dataUrl).toBe(`data:image/png;base64,clear|save|draw(${frameDataUrl},1,source-over)|restore`);
+      // Distinct memo entries: the `fond:0` key term separates the variants.
+      expect(noFond.cacheKey).not.toBe(withFond.cacheKey);
+      // The missing report is identical either way (the fond never contributes).
+      expect(noFond.missing).toEqual(withFond.missing);
+    });
+
     it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', () => {
       const bgDataUrl = makeFrame(0, 0).dataUrl;
       registerBackgroundSourceImage('bg-ref-1', bgDataUrl);

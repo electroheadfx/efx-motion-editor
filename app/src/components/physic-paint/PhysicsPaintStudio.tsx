@@ -3065,6 +3065,22 @@ export function PhysicsPaintStudio() {
     const engineSurfaceHidden = programMonitorLayerId !== null
       && programMonitorActiveTrackId !== null
       && !resolvePhysicPaintTrackVisibility(programMonitorLayerId, programMonitorActiveTrackId);
+    // 48-06 (UAT-C): the paper fond metadata for the montage's fond layer —
+    // the lowest-order track's non-transparent paper setting (the same
+    // derivation the store's fond instruction uses). The monitor reads the
+    // fond-LESS composite; this layer draws the paper beneath the isolated
+    // tracks group so the active track's CSS blend never meets it.
+    const fondBackground = programMonitorLayerId
+      ? (() => {
+          const document = getEfxPaintDocument(programMonitorLayerId);
+          if (!document) return null;
+          for (const track of [...document.tracks].sort((left, right) => left.order - right.order)) {
+            const metadata = physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id);
+            if (metadata && metadata.background !== 'transparent') return metadata;
+          }
+          return null;
+        })()
+      : null;
     return {
       cachedRotoReferenceUrl,
       cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
@@ -3077,6 +3093,7 @@ export function PhysicsPaintStudio() {
       canvasKey,
       mount: canvasMount,
       engineSurfaceHidden,
+      fondBackground,
       programMonitor: programMonitorLayerId ? {
         layerId: programMonitorLayerId,
         currentFrame,

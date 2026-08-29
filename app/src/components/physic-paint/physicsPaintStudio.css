@@ -4632,18 +4632,47 @@ button.destructive {
   min-height: 0;
 }
 
-.physics-paint-canvas-stack > .demo-canvas-shell {
+/* 48-06 (UAT-C): the isolated tracks group — a new stacking context that holds
+   the engine shell (active track, CSS blend) and the program monitor (fond-less
+   composite of the remaining tracks). isolation: isolate confines the shell's
+   mix-blend-mode to the monitor, so the active track's blend never meets the
+   paper fond layer beneath. */
+.physics-paint-tracks-group {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+/* 48-06 (UAT-C): the paper fond layer — drawn BENEATH the isolated tracks
+   group (the monitor reads the fond-less composite). */
+.physics-paint-fond-layer {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.physics-paint-fond-layer > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.physics-paint-tracks-group > .demo-canvas-shell {
   width: auto;
   height: 100%;
   max-width: 100%;
   max-height: 100%;
 }
 
-.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready > .demo-canvas-shell .paint-canvas {
+.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {
   background-color: transparent;
 }
 
-.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready > .demo-canvas-shell .paint-canvas > canvas {
+.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {
   visibility: hidden;
 }
 
@@ -4653,11 +4682,11 @@ button.destructive {
    (the monitor owns the remaining visible tracks + the document fond). Mirror
    the cached-roto-playback treatment: the engine canvases step aside so the
    monitor owns the surface until the track is visible again. */
-.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas {
+.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {
   background-color: transparent;
 }
 
-.physics-paint-canvas-stack.active-track-hidden > .demo-canvas-shell .paint-canvas > canvas {
+.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {
   visibility: hidden;
 }
 
