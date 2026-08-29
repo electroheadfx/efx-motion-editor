@@ -140,15 +140,16 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
       {/* 48-06 (UAT-C): the paper fond lives on its OWN layer beneath the
           isolated tracks group — the monitor reads the fond-less composite, so
           the active track's CSS blend (the engine shell inside the group) never
-          meets the paper. The paper is generated at the WORKING resolution
-          (programMonitor.width/height, the same size the flattened composite
-          used) and CSS-scaled to the display bounds — generating it at the
-          display size would enlarge the paper motif. */}
+          meets the paper. The paper is generated at the PROJECT resolution
+          (cachedRotoPlaybackComposition.width/height — the same size the
+          flattened composite used, the compositor size authority) and
+          CSS-scaled to the display bounds; generating it at the display or
+          working size would change the paper motif scale. */}
       {canvasBounds && props.programMonitor && props.fondBackground ? (
         <div class="physics-paint-fond-layer" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
           <PhysicsPaintRotoPlaybackBackground
-            width={props.programMonitor.width}
-            height={props.programMonitor.height}
+            width={props.cachedRotoPlaybackComposition?.width ?? props.programMonitor.width}
+            height={props.cachedRotoPlaybackComposition?.height ?? props.programMonitor.height}
             background={props.fondBackground}
           />
         </div>
