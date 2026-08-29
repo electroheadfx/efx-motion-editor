@@ -4284,6 +4284,46 @@ button.destructive {
   background: #f5a623 !important;
 }
 
+/* 48-06 UAT cosmetics: the PRIMARY selection/cursor treatment (`.current`)
+   tracks the cell's fill family instead of the blanket orange — a selected
+   painted key reads light green (#86c55a over the #2d6f48 base), a selected
+   interpolated frame reads light blue (#4d98f9 over #365ed6), and a selected
+   empty frame reads light gray (#a0adbb over #4d535a). Secondary multi-select
+   members (`.selected`) and every other fill family keep the orange. */
+.physics-paint-roto-cell.roto-fill-cached.current,
+.physics-paint-roto-cell.roto-fill-cached-only.current {
+  background: #86c55a !important;
+}
+
+.physics-paint-roto-cell.roto-fill-empty.current {
+  background: #a0adbb !important;
+}
+
+.physics-paint-roto-cell.roto-fill-generated.current {
+  background: #4d98f9 !important;
+}
+
+.physics-paint-roto-cell.roto-fill-cached.current:hover,
+.physics-paint-roto-cell.roto-fill-cached.current:focus,
+.physics-paint-roto-cell.roto-fill-cached.current:focus-visible,
+.physics-paint-roto-cell.roto-fill-cached-only.current:hover,
+.physics-paint-roto-cell.roto-fill-cached-only.current:focus,
+.physics-paint-roto-cell.roto-fill-cached-only.current:focus-visible {
+  background: #86c55a !important;
+}
+
+.physics-paint-roto-cell.roto-fill-empty.current:hover,
+.physics-paint-roto-cell.roto-fill-empty.current:focus,
+.physics-paint-roto-cell.roto-fill-empty.current:focus-visible {
+  background: #a0adbb !important;
+}
+
+.physics-paint-roto-cell.roto-fill-generated.current:hover,
+.physics-paint-roto-cell.roto-fill-generated.current:focus,
+.physics-paint-roto-cell.roto-fill-generated.current:focus-visible {
+  background: #4d98f9 !important;
+}
+
 /* The cell buttons' default blue focus outline is suppressed — the orange
    background fill is the whole selection/focus treatment. */
 .physics-paint-roto-cell:focus,

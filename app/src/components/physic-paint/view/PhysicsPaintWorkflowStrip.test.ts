@@ -1217,6 +1217,29 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     expect(current).not.toContain('outline:');
     expect(current).not.toMatch(/z-index:\s*[1-9]\d*;/);
   });
+
+  it('tracks the primary current treatment per fill family (48-06 UAT cosmetics)', () => {
+    const styles = css();
+    // 48-06 UAT: the PRIMARY selection/cursor (`.current`) follows the cell's
+    // fill family — painted key #86c55a (over #2d6f48), interpolated #4d98f9
+    // (over #365ed6), empty #a0adbb (over #4d535a) — while secondary
+    // multi-select members (`.selected`) and the other fill families keep the
+    // blanket orange. Hover/focus variants ride along at higher specificity.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-cached.current,')).not.toBe('');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-cached-only.current');
+    expect(styles).toContain('background: #86c55a !important;');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-empty.current {')).toContain('background: #a0adbb !important;');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-generated.current {')).toContain('background: #4d98f9 !important;');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-cached.current:hover');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-empty.current:hover');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-generated.current:hover');
+    // The per-fill rules must come AFTER the blanket orange current/hover
+    // rules (equal !important specificity is settled by source order).
+    const blanketIndex = styles.indexOf('.physics-paint-roto-cell.current:hover,');
+    const perFillIndex = styles.indexOf('.physics-paint-roto-cell.roto-fill-cached.current,');
+    expect(blanketIndex).toBeGreaterThanOrEqual(0);
+    expect(perFillIndex).toBeGreaterThan(blanketIndex);
+  });
 });
 
 describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10, UAT Gap F)', () => {
