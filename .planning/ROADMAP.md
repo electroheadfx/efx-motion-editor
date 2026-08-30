@@ -181,7 +181,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 - [x] **Phase 45: New EFX Paint Document and Clean Cutover** - Versioned v1.0 document owned by one parent layer, clean-break creation, explicit pre-v1.0 rejection (completed 2026-08-23)
 - [x] **Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches** - Track-local addressing, revisions, dirty state, and async authority (completed 2026-08-27; UAT deferred items re-run in Phase 47 UAT)
 - [x] **Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls** - Multi-row Paint timeline with track CRUD, active selection, hide/solo, opacity/blend (completed 2026-08-27; filmstrip capsule layer removed by user demand, rail status dot close-out)
-- [ ] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster
+- [x] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster (completed 2026-08-30; Background-row native UAT deferred to Phase 49 — no live authoring UI yet, compositor-side covered by the green matrix suite)
 - [ ] **Phase 49: Fixed Background Track and Imported Loop Clips** - Background clips with finite/infinite repeat, gaps, and fallback
 - [ ] **Phase 50: Photo/Reference Track** - Reference-only / reveal-source / masked-transform-source modes
 - [ ] **Phase 51: Read-only Audio Preview** - Synchronized main-editor audio monitoring across internal tracks
@@ -322,7 +322,7 @@ Plans:
   4. Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes.
   5. The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend).
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -341,7 +341,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 48-06-PLAN.md — pixel acceptance matrix contract suite + blocking native UAT (parity, missing-source surface, playback smoothness)
+- [x] 48-06-PLAN.md — pixel acceptance matrix contract suite + blocking native UAT (parity, missing-source surface, playback smoothness)
 
 ### Phase 49: Fixed Background Track and Imported Loop Clips
 
@@ -431,7 +431,7 @@ Plans:
 | 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
-| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 5/6 | In Progress|  |
+| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
