@@ -16,13 +16,13 @@ const pattern_cjs_1 = require("./pattern.cjs");
 const text_lines_cjs_1 = require("./text-lines.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ioMod = require("./io.cjs");
-const { output, error } = ioMod;
+const { output, error, formatDiagnosticToken } = ioMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("./phase-id.cjs");
 const { normalizePhaseName, phaseMarkdownRegexSource, matchPhaseDirs, stripProjectCodePrefix, OPTIONAL_PHASE_TAG_SOURCE, roadmapPhaseLookupSources, isSentinelPhaseId, scopeToPhase } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseLocatorMod = require("./phase-locator.cjs");
-const { findPhaseInternal, listMilestonePhaseDirs } = phaseLocatorMod;
+const { findPhaseInternal, listMilestonePhaseDirs, listAllPhaseDirs } = phaseLocatorMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningScopeMod = require("./planning-scope.cjs");
 const { SCOPE } = planningScopeMod;
@@ -36,6 +36,11 @@ const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs")
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
 const { planningPaths, withPlanningLock, findContextMdIn } = planningWorkspace;
+// #3641: milestone-scope's convention resolution reads the project config
+// (no cycle — config-loader does not import this module).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const configLoaderForScope = require("./config-loader.cjs");
+const { loadConfig: loadConfigForScope } = configLoaderForScope;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const scanPhasePlans = require("./plan-scan.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -89,10 +94,21 @@ function countPhasePlansAndSummaries(phaseDir) {
     // hasContext and hasResearch are not plan-scan concerns — read the directory
     // once and share the listing for all non-plan metadata that cmdRoadmapAnalyze needs.
     let phaseFiles = [];
+    // #3885 (ADR-3473 §8.5): distinguish "genuinely absent" (ENOENT) from
+    // "could not read" (EACCES/EIO/...) — the collapse of both to an empty
+    // listing is exactly the defect class this item closes. Mirrors
+    // core-utils.cts's getPhaseFileStats / phase-locator.cts's
+    // listMilestonePhaseDirs SCOPE.UNREADABLE discriminator.
+    let contextReadError = null;
     try {
         phaseFiles = node_fs_1.default.readdirSync(phaseDir);
     }
-    catch { /* empty */ }
+    catch (err) {
+        const code = err?.code;
+        if (code !== 'ENOENT') {
+            contextReadError = `Could not read phase directory ${formatDiagnosticToken(phaseDir)}: ${formatDiagnosticToken(err?.message ?? String(err))}`;
+        }
+    }
     // #3511: scope the raw listing to this phase dir before the
     // phase-numbered-artifact predicates (hasContext/hasResearch) — planCount/
     // summaryCount above stay on scanPhasePlans's own unscoped listing since a
@@ -104,6 +120,7 @@ function countPhasePlansAndSummaries(phaseDir) {
         summaryCount,
         hasContext: findContextMdIn(scopedFiles) !== null,
         hasResearch: scopedFiles.some(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md'),
+        contextReadError,
     };
 }
 // `phaseMarkdownRegexSource` lives in phase-id.cjs (#3537) and is imported above.
@@ -332,6 +349,10 @@ function collectAnalyzePhases(content, phasesDir, phaseDirNames) {
         let summaryCount = 0;
         let hasContext = false;
         let hasResearch = false;
+        // #3885 (ADR-3473 §8.5): null unless dirMatch resolves and its readdirSync
+        // hit a non-ENOENT error — no directory at all is `disk_status:
+        // 'no_directory'`, a real (if uninteresting) answer, not a read error.
+        let contextReadError = null;
         // DEAD catch removed (#2245 audit): matchPhaseDirs(...) is a pure
         // array lookup on an already-resolved string array, and
         // countPhasePlansAndSummaries is itself fully defensive (its own
@@ -345,6 +366,7 @@ function collectAnalyzePhases(content, phasesDir, phaseDirNames) {
             summaryCount = counts.summaryCount;
             hasContext = counts.hasContext;
             hasResearch = counts.hasResearch;
+            contextReadError = counts.contextReadError;
             // ADR-3180 §7.4 (issue #3186, disk-strict, #3168 fix): route "is this
             // phase complete" through the canonical owner (`isPhaseComplete`),
             // which calls readVerificationStatus UNCONDITIONALLY — plan count is
@@ -394,6 +416,7 @@ function collectAnalyzePhases(content, phasesDir, phaseDirNames) {
             has_research: hasResearch,
             disk_status: diskStatus,
             roadmap_complete: roadmapComplete,
+            context_read_error: contextReadError,
         });
     }
     // #3577: markdown-table row declarations join the enumeration — same
@@ -410,12 +433,18 @@ function collectAnalyzePhases(content, phasesDir, phaseDirNames) {
         let tSummaryCount = 0;
         let tHasContext = false;
         let tHasResearch = false;
+        let tContextReadError = null;
         if (dirMatchA) {
             const counts = countPhasePlansAndSummaries(node_path_1.default.join(phasesDir, dirMatchA));
             tPlanCount = counts.planCount;
             tSummaryCount = counts.summaryCount;
             tHasContext = node_fs_1.default.existsSync(node_path_1.default.join(phasesDir, dirMatchA, 'CONTEXT.md'));
             tHasResearch = node_fs_1.default.existsSync(node_path_1.default.join(phasesDir, dirMatchA, 'RESEARCH.md'));
+            // #3885 (ADR-3473 §8.5): reuse the SAME countPhasePlansAndSummaries call's
+            // discriminator — this row's hasContext/hasResearch are read via a direct
+            // existsSync (which cannot itself distinguish EACCES from absent), but
+            // an unreadable phase directory is still surfaced via the sibling call.
+            tContextReadError = counts.contextReadError;
         }
         phases.push({
             number: tr.id,
@@ -429,6 +458,7 @@ function collectAnalyzePhases(content, phasesDir, phaseDirNames) {
             has_research: tHasResearch,
             disk_status: dirMatchA ? 'ok' : 'no_directory',
             roadmap_complete: false,
+            context_read_error: tContextReadError,
         });
     }
     return phases;
@@ -446,21 +476,17 @@ function cmdRoadmapAnalyze(cwd, raw) {
     const { value: content, scope } = extractCurrentMilestoneScoped(rawContent, cwd);
     const phasesDir = planningPaths(cwd).phases;
     // Build phase directory lookup once (O(1) readdir instead of O(N) per phase)
-    // #3185 exemption (documented reason, not a file allowlist — ADR-3180
-    // Decision 4a): this is a heading->directory LOOKUP INDEX, not a milestone
-    // enumeration. It must see the PHYSICAL set so a heading already scoped by
-    // extractCurrentMilestoneScoped above can find its directory; filtering it
-    // through listMilestonePhaseDirs would scope the same set twice.
-    const _phaseDirNames = (() => {
-        try {
-            return node_fs_1.default.readdirSync(phasesDir, { withFileTypes: true })
-                .filter(e => e.isDirectory())
-                .map(e => e.name);
-        }
-        catch {
-            return [];
-        }
-    })();
+    // #3185 exemption reason (ADR-3180 Decision 4a): this is a heading->directory
+    // LOOKUP INDEX, not a milestone enumeration. It must see the PHYSICAL set so
+    // a heading already scoped by extractCurrentMilestoneScoped above can find
+    // its directory; filtering it through listMilestonePhaseDirs would scope
+    // the same set twice. #3882 (ADR-3473 §8.2): routed through the named
+    // "physical set, sentinels included" axis instead of a hand-rolled
+    // readdirSync — every heading matched below already excludes sentinel
+    // phase numbers via isSentinelPhaseId before it ever consults this list
+    // (collectAnalyzePhases), so a sentinel directory's presence here is
+    // output-invariant; this only removes the re-derivation, not the reason.
+    const _phaseDirNames = listAllPhaseDirs(phasesDir, { includeSentinels: true }).value;
     // Scan the scoped milestone window for phase-detail headings and enrich each
     // with its on-disk status. Extracted into `collectAnalyzePhases` (#3165) so
     // the SAME enrichment re-runs on the fallback below — not a second copy.
@@ -615,7 +641,36 @@ function cmdRoadmapMilestoneScope(cwd, raw) {
         return;
     }
     const rawContent = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
-    const { value: window, scope } = extractCurrentMilestoneScoped(rawContent, cwd);
+    // #3641: resolve phase_id_convention and thread it into the scope axis, so
+    // this probe and `roadmap validate`'s V005 answer the SAME question the
+    // SAME way for a bracket-convention project — a window the classifier
+    // calls TRUNCATED in validate must never read COMPLETE here (the #3262
+    // capture/compare guard consumes this scope). Resolution mirrors the
+    // validate router's: .planning/config.json first, ROADMAP.md frontmatter
+    // as fallback.
+    let phaseIdConvention;
+    try {
+        const cfg = loadConfigForScope(cwd);
+        phaseIdConvention = cfg['phase_id_convention'];
+    }
+    catch {
+        phaseIdConvention = undefined;
+    }
+    if (phaseIdConvention === undefined || phaseIdConvention === null) {
+        // Bounded per local/no-unbounded-quantifier (#2128): frontmatter is a
+        // short header block — 4KB is orders of magnitude beyond any real one.
+        const fmMatch = rawContent.match(/^---\r?\n([\s\S]{0,4000}?)\r?\n---/);
+        if (fmMatch) {
+            const kvMatch = fmMatch[1].match(/^phase_id_convention:\s*(.*)$/m);
+            if (kvMatch) {
+                const val = kvMatch[1].trim();
+                if (val !== 'null' && val !== '') {
+                    phaseIdConvention = val.replace(/^["']|["']$/g, '');
+                }
+            }
+        }
+    }
+    const { value: window, scope } = extractCurrentMilestoneScoped(rawContent, cwd, undefined, phaseIdConvention);
     // Document order (Set insertion order) — deterministic for a given document.
     const phases = [...scanMilestonePhaseIds(window)];
     output({ scope, phases, phase_count: phases.length }, raw, undefined);

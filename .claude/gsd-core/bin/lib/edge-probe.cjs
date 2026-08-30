@@ -27,6 +27,9 @@ exports.validateResolution = validateResolution;
 exports.proposeEdges = proposeEdges;
 exports.analyzeCoverage = analyzeCoverage;
 const probe_core_cjs_1 = require("./probe-core.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const cliExitModule = require("./cli-exit.cjs");
+const { runMain } = cliExitModule;
 /**
  * Word-boundary cues mapping requirement prose -> data/behavior shape.
  * Heuristic and intentionally lossy; an authored `shapes` array overrides it.
@@ -192,5 +195,10 @@ function analyzeCoverage(requirements, resolutions = []) {
  * `require.main === module` so it runs only when the compiled `.cjs` is executed directly.
  */
 if (require.main === module) {
-    (0, probe_core_cjs_1.runProbeCli)((requirements, resolutions) => analyzeCoverage(requirements, resolutions), { usage: 'edge-probe.cjs <requirements.json> [resolutions.json]' });
+    // runProbeCli's default `exit` now throws ExitError (src/probe-core.cts) rather
+    // than calling process.exit directly, so this entry point must run under
+    // runMain to translate that throw into process.exitCode.
+    runMain(() => {
+        (0, probe_core_cjs_1.runProbeCli)((requirements, resolutions) => analyzeCoverage(requirements, resolutions), { usage: 'edge-probe.cjs <requirements.json> [resolutions.json]' });
+    });
 }

@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-check-update.js"
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-check-update.js"
           }
         ]
       },
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-update-banner.js"
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-update-banner.js"
           }
         ]
       }
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
             "timeout": 10
           }
         ]
@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-read-injection-scanner.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-read-injection-scanner.js",
             "timeout": 5
           }
         ]
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-prompt-guard.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-prompt-guard.js",
             "timeout": 5
           }
         ]
@@ -101,7 +101,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-read-guard.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-read-guard.js",
             "timeout": 5
           }
         ]
@@ -111,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-workflow-guard.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-workflow-guard.js",
             "timeout": 5
           }
         ]
@@ -121,7 +121,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-worktree-path-guard.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-worktree-path-guard.js",
             "timeout": 5
           }
         ]
@@ -141,7 +141,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-agent-isolation-guard.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-agent-isolation-guard.js",
             "timeout": 5
           }
         ]
@@ -151,7 +151,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-write-guard.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-write-guard.js",
             "timeout": 5
           }
         ]
@@ -162,7 +162,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
             "timeout": 10
           }
         ]
@@ -173,7 +173,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
             "timeout": 10
           }
         ]
@@ -184,7 +184,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-context-monitor.js",
             "timeout": 10
           }
         ]
@@ -196,7 +196,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-config-reload.js",
+            "command": "\"$(for n in \"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"$(command -v node)\" /usr/local/bin/node /usr/bin/node; do [ -x \"$n\" ] && { [ \"${n#/}\" != \"$n\" ] || [ \"${n#?:}\" != \"$n\" ]; } && printf '%s' \"$n\" && break; done)\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-config-reload.js",
             "timeout": 8
           }
         ]

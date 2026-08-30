@@ -38,7 +38,7 @@ const commonjs_marker_cjs_1 = require("./commonjs-marker.cjs");
 const imperative_hook_bus_cjs_1 = require("./host-integration-adapters/imperative-hook-bus.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const shellCmdProjection = require("./shell-command-projection.cjs");
-const { isManagedHookBasename, isManagedHookCommand, projectLegacySettingsHookCommand, projectManagedHookCommand, projectPortableHookBaseDir, projectCodexHookTomlCommand, shellHookOmitsBashRunner, escapeTomlDoubleQuotedString, } = shellCmdProjection;
+const { isManagedHookBasename, isManagedHookCommand, projectLegacySettingsHookCommand, projectManagedHookCommand, projectPortableHookBaseDir, projectCodexHookTomlCommand, shellHookOmitsBashRunner, escapeTomlDoubleQuotedString, escapePosixDoubleQuoted, } = shellCmdProjection;
 // ---------------------------------------------------------------------------
 // Terminal color constants (mirrors install.js for console output parity)
 // ---------------------------------------------------------------------------
@@ -136,23 +136,64 @@ function _capabilityTitle(runtime) {
 let __atomicWriteCounter = 0;
 // Set<string> — absolute paths of .tmp-<pid>-<n> files this process created.
 const __atomicWrittenTmps = new Set();
+// Retry budget for the EEXIST (squatted temp path) branch in atomicWriteFileSync.
+const MAX_TEMP_FILE_ATTEMPTS = 4;
 function atomicWriteFileSync(target, data, options) {
-    __atomicWriteCounter += 1;
-    const tmp = `${target}.tmp-${process.pid}-${__atomicWriteCounter}`;
-    __atomicWrittenTmps.add(tmp);
+    // A pre-existing target's permission bits must survive the rewrite:
+    // rename() swaps the temp file's inode into place, so without an explicit
+    // carry a user-hardened chmod (e.g. 600 on a secrets-bearing settings.json)
+    // would silently reset to the umask default.
+    let priorMode;
     try {
-        node_fs_1.default.writeFileSync(tmp, data, options);
-        shellCmdProjection.retryRenameSync(tmp, target);
-        // Successful rename: the tmp path no longer exists, but leave it in the
-        // Set so _cleanTmpFiles can recognise it as installer-owned if it somehow
-        // lingers (e.g. a rename succeeded but left a stale entry on some FS).
+        const st = node_fs_1.default.statSync(target);
+        if (st.isFile())
+            priorMode = st.mode & 0o7777;
     }
-    catch (e) {
+    catch { /* no pre-existing target: default creation mode applies */ }
+    // 'wx' (O_EXCL) refuses to follow a symlink pre-planted at the predictable
+    // temp path and refuses to reuse a foreign file already sitting there; on
+    // EEXIST the write retries under a fresh counter value.
+    const exclusiveOptions = typeof options === 'string' || options == null
+        ? { encoding: options ?? null, flag: 'wx' }
+        : { ...options, flag: 'wx' };
+    for (let attempt = 0;; attempt++) {
+        __atomicWriteCounter += 1;
+        const tmp = `${target}.tmp-${process.pid}-${__atomicWriteCounter}`;
+        __atomicWrittenTmps.add(tmp);
         try {
-            node_fs_1.default.rmSync(tmp, { force: true });
+            node_fs_1.default.writeFileSync(tmp, data, exclusiveOptions);
         }
-        catch { /* ignore */ }
-        throw e;
+        catch (e) {
+            if (e.code === 'EEXIST') {
+                // The file at tmp is not ours — never rmSync it.
+                if (attempt < MAX_TEMP_FILE_ATTEMPTS)
+                    continue;
+                throw e;
+            }
+            try {
+                node_fs_1.default.rmSync(tmp, { force: true });
+            }
+            catch { /* ignore */ }
+            throw e;
+        }
+        try {
+            // chmod rather than options.mode: open(2) masks mode with the process
+            // umask, chmod applies the preserved bits exactly.
+            if (priorMode !== undefined)
+                node_fs_1.default.chmodSync(tmp, priorMode);
+            shellCmdProjection.retryRenameSync(tmp, target);
+            // Successful rename: the tmp path no longer exists, but leave it in the
+            // Set so _cleanTmpFiles can recognise it as installer-owned if it somehow
+            // lingers (e.g. a rename succeeded but left a stale entry on some FS).
+        }
+        catch (e) {
+            try {
+                node_fs_1.default.rmSync(tmp, { force: true });
+            }
+            catch { /* ignore */ }
+            throw e;
+        }
+        return;
     }
 }
 // ---------------------------------------------------------------------------
@@ -333,26 +374,83 @@ function parseTomlValue(text, i) {
     }
     throw new Error(`parseTomlValue: unexpected character '${ch}' at position ${i}`);
 }
+/**
+ * Normalize a directory that will be joined with `/…` — posix separators, no
+ * trailing slash. `FNM_DIR=/custom/fnm/` would otherwise bake
+ * `/custom/fnm//aliases/default/bin/node` (#3704 review). Cosmetic — `existsSync`
+ * resolves the doubled separator and every shell collapses it — but the value is
+ * written into a user's settings.json and read by humans.
+ *
+ * Shared by both fnm branches deliberately: they build the same alias paths from
+ * different roots, and a trim applied to only one is a difference with no reason
+ * behind it.
+ */
+function normalizeRootDir(dir) {
+    return shellCmdProjection.posixNormalize(dir).replace(/\/+$/, '');
+}
 function normalizeNodePath(execPath, opts) {
     if (!execPath)
         return execPath;
     const env = (opts && opts.env) || process.env;
     const existsSync = (opts && opts.existsSync) || node_fs_1.default.existsSync;
     const normalizedForMatch = shellCmdProjection.posixNormalize(execPath);
-    if (/\/fnm_multishells\/[0-9]+_[0-9]+\/node(\.exe)?$/i.test(normalizedForMatch)) {
+    // #977: fnm's Windows shim IS `process.execPath` there — Windows does not
+    // realpath through it — so this branch stays. #3704 adds `(?:bin\/)?`: fnm's
+    // POSIX shim is `<multishell>/bin/node`, so the original pattern could not match
+    // it even when a caller hands one in explicitly (#3662's `execPath` option
+    // exists to do exactly that, normalizing a path from another environment).
+    if (/\/fnm_multishells\/[0-9]+_[0-9]+\/(?:bin\/)?node(\.exe)?$/i.test(normalizedForMatch)) {
         const candidates = [];
         if (env.FNM_DIR) {
-            candidates.push(`${env.FNM_DIR}/aliases/default/node.exe`);
-            candidates.push(`${env.FNM_DIR}/aliases/default/bin/node`);
+            const fnmRoot = normalizeRootDir(env.FNM_DIR);
+            candidates.push(`${fnmRoot}/aliases/default/node.exe`);
+            candidates.push(`${fnmRoot}/aliases/default/bin/node`);
         }
-        if (env.APPDATA) {
-            candidates.push(`${env.APPDATA}/fnm/aliases/default/node.exe`);
+        const appdata = shellCmdProjection.envGet(env, 'APPDATA');
+        if (appdata) {
+            candidates.push(`${normalizeRootDir(appdata)}/fnm/aliases/default/node.exe`);
         }
         for (const candidate of candidates) {
             if (candidate && existsSync(candidate))
                 return candidate;
         }
         return execPath;
+    }
+    // #3704: fnm pins a concrete version at
+    // <FNM_DIR>/node-versions/<ver>/installation/bin/node (Windows:
+    // .../installation/node.exe). On macOS/Linux this — not the shim above — is what
+    // `process.execPath` reports, because Node realpaths through
+    // `fnm_multishells`. So the shim branch above is unreachable on POSIX and the
+    // raw versioned path was baked into every managed hook: `fnm uninstall <ver>`,
+    // or fnm's own pruning, then 404s every hook — the ephemeral-path failure #977
+    // exists to prevent, and the same one #1619 (mise) and #2185 (Homebrew) fixed
+    // for their managers by matching the VERSIONED path rather than a shim.
+    //
+    // The stable alias is <FNM_DIR>/aliases/default/..., which fnm repoints on
+    // `fnm default`. Derive <FNM_DIR> from execPath first (#2185's rule — the path
+    // IS the install location, and FNM_DIR may be unset or point at a different
+    // install), keeping the env as a secondary candidate. Rewrite only when the
+    // alias exists; otherwise fall through to the raw execPath, exactly like the
+    // mise and volta branches, so a rewrite never turns a stale-but-working pin
+    // into an immediately broken one.
+    const fnmVersioned = normalizedForMatch.match(/^(.*)\/node-versions\/[^/]+\/installation\/(?:bin\/)?node(\.exe)?$/i);
+    if (fnmVersioned) {
+        const isExe = Boolean(fnmVersioned[2]);
+        const roots = [fnmVersioned[1]];
+        if (env.FNM_DIR)
+            roots.push(normalizeRootDir(env.FNM_DIR));
+        const fnmAliasCandidates = [];
+        for (const root of roots) {
+            // Probe the spelling matching the input first, then the other — a layout
+            // is one or the other, and guessing wrong would skip a real alias.
+            const leaf = isExe ? ['node.exe', 'bin/node'] : ['bin/node', 'node.exe'];
+            for (const tail of leaf)
+                fnmAliasCandidates.push(`${root}/aliases/default/${tail}`);
+        }
+        for (const candidate of fnmAliasCandidates) {
+            if (existsSync(candidate))
+                return candidate;
+        }
     }
     // Homebrew (macOS Intel /usr/local, Apple Silicon /opt/homebrew, Linuxbrew
     // /home/linuxbrew/.linuxbrew, and any custom HOMEBREW_PREFIX) pins node at
@@ -399,12 +497,76 @@ function normalizeNodePath(execPath, opts) {
     return execPath;
 }
 function resolveNodeRunner(opts) {
-    const execPath = typeof process.execPath === 'string' ? process.execPath : '';
+    const execPath = (opts && opts.execPath) || (typeof process.execPath === 'string' ? process.execPath : '');
     if (!execPath)
         return null;
     const stablePath = normalizeNodePath(execPath, opts);
     return JSON.stringify(shellCmdProjection.posixNormalize(stablePath));
 }
+/**
+ * #3662 — the runtime-resolving node runner token for managed JS hooks.
+ *
+ * A bake-time absolute runner (`resolveNodeRunner`) only works in the
+ * environment that ran the installer; a config root shared across
+ * environments (the `--portable-hooks` scenario, or any settings.json under a
+ * mounted `$HOME`) carries a path that 404s with exit 127 everywhere else.
+ * This token is a POSIX `sh` command substitution that resolves node at
+ * hook-fire time, trying IN ORDER:
+ *
+ *   1. the baked installer path (absolute — keeps the #2979/#3002/#3017/#3022
+ *      minimal-PATH guarantee: where the baked path exists it still wins,
+ *      under any PATH, GUI launch included);
+ *   2. `command -v node` (quoted — one word even with spaces in the result);
+ *   3. the well-known stable layouts (`/usr/local/bin/node`, `/usr/bin/node`).
+ *
+ * The FIRST executable candidate wins; if none resolves the substitution
+ * yields an empty word and the hook fails exactly as a stale absolute path
+ * does today — no bare `node` token is ever emitted or depended on.
+ *
+ * One shape for every platform: emitted hook commands execute via POSIX `sh`
+ * (Claude-on-win32 runs Git Bash per #166/#580; `hookCommandNeedsPowerShellCallOperator`
+ * is an unused opt-in), and the baked path is posixNormalize'd before escaping
+ * (escapePosixDoubleQuoted — the Shell Command Projection seam owns quoting).
+ * The portable resolver script (hooks/gsd-node-runner.sh) resolves through a
+ * SUPERSET of this candidate list — keep the two lists consistent.
+ */
+function buildNodeRunnerChainToken(opts) {
+    const execPath = (opts && opts.execPath) || (typeof process.execPath === 'string' ? process.execPath : '');
+    if (!execPath)
+        return null;
+    const stablePath = shellCmdProjection.posixNormalize(normalizeNodePath(execPath, opts));
+    const baked = escapePosixDoubleQuoted(stablePath);
+    // Absolute candidates only (leading / or a win32 drive letter): a relative
+    // `command -v node` hit (legal under a relative PATH entry) must never
+    // promote repo-cwd content into the runner slot. The gate uses parameter
+    // expansion + [ ] — deliberately NO `case` (its `)` terminates the command
+    // substitution under macOS's stock bash 3.2 /bin/sh, breaking the hook).
+    // \${…} below stays a literal shell parameter expansion, not TS interpolation.
+    return `"$(for n in "${baked}" "$(command -v node)" /usr/local/bin/node /usr/bin/node; do [ -x "$n" ] && { [ "\${n#/}" != "$n" ] || [ "\${n#?:}" != "$n" ]; } && printf '%s' "$n" && break; done)"`;
+}
+/**
+ * #3662 — the install-time node path as a shell-safe QUOTED token, carrying
+ * the same double-quote escaping as the chain token (`escapePosixDoubleQuoted`
+ * — $ ` " \), NOT bare JSON quoting. The portable resolver's first argument
+ * is executed by the host shell before the resolver sees argv, so a path
+ * containing shell metacharacters must arrive escaped.
+ */
+function buildBakedNodeToken(opts) {
+    const execPath = (opts && opts.execPath) || (typeof process.execPath === 'string' ? process.execPath : '');
+    if (!execPath)
+        return null;
+    const stablePath = shellCmdProjection.posixNormalize(normalizeNodePath(execPath, opts));
+    return `"${escapePosixDoubleQuoted(stablePath)}"`;
+}
+/**
+ * #3662 — basename of the portable node resolver staged into the install's
+ * hooks/ directory. Under `--portable-hooks`, managed JS hook commands route
+ * through it (`bash "<hooks>/gsd-node-runner.sh" "<baked-node>" "<script>.js"`)
+ * so the SAME staged file works for every install: the install-time node path
+ * travels as the resolver's first argument (tried first — the minimal-PATH
+ * guarantee), ahead of `command -v node` and the well-known fallback list.
+ */
+const NODE_RUNNER_RESOLVER_HOOK = 'gsd-node-runner.sh';
 function resolveBashRunner(opts) {
     const platform = (opts && opts.platform) || process.platform;
     if (platform !== 'win32')
@@ -429,8 +591,13 @@ function resolveBashRunner(opts) {
     }
     return null;
 }
-function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner, opts) {
-    if (!settings || !settings.hooks || !absoluteRunner)
+// #3662 — recognize the two runtime-resolving command shapes the installer
+// emits, so the rewriter never churns (or un-does) an entry that already
+// works in every environment sharing the config root.
+const CHAIN_RUNNER_COMMAND = /^"\$\(for n in [\s\S]*?printf '%s' "\$n" && break; done\)"\s+\S/;
+const RESOLVER_RUNNER_COMMAND = /^(?:"[^"]*bash(\.exe)?"|bash)\s+"[^"]*gsd-node-runner\.sh"\s+"[^"]*"\s+\S/;
+function rewriteLegacyManagedNodeHookCommands(settings, runnerToken, opts) {
+    if (!settings || !settings.hooks || !runnerToken)
         return false;
     if (!opts)
         opts = {};
@@ -452,29 +619,31 @@ function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner, opts) {
                 if (hadPowerShellCallOperator) {
                     trimmed = trimmed.replace(/^&\s+/, '').trim();
                 }
+                if (CHAIN_RUNNER_COMMAND.test(trimmed) || RESOLVER_RUNNER_COMMAND.test(trimmed))
+                    continue;
                 const m = trimmed.match(/^node\s+("([^"]+)"|'([^']+)'|(\S+))\s*$/) ||
                     trimmed.match(/^("([^"]+)"|'([^']+)'|(\S+))\s+("([^"]+)"|'([^']+)'|(\S+))\s*$/);
                 if (!m)
                     continue;
-                let _runnerToken, scriptToken, scriptPath;
+                let scriptToken, scriptPath;
                 if (/^node\s+/.test(trimmed)) {
-                    _runnerToken = 'node';
                     scriptToken = m[1];
                     scriptPath = m[2] || m[3] || m[4] || '';
                 }
                 else {
-                    _runnerToken = m[1];
-                    const runnerPath = shellCmdProjection.posixNormalize(m[2] || m[3] || m[4] || '');
-                    const stableRunner = normalizeNodePath(runnerPath);
-                    if (stableRunner === runnerPath && platform !== 'win32')
-                        continue;
+                    // #3662: the pre-fix two-token shape baked an absolute node path at
+                    // install time. A foreign-but-stable runner (valid in the
+                    // environment that wrote it, absent here) used to be SKIPPED — the
+                    // exact mechanism behind the mixed state where no environment can
+                    // run all hooks. Every two-token managed entry now re-projects onto
+                    // the runtime-resolving runner, whatever environment baked it.
                     scriptToken = m[5];
                     scriptPath = m[6] || m[7] || m[8] || '';
                 }
                 if (!isManagedHookBasename(scriptPath, { surface: 'settings-json' }))
                     continue;
                 const projectedCommand = projectLegacySettingsHookCommand({
-                    absoluteRunner,
+                    runnerToken,
                     scriptPath,
                     scriptToken,
                     runtime: opts.runtime || 'generic',
@@ -863,27 +1032,75 @@ function buildHookCommand(configDir, hookName, opts) {
         }
         return JSON.stringify(shellCmdProjection.posixNormalize(configDir) + '/hooks/' + hookName);
     }
-    const nodeRunner = resolveNodeRunner();
-    const runner = isShellHook ? resolveBashRunner(opts) : nodeRunner;
-    if (runner === null)
-        return null;
-    if (opts.portableHooks) {
-        const portableBaseDir = projectPortableHookBaseDir({
-            configDir,
-            homeDir: node_os_1.default.homedir(),
-        });
+    // .sh hooks keep the pre-#3662 shape everywhere: the bash runner resolves
+    // at install time like today, and `bash` itself is a PATH-stable binary
+    // (the absolute Git-Bash discovery covers win32 — #580/#3393).
+    if (isShellHook) {
+        const runner = resolveBashRunner(opts);
+        if (runner === null)
+            return null;
+        if (opts.portableHooks) {
+            const portableBaseDir = projectPortableHookBaseDir({
+                configDir,
+                homeDir: node_os_1.default.homedir(),
+            });
+            return projectManagedHookCommand({
+                absoluteRunner: runner,
+                scriptPath: `${portableBaseDir}/hooks/${hookName}`,
+                runtime: opts.runtime || 'generic',
+                platform,
+                hookShell,
+            });
+        }
+        const hooksPath = shellCmdProjection.posixNormalize(configDir) + '/hooks/' + hookName;
         return projectManagedHookCommand({
             absoluteRunner: runner,
-            scriptPath: `${portableBaseDir}/hooks/${hookName}`,
-            runtime: opts.runtime || 'generic',
+            scriptPath: hooksPath,
+            runtime,
             platform,
             hookShell,
         });
     }
+    // JS hooks (#3662): the node runner is resolved at hook-fire time, never
+    // baked as a bare absolute path — an install-environment absolute path is
+    // exactly what breaks with exit 127 when the config root is shared across
+    // environments with different node layouts.
+    if (opts.portableHooks) {
+        // Portable installs route through the staged resolver: the baked absolute
+        // path travels as the resolver's FIRST argument (tried first, so the
+        // minimal-PATH guarantee holds), then `command -v node`, then the
+        // well-known list — one staged file, no per-install templating. The
+        // token is shell-escaped like the chain (the host shell expands the
+        // argument before bash sees argv), not merely JSON-quoted.
+        const bakedToken = buildBakedNodeToken(opts);
+        if (bakedToken === null)
+            return null;
+        const portableBaseDir = projectPortableHookBaseDir({
+            configDir,
+            homeDir: node_os_1.default.homedir(),
+        });
+        // Absolute Git-Bash discovery on win32 when available (#580); `bash` on
+        // PATH otherwise — the same assumption .sh hooks already make.
+        const resolverRunner = resolveBashRunner(opts) || 'bash';
+        return shellCmdProjection.projectShellCommandText({
+            runnerToken: resolverRunner,
+            argTokens: [
+                JSON.stringify(`${portableBaseDir}/hooks/${NODE_RUNNER_RESOLVER_HOOK}`),
+                bakedToken,
+                JSON.stringify(`${portableBaseDir}/hooks/${hookName}`),
+            ],
+            runtime,
+            platform,
+            hookShell,
+        });
+    }
+    const chainRunner = buildNodeRunnerChainToken(opts);
+    if (chainRunner === null)
+        return null;
     const hooksPath = shellCmdProjection.posixNormalize(configDir) + '/hooks/' + hookName;
-    return projectManagedHookCommand({
-        absoluteRunner: runner,
-        scriptPath: hooksPath,
+    return shellCmdProjection.projectShellCommandText({
+        runnerToken: chainRunner,
+        argTokens: [JSON.stringify(hooksPath)],
         runtime,
         platform,
         hookShell,
@@ -1119,28 +1336,39 @@ function writeCursorHooksJson(targetDir, src, opts) {
             installedScripts.add(script);
         }
     }
-    // Stage the hooks/lib/ helpers the staged scripts require (#2587). Cursor sets
-    // hostBehaviors.skipSharedHooksInstall, so it never reaches the installer's
-    // bulk hooks/lib copy — without this, a script requiring './lib/…' would throw
-    // MODULE_NOT_FOUND at load, BEFORE its own try/catch, and wedge every Cursor
-    // session on the one runtime these hooks exist for. Driven off what the staged
-    // scripts actually require so a future helper cannot be silently omitted.
+    // Stage the hooks/lib/ helpers the staged scripts require (#2587), TRANSITIVELY
+    // (#3911 review): a lib helper can itself require a sibling under lib/ (e.g.
+    // hooks/lib/hook-exit.js requires './cli-exit.js', which requires
+    // './exit-code-registry.js') — a require with NO './lib/' prefix, because from
+    // inside lib/ the sibling is already local. The original single-pass scan only
+    // ever matched the "./lib/…" spelling used FROM a hook script, so it staged
+    // hook-exit.js but never walked hook-exit.js's own requires, and an installed
+    // Cursor hook wedged on MODULE_NOT_FOUND for './cli-exit.js' at load — before
+    // its own try/catch. This walks a worklist: hook scripts seed it with their
+    // "./lib/X" requires, and every lib file staged is itself scanned for further
+    // "./lib/X" OR bare "./X" (sibling-within-lib) requires, so the requirement
+    // graph is derived to a fixed point instead of one hand-tuned level deep.
     const requiredLibFiles = new Set();
-    for (const script of installedScripts) {
-        const staged = node_fs_1.default.readFileSync(node_path_1.default.join(hooksDir, script), 'utf8');
-        // Tolerant of interior whitespace and either quote style: a hook author
-        // writing `require( "./lib/x.js" )` must still get its helper staged, since
-        // a miss here surfaces as MODULE_NOT_FOUND at hook load, not at install.
-        const re = /require\(\s*['"]\.\/lib\/([A-Za-z0-9._-]+)['"]\s*\)/g;
+    const scannedLibFiles = new Set();
+    const libRequireRe = /require\(\s*['"]\.\/(?:lib\/)?([A-Za-z0-9._-]+)['"]\s*\)/g;
+    function scanForLibRequires(source) {
+        libRequireRe.lastIndex = 0;
         let m;
-        while ((m = re.exec(staged)) !== null)
+        while ((m = libRequireRe.exec(source)) !== null)
             requiredLibFiles.add(m[1]);
+    }
+    for (const script of installedScripts) {
+        scanForLibRequires(node_fs_1.default.readFileSync(node_path_1.default.join(hooksDir, script), 'utf8'));
     }
     if (requiredLibFiles.size > 0) {
         const srcLibDir = node_path_1.default.join(srcHooksDir, 'lib');
         const destLibDir = node_path_1.default.join(hooksDir, 'lib');
         node_fs_1.default.mkdirSync(destLibDir, { recursive: true });
-        for (const libFile of requiredLibFiles) {
+        // Iterate to a fixed point: staging a lib file can add MORE required lib
+        // files (its own requires), which must themselves be staged and scanned.
+        let libFile = [...requiredLibFiles].find((f) => !scannedLibFiles.has(f));
+        while (libFile !== undefined) {
+            scannedLibFiles.add(libFile);
             const libSrc = node_path_1.default.join(srcLibDir, libFile);
             if (!node_fs_1.default.existsSync(libSrc)) {
                 // FAIL LOUD. Skipping here would ship hook scripts whose top-level
@@ -1153,6 +1381,8 @@ function writeCursorHooksJson(targetDir, src, opts) {
             let libContent = node_fs_1.default.readFileSync(libSrc, 'utf8');
             libContent = libContent.replace(/gsd:/gi, 'gsd-');
             node_fs_1.default.writeFileSync(node_path_1.default.join(destLibDir, libFile), libContent);
+            scanForLibRequires(libContent);
+            libFile = [...requiredLibFiles].find((f) => !scannedLibFiles.has(f));
         }
     }
     // #2717: write the CommonJS marker into hooks/ alongside the staged .js
@@ -2309,7 +2539,9 @@ module.exports = {
     reconcileManagedShellHookCommands,
     normalizeNodePath,
     resolveNodeRunner,
+    buildNodeRunnerChainToken,
     resolveBashRunner,
+    NODE_RUNNER_RESOLVER_HOOK,
     // Atomic write seam (shared with bin/install.js so all writes participate
     // in install.js's _cleanTmpFiles() scoped temp-cleanup).
     atomicWriteFileSync,

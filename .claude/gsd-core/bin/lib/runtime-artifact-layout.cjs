@@ -36,6 +36,10 @@ const conversionExports = runtimeArtifactConversion;
 // rather than re-deriving the chain per runtime.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const installModelOverrideResolver = require("./install-model-override-resolver.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- export= CommonJS module, same as the sibling resolver import above
+const installEffortResolver = require("./install-effort-resolver.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- export= CommonJS module, same as the sibling resolver import above
+const modelCatalog = require("./model-catalog.cjs");
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // #2870: `isGlobalScope` centralizes the `scope === 'global'` boolean
 // projection both kind-builder closures below need at the converters'
@@ -346,11 +350,40 @@ function convertedAgentsKind(destSubpath, prefix, converterName, configDir, scop
                 const overrideTargetDir = agentCtx?.targetDir ?? configDir;
                 const modelOverrides = installModelOverrideResolver.readGsdEffectiveModelOverrides(overrideTargetDir);
                 const runtimeResolver = installModelOverrideResolver.readGsdRuntimeProfileResolver(overrideTargetDir);
+                // #3706: the resolved reasoning effort, threaded exactly as the model is —
+                // config read ONCE per stage(), per-agent value resolved per file.
+                //
+                // Gated on the effort config being PRESENT, not on a value coming back.
+                // `resolveInstallTimeEffort` always returns something (measured: 'high'
+                // even with no project config and no effort block), so "skip when
+                // resolution yields no value" has no trigger and would stamp `variant:`
+                // into every generated agent file for every existing install. OpenCode's
+                // built-in variant sets are provider-specific upstream (Anthropic ships
+                // only `high`/`max`), so a level GSD resolved is not guaranteed to name a
+                // variant the user's provider actually has — emitting one unasked-for is
+                // the risk this gate avoids. #1156's rule for `model: inherit` is the
+                // precedent: do not emit a key the runtime may not understand.
+                //
+                // OpenCode only; the kilo converter ignores the field (no EFFORT_ARGV.kilo).
+                const effortConfig = converterName === 'convertClaudeToOpencodeFrontmatter'
+                    ? installEffortResolver.readGsdEffectiveEffortConfig(overrideTargetDir)
+                    : null;
                 converter = (content, _isGlobal, meta) => {
                     const modelOverride = meta
                         ? installModelOverrideResolver.resolveAgentModelOverride(meta.agentName, modelOverrides, runtimeResolver)
                         : null;
-                    return rawConverter(content, { isAgent: true, modelOverride });
+                    // The universal level is NOT emitted raw. `clampEffortForHost` is the
+                    // declared OpenCode effort capability (EFFORT_ARGV.opencode: its own
+                    // `supported` set + `clamp`), and it is what rejects a level that is
+                    // not a wire value — most importantly `inherit`, which per #3533 (10d)
+                    // means "omit the key and follow the host default" and must never be
+                    // written literally. Anything unsupported clamps to null, which omits
+                    // the key rather than inventing one.
+                    const universal = effortConfig && meta
+                        ? installEffortResolver.resolveInstallTimeEffort(effortConfig, meta.agentName)
+                        : null;
+                    const variant = universal ? modelCatalog.clampEffortForHost('opencode', universal) : null;
+                    return rawConverter(content, { isAgent: true, modelOverride, variant });
                 };
             }
             else {

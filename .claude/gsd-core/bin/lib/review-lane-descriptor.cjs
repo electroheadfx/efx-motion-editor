@@ -111,7 +111,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'Gemini',
         evidenceClass: 'source-grounded',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.gemini',
         modelConfigKey: 'review.models.gemini',
         handler: null,
     },
@@ -143,7 +143,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'Claude',
         evidenceClass: 'source-grounded',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.claude',
         modelConfigKey: 'review.models.claude',
         handler: null,
     },
@@ -171,7 +171,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'Codex',
         evidenceClass: 'source-grounded',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.codex',
         modelConfigKey: 'review.models.codex',
         handler: null,
     },
@@ -196,7 +196,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'CodeRabbit',
         evidenceClass: 'diff-only',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.coderabbit',
         // Accepts no model flag at all (review.md:367) — not merely "none configured".
         modelConfigKey: null,
         handler: null,
@@ -223,7 +223,7 @@ exports.REVIEWER_LANES = Object.freeze([
         // Phase 5b: the handler reconstructs from the JSON stream with JSON.parse, so `jq` — absent on
         // stock Windows/Git-Bash (#2589) — is no longer a prerequisite for this lane.
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.opencode',
         modelConfigKey: 'review.models.opencode',
         // Phase 5b (#2799): was `null`. The review is REBUILT from assistant `text` parts; a plain
         // stdout copy would write the raw JSON envelope as the review (#1936). See LaneHandler.
@@ -246,7 +246,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'Qwen',
         evidenceClass: 'source-grounded',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.qwen',
         modelConfigKey: null,
         handler: null,
     },
@@ -271,7 +271,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'Cursor',
         evidenceClass: 'source-grounded',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.cursor',
         modelConfigKey: null,
         handler: null,
     },
@@ -298,7 +298,7 @@ exports.REVIEWER_LANES = Object.freeze([
         evidenceClass: 'source-grounded',
         // Phase 5b: the handler reads the transcript with JSON.parse per line, not `jq`.
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.antigravity',
         // NOT `review.models.antigravity` — the shipped key is `review.models.agy` (review.md:291) and
         // Phase 4 federated it under that name. This lane is why the key is declared, not derived.
         modelConfigKey: 'review.models.agy',
@@ -428,7 +428,7 @@ exports.REVIEWER_LANES = Object.freeze([
         reviewsSection: 'Kimi Code',
         evidenceClass: 'source-grounded',
         requiresBinaries: [],
-        promptBudgetKey: null,
+        promptBudgetKey: 'review.max_prompt_tokens_per_reviewer.kimi-code',
         modelConfigKey: 'review.models.kimi-code',
         handler: null,
     },

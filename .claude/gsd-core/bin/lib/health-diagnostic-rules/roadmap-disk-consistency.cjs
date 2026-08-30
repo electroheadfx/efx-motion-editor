@@ -104,7 +104,7 @@ const planningScopeMod = require("../planning-scope.cjs");
 const { SCOPE } = planningScopeMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("../phase-id.cjs");
-const { matchPhaseDirs, normalizePhaseName, extractPhaseToken, isSentinelPhaseId } = phaseIdMod;
+const { matchPhaseDirs, normalizePhaseName, extractPhaseToken, isSentinelPhaseId, isSentinelPhaseDir } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const validateMod = require("../validate.cjs");
 const { phaseVariants } = validateMod;
@@ -231,8 +231,11 @@ function checkW007(snapshot) {
         // `verify.cts:1373-1397`) — same token, relocated read, not reinvented.
         const token = extractPhaseToken(dirName);
         // #3225: a sentinel dir on disk (999-interim, 0-drafts) is defined as
-        // never-on-roadmap; it must not trigger W007.
-        if (isSentinelPhaseId(token))
+        // never-on-roadmap; it must not trigger W007. #3639: judged on the DIR
+        // NAME via the dir-aware recognizer — the extracted token is
+        // milestone-stripped, so a bracket sentinel (GSD.999-07-icebox) was
+        // invisible to the id predicate and false-fired as an orphan.
+        if (isSentinelPhaseDir(dirName))
             continue;
         if (claimedDirs.has(dirName))
             continue;

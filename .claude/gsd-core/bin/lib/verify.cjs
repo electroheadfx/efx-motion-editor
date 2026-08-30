@@ -37,7 +37,7 @@ const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 const pattern_cjs_1 = require("./pattern.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- agent-install-check.cjs is an export= CommonJS module
 const agentInstallCheck = require("./agent-install-check.cjs");
-const { checkAgentsInstalled, checkCodexModelPosture } = agentInstallCheck;
+const { checkAgentsInstalled, checkCodexModelPosture, checkCodexSandboxPosture } = agentInstallCheck;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ioMod = require("./io.cjs");
 const { output, error } = ioMod;
@@ -56,7 +56,7 @@ const { SEVERITY: HEALTH_SEVERITY, REMEDY_ACTION, REMEDY_RISK, evaluateRules, ev
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- planning-snapshot.cjs is an export= CommonJS module
 const planningSnapshotMod = require("./planning-snapshot.cjs");
 const { buildPlanningSnapshot } = planningSnapshotMod;
-const { planningDir, planningRoot } = planningWorkspace;
+const { planningDir } = planningWorkspace;
 const { extractFrontmatter, parseMustHavesBlock } = frontmatterMod;
 const { readStateHeadFreshness } = stateMod;
 /**
@@ -262,15 +262,78 @@ function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
  * verify gate fails on the comment echo rather than a real regression. Conservative:
  * errors only on a confidently-extracted QUOTED literal; ambiguous (bareword) → warning.
  */
+/**
+ * Decode entity-escaped ampersands (&amp; → &) — #3611. Planners emit
+ * <automated> bodies with `&amp;&amp;` as the chain operator (66 occurrences
+ * vs 0 literal in the reporting repo), and the executing agent reads the
+ * decoded (rendered) form. Every downstream scan — segment split,
+ * zero-comparison, literal harvest, echo matching — must operate on the same
+ * decoded text or a negative clause (`= 0`) poisons the literals of a
+ * POSITIVE clause (-ge 3) joined to it. Shared by both plan-discipline
+ * scanners so the two gates cannot drift apart again.
+ */
+function decodeEntityAmps(s) {
+    return s.replace(/&amp;/g, '&');
+}
+/**
+ * Split one shell line into &&/|| segments, QUOTE-AWARE (#3611 adversarial
+ * review): an operator inside a quoted literal (`grep -c 'a&&b'`) is part of
+ * the pattern, not a chain operator — a quote-blind split destroys the
+ * literal and silently disarms the gate for exactly the plans that spell
+ * patterns with ampersands. Backslash escapes count inside double quotes
+ * (POSIX single quotes have none, and over-staying a single-quoted span can
+ * only miss a split, never invent one).
+ */
+function splitShellSegments(line) {
+    const segments = [];
+    let current = '';
+    let quote = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (quote === "'") {
+            if (ch === "'")
+                quote = null;
+            current += ch;
+            continue;
+        }
+        if (quote === '"') {
+            if (ch === '\\') {
+                current += ch + (line[i + 1] ?? '');
+                i++;
+                continue;
+            }
+            if (ch === '"')
+                quote = null;
+            current += ch;
+            continue;
+        }
+        if (ch === "'" || ch === '"') {
+            quote = ch;
+            current += ch;
+            continue;
+        }
+        if ((ch === '&' && line[i + 1] === '&') || (ch === '|' && line[i + 1] === '|')) {
+            segments.push(current.trim());
+            current = '';
+            i++;
+            continue;
+        }
+        current += ch;
+    }
+    segments.push(current.trim());
+    return segments.filter((s) => s !== '');
+}
 function scanNegativeGrepCommentEcho(content) {
     const errors = [];
     const warnings = [];
     // Normalize newlines; join backslash line-continuations so a verify command wrapped
     // across lines (grep ... \ <newline> == 0) is still seen as one segment.
-    const text = (content || '')
+    // #3611: decode entity-escaped ampersands (see decodeEntityAmps) so every
+    // downstream scan reads the same decoded text the executing agent reads.
+    const text = decodeEntityAmps((content || '')
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
-        .replace(/\\\n/g, ' ');
+        .replace(/\\\n/g, ' '));
     // 1. Allowlisted literals: <!-- planner-discipline-allow: LIT -->
     const allow = new Set();
     const allowRe = /<!--\s*planner-discipline-allow:\s*(.+?)\s*-->/g;
@@ -313,7 +376,7 @@ function scanNegativeGrepCommentEcho(content) {
     //    poisoning a negative gate (`== 0`) sharing the same physical line.
     const seenErr = new Set();
     const seenWarn = new Set();
-    const segments = text.split('\n').flatMap((line) => line.split(/\s*(?:&&|\|\|)\s*/));
+    const segments = text.split('\n').flatMap(splitShellSegments);
     for (const seg of segments) {
         if (!/grep(?:\s+-{1,2}[A-Za-z])/.test(seg) || !zeroCmp(seg))
             continue;
@@ -362,10 +425,13 @@ function scanNegativeGrepCommentEcho(content) {
 function scanFileWideNegativeGateConflict(content) {
     const warnings = [];
     // Normalize newlines; join backslash line-continuations (same as #429).
-    const text = (content || '')
+    // #3611: the SAME entity decode as the #429 scanner — the two gates share
+    // the caller and the input; a decode on one side only let an entity-escaped
+    // chain poison this detector's harvest exactly the same way.
+    const text = decodeEntityAmps((content || '')
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
-        .replace(/\\\n/g, ' ');
+        .replace(/\\\n/g, ' '));
     // Allowlisted patterns: <!-- planner-region-allow: PAT -->
     const allow = new Set();
     const allowRe = /<!--\s*planner-region-allow:\s*(.+?)\s*-->/g;
@@ -499,8 +565,8 @@ function scanFileWideNegativeGateConflict(content) {
     // For each task A, scan gate text for file-wide negative grep bans.
     for (let ai = 0; ai < tasks.length; ai++) {
         const taskA = tasks[ai];
-        // Split gate text into shell segments (split on && / || within lines).
-        const segments = taskA.gateText.split('\n').flatMap(line => line.split(/\s*(?:&&|\|\|)\s*/));
+        // Split gate text into shell segments (quote-aware, shared with #429 — #3611).
+        const segments = taskA.gateText.split('\n').flatMap(splitShellSegments);
         for (const seg of segments) {
             if (!/grep/.test(seg))
                 continue;
@@ -1242,30 +1308,6 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
         links: results,
     }, raw, allVerified ? 'valid' : 'invalid');
 }
-function listMilestoneArchiveDirs(planBase) {
-    const milestonesDir = node_path_1.default.join(planBase, 'milestones');
-    try {
-        return node_fs_1.default
-            .readdirSync(milestonesDir, { withFileTypes: true })
-            .filter((e) => e.isDirectory() && validate_cjs_1.MILESTONE_ARCHIVE_DIR_RE.test(e.name))
-            .map((e) => node_path_1.default.join(milestonesDir, e.name))
-            .sort((a, b) => node_path_1.default.basename(a).localeCompare(node_path_1.default.basename(b), undefined, { numeric: true }));
-    }
-    catch (err) {
-        // #1883: distinguish genuine absence from a permission/I-O failure. ENOENT
-        // (no milestones/ dir yet) keeps the long-standing [] contract callers of
-        // this function depend on for "no archives"; every other error (EACCES,
-        // EIO, …) must propagate — otherwise an unreadable milestones/ dir is
-        // silently reported as "no archives" and archived-phase resolution
-        // misbehaves. As of Phase 12 (#3310), `cmdValidateConsistency`'s own
-        // caller of this function (`collectPhaseRoots` -> `getActiveMilestoneArchiveDir`)
-        // was migrated onto `buildPlanningSnapshot` and deleted; this function is
-        // retained solely for its `_listMilestoneArchiveDirs` test seam below.
-        if (err.code === 'ENOENT')
-            return [];
-        throw err;
-    }
-}
 /**
  * Wrapper-level fix-text table for `cmdValidateHealth`'s migrated
  * `HealthDiagnostic` -> `IssueEntry` mapping (Phase 11, #3309). Rules cannot
@@ -1397,8 +1439,10 @@ function cmdValidateHealth(cwd, options, raw) {
         }, raw);
         return;
     }
-    // rootBase always resolves to .planning/ (shared root — PROJECT.md, config.json live here)
-    const rootBase = planningRoot(cwd);
+    // rootBase resolves to the PROJECT-scoped planning root (`.planning[/<project>]`
+    // — PROJECT.md, config.json live here; #3749). Workstream-free by construction:
+    // planningDir(cwd, null) honors GSD_PROJECT and suppresses GSD_WORKSTREAM.
+    const rootBase = planningDir(cwd, null);
     const _slashRuntime = (0, runtime_slash_cjs_1.resolveRuntime)(cwd);
     const slash = (name) => (0, runtime_slash_cjs_1.formatGsdSlash)(name, _slashRuntime);
     // Second (and last) pre-check that stays OUTSIDE the rule table entirely
@@ -1523,6 +1567,21 @@ function cmdValidateAgents(cwd, raw) {
     // model or an orphaned reasoning-effort pin in a Codex agent .toml), not just
     // presence. checkAgentsInstalled above is untouched.
     const codexPosture = checkCodexModelPosture(runtime, cwd);
+    // #3897 rung 3 (ADR-3473 §8.3 criterion 3) — sibling posture check, additive
+    // alongside codex_posture (never nested inside it, never replacing it): a
+    // TOML's `sandbox_mode` disagreeing with its role's derived expectation is a
+    // different defect class than an Anthropic-flavored model. Same short-circuits,
+    // same read-only posture as checkCodexModelPosture above; checkAgentsInstalled
+    // and codex_posture are both left untouched.
+    //
+    // Failure semantics: matches the checkCodexModelPosture precedent exactly.
+    // Neither posture check makes `validate agents` exit non-zero on its own —
+    // both are report-only fields inspected by the caller (or a human) via the
+    // JSON payload. A `validate` verb whose two posture checks disagreed on
+    // fatality would be its own defect (#3897 dispatch note); this keeps them
+    // consistent rather than inventing new exit-code behavior for only one of
+    // the two siblings.
+    const sandboxPosture = checkCodexSandboxPosture(runtime, cwd);
     output({
         agents_dir: agentStatus.agents_dir,
         agents_found: agentStatus.agents_installed,
@@ -1531,6 +1590,7 @@ function cmdValidateAgents(cwd, raw) {
         incomplete: agentStatus.incomplete_agents,
         expected,
         codex_posture: codexPosture,
+        sandbox_posture: sandboxPosture,
     }, raw);
 }
 function cmdVerifySchemaDrift(cwd, phaseArg, skipFlag, raw) {
@@ -1765,9 +1825,4 @@ module.exports = {
     cmdVerifySchemaDrift,
     cmdVerifyCodebaseDrift,
     STATE_HEAD_ADVISORY_COMMITS,
-    // Test seam (#1883): listMilestoneArchiveDirs is private and exercised through
-    // the validate command, which runs in a subprocess — an fs monkeypatch in the
-    // test process cannot reach it. Exposed under a leading underscore so the
-    // permission-error path can be unit-tested directly (no chmod 0o000).
-    _listMilestoneArchiveDirs: listMilestoneArchiveDirs,
 };

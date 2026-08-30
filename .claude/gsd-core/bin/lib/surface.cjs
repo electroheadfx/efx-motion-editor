@@ -13,7 +13,7 @@
  *   readSurface(runtimeConfigDir)
  *   writeSurface(runtimeConfigDir, surfaceState)
  *   resolveSurface(runtimeConfigDir, manifest, clusterMap?, registry?)
- *   applySurface(runtimeConfigDir, layout, manifest, clusterMap?, registry?)
+ *   applySurface(runtimeConfigDir, layout, manifest, clusterMap?, registry?, opts?, deps?)
  *   listSurface(runtimeConfigDir, manifest, clusterMap?, registry?)
  *   pruneSkillDirs(skillsDir, retainedNames, prefix, manifest)
  *
@@ -37,6 +37,8 @@ const node_path_1 = __importDefault(require("node:path"));
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const installProfiles = require("./install-profiles.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const testHomeGuard = require("./real-home-guard.cjs");
 const { readActiveProfile, resolveProfile, loadSkillsManifest, 
 // #2322 HIGH-3: shared marker name — single source of truth with the writer
 // (install-profiles.cts stageSkillsForRuntimeAsSkills) so the prune reader
@@ -303,10 +305,16 @@ function resolveSurface(runtimeConfigDir, manifest, clusterMap, registry) {
  * Re-stage the active surface using the resolved layout.
  * Iterates layout.kinds and syncs each artifact kind to its destination.
  */
-function applySurface(runtimeConfigDir, layout, manifest, clusterMap, registry, opts) {
+function applySurface(runtimeConfigDir, layout, manifest, clusterMap, registry, opts, deps = {}) {
     if (node_path_1.default.resolve(runtimeConfigDir) !== node_path_1.default.resolve(layout.configDir)) {
         throw new TypeError('applySurface runtimeConfigDir must match layout.configDir');
     }
+    // #3712: the dest selection below prefers `kind.home` over layout.configDir and
+    // then hands it to the destructive _syncGsdDir, so surface apply is a third
+    // escape route into the developer's real home alongside install/uninstall.
+    testHomeGuard.assertTestHomeSandboxed('applySurface', layout.runtime, layout.kinds, {
+        os: deps.os, env: deps.env,
+    });
     const skillManifest = normalizeSkillManifest(layout.configDir, manifest);
     const resolved = resolveSurface(layout.configDir, skillManifest, clusterMap, registry);
     // Profile toggles must converge retired surfaces too. Once a kind disappears

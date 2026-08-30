@@ -32,6 +32,7 @@ const retiredArtifactCleanup = require("./retired-artifact-cleanup.cjs");
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 const external_descriptor_trust_cjs_1 = require("./external-descriptor-trust.cjs");
 const commonjs_marker_cjs_1 = require("./commonjs-marker.cjs");
+const testHomeGuard = require("./real-home-guard.cjs");
 // #2874 (ADR-58 cleanup phase): the injectable fs seam for the
 // installRuntimeArtifacts call tree. `installFs()` resolves to real
 // `node:fs` unless a call is wrapped in `withInstallFs(deps.fs, ...)` —
@@ -409,6 +410,15 @@ function _resolveDevPreferencesSkillTarget(targetDir, runtime, scope = 'global')
     // must confine against installRoot, not targetDir, or it would flag the
     // legitimate override destination as an escape.
     let installRoot = targetDir;
+    // Reported in Codex review of #3725: `installRoot !== targetDir` was used as the
+    // stand-in for "the skills kind declared a `home` override", and the two are NOT
+    // equivalent — a resolved `home` that happens to EQUAL targetDir (a configDir of
+    // `$HOME/.agents`, which is exactly where codex's override points) makes the
+    // inequality false while the override is very much declared, skipping the guard
+    // and writing SKILL.md into the real home. Report the declaration itself instead
+    // of inferring it from two paths, read off the SAME layout resolution the
+    // destination came from so the guard cannot vouch for a path this does not write.
+    let hasHomeOverride = false;
     if (runtime) {
         const layout = runtimeArtifactLayout.resolveRuntimeArtifactLayout(runtime, targetDir, scope);
         const skillsKindEntry = layout.kinds.find((k) => k.kind === 'skills');
@@ -420,6 +430,7 @@ function _resolveDevPreferencesSkillTarget(targetDir, runtime, scope = 'global')
         // -> $HOME/.agents) instead of always resolving against targetDir, so a
         // legacy dev-preferences migration lands in the SAME tree the installer
         // and surface-apply use. Runtimes with no `home` override are unaffected.
+        hasHomeOverride = skillsKindEntry.home != null;
         installRoot = skillsKindEntry.home ?? targetDir;
         skillDir = node_path_1.default.join(runtimeArtifactInstallPlan.assertDestWithinConfigHome(installRoot, skillsKindEntry.destSubpath), stemName);
     }
@@ -427,14 +438,42 @@ function _resolveDevPreferencesSkillTarget(targetDir, runtime, scope = 'global')
         // Legacy fallback for callers that have not yet been updated to pass runtime
         skillDir = node_path_1.default.join(runtimeArtifactInstallPlan.assertDestWithinConfigHome(targetDir, 'skills'), 'gsd-dev-preferences');
     }
-    return { skillFile: node_path_1.default.join(skillDir, 'SKILL.md'), installRoot };
+    return { skillFile: node_path_1.default.join(skillDir, 'SKILL.md'), installRoot, hasHomeOverride };
 }
-function migrateLegacyDevPreferencesToSkill(targetDir, saved, runtime, scope = 'global') {
+/**
+ * @param deps - #3712 test seam, mirroring the one on `installRuntimeArtifacts`
+ *   and `uninstallRuntimeArtifacts`. This is the SIXTH writer that resolves a
+ *   skills-kind `home`, and its guard's trigger condition — "HOME equals the
+ *   passwd home" — cannot be reproduced without pointing at the developer's real
+ *   home, so it is injected rather than simulated. Production callers pass
+ *   nothing and bind real `os`/`process.env`.
+ */
+function migrateLegacyDevPreferencesToSkill(targetDir, saved, runtime, scope = 'global', deps = {}) {
     if (!saved || !saved.has('dev-preferences.md'))
         return false;
     const target = _resolveDevPreferencesSkillTarget(targetDir, runtime, scope);
     if (!target)
         return false; // runtime has no skills layout at this scope (e.g. cline local)
+    // #3712 — the SIXTH writer that resolves a skills-kind `home` override.
+    // Exported and directly callable, and `_runLegacyInstallMigrations` runs it
+    // BEFORE installRuntimeArtifacts' own assertion, so a future runtime pairing a
+    // home override with this migration would write to the real home ahead of any
+    // guard. It creates rather than prunes, which is why it was missed.
+    //
+    // Guards the destination ALREADY RESOLVED above, never a second resolution of
+    // its own. An earlier revision re-ran resolveRuntimeArtifactLayout() here —
+    // and without `capabilityRegistry`, so a registry-dependent descriptor could
+    // make the two disagree and leave the guard vouching for a path the migration
+    // does not write. That is the generative-fix-divergence shape; reported in
+    // review of #3725. `target.hasHomeOverride` is that same resolution's own answer
+    // to "did the skills kind declare a `home`?" — not re-derived, and not inferred
+    // from `installRoot !== targetDir`, which is false whenever the override happens
+    // to resolve onto targetDir itself (Codex review of #3725).
+    if (runtime && target.hasHomeOverride) {
+        testHomeGuard.assertTestHomeSandboxed('migrateLegacyDevPreferencesToSkill', runtime, [
+            { kind: 'skills', home: node_path_1.default.dirname(target.skillFile) },
+        ], { os: deps.os, env: deps.env });
+    }
     const { skillFile, installRoot } = target;
     const skillDir = node_path_1.default.dirname(skillFile);
     // Security fix: `existsSync` FOLLOWS symlinks and reports `false` for a
@@ -960,6 +999,11 @@ function installRuntimeArtifacts(runtime, configDir, scope, resolvedProfile, res
         // Legacy cleanup before layout-driven writes
         _runLegacyInstallMigrations(runtime, configDir, scope);
         const layout = runtimeArtifactLayout.resolveRuntimeArtifactLayout(runtime, configDir, scope, capabilityRegistry);
+        // #3712: a global `home` override escapes the sandboxed configDir. Refuse to
+        // execute when a test run would land that escape in the developer's real home.
+        testHomeGuard.assertTestHomeSandboxed('installRuntimeArtifacts', runtime, layout?.kinds, {
+            os: deps.os, env: deps.env,
+        });
         const planResult = runtimeArtifactInstallPlan.createRuntimeArtifactInstallPlan({
             // `Layout` is structurally identical across the layout/install-plan .cjs
             // modules but nominally distinct to tsc (untyped .cjs boundary) — bridge it.
@@ -1183,6 +1227,13 @@ function installOpencodeFamilySkills(runtime, targetDir, rawCommandsDir, pathPre
     const skillsKindEntry = layout.kinds.find((k) => k.kind === 'skills');
     if (!skillsKindEntry)
         return 0;
+    // #3712: combined-family runtimes take installRuntimeArtifacts' early return
+    // BEFORE its guard runs, and this writer honors `skillsKindEntry.home` below and
+    // then prunes that destination. opencode/kilo declare no `home` today, so there
+    // is no live escape — but that makes this a bypass waiting on a descriptor
+    // change rather than a safe omission, so it is guarded at the writer instead.
+    // Scoped to the SKILLS kind alone, for the same reason as the agents writer.
+    testHomeGuard.assertTestHomeSandboxed('installOpencodeFamilySkills', runtime, [skillsKindEntry]);
     const rawDir = rawCommandsDir;
     if (!rawDir || !installFs().existsSync(rawDir))
         return 0;
@@ -1345,6 +1396,14 @@ function installAgentsKindStandalone(runtime, targetDir, scope, resolvedProfile,
     const agentsKindEntry = layout.kinds.find((k) => k.kind === 'agents');
     if (!agentsKindEntry)
         return null;
+    // #3712: this writer selects `agentsKindEntry.home` over targetDir below and then
+    // prunes that destination via _removeGsdEntries, so it is a fifth route into the
+    // developer's real home. No agents kind declares a `home` override today, so like
+    // installOpencodeFamilySkills it is guarded against a descriptor change rather
+    // than a present escape. Scoped to the AGENTS kind alone: passing the whole
+    // layout made codex's unrelated skills-kind override trip a writer that never
+    // touches it, which is a false refusal, not a tighter guard.
+    testHomeGuard.assertTestHomeSandboxed('installAgentsKindStandalone', runtime, [agentsKindEntry]);
     // ADR-1235 §1: same agentCtx shape createRuntimeArtifactInstallPlan builds
     // for the generic layout-driven loop (runtime-artifact-install-plan.cts) —
     // targetDir IS the install root the inline agent loop called `targetDir`.
@@ -1683,7 +1742,7 @@ function installOpencodeFamilyArtifacts(runtime, configDir, scope, resolvedProfi
  * @param configDir           resolved runtime config directory
  * @param scope
  */
-function uninstallRuntimeArtifacts(runtime, configDir, scope) {
+function uninstallRuntimeArtifacts(runtime, configDir, scope, deps = {}) {
     // A retired descriptor kind is absent from the current uninstall plan, just
     // as it is absent from the install plan. Sweep manifest-proven output from
     // retired kinds before removing the current layout so a direct uninstall
@@ -1695,6 +1754,12 @@ function uninstallRuntimeArtifacts(runtime, configDir, scope) {
     // (the layout's gsd-* prefix pass would wipe a skill dir created here).
     const stagedLegacyArtifacts = _runLegacyUninstallCleanup(runtime, configDir, scope);
     const layout = runtimeArtifactLayout.resolveRuntimeArtifactLayout(runtime, configDir, scope);
+    // #3712: uninstall resolves the SAME `kind.home` override as install and then
+    // prunes it via _removeGsdEntries below, so it is a second escape route into
+    // the developer's real home, not a read-only path. Guard it identically.
+    testHomeGuard.assertTestHomeSandboxed('uninstallRuntimeArtifacts', runtime, layout?.kinds, {
+        os: deps.os, env: deps.env,
+    });
     const plan = runtimeArtifactInstallPlan.createRuntimeArtifactUninstallPlan(layout);
     const kindsByName = new Map(layout.kinds.map((kind) => [kind.kind, kind]));
     for (const item of plan.items) {

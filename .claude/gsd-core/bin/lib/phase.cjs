@@ -21,9 +21,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
+const node_child_process_1 = require("node:child_process");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- io.cjs is an export= CommonJS module
 const ioMod = require("./io.cjs");
-const { output, error, ERROR_REASON } = ioMod;
+const { output, error, ERROR_REASON, formatDiagnosticToken } = ioMod;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const stateContract = require("./state-contract.cjs");
+const { publishStateContract } = stateContract;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- config-loader.cjs is an export= CommonJS module
 const configLoaderMod = require("./config-loader.cjs");
 const { loadConfig } = configLoaderMod;
@@ -34,7 +38,7 @@ const coreUtilsMod = require("./core-utils.cjs");
 // generative-fix divergence CLAUDE.md warns about. Collapsed onto core-utils'
 // copy, which was already the leaf owner, so there is no second surface left to
 // drift and no parity test needed to police one.
-const { toPosixPath, generateSlugInternal, readSubdirectories, extractCanonicalPlanId, findUnsummarizedPlans, } = coreUtilsMod;
+const { toPosixPath, generateSlugInternal, readSubdirectories, extractCanonicalPlanId, findUnsummarizedPlans, normalizeLineEndings, } = coreUtilsMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-id.cjs is an export= CommonJS module
 const phaseIdMod = require("./phase-id.cjs");
 const { normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, matchPhaseDirs, isSentinelPhaseId, scopeToPhase, OPTIONAL_PROJECT_CODE_PREFIX_SOURCE, OPTIONAL_PHASE_TAG_SOURCE, PHASE_NUMBER_TOKEN_SOURCE, } = phaseIdMod;
@@ -74,6 +78,9 @@ const { computeHaltPropagation, buildSummaryFileIndex, isSummaryFileHalted, isSu
 const { planningDir, withPlanningLock, listAvailableWorkstreams, peekActiveWorkstream, diagnoseUnresolvedActiveWorkstream, describeUnresolvedWorkstreamReason, } = planningWorkspace;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- milestone-lock.cjs is an export= CommonJS module
 const milestoneLockMod = require("./milestone-lock.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const planDocumentMod = require("./plan-document.cjs");
+const { parsePlanDocument, planIdFromFile } = planDocumentMod;
 const { extractFrontmatter } = frontmatterMod;
 const { readModifyWriteStateMd, stateExtractField, stateReplaceField, syncAndPreserveStateMd, withStateLock, updatePerformanceMetricsSection, } = stateMod;
 // Any .md file with PLAN anywhere in the basename — diagnostic net
@@ -504,23 +511,73 @@ function cmdFindPhase(cwd, phase, raw) {
     }
     output(notFound, raw, '');
 }
-function extractObjective(content) {
-    const m = content.match(/<objective>\s*\n?\s*(.+)/);
-    return m ? m[1].trim() : null;
-}
 /**
  * Resolve a raw `depends_on` token to the `RawPlan.id` it refers to
- * (case-folded exact match, falling back to canonical-id matching). Returns
+ * (case-folded exact match, falling back to canonical-id matching, falling
+ * back to the in-phase short-form plan number — #3897 rung 4). Returns
  * `null` when the token does not resolve to any plan in this phase (a typo
  * or a cross-phase reference) — every call site treats that as "ignore this
  * edge", never a throw. Shared by `computeDependencyLevels`'s DAG-edge
- * resolution, the `depends_on` display mapping, and (#2830) the
- * halt-propagation node resolution, so the three can never disagree about
- * which token resolves to which plan.
+ * resolution and (#2830) the halt-propagation node resolution, so the two can
+ * never disagree about which token resolves to which plan. NOT used by the
+ * `depends_on` display mapping (#3785/N3) — that stays a passthrough by
+ * design; see the comment at its call site.
+ *
+ * `shortFormToId` (#3897 rung 4, ADR-3473 §8.9) is the third tier, consulted
+ * only when neither `planMap` nor `canonicalToId` resolves the token. It is
+ * optional so any caller that has not been threaded through yet (there are
+ * none left in this file) degrades to the pre-#3897 two-tier behavior rather
+ * than throwing on a missing argument.
  */
-function resolveDependencyId(dep, planMap, canonicalToId) {
+function resolveDependencyId(dep, planMap, canonicalToId, shortFormToId) {
     const lower = dep.toLowerCase();
-    return planMap.has(lower) ? planMap.get(lower).id : (canonicalToId.get(lower) ?? null);
+    if (planMap.has(lower))
+        return planMap.get(lower).id;
+    if (canonicalToId.has(lower))
+        return canonicalToId.get(lower);
+    return shortFormToId?.get(lower) ?? null;
+}
+// #3897 rung 4 (ADR-3473 §8.9) — builds the third depends_on resolution tier:
+// a map from an in-phase BARE PLAN NUMBER (e.g. "01") to the plan id whose
+// canonical id ends with that number. Recovered from the retired SDK lineage
+// (sdk/src/query/phase.ts at 11918dcc3^) with ONE deliberate narrowing: the
+// lost implementation indexed ANY trailing dash-segment of a canonical id,
+// with no constraint that the segment be a plan NUMBER — so a phase
+// containing both `09-FIX-auth-PLAN.md` and `09-GAP-auth-PLAN.md` (canonical
+// id `09-FIX-auth`, trailing segment "auth") would silently bind
+// `depends_on: ["auth"]` to whichever sorted first, fabricating a
+// wave-affecting DAG edge with ZERO warning — a mis-resolved edge, which is
+// worse than a dropped one (found in isolated correctness review, #3897).
+// `docs/reference/plan-md.md` already documents this tier as resolving "the
+// bare plan number", so requiring `/^\d+$/` on the trailing segment is a
+// strict narrowing onto the tier's OWN documented contract, not a behavior
+// change for any legitimate input. Do NOT restore the unconstrained
+// lastDash-slice "to match the recovered original" — the original was wrong
+// here; this rung deliberately departs from it in this one respect, and only
+// this one. Everything else — the `lastDash` bound, first-write-wins,
+// lowercasing — is kept exactly as recovered:
+//   - first write wins, deterministic because rawPlans is passed in sorted
+//     plan-file order (D4/T44) and this loop iterates in that same order;
+//   - a canonical id with no dash (`lastDash === -1` or `lastDash === 0`,
+//     e.g. "24" or "-01") or a trailing dash (`lastDash === canonical.length
+//     - 1`, e.g. "09-") is never indexed (D5).
+// Exported so callers can build this map once and so tests assert against
+// this REAL implementation rather than a hand-rolled copy that could
+// silently disagree with it after a future change here (CLAUDE.md's
+// generative-fix-divergence rule).
+function buildShortFormToId(rawPlans) {
+    const shortFormToId = new Map();
+    for (const p of rawPlans) {
+        const canonical = extractCanonicalPlanId(p.id);
+        const lastDash = canonical.lastIndexOf('-');
+        if (lastDash > 0 && lastDash < canonical.length - 1) {
+            const shortForm = canonical.slice(lastDash + 1).toLowerCase();
+            if (/^\d+$/.test(shortForm) && !shortFormToId.has(shortForm)) {
+                shortFormToId.set(shortForm, p.id);
+            }
+        }
+    }
+    return shortFormToId;
 }
 // O(V + E). Assigns each in-phase plan its longest-path topological level over the
 // in-phase dependsOn DAG (Kahn's algorithm). Returns { level: Map<id,number>, visited: number,
@@ -528,19 +585,32 @@ function resolveDependencyId(dep, planMap, canonicalToId) {
 // the exact dequeue order this pass already produces — a valid topological order — passed to
 // computeHaltPropagation as `precomputedOrder` so halt propagation does not re-run Kahn's
 // algorithm a second time over the same graph.
-function computeDependencyLevels(rawPlans, planMap, canonicalToId) {
+//
+// `shortFormToId` (#3897 rung 4, optional — see resolveDependencyId) is threaded through so a
+// bare in-phase plan-number token (`depends_on: ["01"]`) resolves as a real DAG edge instead of
+// being dropped and silently collapsing the dependent plan to wave 1 (D3).
+function computeDependencyLevels(rawPlans, planMap, canonicalToId, shortFormToId) {
     const level = new Map();
     const inDeg = new Map();
     const adj = new Map();
+    // #3427 / ADR-3473 §8.5: a depends_on token that resolves via NONE of the
+    // three tiers (planMap, canonicalToId, shortFormToId) is a dropped edge.
+    // Naming it here (rather than silently `continue`-ing past it) lets
+    // cmdPhasePlanIndex surface the token's own warning instead of
+    // manufacturing a wave-mismatch verdict from the resulting damaged graph
+    // (#3427).
+    const unresolved = [];
     for (const p of rawPlans) {
         if (!inDeg.has(p.id))
             inDeg.set(p.id, 0);
         if (!adj.has(p.id))
             adj.set(p.id, []);
         for (const dep of p.dependsOn) {
-            const resolvedDep = resolveDependencyId(dep, planMap, canonicalToId);
-            if (!resolvedDep)
+            const resolvedDep = resolveDependencyId(dep, planMap, canonicalToId, shortFormToId);
+            if (!resolvedDep) {
+                unresolved.push({ plan: p.id, token: String(dep) });
                 continue;
+            }
             if (!adj.has(resolvedDep))
                 adj.set(resolvedDep, []);
             adj.get(resolvedDep).push(p.id);
@@ -573,7 +643,7 @@ function computeDependencyLevels(rawPlans, planMap, canonicalToId) {
             }
         }
     }
-    return { level, visited, order: queue };
+    return { level, visited, order: queue, unresolved };
 }
 function cmdPhasePlanIndex(cwd, phase, raw) {
     if (!phase) {
@@ -677,46 +747,14 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
     // ── Pass 1: parse each plan file ─────────────────────────────────────────
     const rawPlans = [];
     for (const planFile of planFiles) {
-        const planId = planFile.replace('-PLAN.md', '').replace('PLAN.md', '');
+        const planId = planIdFromFile(planFile);
         const planPath = node_path_1.default.join(phaseDir, planFile);
         const content = node_fs_1.default.readFileSync(planPath, 'utf-8');
-        // Pass planPath so a truncated PLAN.md names the file in the #1882 diagnostic.
-        const fm = extractFrontmatter(content, planPath);
-        const xmlTasks = content.match(/<task[\s>]/gi) || [];
-        const mdTasks = content.match(/##\s*Task\s*\d+/gi) || [];
-        const taskCount = xmlTasks.length || mdTasks.length;
-        const parsedWave = parseInt(fm['wave'], 10);
-        const declaredWave = Number.isNaN(parsedWave) ? null : parsedWave;
-        let dependsOn = [];
-        const fmDeps = fm['depends_on'];
-        if (Array.isArray(fmDeps)) {
-            dependsOn = fmDeps.map(String);
-        }
-        else if (typeof fmDeps === 'string' && fmDeps.trim() !== '') {
-            dependsOn = [fmDeps];
-        }
-        let autonomous = true;
-        if (fm['autonomous'] !== undefined) {
-            // eslint-disable-next-line @typescript-eslint/no-base-to-string -- FrontmatterValue comparison
-            autonomous = fm['autonomous'] === 'true' || String(fm['autonomous']) === 'true';
-        }
-        let filesModified = [];
-        const fmFiles = fm['files_modified'] || fm['files-modified'];
-        if (fmFiles) {
-            // eslint-disable-next-line @typescript-eslint/no-base-to-string -- FrontmatterValue scalar-to-string
-            filesModified = Array.isArray(fmFiles) ? fmFiles.map(String) : [String(fmFiles)];
-        }
-        // #1689: optional per-plan specialist executor hint. Read verbatim here; the
-        // orchestrator resolves it against the active runtime's agent dir at dispatch
-        // time (execute-phase.md -> `gsd_run query resolve-agent`), falling back to
-        // gsd-executor when the field is unset or the named agent does not resolve.
-        let agentHint = null;
-        const fmAgentHint = fm['agent_hint'];
-        if (fmAgentHint !== undefined) {
-            // eslint-disable-next-line @typescript-eslint/no-base-to-string -- FrontmatterValue scalar-to-string
-            const hintStr = String(fmAgentHint).trim();
-            agentHint = hintStr !== '' ? hintStr : null;
-        }
+        // #2790: plan-body parsing is owned by the shared Plan Document Module, so
+        // this command and the read-only `planning.inspect` query cannot drift on
+        // what a plan document says. planPath is still passed so a truncated
+        // PLAN.md names the file in the #1882 diagnostic.
+        const planDoc = parsePlanDocument(content, planPath);
         const hasSummary = !unsummarizedPlanFiles.has(planFile);
         // #2830: a plan can have a SUMMARY (hasSummary=true) and still be halted —
         // a designed stop still writes a completion record, just one whose status
@@ -728,13 +766,14 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
             : false;
         rawPlans.push({
             id: planId,
-            declaredWave,
-            dependsOn,
-            autonomous,
-            objective: extractObjective(content) || fm['objective'] || null,
-            filesModified,
-            agentHint,
-            taskCount,
+            declaredWave: planDoc.declaredWave,
+            dependsOn: planDoc.dependsOn,
+            autonomous: planDoc.autonomous,
+            objective: planDoc.objective,
+            filesModified: planDoc.filesModified,
+            filesDeleted: planDoc.filesDeleted,
+            agentHint: planDoc.agentHint,
+            taskCount: planDoc.taskCount,
             hasSummary,
             halted,
         });
@@ -752,7 +791,15 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
     }
     const planMap = new Map(rawPlans.map((p) => [p.id.toLowerCase(), p]));
     const canonicalToId = new Map(rawPlans.map((p) => [extractCanonicalPlanId(p.id).toLowerCase(), p.id]));
-    const { level, visited, order } = computeDependencyLevels(rawPlans, planMap, canonicalToId);
+    // #3897 rung 4 (ADR-3473 §8.9) — the third depends_on resolution tier.
+    // Resolves a bare in-phase plan-number short form (e.g. "01") to its owning
+    // plan id. In-phase only by construction (T49): the map is built from THIS
+    // phase's rawPlans alone, so a short form colliding with a different
+    // phase's plan can never be a candidate. See {@link buildShortFormToId}'s
+    // own comment for the numeric-only narrowing this rung applies on top of
+    // the recovered SDK-lineage algorithm.
+    const shortFormToId = buildShortFormToId(rawPlans);
+    const { level, visited, order, unresolved } = computeDependencyLevels(rawPlans, planMap, canonicalToId, shortFormToId);
     if (visited < rawPlans.length) {
         const cycleNodes = rawPlans.filter((p) => !level.has(p.id)).map((p) => p.id);
         error(`depends_on cycle detected in phase ${normalized} — cycle involves: ${cycleNodes.join(', ')}`);
@@ -766,7 +813,7 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
     const haltNodes = rawPlans.map((p) => ({
         id: p.id,
         resolvedDependsOn: p.dependsOn
-            .map((dep) => resolveDependencyId(String(dep), planMap, canonicalToId))
+            .map((dep) => resolveDependencyId(String(dep), planMap, canonicalToId, shortFormToId))
             .filter((id) => id !== null),
         halted: p.halted,
     }));
@@ -780,6 +827,17 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
     const runnable = [];
     let hasCheckpoints = false;
     const warnings = [];
+    // #3427 / ADR-3473 §8.5: name every dropped depends_on edge (plan AND
+    // token) rather than letting it silently collapse the plan to a DAG root.
+    // A plan with at least one unresolved token gets ITS OWN warning here and
+    // the wave-mismatch verdict below is suppressed for that plan ONLY — a
+    // plan with no dropped edges and a genuinely wrong `wave:` still warns
+    // (N3, D6, T25).
+    const plansWithUnresolvedTokens = new Set();
+    for (const { plan, token } of unresolved) {
+        plansWithUnresolvedTokens.add(plan);
+        warnings.push(`Plan ${plan}: depends_on token ${formatDiagnosticToken(token)} does not resolve to any plan in this phase — edge dropped, wave placement for this plan may be unreliable`);
+    }
     for (const rawPlan of rawPlans) {
         if (!rawPlan.autonomous) {
             hasCheckpoints = true;
@@ -796,7 +854,15 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
         }
         const computedWave = (level.get(rawPlan.id) ?? 0) + levelOffset;
         const effectiveWave = computedWave;
-        if (rawPlan.declaredWave !== null && rawPlan.declaredWave !== computedWave) {
+        // #3427 (D5/N3): suppress the wave-mismatch verdict for a plan that has
+        // at least one unresolved depends_on token — its own dropped-edge
+        // warning above already explains the degraded wave placement, so the
+        // mismatch here would blame the author for a DAG the tool itself
+        // couldn't build. A plan with NO unresolved tokens still gets a genuine
+        // mismatch reported (N3, T25) — the suppression is per-plan, never blanket.
+        if (rawPlan.declaredWave !== null &&
+            rawPlan.declaredWave !== computedWave &&
+            !plansWithUnresolvedTokens.has(rawPlan.id)) {
             warnings.push(`Plan ${rawPlan.id}: declared wave: ${rawPlan.declaredWave} but depends_on DAG places it in wave ${computedWave}`);
         }
         const plan = {
@@ -816,6 +882,7 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
             autonomous: rawPlan.autonomous,
             objective: rawPlan.objective,
             files_modified: rawPlan.filesModified,
+            files_deleted: rawPlan.filesDeleted,
             agent_hint: rawPlan.agentHint,
             task_count: rawPlan.taskCount,
             has_summary: rawPlan.hasSummary,
@@ -912,6 +979,75 @@ function assertDescriptionPreservesMilestoneScope(description, command) {
         `Rewrite the line so it is not a level 1-3 "#" heading carrying a milestone marker ` +
         `(a vN.N version token, a ✅/📋/🚧/🔄 marker, or the word "Milestone").`);
 }
+/**
+ * #3849 — widen "used phase numbers" beyond this checkout. Every sibling git
+ * worktree carries its own `.planning/` on its own branch, so a phase minted
+ * there is invisible to the cwd-scoped sources (headers, bullets, on-disk
+ * dirs). Scan each sibling's phase-directory names (cheap — dir names alone
+ * caught the real incident) and its WHOLE ROADMAP.md headers (a row can exist
+ * before any directory does; milestone-scoping is wrong here because a number
+ * used under any milestone on another branch is still taken).
+ *
+ * Widen, never refuse: a missing `.planning/`, an unreadable sibling, a
+ * non-git cwd, or an unavailable git binary each leave `used` untouched —
+ * allocation then behaves exactly as it did before this horizon existed.
+ * Sentinels reuse the canonical `isSentinelPhaseId`; the dir pattern is the
+ * same one the on-disk scan uses, so decimal sub-phases (`411.1-foo`) are
+ * correctly not integers.
+ */
+function collectSiblingWorktreePhaseNums(cwd, used) {
+    let porcelain;
+    try {
+        porcelain = (0, node_child_process_1.execFileSync)('git', ['worktree', 'list', '--porcelain'], {
+            cwd,
+            encoding: 'utf-8',
+            // Same subprocess band as the other git call sites (smart-entry, check-command-router):
+            // inside the 5-30s git window, hidden console window on Windows, bounded buffer.
+            timeout: 10_000,
+            windowsHide: true,
+            maxBuffer: 4 * 1024 * 1024,
+        });
+    }
+    catch {
+        return; // not a git repo / git unavailable — unchanged behavior
+    }
+    const dirNumPattern = /^(?:[A-Z][A-Z0-9]*-)?(\d+)-/;
+    // Same header shape the allocators scan locally (#1729 tag tolerance).
+    const headerPattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*(?:\s*\([^)\n]{0,200}\))?:/gi;
+    for (const line of porcelain.split('\n')) {
+        if (!line.startsWith('worktree '))
+            continue;
+        const wt = line.slice('worktree '.length).trim();
+        if (!wt || node_path_1.default.resolve(wt) === node_path_1.default.resolve(cwd))
+            continue;
+        try {
+            for (const entry of node_fs_1.default.readdirSync(node_path_1.default.join(wt, '.planning', 'phases'))) {
+                const match = entry.match(dirNumPattern);
+                if (!match)
+                    continue;
+                const num = parseInt(match[1], 10);
+                if (!isSentinelPhaseId(num))
+                    used.add(num);
+            }
+        }
+        catch {
+            /* worktree has no .planning — normal, contributes nothing */
+        }
+        try {
+            const content = node_fs_1.default.readFileSync(node_path_1.default.join(wt, '.planning', 'ROADMAP.md'), 'utf-8');
+            let m;
+            headerPattern.lastIndex = 0;
+            while ((m = headerPattern.exec(content)) !== null) {
+                const num = parseInt(m[1], 10);
+                if (!isSentinelPhaseId(num))
+                    used.add(num);
+            }
+        }
+        catch {
+            /* no roadmap in that worktree — normal, contributes nothing */
+        }
+    }
+}
 function cmdPhaseAdd(cwd, description, raw, customId) {
     if (!description) {
         error('description required for phase add');
@@ -980,6 +1116,9 @@ function cmdPhaseAdd(cwd, description, raw, customId) {
             // section headers, roadmap bullets, AND on-disk dirs above is what prevents the
             // #1229 collision (a bullet-only Phase N is now counted), so max+1 cannot reuse
             // an existing number.
+            // 4) Sibling git worktrees (#3849) — same max+1, wider horizon: a number
+            // taken on another branch is still taken.
+            collectSiblingWorktreePhaseNums(cwd, usedPhaseNums);
             const maxUsed = usedPhaseNums.size > 0 ? Math.max(...usedPhaseNums) : 0;
             _newPhaseId = maxUsed + 1;
             const paddedNum = String(_newPhaseId).padStart(2, '0');
@@ -1009,6 +1148,18 @@ function cmdPhaseAdd(cwd, description, raw, customId) {
     if (titleWarning)
         result['warning'] = titleWarning;
     output(result, raw, result['padded']);
+    // #3227 (design doc §40 row 26 / "Not-corruption" rule): every
+    // `publishStateContract` call site in this file is audited so a refreshed
+    // state.json `updated_at` always means something on disk actually moved —
+    // a stale-but-refreshed timestamp is worse than no refresh, because it
+    // reads as fresh to a downstream watcher. This site is unconditional
+    // because every reachable path either exits via `error()` (process.exit,
+    // never reaches here) or falls through to the unconditional
+    // `platformEnsureDir`/`platformWriteSync` pair above that always creates
+    // the phase directory and rewrites ROADMAP.md — there is no code path that
+    // reaches this line without having just written to disk. Best-effort —
+    // cannot throw, cannot change this command's exit code or output.
+    publishStateContract(cwd);
 }
 function cmdPhaseAddBatch(cwd, descriptions, raw) {
     if (!Array.isArray(descriptions) || descriptions.length === 0) {
@@ -1032,12 +1183,23 @@ function cmdPhaseAddBatch(cwd, descriptions, raw) {
         const content = extractCurrentMilestone(rawContent, cwd);
         let maxPhase = 0;
         if (config.phase_naming !== 'custom') {
+            // Same three cwd-scoped sources as cmdPhaseAdd (#1229): headers, roadmap
+            // bullets, on-disk dirs. The bullet scan was missing here — a bullet-only
+            // `Phase N` row was invisible to batch allocation (#3849 secondary).
             // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
             const phasePattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*(?:\s*\([^)\n]{0,200}\))?:/gi;
+            const bulletPattern = /^[ \t]*-[ \t]*\[[^\]]{0,200}\][ \t]*\*{0,2}Phase[ \t]+(\d+)(?=[:.\s*]|$)/gim;
             let m;
             while ((m = phasePattern.exec(content)) !== null) {
                 const num = parseInt(m[1], 10);
                 // #3185: canonical sentinel predicate (SENTINEL_RANGES [0,999]) — this was a local 999-only literal that admitted Phase 0.
+                if (isSentinelPhaseId(num))
+                    continue;
+                if (num > maxPhase)
+                    maxPhase = num;
+            }
+            while ((m = bulletPattern.exec(content)) !== null) {
+                const num = parseInt(m[1], 10);
                 if (isSentinelPhaseId(num))
                     continue;
                 if (num > maxPhase)
@@ -1057,6 +1219,13 @@ function cmdPhaseAddBatch(cwd, descriptions, raw) {
                     if (num > maxPhase)
                         maxPhase = num;
                 }
+            }
+            // 4) Sibling git worktrees (#3849) — same max+1, wider horizon.
+            const siblingNums = new Set();
+            collectSiblingWorktreePhaseNums(cwd, siblingNums);
+            for (const num of siblingNums) {
+                if (num > maxPhase)
+                    maxPhase = num;
             }
         }
         const added = [];
@@ -1095,6 +1264,11 @@ function cmdPhaseAddBatch(cwd, descriptions, raw) {
         return added;
     });
     output({ phases: results, count: results.length }, raw);
+    // #3227: unconditional here because `platformWriteSync(roadmapPath, rawContent)`
+    // above always rewrites ROADMAP.md for every description in the batch before
+    // this line is reached; the only refusal path is the `error('ROADMAP.md not
+    // found')` above, which terminates the process and never reaches here.
+    publishStateContract(cwd);
 }
 function cmdPhaseInsert(cwd, afterPhase, description, raw) {
     if (!afterPhase || !description) {
@@ -1242,6 +1416,11 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
         directory: toPosixPath(node_path_1.default.join(node_path_1.default.relative(cwd, planningDir(cwd)), 'phases', dirName)),
     };
     output(result, raw, decimalPhase);
+    // #3227: unconditional here because `platformWriteSync(roadmapPath, updatedContent)`
+    // above always rewrites ROADMAP.md with the inserted phase before this line is
+    // reached; every refusal along the way (bad args, missing ROADMAP.md, unresolved
+    // target bullet/header) exits via `error()`, which terminates the process.
+    publishStateContract(cwd);
 }
 function renameDecimalPhases(phasesDir, baseInt, removedDecimal) {
     const renamedDirs = [];
@@ -1455,9 +1634,17 @@ function findDataRowLine(sectionText, dataRowIndex) {
     }
     return null;
 }
+// #3685: mirror requirementsUpdated's diff-tracking contract — the caller
+// (cmdPhaseRemove) used to report `roadmap_updated: true` unconditionally,
+// hardcoded regardless of whether this transform actually changed
+// ROADMAP.md's content. Returning a real before/after comparison here lets
+// the caller report accurately, the same fix #3685 applied to
+// `cmdPhaseComplete` and #2640/#2974 already applied to this same function's
+// sibling `stateUpdated` flag a few lines below in `cmdPhaseRemove`.
 function updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, removedInt, cwd) {
-    withPlanningLock(cwd, () => {
-        let content = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
+    return withPlanningLock(cwd, () => {
+        const originalContent = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
+        let content = originalContent;
         const escaped = (0, pattern_cjs_1.escapeRegex)(targetPhase);
         // #3572: ROADMAP headings and rows carry the normalized (zero-padded) form
         // of a decimal id — `phase insert 1` writes `### Phase 01.1:` while the
@@ -1615,6 +1802,14 @@ function updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, rem
             content = content.replace(/(Depends on:\*\*\s*Phase\s+)(\d+(?:\.\d+)?)\b/gi, (_match, prefix, num) => `${prefix}${decrementRoadmapPhaseToken(num, removedInt)}`);
         }
         (0, shell_command_projection_cjs_1.platformWriteSync)(roadmapPath, content);
+        // #3685 / #3691: compare NORMALIZED bytes (what platformWriteSync actually
+        // persists), not the raw pre-normalize `content` string, against the raw
+        // pre-mutation `originalContent` read above — a raw `!==` here reports a
+        // false `true` whenever this transform's regenerated output takes a
+        // different-but-equivalent shape than the already-normalized on-disk
+        // original (same normalization-order artifact #3685 fixed at
+        // cmdMilestoneComplete; see contentChangedAfterNormalize's own doc).
+        return (0, shell_command_projection_cjs_1.contentChangedAfterNormalize)(roadmapPath, originalContent, content);
     });
 }
 /**
@@ -1718,7 +1913,7 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
         const msg = e instanceof Error ? e.message : String(e);
         error(`Failed to renumber phase directories after removing phase ${targetPhase}: ${msg}`);
     }
-    updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, parseInt(normalized, 10), cwd);
+    const roadmapUpdated = updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, parseInt(normalized, 10), cwd);
     const statePath = node_path_1.default.join(planningDir(cwd), 'STATE.md');
     let stateUpdated = false;
     if (node_fs_1.default.existsSync(statePath)) {
@@ -1791,10 +1986,27 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
         renamed_directories: renamedDirs,
         renamed_files: renamedFiles,
         renamed_file_collisions: renamedFileCollisions,
-        roadmap_updated: true,
+        // #3685: mirror requirementsUpdated's diff-tracking contract — true only
+        // when updateRoadmapAfterPhaseRemoval's content diff detected a real
+        // change, not hardcoded regardless of whether ROADMAP.md's content
+        // actually changed.
+        roadmap_updated: roadmapUpdated,
         state_updated: stateUpdated,
     }, raw);
+    // #3227: unconditional here because `updateRoadmapAfterPhaseRemoval` above
+    // always rewrites ROADMAP.md before this line is reached; every refusal path
+    // (bad target, missing ROADMAP.md, --force-required, renumber failure) exits
+    // via `error()`, and the ambiguous-match case exits via an earlier `return`
+    // before any file is touched.
+    publishStateContract(cwd);
 }
+/**
+ * #3227: returns the count of writes actually applied (entries whose
+ * `before` differed from `after` and were therefore written to disk) — the
+ * caller (`cmdPhaseComplete`) uses this as its publish-gate signal, since a
+ * re-run against an already-completed phase can produce a `writes[]` array
+ * where every entry is byte-identical to what's already on disk.
+ */
 function writePlanningFileSet(writes) {
     const applied = [];
     try {
@@ -1824,6 +2036,7 @@ function writePlanningFileSet(writes) {
         }
         throw err;
     }
+    return applied.length;
 }
 function phaseDisplayNameFromRoadmap(roadmapContent, phaseNum) {
     if (!roadmapContent || !phaseNum)
@@ -1890,6 +2103,12 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
         ? phaseInfo['summaries'].length
         : 0;
     let requirementsUpdated = false;
+    // #3685: mirror requirementsUpdated's diff-tracking contract at the
+    // writes.push({filePath, before, after}) sites below, rather than
+    // reporting via fs.existsSync (which is true whenever the file merely
+    // exists, not when the transaction actually wrote a change).
+    let roadmapUpdated = false;
+    let stateUpdated = false;
     const warnings = [];
     // ADR-3408 §8.5 / D2 (#3374): "liberal but visible" — when the write-seam
     // composition's preservation stage restores a curated frontmatter value
@@ -1994,7 +2213,12 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
         }
         for (const file of scopeToPhase(phaseFiles.filter((f) => f.includes('-VERIFICATION') && f.endsWith('.md')), phaseFullDirBaseName)) {
             const verificationFilePath = node_path_1.default.join(phaseFullDir, file);
-            const content = node_fs_1.default.readFileSync(verificationFilePath, 'utf-8');
+            // #3707-CR follow-up MINOR: normalize line endings at this read boundary
+            // (same fix as src/verification.cts's readVerificationStatus) so a
+            // lone-CR VERIFICATION.md's `---\r...\r---` frontmatter fence still
+            // matches extractFrontmatter's byte-0 check instead of silently
+            // dropping the human_needed/gaps_found advisory warning below.
+            const content = normalizeLineEndings(node_fs_1.default.readFileSync(verificationFilePath, 'utf-8'));
             // #1159 (Defect A): read ONLY the frontmatter `status` key to avoid false positives
             // from historical metadata in the file body (e.g. `previous_status: gaps_found`).
             // A full-text regex like /status: gaps_found/ matches the substring inside
@@ -2060,6 +2284,14 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
     // warnings[] entry below (same parity pattern as
     // verification_stale_check_indeterminate).
     let milestoneConflict = null;
+    // #3227: set inside `runPhaseCompleteTransaction` below from
+    // `writePlanningFileSet`'s applied-count return — the transaction always
+    // RUNS (verification passed, the lock was taken, `writes[]` was built),
+    // but a re-run against a phase whose ROADMAP/STATE bytes already reflect
+    // completion produces a `writes[]` where every entry is byte-identical to
+    // disk, so `writePlanningFileSet` applies none of them. That must not
+    // still refresh state.json's `updated_at` (design doc §40 row 26).
+    let anyPlanningWrite = false;
     const verificationBlocked = withPlanningLock(cwd, () => {
         // #3311: completing a phase while a live milestone claim (phase + session)
         // holds a DIFFERENT phase means two sessions are working two phases against
@@ -2251,6 +2483,12 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                     before: originalRoadmapContent,
                     after: roadmapContent,
                 });
+                // #3685 / #3691: normalize both sides before comparing — see
+                // contentChangedAfterNormalize's doc (shell-command-projection.cts).
+                // A raw `!==` here false-positives whenever this phase-complete
+                // roadmap mutation regenerates a section in a different-but-
+                // equivalent raw shape than the already-normalized on-disk original.
+                roadmapUpdated = (0, shell_command_projection_cjs_1.contentChangedAfterNormalize)(roadmapPath, originalRoadmapContent, roadmapContent);
                 const reqPath = node_path_1.default.join(planningDir(cwd), 'REQUIREMENTS.md');
                 if (node_fs_1.default.existsSync(reqPath)) {
                     const phaseEsc = phaseMarkdownRegexSource(phaseNum);
@@ -2537,9 +2775,43 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                     // diff-tracking pattern used for the ROADMAP write above. A phase
                     // whose citations match nothing (ghost REQ-IDs only) must report
                     // `false`, not a bare "the file was present" `true`.
-                    requirementsUpdated = reqContent !== originalReqContent;
+                    // #3685 / #3691: normalize both sides before comparing — same
+                    // false-positive shape as the sibling roadmapUpdated/stateUpdated
+                    // flags in this same transaction; all three must agree by
+                    // construction (see contentChangedAfterNormalize's doc).
+                    requirementsUpdated = (0, shell_command_projection_cjs_1.contentChangedAfterNormalize)(reqPath, originalReqContent, reqContent);
                 }
             }
+            // #3701 — the ROADMAP decides WHICH phase is next; the disk decides only HOW it
+            // is spelled. Both scans select the numerically lowest phase above N.
+            //
+            // Both scans below are unchanged in what they match; what changed is that
+            // the roadmap is no longer gated behind "the disk found nothing". It used
+            // to be (`if (isLastPhase && roadmapContent !== null)`), which made a wrong
+            // disk answer uncorrectable: phase directories are created lazily, but
+            // `phase insert` scaffolds an inserted phase's directory immediately, so an
+            // inserted decimal is routinely the ONLY directory above N and outranked
+            // every phase preceding it in the roadmap. Observed: roadmap `1, 2, 02.1,
+            // 3` with directories for 01 and 02.1 only reported `next_phase: "02.1"`
+            // after completing 1 — and PERSISTED it to STATE.md — while
+            // `roadmap.analyze` correctly said `2`.
+            //
+            // #3581 fixed exactly this at `init.progress` and named the rule: "the
+            // frontier is ROADMAP ORDER, not artifact presence". This call site was not
+            // in that change's scope.
+            //
+            // Why the disk scan survives, rather than being replaced:
+            //   1. It is the only resolver when there is no ROADMAP.md, or when its
+            //      phase rows do not parse.
+            //   2. When both agree, it carries the SPELLING the output has always used
+            //      — the zero-padded directory token and the on-disk slug (`02`/`beta`),
+            //      where the roadmap would give `2` and a slugified title. Promoting the
+            //      roadmap without this would silently change the reported value on
+            //      every aligned project, which is the majority case.
+            let diskNextNum = null;
+            let diskNextName = null;
+            let roadmapNextNum = null;
+            let roadmapNextName = null;
             try {
                 // #3185 (ADR-3180 Decision 1): "which phase directories belong to
                 // the CURRENT milestone" — routed through the canonical owner
@@ -2555,11 +2827,15 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                         // #3185: canonical sentinel predicate (SENTINEL_RANGES [0,999]) — this was a local 999-only literal that admitted Phase 0.
                         if (isSentinelPhaseId(dm[1]))
                             continue;
-                        if (comparePhaseNum(dm[1], phaseNum) > 0) {
-                            nextPhaseNum = dm[1];
-                            nextPhaseName = dm[2] || null;
-                            isLastPhase = false;
-                            break;
+                        // Numeric MINIMUM above N, not "first encountered". `listMilestonePhaseDirs`
+                        // does sort by `comparePhaseNum`, so a `break` on the first hit happens to be
+                        // correct today — but that makes this scan's correctness depend on an
+                        // upstream sort nothing here states. Selecting the minimum explicitly costs
+                        // one comparison and removes the hidden coupling.
+                        if (comparePhaseNum(dm[1], phaseNum) > 0
+                            && (diskNextNum === null || comparePhaseNum(dm[1], diskNextNum) < 0)) {
+                            diskNextNum = dm[1];
+                            diskNextName = dm[2] || null;
                         }
                     }
                 }
@@ -2573,7 +2849,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                  * derives the same information independently from ROADMAP.md content
                  * — not a silent data-loss path. */
             }
-            if (isLastPhase && roadmapContent !== null) {
+            if (roadmapContent !== null) {
                 try {
                     const roadmapForPhases = extractCurrentMilestone(roadmapContent, cwd);
                     // #1591: match BOTH heading-style phases (`### Phase N:`) AND
@@ -2599,15 +2875,28 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                         // stage 2's heading scan must not advance into backlog headings either.
                         if (isSentinelPhaseId(pm[1]))
                             continue;
-                        if (comparePhaseNum(pm[1], phaseNum) > 0) {
-                            nextPhaseNum = pm[1];
-                            nextPhaseName = pm[2]
+                        // #3701 review: the numeric MINIMUM above N, not the first row above N in
+                        // DOCUMENT order. This scan walks raw roadmap text, and one global regex
+                        // sweeps both the `## Phases` checklist and the `## Phase Details`
+                        // headings, so "first match" is a statement about where a line sits in the
+                        // file — not about which phase comes next.
+                        //
+                        // It mattered only once this scan started deciding the answer. Before, it
+                        // ran solely when the disk scan found nothing; now it outranks the disk, so
+                        // a roadmap listing rows out of numeric sequence (`1, 3, 2`) reported
+                        // `next_phase: 3` and PERSISTED it, skipping Phase 2 — on an input the
+                        // pre-#3701 code got right, because the disk scan is numerically sorted.
+                        // Phase NUMBERS define sequence here, exactly as `comparePhaseNum` does for
+                        // the disk scan and for #2028's lowest-outstanding override; the roadmap
+                        // defines which phases EXIST and which milestone they belong to.
+                        if (comparePhaseNum(pm[1], phaseNum) > 0
+                            && (roadmapNextNum === null || comparePhaseNum(pm[1], roadmapNextNum) < 0)) {
+                            roadmapNextNum = pm[1];
+                            roadmapNextName = pm[2]
                                 .replace(/\(INSERTED\)/i, '')
                                 .trim()
                                 .toLowerCase()
                                 .replace(/\s+/g, '-');
-                            isLastPhase = false;
-                            break;
                         }
                     }
                 }
@@ -2617,6 +2906,25 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                      * isLastPhase as stage 1 left it; stage 3 (#2028) below runs next
                      * regardless and provides a further, independent override. */
                 }
+            }
+            // Resolve. The roadmap wins on identity; the disk wins on spelling when it
+            // is talking about the same phase.
+            if (roadmapNextNum !== null) {
+                // Same comparator both scans already use to order phases, so "the disk
+                // and the roadmap mean the same phase" cannot drift from "N is above the
+                // one just completed". `02` and `2` compare equal, which is the whole
+                // point — they are the same phase spelled two ways.
+                const diskAgrees = diskNextNum !== null && comparePhaseNum(diskNextNum, roadmapNextNum) === 0;
+                nextPhaseNum = diskAgrees ? diskNextNum : roadmapNextNum;
+                nextPhaseName = diskAgrees ? diskNextName : roadmapNextName;
+                isLastPhase = false;
+            }
+            else if (diskNextNum !== null) {
+                // No usable roadmap (absent, unreadable, or no parseable phase rows) —
+                // the disk is all there is. Unchanged from the pre-#3701 behaviour.
+                nextPhaseNum = diskNextNum;
+                nextPhaseName = diskNextName;
+                isLastPhase = false;
             }
             // #2028: don't stamp "All phases complete" when a LOWER-numbered phase is
             // still outstanding. The two blocks above only clear isLastPhase when a
@@ -2767,8 +3075,14 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                     preservationWarnings.push({ field, reason: 'preserved-over-disagreeing-derived' });
                 }
                 writes.push({ filePath: statePath, before: originalStateContent, after: stateContent });
+                // #3685 / #3691: normalize both sides before comparing (same
+                // transitionCore-regenerated-section artifact cmdMilestoneComplete
+                // hit — see contentChangedAfterNormalize's doc). Reported "not
+                // exposed" by a previous agent; the reviewer disproved that by
+                // inspection and this branch closes it.
+                stateUpdated = (0, shell_command_projection_cjs_1.contentChangedAfterNormalize)(statePath, originalStateContent, stateContent);
             }
-            writePlanningFileSet(writes);
+            anyPlanningWrite = writePlanningFileSet(writes) > 0;
         };
         if (node_fs_1.default.existsSync(statePath)) {
             withStateLock(statePath, runPhaseCompleteTransaction);
@@ -2826,8 +3140,8 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
         next_phase_name: nextPhaseName,
         is_last_phase: isLastPhase,
         date: today,
-        roadmap_updated: node_fs_1.default.existsSync(roadmapPath),
-        state_updated: node_fs_1.default.existsSync(statePath),
+        roadmap_updated: roadmapUpdated,
+        state_updated: stateUpdated,
         requirements_updated: requirementsUpdated,
         auto_pruned: autoPruned,
         warnings,
@@ -2837,6 +3151,12 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
         preservation_warnings: preservationWarnings,
     };
     output(result, raw);
+    // #3227: gate on `anyPlanningWrite` (whether `writePlanningFileSet`
+    // actually wrote anything), not on reaching this line — reaching here only
+    // means verification passed and the transaction ran, not that ROADMAP.md
+    // or STATE.md bytes changed (see the `anyPlanningWrite` declaration above).
+    if (anyPlanningWrite)
+        publishStateContract(cwd);
 }
 function cmdPhaseUatPassed(cwd, phaseNum, raw, opts = {}) {
     if (!phaseNum) {
@@ -2893,4 +3213,5 @@ module.exports = {
     cmdPhaseUatPassed,
     cmdPhaseListPlans,
     computeDependencyLevels,
+    buildShortFormToId,
 };

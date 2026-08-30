@@ -29,7 +29,7 @@ const roadmapParserMod = require("./roadmap-parser.cjs");
 const { getMilestoneInfo, extractCurrentMilestone } = roadmapParserMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseLocatorMod = require("./phase-locator.cjs");
-const { listMilestonePhaseDirs } = phaseLocatorMod;
+const { listMilestonePhaseDirs, listAllPhaseDirs } = phaseLocatorMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const verificationMod = require("./verification.cjs");
 const { isPhaseComplete } = verificationMod;
@@ -666,21 +666,25 @@ function buildPlanningRootFilesField(cwd) {
  * `phaseDirs` cannot). An absent `phases/` root is a real empty, not a
  * failure (mirrors `listMilestonePhaseDirs`'s own treatment); a present but
  * unreadable root degrades to `UNREADABLE` with an empty list.
+ *
+ * #3882 (ADR-3473 §8.3): delegates the actual disk scan to
+ * `listAllPhaseDirs(phasesDir, {includeSentinels: true})` — that function is
+ * the sole owner of "readdirSync the phases/ root, map to dir names, handle
+ * absent-vs-unreadable"; this field is one more consumer of that scan, not a
+ * second implementation of it. The two functions previously duplicated the
+ * same readdirSync + filter + map + absent/unreadable handling, which is
+ * exactly the defect class ADR-3473 §8.3 forbids.
+ *
+ * The RE-SORT below is deliberate, not leftover duplication:
+ * `listAllPhaseDirs` orders its `value` by `comparePhaseNum` (numeric phase
+ * order — its own documented contract), but `allPhaseDirNames`'s existing,
+ * externally-observable order is plain lexicographic `.sort()`, and W007's
+ * consumers depend on that order today. Re-sorting here preserves that
+ * contract without forking the underlying scan.
  */
 function buildAllPhaseDirNamesField(phasesDir) {
-    if (!node_fs_1.default.existsSync(phasesDir))
-        return { value: [], scope: SCOPE.COMPLETE };
-    try {
-        const value = node_fs_1.default
-            .readdirSync(phasesDir, { withFileTypes: true })
-            .filter((e) => e.isDirectory())
-            .map((e) => e.name)
-            .sort();
-        return { value, scope: SCOPE.COMPLETE };
-    }
-    catch {
-        return { value: [], scope: SCOPE.UNREADABLE };
-    }
+    const { value, scope } = listAllPhaseDirs(phasesDir, { includeSentinels: true });
+    return { value: value.slice().sort(), scope };
 }
 /**
  * Resolve `archivedPhaseTokens` — every phase-number token belonging to a
