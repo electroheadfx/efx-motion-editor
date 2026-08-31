@@ -356,7 +356,7 @@ Plans:
   4. Gaps reveal the document fallback (solid color or transparency) identically in Studio, flattened parent output, main preview, and export.
   5. Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen.
 
-**Plans**: 3/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -370,11 +370,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 49-04-PLAN.md — cross-window image-library bridge pair, capability extension, scoped asset picker (D-01) + native capability checkpoint
+- [x] 49-04-PLAN.md — cross-window image-library bridge pair, capability extension, scoped asset picker (D-01) + native capability checkpoint
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 49-05-PLAN.md — Bg-row Import control + Confirm-at-playhead flow with locked collision copy (D-03/D-04) + row-local rail drag (D-05)
+- [x] 49-05-PLAN.md — Bg-row Import control + Confirm-at-playhead flow with locked collision copy (D-03/D-04) + row-local rail drag (D-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -454,7 +454,7 @@ Plans:
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
-| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 3/6 | In Progress|  |
+| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 5/6 | In Progress|  |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 0/TBD | Not started | - |

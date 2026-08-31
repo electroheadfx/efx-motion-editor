@@ -49,7 +49,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### BKG — Background Track (Phase 5)
 
-- [ ] **BKG-01**: Exactly one fixed Background track per EFX Paint document, beneath all Paint tracks, contributing to flattened output
+- [x] **BKG-01**: Exactly one fixed Background track per EFX Paint document, beneath all Paint tracks, contributing to flattened output
 - [x] **BKG-02**: User can import one still image or an ordered image sequence as a Background clip (source cycle)
 - [x] **BKG-03**: Background clips are sequential and non-overlapping; move/insert reject or snap collisions
 - [x] **BKG-04**: User can set start frame and finite repeat count (1..∞) or infinity per clip
@@ -156,7 +156,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMP-04 | Phase 48 | Complete |
 | CMP-05 | Phase 48 | Complete |
 | CMP-06 | Phase 48 | Complete |
-| BKG-01 | Phase 49 | Pending |
+| BKG-01 | Phase 49 | Complete |
 | BKG-02 | Phase 49 | Complete |
 | BKG-03 | Phase 49 | Complete |
 | BKG-04 | Phase 49 | Complete |

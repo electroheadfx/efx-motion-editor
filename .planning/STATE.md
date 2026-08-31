@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 49
 current_phase_name: Fixed Background Track and Imported Loop Clips
 status: executing
-stopped_at: Completed 49-03-PLAN.md
-last_updated: "2026-08-31T12:05:27.584Z"
+stopped_at: Completed 49-05-PLAN.md
+last_updated: "2026-08-31T16:32:52.574Z"
 last_activity: 2026-08-31
 last_activity_desc: Phase 49 execution started
-state_head: e1fc05769b63dcc69ce2ec826035d2fb5fab2409
+state_head: 945e9ca74fbfa72aafe5ce32b4f00590a6d564ee
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 30
   percent: 11
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 49 (Fixed Background Track and Imported Loop Clips) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-31 — Phase 49 execution started
 
@@ -93,6 +93,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 49 P01 | 3 | 2 tasks | 5 files |
 | Phase 49 P02 | 20 | 3 tasks | 6 files |
 | Phase 49-fixed-background-track-and-imported-loop-clips P03 | 45 | 3 tasks | 13 files |
+| Phase 49-fixed-background-track-and-imported-loop-clips P05 | 4h | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -199,6 +200,11 @@ Recent decisions affecting current work:
 - [Phase 49]: Selector round-trip: backgroundModeToFallback maps each of the fixed five modes to exactly one fallback record; reflectFallbackToBackgroundMode derives the active segment from the document; same-mode dispatch is a revision-stable no-op (BKG-09)
 - [Phase 49]: BackgroundSelectorMode = Exclude<BgMode, 'photo'> structurally excludes the Phase 50 photo mode from the fallback surface (D-11)
 - [Phase 49]: Monitor fond + checkerboard consume the store's already-resolved plumbing: getDocumentFondInstruction + getBackgroundFrameVerdict reuse the flattened path's resolution, never a re-resolution in the Studio
+- [Phase 49]: Clip-selection port for 49-06: onSelectBackgroundClip (strip prop) -> selectedBackgroundClipId (Studio signal) — the right-panel clip section (49-06) reads this signal
+- [Phase 49]: Drag source identity lives in backgroundDragSourceRef (set in resolveSource, cleared in onCancel) because prepareAtDestination receives only the destination — the strip resolves the clipId itself
+- [Phase 49]: Ghost width comes from resolver facts: range.effectiveEnd - range.phaseOrigin (never recomputed in the strip) — capsule-never-math carried
+- [Phase 49]: The commit port is synchronous: moveBackgroundClip returns BackgroundClipMutationResult directly, so there is no commit-in-flight window — the UI-SPEC busy contract (aria-busy on rail targets) is structurally inapplicable; rejection preserves geometry/selection/focus and the capsule announces with role=alert
+- [Phase 49]: Chunk budget raised 1180 -> 1190 following the documented measurement pattern (9th raise): the Bg row surface measured 1180.63 kB
 
 ### Pending Todos
 
@@ -232,6 +238,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-08-31T12:05:27.263Z
-Stopped at: Completed 49-03-PLAN.md
+Last session: 2026-08-31T16:32:52.261Z
+Stopped at: Completed 49-05-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
