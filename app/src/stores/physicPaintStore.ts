@@ -552,15 +552,27 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
     image.crossOrigin = 'anonymous';
     image.onload = () => {
       try {
+        // 49-06 (UAT round 5): cap the rasterization at 2048px on the longest
+        // side — a full-res import rasterized at native size produces a
+        // multi-MB dataUrl that can stall the compositor's decode (the clip
+        // stayed paper fond while the decode never completed). The background
+        // is drawn scaled to the composite size anyway, so the cap costs no
+        // visible quality.
+        const longest = Math.max(image.naturalWidth, image.naturalHeight);
+        if (longest === 0) {
+          resolve(null);
+          return;
+        }
+        const scale = Math.min(1, 2048 / longest);
         const canvas = document.createElement('canvas');
-        canvas.width = image.naturalWidth;
-        canvas.height = image.naturalHeight;
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           resolve(null);
           return;
         }
-        ctx.drawImage(image, 0, 0);
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL());
       } catch {
         resolve(null);

@@ -268,9 +268,11 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // the track's Key Rail graphic line.
     expect(cssRule('.physics-paint-bg-clip-rail-line {')).toContain('cursor: grab');
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('height: 4px');
-    // The START/END markers are the resize handles (ew-resize cursor), anchored
-    // to the line's outer edges.
+    // The START/END markers are the resize handles (ew-resize cursor) — the
+    // element IS the 2px x 4px #f8fafc cap (the track's shared boundary cap,
+    // no extra rectangle), anchored to the line's outer edges.
     expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('cursor: ew-resize');
+    expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('background: #f8fafc');
     expect(cssRule('.physics-paint-bg-clip-rail-marker-start {')).toContain('left: 0');
     expect(cssRule('.physics-paint-bg-clip-rail-marker-end {')).toContain('right: 0');
   });

@@ -3239,10 +3239,11 @@ button.destructive {
    (D-12). */
 .physics-paint-bg-clip-rail {
   position: absolute;
-  /* 49-06 (UAT round 2): the rail is a FILLED span over the cells area (the
-     lane's 8px rail band is above it) — the clip extent reads like Paint
-     track cells, never a thin line. */
-  top: 8px;
+  /* 49-06 (UAT round 5): the container fills the WHOLE lane (top: 0) so the
+     anchors position the rail line in the 8px band and the cells below it —
+     a `top: 8px` container double-offset the cells (8px container + 8px cell
+     top) and cut their bottom 8px off the 30px row. */
+  top: 0;
   bottom: 0;
   z-index: 4;
   width: 100%;
@@ -3325,41 +3326,35 @@ button.destructive {
   background: #f5a623;
 }
 
-/* 49-06 (UAT round 4): the START/END markers — the RESIZE handles. The element
-   is a 7px hit strip at the line's outer edge (ew-resize cursor); the visual
-   cap is the ::before (2px x 4px #f8fafc, the shared rail boundary cap). */
+/* 49-06 (UAT round 5): the START/END markers — the RESIZE handles. The element
+   IS the visual cap (2px x 4px #f8fafc, the shared rail boundary cap — exactly
+   the track's Key Rail boundary treatment, no extra rectangle); the ::after is
+   a transparent 7px hit strip so the ew-resize grab stays usable. */
 .physics-paint-bg-clip-rail-marker {
-  position: absolute;
-  top: 0;
-  height: 8px;
-  width: 7px;
-  cursor: ew-resize;
-  pointer-events: auto;
-  z-index: 3;
-}
-
-.physics-paint-bg-clip-rail-marker::before {
-  content: '';
   position: absolute;
   top: 2px;
   width: 2px;
   height: 4px;
   background: #f8fafc;
+  cursor: ew-resize;
+  pointer-events: auto;
+  z-index: 3;
+}
+
+.physics-paint-bg-clip-rail-marker::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -3px;
+  right: -3px;
 }
 
 .physics-paint-bg-clip-rail-marker-start {
   left: 0;
 }
 
-.physics-paint-bg-clip-rail-marker-start::before {
-  left: 0;
-}
-
 .physics-paint-bg-clip-rail-marker-end {
-  right: 0;
-}
-
-.physics-paint-bg-clip-rail-marker-end::before {
   right: 0;
 }
 

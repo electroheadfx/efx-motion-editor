@@ -3512,10 +3512,11 @@ export function PhysicsPaintStudio() {
         accepted,
         pickerDir ? { images: pickerImages, projectDir: pickerDir } : undefined,
       ).then((result) => {
-        // 49-06 (UAT round 4): surface the hydration outcome — a clip whose
+        // 49-06 (UAT round 4/5): surface the hydration outcome — a clip whose
         // source bytes never reached the runtime registry stays paper fond, and
         // the reason (asset miss vs decode failure) is the diagnostic the user
-        // reports back. The picker already closed; the capsule carries it.
+        // reports back. When the hydration SUCCEEDED but the composite is still
+        // paper, probe the render path so the exact failure point is named.
         if (result.missing.length > 0) {
           const first = result.missing[0];
           setApplyStatus('error');
@@ -3524,6 +3525,18 @@ export function PhysicsPaintStudio() {
               ? `Background source not found in the library (${first.ref}). The clip can't render.`
               : `Background source failed to load (${first.ref}). The clip can't render.`,
           );
+          return;
+        }
+        const record = physicPaintStore.getFlattenedFrame(layerId, landingFrame, false);
+        if (!record) {
+          setApplyStatus('error');
+          setApplyMessage('Background source decoded, but the composite is still pending. If this persists, the image may be too large to decode.');
+          return;
+        }
+        const bgMissing = record.missing.find((entry) => entry.trackId === accepted.background.id);
+        if (bgMissing) {
+          setApplyStatus('error');
+          setApplyMessage(`Background still missing at frame ${landingFrame}: ${bgMissing.missingRefs.join(', ')}.`);
         }
       });
     }
