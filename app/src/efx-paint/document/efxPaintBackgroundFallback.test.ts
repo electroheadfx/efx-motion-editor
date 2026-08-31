@@ -50,3 +50,105 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     expect(() => parseEfxPaintDocument(unknownTexture)).toThrow(/texture/);
   });
 });
+
+describe('BackgroundFallback White mapping gate (D-11)', () => {
+  it('maps White to the solid arm with #ffffff and adds no distinct white literal', () => {
+    const white = documentWithFallback({ mode: 'solid', color: '#ffffff' });
+    const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(white)));
+    expect(parsed).toEqual(white);
+
+    // Allow-list assertion: the union carries exactly transparent, solid, paper —
+    // a distinct 'white' literal must not exist (RESEARCH Open Q2 resolved).
+    const whiteLiteral = documentWithFallback({ mode: 'white' });
+    expect(() => parseEfxPaintDocument(whiteLiteral)).toThrow(/fallback.mode/);
+  });
+});
+
+describe('BackgroundFallback grain edge validation (BKG-04 adjacency)', () => {
+  it('round-trips grainStrength 0 and paperGrain false', () => {
+    const zeroGrain = documentWithFallback({
+      mode: 'paper',
+      texture: 'canvas1',
+      paperGrain: false,
+      grainStrength: 0,
+    });
+    expect(parseEfxPaintDocument(JSON.parse(JSON.stringify(zeroGrain)))).toEqual(zeroGrain);
+  });
+
+  it('rejects negative, NaN, Infinity, and non-number grainStrength fail-closed', () => {
+    const badValues: unknown[] = [-0.1, NaN, Infinity, '0.5'];
+    for (const bad of badValues) {
+      const badGrain = documentWithFallback({
+        mode: 'paper',
+        texture: 'canvas1',
+        paperGrain: true,
+        grainStrength: bad,
+      });
+      expect(() => parseEfxPaintDocument(badGrain)).toThrow(/grainStrength/);
+    }
+  });
+});
+
+describe('BackgroundFallback reserved and unknown mode rejection (D-11)', () => {
+  it('rejects the reserved photo mode at parse', () => {
+    const photo = documentWithFallback({ mode: 'photo' });
+    expect(() => parseEfxPaintDocument(photo)).toThrow(/fallback.mode/);
+  });
+
+  it('rejects an unknown mode string at parse', () => {
+    const unknown = documentWithFallback({ mode: 'striped' });
+    expect(() => parseEfxPaintDocument(unknown)).toThrow(/fallback.mode/);
+  });
+
+  it('rejects a paper fallback with an extra member at parse', () => {
+    const extraMember = documentWithFallback({
+      mode: 'paper',
+      texture: 'canvas1',
+      paperGrain: true,
+      grainStrength: 0.5,
+      extra: true,
+    });
+    expect(() => parseEfxPaintDocument(extraMember)).toThrow(/paper fallback must contain exactly/);
+  });
+});
+
+describe('BackgroundFallback canonical revision stability (T-49-01-02)', () => {
+  it('produces a canonical revision unchanged by JSON field reordering for a paper fallback', () => {
+    const document = documentWithFallback({
+      mode: 'paper',
+      texture: 'canvas1',
+      paperGrain: true,
+      grainStrength: 0.5,
+    });
+    const canonical = JSON.parse(JSON.stringify(document));
+    const reordered = JSON.parse(JSON.stringify({
+      compositeRevision: 0,
+      photoReference: null,
+      background: {
+        revision: 0,
+        visible: true,
+        fallback: { grainStrength: 0.5, paperGrain: true, texture: 'canvas1', mode: 'paper' },
+        clips: [],
+        id: canonical.background.id,
+      },
+      tracks: [{
+        loopClips: [],
+        rotoPhysical: null,
+        frames: {},
+        revision: 0,
+        blendMode: 'normal',
+        opacity: 1,
+        solo: false,
+        visible: true,
+        order: 0,
+        name: 'Track 1',
+        id: canonical.tracks[0].id,
+      }],
+      activeTrackId: canonical.activeTrackId,
+      documentRevision: 0,
+      parentLayerId: 'layer-abc',
+      version: 1,
+    }));
+    expect(buildEfxPaintDocumentRevision(reordered)).toBe(buildEfxPaintDocumentRevision(canonical));
+  });
+});
