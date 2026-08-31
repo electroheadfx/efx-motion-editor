@@ -28,6 +28,13 @@ const types = readFileSync(fileURLToPath(new URL('../../types/physicPaint.ts', i
 const projectTypes = readFileSync(fileURLToPath(new URL('../../types/project.ts', import.meta.url)), 'utf8');
 const store = readFileSync(fileURLToPath(new URL('../../stores/physicPaintStore.ts', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url)), 'utf8');
+// 49-03 (D-12, T-49-03-03): the raster non-regression surface — the
+// transparency checkerboard must exist ONLY as a paint layer in the Studio
+// monitor stack, never in the compositor, flattened cache, preview, or export.
+const compositor = readFileSync(fileURLToPath(new URL('../../efx-paint/compositor/efxPaintCompositor.ts', import.meta.url)), 'utf8');
+const flattenedCache = readFileSync(fileURLToPath(new URL('../../efx-paint/compositor/efxPaintCompositeCache.ts', import.meta.url)), 'utf8');
+const previewRenderer = readFileSync(fileURLToPath(new URL('../../lib/previewRenderer.ts', import.meta.url)), 'utf8');
+const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRenderer.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -1153,5 +1160,61 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(7);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
+  });
+});
+
+describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-12)', () => {
+  it('resolves the monitor fond from the document fallback via the store instruction (no inline derivation remains)', () => {
+    // The canvas-stack memo reads the SAME resolved document-fallback
+    // instruction the flattened path uses — one authority, two consumers
+    // (Pitfall 1). The per-track roto background metadata fond walk is gone.
+    expect(studio).toContain('physicPaintStore.getDocumentFondInstruction(programMonitorLayerId)');
+    expect(studio).toContain('const fondBackground = fondInstruction ? fondInstructionToFondMetadata(fondInstruction) : null;');
+    expect(studio).toContain('function fondInstructionToFondMetadata(');
+    // The old inline walk (ordered-track getRotoBackgroundMetadata scan) must
+    // not survive alongside the re-wire.
+    expect(studio).not.toContain('for (const track of [...document.tracks].sort((left, right) => left.order - right.order))');
+    expect(studio).not.toContain('physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id)');
+  });
+
+  it('shows the checkerboard only in the no-fond case and keeps the fond layer as today', () => {
+    // The checkerboard flag is true ONLY when the effective fond is fully
+    // transparent for the current frame: transparent fallback (no fond
+    // instruction) AND no clip covering the frame (the gap verdict, consumed
+    // from the store's already-resolved background-frame plumbing).
+    expect(studio).toContain('const showTransparencyCheckerboard = programMonitorLayerId !== null');
+    expect(studio).toContain('&& fondInstruction === null');
+    expect(studio).toContain("&& physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap'");
+    expect(studio).toContain('showTransparencyCheckerboard,');
+    // The view renders the checkerboard layer beneath the monitor content,
+    // conditioned on the flag; the fond layer keeps its own fondBackground
+    // condition (one branch, tested both ways).
+    expect(studioView).toContain('showTransparencyCheckerboard?: boolean;');
+    expect(studioView).toContain('props.showTransparencyCheckerboard ? (');
+    expect(studioView).toContain('class="physics-paint-transparency-checkerboard"');
+    expect(studioView).toContain('props.fondBackground ? (');
+    expect(studioView).toContain('class="physics-paint-fond-layer"');
+  });
+
+  it('uses the two-gray repeating-conic-gradient treatment clipped to canvas bounds', () => {
+    expect(css).toContain('.physics-paint-transparency-checkerboard');
+    expect(css).toContain('background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px;');
+    expect(css).toContain('position: absolute;');
+    expect(css).toContain('z-index: 0;');
+    expect(css).toContain('pointer-events: none;');
+    expect(css).toContain('overflow: hidden;');
+    // The layer is positioned at the canvas bounds (the same inline style the
+    // fond layer uses), so the checkerboard is clipped to the canvas.
+    expect(studioView).toContain('left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height');
+  });
+
+  it('keeps the checkerboard out of the flattened raster, preview, and export (T-49-03-03)', () => {
+    // The treatment exists ONLY as a paint layer in the Studio monitor stack —
+    // never a document state, never in the compositor, flattened cache, main
+    // preview, or export renderer.
+    const rasterSurface = [compositor, flattenedCache, previewRenderer, exportRenderer].join('\n');
+    expect(rasterSurface).not.toContain('repeating-conic-gradient');
+    expect(rasterSurface).not.toContain('transparency-checkerboard');
+    expect(rasterSurface).not.toContain('#777 0% 25%');
   });
 });

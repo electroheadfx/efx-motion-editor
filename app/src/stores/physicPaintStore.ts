@@ -1617,6 +1617,34 @@ export const physicPaintStore = {
     return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond);
   },
 
+  /**
+   * 49-03 (D-11 consumption half): the monitor's fond — the SAME resolved
+   * document-fallback instruction the flattened path uses (one authority, two
+   * consumers, Pitfall 1). The Studio monitor fond layer and the flattened
+   * parent output can never disagree. Returns null when the fallback is
+   * transparent (no fond) or the layer has no document.
+   */
+  getDocumentFondInstruction(layerId: string): Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }> | null {
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return null;
+    return _resolveDocumentFondInstruction(layerId, efxDocument);
+  },
+
+  /**
+   * 49-03 (D-12): the background frame verdict for the monitor's checkerboard
+   * decision — content / gap / missing for one application frame against the
+   * document's background clips. Consumes the SAME already-resolved resolution
+   * plumbing the flattened path uses (deriveEfxPaintBackgroundResolution +
+   * resolveEfxPaintBackgroundFrame with the runtime known-source set), never a
+   * re-resolution. Gap = no clip covers the frame (the fallback shows).
+   */
+  getBackgroundFrameVerdict(layerId: string, frame: number): 'content' | 'gap' | 'missing' {
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return 'gap';
+    const context = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
+    return resolveEfxPaintBackgroundFrame(context, frame, new Set(_backgroundSourceImages.keys())).kind;
+  },
+
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {
     const displayFrame = _getRotoDisplayFrame(layerId, trackId, frame);
     if (!displayFrame) return null;

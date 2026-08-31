@@ -193,9 +193,12 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     // The fond layer draws the paper through the playback-background subscriber.
     expect(view).toContain('<PhysicsPaintRotoPlaybackBackground');
     expect(view).toContain('background={props.fondBackground}');
-    // The Studio derives the fond metadata (lowest-order track's non-transparent
-    // paper setting) and threads it through the canvasStack memo.
-    expect(studio).toContain('physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id)');
+    // 49-03 (D-11): the Studio derives the fond from the DOCUMENT FALLBACK via
+    // the store's resolved fond instruction (the same authority the flattened
+    // path uses — the per-track roto background metadata walk is gone) and
+    // threads it through the canvasStack memo.
+    expect(studio).toContain('physicPaintStore.getDocumentFondInstruction(programMonitorLayerId)');
+    expect(studio).not.toContain('physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id)');
     expect(studio).toContain('fondBackground,');
     // The CSS: the group is an isolated stacking context; the fond layer sits
     // beneath it (z-index 0, pointer-events none).

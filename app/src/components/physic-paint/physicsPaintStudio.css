@@ -4661,6 +4661,19 @@ button.destructive {
   height: 100%;
 }
 
+/* 49-03 (D-12): the monitor-only transparency checkerboard — a sibling of the
+   fond layer BENEATH the isolated tracks group, shown only when the effective
+   fond is fully transparent for the current frame. The two-gray
+   repeating-conic-gradient treatment is paint-only on this monitor layer
+   (never a document state, never in the flattened raster/preview/export). */
+.physics-paint-transparency-checkerboard {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px;
+}
+
 .physics-paint-tracks-group > .demo-canvas-shell {
   width: auto;
   height: 100%;

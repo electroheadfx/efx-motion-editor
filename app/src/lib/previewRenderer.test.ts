@@ -6,7 +6,7 @@ import { defaultTransform } from '../types/layer';
 import type { Sequence } from '../types/sequence';
 import { paintStore } from '../stores/paintStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
-import { getDocument, registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { getDocument, registerDocument, reset as resetEfxPaintStore, setBackgroundFallback } from '../stores/efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -205,6 +205,20 @@ function seedPhysicalRoto(
     revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
   });
   if (!result.ok) throw new Error(result.error);
+  // 49-03 (D-11): the fond is the DOCUMENT FALLBACK — the per-track roto
+  // background metadata no longer drives it. Mirror the paper metadata into
+  // the document fallback so the flattened raster bakes the same paper the
+  // metadata used to provide (the metadata itself stays set for the
+  // getRotoBackgroundMetadata parity assertion).
+  if (options.background) {
+    const fallbackResult = setBackgroundFallback('roto-layer', {
+      mode: 'paper',
+      texture: options.background.background,
+      paperGrain: options.background.paperGrain === options.background.background,
+      grainStrength: options.background.grainStrength,
+    });
+    if (!fallbackResult.ok) throw new Error(fallbackResult.reason);
+  }
 }
 
 beforeEach(() => {

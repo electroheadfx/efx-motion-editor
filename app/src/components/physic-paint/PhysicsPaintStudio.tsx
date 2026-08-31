@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
+import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
   addTrack,
@@ -117,6 +118,33 @@ type SoleOccurrenceDeleteTarget = Readonly<GroupLifecycleDeleteTarget & {
   operationKind: 'delete-group-frame';
 }>;
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
+
+/**
+ * 49-03 (D-11 consumption half): bridge the store's resolved fond instruction
+ * (the document-fallback authority) to the view's `PhysicPaintRotoBackgroundMetadata`
+ * fond-layer prop. The round-trip is lossless for the two fallback arms: a solid
+ * fallback maps to the White metadata (the selector's only solid arm, color
+ * carried), a paper fallback maps to its texture with the grain controls. The
+ * view re-resolves the metadata through `subscribeRotoPlaybackBackground` and
+ * draws the same pixels the flattened path draws.
+ */
+function fondInstructionToFondMetadata(
+  instruction: Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }>,
+): PhysicPaintRotoBackgroundMetadata {
+  if (instruction.paperTexture) {
+    return {
+      background: instruction.paperTexture as PhysicPaintRotoBackgroundMetadata['background'],
+      paperGrain: instruction.paperGrain ?? '',
+      grainStrength: instruction.grainStrength ?? 0,
+    };
+  }
+  return {
+    background: 'white',
+    paperGrain: '',
+    grainStrength: 0,
+    color: instruction.color,
+  };
+}
 
 function getLinkedRotoGroupsForAction(
   loopClips: readonly PhysicPaintRotoLoopClip[],
@@ -3065,22 +3093,26 @@ export function PhysicsPaintStudio() {
     const engineSurfaceHidden = programMonitorLayerId !== null
       && programMonitorActiveTrackId !== null
       && !resolvePhysicPaintTrackVisibility(programMonitorLayerId, programMonitorActiveTrackId);
-    // 48-06 (UAT-C): the paper fond metadata for the montage's fond layer —
-    // the lowest-order track's non-transparent paper setting (the same
-    // derivation the store's fond instruction uses). The monitor reads the
+    // 49-03 (D-11 consumption half): the monitor fond is the DOCUMENT FALLBACK —
+    // the same resolved instruction the flattened path uses (one authority, two
+    // consumers, Pitfall 1). The per-track roto background metadata fond walk is
+    // gone; the store resolves the fallback record to the fond instruction and
+    // this memo bridges it to the fond-layer metadata. The monitor reads the
     // fond-LESS composite; this layer draws the paper beneath the isolated
     // tracks group so the active track's CSS blend never meets it.
-    const fondBackground = programMonitorLayerId
-      ? (() => {
-          const document = getEfxPaintDocument(programMonitorLayerId);
-          if (!document) return null;
-          for (const track of [...document.tracks].sort((left, right) => left.order - right.order)) {
-            const metadata = physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id);
-            if (metadata && metadata.background !== 'transparent') return metadata;
-          }
-          return null;
-        })()
+    const fondInstruction = programMonitorLayerId
+      ? physicPaintStore.getDocumentFondInstruction(programMonitorLayerId)
       : null;
+    const fondBackground = fondInstruction ? fondInstructionToFondMetadata(fondInstruction) : null;
+    // 49-03 (D-12): the transparency checkerboard shows ONLY when the effective
+    // fond is fully transparent for the current frame — transparent fallback
+    // (no fond instruction) AND no clip covering the frame (the gap verdict,
+    // consumed from the store's already-resolved background-frame plumbing, not
+    // a re-resolution). With a solid or paper fallback active the fond shows as
+    // today and the checkerboard layer is absent.
+    const showTransparencyCheckerboard = programMonitorLayerId !== null
+      && fondInstruction === null
+      && physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap';
     return {
       cachedRotoReferenceUrl,
       cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
@@ -3094,6 +3126,7 @@ export function PhysicsPaintStudio() {
       mount: canvasMount,
       engineSurfaceHidden,
       fondBackground,
+      showTransparencyCheckerboard,
       programMonitor: programMonitorLayerId ? {
         layerId: programMonitorLayerId,
         currentFrame,

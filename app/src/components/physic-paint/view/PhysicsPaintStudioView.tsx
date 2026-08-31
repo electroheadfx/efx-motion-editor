@@ -58,6 +58,15 @@ interface PhysicsPaintCanvasStackViewProps {
    * (the engine shell inside the group) never meets the paper.
    */
   fondBackground?: PhysicPaintRotoBackgroundMetadata | null;
+  /**
+   * 49-03 (D-12): the monitor-only transparency checkerboard. True ONLY when
+   * the effective fond is fully transparent for the current frame (transparent
+   * document fallback AND no clip covering the frame — the gap verdict). The
+   * stack draws the checkerboard on a dedicated layer BENEATH the monitor
+   * content, clipped to canvas bounds. Paint-only: never a document state and
+   * never in the flattened raster, main preview, or export.
+   */
+  showTransparencyCheckerboard?: boolean;
 }
 
 /**
@@ -153,6 +162,16 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
             background={props.fondBackground}
           />
         </div>
+      ) : null}
+      {/* 49-03 (D-12): the monitor-only transparency checkerboard — a sibling
+          layer BENEATH the monitor content, clipped to canvas bounds, shown
+          ONLY when the effective fond is fully transparent for the current
+          frame (transparent fallback AND no clip covering the frame). The
+          two-gray repeating-conic-gradient treatment is paint-only on this
+          monitor layer — never a document state, never in the flattened
+          raster, main preview, or export. */}
+      {canvasBounds && props.programMonitor && props.showTransparencyCheckerboard ? (
+        <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
       ) : null}
       <div class="physics-paint-tracks-group">
         <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
