@@ -3379,10 +3379,12 @@ export function PhysicsPaintStudio() {
   // lands in 49-05; here the picker closes and the selection clears.
   const handleConfirmBackgroundPicker = (sortedIds: string[]) => {
     backgroundPicker.cancel();
+    // 49-04 (Task 3): the natural-sorted reference order is the clip's
+    // source-frame cycle order (D-02). 49-05 wires the clip creation; until it
+    // lands, the checkpoint verifies the emitted order via this dev console
+    // log (the plan's sanctioned path when the clip tooltip is not yet live).
+    console.log('[49-04] background picker confirmed (natural-sorted):', sortedIds);
     // 49-05: create the background clip from sortedIds at the current playhead.
-    // The natural-sorted reference order is the clip's source-frame cycle
-    // order (D-02); the picker closes here and the selection clears.
-    void sortedIds;
   };
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
