@@ -285,7 +285,7 @@ English product copy only. Never display a raw track UUID, raw clip UUID, raw as
 
 ## UI Considerations
 
-Applicable state considerations resolved: 31 covered, 4 dismissed, 0 backstop, 0 unresolved.
+Applicable state considerations resolved: 26 covered, 13 dismissed, 0 backstop, 0 unresolved (39 total — includes the 8 probe-delta categories confirmed dismissed at the post-verification probe checkpoint).
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -301,6 +301,7 @@ Applicable state considerations resolved: 31 covered, 4 dismissed, 0 backstop, 0
 | loading | asset picker | ✅ covered | Library refresh on open shows the grid as it becomes available; the engine underneath stays paused but mounted — no blank canvas flash |
 | error | asset picker | ✅ covered | Import failures leave the picker open with prior selection preserved; the reason surfaces through the existing status channel |
 | populated | asset picker | ✅ covered | Images-only grid with multi-select marks; already-imported images reuse existing assets without copying |
+| partial | asset picker | ✖ dismissed | The grid refreshes fully on open — there is no partial-render or partial-import case; an import failure is the error state above |
 | overflow | asset picker | ✅ covered | The grid scrolls within the full-area panel; tiles never wrap out of the region |
 | zero-one-many | asset picker | ✅ covered | Zero → empty state; one → single importable item; many → scrollable grid; Confirm order is always natural filename sort regardless of click order |
 | long-text | asset picker | ✅ covered | Long filenames truncate with ellipsis on tiles; full names in hover tooltips |
@@ -310,9 +311,16 @@ Applicable state considerations resolved: 31 covered, 4 dismissed, 0 backstop, 0
 | long-text | right-panel clip properties | ✖ dismissed | All values are fixed-format numerics with tabular-nums; raw UUID text prohibited |
 | empty | right-panel clip properties | ✅ covered | No clip selected → the section is absent; the right panel shows the active Track section as today |
 | populated | right-panel clip properties | ✅ covered | Start frame, repeat, source cycle, and delete render for the selected clip; values come from accepted state only |
+| partial | right-panel clip properties | ✖ dismissed | The section is atomic for a selected clip — all fields render together from accepted state; no clip → section absent (the empty rule above) |
+| overflow | right-panel clip properties | ✖ dismissed | The right panel scrolls vertically as today; values are short fixed-format numerics that cannot overflow their rows |
 | empty | fallback selector | ✖ dismissed | The selector always has an active mode — the document fallback always exists (transparent default, D-08/45) |
+| loading | fallback selector | ✖ dismissed | The selector is driven by the synchronously available document fallback; an async commit failure is the error state below — no loading affordance |
 | populated | fallback selector | ✅ covered | Transparent / White / Paper 1–3 + grain controls; no Photo option in Phase 49; selection is one-of, always unambiguous |
 | error | fallback selector | ✅ covered | A failed mutation leaves the previous mode active; the reason surfaces through the status capsule |
+| partial | fallback selector | ✖ dismissed | The selector is one-of and always fully rendered; a partial option set cannot occur under the fixed 5-option union |
+| overflow | fallback selector | ✖ dismissed | Fixed 5-option segmented row; it cannot overflow |
+| zero-one-many | fallback selector | ✖ dismissed | Exactly one active mode always exists (transparent default); the option count is fixed at 5 — no zero/one/many variance |
+| long-text | fallback selector | ✖ dismissed | Labels are fixed short words (`Transparent`, `White`, `Paper 1..3`); no user text and no truncation case |
 | empty | monitor checkerboard | ✅ covered | Zero effective fond (transparent fallback, no texture, no covering clip) → checkerboard drawn; any fond active → fond as today |
 | populated | monitor checkerboard | ✅ covered | Checkerboard sits beneath the composite at canvas bounds; monitor-only paint, never in the flattened raster or export |
 | error | monitor checkerboard | ✖ dismissed | The checkerboard is derived paint from accepted document state; missing sources report through the capsule, not the checkerboard |
@@ -320,6 +328,8 @@ Applicable state considerations resolved: 31 covered, 4 dismissed, 0 backstop, 0
 | error | status capsule | ✅ covered | Rejection copy is the fixed English map in the copywriting table; `role="alert"` announces it |
 | empty | status capsule | ✅ covered | Idle context renders the existing status capsule; no phase-specific idle treatment |
 | long-text | status capsule | ✅ covered | One-line ellipsis; tooltip carries the full reason |
+
+The 8 post-verification probe deltas (asset picker `partial`; right-panel `partial`, `overflow`; fallback selector `loading`, `partial`, `overflow`, `zero-one-many`, `long-text`) were surfaced at the probe checkpoint and explicitly dismissed with the reasons above; the monitor checkerboard and status capsule classified as `unclassified` surfaced elements and their rows above are the manual-review resolution.
 
 ---
 
@@ -350,11 +360,12 @@ No new UI dependencies are introduced. The scoped asset picker reuses in-repo `i
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** APPROVED (gsd-ui-checker, 2026-08-31, 7/7 dimensions)
