@@ -544,12 +544,13 @@ export type BackgroundMutationRejectionReason =
   | 'clip-not-found'
   | 'invalid-source-refs';
 
-/** The five Background edit kinds the unified ledger records (BKG-08). */
+/** The Background edit kinds the unified ledger records (BKG-08). */
 export type BackgroundEditOperationKind =
   | 'add-background-clip'
   | 'move-background-clip'
   | 'set-background-clip-repeat'
   | 'resize-background-clip'
+  | 'set-background-clip-source'
   | 'delete-background-clip'
   | 'set-background-fallback';
 
@@ -838,6 +839,53 @@ export function resizeBackgroundClip(
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'resize-background-clip',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Replace one Background Loop Clip's source refs (49-06 UAT round 7: the
+ * user's "replace any image" gap). The clip keeps its id/startFrame/repeat;
+ * only the source cycle changes. Bumps the clip's `revision` so the flattened
+ * key's clip term rotates and the composite re-renders with the new source.
+ * Rejects fail-closed on an absent document, unknown clip, or invalid refs.
+ */
+export function setBackgroundClipSource(
+  layerId: string,
+  clipId: string,
+  sourceFrameRefs: readonly string[],
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!document.background.clips.some((candidate) => candidate.id === clipId)) {
+    return { ok: false, reason: 'clip-not-found' };
+  }
+  if (!_isValidSourceRefs(sourceFrameRefs)) return { ok: false, reason: 'invalid-source-refs' };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: document.background.clips.map((clip) =>
+        clip.id === clipId
+          ? { ...clip, sourceFrameRefs: Object.freeze([...sourceFrameRefs]), revision: clip.revision + 1 }
+          : clip,
+      ),
+    },
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, clipId, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-background-clip-source',
       before: document,
       after: next,
     },

@@ -272,6 +272,10 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // position as the track Key Rail segment, so the freed 4px reads as the
     // gap between stacked Bg clips.
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('inset: 4px 0 auto 0');
+    // 49-06 (UAT round 7): the resting line color is #195991; an active
+    // MOVE/RESIZE gesture paints the track rail's orange (#f59e0b).
+    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('background: #195991');
+    expect(cssRule('.physics-paint-bg-clip-rail-line.editing::before {')).toContain('background: #f59e0b');
     // The START/END markers are the resize handles (ew-resize cursor) — the
     // element IS the 2px x 4px #f8fafc cap (the track's shared boundary cap,
     // no extra rectangle), anchored to the line's outer edges at the same

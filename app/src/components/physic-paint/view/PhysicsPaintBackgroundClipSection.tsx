@@ -35,6 +35,8 @@ export interface PhysicsPaintBackgroundClipSectionPorts {
   setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => BackgroundClipMutationResult;
   /** 49-02 store op: deleteBackgroundClip(layerId, clipId) — no dialog (D-08). */
   deleteClip: (layerId: string, clipId: string) => BackgroundClipMutationResult;
+  /** 49-06 (UAT round 7): open the picker in replace mode for this clip. */
+  replaceSource: (layerId: string, clipId: string) => void;
   /** sourceRef → original filename (D-02: natural order is the stored refs order). */
   resolveFilename: (sourceRef: string) => string | undefined;
 }
@@ -56,6 +58,7 @@ export interface PhysicsPaintBackgroundClipSectionController {
   commitRepeat: () => void;
   toggleInfinity: (enabled: boolean) => void;
   handleDelete: () => void;
+  handleReplace: () => void;
 }
 
 /** The locked repeat hint copy (UI-SPEC Copywriting Contract). */
@@ -78,6 +81,7 @@ export function usePhysicsPaintBackgroundClipSectionController({
   const getDocument = ports.getDocument ?? defaultPorts.getDocument;
   const setRepeat = ports.setRepeat ?? defaultPorts.setRepeat;
   const deleteClip = ports.deleteClip ?? defaultPorts.deleteClip;
+  const replaceSource = ports.replaceSource ?? defaultPorts.replaceSource;
   const resolveFilename = ports.resolveFilename ?? defaultPorts.resolveFilename;
 
   const selectedClipId = selectedBackgroundClipId.value;
@@ -134,6 +138,13 @@ export function usePhysicsPaintBackgroundClipSectionController({
     if (result.ok) selectedBackgroundClipId.value = null;
   };
 
+  const handleReplace = () => {
+    if (!clip) return;
+    // 49-06 (UAT round 7): open the picker in replace mode — the Studio wires
+    // this port to target the selected clip; the confirm path swaps the source.
+    replaceSource(layerId, clip.id);
+  };
+
   const filenames = clip
     ? clip.sourceFrameRefs
         .map((ref) => resolveFilename(ref))
@@ -149,11 +160,12 @@ export function usePhysicsPaintBackgroundClipSectionController({
     commitRepeat,
     toggleInfinity,
     handleDelete,
+    handleReplace,
   };
 }
 
 export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundClipSectionProps) {
-  const { clip, repeatDraft, repeatError, isInfinite, filenames, commitRepeat, toggleInfinity, handleDelete } =
+  const { clip, repeatDraft, repeatError, isInfinite, filenames, commitRepeat, toggleInfinity, handleDelete, handleReplace } =
     usePhysicsPaintBackgroundClipSectionController(props);
   if (!clip) return null;
   return (
@@ -205,15 +217,26 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
             {clip.sourceFrameRefs.length} image(s)
           </span>
         </div>
-        <button
-          type="button"
-          class="physics-paint-bg-delete-button destructive"
-          aria-label="Delete clip"
-          title="Delete clip"
-          onClick={handleDelete}
-        >
-          <Trash2 size={14} aria-hidden="true" />
-        </button>
+        <div class="physics-paint-bg-clip-actions">
+          <button
+            type="button"
+            class="physics-paint-bg-replace-button"
+            aria-label="Replace image"
+            title="Replace image"
+            onClick={handleReplace}
+          >
+            Replace
+          </button>
+          <button
+            type="button"
+            class="physics-paint-bg-delete-button destructive"
+            aria-label="Delete clip"
+            title="Delete clip"
+            onClick={handleDelete}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -224,5 +247,6 @@ const defaultPorts: PhysicsPaintBackgroundClipSectionPorts = {
   getDocument: () => undefined,
   setRepeat: () => ({ ok: false, reason: 'clip-not-found' }),
   deleteClip: () => ({ ok: false, reason: 'clip-not-found' }),
+  replaceSource: () => {},
   resolveFilename: () => undefined,
 };

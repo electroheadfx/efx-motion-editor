@@ -39,6 +39,7 @@ import {
   resizeBackgroundClip,
   serializeRuntimeIntoDocument,
   setBackgroundClipRepeat,
+  setBackgroundClipSource,
   setBackgroundFallback,
   setTrackBlend,
   setTrackOpacity,
@@ -887,7 +888,7 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.5 });
   });
 
-  it('undo: every op emits an acceptance descriptor; record → undo → redo restores exact state for all six kinds (BKG-08)', () => {
+  it('undo: every op emits an acceptance descriptor; record → undo → redo restores exact state for all seven kinds (BKG-08)', () => {
     const layerId = 'layer-bg';
     const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 });
     const clipB = makeClip('clip-b', 10, refs('b', 2), { mode: 'finite', count: 1 });
@@ -916,6 +917,19 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     const resizeResult = resizeBackgroundClip(layerId, 'clip-a', 2, { mode: 'finite', count: 3 });
     expect(resizeResult.ok).toBe(true);
     assertUndoRedo(layerId, (resizeResult as OkBackgroundClipResult).descriptor!, preResize);
+
+    // 3c. source replace — the clip keeps id/startFrame/repeat, only the refs change
+    const preSource = getDocument(layerId)!;
+    const sourceResult = setBackgroundClipSource(layerId, 'clip-a', ['y', 'z']);
+    expect(sourceResult.ok).toBe(true);
+    const sourceDescriptor = (sourceResult as OkBackgroundClipResult).descriptor!;
+    expect(sourceDescriptor.before).toBe(preSource);
+    expect(sourceDescriptor.after).toBe(getDocument(layerId));
+    const replacedClip = getDocument(layerId)!.background.clips.find((clip) => clip.id === 'clip-a')!;
+    expect(replacedClip.sourceFrameRefs).toEqual(['y', 'z']);
+    expect(replacedClip.startFrame).toBe(2);
+    expect(replacedClip.repeat).toEqual({ mode: 'finite', count: 3 });
+    assertUndoRedo(layerId, sourceDescriptor, preSource);
 
     // 4. delete — the deleted clip returns with its original id/refs/repeat
     const preDelete = getDocument(layerId)!;
@@ -954,6 +968,9 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
       .toEqual({ ok: false, reason: 'start-collision' });
     expect(moveBackgroundClip(layerId, 'unknown', 0)).toEqual({ ok: false, reason: 'clip-not-found' });
     expect(setBackgroundClipRepeat(layerId, 'unknown', { mode: 'finite', count: 1 })).toEqual({ ok: false, reason: 'clip-not-found' });
+    expect(setBackgroundClipSource(layerId, 'unknown', ['x'])).toEqual({ ok: false, reason: 'clip-not-found' });
+    expect(setBackgroundClipSource(layerId, 'clip-a', [])).toEqual({ ok: false, reason: 'invalid-source-refs' });
+    expect(setBackgroundClipSource(layerId, 'clip-a', ['  '])).toEqual({ ok: false, reason: 'invalid-source-refs' });
     expect(deleteBackgroundClip(layerId, 'unknown')).toEqual({ ok: false, reason: 'clip-not-found' });
 
     expect(getDocument(layerId)).toBe(docBefore);

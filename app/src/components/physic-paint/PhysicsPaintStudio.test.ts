@@ -1341,7 +1341,11 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     // (the placement gesture) at Confirm time, falling back to the playhead
     // when no frame was clicked, and passes the natural-sorted ids as the
     // source-frame cycle order with the finite-1 default repeat.
-    expect(studio).toContain('const result = addBackgroundClip(layerId, {');
+    // 49-06 (UAT round 7): the ADD branch is the ternary's else — a replace
+    // target routes to setBackgroundClipSource instead.
+    expect(studio).toContain('const result = replaceTarget');
+    expect(studio).toContain('? setBackgroundClipSource(layerId, replaceTarget, sortedIds)');
+    expect(studio).toContain(': addBackgroundClip(layerId, {');
     expect(studio).toContain('const landingFrame = backgroundPlacementFrame.value ?? currentFrame;');
     expect(studio).toContain('startFrame: landingFrame,');
     expect(studio).toContain('sourceFrameRefs: sortedIds,');
@@ -1372,9 +1376,11 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     // Success path closes the picker (the rail reflects accepted state via the
     // existing reactive plumbing).
     expect(studio).toContain('backgroundPicker.cancel();');
-    // Cancel routes to the controller's cancel — the controller's cancel only
-    // clears the open/selection/status signals, never a store op.
-    expect(studio).toContain('onCancel: backgroundPicker.cancel,');
+    // Cancel routes to the wrapper that ALSO clears the replace target — the
+    // controller's cancel only clears the open/selection/status signals, never
+    // a store op (49-06 UAT round 7: a stale replace target would swap the
+    // wrong clip on the next confirm).
+    expect(studio).toContain('onCancel: handleCancelBackgroundPicker,');
     expect(backgroundPickerView).toContain('const cancel = () => {');
     expect(backgroundPickerView).toContain('open.value = false;');
     expect(backgroundPickerView).not.toContain('addBackgroundClip');
@@ -1393,6 +1399,8 @@ describe('Physics Paint Background Clip section (49-06, S5 right-panel propertie
     expect(studio).toContain('getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,');
     expect(studio).toContain('setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),');
     expect(studio).toContain('deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),');
+    expect(studio).toContain('replaceSource: (_layerId: string, clipId: string) => {');
+    expect(studio).toContain('backgroundReplaceTargetClipId.value = clipId;');
     expect(studio).toContain('resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,');
   });
 

@@ -19,6 +19,7 @@ import {
   serializeRuntimeIntoDocument,
   setActiveTrackId,
   setBackgroundClipRepeat,
+  setBackgroundClipSource,
   setBackgroundFallback,
   setTrackBlend,
   setTrackOpacity,
@@ -343,6 +344,10 @@ export function PhysicsPaintStudio() {
   // 49-05 Task 2 (S4): the selected Background clip — a click on a Bg clip rail
   // routes here; the right-panel `Background Clip` section (49-06) consumes it.
   const selectedBackgroundClipId = useSignal<string | null>(null);
+  // 49-06 (UAT round 7): the Replace-image target clip — set when the section's
+  // Replace button opens the picker; the confirm path swaps that clip's source
+  // instead of adding a new clip. Cleared on confirm/cancel.
+  const backgroundReplaceTargetClipId = useSignal<string | null>(null);
   // 49-06 (UAT round 2): the placement-target frame — clicking an empty Bg row
   // cell selects it; the Import control then lands the new clip AT that frame
   // (import-at-playhead alone was undiscoverable — the frame click is the
@@ -2885,6 +2890,11 @@ export function PhysicsPaintStudio() {
     getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
     setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),
     deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),
+    // 49-06 (UAT round 7): Replace opens the picker targeting the selected clip.
+    replaceSource: (_layerId: string, clipId: string) => {
+      backgroundReplaceTargetClipId.value = clipId;
+      void backgroundPicker.openPicker();
+    },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
   const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
@@ -3477,15 +3487,19 @@ export function PhysicsPaintStudio() {
   const handleConfirmBackgroundPicker = (sortedIds: string[]) => {
     const layerId = launchContext?.layerId;
     if (!layerId || sortedIds.length === 0) return;
-    // 49-06 (UAT round 2): the placement gesture — the clip lands at the
-    // clicked empty Bg cell frame (backgroundPlacementFrame), falling back to
-    // the playhead when no frame was clicked.
+    // 49-06 (UAT round 7): Replace mode — the section's Replace button set the
+    // target clip; the confirmed refs swap that clip's source instead of adding
+    // a new clip. The clip keeps its id/startFrame/repeat; only the source
+    // cycle changes.
+    const replaceTarget = backgroundReplaceTargetClipId.value;
     const landingFrame = backgroundPlacementFrame.value ?? currentFrame;
-    const result = addBackgroundClip(layerId, {
-      startFrame: landingFrame,
-      sourceFrameRefs: sortedIds,
-      repeat: { mode: 'finite', count: 1 },
-    });
+    const result = replaceTarget
+      ? setBackgroundClipSource(layerId, replaceTarget, sortedIds)
+      : addBackgroundClip(layerId, {
+          startFrame: landingFrame,
+          sourceFrameRefs: sortedIds,
+          repeat: { mode: 'finite', count: 1 },
+        });
     if (!result.ok) {
       if (result.reason === 'start-collision') {
         setApplyStatus('error');
@@ -3498,7 +3512,8 @@ export function PhysicsPaintStudio() {
     // reopened-path hydration (49-02 BKG-09) is the SOLE production writer of
     // that registry, and the freshly imported clip was never passed through it.
     // Run it on the accepted document so the rail's cover frames resolve
-    // 'content' instead of 'missing' (the monitor paper fond symptom).
+    // 'content' instead of 'missing' (the monitor paper fond symptom). For a
+    // replace, this re-hydrates the NEW refs (the document now carries them).
     const accepted = getEfxPaintDocument(layerId);
     if (accepted) {
       // 49-06 (UAT round 3): resolve the confirmed refs from the picker's OWN
@@ -3541,8 +3556,15 @@ export function PhysicsPaintStudio() {
       });
     }
     // The placement marker is consumed — a stale target would collide with the
-    // just-created clip on the next import.
+    // just-created clip on the next import. The replace target is consumed too.
     backgroundPlacementFrame.value = null;
+    backgroundReplaceTargetClipId.value = null;
+    backgroundPicker.cancel();
+  };
+  // 49-06 (UAT round 7): cancelling the picker must also clear the replace
+  // target — a stale target would swap the wrong clip on the next confirm.
+  const handleCancelBackgroundPicker = () => {
+    backgroundReplaceTargetClipId.value = null;
     backgroundPicker.cancel();
   };
   const viewModel = usePhysicsPaintStudioViewModel({
@@ -3640,7 +3662,7 @@ export function PhysicsPaintStudio() {
       importing: backgroundPicker.importing.value,
       onToggleSelect: backgroundPicker.toggleSelect,
       onConfirm: handleConfirmBackgroundPicker,
-      onCancel: backgroundPicker.cancel,
+      onCancel: handleCancelBackgroundPicker,
       onImport: backgroundPicker.importImages,
     },
   });

@@ -84,10 +84,12 @@ function createHarness(initialClips: readonly FrameLoopClip[], selection: string
     state.clips = state.clips.filter((candidate) => candidate.id !== clipId);
     return { ok: true, clipId, descriptor: null };
   });
+  const replaceSource = vi.fn((_layerId: string, _clipId: string) => {});
   const ports: PhysicsPaintBackgroundClipSectionPorts = {
     getDocument: () => makeDocument(state.clips),
     setRepeat,
     deleteClip,
+    replaceSource,
     resolveFilename: (ref) => FILENAMES[ref],
   };
   const render = () => usePhysicsPaintBackgroundClipSectionController({
@@ -95,7 +97,7 @@ function createHarness(initialClips: readonly FrameLoopClip[], selection: string
     selectedBackgroundClipId: selectionSignal,
     ports,
   });
-  return { state, selectionSignal, setRepeat, deleteClip, ports, render };
+  return { state, selectionSignal, setRepeat, deleteClip, replaceSource, ports, render };
 }
 
 function childrenOf(node: unknown): unknown[] {
@@ -233,6 +235,14 @@ describe('usePhysicsPaintBackgroundClipSectionController (49-06, S5 state machin
     harness.selectionSignal.value = 'clip-1';
     const afterUndo = harness.render();
     expect(afterUndo.clip?.id).toBe('clip-1');
+  });
+
+  it('replace opens the picker targeting the selected clip (49-06 UAT round 7)', () => {
+    const harness = createHarness([makeClip()], 'clip-1');
+    const controller = harness.render();
+    controller.handleReplace();
+    expect(harness.replaceSource).toHaveBeenCalledTimes(1);
+    expect(harness.replaceSource).toHaveBeenCalledWith('layer-1', 'clip-1');
   });
 });
 
