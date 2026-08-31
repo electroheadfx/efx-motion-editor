@@ -14,10 +14,13 @@
  */
 
 import { signal } from '@preact/signals';
-import type { BlendMode, CachedFrameReference, EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
+import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
+import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
 import { bumpTrackRevision, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -512,6 +515,349 @@ export function commitDeleteTrack(
   _documents.set(layerId, next);
   _notifyChange();
   return { ok: true };
+}
+
+// ============================================================================
+// Background clip CRUD document ops + fallback setter (49-02 Task 2)
+// ============================================================================
+//
+// The five Background authoring ops funnel every UI surface (picker confirm,
+// rail drag, right panel, selector) through one pure document-mutation shape
+// copied from addTrack/renameTrack: validate -> build candidate by immutable
+// spread -> canonical-revision idempotence compare -> single documentRevision
+// bump -> single _notifyChange -> return the acceptance descriptor for the
+// unified undo ledger (BKG-08, by reference, rasters already stripped — the
+// document carries sidecar refs, never raster bytes).
+//
+// The start-collision verdict (BKG-03/D-04) derives the existing clips'
+// resolved extents via the resolver projection ONLY — the store never
+// pre-computes or caches effective extents (anti Pitfall 10/m2). The resolver
+// is the single authority for range.truncated/partialCycle/effectiveEnd.
+
+/** Parent-end bound for the Background resolution projection (mirrors physicPaintStore's BACKGROUND_RESOLUTION_CAPACITY). */
+const BACKGROUND_RESOLUTION_CAPACITY = PHYSIC_PAINT_MAX_APPLY_FRAMES;
+
+/** Closed rejection-reason union the UI maps to the locked English copy (49-UI-SPEC Copywriting Contract). */
+export type BackgroundMutationRejectionReason =
+  | 'start-collision'
+  | 'invalid-repeat'
+  | 'clip-not-found'
+  | 'invalid-source-refs';
+
+/** The five Background edit kinds the unified ledger records (BKG-08). */
+export type BackgroundEditOperationKind =
+  | 'add-background-clip'
+  | 'move-background-clip'
+  | 'set-background-clip-repeat'
+  | 'delete-background-clip'
+  | 'set-background-fallback';
+
+/**
+ * Acceptance descriptor emitted by every committed Background op (BKG-08).
+ * `before`/`after` are the exact document objects by reference — undo restores
+ * `before`, redo re-applies `after`; clip deletion is one undo step (D-08).
+ * No-op writes emit `descriptor: null` and never reach the ledger.
+ */
+export interface BackgroundEditDescriptor {
+  readonly operationId: string;
+  readonly operationKind: BackgroundEditOperationKind;
+  readonly before: EfxPaintDocument;
+  readonly after: EfxPaintDocument;
+}
+
+/** Result of a Background clip mutation (add/move/repeat/delete). */
+export type BackgroundClipMutationResult =
+  | { readonly ok: true; readonly clipId: string; readonly descriptor: BackgroundEditDescriptor | null }
+  | { readonly ok: false; readonly reason: BackgroundMutationRejectionReason };
+
+/** Result of the Background fallback setter. */
+export type BackgroundFallbackMutationResult =
+  | { readonly ok: true; readonly descriptor: BackgroundEditDescriptor | null }
+  | { readonly ok: false; readonly reason: BackgroundMutationRejectionReason };
+
+/** A landing frame must be a non-negative integer (the parser's isNonNegativeInteger shape). */
+function _isValidStartFrame(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
+}
+
+/** Repeat contract (BKG-04): finite integers >= 1, or { mode: 'infinite' }. */
+function _isValidRepeat(repeat: FrameLoopClipRepeat): boolean {
+  if (repeat.mode === 'infinite') return true;
+  return Number.isInteger(repeat.count) && repeat.count >= 1;
+}
+
+/** Linked-source contract (BKG-07): refs are non-empty library asset IDs, never empty. */
+function _isValidSourceRefs(refs: readonly string[]): boolean {
+  return refs.length > 0 && refs.every((ref) => typeof ref === 'string' && ref.trim().length > 0);
+}
+
+/** Fail-closed structural check of a BackgroundFallback value (T-49-02-01). */
+function _isValidFallback(fallback: BackgroundFallback): boolean {
+  if (fallback.mode === 'transparent') return true;
+  if (fallback.mode === 'solid') return typeof fallback.color === 'string' && fallback.color.length > 0;
+  if (fallback.mode === 'paper') {
+    return (fallback.texture === 'canvas1' || fallback.texture === 'canvas2' || fallback.texture === 'canvas3')
+      && typeof fallback.paperGrain === 'boolean'
+      && typeof fallback.grainStrength === 'number'
+      && Number.isFinite(fallback.grainStrength)
+      && fallback.grainStrength >= 0;
+  }
+  return false;
+}
+
+/**
+ * Shared start-collision verdict (BKG-03/D-04, symmetric for import and drag).
+ * Derives the existing clips' resolved extents via the resolver projection and
+ * rejects ONLY when the landing frame is strictly inside an occupied range
+ * (`placementStart <= landing < effectiveEnd`). A landing exactly at the
+ * previous clip's exclusive end (zero-gap adjacency) is ACCEPTED. A document
+ * with zero clips accepts any landing frame >= 0. `excludeClipId` removes the
+ * moved clip from the projection so a clip's own extent never blocks its move.
+ * An undeterminable existing document (resolver validation throw) fails closed
+ * — nothing is ever written on an unverifiable verdict.
+ */
+function _backgroundCollisionVerdict(
+  background: BackgroundTrack,
+  landingFrame: number,
+  excludeClipId: string | null,
+): { ok: true } | { ok: false; reason: 'start-collision' } {
+  if (!_isValidStartFrame(landingFrame)) return { ok: false, reason: 'start-collision' };
+  const clips = excludeClipId === null
+    ? background.clips
+    : background.clips.filter((clip) => clip.id !== excludeClipId);
+  if (clips.length === 0) return { ok: true };
+  const projection: BackgroundTrack = excludeClipId === null
+    ? background
+    : { ...background, clips };
+  let context: PhysicPaintRotoLoopResolutionContext;
+  try {
+    context = deriveEfxPaintBackgroundResolution(projection, BACKGROUND_RESOLUTION_CAPACITY);
+  } catch {
+    return { ok: false, reason: 'start-collision' };
+  }
+  for (const range of context.ranges) {
+    if (range.placementStart <= landingFrame && landingFrame < range.effectiveEnd) {
+      return { ok: false, reason: 'start-collision' };
+    }
+  }
+  return { ok: true };
+}
+
+/** Stable document order: clips sorted by startFrame ascending (render order). */
+function _sortClipsByStartFrame(clips: readonly FrameLoopClip[]): readonly FrameLoopClip[] {
+  return [...clips].sort((a, b) => a.startFrame - b.startFrame);
+}
+
+/**
+ * Add one Background Loop Clip (BKG-03, D-04). Rejects fail-closed on an absent
+ * document, an invalid landing frame, empty/invalid source refs, an invalid
+ * repeat, or a landing strictly inside an existing clip. A clip longer than
+ * the gap to the next clip commits with its data intact — interruption is a
+ * resolver/render concern, never a stored-data truncation (BKG-03/D-03). The
+ * new clip gets a fresh UUID and `sourceKind: 'imported-background'`; the clips
+ * array is re-sorted by startFrame. Always allocates a fresh clip id — repeat
+ * imports of the same refs are distinct clips (BKG-09).
+ */
+export function addBackgroundClip(
+  layerId: string,
+  input: { startFrame: number; sourceFrameRefs: readonly string[]; repeat: FrameLoopClipRepeat },
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!_isValidSourceRefs(input.sourceFrameRefs)) return { ok: false, reason: 'invalid-source-refs' };
+  if (!_isValidRepeat(input.repeat)) return { ok: false, reason: 'invalid-repeat' };
+  const verdict = _backgroundCollisionVerdict(document.background, input.startFrame, null);
+  if (!verdict.ok) return verdict;
+  const clipId = crypto.randomUUID();
+  const newClip: FrameLoopClip = {
+    id: clipId,
+    startFrame: input.startFrame,
+    sourceFrameRefs: Object.freeze([...input.sourceFrameRefs]),
+    repeat: input.repeat,
+    sourceKind: 'imported-background',
+    revision: 0,
+  };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: _sortClipsByStartFrame([...document.background.clips, newClip]),
+    },
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'add-background-clip',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Move one Background Loop Clip to a new start frame (BKG-03/D-04, drag path).
+ * The collision verdict excludes the moved clip's own extent. A move to the
+ * clip's current position is a no-op (no revision bump, no dirty, no undo
+ * record). Rejects fail-closed on an absent document, unknown clip, invalid
+ * landing frame, or a landing strictly inside another clip.
+ */
+export function moveBackgroundClip(
+  layerId: string,
+  clipId: string,
+  startFrame: number,
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!document.background.clips.some((candidate) => candidate.id === clipId)) {
+    return { ok: false, reason: 'clip-not-found' };
+  }
+  const verdict = _backgroundCollisionVerdict(document.background, startFrame, clipId);
+  if (!verdict.ok) return verdict;
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: _sortClipsByStartFrame(
+        document.background.clips.map((clip) => (clip.id === clipId ? { ...clip, startFrame } : clip)),
+      ),
+    },
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, clipId, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'move-background-clip',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Set one Background Loop Clip's repeat (BKG-04). Accepts finite integers >= 1
+ * and `{ mode: 'infinite' }`; 0, negative, non-integer, and non-finite counts
+ * are rejected uncommitted with the prior value preserved. A same-value write
+ * is a revision-stable no-op (BKG-09). A repeat change never reorders clips or
+ * moves any other clip — only the edited clip's effective extent changes.
+ */
+export function setBackgroundClipRepeat(
+  layerId: string,
+  clipId: string,
+  repeat: FrameLoopClipRepeat,
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!document.background.clips.some((candidate) => candidate.id === clipId)) {
+    return { ok: false, reason: 'clip-not-found' };
+  }
+  if (!_isValidRepeat(repeat)) return { ok: false, reason: 'invalid-repeat' };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: _sortClipsByStartFrame(
+        document.background.clips.map((clip) => (clip.id === clipId ? { ...clip, repeat } : clip)),
+      ),
+    },
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, clipId, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-background-clip-repeat',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Delete one Background Loop Clip (BKG-08, D-08). One undo step restores the
+ * deleted clip by reference with its original id/refs/repeat. Rejects
+ * fail-closed on an absent document or unknown clip.
+ */
+export function deleteBackgroundClip(
+  layerId: string,
+  clipId: string,
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!document.background.clips.some((candidate) => candidate.id === clipId)) {
+    return { ok: false, reason: 'clip-not-found' };
+  }
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: document.background.clips.filter((clip) => clip.id !== clipId),
+    },
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'delete-background-clip',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Set the Background track's document fallback (BKG-05 gap law). Accepts the
+ * transparent/solid/paper union; a same-value write is a revision-stable no-op
+ * (BKG-09, the setRotoBackgroundMetadata idempotence lesson). Rejects
+ * fail-closed on an absent document or a malformed fallback value.
+ */
+export function setBackgroundFallback(
+  layerId: string,
+  fallback: BackgroundFallback,
+): BackgroundFallbackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!_isValidFallback(fallback)) return { ok: false, reason: 'invalid-source-refs' };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: { ...document.background, fallback },
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-background-fallback',
+      before: document,
+      after: next,
+    },
+  };
 }
 
 /** Empty the store and bump the version signal (project close hook). */

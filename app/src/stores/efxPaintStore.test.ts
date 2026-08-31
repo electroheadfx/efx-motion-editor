@@ -7,6 +7,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat } from '../efx-paint/document/efxPaintDocument';
 import { deriveEfxPaintBackgroundResolution, resolveEfxPaintBackgroundFrame } from '../efx-paint/compositor/efxPaintBackgroundResolution';
@@ -44,6 +45,9 @@ import {
   setTrackVisible,
 } from './efxPaintStore';
 import type { BackgroundEditDescriptor } from './efxPaintStore';
+
+type OkBackgroundClipResult = { ok: true; clipId: string; descriptor: BackgroundEditDescriptor | null };
+type OkBackgroundFallbackResult = { ok: true; descriptor: BackgroundEditDescriptor | null };
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -694,7 +698,7 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     });
     expect(result.ok).toBe(true);
     const doc = getDocument(layerId)!;
-    const added = doc.background.clips.find((clip) => clip.id === (result as { ok: true }).clipId)!;
+    const added = doc.background.clips.find((clip) => clip.id === (result as OkBackgroundClipResult).clipId)!;
     expect(added.startFrame).toBe(0);
     expect(added.sourceFrameRefs).toHaveLength(10);
     expect(added.repeat).toEqual({ mode: 'finite', count: 3 });
@@ -783,21 +787,21 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
 
     const repeatNoOp = setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 2 });
     expect(repeatNoOp.ok).toBe(true);
-    expect((repeatNoOp as { ok: true }).descriptor).toBeNull();
+    expect((repeatNoOp as OkBackgroundClipResult).descriptor).toBeNull();
     expect(getDocument(layerId)).toBe(docBefore);
     expect(efxPaintVersion.value).toBe(versionBefore);
     expect(dirty).not.toHaveBeenCalled();
 
     const fallbackNoOp = setBackgroundFallback(layerId, { mode: 'solid', color: '#ff0000' });
     expect(fallbackNoOp.ok).toBe(true);
-    expect((fallbackNoOp as { ok: true }).descriptor).toBeNull();
+    expect((fallbackNoOp as OkBackgroundFallbackResult).descriptor).toBeNull();
     expect(getDocument(layerId)).toBe(docBefore);
     expect(efxPaintVersion.value).toBe(versionBefore);
     expect(dirty).not.toHaveBeenCalled();
 
     const first = addBackgroundClip(layerId, { startFrame: 5, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
     const second = addBackgroundClip(layerId, { startFrame: 6, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
-    expect((first as { ok: true }).clipId).not.toBe((second as { ok: true }).clipId);
+    expect((first as OkBackgroundClipResult).clipId).not.toBe((second as OkBackgroundClipResult).clipId);
   });
 
   it('moveBackgroundClip repositions a clip, rejects occupied landings, and is a no-op at the same position', () => {
@@ -819,7 +823,7 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     const before = getDocument(layerId)!;
     const noOp = moveBackgroundClip(layerId, 'clip-a', 12);
     expect(noOp.ok).toBe(true);
-    expect((noOp as { ok: true }).descriptor).toBeNull();
+    expect((noOp as OkBackgroundClipResult).descriptor).toBeNull();
     expect(getDocument(layerId)).toBe(before);
   });
 
@@ -844,25 +848,25 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     const preAdd = getDocument(layerId)!;
     const addResult = addBackgroundClip(layerId, { startFrame: 20, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
     expect(addResult.ok).toBe(true);
-    assertUndoRedo(layerId, (addResult as { ok: true }).descriptor!, preAdd);
+    assertUndoRedo(layerId, (addResult as OkBackgroundClipResult).descriptor!, preAdd);
 
     // 2. move
     const preMove = getDocument(layerId)!;
     const moveResult = moveBackgroundClip(layerId, 'clip-a', 3);
     expect(moveResult.ok).toBe(true);
-    assertUndoRedo(layerId, (moveResult as { ok: true }).descriptor!, preMove);
+    assertUndoRedo(layerId, (moveResult as OkBackgroundClipResult).descriptor!, preMove);
 
     // 3. repeat
     const preRepeat = getDocument(layerId)!;
     const repeatResult = setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 4 });
     expect(repeatResult.ok).toBe(true);
-    assertUndoRedo(layerId, (repeatResult as { ok: true }).descriptor!, preRepeat);
+    assertUndoRedo(layerId, (repeatResult as OkBackgroundClipResult).descriptor!, preRepeat);
 
     // 4. delete — the deleted clip returns with its original id/refs/repeat
     const preDelete = getDocument(layerId)!;
     const deleteResult = deleteBackgroundClip(layerId, 'clip-b');
     expect(deleteResult.ok).toBe(true);
-    const deleteDescriptor = (deleteResult as { ok: true }).descriptor!;
+    const deleteDescriptor = (deleteResult as OkBackgroundClipResult).descriptor!;
     expect(deleteDescriptor.before).toBe(preDelete);
     expect(deleteDescriptor.after).toBe(getDocument(layerId));
     registerDocument(deleteDescriptor.before);
@@ -878,7 +882,7 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     const preFallback = getDocument(layerId)!;
     const fallbackResult = setBackgroundFallback(layerId, { mode: 'solid', color: '#abcdef' });
     expect(fallbackResult.ok).toBe(true);
-    assertUndoRedo(layerId, (fallbackResult as { ok: true }).descriptor!, preFallback);
+    assertUndoRedo(layerId, (fallbackResult as OkBackgroundFallbackResult).descriptor!, preFallback);
   });
 
   it('rejection results are closed: the four locked reasons, nothing written', () => {
