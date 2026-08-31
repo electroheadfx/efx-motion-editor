@@ -60,3 +60,4 @@ entities.json
 .gsd/dispatch-isolation-sentinel.json
 .gsd/dispatch-isolation-sentinel.json.tmp-*
 .planning/milestone.lock
+.planning/.mempalace-stage/
