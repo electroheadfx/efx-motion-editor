@@ -21,7 +21,7 @@ import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
-import { bumpTrackRevision, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
+import { bumpTrackRevision, hydrateBackgroundSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -921,4 +921,10 @@ export function hydrateRuntimeFromDocument(
       rotoPhysical: track.rotoPhysical,
     });
   }
+  // 49-02 Task 3 (BKG-09, Pitfall 5): async byte-warming of the background
+  // source registry after registration — fire-and-forget; document
+  // registration stays synchronous and pending decodes resolve conservatively
+  // (null this tick, re-render on decode-complete). Registration is
+  // runtime-only: no documentRevision bump, no undo record, no dirty callback.
+  void hydrateBackgroundSourceImagesFromLibrary(document);
 }

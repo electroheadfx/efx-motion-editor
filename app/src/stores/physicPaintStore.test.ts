@@ -2128,6 +2128,12 @@ describe('physicPaintStore', () => {
 
     it('MISSING IS EXPLICIT: a clip referencing an asset absent from the library registers nothing and resolves to the missing verdict', async () => {
       const registered = new Map<string, string>();
+      // The library resolver knows 'asset-present' but NOT 'asset-missing' —
+      // resolveAssetUrl returns null for the absent id, so hydration skips it.
+      const ports = {
+        ...hydrationPorts(registered),
+        resolveAssetUrl: (ref: string) => (ref === 'asset-present' ? 'efxasset://localhost/asset-present.png' : null),
+      };
       registerDocument(flatDocument([], {
         visible: true,
         clips: [
@@ -2135,7 +2141,7 @@ describe('physicPaintStore', () => {
           { id: 'clip-2', startFrame: 10, sourceFrameRefs: ['asset-missing'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 },
         ],
       }));
-      await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, hydrationPorts(registered));
+      await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, ports);
 
       expect(registered.has('asset-present')).toBe(true);
       expect(registered.has('asset-missing')).toBe(false);

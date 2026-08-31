@@ -11,6 +11,11 @@ import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/p
 // cycle is safe: efxPaintStore references physicPaintStore ONLY inside function
 // bodies (never in its module body), so no TDZ `let` is written mid-evaluation.
 import { getDocument as getEfxPaintDocument } from './efxPaintStore';
+// 49-02 Task 3 (BKG-09): the reopen-path hydration resolves each background
+// clip source ref to its library asset URL (efxasset://) and decodes bytes.
+// imageStore imports only ipc + types — no cycle with this store.
+import { imageStore } from './imageStore';
+import { assetUrl } from '../lib/ipc';
 import {
   blendModeToCompositeOp,
   compositeFrame,
@@ -430,6 +435,79 @@ export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string
   if (_backgroundSourceImages.get(sourceRef) === dataUrl) return;
   _backgroundSourceImages.set(sourceRef, dataUrl);
   _flattenedMemo.clear();
+}
+
+/**
+ * 49-02 Task 3 (BKG-09, Pitfall 5): the reopen-path source-byte hydration.
+ *
+ * The hydration step is the SOLE production writer of the runtime source
+ * registry on document register/hydrate — without it every reopened clip
+ * reports Source missing. It enumerates `document.background.clips[].sourceFrameRefs`,
+ * dedupes across clips, resolves each ref to its library asset URL, decodes
+ * bytes, and calls `registerBackgroundSourceImage(sourceRef, dataUrl)`.
+ *
+ * The ports are injectable so the contract tests drive a fake decoder; the
+ * production caller (`hydrateBackgroundSourceImagesFromLibrary`) supplies the
+ * real imageStore/efxasset/fetch ports. Unknown asset ids resolve to null and
+ * are skipped — the knownSources-miss path reports them (D-10 fail-closed).
+ * Registration is runtime-only: it never touches documentRevision, the undo
+ * ledger, or the dirty callback (SAVE DEDUP). The step is asynchronous
+ * byte-warming after registration — document registration stays synchronous;
+ * pending decodes resolve conservatively and re-render on decode-complete.
+ */
+export interface BackgroundSourceHydrationPorts {
+  /** Resolve a library asset id to its efxasset:// URL, or null when absent. */
+  resolveAssetUrl: (sourceRef: string) => string | null;
+  /** Fetch + decode the asset URL bytes into a dataUrl, or null on failure. */
+  decodeBytes: (url: string) => Promise<string | null>;
+  /** Register decoded bytes for a source ref (the existing registerBackgroundSourceImage). */
+  register: (sourceRef: string, dataUrl: string) => void;
+}
+
+export async function hydrateBackgroundSourceImages(
+  document: EfxPaintDocument,
+  ports: BackgroundSourceHydrationPorts,
+): Promise<void> {
+  const distinctRefs = new Set<string>();
+  for (const clip of document.background.clips) {
+    for (const ref of clip.sourceFrameRefs) distinctRefs.add(ref);
+  }
+  await Promise.all(Array.from(distinctRefs).map(async (ref) => {
+    const url = ports.resolveAssetUrl(ref);
+    if (url === null) return;
+    const dataUrl = await ports.decodeBytes(url);
+    if (dataUrl === null) return;
+    ports.register(ref, dataUrl);
+  }));
+}
+
+/** Fetch efxasset:// bytes and convert to a dataUrl; null on any failure (T-49-02-04). */
+async function _decodeEfxAssetBytes(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Production ports: library asset id → efxasset:// URL → decoded bytes → registry. */
+export function hydrateBackgroundSourceImagesFromLibrary(document: EfxPaintDocument): Promise<void> {
+  return hydrateBackgroundSourceImages(document, {
+    resolveAssetUrl: (ref) => {
+      const image = imageStore.getById(ref);
+      return image ? assetUrl(image.project_path) : null;
+    },
+    decodeBytes: _decodeEfxAssetBytes,
+    register: registerBackgroundSourceImage,
+  });
 }
 
 /**
