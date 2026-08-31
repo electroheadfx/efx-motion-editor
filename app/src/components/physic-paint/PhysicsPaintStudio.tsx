@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
-import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
@@ -17,6 +17,7 @@ import {
   requestDeleteTrack,
   serializeRuntimeIntoDocument,
   setActiveTrackId,
+  setBackgroundFallback,
   setTrackBlend,
   setTrackOpacity,
   setTrackSolo,
@@ -79,7 +80,7 @@ import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from
 import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
 import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
-import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
+import { backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
@@ -1025,6 +1026,19 @@ export function PhysicsPaintStudio() {
     startPhysics,
     stopPhysics,
   } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });
+  // 49-04 UAT fix: the swatch click must ALSO write the document fallback so
+  // the monitor fond layer resolves the paper/solid/transparent record. The
+  // 49-03 S6 write-through helper (backgroundModeToFallback) existed but the
+  // click path never invoked it — the document fallback stayed transparent and
+  // the monitor showed black. 'photo' is reserved for Phase 50 and has no
+  // fallback record, so it is excluded from the write-through.
+  const handleBackgroundChange = (mode: BgMode) => {
+    setBackground(mode);
+    const layerId = launchContext?.layerId;
+    if (layerId && mode !== 'photo') {
+      setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));
+    }
+  };
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
     records: readonly PhysicPaintRotoRealKeyRecord[],
@@ -2797,7 +2811,7 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, setBackground, setPaperGrain, setGrainStrength], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, setPaperGrain, setGrainStrength], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     background: settings.background,
@@ -2807,7 +2821,7 @@ export function PhysicsPaintStudio() {
     disabled: staticControlsLocked,
     onBrushSizeChange: setBrushSize,
     onOpacityChange: setBrushOpacity,
-    onBackgroundChange: setBackground,
+    onBackgroundChange: handleBackgroundChange,
     onPaperGrainChange: setPaperGrain,
     onGrainStrengthChange: setGrainStrength,
   }));

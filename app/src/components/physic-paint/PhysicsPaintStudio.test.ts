@@ -1227,6 +1227,24 @@ describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-
   });
 });
 
+describe('Physics Paint background swatch write-through (49-04 UAT fix)', () => {
+  it('writes the document fallback on swatch click so the monitor fond resolves the paper/solid/transparent record', () => {
+    // The 49-03 S6 write-through helper (backgroundModeToFallback) existed but
+    // the click path never invoked it — the document fallback stayed
+    // transparent and the monitor showed black (checkerboard suppressed). The
+    // wrapper must call setBackgroundFallback with backgroundModeToFallback for
+    // the launch layer, and the topBar must consume the wrapper, not the raw
+    // engine action.
+    expect(studio).toContain('const handleBackgroundChange = (mode: BgMode) => {');
+    expect(studio).toContain('setBackground(mode);');
+    expect(studio).toContain('setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));');
+    // The topBar consumes the wrapper, and the memo re-resolves with the new
+    // handler identity (not the raw setBackground action).
+    expect(studio).toContain('onBackgroundChange: handleBackgroundChange,');
+    expect(studio).toContain('handleBackgroundChange, setPaperGrain, setGrainStrength]');
+  });
+});
+
 describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
   it('wires the signal-driven picker controller to the image-library bridge consumer and imageStore import path', () => {
     expect(studio).toContain('useBackgroundAssetPickerController({');
