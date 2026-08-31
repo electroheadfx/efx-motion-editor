@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 49
 current_phase_name: Fixed Background Track and Imported Loop Clips
 status: executing
-stopped_at: Completed 49-02-PLAN.md
-last_updated: "2026-08-31T11:44:45.607Z"
+stopped_at: Completed 49-03-PLAN.md
+last_updated: "2026-08-31T12:05:27.584Z"
 last_activity: 2026-08-31
 last_activity_desc: Phase 49 execution started
-state_head: 379d6bda2240f2b572dff6ed25d70f91bdb01c87
+state_head: e1fc05769b63dcc69ce2ec826035d2fb5fab2409
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 28
   percent: 11
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 49 (Fixed Background Track and Imported Loop Clips) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-31 — Phase 49 execution started
 
@@ -92,6 +92,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 48 P05 | 20 | 2 tasks | 11 files |
 | Phase 49 P01 | 3 | 2 tasks | 5 files |
 | Phase 49 P02 | 20 | 3 tasks | 6 files |
+| Phase 49-fixed-background-track-and-imported-loop-clips P03 | 45 | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -193,6 +194,11 @@ Recent decisions affecting current work:
 - [Phase 49]: Hydration wired into hydrateRuntimeFromDocument in efxPaintStore.ts (Rule 3 deviation — the plan's Task 3 files_modified listed only physicPaintStore.ts + test, but the hydrate seam lives in efxPaintStore.ts, already a plan-modified file)
 - [Phase 49]: Registration is runtime-only: no documentRevision bump, no undo record, no dirty callback — re-saving a hydrated document produces an identical dedup fingerprint (BKG-09 save dedup proven by test)
 - [Phase 49]: Unknown asset ids resolve to null and are skipped at hydration — the knownSources-miss path reports them (D-10 fail-closed), never a throw and never placeholder content
+- [Phase 49]: Fond authority collapsed to the document fallback: _resolveDocumentFondInstruction reads ONLY document.background.fallback; the per-track _rotoBackgroundMetadata fond walk is deleted, not shadowed (Pitfall 1)
+- [Phase 49]: Flattened cache key gains a dedicated fallback term via the exported canonical encoder (encodeCanonicalBackgroundFallback) — a fallback-mode change with an unchanged background.revision still rotates the key (BKG-09)
+- [Phase 49]: Selector round-trip: backgroundModeToFallback maps each of the fixed five modes to exactly one fallback record; reflectFallbackToBackgroundMode derives the active segment from the document; same-mode dispatch is a revision-stable no-op (BKG-09)
+- [Phase 49]: BackgroundSelectorMode = Exclude<BgMode, 'photo'> structurally excludes the Phase 50 photo mode from the fallback surface (D-11)
+- [Phase 49]: Monitor fond + checkerboard consume the store's already-resolved plumbing: getDocumentFondInstruction + getBackgroundFrameVerdict reuse the flattened path's resolution, never a re-resolution in the Studio
 
 ### Pending Todos
 
@@ -226,6 +232,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-08-31T11:44:45.266Z
-Stopped at: Completed 49-02-PLAN.md
+Last session: 2026-08-31T12:05:27.263Z
+Stopped at: Completed 49-03-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning

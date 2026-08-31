@@ -54,7 +54,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **BKG-03**: Background clips are sequential and non-overlapping; move/insert reject or snap collisions
 - [x] **BKG-04**: User can set start frame and finite repeat count (1..∞) or infinity per clip
 - [x] **BKG-05**: Loop resolution follows cycleLength × repeatCount, bounded by next clip start and parent end; next clip interrupts without overlap after full or partial cycle
-- [ ] **BKG-06**: Gaps reveal the document fallback (solid color or transparency)
+- [x] **BKG-06**: Gaps reveal the document fallback (solid color or transparency)
 - [x] **BKG-07**: Source-frame references remain linked across all repetitions; no durable asset duplication
 - [x] **BKG-08**: Undo/redo clip creation, move, repeat changes, import references, deletion, and fallback changes by reference
 - [x] **BKG-09**: Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen
@@ -161,7 +161,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BKG-03 | Phase 49 | Complete |
 | BKG-04 | Phase 49 | Complete |
 | BKG-05 | Phase 49 | Complete |
-| BKG-06 | Phase 49 | Pending |
+| BKG-06 | Phase 49 | Complete |
 | BKG-07 | Phase 49 | Complete |
 | BKG-08 | Phase 49 | Complete |
 | BKG-09 | Phase 49 | Complete |
