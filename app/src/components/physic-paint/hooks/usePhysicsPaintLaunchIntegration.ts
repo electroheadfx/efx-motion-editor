@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRef, type St
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
-import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { physicPaintStore, hydrateBackgroundSourceImagesFromLibrary } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
 import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
@@ -153,7 +153,20 @@ export function usePhysicsPaintLaunchIntegration(input: {
     }
     // The carried v1.0 document IS the session: install it into the child's
     // efxPaintStore so the session-file save path resolves the document.
-    if (hydration.context.document) registerDocument(hydration.context.document);
+    if (hydration.context.document) {
+      registerDocument(hydration.context.document);
+      // 49-06 (UAT round 7): hydrate the background source bytes on launch —
+      // registerDocument alone leaves the runtime registry empty, so every
+      // reopened Bg clip resolves 'missing' and the canvas stays paper fond
+      // until a fresh import re-hydrates all refs (the user's round-7 report:
+      // "re-open → Bg rails did NOT render; creating a new bg rail worked for
+      // all"). The library was loaded above; run the hydration WITH the
+      // library fallback so EXISTING refs register and the render is restored.
+      const launchLibrary = library.ok && library.projectDir
+        ? { images: library.images, projectDir: library.projectDir }
+        : undefined;
+      void hydrateBackgroundSourceImagesFromLibrary(hydration.context.document, launchLibrary);
+    }
     resetRotoSessionForLaunch(hydration.context);
     // 49-04 (UAT fix): hydrate the Studio settings from the DOCUMENT FALLBACK
     // (the single authority), not the carried per-track roto background — the
