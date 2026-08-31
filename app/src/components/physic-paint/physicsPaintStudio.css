@@ -4199,6 +4199,122 @@ button.destructive {
   background: #8a939c;
 }
 
+/* 49-06 (S5): the right-panel `Background Clip` properties section. Reuses the
+   right-panel Track-section card geometry (md 16px section spacing, Label/Body
+   typography rows); values are fixed-format tabular numerics (UI-SPEC). */
+.physics-paint-bg-clip-section {
+  gap: 10px;
+}
+
+.physics-paint-bg-clip-value {
+  color: var(--sidebar-text-primary, #e5edf8);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.physics-paint-bg-repeat-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid #4a5058;
+  border-radius: 4px;
+  background: #20262d;
+  color: #e5edf8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-bg-repeat-input:focus {
+  border-color: #6f90ff;
+  outline: none;
+}
+
+.physics-paint-bg-repeat-input:disabled {
+  opacity: 0.4;
+}
+
+.physics-paint-bg-repeat-infinity {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #d8dde3;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.physics-paint-bg-repeat-infinity:hover {
+  background: #45505c;
+  border-color: #69727c;
+  color: #e5edf8;
+}
+
+.physics-paint-bg-repeat-infinity[aria-pressed="true"] {
+  background: #365ed6;
+  border-color: #6f90ff;
+  color: #fff;
+}
+
+.physics-paint-bg-repeat-infinity:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-repeat-hint {
+  color: #6d7378;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.physics-paint-bg-repeat-hint-error {
+  color: #ff8585;
+}
+
+.physics-paint-bg-delete-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 102, 102, 0.45);
+  border-radius: 4px;
+  background: #3a424c;
+  color: #ff9999;
+  cursor: pointer;
+}
+
+.physics-paint-bg-delete-button:hover {
+  background: #45505c;
+  border-color: rgba(255, 102, 102, 0.7);
+  color: #ffb3b3;
+}
+
+.physics-paint-bg-delete-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-delete-button svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
 .physics-paint-track-row-cells {
   display: grid;
   gap: 0;

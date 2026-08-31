@@ -122,15 +122,6 @@ function textContent(node: unknown): string {
   return parts.join(' ');
 }
 
-function findByClass(tree: AnyVNode, className: string): AnyVNode {
-  const match = childrenOf(tree).find((node) => {
-    const vnode = node as AnyVNode;
-    return typeof vnode.type !== 'function' && String(vnode.props?.class ?? '').split(/\s+/).includes(className);
-  }) as AnyVNode | undefined;
-  expect(match, `Missing element with class ${className}`).toBeDefined();
-  return match!;
-}
-
 function findByLabel(tree: AnyVNode, label: string): AnyVNode {
   const match = childrenOf(tree).find((node) => {
     const vnode = node as AnyVNode;
@@ -215,10 +206,14 @@ describe('usePhysicsPaintBackgroundClipSectionController (49-06, S5 state machin
     const controller = harness.render();
     controller.toggleInfinity(true);
     expect(harness.setRepeat).toHaveBeenLastCalledWith('layer-1', 'clip-1', { mode: 'infinite' });
-    expect(controller.isInfinite).toBe(true);
+    // The controller is a per-render snapshot — re-render to read the accepted
+    // document state (the view re-renders on efxPaintVersion in production).
+    expect(harness.render().isInfinite).toBe(true);
+    // The SAME controller instance toggles off so its lastFiniteCount signal
+    // (saved when ∞ was toggled on) persists — mirroring the keyed mount.
     controller.toggleInfinity(false);
     expect(harness.setRepeat).toHaveBeenLastCalledWith('layer-1', 'clip-1', { mode: 'finite', count: 3 });
-    expect(controller.isInfinite).toBe(false);
+    expect(harness.render().isInfinite).toBe(false);
   });
 
   it('deletes with no dialog and the section disappears on the resulting empty selection; Undo restores by reference', () => {
@@ -251,7 +246,10 @@ describe('PhysicsPaintBackgroundClipSection view (49-06, S5 render + accessibili
     expect(textContent(tree)).toContain('Start frame');
     expect(textContent(tree)).toContain('10');
     expect(textContent(tree)).toContain('Repeat');
-    expect(textContent(tree)).toContain('3 image(s)');
+    // The source fact renders as `{N} image(s)` — the walker joins the number
+    // and the label with a space, so assert the two tokens separately.
+    expect(textContent(tree)).toContain('3');
+    expect(textContent(tree)).toContain('image(s)');
     expect(textContent(tree)).toContain('Enter a positive integer.');
     // Accessibility contract (UI-SPEC): named controls.
     const repeatInput = findByLabel(tree, 'Repeat');
@@ -265,8 +263,16 @@ describe('PhysicsPaintBackgroundClipSection view (49-06, S5 render + accessibili
   it('lists the original filenames in the clip stored order in the source tooltip (D-02)', () => {
     const harness = createHarness([makeClip()], 'clip-1');
     const tree = renderSection({ layerId: 'layer-1', selectedBackgroundClipId: harness.selectionSignal, ports: harness.ports });
-    const sourceValue = findByClass(tree, 'physics-paint-bg-clip-value');
-    expect(String(sourceValue.props.title)).toBe('shot_1.png\nshot_2.png\nshot_10.png');
+    // The source value is the `physics-paint-bg-clip-value` element that
+    // carries the filename tooltip (the Start frame value has no title).
+    const sourceValue = childrenOf(tree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-bg-clip-value')
+        && typeof vnode.props?.title === 'string';
+    }) as AnyVNode | undefined;
+    expect(sourceValue, 'Missing source value with filename tooltip').toBeDefined();
+    expect(String(sourceValue!.props.title)).toBe('shot_1.png\nshot_2.png\nshot_10.png');
   });
 
   it('reflects the infinite state on the ∞ toggle aria-pressed and disables the numeric input', () => {

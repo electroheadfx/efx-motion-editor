@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -18,11 +18,13 @@ import {
   requestDeleteTrack,
   serializeRuntimeIntoDocument,
   setActiveTrackId,
+  setBackgroundClipRepeat,
   setBackgroundFallback,
   setTrackBlend,
   setTrackOpacity,
   setTrackSolo,
   setTrackVisible,
+  deleteBackgroundClip,
   type TrackMutationResult,
 } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
@@ -2866,7 +2868,17 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage], () => {
+  // 49-06 (S5): the Background Clip section ports are identity-stable — the
+  // store ops and the imageStore resolver never change, so the ref is created
+  // once and the memo deps only need the selection signal (a rail click flips
+  // the section through the 38-11 signal-bypasses-memo subscription).
+  const backgroundClipSectionPortsRef = useRef({
+    getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
+    setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),
+    deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),
+    resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
+  });
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -2901,6 +2913,12 @@ export function PhysicsPaintStudio() {
     trackBlendMode: activeTrack?.blendMode ?? 'normal',
     onTrackOpacityChange: (opacity: number) => commitTrackDisplay((layerId, trackId) => setTrackOpacity(layerId, trackId, opacity)),
     onTrackBlendChange: (mode: BlendMode) => commitTrackDisplay((layerId, trackId) => setTrackBlend(layerId, trackId, mode)),
+    // 49-06 (S5): the Background Clip section props — the selection signal is
+    // read by the right panel (38-11 signal-bypasses-memo) to flip the Track
+    // tab; the ports are identity-stable so the memo stays cacheable.
+    backgroundClipSection: launchContext?.layerId
+      ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
+      : undefined,
     onColorChange: setBrushColor,
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,

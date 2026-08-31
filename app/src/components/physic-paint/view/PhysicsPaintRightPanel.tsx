@@ -14,6 +14,7 @@ import {
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
+import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 
@@ -50,6 +51,12 @@ export interface PhysicsPaintRightPanelProps {
   onTrackOpacityChange: (opacity: number) => void;
   onTrackBlendChange: (mode: BlendMode) => void;
   scripts: PhysicsPaintScriptsPanelProps;
+  /**
+   * 49-06 (S5): the `Background Clip` properties section. Mutually exclusive
+   * with the Track section — a selected Bg clip shows the clip section, a
+   * track-only selection shows the Track section (UI-SPEC right-panel rows).
+   */
+  backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;
 }
 
 /** The five BlendMode values offered by the track Blend select (TML-04). */
@@ -237,8 +244,13 @@ export function PhysicsPaintRightPanel({
   onTrackOpacityChange,
   onTrackBlendChange,
   scripts,
+  backgroundClipSection,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
+  // 49-06 (S5): the selected Bg clip id drives the Track-tab exclusivity. The
+  // signal read subscribes this memoized panel to selection changes (the
+  // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
+  const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
@@ -624,6 +636,11 @@ export function PhysicsPaintRightPanel({
               </div>
             </div>
           </div>
+        ) : selectedBackgroundClipId ? (
+          // 49-06 (S5): a selected Bg clip flips the Track tab to the Background
+          // Clip properties section. Keyed by clip id so a selection change
+          // remounts the section with fresh draft state (no effect-driven sync).
+          <PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />
         ) : (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-track" role="tabpanel" aria-label="Track options">
             <div class="physics-paint-option-group">

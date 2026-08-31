@@ -1378,3 +1378,59 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     expect(backgroundPickerView).not.toContain('addBackgroundClip');
   });
 });
+
+describe('Physics Paint Background Clip section (49-06, S5 right-panel properties)', () => {
+  it('builds the backgroundClipSection prop with the selection signal and identity-stable ports', () => {
+    // The Studio assembles the section props: the 49-05 selection signal (read
+    // by the right panel to flip the Track tab) and the store/imageStore ports.
+    expect(studio).toContain('const selectedBackgroundClipId = useSignal<string | null>(null);');
+    expect(studio).toContain('backgroundClipSection: launchContext?.layerId');
+    expect(studio).toContain('{ layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }');
+    // The ports are identity-stable (useRef) so the memo stays cacheable.
+    expect(studio).toContain('const backgroundClipSectionPortsRef = useRef({');
+    expect(studio).toContain('getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,');
+    expect(studio).toContain('setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),');
+    expect(studio).toContain('deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),');
+    expect(studio).toContain('resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,');
+  });
+
+  it('re-resolves the right-panel memo on the selection signal so a rail click flips the section', () => {
+    // The 38-11 signal-bypasses-memo pattern: the selection signal is a memo
+    // dep AND the panel reads its .value directly, so a Bg rail click flips
+    // the Track tab to the Background Clip section without a Studio render.
+    const memoStart = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(');
+    const memoEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', memoStart);
+    const memoBlock = studio.slice(memoStart, memoEnd);
+    expect(memoBlock).toContain('selectedBackgroundClipId');
+    expect(memoBlock).toContain('backgroundClipSectionPortsRef');
+    expect(rightPanel).toContain('const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;');
+  });
+
+  it('renders the Background Clip section mutually exclusively with the Track section', () => {
+    // Clip selected → the section mounts keyed by clip id (fresh draft state);
+    // no clip → the existing Track section renders unchanged (UI-SPEC empty row).
+    expect(rightPanel).toContain("import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';");
+    expect(rightPanel).toContain('backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;');
+    expect(rightPanel).toContain('<PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />');
+    expect(rightPanel).toContain('aria-label="Track options"');
+    expect(rightPanel).toContain('Track: {trackName}');
+  });
+
+  it('keeps the section copy and accessibility contract verbatim from the UI-SPEC table', () => {
+    const section = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
+    expect(section).toContain('aria-label="Background Clip"');
+    expect(section).toContain('aria-label="Repeat"');
+    expect(section).toContain('aria-describedby="physics-bg-repeat-hint"');
+    expect(section).toContain('aria-label="Loop indefinitely"');
+    expect(section).toContain('aria-pressed={isInfinite}');
+    expect(section).toContain('aria-label="Delete clip"');
+    expect(section).toContain('Enter a positive integer.');
+    expect(section).toContain('image(s)');
+    // No raw UUID/keyId may render (UI-SPEC copywriting contract): the VIEW
+    // renders filenames and frame numbers only — the controller may use clip.id
+    // internally for the store ops, but the render surface never prints it.
+    const viewStart = section.indexOf('export function PhysicsPaintBackgroundClipSection');
+    const viewBlock = section.slice(viewStart);
+    expect(viewBlock).not.toContain('clip.id');
+  });
+});
