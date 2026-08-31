@@ -3511,7 +3511,21 @@ export function PhysicsPaintStudio() {
       void hydrateBackgroundSourceImagesFromLibrary(
         accepted,
         pickerDir ? { images: pickerImages, projectDir: pickerDir } : undefined,
-      );
+      ).then((result) => {
+        // 49-06 (UAT round 4): surface the hydration outcome — a clip whose
+        // source bytes never reached the runtime registry stays paper fond, and
+        // the reason (asset miss vs decode failure) is the diagnostic the user
+        // reports back. The picker already closed; the capsule carries it.
+        if (result.missing.length > 0) {
+          const first = result.missing[0];
+          setApplyStatus('error');
+          setApplyMessage(
+            first.reason === 'asset-not-found'
+              ? `Background source not found in the library (${first.ref}). The clip can't render.`
+              : `Background source failed to load (${first.ref}). The clip can't render.`,
+          );
+        }
+      });
     }
     // The placement marker is consumed — a stale target would collide with the
     // just-created clip on the next import.

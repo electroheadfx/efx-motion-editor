@@ -3258,15 +3258,17 @@ button.destructive {
 }
 
 /* 49-06 (UAT round 2): the Bg clip renders as a GROUP OF CELLS — one filled
-   cell per frame of the clip's extent (like Paint track cells), so the user
-   can push the FIRST and LAST cells to resize the clip's start/end. The cells
-   fill the anchor; each cell is ~18px (the row's frame pitch). */
+   cell per frame of the clip's extent (like Paint track cells). 49-06 UAT
+   round 4: the cells are the FILL beneath the rail line (visual only,
+   pointer-events none) — the interaction lives on the line + markers above.
+   The cells sit below the 8px rail band (top: 8px), matching the track layout. */
 .physics-paint-bg-clip-cells {
   position: absolute;
-  inset: 0;
+  top: 8px;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  width: 100%;
-  height: 100%;
   pointer-events: none;
 }
 
@@ -3277,10 +3279,6 @@ button.destructive {
   /* The filled cell color — #4a7eac (a visible neutral blue, purple/cyan-free
      per UI-SPEC S3). */
   background: #4a7eac;
-  pointer-events: auto;
-  /* 49-06 (UAT round 3): every cell is a whole-rail MOVE handle — the grab
-     cursor signals drag-to-move (the rail-line move the cells replaced). */
-  cursor: grab;
 }
 
 .physics-paint-bg-clip-cell:hover {
@@ -3291,27 +3289,77 @@ button.destructive {
    inset 1px line on every cell except the first, so the clip reads as a GROUP
    OF CELLS (the user's round-3 correction). box-shadow (not border) keeps the
    flex box model intact. */
-.physics-paint-bg-clip-cell:not(.physics-paint-bg-clip-cell-first) {
+.physics-paint-bg-clip-cell:not(:first-child) {
   box-shadow: inset 1px 0 0 0 rgba(0, 0, 0, 0.28);
 }
 
-/* 49-06 (UAT round 3): the RESIZE sub-handle — a narrow strip at the outer
-   edge of the FIRST/LAST cell. The ew-resize cursor signals the push-to-resize
-   gesture; the rest of the cell stays a move handle. */
-.physics-paint-bg-clip-cell-resize-handle {
+/* 49-06 (UAT round 4): the rail LINE — exactly like the track's Key Rail
+   graphic line (a 4px segment in the 8px band). The element is the whole-rail
+   MOVE handle (full 8px band hit area, grab cursor); the visual segment is the
+   ::before. The cells beneath are the fill. */
+.physics-paint-bg-clip-rail-line {
   position: absolute;
   top: 0;
-  bottom: 0;
-  width: 7px;
-  cursor: ew-resize;
-  z-index: 1;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: grab;
+  pointer-events: auto;
+  z-index: 2;
 }
 
-.physics-paint-bg-clip-cell-resize-handle-start {
+.physics-paint-bg-clip-rail-line::before {
+  content: '';
+  position: absolute;
+  inset: 2px 0 auto 0;
+  height: 4px;
+  background: #4a7eac;
+  pointer-events: none;
+}
+
+.physics-paint-bg-clip-rail-line:hover::before {
+  background: #5a8fc0;
+}
+
+.physics-paint-bg-clip-rail-line.selected::before {
+  background: #f5a623;
+}
+
+/* 49-06 (UAT round 4): the START/END markers — the RESIZE handles. The element
+   is a 7px hit strip at the line's outer edge (ew-resize cursor); the visual
+   cap is the ::before (2px x 4px #f8fafc, the shared rail boundary cap). */
+.physics-paint-bg-clip-rail-marker {
+  position: absolute;
+  top: 0;
+  height: 8px;
+  width: 7px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  z-index: 3;
+}
+
+.physics-paint-bg-clip-rail-marker::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  width: 2px;
+  height: 4px;
+  background: #f8fafc;
+}
+
+.physics-paint-bg-clip-rail-marker-start {
   left: 0;
 }
 
-.physics-paint-bg-clip-cell-resize-handle-end {
+.physics-paint-bg-clip-rail-marker-start::before {
+  left: 0;
+}
+
+.physics-paint-bg-clip-rail-marker-end {
+  right: 0;
+}
+
+.physics-paint-bg-clip-rail-marker-end::before {
   right: 0;
 }
 
@@ -3325,13 +3373,13 @@ button.destructive {
 /* Shortened visual (D-12): the loop stops at the next clip / parent bound —
    the LAST cell tints warning (UI-SPEC Warning #FFB020, truncated-end and
    shortened-loop treatments only). */
-.physics-paint-bg-clip-cells.shortened:not(.selected) .physics-paint-bg-clip-cell-last {
+.physics-paint-bg-clip-cells.shortened:not(.selected) .physics-paint-bg-clip-cell:last-child {
   background: #ffb020;
 }
 
 /* Diagonal cut on a partial cycle (D-21): the effective end lands mid-cycle —
    a 45° notch on the last cell's right edge. */
-.physics-paint-bg-clip-cells.partial-cycle .physics-paint-bg-clip-cell-last {
+.physics-paint-bg-clip-cells.partial-cycle .physics-paint-bg-clip-cell:last-child {
   clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 100%, 0 100%);
 }
 

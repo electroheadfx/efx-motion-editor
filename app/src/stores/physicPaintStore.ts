@@ -473,21 +473,38 @@ export interface BackgroundSourceHydrationPorts {
   register: (sourceRef: string, dataUrl: string) => void;
 }
 
+/** Per-ref hydration outcome — the diagnostic the import path surfaces when a
+ *  clip's source bytes never reach the runtime registry (49-06 UAT round 4). */
+export interface BackgroundSourceHydrationResult {
+  readonly registered: readonly string[];
+  readonly missing: readonly { readonly ref: string; readonly reason: 'asset-not-found' | 'decode-failed' }[];
+}
+
 export async function hydrateBackgroundSourceImages(
   document: EfxPaintDocument,
   ports: BackgroundSourceHydrationPorts,
-): Promise<void> {
+): Promise<BackgroundSourceHydrationResult> {
   const distinctRefs = new Set<string>();
   for (const clip of document.background.clips) {
     for (const ref of clip.sourceFrameRefs) distinctRefs.add(ref);
   }
+  const registered: string[] = [];
+  const missing: { ref: string; reason: 'asset-not-found' | 'decode-failed' }[] = [];
   await Promise.all(Array.from(distinctRefs).map(async (ref) => {
     const url = ports.resolveAssetUrl(ref);
-    if (url === null) return;
+    if (url === null) {
+      missing.push({ ref, reason: 'asset-not-found' });
+      return;
+    }
     const dataUrl = await ports.decodeBytes(url);
-    if (dataUrl === null) return;
+    if (dataUrl === null) {
+      missing.push({ ref, reason: 'decode-failed' });
+      return;
+    }
     ports.register(ref, dataUrl);
+    registered.push(ref);
   }));
+  return { registered, missing };
 }
 
 /**
@@ -507,6 +524,19 @@ export async function hydrateBackgroundSourceImages(
  * handler answers every request with `Access-Control-Allow-Origin: *`, so the
  * anonymous fetch is approved.
  */
+/** Hidden host for the decode <img> — the picker grid's PROVEN efxasset:// path
+ *  is a DOM-attached <img>; a detached `new Image()` may not load a custom
+ *  scheme in every WKWebView build (49-06 UAT round 4). */
+let _decodeHost: HTMLDivElement | null = null;
+function _ensureDecodeHost(): HTMLDivElement {
+  if (!_decodeHost) {
+    _decodeHost = document.createElement('div');
+    _decodeHost.style.display = 'none';
+    document.body.appendChild(_decodeHost);
+  }
+  return _decodeHost;
+}
+
 function _decodeEfxAssetBytes(url: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const image = new Image();
@@ -534,10 +564,16 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
         resolve(canvas.toDataURL());
       } catch {
         resolve(null);
+      } finally {
+        image.remove();
       }
     };
-    image.onerror = () => resolve(null);
+    image.onerror = () => {
+      image.remove();
+      resolve(null);
+    };
     image.src = url;
+    _ensureDecodeHost().appendChild(image);
   });
 }
 
@@ -553,7 +589,7 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
 export function hydrateBackgroundSourceImagesFromLibrary(
   document: EfxPaintDocument,
   fallback?: { images: readonly MceImageRef[]; projectDir: string },
-): Promise<void> {
+): Promise<BackgroundSourceHydrationResult> {
   return hydrateBackgroundSourceImages(document, {
     resolveAssetUrl: (ref) => {
       const image = imageStore.getById(ref);

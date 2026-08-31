@@ -259,18 +259,20 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(dot[0].props.class)).toContain('unavailable');
   });
 
-  it('49-06 UAT round 3: the Bg cells carry vertical separators and the resize handles signal ew-resize', () => {
+  it('49-06 UAT round 4: the Bg cells carry vertical separators, the rail line is the move handle, and the markers signal ew-resize', () => {
     // The separator is an inset line on every cell except the first — the
     // group-of-cells read (box-shadow, never border, so the flex box model
     // stays intact).
-    expect(cssRule('.physics-paint-bg-clip-cell:not(.physics-paint-bg-clip-cell-first) {')).toContain('box-shadow: inset 1px 0 0 0 rgba(0, 0, 0, 0.28)');
-    // Every cell is a whole-rail move handle (grab cursor).
-    expect(cssRule('.physics-paint-bg-clip-cell {')).toContain('cursor: grab');
-    // The first/last resize sub-handles are narrow strips with the ew-resize
-    // cursor, anchored to the outer edges.
-    expect(cssRule('.physics-paint-bg-clip-cell-resize-handle {')).toContain('cursor: ew-resize');
-    expect(cssRule('.physics-paint-bg-clip-cell-resize-handle-start {')).toContain('left: 0');
-    expect(cssRule('.physics-paint-bg-clip-cell-resize-handle-end {')).toContain('right: 0');
+    expect(cssRule('.physics-paint-bg-clip-cell:not(:first-child) {')).toContain('box-shadow: inset 1px 0 0 0 rgba(0, 0, 0, 0.28)');
+    // The rail LINE is the whole-rail move handle (grab cursor) — exactly like
+    // the track's Key Rail graphic line.
+    expect(cssRule('.physics-paint-bg-clip-rail-line {')).toContain('cursor: grab');
+    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('height: 4px');
+    // The START/END markers are the resize handles (ew-resize cursor), anchored
+    // to the line's outer edges.
+    expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('cursor: ew-resize');
+    expect(cssRule('.physics-paint-bg-clip-rail-marker-start {')).toContain('left: 0');
+    expect(cssRule('.physics-paint-bg-clip-rail-marker-end {')).toContain('right: 0');
   });
 
   it('keeps the rails one-click selectable and the background row rail-free', () => {
@@ -356,9 +358,12 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(cells[0].props.class)).toContain('selected');
     const cellSpans = findAll(cells[0], (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell'));
     expect(cellSpans.length).toBeGreaterThan(0);
-    // The FIRST and LAST cells are the resize handles (ew-resize cursor).
-    expect(findAll(cells[0], (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell-first'))).toHaveLength(1);
-    expect(findAll(cells[0], (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell-last'))).toHaveLength(1);
+    // The rail LINE carries the selected class (orange segment) and the
+    // START/END markers are present.
+    const line = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-line'));
+    expect(line).toHaveLength(1);
+    expect(String(line[0].props.class)).toContain('selected');
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-marker'))).toHaveLength(2);
     // The lane carries NO text — the badge span is gone (47 lock).
     expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-badge'))).toHaveLength(0);
     // The placement-target cell carries the marker class.
@@ -403,20 +408,24 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     });
     const cells = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell'));
     expect(cells.length).toBeGreaterThan(0);
-    // EVERY cell binds the whole-rail MOVE gesture.
+    // The cells are the visual FILL — no interaction (pointer-events none).
     for (const cell of cells) {
-      expect(typeof (cell.props as { onPointerDown?: unknown }).onPointerDown).toBe('function');
+      expect((cell.props as { onPointerDown?: unknown }).onPointerDown).toBeUndefined();
     }
-    // The FIRST and LAST cells carry a resize sub-handle with the edge attribute.
-    const handles = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell-resize-handle'));
-    expect(handles).toHaveLength(2);
-    const startHandle = handles.find((h) => hasClass(h, 'physics-paint-bg-clip-cell-resize-handle-start'))!;
-    const endHandle = handles.find((h) => hasClass(h, 'physics-paint-bg-clip-cell-resize-handle-end'))!;
-    expect(startHandle.props['data-bg-clip-edge']).toBe('start');
-    expect(endHandle.props['data-bg-clip-edge']).toBe('end');
-    // The handle's pointer-down stops propagation and routes to the resize hook.
+    // The rail LINE is the whole-rail MOVE handle.
+    const line = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-line'));
+    expect(line).toHaveLength(1);
+    expect(typeof (line[0].props as { onPointerDown?: unknown }).onPointerDown).toBe('function');
+    // The START/END markers are the resize handles with the edge attribute.
+    const markers = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-marker'));
+    expect(markers).toHaveLength(2);
+    const startMarker = markers.find((h) => hasClass(h, 'physics-paint-bg-clip-rail-marker-start'))!;
+    const endMarker = markers.find((h) => hasClass(h, 'physics-paint-bg-clip-rail-marker-end'))!;
+    expect(startMarker.props['data-bg-clip-edge']).toBe('start');
+    expect(endMarker.props['data-bg-clip-edge']).toBe('end');
+    // The marker's pointer-down stops propagation and routes to the resize hook.
     const startEvent = { stopPropagation: vi.fn() };
-    (startHandle.props as { onPointerDown: (event: unknown) => void }).onPointerDown(startEvent);
+    (startMarker.props as { onPointerDown: (event: unknown) => void }).onPointerDown(startEvent);
     expect(startEvent.stopPropagation).toHaveBeenCalled();
     expect(onResizePointerDown).toHaveBeenCalledTimes(1);
     expect(onMovePointerDown).not.toHaveBeenCalled();

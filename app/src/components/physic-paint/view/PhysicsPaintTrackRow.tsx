@@ -341,17 +341,18 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
 }
 
 /**
- * One Bg clip as a GROUP OF CELLS on the fixed Bg row (49-06 UAT round 2): each
- * frame of the clip's extent is an individual filled cell (like Paint track
- * cells). 49-06 UAT round 3: EVERY cell is a whole-rail MOVE handle (drag
- * anywhere to move the clip — the rail-line move the cells replaced), and the
- * FIRST/LAST cells carry a narrow RESIZE sub-handle at their outer edge (push
- * to set the clip's start/end). The Phase 47 surface lock forbids ANY text on
- * the lane — repeat facts live in the right panel and the tooltip. The cells
- * carry `data-bg-clip-id` / `data-bg-clip-start`; the resize handles add
- * `data-bg-clip-edge` — the strip's drag/resize hooks resolve the source from
- * the pressed element; pointer-down hands the gesture to the row-local hooks
- * (row-fixed law — never the cross-track machinery).
+ * One Bg clip on the fixed Bg row: a GROUP OF CELLS fill (49-06 UAT round 2,
+ * one filled cell per frame of the extent, like Paint track cells) beneath a
+ * rail LINE (49-06 UAT round 4) that reads EXACTLY like the track's Key Rail
+ * graphic line — a 4px segment in the 8px band with START/END markers. The line
+ * is the whole-rail MOVE handle (drag anywhere to move the clip); the markers
+ * are the RESIZE handles (push to set the clip's start/end). The Phase 47
+ * surface lock forbids ANY text on the lane — repeat facts live in the right
+ * panel and the tooltip. The line carries `data-bg-clip-id` /
+ * `data-bg-clip-start`; the markers add `data-bg-clip-edge` — the strip's
+ * drag/resize hooks resolve the source from the pressed element; pointer-down
+ * hands the gesture to the row-local hooks (row-fixed law — never the
+ * cross-track machinery).
  */
 function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipRailTargetProps) {
   const tooltip = useStyledTooltip();
@@ -365,64 +366,54 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
+      {/* The cells — the clip extent fill (visual only, pointer-events none).
+          The interaction lives on the rail line + markers above. */}
       <div
         class={`physics-paint-bg-clip-cells${props.selected ? ' selected' : ''}${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
         role="group"
         aria-label={props.presentation.accessibleName}
+      >
+        {Array.from({ length: cellCount }, (_, index) => (
+          <span key={index} class="physics-paint-bg-clip-cell" />
+        ))}
+      </div>
+      {/* 49-06 (UAT round 4): the rail LINE — exactly like the track's Key Rail
+          graphic line (4px segment in the 8px band) — is the whole-rail MOVE
+          handle. The cells beneath are the fill; the line reads as the rail. */}
+      <span
+        class={`physics-paint-bg-clip-rail-line${props.selected ? ' selected' : ''}`}
         data-bg-clip-id={props.clipId}
         data-bg-clip-start={props.startFrame}
-      >
-        {Array.from({ length: cellCount }, (_, index) => {
-          const isFirst = index === 0;
-          const isLast = index === cellCount - 1;
-          return (
-            <span
-              key={index}
-              class={`physics-paint-bg-clip-cell${isFirst ? ' physics-paint-bg-clip-cell-first' : ''}${isLast ? ' physics-paint-bg-clip-cell-last' : ''}`}
-              data-bg-clip-id={props.clipId}
-              data-bg-clip-start={props.startFrame}
-              onPointerDown={(event) => {
-                // 49-06 (UAT round 3): EVERY cell is a whole-rail MOVE handle —
-                // drag anywhere on the clip to move it (the rail-line move the
-                // cells replaced). The first/last cells carry a narrow RESIZE
-                // sub-handle at their outer edge that stops propagation and
-                // hands the gesture to the resize hook instead.
-                tooltip.hide();
-                props.onMovePointerDown?.(event as unknown as PointerEvent);
-              }}
-              onFocus={tooltip.onFocus}
-              onBlur={tooltip.onBlur}
-            >
-              {isFirst ? (
-                <span
-                  class="physics-paint-bg-clip-cell-resize-handle physics-paint-bg-clip-cell-resize-handle-start"
-                  data-bg-clip-id={props.clipId}
-                  data-bg-clip-start={props.startFrame}
-                  data-bg-clip-edge="start"
-                  onPointerDown={(event) => {
-                    tooltip.hide();
-                    event.stopPropagation();
-                    props.onResizePointerDown?.(event as unknown as PointerEvent);
-                  }}
-                />
-              ) : null}
-              {isLast ? (
-                <span
-                  class="physics-paint-bg-clip-cell-resize-handle physics-paint-bg-clip-cell-resize-handle-end"
-                  data-bg-clip-id={props.clipId}
-                  data-bg-clip-start={props.startFrame}
-                  data-bg-clip-edge="end"
-                  onPointerDown={(event) => {
-                    tooltip.hide();
-                    event.stopPropagation();
-                    props.onResizePointerDown?.(event as unknown as PointerEvent);
-                  }}
-                />
-              ) : null}
-            </span>
-          );
-        })}
-      </div>
+        onPointerDown={(event) => {
+          tooltip.hide();
+          props.onMovePointerDown?.(event as unknown as PointerEvent);
+        }}
+        onFocus={tooltip.onFocus}
+        onBlur={tooltip.onBlur}
+      />
+      {/* The START/END markers — the RESIZE handles (push to set start/end). */}
+      <span
+        class="physics-paint-bg-clip-rail-marker physics-paint-bg-clip-rail-marker-start"
+        data-bg-clip-id={props.clipId}
+        data-bg-clip-start={props.startFrame}
+        data-bg-clip-edge="start"
+        onPointerDown={(event) => {
+          tooltip.hide();
+          event.stopPropagation();
+          props.onResizePointerDown?.(event as unknown as PointerEvent);
+        }}
+      />
+      <span
+        class="physics-paint-bg-clip-rail-marker physics-paint-bg-clip-rail-marker-end"
+        data-bg-clip-id={props.clipId}
+        data-bg-clip-start={props.startFrame}
+        data-bg-clip-edge="end"
+        onPointerDown={(event) => {
+          tooltip.hide();
+          event.stopPropagation();
+          props.onResizePointerDown?.(event as unknown as PointerEvent);
+        }}
+      />
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
           {props.presentation.tooltipLines.map((line, index) => (
