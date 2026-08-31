@@ -3345,31 +3345,22 @@ button.destructive {
      rails. */
   inset: 4px 0 auto 0;
   height: 4px;
-  /* 49-06 (UAT round 7): the RESTING line is the neutral blue — #195991 is
-     reserved for the SELECTED state so the user can tell which rail the
-     right-panel Background options apply to. */
-  background: #4a7eac;
+  /* 49-06 (UAT round 7): the RESTING line color is #195991 (the user's
+     requested darker blue). The line does NOT change during a move/resize —
+     only the white phantom preview is drawn on top of it. */
+  background: #195991;
   pointer-events: none;
 }
 
 .physics-paint-bg-clip-rail-line:hover::before {
-  background: #5a8fc0;
+  background: #1f6bb0;
 }
 
 /* 49-06 (UAT round 7): the SELECTED line is the SAME orange as the selected
-   cells (#f5a623, the timeline selection contract) — the user's correction:
-   the selected rail must read orange, and the right-panel Background Clip
-   options relate to it. */
+   cells (#f5a623, the timeline selection contract) — the selected rail reads
+   orange, and the right-panel Background Clip options relate to it. */
 .physics-paint-bg-clip-rail-line.selected::before {
   background: #f5a623;
-}
-
-/* 49-06 (UAT round 7): while a MOVE or RESIZE gesture is active the line turns
-   WHITE over the ORANGE cells — the edit feedback the user asked for (white
-   over orange reads clearly). Declared after .selected so the active gesture
-   wins over a resting selection. */
-.physics-paint-bg-clip-rail-line.editing::before {
-  background: #f8fafc;
 }
 
 /* 49-06 (UAT round 5): the START/END markers — the RESIZE handles. The element

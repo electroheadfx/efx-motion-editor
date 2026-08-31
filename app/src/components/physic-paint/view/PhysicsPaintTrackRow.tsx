@@ -333,9 +333,6 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
    *  cells paint the orange selection treatment (timeline selection contract). */
   readonly selected: boolean;
-  /** 49-06 (UAT round 7): true while a MOVE or RESIZE gesture is active on this
-   *  clip — the rail line paints the track rail's orange (edit feedback). */
-  readonly editing?: boolean;
   /** 49-06 (UAT round 2): the row-local MOVE drag hook — middle cells bind it. */
   readonly onMovePointerDown?: (event: PointerEvent) => void;
   /** 49-06 (UAT round 2): the row-local RESIZE drag hook — the FIRST and LAST
@@ -384,7 +381,7 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
           graphic line (4px segment in the 8px band) — is the whole-rail MOVE
           handle. The cells beneath are the fill; the line reads as the rail. */}
       <span
-        class={`physics-paint-bg-clip-rail-line${props.selected ? ' selected' : ''}${props.editing ? ' editing' : ''}`}
+        class={`physics-paint-bg-clip-rail-line${props.selected ? ' selected' : ''}`}
         data-bg-clip-id={props.clipId}
         data-bg-clip-start={props.startFrame}
         onPointerDown={(event) => {
@@ -458,10 +455,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     backgroundClipResize = null,
     backgroundClipDragGhost = null,
   } = props;
-  // 49-06 (UAT round 7): a MOVE or RESIZE gesture paints the rail line the
-  // track rail's orange — the drag ghost and the resize ghost both carry the
-  // active flag (the resize API exposes `.ghost` directly).
-  const backgroundEditing = Boolean(backgroundClipDragGhost?.active || backgroundClipResize?.ghost.active);
   const rowClass = [
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
@@ -623,7 +616,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   left={geometry.left}
                   width={geometry.width}
                   selected={selectedBackgroundClipId === clip.id}
-                  editing={backgroundEditing}
                   onMovePointerDown={backgroundClipDrag?.onPointerDown}
                   onResizePointerDown={backgroundClipResize?.onPointerDown}
                 />
