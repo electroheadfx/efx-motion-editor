@@ -3260,9 +3260,10 @@ button.destructive {
 
 /* 49-06 (UAT round 2): the Bg clip renders as a GROUP OF CELLS — one filled
    cell per frame of the clip's extent (like Paint track cells). 49-06 UAT
-   round 4: the cells are the FILL beneath the rail line (visual only,
-   pointer-events none) — the interaction lives on the line + markers above.
-   The cells sit below the 8px rail band (top: 8px), matching the track layout. */
+   round 8: the cells are the whole-rail MOVE handle — a pointerdown on any
+   cell routes to the drag hook (same as the line), so the entire rail is
+   draggable and a sub-threshold release selects the clip. The cells sit below
+   the 8px rail band (top: 8px), matching the track layout. */
 .physics-paint-bg-clip-cells {
   position: absolute;
   top: 8px;
@@ -3270,7 +3271,7 @@ button.destructive {
   left: 0;
   right: 0;
   display: flex;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .physics-paint-bg-clip-cell {

@@ -112,9 +112,6 @@ export interface PhysicsPaintTrackRowProps {
    *  Track section stays reachable. The Bg row never navigates/selects, so this
    *  is its only cell-click intent. */
   readonly onSelectBackgroundFrame?: (frame: number) => void;
-  /** 49-06 (UAT round 8): click-to-select a Bg clip — the whole rail routes a
-   *  click here (the right-panel Background Clip section consumes it). */
-  readonly onSelectBackgroundClip?: (clipId: string) => void;
   /** 49-06 (UAT round 2): the selected Bg clip id — the matching rail paints
    *  the orange selection treatment (same contract as the rest of the
    *  timeline). */
@@ -336,12 +333,9 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
    *  cells paint the orange selection treatment (timeline selection contract). */
   readonly selected: boolean;
-  /** 49-06 (UAT round 8): click-to-select — the whole rail (cells + line +
-   *  markers) routes a click to clip selection. The line's drag and the
-   *  markers' resize still own their pointer gestures; the click event on
-   *  release bubbles here and selects the clip. */
-  readonly onSelect?: (clipId: string) => void;
-  /** 49-06 (UAT round 2): the row-local MOVE drag hook — middle cells bind it. */
+  /** 49-06 (UAT round 2): the row-local MOVE drag hook — the cells AND the
+   *  line bind it, so the whole rail is draggable and a sub-threshold release
+   *  selects the clip (the hook's onSelectClip — the single selection path). */
   readonly onMovePointerDown?: (event: PointerEvent) => void;
   /** 49-06 (UAT round 2): the row-local RESIZE drag hook — the FIRST and LAST
    *  cells bind it (push the edge to set the clip's start/end). */
@@ -373,14 +367,21 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
       style={{ left: `${props.left}px`, width: `${props.width}px` }}
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
-      onClick={() => props.onSelect?.(props.clipId)}
     >
-      {/* The cells — the clip extent fill (visual only, pointer-events none).
-          The interaction lives on the rail line + markers above. */}
+      {/* The cells — the clip extent fill. The whole-rail MOVE handle: a
+          pointerdown on any cell routes to the drag hook (same as the line),
+          so the entire rail is draggable and a sub-threshold release selects
+          the clip (the hook's onSelectClip — the single selection path). */}
       <div
         class={`physics-paint-bg-clip-cells${props.selected ? ' selected' : ''}${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
         role="group"
         aria-label={props.presentation.accessibleName}
+        data-bg-clip-id={props.clipId}
+        data-bg-clip-start={props.startFrame}
+        onPointerDown={(event) => {
+          tooltip.hide();
+          props.onMovePointerDown?.(event as unknown as PointerEvent);
+        }}
       >
         {Array.from({ length: cellCount }, (_, index) => (
           <span key={index} class="physics-paint-bg-clip-cell" />
@@ -456,7 +457,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onSelectTrackFrame,
     onSelectTrackRail,
     onSelectBackgroundFrame,
-    onSelectBackgroundClip,
     selectedBackgroundClipId = null,
     backgroundPlacementFrame = null,
     background = null,
@@ -626,7 +626,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   left={geometry.left}
                   width={geometry.width}
                   selected={selectedBackgroundClipId === clip.id}
-                  onSelect={onSelectBackgroundClip}
                   onMovePointerDown={backgroundClipDrag?.onPointerDown}
                   onResizePointerDown={backgroundClipResize?.onPointerDown}
                 />
