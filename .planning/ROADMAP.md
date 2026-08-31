@@ -356,7 +356,29 @@ Plans:
   4. Gaps reveal the document fallback (solid color or transparency) identically in Studio, flattened parent output, main preview, and export.
   5. Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 49-01-PLAN.md — BackgroundFallback union extension: paper mode + parser + canonical encoder in lockstep, round-trip/rejection contract (D-11 model, TDD)
+- [ ] 49-02-PLAN.md — clip CRUD ops + natural sort util (D-02) + undo-by-reference + source-byte hydration (BKG-03/04/05/07/08/09, TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 49-03-PLAN.md — fond re-wire to document fallback, cache-key fallback term, selector wiring (D-11), monitor transparency checkerboard (D-12)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 49-04-PLAN.md — cross-window image-library bridge pair, capability extension, scoped asset picker (D-01) + native capability checkpoint
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 49-05-PLAN.md — Bg-row Import control + Confirm-at-playhead flow with locked collision copy (D-03/D-04) + row-local rail drag (D-05)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 49-06-PLAN.md — right-panel Background Clip properties (D-06/D-07/D-08) + blocking native UAT (BKG-01..BKG-09)
 
 ### Phase 50: Photo/Reference Track
 
@@ -432,7 +454,7 @@ Plans:
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
-| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/TBD | Not started | - |
+| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/6 | Planned | - |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 0/TBD | Not started | - |
