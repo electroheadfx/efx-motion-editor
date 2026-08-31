@@ -8,8 +8,10 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
-import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat } from '../efx-paint/document/efxPaintDocument';
+import { deriveEfxPaintBackgroundResolution, resolveEfxPaintBackgroundFrame } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
 import {
   _setPhysicPaintMarkDirtyCallback,
   getTrackPaintVersion,
@@ -19,23 +21,29 @@ import {
 } from './physicPaintStore';
 import {
   _setEfxPaintMarkDirtyCallback,
+  addBackgroundClip,
   addTrack,
+  deleteBackgroundClip,
   duplicateTrack,
   efxPaintVersion,
   getDocument,
   hasDocument,
   hydrateRuntimeFromDocument,
+  moveBackgroundClip,
   registerDocument,
   removeDocument,
   renameTrack,
   reorderTrack,
   reset,
   serializeRuntimeIntoDocument,
+  setBackgroundClipRepeat,
+  setBackgroundFallback,
   setTrackBlend,
   setTrackOpacity,
   setTrackSolo,
   setTrackVisible,
 } from './efxPaintStore';
+import type { BackgroundEditDescriptor } from './efxPaintStore';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -594,5 +602,301 @@ describe('hide/solo/opacity/blend track setters (47-01 Task 3)', () => {
     expect(setTrackOpacity('layer-set', 'unknown-track', 0.5).ok).toBe(false);
     expect(setTrackBlend('layer-set', 'unknown-track', 'normal').ok).toBe(false);
     expect(getDocument('layer-set')).toBe(document);
+  });
+});
+
+describe('Background clip CRUD ops (49-02 Task 2)', () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  const refs = (prefix: string, count: number): string[] =>
+    Array.from({ length: count }, (_, index) => `${prefix}${index}`);
+
+  const makeClip = (
+    id: string,
+    startFrame: number,
+    sourceFrameRefs: string[],
+    repeat: FrameLoopClipRepeat = { mode: 'finite', count: 1 },
+  ): FrameLoopClip => ({
+    id,
+    startFrame,
+    sourceFrameRefs,
+    repeat,
+    sourceKind: 'imported-background',
+    revision: 0,
+  });
+
+  const registerBackgroundDocument = (
+    layerId: string,
+    clips: readonly FrameLoopClip[] = [],
+    fallback: BackgroundFallback = { mode: 'transparent' },
+  ): EfxPaintDocument => {
+    const document = makeTrackDocument(layerId);
+    const withBackground: EfxPaintDocument = {
+      ...document,
+      background: { ...document.background, clips: [...clips], fallback },
+    };
+    registerDocument(withBackground);
+    return withBackground;
+  };
+
+  const assertUndoRedo = (layerId: string, descriptor: BackgroundEditDescriptor, preOp: EfxPaintDocument) => {
+    expect(descriptor.before).toBe(preOp);
+    expect(descriptor.after).toBe(getDocument(layerId));
+    // undo restores the exact prior document (by reference, D-08)
+    registerDocument(descriptor.before);
+    expect(buildEfxPaintDocumentRevision(getDocument(layerId)!)).toBe(buildEfxPaintDocumentRevision(preOp));
+    // redo re-applies the post-op document
+    registerDocument(descriptor.after);
+    expect(buildEfxPaintDocumentRevision(getDocument(layerId)!)).toBe(buildEfxPaintDocumentRevision(descriptor.after));
+  };
+
+  it('collision truth table: rejects landings strictly inside an existing clip, accepts the exclusive end and gaps (BKG-03, D-04)', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 10, refs('a', 20), { mode: 'finite', count: 1 }); // occupies [10, 30)
+    registerBackgroundDocument(layerId, [clipA]);
+
+    const attempt = (startFrame: number) =>
+      addBackgroundClip(layerId, { startFrame, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
+
+    expect(attempt(10)).toEqual({ ok: false, reason: 'start-collision' });
+    expect(attempt(15)).toEqual({ ok: false, reason: 'start-collision' });
+    expect(attempt(29)).toEqual({ ok: false, reason: 'start-collision' });
+    // landing at A's exclusive end (30) is zero-gap adjacency — accepted
+    expect(attempt(30).ok).toBe(true);
+    // landing at 0 (before-A gap) — accepted
+    expect(attempt(0).ok).toBe(true);
+    // the rejections wrote nothing; the two accepted adds landed
+    expect(getDocument(layerId)!.background.clips).toHaveLength(3);
+  });
+
+  it('accepts any landing frame >= 0 on a document with zero clips (empty probe)', () => {
+    const layerId = 'layer-bg';
+    registerBackgroundDocument(layerId, []);
+    expect(addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } }).ok).toBe(true);
+    expect(addBackgroundClip(layerId, { startFrame: 5, sourceFrameRefs: ['y'], repeat: { mode: 'finite', count: 1 } }).ok).toBe(true);
+    expect(addBackgroundClip(layerId, { startFrame: 100, sourceFrameRefs: ['z'], repeat: { mode: 'finite', count: 1 } }).ok).toBe(true);
+  });
+
+  it('downstream extent: a clip longer than the gap to the next clip commits with repeat verbatim (BKG-03/D-03)', () => {
+    const layerId = 'layer-bg';
+    const clipB = makeClip('clip-b', 12, refs('b', 5), { mode: 'finite', count: 1 }); // occupies [12, 17)
+    registerBackgroundDocument(layerId, [clipB]);
+
+    const result = addBackgroundClip(layerId, {
+      startFrame: 0,
+      sourceFrameRefs: refs('a', 10),
+      repeat: { mode: 'finite', count: 3 },
+    });
+    expect(result.ok).toBe(true);
+    const doc = getDocument(layerId)!;
+    const added = doc.background.clips.find((clip) => clip.id === (result as { ok: true }).clipId)!;
+    expect(added.startFrame).toBe(0);
+    expect(added.sourceFrameRefs).toHaveLength(10);
+    expect(added.repeat).toEqual({ mode: 'finite', count: 3 });
+    // clips stay sorted by startFrame (render order ascending)
+    expect(doc.background.clips.map((clip) => clip.startFrame)).toEqual([0, 12]);
+  });
+
+  it('deterministic recalculation: deleting the next clip re-derives the predecessor natural end untruncated (BKG-05)', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 10), { mode: 'finite', count: 3 }); // natural end 30
+    const clipB = makeClip('clip-b', 12, refs('b', 5), { mode: 'finite', count: 1 });
+    registerBackgroundDocument(layerId, [clipA, clipB]);
+
+    const result = deleteBackgroundClip(layerId, 'clip-b');
+    expect(result.ok).toBe(true);
+    const doc = getDocument(layerId)!;
+    const context = deriveEfxPaintBackgroundResolution(doc.background, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+    const rangeA = context.ranges.find((range) => range.loopId === 'clip-a')!;
+    expect(rangeA.effectiveEnd).toBe(30);
+    expect(rangeA.truncated).toBe(false);
+  });
+
+  it('repeat validation: accepts finite >= 1 and infinite; rejects 0, negative, non-integer, non-finite uncommitted (BKG-04)', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 });
+    registerBackgroundDocument(layerId, [clipA]);
+
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 1 }).ok).toBe(true);
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 5000 }).ok).toBe(true);
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'infinite' }).ok).toBe(true);
+    expect(getDocument(layerId)!.background.clips.find((clip) => clip.id === 'clip-a')!.repeat).toEqual({ mode: 'infinite' });
+
+    const beforeReject = getDocument(layerId)!;
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 0 })).toEqual({ ok: false, reason: 'invalid-repeat' });
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: -3 })).toEqual({ ok: false, reason: 'invalid-repeat' });
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 2.5 })).toEqual({ ok: false, reason: 'invalid-repeat' });
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: Number.NaN })).toEqual({ ok: false, reason: 'invalid-repeat' });
+    expect(setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: Number.POSITIVE_INFINITY })).toEqual({ ok: false, reason: 'invalid-repeat' });
+    expect(getDocument(layerId)).toBe(beforeReject);
+  });
+
+  it('a repeat edit leaves every other clip byte-identical (no cross-clip ripple)', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 });
+    const clipB = makeClip('clip-b', 10, refs('b', 3), { mode: 'finite', count: 2 });
+    registerBackgroundDocument(layerId, [clipA, clipB]);
+    const clipBBefore = getDocument(layerId)!.background.clips.find((clip) => clip.id === 'clip-b')!;
+
+    setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 4 });
+    const clipBAfter = getDocument(layerId)!.background.clips.find((clip) => clip.id === 'clip-b')!;
+    expect(clipBAfter).toBe(clipBBefore);
+    expect(clipBAfter.startFrame).toBe(10);
+    expect(clipBAfter.repeat).toEqual({ mode: 'finite', count: 2 });
+    expect(clipBAfter.sourceFrameRefs).toEqual(refs('b', 3));
+  });
+
+  it('linked sources: a 5-ref clip at x3 keeps exactly 5 refs and maps instance k to refs[k mod 5] (BKG-07)', () => {
+    const layerId = 'layer-bg';
+    registerBackgroundDocument(layerId, []);
+    const sourceRefs = refs('r', 5);
+    const result = addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: sourceRefs, repeat: { mode: 'finite', count: 3 } });
+    expect(result.ok).toBe(true);
+    const doc = getDocument(layerId)!;
+    const clip = doc.background.clips[0]!;
+    expect(clip.sourceFrameRefs).toEqual(sourceRefs);
+    expect(clip.sourceFrameRefs).toHaveLength(5);
+
+    const context = deriveEfxPaintBackgroundResolution(doc.background, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+    const range = context.ranges.find((candidate) => candidate.loopId === clip.id)!;
+    expect(range.sourceKeyIds).toEqual(sourceRefs);
+    for (let frame = 0; frame < 15; frame += 1) {
+      const resolution = resolveEfxPaintBackgroundFrame(context, frame, new Set(sourceRefs));
+      expect(resolution.kind).toBe('content');
+      if (resolution.kind === 'content') expect(resolution.sourceRef).toBe(sourceRefs[frame % 5]);
+    }
+  });
+
+  it('idempotence: repeat and fallback setters are revision-stable no-ops on same-value writes; create always allocates a fresh id (BKG-09)', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 2 });
+    registerBackgroundDocument(layerId, [clipA], { mode: 'solid', color: '#ff0000' });
+    const docBefore = getDocument(layerId)!;
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+    const versionBefore = efxPaintVersion.value;
+
+    const repeatNoOp = setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 2 });
+    expect(repeatNoOp.ok).toBe(true);
+    expect((repeatNoOp as { ok: true }).descriptor).toBeNull();
+    expect(getDocument(layerId)).toBe(docBefore);
+    expect(efxPaintVersion.value).toBe(versionBefore);
+    expect(dirty).not.toHaveBeenCalled();
+
+    const fallbackNoOp = setBackgroundFallback(layerId, { mode: 'solid', color: '#ff0000' });
+    expect(fallbackNoOp.ok).toBe(true);
+    expect((fallbackNoOp as { ok: true }).descriptor).toBeNull();
+    expect(getDocument(layerId)).toBe(docBefore);
+    expect(efxPaintVersion.value).toBe(versionBefore);
+    expect(dirty).not.toHaveBeenCalled();
+
+    const first = addBackgroundClip(layerId, { startFrame: 5, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
+    const second = addBackgroundClip(layerId, { startFrame: 6, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
+    expect((first as { ok: true }).clipId).not.toBe((second as { ok: true }).clipId);
+  });
+
+  it('moveBackgroundClip repositions a clip, rejects occupied landings, and is a no-op at the same position', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 }); // [0, 2)
+    const clipB = makeClip('clip-b', 10, refs('b', 2), { mode: 'finite', count: 1 }); // [10, 12)
+    registerBackgroundDocument(layerId, [clipA, clipB]);
+
+    const moved = moveBackgroundClip(layerId, 'clip-a', 5);
+    expect(moved.ok).toBe(true);
+    const doc = getDocument(layerId)!;
+    expect(doc.background.clips.find((clip) => clip.id === 'clip-a')!.startFrame).toBe(5);
+    expect(doc.background.clips.map((clip) => clip.startFrame)).toEqual([5, 10]);
+
+    expect(moveBackgroundClip(layerId, 'clip-a', 10)).toEqual({ ok: false, reason: 'start-collision' });
+    expect(moveBackgroundClip(layerId, 'clip-a', 11)).toEqual({ ok: false, reason: 'start-collision' });
+    expect(moveBackgroundClip(layerId, 'clip-a', 12).ok).toBe(true);
+
+    const before = getDocument(layerId)!;
+    const noOp = moveBackgroundClip(layerId, 'clip-a', 12);
+    expect(noOp.ok).toBe(true);
+    expect((noOp as { ok: true }).descriptor).toBeNull();
+    expect(getDocument(layerId)).toBe(before);
+  });
+
+  it('setBackgroundFallback updates the fallback and round-trips every mode', () => {
+    const layerId = 'layer-bg';
+    registerBackgroundDocument(layerId, []);
+    const solid = setBackgroundFallback(layerId, { mode: 'solid', color: '#123456' });
+    expect(solid.ok).toBe(true);
+    expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'solid', color: '#123456' });
+    const paper = setBackgroundFallback(layerId, { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.5 });
+    expect(paper.ok).toBe(true);
+    expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.5 });
+  });
+
+  it('undo: every op emits an acceptance descriptor; record → undo → redo restores exact state for all five kinds (BKG-08)', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 });
+    const clipB = makeClip('clip-b', 10, refs('b', 2), { mode: 'finite', count: 1 });
+    registerBackgroundDocument(layerId, [clipA, clipB], { mode: 'transparent' });
+
+    // 1. add
+    const preAdd = getDocument(layerId)!;
+    const addResult = addBackgroundClip(layerId, { startFrame: 20, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } });
+    expect(addResult.ok).toBe(true);
+    assertUndoRedo(layerId, (addResult as { ok: true }).descriptor!, preAdd);
+
+    // 2. move
+    const preMove = getDocument(layerId)!;
+    const moveResult = moveBackgroundClip(layerId, 'clip-a', 3);
+    expect(moveResult.ok).toBe(true);
+    assertUndoRedo(layerId, (moveResult as { ok: true }).descriptor!, preMove);
+
+    // 3. repeat
+    const preRepeat = getDocument(layerId)!;
+    const repeatResult = setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 4 });
+    expect(repeatResult.ok).toBe(true);
+    assertUndoRedo(layerId, (repeatResult as { ok: true }).descriptor!, preRepeat);
+
+    // 4. delete — the deleted clip returns with its original id/refs/repeat
+    const preDelete = getDocument(layerId)!;
+    const deleteResult = deleteBackgroundClip(layerId, 'clip-b');
+    expect(deleteResult.ok).toBe(true);
+    const deleteDescriptor = (deleteResult as { ok: true }).descriptor!;
+    expect(deleteDescriptor.before).toBe(preDelete);
+    expect(deleteDescriptor.after).toBe(getDocument(layerId));
+    registerDocument(deleteDescriptor.before);
+    const restored = getDocument(layerId)!;
+    const restoredClip = restored.background.clips.find((clip) => clip.id === 'clip-b')!;
+    expect(restoredClip.id).toBe('clip-b');
+    expect(restoredClip.sourceFrameRefs).toEqual(refs('b', 2));
+    expect(restoredClip.repeat).toEqual({ mode: 'finite', count: 1 });
+    registerDocument(deleteDescriptor.after);
+    expect(getDocument(layerId)!.background.clips.find((clip) => clip.id === 'clip-b')).toBeUndefined();
+
+    // 5. fallback
+    const preFallback = getDocument(layerId)!;
+    const fallbackResult = setBackgroundFallback(layerId, { mode: 'solid', color: '#abcdef' });
+    expect(fallbackResult.ok).toBe(true);
+    assertUndoRedo(layerId, (fallbackResult as { ok: true }).descriptor!, preFallback);
+  });
+
+  it('rejection results are closed: the four locked reasons, nothing written', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 10, refs('a', 20), { mode: 'finite', count: 1 });
+    registerBackgroundDocument(layerId, [clipA]);
+    const docBefore = getDocument(layerId)!;
+
+    expect(addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: [], repeat: { mode: 'finite', count: 1 } }))
+      .toEqual({ ok: false, reason: 'invalid-source-refs' });
+    expect(addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 0 } }))
+      .toEqual({ ok: false, reason: 'invalid-repeat' });
+    expect(addBackgroundClip(layerId, { startFrame: 15, sourceFrameRefs: ['x'], repeat: { mode: 'finite', count: 1 } }))
+      .toEqual({ ok: false, reason: 'start-collision' });
+    expect(moveBackgroundClip(layerId, 'unknown', 0)).toEqual({ ok: false, reason: 'clip-not-found' });
+    expect(setBackgroundClipRepeat(layerId, 'unknown', { mode: 'finite', count: 1 })).toEqual({ ok: false, reason: 'clip-not-found' });
+    expect(deleteBackgroundClip(layerId, 'unknown')).toEqual({ ok: false, reason: 'clip-not-found' });
+
+    expect(getDocument(layerId)).toBe(docBefore);
   });
 });
