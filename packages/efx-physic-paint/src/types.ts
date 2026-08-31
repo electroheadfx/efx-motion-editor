@@ -197,6 +197,12 @@ export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add'
 export type BackgroundFallback =
   | { readonly mode: 'transparent' }
   | { readonly mode: 'solid'; readonly color: string }
+  | {
+      readonly mode: 'paper'
+      readonly texture: 'canvas1' | 'canvas2' | 'canvas3'
+      readonly paperGrain: boolean
+      readonly grainStrength: number
+    }
 
 /** Repeat policy of a Background Loop Clip (mirrors the app-side schema). */
 export type FrameLoopClipRepeat =

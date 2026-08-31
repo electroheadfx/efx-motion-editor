@@ -29,20 +29,11 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
       paperGrain: true,
       grainStrength: 0.5,
     });
-    const withCanvas3 = documentWithFallback({
-      mode: 'paper',
-      texture: 'canvas3',
-      paperGrain: true,
-      grainStrength: 0.5,
-    });
+    const withCanvas3 = JSON.parse(JSON.stringify(withCanvas1));
+    withCanvas3.background.fallback.texture = 'canvas3';
     expect(buildEfxPaintDocumentRevision(withCanvas1)).not.toBe(buildEfxPaintDocumentRevision(withCanvas3));
 
-    const withCanvas1Again = documentWithFallback({
-      mode: 'paper',
-      texture: 'canvas1',
-      paperGrain: true,
-      grainStrength: 0.5,
-    });
+    const withCanvas1Again = JSON.parse(JSON.stringify(withCanvas1));
     expect(buildEfxPaintDocumentRevision(withCanvas1)).toBe(buildEfxPaintDocumentRevision(withCanvas1Again));
   });
 

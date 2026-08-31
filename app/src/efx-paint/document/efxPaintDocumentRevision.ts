@@ -29,7 +29,8 @@ import { parseEfxPaintDocument, parseInternalPaintTrack } from './efxPaintDocume
 
 function encodeCanonicalBackgroundFallback(fallback: BackgroundFallback): string {
   if (fallback.mode === 'transparent') return 'transparent;';
-  return `solid:${encodeCanonicalString(fallback.color)}`;
+  if (fallback.mode === 'solid') return `solid:${encodeCanonicalString(fallback.color)}`;
+  return `paper:${encodeCanonicalString(fallback.texture)}:${validatedBoolean(fallback.paperGrain)}:${encodeCanonicalNumber(fallback.grainStrength)}`;
 }
 
 function encodeCanonicalLoopClips(clips: readonly FrameLoopClip[]): string {

@@ -16,10 +16,19 @@ export const EFX_PAINT_DOCUMENT_VERSION = 1;
 /** Main-editor blend mode union (mirrors `app/src/types/layer.ts`). */
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 
+/** Paper texture identifiers carried by the paper fallback arm (D-11). */
+export type PaperTexture = 'canvas1' | 'canvas2' | 'canvas3';
+
 /** Document fallback revealed in Background gaps (D-08: transparent at creation). */
 export type BackgroundFallback =
   | { readonly mode: 'transparent' }
-  | { readonly mode: 'solid'; readonly color: string };
+  | { readonly mode: 'solid'; readonly color: string }
+  | {
+      readonly mode: 'paper';
+      readonly texture: PaperTexture;
+      readonly paperGrain: boolean;
+      readonly grainStrength: number;
+    };
 
 /** Repeat policy of a Background Loop Clip (spec sketch). */
 export type FrameLoopClipRepeat =
