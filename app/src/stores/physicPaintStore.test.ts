@@ -5,7 +5,8 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage, hydrateBackgroundSourceImages } from './physicPaintStore';
+import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
@@ -2075,6 +2076,133 @@ describe('physicPaintStore', () => {
 
       expect(excludingEmpty.cacheKey).toBe(including.cacheKey);
       expect(excludingEmpty.renderedFrame.dataUrl).toBe(including.renderedFrame.dataUrl);
+    });
+
+    describe('background source-byte hydration (49-02 Task 3, BKG-09)', () => {
+    // The hydration step is the SOLE production writer of the runtime source
+    // registry on the reopen path (Pitfall 5): enumerate the document's
+    // background clip sourceFrameRefs, dedupe, resolve each ref to its library
+    // asset URL, decode bytes, and register. The tests inject a fake decoder
+    // port so registration is observable without reaching into the private
+    // registry; the fake `register` forwards to the real
+    // registerBackgroundSourceImage so the compositor resolves the bytes.
+
+    function hydrationPorts(registered: Map<string, string>) {
+      return {
+        resolveAssetUrl: (ref: string) => (ref.startsWith('asset-') ? `efxasset://localhost/${ref}.png` : null),
+        decodeBytes: async (url: string) => `data:image/png;base64,${btoa(url)}`,
+        register: (ref: string, dataUrl: string) => {
+          registered.set(ref, dataUrl);
+          registerBackgroundSourceImage(ref, dataUrl);
+        },
+      };
+    }
+
+    it('REGISTERS ALL: hydrating a document whose clips reference {a,b} and {b,c} registers each distinct ref exactly once with decoded bytes', async () => {
+      const registered = new Map<string, string>();
+      const registerCalls: string[] = [];
+      const ports = {
+        ...hydrationPorts(registered),
+        register: (ref: string, dataUrl: string) => {
+          registerCalls.push(ref);
+          registered.set(ref, dataUrl);
+          registerBackgroundSourceImage(ref, dataUrl);
+        },
+      };
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [
+          { id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-a', 'asset-b'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 },
+          { id: 'clip-2', startFrame: 10, sourceFrameRefs: ['asset-b', 'asset-c'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 },
+        ],
+      }));
+      await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, ports);
+
+      // Dedupe across clips: a, b, c each register exactly once — never a
+      // per-clip duplicate registration for the shared ref b.
+      expect(registerCalls.sort()).toEqual(['asset-a', 'asset-b', 'asset-c']);
+      expect(registered.get('asset-a')).toBe(`data:image/png;base64,${btoa('efxasset://localhost/asset-a.png')}`);
+      expect(registered.get('asset-b')).toBe(`data:image/png;base64,${btoa('efxasset://localhost/asset-b.png')}`);
+      expect(registered.get('asset-c')).toBe(`data:image/png;base64,${btoa('efxasset://localhost/asset-c.png')}`);
+    });
+
+    it('MISSING IS EXPLICIT: a clip referencing an asset absent from the library registers nothing and resolves to the missing verdict', async () => {
+      const registered = new Map<string, string>();
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [
+          { id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-present'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 },
+          { id: 'clip-2', startFrame: 10, sourceFrameRefs: ['asset-missing'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 },
+        ],
+      }));
+      await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, hydrationPorts(registered));
+
+      expect(registered.has('asset-present')).toBe(true);
+      expect(registered.has('asset-missing')).toBe(false);
+
+      // The present ref resolves to content; the absent ref yields the missing
+      // verdict (transparent + missing report), never a throw and never
+      // placeholder content (D-10).
+      const presentRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      expect(presentRecord.missing).toEqual([]);
+      expect(presentRecord.renderedFrame.dataUrl).toContain('draw(');
+
+      const missingRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 10)!;
+      expect(missingRecord.missing).toEqual([{ trackId: getEfxPaintDocument(FLAT_LAYER)!.background.id, frame: 10, missingRefs: ['asset-missing'] }]);
+      expect(missingRecord.renderedFrame.dataUrl).not.toContain('draw(');
+    });
+
+    it('CONSERVATIVE DURING DECODE: a frame requested while an asset decode is pending resolves conservatively and re-renders on decode completion', async () => {
+      vi.stubGlobal('Image', DeferredFlatTestImage);
+      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+      const bgDataUrl = makeFrame(0, 0).dataUrl;
+      const registered = new Map<string, string>();
+      const ports = {
+        resolveAssetUrl: (ref: string) => (ref === 'bg-ref-1' ? 'efxasset://localhost/bg.png' : null),
+        decodeBytes: async (url: string) => (url === 'efxasset://localhost/bg.png' ? bgDataUrl : null),
+        register: (ref: string, dataUrl: string) => {
+          registered.set(ref, dataUrl);
+          registerBackgroundSourceImage(ref, dataUrl);
+        },
+      };
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-1'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+      await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, ports);
+      expect(registered.get('bg-ref-1')).toBe(bgDataUrl);
+
+      // The compositor decode is pending this tick → conservative null, never a
+      // crash; hydration never blocked document registration.
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)).toBeNull();
+      const pendingImage = DeferredFlatTestImage.instances[0];
+      expect(pendingImage).toBeDefined();
+      pendingImage.onload?.();
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
+      expect(record).not.toBeNull();
+      expect(record!.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
+      expect(record!.missing).toEqual([]);
+    });
+
+    it('SAVE DEDUP: hydration registration touches no document revision — two save projections of the same hydrated document produce an identical dedup fingerprint', async () => {
+      const registered = new Map<string, string>();
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+      const before = getEfxPaintDocument(FLAT_LAYER)!;
+      const beforeRevision = buildEfxPaintDocumentRevision(before);
+      await hydrateBackgroundSourceImages(before, hydrationPorts(registered));
+      expect(registered.has('asset-a')).toBe(true);
+
+      // Registration is runtime-only: the document record is untouched, so the
+      // save fingerprint (document revision + frame byte terms) is identical —
+      // no revision churn from hydration registration itself.
+      const after = getEfxPaintDocument(FLAT_LAYER)!;
+      expect(after).toBe(before);
+      expect(after.documentRevision).toBe(before.documentRevision);
+      expect(buildEfxPaintDocumentRevision(after)).toBe(beforeRevision);
+    });
     });
   });
 });
