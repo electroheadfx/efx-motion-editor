@@ -127,7 +127,11 @@ export function usePhysicsPaintBackgroundClipSectionController({
   const handleDelete = () => {
     if (!clip) return;
     // D-08: plain undoable delete — no confirmation dialog.
-    deleteClip(layerId, clip.id);
+    const result = deleteClip(layerId, clip.id);
+    // 49-06 (UAT): deleting the SELECTED clip must clear the selection so the
+    // Track section is reachable again (a stale selection id would otherwise
+    // blank the Track tab — the section renders null for a missing clip).
+    if (result.ok) selectedBackgroundClipId.value = null;
   };
 
   const filenames = clip

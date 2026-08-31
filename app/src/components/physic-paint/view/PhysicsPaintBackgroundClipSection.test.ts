@@ -216,17 +216,21 @@ describe('usePhysicsPaintBackgroundClipSectionController (49-06, S5 state machin
     expect(harness.render().isInfinite).toBe(false);
   });
 
-  it('deletes with no dialog and the section disappears on the resulting empty selection; Undo restores by reference', () => {
+  it('deletes with no dialog, clears the selection so the Track section is reachable, and Undo restores by reference on re-selection', () => {
     const harness = createHarness([makeClip()], 'clip-1');
     const controller = harness.render();
     controller.handleDelete();
     expect(harness.deleteClip).toHaveBeenCalledTimes(1);
     expect(harness.deleteClip).toHaveBeenCalledWith('layer-1', 'clip-1');
-    // The clip is gone from the document — the section renders nothing.
+    // The clip is gone AND the selection is cleared (49-06 UAT: the Track
+    // section must be reachable — a stale selected id would blank the tab).
     const afterDelete = harness.render();
     expect(afterDelete.clip).toBeUndefined();
-    // Undo restores the clip by reference (same id) — the section reappears.
+    expect(harness.selectionSignal.value).toBeNull();
+    // Undo restores the clip by reference (same id) — re-selecting brings the
+    // section back.
     harness.state.clips = [makeClip()];
+    harness.selectionSignal.value = 'clip-1';
     const afterUndo = harness.render();
     expect(afterUndo.clip?.id).toBe('clip-1');
   });

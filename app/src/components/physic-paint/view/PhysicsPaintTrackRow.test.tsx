@@ -266,6 +266,27 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(onSelectTrackFrame).toHaveBeenCalledWith(TRACK, 7);
   });
 
+  it('49-06 UAT: clicking an EMPTY Background row cell clears any selected Bg clip (Track section reachable)', () => {
+    const onDeselectBackgroundClip = vi.fn();
+    const tree = PhysicsPaintTrackRow({
+      trackId: 'bg-row',
+      layerId: LAYER,
+      frameCells: FRAME_CELLS,
+      kind: 'background',
+      onDeselectBackgroundClip,
+    }) as TestVNode;
+    const row = findAll(materialize(tree), (vnode) => hasClass(vnode, 'physics-paint-track-row'))[0];
+    const rowProps = row.props as { onClick: (event: MouseEvent) => void };
+    // A cell click deselects — the only Bg-row cell-click intent (never
+    // navigates/selects).
+    const cell = { dataset: { rotoAppFrame: '7' } };
+    rowProps.onClick({ target: { closest: () => cell }, stopPropagation: vi.fn() } as unknown as MouseEvent);
+    expect(onDeselectBackgroundClip).toHaveBeenCalledTimes(1);
+    // A non-cell click (rail overlay) does NOT deselect.
+    rowProps.onClick({ target: null, stopPropagation: vi.fn() } as unknown as MouseEvent);
+    expect(onDeselectBackgroundClip).toHaveBeenCalledTimes(1);
+  });
+
   it('fires the one-click rail selection intents with the rail identity (UAT round 5)', () => {
     // k0/k1 form an ordinary Key Rail; k2/k3 are the loop's source keys
     // (group-owned keys paint no ordinary rail line).

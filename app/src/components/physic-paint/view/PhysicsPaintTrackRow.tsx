@@ -105,6 +105,11 @@ export interface PhysicsPaintTrackRowProps {
   /** One-click rail selection on a non-active row: activates the track and
    *  selects the clicked Key Rail / Loop Clip rail in the same click. */
   readonly onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
+  /** 49-06 (UAT): clicking an EMPTY Background row cell clears any selected Bg
+   *  clip — the right-panel Track section must stay reachable (selection-driven
+   *  exclusivity). The Bg row never navigates/selects, so this is its only
+   *  cell-click intent. */
+  readonly onDeselectBackgroundClip?: () => void;
   /* ---- 49-05 (S4): the fixed Background row's clip rails ---- */
   /** The document's Background track — the Bg row renders its clips as rails. */
   readonly background?: BackgroundTrack | null;
@@ -338,7 +343,7 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
     >
       <button
         type="button"
-        class={`physics-paint-rail-target physics-paint-bg-clip-rail-target${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
+        class={`physics-paint-rail-target physics-paint-bg-clip-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
         aria-label={props.presentation.accessibleName}
         data-bg-clip-id={props.clipId}
         data-bg-clip-start={props.startFrame}
@@ -351,7 +356,11 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-bg-clip-rail-segment" aria-hidden="true" />
-        <span class="physics-paint-bg-clip-rail-badge" aria-hidden="true">{props.presentation.cycleLabel}</span>
+        {/* 49-06 (UAT): the rail badge is COMPACT — `× {N}` / `× ∞` (UI-SPEC
+            D-06). The verbose `Cycle {N}f × {R} = {T}f` facts live in the
+            tooltip only; the Phase 47 surface lock forbids product math text
+            on the lane. */}
+        <span class="physics-paint-bg-clip-rail-badge" aria-hidden="true">{props.presentation.compactBadge}</span>
       </button>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
@@ -385,6 +394,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onNavigateToFrame,
     onSelectTrackFrame,
     onSelectTrackRail,
+    onDeselectBackgroundClip,
     background = null,
     backgroundResolutionContext = null,
     backgroundClipDrag = null,
@@ -417,6 +427,13 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     const target = event.target as HTMLElement | null;
     const cell = target?.closest?.('[data-roto-app-frame]') as HTMLElement | null;
     const frame = cell ? Number(cell.dataset.rotoAppFrame) : NaN;
+    // 49-06 (UAT): the fixed Bg row's only cell-click intent — deselect. A rail
+    // click never reaches here (the rail target is not a [data-roto-app-frame]
+    // cell), so only EMPTY cells clear the selection.
+    if (kind === 'background' && Number.isInteger(frame)) {
+      onDeselectBackgroundClip?.();
+      return;
+    }
     if (onSelectTrackFrame && Number.isInteger(frame)) {
       onSelectTrackFrame(trackId, frame);
       return;

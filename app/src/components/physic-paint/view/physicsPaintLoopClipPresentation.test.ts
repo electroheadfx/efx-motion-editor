@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
+  projectPhysicsPaintBackgroundClipPresentation,
   projectPhysicsPaintGroupAcceptedFeedback,
   projectPhysicsPaintGroupProductReason,
   projectPhysicsPaintLoopClipPresentation,
@@ -318,5 +319,20 @@ describe('canonical accepted Group feedback copy', () => {
     expect(projectPhysicsPaintGroupAcceptedFeedback({
       operation: 'delete-action-and-groups', actionName: 'Walk Cycle', count: 2,
     })).toBe('Deleted Walk Cycle and 2 Groups.');
+  });
+});
+
+describe('Background clip rail presentation (49-06 UAT: compact badge)', () => {
+  it('carries the COMPACT `× {N}` / `× ∞` badge while the full facts stay in the tooltip', () => {
+    const finite = projectPhysicsPaintBackgroundClipPresentation(range({ repeat: 5, requestedEnd: 40 }));
+    expect(finite.compactBadge).toBe('× 5');
+    expect(finite.cycleLabel).toBe('Cycle 4f × 5 = 20f');
+    expect(finite.tooltipLines).toEqual([
+      'Background clip at F12',
+      'Cycle 4f × 5 = 20f',
+    ]);
+    const infinite = projectPhysicsPaintBackgroundClipPresentation(range({ repeat: 'infinity', requestedEnd: Infinity }));
+    expect(infinite.compactBadge).toBe('× ∞');
+    expect(infinite.cycleLabel).toBe('Cycle 4f × ∞');
   });
 });

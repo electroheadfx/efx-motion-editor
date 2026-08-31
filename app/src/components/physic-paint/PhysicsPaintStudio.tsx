@@ -5,7 +5,7 @@ import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopCli
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
   addBackgroundClip,
   addTrack,
@@ -3302,7 +3302,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
-      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onDeselectBackgroundClip: undefined,
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
@@ -3310,7 +3310,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
-      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onDeselectBackgroundClip: undefined,
     };
     return {
       layerId,
@@ -3320,7 +3320,13 @@ export function PhysicsPaintStudio() {
       onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
       onSelectTrackFrame: handleSelectTrackFrame,
       onSelectTrackRail: handleSelectTrackRail,
-      onSelectBackgroundClip: (clipId: string) => { selectedBackgroundClipId.value = clipId; },
+      // 49-06 (UAT): the mutual exclusion is selection-driven — the Track
+      // section must stay reachable, so a same-clip re-click TOGGLES the
+      // selection off (nothing else in the app can clear it).
+      onSelectBackgroundClip: (clipId: string) => {
+        selectedBackgroundClipId.value = selectedBackgroundClipId.value === clipId ? null : clipId;
+      },
+      onDeselectBackgroundClip: () => { selectedBackgroundClipId.value = null; },
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
       onToggleSolo: handleToggleSolo,
@@ -3450,6 +3456,14 @@ export function PhysicsPaintStudio() {
       }
       return;
     }
+    // 49-06 (UAT): the compositor only renders a clip once its source bytes are
+    // in the runtime registry (`_backgroundSourceImages` → knownSources) — the
+    // reopened-path hydration (49-02 BKG-09) is the SOLE production writer of
+    // that registry, and the freshly imported clip was never passed through it.
+    // Run it on the accepted document so the rail's cover frames resolve
+    // 'content' instead of 'missing' (the monitor paper fond symptom).
+    const accepted = getEfxPaintDocument(layerId);
+    if (accepted) void hydrateBackgroundSourceImagesFromLibrary(accepted);
     backgroundPicker.cancel();
   };
   const viewModel = usePhysicsPaintStudioViewModel({

@@ -3278,13 +3278,16 @@ button.destructive {
   position: absolute;
   inset: 4px 0 auto 0;
   height: 4px;
-  background: #6b7280;
+  /* 49-06 (UAT): the span must READ as a clip extent on the muted #3c3e40 row
+     (a visible neutral — purple/cyan-free per UI-SPEC S3) with the shared
+     #f8fafc boundary caps from the boundary-* classes on the rail target. */
+  background: #99a2b3;
   pointer-events: none;
 }
 
 .physics-paint-bg-clip-rail-target:hover:not(:disabled) .physics-paint-bg-clip-rail-segment,
 .physics-paint-bg-clip-rail-target:focus-visible:not(:disabled) .physics-paint-bg-clip-rail-segment {
-  background: #9ca3af;
+  background: #b7c0ce;
 }
 
 /* Shortened visual (D-12): the loop stops at the next clip / parent bound —

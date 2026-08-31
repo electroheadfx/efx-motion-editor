@@ -285,8 +285,13 @@ export function projectPhysicsPaintLoopClipGeometry(
  */
 export interface PhysicsPaintBackgroundClipPresentation {
   readonly clipId: string;
-  /** `Cycle {N}f × {R} = {T}f` / `Cycle {N}f × ∞` — the requested badge. */
+  /** `Cycle {N}f × {R} = {T}f` / `Cycle {N}f × ∞` — the requested badge
+   *  (tooltip + accessible name only, never the lane surface). */
   readonly cycleLabel: string;
+  /** `× {N}` / `× ∞` — the COMPACT rail badge (UI-SPEC D-06): the repeat
+   *  alone, because the Phase 47 surface lock forbids product math text on
+   *  the lane. Resolver facts only — never computed here (capsule-never-math). */
+  readonly compactBadge: string;
   /** True when a next clip (or the capacity bound) shortens the loop (D-12). */
   readonly shortened: boolean;
   /** True when the effective end lands mid-cycle rather than on a cycle boundary (D-21). */
@@ -305,6 +310,7 @@ export function projectPhysicsPaintBackgroundClipPresentation(
   const cycleLabel = range.repeat === 'infinity'
     ? `Cycle ${range.cycleLength}f × ∞`
     : `Cycle ${range.cycleLength}f × ${range.repeat} = ${range.cycleLength * range.repeat}f`;
+  const compactBadge = range.repeat === 'infinity' ? '× ∞' : `× ${range.repeat}`;
   const shortened = Boolean(range.truncated);
   const partialCycle = range.partialCycle;
   const shortenedLabel = shortened ? 'Loop shortened by next clip' : null;
@@ -319,6 +325,7 @@ export function projectPhysicsPaintBackgroundClipPresentation(
   return {
     clipId: range.loopId,
     cycleLabel,
+    compactBadge,
     shortened,
     partialCycle,
     shortenedLabel,
