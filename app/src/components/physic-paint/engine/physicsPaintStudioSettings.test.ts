@@ -82,6 +82,7 @@ describe('Physics Paint Studio settings', () => {
 
     const first = setBackgroundFallback(layerId, fallback);
     expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('expected ok');
     expect(first.descriptor).not.toBeNull();
     const revisionAfterFirst = getDocument(layerId)!.documentRevision;
     expect(revisionAfterFirst).toBe(document.documentRevision + 1);
@@ -90,6 +91,7 @@ describe('Physics Paint Studio settings', () => {
     // Same-mode dispatch → revision-stable no-op (the 1552-1569 lesson).
     const second = setBackgroundFallback(layerId, fallback);
     expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error('expected ok');
     expect(second.descriptor).toBeNull();
     expect(getDocument(layerId)!.documentRevision).toBe(revisionAfterFirst);
     expect(dirty).toHaveBeenCalledTimes(1);
@@ -99,12 +101,13 @@ describe('Physics Paint Studio settings', () => {
     const settings = makeInitialPhysicsPaintStudioSettings();
     const modes: readonly BackgroundSelectorMode[] = ['transparent', 'white', 'canvas1', 'canvas2', 'canvas3'];
     const mapped = modes.map((mode) => backgroundModeToFallback(mode, settings));
-    // Exactly the fixed five selector modes, none of them 'photo'.
+    // Exactly the fixed five selector modes — the union type excludes 'photo'
+    // (BackgroundSelectorMode), and the runtime records stay within the five.
     expect(mapped).toHaveLength(5);
-    expect(mapped.every((fallback) => fallback.mode !== 'photo')).toBe(true);
-    // The reflection never yields 'photo' either.
-    expect(reflectFallbackToBackgroundMode({ mode: 'transparent' })).not.toBe('photo');
-    expect(reflectFallbackToBackgroundMode({ mode: 'solid', color: '#ffffff' })).not.toBe('photo');
-    expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0 })).not.toBe('photo');
+    expect(mapped.map((fallback) => fallback.mode)).toEqual(['transparent', 'solid', 'paper', 'paper', 'paper']);
+    // The reflection never yields 'photo' either (typed out of the union).
+    expect(reflectFallbackToBackgroundMode({ mode: 'transparent' }) as string).not.toBe('photo');
+    expect(reflectFallbackToBackgroundMode({ mode: 'solid', color: '#ffffff' }) as string).not.toBe('photo');
+    expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0 }) as string).not.toBe('photo');
   });
 });
