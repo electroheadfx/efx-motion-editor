@@ -268,13 +268,24 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // the track's Key Rail graphic line.
     expect(cssRule('.physics-paint-bg-clip-rail-line {')).toContain('cursor: grab');
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('height: 4px');
+    // 49-06 (UAT round 6): the line sits 4px into the 8px band — the SAME
+    // position as the track Key Rail segment, so the freed 4px reads as the
+    // gap between stacked Bg clips.
+    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('inset: 4px 0 auto 0');
     // The START/END markers are the resize handles (ew-resize cursor) — the
     // element IS the 2px x 4px #f8fafc cap (the track's shared boundary cap,
-    // no extra rectangle), anchored to the line's outer edges.
+    // no extra rectangle), anchored to the line's outer edges at the same
+    // 4px-into-the-band position as the track cap.
     expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('cursor: ew-resize');
     expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('top: 4px');
     expect(cssRule('.physics-paint-bg-clip-rail-marker-start {')).toContain('left: 0');
     expect(cssRule('.physics-paint-bg-clip-rail-marker-end {')).toContain('right: 0');
+    // 49-06 (UAT round 6): the clip's START/END full-height #f8fafc cell edges —
+    // the same boundary-cell treatment as the track Key Rail, so two adjacent
+    // Bg clips stay as distinguishable as two track rails.
+    expect(cssRule('.physics-paint-bg-clip-cells::before {')).toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-bg-clip-cells::after {')).toContain('background: #f8fafc');
   });
 
   it('keeps the rails one-click selectable and the background row rail-free', () => {

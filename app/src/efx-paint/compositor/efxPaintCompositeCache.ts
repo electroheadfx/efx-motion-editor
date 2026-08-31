@@ -81,6 +81,17 @@ export interface EfxPaintFlattenedCacheKeyInput {
    * byte-identical (the 48-01/48-04 contract).
    */
   readonly includeFond?: boolean;
+  /**
+   * 49-06 (UAT round 6): the runtime background source-bytes state for the
+   * document's clips (store-side, `ref:length:prefix` per ref, `missing` when
+   * unregistered). The clip terms alone don't cover runtime bytes — a source
+   * that arrives AFTER the first composite changes the composite content but
+   * not the document, so without this term the flattened key stays stable and
+   * the monitor's compare-then-draw guard skips the redraw (the paper-fond
+   * symptom). Emitted ONLY when non-empty so keys for clip-less documents stay
+   * byte-identical.
+   */
+  readonly backgroundSourceRevision?: string;
 }
 
 /**
@@ -139,6 +150,9 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     // 48-06 (UAT-C): emitted ONLY when the caller wants the fond-less
     // composite (the Studio monitor) — with-fond keys stay byte-identical.
     ...(input.includeFond === false ? ['fond:0'] : []),
+    // 49-06 (UAT round 6): emitted ONLY when the document has background clips
+    // with runtime source bytes — clip-less documents keep byte-identical keys.
+    ...(input.backgroundSourceRevision ? [`bgsrc:${encodeCanonicalString(input.backgroundSourceRevision)}`] : []),
     `frame:${encodeCanonicalNumber(frame)}`,
   ].join('');
 

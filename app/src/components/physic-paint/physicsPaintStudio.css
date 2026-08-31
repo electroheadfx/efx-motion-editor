@@ -3294,6 +3294,32 @@ button.destructive {
   box-shadow: inset 1px 0 0 0 rgba(0, 0, 0, 0.28);
 }
 
+/* 49-06 (UAT round 6): the clip's START/END full-height cell edges — the SAME
+   #f8fafc 1px edge the track Key Rail draws via boundary-cell-start/end. Two
+   adjacent Bg clips each carry their own edges, so the boundary between them
+   reads as clearly as between two track rails. */
+.physics-paint-bg-clip-cells::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: #f8fafc;
+  pointer-events: none;
+}
+
+.physics-paint-bg-clip-cells::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  background: #f8fafc;
+  pointer-events: none;
+}
+
 /* 49-06 (UAT round 4): the rail LINE — exactly like the track's Key Rail
    graphic line (a 4px segment in the 8px band). The element is the whole-rail
    MOVE handle (full 8px band hit area, grab cursor); the visual segment is the
@@ -3312,7 +3338,12 @@ button.destructive {
 .physics-paint-bg-clip-rail-line::before {
   content: '';
   position: absolute;
-  inset: 2px 0 auto 0;
+  /* 49-06 (UAT round 6): the line sits 4px into the 8px band — EXACTLY the
+     track Key Rail's segment position (physics-paint-key-rail-segment). The
+     freed 4px at the band's top reads as the vertical gap between stacked
+     tracks, so two adjacent Bg clips stay as distinguishable as two track
+     rails. */
+  inset: 4px 0 auto 0;
   height: 4px;
   background: #4a7eac;
   pointer-events: none;
@@ -3332,7 +3363,11 @@ button.destructive {
    a transparent 7px hit strip so the ew-resize grab stays usable. */
 .physics-paint-bg-clip-rail-marker {
   position: absolute;
-  top: 2px;
+  /* 49-06 (UAT round 6): the cap sits at the SAME 4px-into-the-band position
+     as the track Key Rail's boundary cap (the segment's ::before/::after at
+     top: 0 of a 4px-into-the-band segment) — the marker IS the shared rail
+     boundary cap, no extra rectangle. */
+  top: 4px;
   width: 2px;
   height: 4px;
   background: #f8fafc;

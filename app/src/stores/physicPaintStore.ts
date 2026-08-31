@@ -1551,6 +1551,27 @@ export type RotoTrackClearResult =
 const EMPTY_EXCLUDED_TRACKS: ReadonlySet<string> = new Set();
 
 /**
+ * 49-06 (UAT round 6): the runtime background source-bytes state for ONE
+ * document — `ref:length:prefix` per distinct ref (sorted), `missing` when the
+ * ref has no registered bytes. The flattened key's clip terms don't cover
+ * runtime bytes, so a source that arrives AFTER the first composite would leave
+ * the key stable and the monitor's compare-then-draw guard would skip the
+ * redraw (the paper-fond symptom). This term rotates the key exactly when a
+ * ref's bytes change. Per-document (only the refs this document's clips use),
+ * so registering a source for another layer never churns this layer's cache.
+ */
+function _backgroundSourceRevision(document: EfxPaintDocument): string {
+  const refs = new Set<string>();
+  for (const clip of document.background.clips) {
+    for (const ref of clip.sourceFrameRefs) refs.add(ref);
+  }
+  return [...refs].sort().map((ref) => {
+    const dataUrl = _backgroundSourceImages.get(ref);
+    return dataUrl === undefined ? `${ref}:missing` : `${ref}:${dataUrl.length}:${dataUrl.slice(0, 64)}`;
+  }).join('|');
+}
+
+/**
  * 48-03 D-11/CMP-01 + 48-05 D-05: one flattened straight-alpha raster per
  * (layerId, frame) over the participating set EXCLUDING `excludeTrackIds`
  * (empty set = the full participating set). Guard-first; on success the
@@ -1587,6 +1608,7 @@ function _resolveFlattenedFrame(
     document: efxDocument,
     trackContentRevisions,
     backgroundClipRevisions,
+    backgroundSourceRevision: _backgroundSourceRevision(efxDocument),
     frame,
     excludeTrackIds: excludeTrackIds.size > 0 ? [...excludeTrackIds].sort() : undefined,
     includeFond,

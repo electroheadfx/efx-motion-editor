@@ -389,4 +389,43 @@ describe('CMP-04 invalidation matrix — key-level rows (48-04 Task 2)', () => {
     });
     expect(keyBumped).toBe(keyBase);
   });
+
+  it('row 6 — background source bytes: a runtime source revision rotates the key (49-06 UAT round 6)', () => {
+    const doc = makeDocument(
+      [makeTrack('track-a')],
+      { clips: [makeClip({ sourceFrameRefs: Object.freeze(['ref-1']) })] },
+    );
+    const base = {
+      document: doc,
+      trackContentRevisions: contentRevisions([['track-a', 'rev-a']]),
+      backgroundClipRevisions: ['clip-1:0'] as string[],
+      frame: 0,
+    };
+    const keyNoBytes = deriveEfxPaintFlattenedCacheKey(base);
+    // A clip-less document emits no bgsrc term — byte-identical to the pre-49-06 key.
+    const clipLess = makeDocument([makeTrack('track-a')]);
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: clipLess, backgroundClipRevisions: [] })).toBe(
+      deriveEfxPaintFlattenedCacheKey({ ...base, document: clipLess, backgroundClipRevisions: [] }),
+    );
+    // Bytes arriving for a ref (missing → registered) MUST rotate the key — the
+    // composite content changes while the document does not.
+    const keyRegistered = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      backgroundSourceRevision: 'ref-1:12345:data:image/png;base64,iVBORw0KGgoAAAANSUhEUg',
+    });
+    expect(keyRegistered).not.toBe(keyNoBytes);
+    // A different dataUrl for the same ref also rotates the key.
+    const keyOtherBytes = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      backgroundSourceRevision: 'ref-1:99999:data:image/png;base64,AAAA',
+    });
+    expect(keyOtherBytes).not.toBe(keyRegistered);
+    // The same revision is stable.
+    expect(
+      deriveEfxPaintFlattenedCacheKey({
+        ...base,
+        backgroundSourceRevision: 'ref-1:12345:data:image/png;base64,iVBORw0KGgoAAAANSUhEUg',
+      }),
+    ).toBe(keyRegistered);
+  });
 });

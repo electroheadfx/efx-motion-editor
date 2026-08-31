@@ -9,7 +9,7 @@ import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicP
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument, FrameLoopClip, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPaintCompositeCache';
 import { resetProjectPaperRasterForTests } from '../lib/projectPaperRaster';
@@ -1876,6 +1876,34 @@ describe('physicPaintStore', () => {
         frame: 5,
       });
       expect(hiddenRecord.cacheKey).toBe(expectedKey);
+    });
+
+    it('RED 4b background source bytes rotate the flattened key (49-06 UAT round 6)', () => {
+      const bgRef = 'bg-ref-1';
+      const bgDataUrl = makeFrame(2, 5).dataUrl;
+      const clip: FrameLoopClip = {
+        id: 'bg-clip-1',
+        startFrame: 0,
+        sourceFrameRefs: Object.freeze([bgRef]),
+        repeat: { mode: 'finite', count: 1 },
+        sourceKind: 'imported-background',
+        revision: 0,
+      };
+      registerDocument(flatDocument([flatTrack('track-a')], { id: 'background-1', clips: [clip] }));
+
+      // Before the source bytes arrive the background resolves 'missing' — the
+      // composite still returns a record (D-09 report), keyed WITHOUT the bytes.
+      const before = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      expect(before.missing).toContainEqual({ trackId: 'background-1', frame: 0, missingRefs: [bgRef] });
+
+      // Bytes arriving MUST rotate the flattened key — the composite content
+      // changes while the document does not, so the monitor's compare-then-draw
+      // guard (cacheKey-based) must see a new key and redraw the background.
+      registerBackgroundSourceImage(bgRef, bgDataUrl);
+      const after = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      expect(after.cacheKey).not.toBe(before.cacheKey);
+      expect(after.missing).not.toContainEqual({ trackId: 'background-1', frame: 0, missingRefs: [bgRef] });
+      expect(after.renderedFrame.dataUrl).toContain(bgDataUrl);
     });
 
     it('RED 5 missing content renders transparent + a report and never contributes pixels', () => {
