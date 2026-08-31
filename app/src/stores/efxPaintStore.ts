@@ -549,6 +549,7 @@ export type BackgroundEditOperationKind =
   | 'add-background-clip'
   | 'move-background-clip'
   | 'set-background-clip-repeat'
+  | 'resize-background-clip'
   | 'delete-background-clip'
   | 'set-background-fallback';
 
@@ -784,6 +785,59 @@ export function setBackgroundClipRepeat(
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'set-background-clip-repeat',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Resize one Background Loop Clip's START edge (49-06 UAT round 3): the new
+ * start frame AND the repeat that keeps the clip's END fixed are committed in
+ * ONE atomic document mutation with a single verdict — the strip derives the
+ * repeat from the resolver's cycle length (capsule-never-math: the store never
+ * computes loop math, it applies the caller's repeat). The collision verdict
+ * excludes the resized clip's own extent and rejects only when the new start
+ * lands strictly inside another clip. A same-value write is a revision-stable
+ * no-op (BKG-09).
+ */
+export function resizeBackgroundClip(
+  layerId: string,
+  clipId: string,
+  startFrame: number,
+  repeat: FrameLoopClipRepeat,
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!document.background.clips.some((candidate) => candidate.id === clipId)) {
+    return { ok: false, reason: 'clip-not-found' };
+  }
+  if (!_isValidRepeat(repeat)) return { ok: false, reason: 'invalid-repeat' };
+  const verdict = _backgroundCollisionVerdict(document.background, startFrame, clipId);
+  if (!verdict.ok) return verdict;
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: _sortClipsByStartFrame(
+        document.background.clips.map((clip) =>
+          clip.id === clipId ? { ...clip, startFrame, repeat } : clip,
+        ),
+      ),
+    },
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, clipId, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'resize-background-clip',
       before: document,
       after: next,
     },

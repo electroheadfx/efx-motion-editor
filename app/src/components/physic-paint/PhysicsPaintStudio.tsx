@@ -3500,7 +3500,19 @@ export function PhysicsPaintStudio() {
     // Run it on the accepted document so the rail's cover frames resolve
     // 'content' instead of 'missing' (the monitor paper fond symptom).
     const accepted = getEfxPaintDocument(layerId);
-    if (accepted) void hydrateBackgroundSourceImagesFromLibrary(accepted);
+    if (accepted) {
+      // 49-06 (UAT round 3): resolve the confirmed refs from the picker's OWN
+      // image list as a fallback — the launch-time library load can miss a
+      // freshly imported image (it only reaches the Studio realm's imageStore
+      // on the next launch), and the picker's merged list is authoritative for
+      // exactly the ids being confirmed.
+      const pickerImages = backgroundPicker.images.peek();
+      const pickerDir = backgroundPicker.projectDir.peek();
+      void hydrateBackgroundSourceImagesFromLibrary(
+        accepted,
+        pickerDir ? { images: pickerImages, projectDir: pickerDir } : undefined,
+      );
+    }
     // The placement marker is consumed — a stale target would collide with the
     // just-created clip on the next import.
     backgroundPlacementFrame.value = null;

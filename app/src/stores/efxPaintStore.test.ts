@@ -36,6 +36,7 @@ import {
   renameTrack,
   reorderTrack,
   reset,
+  resizeBackgroundClip,
   serializeRuntimeIntoDocument,
   setBackgroundClipRepeat,
   setBackgroundFallback,
@@ -830,6 +831,51 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     expect(getDocument(layerId)).toBe(before);
   });
 
+  it('resizeBackgroundClip moves the start AND sets the repeat so the END stays fixed (49-06 UAT round 3)', () => {
+    const layerId = 'layer-bg';
+    // 2 source frames × repeat 3 → natural extent [0, 6).
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 3 });
+    registerBackgroundDocument(layerId, [clipA]);
+
+    // The strip derives the repeat from the resolver's cycle length: newStart 2,
+    // endFrame 6 → duration 4 → count ceil(4/2) = 2 → extent [2, 6). The END
+    // stays at 6 — a plain move would have shifted the whole clip.
+    const resized = resizeBackgroundClip(layerId, 'clip-a', 2, { mode: 'finite', count: 2 });
+    expect(resized.ok).toBe(true);
+    const doc = getDocument(layerId)!;
+    const clip = doc.background.clips.find((candidate) => candidate.id === 'clip-a')!;
+    expect(clip.startFrame).toBe(2);
+    expect(clip.repeat).toEqual({ mode: 'finite', count: 2 });
+    const context = deriveEfxPaintBackgroundResolution(doc.background, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+    const range = context.ranges.find((candidate) => candidate.loopId === 'clip-a')!;
+    expect(range.effectiveEnd).toBe(6);
+  });
+
+  it('resizeBackgroundClip rejects a start landing strictly inside another clip', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 }); // [0, 2)
+    const clipB = makeClip('clip-b', 10, refs('b', 2), { mode: 'finite', count: 1 }); // [10, 12)
+    registerBackgroundDocument(layerId, [clipA, clipB]);
+
+    expect(resizeBackgroundClip(layerId, 'clip-a', 10, { mode: 'finite', count: 1 })).toEqual({ ok: false, reason: 'start-collision' });
+    expect(resizeBackgroundClip(layerId, 'clip-a', 11, { mode: 'finite', count: 1 })).toEqual({ ok: false, reason: 'start-collision' });
+    // The exclusive end of clip-b is a valid landing.
+    expect(resizeBackgroundClip(layerId, 'clip-a', 12, { mode: 'finite', count: 1 }).ok).toBe(true);
+  });
+
+  it('resizeBackgroundClip rejects an invalid repeat and is a no-op when nothing changes', () => {
+    const layerId = 'layer-bg';
+    const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 2 });
+    registerBackgroundDocument(layerId, [clipA]);
+
+    expect(resizeBackgroundClip(layerId, 'clip-a', 2, { mode: 'finite', count: 0 })).toEqual({ ok: false, reason: 'invalid-repeat' });
+    const before = getDocument(layerId)!;
+    const noOp = resizeBackgroundClip(layerId, 'clip-a', 0, { mode: 'finite', count: 2 });
+    expect(noOp.ok).toBe(true);
+    expect((noOp as OkBackgroundClipResult).descriptor).toBeNull();
+    expect(getDocument(layerId)).toBe(before);
+  });
+
   it('setBackgroundFallback updates the fallback and round-trips every mode', () => {
     const layerId = 'layer-bg';
     registerBackgroundDocument(layerId, []);
@@ -841,7 +887,7 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.5 });
   });
 
-  it('undo: every op emits an acceptance descriptor; record → undo → redo restores exact state for all five kinds (BKG-08)', () => {
+  it('undo: every op emits an acceptance descriptor; record → undo → redo restores exact state for all six kinds (BKG-08)', () => {
     const layerId = 'layer-bg';
     const clipA = makeClip('clip-a', 0, refs('a', 2), { mode: 'finite', count: 1 });
     const clipB = makeClip('clip-b', 10, refs('b', 2), { mode: 'finite', count: 1 });
@@ -864,6 +910,12 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     const repeatResult = setBackgroundClipRepeat(layerId, 'clip-a', { mode: 'finite', count: 4 });
     expect(repeatResult.ok).toBe(true);
     assertUndoRedo(layerId, (repeatResult as OkBackgroundClipResult).descriptor!, preRepeat);
+
+    // 3b. resize — the start AND repeat change in one atomic op
+    const preResize = getDocument(layerId)!;
+    const resizeResult = resizeBackgroundClip(layerId, 'clip-a', 2, { mode: 'finite', count: 3 });
+    expect(resizeResult.ok).toBe(true);
+    assertUndoRedo(layerId, (resizeResult as OkBackgroundClipResult).descriptor!, preResize);
 
     // 4. delete — the deleted clip returns with its original id/refs/repeat
     const preDelete = getDocument(layerId)!;

@@ -124,6 +124,7 @@ import {
   MAX_TRACK_NAME_LENGTH,
   moveBackgroundClip,
   requestDeleteTrack,
+  resizeBackgroundClip,
   setBackgroundClipRepeat,
   TRACK_NAME_CONTROL_CHAR,
   type TrackDeletePreview,
@@ -2168,10 +2169,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onCancel: () => { backgroundDragSourceRef.current = null; },
   });
   // 49-06 (UAT round 2): the Bg clip RESIZE gesture — the FIRST and LAST cells
-  // of each clip are resize handles. The start edge commits through
-  // moveBackgroundClip; the end edge commits through setBackgroundClipRepeat
-  // with the repeat that makes the requested end reach the dragged frame (the
-  // resolver's cycle length is the only math — capsule-never-math).
+  // of each clip carry resize handles. The start edge commits through
+  // resizeBackgroundClip (new start + the repeat that keeps the END fixed);
+  // the end edge commits through setBackgroundClipRepeat with the repeat that
+  // makes the requested end reach the dragged frame (the resolver's cycle
+  // length is the only math — capsule-never-math).
   const backgroundResizeSourceRef = useRef<{
     clipId: string; edge: 'start' | 'end'; startFrame: number; endFrame: number; cycleLength: number;
   } | null>(null);
@@ -2229,11 +2231,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     },
     onDropCommit: (publication) => {
       if (!props.layerId) return { ok: false, reason: 'clip-not-found' };
-      if (publication.edge === 'start') {
-        return moveBackgroundClip(props.layerId, publication.clipId, publication.frame);
-      }
       const source = backgroundResizeSourceRef.current;
       if (!source) return { ok: false, reason: 'clip-not-found' };
+      if (publication.edge === 'start') {
+        // 49-06 (UAT round 3): the START edge keeps the clip's END fixed — the
+        // new start moves AND the repeat shrinks so the effective end stays at
+        // the dragged-from frame. A plain moveBackgroundClip would shift the
+        // whole clip (the "left frame drags the whole rail" symptom). The repeat
+        // derives from the resolver's cycle length (capsule-never-math).
+        const newDuration = Math.max(1, source.endFrame - publication.frame);
+        const count = Math.max(1, Math.ceil(newDuration / source.cycleLength));
+        return resizeBackgroundClip(props.layerId, publication.clipId, publication.frame, { mode: 'finite', count });
+      }
       const duration = Math.max(1, publication.frame - source.startFrame);
       const count = Math.max(1, Math.ceil(duration / source.cycleLength));
       return setBackgroundClipRepeat(props.layerId, publication.clipId, { mode: 'finite', count });

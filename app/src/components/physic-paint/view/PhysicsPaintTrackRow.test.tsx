@@ -259,6 +259,20 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(dot[0].props.class)).toContain('unavailable');
   });
 
+  it('49-06 UAT round 3: the Bg cells carry vertical separators and the resize handles signal ew-resize', () => {
+    // The separator is an inset line on every cell except the first — the
+    // group-of-cells read (box-shadow, never border, so the flex box model
+    // stays intact).
+    expect(cssRule('.physics-paint-bg-clip-cell:not(.physics-paint-bg-clip-cell-first) {')).toContain('box-shadow: inset 1px 0 0 0 rgba(0, 0, 0, 0.28)');
+    // Every cell is a whole-rail move handle (grab cursor).
+    expect(cssRule('.physics-paint-bg-clip-cell {')).toContain('cursor: grab');
+    // The first/last resize sub-handles are narrow strips with the ew-resize
+    // cursor, anchored to the outer edges.
+    expect(cssRule('.physics-paint-bg-clip-cell-resize-handle {')).toContain('cursor: ew-resize');
+    expect(cssRule('.physics-paint-bg-clip-cell-resize-handle-start {')).toContain('left: 0');
+    expect(cssRule('.physics-paint-bg-clip-cell-resize-handle-end {')).toContain('right: 0');
+  });
+
   it('keeps the rails one-click selectable and the background row rail-free', () => {
     // UAT round 5: the band is clickable (select rail + activate track) with
     // the select cursor; cells carry the select cursor too.
@@ -351,6 +365,61 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     const marker = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-placement-target'));
     expect(marker).toHaveLength(1);
     expect(marker[0].props['data-roto-app-frame']).toBe(7);
+  });
+
+  it('49-06 UAT round 3: every Bg cell is a whole-rail move handle and the first/last carry resize sub-handles', () => {
+    const background: BackgroundTrack = {
+      id: 'bg-track',
+      clips: [{
+        id: 'bg-clip-1',
+        startFrame: 2,
+        sourceFrameRefs: ['k0'],
+        repeat: { mode: 'finite', count: 2 },
+        sourceKind: 'imported-background',
+        revision: 1,
+      }],
+      fallback: { mode: 'transparent' },
+      visible: true,
+      revision: 1,
+    };
+    const onMovePointerDown = vi.fn();
+    const onResizePointerDown = vi.fn();
+    const tree = render({
+      trackId: 'bg-row',
+      kind: 'background',
+      background,
+      backgroundResolutionContext: deriveEfxPaintBackgroundResolution(background, CAPACITY),
+      backgroundClipDrag: {
+        onPointerDown: onMovePointerDown,
+        ghost: { active: false, left: 0, width: 0, blockedEdge: null },
+        preview: null,
+        consumeClickSuppression: () => false,
+      },
+      backgroundClipResize: {
+        onPointerDown: onResizePointerDown,
+        ghost: { active: false, left: 0, width: 0, blockedEdge: null },
+        consumeClickSuppression: () => false,
+      },
+    });
+    const cells = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell'));
+    expect(cells.length).toBeGreaterThan(0);
+    // EVERY cell binds the whole-rail MOVE gesture.
+    for (const cell of cells) {
+      expect(typeof (cell.props as { onPointerDown?: unknown }).onPointerDown).toBe('function');
+    }
+    // The FIRST and LAST cells carry a resize sub-handle with the edge attribute.
+    const handles = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell-resize-handle'));
+    expect(handles).toHaveLength(2);
+    const startHandle = handles.find((h) => hasClass(h, 'physics-paint-bg-clip-cell-resize-handle-start'))!;
+    const endHandle = handles.find((h) => hasClass(h, 'physics-paint-bg-clip-cell-resize-handle-end'))!;
+    expect(startHandle.props['data-bg-clip-edge']).toBe('start');
+    expect(endHandle.props['data-bg-clip-edge']).toBe('end');
+    // The handle's pointer-down stops propagation and routes to the resize hook.
+    const startEvent = { stopPropagation: vi.fn() };
+    (startHandle.props as { onPointerDown: (event: unknown) => void }).onPointerDown(startEvent);
+    expect(startEvent.stopPropagation).toHaveBeenCalled();
+    expect(onResizePointerDown).toHaveBeenCalledTimes(1);
+    expect(onMovePointerDown).not.toHaveBeenCalled();
   });
 
   it('fires the one-click rail selection intents with the rail identity (UAT round 5)', () => {

@@ -343,12 +343,14 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
 /**
  * One Bg clip as a GROUP OF CELLS on the fixed Bg row (49-06 UAT round 2): each
  * frame of the clip's extent is an individual filled cell (like Paint track
- * cells), so the user can push the FIRST and LAST cells to resize the clip's
- * start/end. The Phase 47 surface lock forbids ANY text on the lane — repeat
- * facts live in the right panel and the tooltip. The cells carry
- * `data-bg-clip-id` / `data-bg-clip-start` (and `data-bg-clip-edge` on the
- * first/last) so the strip's drag/resize hooks resolve the source from the
- * pressed element; pointer-down hands the gesture to the row-local hooks
+ * cells). 49-06 UAT round 3: EVERY cell is a whole-rail MOVE handle (drag
+ * anywhere to move the clip — the rail-line move the cells replaced), and the
+ * FIRST/LAST cells carry a narrow RESIZE sub-handle at their outer edge (push
+ * to set the clip's start/end). The Phase 47 surface lock forbids ANY text on
+ * the lane — repeat facts live in the right panel and the tooltip. The cells
+ * carry `data-bg-clip-id` / `data-bg-clip-start`; the resize handles add
+ * `data-bg-clip-edge` — the strip's drag/resize hooks resolve the source from
+ * the pressed element; pointer-down hands the gesture to the row-local hooks
  * (row-fixed law — never the cross-track machinery).
  */
 function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipRailTargetProps) {
@@ -379,18 +381,45 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
               class={`physics-paint-bg-clip-cell${isFirst ? ' physics-paint-bg-clip-cell-first' : ''}${isLast ? ' physics-paint-bg-clip-cell-last' : ''}`}
               data-bg-clip-id={props.clipId}
               data-bg-clip-start={props.startFrame}
-              data-bg-clip-edge={isFirst ? 'start' : isLast ? 'end' : undefined}
               onPointerDown={(event) => {
-                // A drag/resize begins on this cell — never let the hover pill
-                // pop mid-gesture.
+                // 49-06 (UAT round 3): EVERY cell is a whole-rail MOVE handle —
+                // drag anywhere on the clip to move it (the rail-line move the
+                // cells replaced). The first/last cells carry a narrow RESIZE
+                // sub-handle at their outer edge that stops propagation and
+                // hands the gesture to the resize hook instead.
                 tooltip.hide();
-                const pointerEvent = event as unknown as PointerEvent;
-                if (isFirst || isLast) props.onResizePointerDown?.(pointerEvent);
-                else props.onMovePointerDown?.(pointerEvent);
+                props.onMovePointerDown?.(event as unknown as PointerEvent);
               }}
               onFocus={tooltip.onFocus}
               onBlur={tooltip.onBlur}
-            />
+            >
+              {isFirst ? (
+                <span
+                  class="physics-paint-bg-clip-cell-resize-handle physics-paint-bg-clip-cell-resize-handle-start"
+                  data-bg-clip-id={props.clipId}
+                  data-bg-clip-start={props.startFrame}
+                  data-bg-clip-edge="start"
+                  onPointerDown={(event) => {
+                    tooltip.hide();
+                    event.stopPropagation();
+                    props.onResizePointerDown?.(event as unknown as PointerEvent);
+                  }}
+                />
+              ) : null}
+              {isLast ? (
+                <span
+                  class="physics-paint-bg-clip-cell-resize-handle physics-paint-bg-clip-cell-resize-handle-end"
+                  data-bg-clip-id={props.clipId}
+                  data-bg-clip-start={props.startFrame}
+                  data-bg-clip-edge="end"
+                  onPointerDown={(event) => {
+                    tooltip.hide();
+                    event.stopPropagation();
+                    props.onResizePointerDown?.(event as unknown as PointerEvent);
+                  }}
+                />
+              ) : null}
+            </span>
           );
         })}
       </div>

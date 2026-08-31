@@ -35,6 +35,7 @@ import {
 } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import { backgroundParticipates, participatingPaintTracks } from '../efx-paint/compositor/efxPaintHideSolo';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { MceImageRef } from '../types/project';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
@@ -498,10 +499,27 @@ export async function hydrateBackgroundSourceImages(
  * guaranteed in every WebKit build (the clip stayed invisible: the hydration
  * silently skipped every ref). Load through an Image and rasterize to a dataUrl
  * (PNG) so the compositor's `_compositorDecode` decodes the same way.
+ *
+ * 49-06 (UAT round 3): the image MUST be fetched with `crossOrigin='anonymous'`
+ * — the efxasset:// origin is cross-origin to the page, so without CORS
+ * approval the canvas rasterization is tainted and `toDataURL()` throws (the
+ * catch resolves null and the hydration skips the ref). The Rust protocol
+ * handler answers every request with `Access-Control-Allow-Origin: *`, so the
+ * anonymous fetch is approved.
  */
 function _decodeEfxAssetBytes(url: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const image = new Image();
+    // 49-06 (UAT round 3): the efxasset:// origin differs from the page origin,
+    // so a canvas rasterization of the loaded image is TAINTED unless the image
+    // is fetched with CORS approval — without this, canvas.toDataURL() throws a
+    // SecurityError that the catch below swallows and the hydration silently
+    // skips every ref (the clip stayed invisible: always paper fond). The Rust
+    // protocol handler sends Access-Control-Allow-Origin: * on every response,
+    // so the anonymous fetch is approved. Display-only <img> (the picker grid)
+    // never needs this — which is why the user could select images while the
+    // clip never rendered.
+    image.crossOrigin = 'anonymous';
     image.onload = () => {
       try {
         const canvas = document.createElement('canvas');
@@ -523,12 +541,28 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
   });
 }
 
-/** Production ports: library asset id → efxasset:// URL → decoded bytes → registry. */
-export function hydrateBackgroundSourceImagesFromLibrary(document: EfxPaintDocument): Promise<void> {
+/**
+ * Production ports: library asset id → efxasset:// URL → decoded bytes →
+ * registry. `fallback` (49-06 UAT round 3) lets the import path resolve refs
+ * from the picker's OWN image list when the Studio realm's imageStore misses
+ * them — the launch-time library load can fail (main-webview listener not yet
+ * ready) while the picker's later request succeeds, and a freshly imported
+ * image is only in the picker's merged list until the next launch. The
+ * imageStore stays the primary resolver; the picker list is the fallback.
+ */
+export function hydrateBackgroundSourceImagesFromLibrary(
+  document: EfxPaintDocument,
+  fallback?: { images: readonly MceImageRef[]; projectDir: string },
+): Promise<void> {
   return hydrateBackgroundSourceImages(document, {
     resolveAssetUrl: (ref) => {
       const image = imageStore.getById(ref);
-      return image ? assetUrl(image.project_path) : null;
+      if (image) return assetUrl(image.project_path);
+      if (fallback) {
+        const pickerImage = fallback.images.find((candidate) => candidate.id === ref);
+        if (pickerImage) return assetUrl(`${fallback.projectDir}/${pickerImage.relative_path}`);
+      }
+      return null;
     },
     decodeBytes: _decodeEfxAssetBytes,
     register: registerBackgroundSourceImage,
