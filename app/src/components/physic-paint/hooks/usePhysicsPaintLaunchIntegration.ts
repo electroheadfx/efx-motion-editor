@@ -8,8 +8,8 @@ import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPrevi
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
-import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
+import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
 import { registerDocument } from '../../../stores/efxPaintStore';
 import { PHYSIC_PAINT_SESSION_DOCUMENT_KEY } from '../bridge/physicsPaintBridgeTransport';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
@@ -142,9 +142,13 @@ export function usePhysicsPaintLaunchIntegration(input: {
     // efxPaintStore so the session-file save path resolves the document.
     if (hydration.context.document) registerDocument(hydration.context.document);
     resetRotoSessionForLaunch(hydration.context);
+    // 49-04 (UAT fix): hydrate the Studio settings from the DOCUMENT FALLBACK
+    // (the single authority), not the carried per-track roto background — the
+    // selector must agree with the engine and monitor fond before the first
+    // click. The launch IS the document (D-03), so the fallback is carried.
     applyPhysicsPaintLaunchContext(hydration.context, input.state, (launch) => {
-      const background = getCarriedRotoPhysical(launch)?.background;
-      return background ? applyRotoBackgroundMetadataToSettings(background) : null;
+      const fallback = launch.document?.background?.fallback;
+      return fallback ? applyBackgroundFallbackToSettings(fallback) : null;
     });
     // 41-02 (D-01): hydrate the audio preview store from the launch section
     // through the strict newer-than revision funnel. Absent section = no audio.

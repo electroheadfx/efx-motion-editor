@@ -1149,7 +1149,7 @@ describe('localized render instrumentation', () => {
       expect(countOccurrences(engineLifecycle, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
     }
     expect(engineLifecycle).toContain('}, []);');
-    expect(engineLifecycle).toContain('}, [engine, getCarriedRotoPhysical(input.launchContext)?.background]);');
+    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.document?.background?.fallback]);');
   });
 
   it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and two Studio identity resolves', () => {

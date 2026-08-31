@@ -80,7 +80,7 @@ import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from
 import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
 import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
-import { backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
+import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
@@ -679,7 +679,15 @@ export function PhysicsPaintStudio() {
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
-  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
+  // 49-04 (UAT fix): the document fallback is the single authority on open —
+  // hydrate the selector mode (and the paper arm's grain controls) from it so
+  // the selector, engine, and monitor fond agree before the first click. The
+  // launch context carries the document (D-03), so the fallback is available at
+  // init time.
+  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => {
+    const fallback = launchContext?.document?.background?.fallback;
+    return fallback ? applyBackgroundFallbackToSettings(fallback) : makeInitialPhysicsPaintStudioSettings();
+  });
   const workflowMode = 'roto' as const;
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const handleSetRightPanelCollapsed = useCallback((collapsed: boolean) => {

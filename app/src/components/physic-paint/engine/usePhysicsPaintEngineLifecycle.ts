@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
-import { applyRotoBackgroundMetadataToEngine } from '../engine/physicsPaintStudioSettings';
-import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
+import { applyBackgroundFallbackToEngine } from '../engine/physicsPaintStudioSettings';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 
@@ -65,10 +64,13 @@ export function usePhysicsPaintEngineLifecycle(input: {
     };
   }, []);
 
+  // 49-04 (UAT fix): the engine bgMode hydrates from the DOCUMENT FALLBACK (the
+  // single authority), not the carried per-track roto background — the selector
+  // and engine must agree with the monitor fond before the first click.
   useEffect(() => {
-    const background = getCarriedRotoPhysical(input.launchContext)?.background;
-    if (engine && background) applyRotoBackgroundMetadataToEngine(engine, background);
-  }, [engine, getCarriedRotoPhysical(input.launchContext)?.background]);
+    const fallback = input.launchContext?.document?.background?.fallback;
+    if (engine && fallback) applyBackgroundFallbackToEngine(engine, fallback);
+  }, [engine, input.launchContext?.document?.background?.fallback]);
 
 
   useEffect(() => () => {

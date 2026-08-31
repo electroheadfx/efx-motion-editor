@@ -107,3 +107,47 @@ export function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, meta
   engine.setPaperGrain(metadata.paperGrain);
   engine.setEmbossStrength(metadata.grainStrength);
 }
+
+/**
+ * 49-04 (UAT fix): hydrate the Studio settings from the DOCUMENT FALLBACK as
+ * the single authority on open — the selector mode reflects the fallback arm
+ * (reflectFallbackToBackgroundMode) and the paper arm carries its grain
+ * controls. This is the open-time counterpart of the click-time write-through
+ * (backgroundModeToFallback + setBackgroundFallback): without it the selector
+ * and engine ran the old per-track persisted settings while the document
+ * fallback stayed transparent, so the monitor fond resolved null (black) until
+ * the first click of the session.
+ */
+export function applyBackgroundFallbackToSettings(fallback: BackgroundFallback): PhysicsPaintStudioSettings {
+  const initial = makeInitialPhysicsPaintStudioSettings();
+  const background = reflectFallbackToBackgroundMode(fallback);
+  if (fallback.mode === 'paper') {
+    return {
+      ...initial,
+      background,
+      paperGrain: fallback.paperGrain ? fallback.texture : '',
+      grainStrength: fallback.grainStrength,
+    };
+  }
+  return { ...initial, background };
+}
+
+/**
+ * 49-04 (UAT fix): apply the document fallback to the engine on open — the
+ * engine bgMode must match the selector mode (both reflect the fallback
+ * authority). Transparent → transparent, solid → the selector's only solid arm
+ * (White), paper → its texture with the grain controls.
+ */
+export function applyBackgroundFallbackToEngine(engine: EfxPaintEngine, fallback: BackgroundFallback): void {
+  if (fallback.mode === 'transparent') {
+    engine.setBgMode('transparent');
+    return;
+  }
+  if (fallback.mode === 'solid') {
+    engine.setBgMode('white');
+    return;
+  }
+  engine.setBgMode(fallback.texture);
+  engine.setPaperGrain(fallback.paperGrain ? fallback.texture : '');
+  engine.setEmbossStrength(fallback.grainStrength);
+}

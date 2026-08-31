@@ -8,6 +8,8 @@ import {
   setBackgroundFallback,
 } from '../../../stores/efxPaintStore';
 import {
+  applyBackgroundFallbackToEngine,
+  applyBackgroundFallbackToSettings,
   applyRotoBackgroundMetadataToEngine,
   applyRotoBackgroundMetadataToSettings,
   backgroundModeToFallback,
@@ -95,6 +97,38 @@ describe('Physics Paint Studio settings', () => {
     expect(second.descriptor).toBeNull();
     expect(getDocument(layerId)!.documentRevision).toBe(revisionAfterFirst);
     expect(dirty).toHaveBeenCalledTimes(1);
+  });
+
+  // 49-04 (UAT fix): the document fallback is the single authority on open —
+  // the selector mode AND the engine bgMode hydrate from it, so the selector,
+  // engine, and monitor fond agree before the first click.
+  it('49-04: hydrates the selector mode from the document fallback (transparent/solid/paper)', () => {
+    expect(applyBackgroundFallbackToSettings({ mode: 'transparent' })).toMatchObject({ background: 'transparent' });
+    expect(applyBackgroundFallbackToSettings({ mode: 'solid', color: '#ffffff' })).toMatchObject({ background: 'white' });
+    // The paper arm carries its grain controls (paperGrain boolean → texture name).
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.65 })).toMatchObject({ background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0.65 });
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0.35 })).toMatchObject({ background: 'canvas3', paperGrain: '', grainStrength: 0.35 });
+  });
+
+  it('49-04: applies the document fallback to the engine bgMode (transparent/solid/paper)', () => {
+    const engine = { setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn() };
+    applyBackgroundFallbackToEngine(engine as never, { mode: 'transparent' });
+    expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
+    applyBackgroundFallbackToEngine(engine as never, { mode: 'solid', color: '#ffffff' });
+    expect(engine.setBgMode).toHaveBeenLastCalledWith('white');
+    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45 });
+    expect(engine.setBgMode).toHaveBeenLastCalledWith('canvas1');
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas1');
+    expect(engine.setEmbossStrength).toHaveBeenLastCalledWith(0.45);
+  });
+
+  it('49-04: the fallback round-trip is stable — settings → fallback → settings', () => {
+    const settings = makeInitialPhysicsPaintStudioSettings();
+    for (const mode of ['transparent', 'white', 'canvas1', 'canvas2', 'canvas3'] as const) {
+      const fallback = backgroundModeToFallback(mode, settings);
+      const hydrated = applyBackgroundFallbackToSettings(fallback);
+      expect(hydrated.background).toBe(mode);
+    }
   });
 
   it('49-03 T4: the fallback surface carries no photo mode — the fixed 5-option map (D-11)', () => {
