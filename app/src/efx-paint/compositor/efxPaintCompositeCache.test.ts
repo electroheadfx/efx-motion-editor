@@ -185,6 +185,35 @@ describe('deriveEfxPaintFlattenedCacheKey — CMP-04 dependency coverage (D-08)'
     expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: solidDoc })).not.toBe(keyBase);
   });
 
+  it('49-03 T3: a fallback-mode change with EQUAL background.revision rotates the flattened key; identical documents yield identical keys', () => {
+    const doc = makeDocument([makeTrack('track-a')], { revision: 7 });
+    const revisions = contentRevisions([['track-a', 'rev-a']]);
+    const base = { document: doc, trackContentRevisions: revisions, backgroundClipRevisions: [] as string[], frame: 0 };
+    const keyBase = deriveEfxPaintFlattenedCacheKey(base);
+
+    // Same background.revision (7), different fallback mode → different key
+    // (a same-revision fallback-content change invalidates — BKG-09/CMP-04).
+    const paperDoc = makeDocument([makeTrack('track-a')], {
+      revision: 7,
+      fallback: { mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.18 },
+    });
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: paperDoc })).not.toBe(keyBase);
+
+    // Identical documents → identical keys (built from the same base so the
+    // fresh-UUID-per-call trap of createEfxPaintDocument cannot leak in).
+    const paperDoc2 = JSON.parse(JSON.stringify(paperDoc)) as EfxPaintDocument;
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: paperDoc2 })).toBe(
+      deriveEfxPaintFlattenedCacheKey({ ...base, document: paperDoc }),
+    );
+
+    // Structural gate (T-49-03-02): the flattened key carries a DEDICATED
+    // `fallback:` term built from the canonical encoder (single source — no
+    // second hand-written switch that can drift).
+    const source = readSource('src/efx-paint/compositor/efxPaintCompositeCache.ts');
+    expect(source).toContain('fallback:');
+    expect(source).toContain('encodeCanonicalBackgroundFallback');
+  });
+
   it('same inputs, different frame → different key (frame term)', () => {
     const doc = makeDocument([makeTrack('track-a')]);
     const revisions = contentRevisions([['track-a', 'rev-a']]);

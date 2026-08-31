@@ -1934,7 +1934,13 @@ describe('physicPaintStore', () => {
 
     it('RED 8 paper fond law: the per-track raster excludes paper; the fond draws once beneath the flattened composite', () => {
       const frameDataUrl = makeFrame(0, 5).dataUrl;
-      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      // 49-03 (D-11): the fond comes from the DOCUMENT fallback — the per-track
+      // roto background metadata walk is deleted. The seedRoto background option
+      // is kept to prove the fallback is authoritative even when metadata exists.
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+      }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
@@ -1952,10 +1958,14 @@ describe('physicPaintStore', () => {
     it('RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath', () => {
       const frameA = makeFrame(0, 5).dataUrl;
       const frameB = makeFrame(1, 5).dataUrl;
+      // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
         flatTrack('track-b', { order: 1 }),
-      ], { visible: false }));
+      ], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+      }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
@@ -1969,14 +1979,18 @@ describe('physicPaintStore', () => {
       const compositeCanvas = createdCanvases[0];
       expect(compositeCanvas.toDataURL()).toBe(`data:image/png;base64,clear|save|draw(${frameA},1,source-over)|restore|save|draw(${frameB},1,source-over)|restore`);
       // Exactly ONE fond fill beneath the composite, resolved from the
-      // lowest-order track's paper metadata.
+      // document fallback.
       expect(record.renderedFrame.dataUrl.match(/fill\(#f4efe3/g)?.length).toBe(1);
       expect(record.renderedFrame.dataUrl).toContain('draw(canvas,1,source-over)');
     });
 
     it('RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key', () => {
       const frameDataUrl = makeFrame(0, 5).dataUrl;
-      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+      }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
@@ -1994,6 +2008,68 @@ describe('physicPaintStore', () => {
       expect(noFond.cacheKey).not.toBe(withFond.cacheKey);
       // The missing report is identical either way (the fond never contributes).
       expect(noFond.missing).toEqual(withFond.missing);
+    });
+
+    // 49-03 Task 1 (D-11 consumption half): the document fallback is the SINGLE
+    // fond authority — the per-track roto background metadata walk is deleted.
+    it('49-03 T1: solid white fallback fills white regardless of per-track roto background metadata', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'solid', color: '#ffffff' },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      // The document fallback is the single fond authority: solid white fills
+      // beneath the composite even though the track carries canvas1 metadata.
+      expect(record.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ffffff,1,source-over)|draw(canvas,1,source-over)');
+    });
+
+    it('49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas2', paperGrain: false, grainStrength: 0 },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      // canvas2 paper draw beneath the composite (parity with the paper path
+      // produced today via metadata).
+      expect(record.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)');
+
+      // Transparent fallback → no fond instruction → the bare composite.
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'transparent' },
+      }));
+      const transparentRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(transparentRecord.renderedFrame.dataUrl).toBe(`data:image/png;base64,clear|save|draw(${frameDataUrl},1,source-over)|restore`);
+    });
+
+    it('49-03 T4: deleting a per-track roto background metadata entry no longer changes the fond instruction', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'solid', color: '#ffffff' },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+
+      const withMetadata = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(withMetadata.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ffffff,1,source-over)|draw(canvas,1,source-over)');
+
+      // Delete the metadata entry (re-seed with background: null) and force a
+      // recompute (fresh content revision) — the fond instruction is unchanged
+      // (the metadata walk is gone).
+      const frameDataUrl2 = makeFrame(1, 5).dataUrl;
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl2 }], { background: null });
+      const afterDelete = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      expect(afterDelete.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ffffff,1,source-over)|draw(canvas,1,source-over)');
     });
 
     it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', () => {
