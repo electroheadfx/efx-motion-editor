@@ -2118,13 +2118,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       return source;
     },
     // Row-fixed projection: horizontal pointer geometry only — vertical
-    // movement can never influence the landing frame (row-fixed law).
-    projectDestination: ({ clientX }) => {
+    // movement can never influence the landing frame (row-fixed law). Returns
+    // the DELTA in frames (current − grab), so the ghost starts at the rail's
+    // CURRENT position on pointerdown (delta 0) and moves by the cursor delta —
+    // the grab offset is never baked into the preview (49-06 UAT round 8: the
+    // ghost used to jump 3-4 frames right before the mouse moved).
+    projectDestination: ({ originClientX, clientX }) => {
       const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
       const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
-      return Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      const originFrame = Math.round((originClientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      const currentFrame = Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      return currentFrame - originFrame;
     },
-    clampDestination: (proposedDestination) => {
+    clampDestination: (proposedDelta) => {
       const source = backgroundDragSourceRef.current;
       const range = source && backgroundResolutionContext
         ? backgroundResolutionContext.ranges.find((candidate) => candidate.loopId === source.clipId)
@@ -2132,14 +2138,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       // The ghost width mirrors the clip's CURRENT effective extent (a resolver
       // fact) — never recomputed loop math (capsule-never-math).
       const durationFrames = range ? Math.max(1, range.effectiveEnd - range.phaseOrigin) : 1;
-      const destination = Math.max(0, Math.min(frameCells.length - 1, proposedDestination));
+      const startFrame = source?.startFrame ?? 0;
+      const requested = startFrame + proposedDelta;
+      const destination = Math.max(0, Math.min(frameCells.length - 1, requested));
       return {
         destination,
         left: destination * ROTO_CELL_WIDTH_PX,
         width: Math.max(ROTO_CELL_WIDTH_PX, durationFrames * ROTO_CELL_WIDTH_PX),
-        blockedEdge: destination === proposedDestination
+        blockedEdge: destination === requested
           ? null
-          : proposedDestination > destination ? 'right' : 'left',
+          : requested > destination ? 'right' : 'left',
       };
     },
     prepareAtDestination: (destination) => {
