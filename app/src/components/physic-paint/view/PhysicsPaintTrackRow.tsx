@@ -112,6 +112,9 @@ export interface PhysicsPaintTrackRowProps {
    *  Track section stays reachable. The Bg row never navigates/selects, so this
    *  is its only cell-click intent. */
   readonly onSelectBackgroundFrame?: (frame: number) => void;
+  /** 49-06 (UAT round 8): click-to-select a Bg clip — the whole rail's onClick
+   *  routes here (the right-panel Background Clip section consumes it). */
+  readonly onSelectBackgroundClip?: (clipId: string) => void;
   /** 49-06 (UAT round 2): the selected Bg clip id — the matching rail paints
    *  the orange selection treatment (same contract as the rest of the
    *  timeline). */
@@ -333,9 +336,16 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
    *  cells paint the orange selection treatment (timeline selection contract). */
   readonly selected: boolean;
+  /** 49-06 (UAT round 8): click-to-select — the whole rail's onClick routes
+   *  here (the track-rail pattern: the click owns selection, the gesture hooks
+   *  never select). */
+  readonly onSelect?: (clipId: string) => void;
+  /** 49-06 (UAT round 8): consumes the post-drag/post-resize click suppression
+   *  from the row-local hooks — a click that follows a real drag/resize is
+   *  swallowed so it never toggles selection (the track-rail pattern). */
+  readonly consumeClickSuppression?: () => boolean;
   /** 49-06 (UAT round 2): the row-local MOVE drag hook — the cells AND the
-   *  line bind it, so the whole rail is draggable and a sub-threshold release
-   *  selects the clip (the hook's onSelectClip — the single selection path). */
+   *  line bind it, so the whole rail is draggable. */
   readonly onMovePointerDown?: (event: PointerEvent) => void;
   /** 49-06 (UAT round 2): the row-local RESIZE drag hook — the FIRST and LAST
    *  cells bind it (push the edge to set the clip's start/end). */
@@ -360,6 +370,14 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const cellCount = Math.max(1, Math.round(props.width / ROW_CELL_WIDTH_PX));
+  // 49-06 (UAT round 8): the track-rail selection pattern — the click owns
+  // selection, and a click that follows a real drag/resize is swallowed by the
+  // hooks' consumeClickSuppression so it never toggles selection.
+  const handleClick = () => {
+    if (props.consumeClickSuppression?.()) return;
+    tooltip.hide();
+    props.onSelect?.(props.clipId);
+  };
   return (
     <span
       ref={anchorRef}
@@ -367,11 +385,11 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
       style={{ left: `${props.left}px`, width: `${props.width}px` }}
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
+      onClick={handleClick}
     >
       {/* The cells — the clip extent fill. The whole-rail MOVE handle: a
           pointerdown on any cell routes to the drag hook (same as the line),
-          so the entire rail is draggable and a sub-threshold release selects
-          the clip (the hook's onSelectClip — the single selection path). */}
+          so the entire rail is draggable. */}
       <div
         class={`physics-paint-bg-clip-cells${props.selected ? ' selected' : ''}${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
         role="group"
@@ -457,6 +475,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onSelectTrackFrame,
     onSelectTrackRail,
     onSelectBackgroundFrame,
+    onSelectBackgroundClip,
     selectedBackgroundClipId = null,
     backgroundPlacementFrame = null,
     background = null,
@@ -626,6 +645,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   left={geometry.left}
                   width={geometry.width}
                   selected={selectedBackgroundClipId === clip.id}
+                  onSelect={onSelectBackgroundClip}
+                  consumeClickSuppression={() => {
+                    if (backgroundClipDrag?.consumeClickSuppression()) return true;
+                    if (backgroundClipResize?.consumeClickSuppression()) return true;
+                    return false;
+                  }}
                   onMovePointerDown={backgroundClipDrag?.onPointerDown}
                   onResizePointerDown={backgroundClipResize?.onPointerDown}
                 />

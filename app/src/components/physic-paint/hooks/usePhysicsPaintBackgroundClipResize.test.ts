@@ -143,7 +143,6 @@ function createHarness(options: {
   })));
   const onDropCommit = vi.fn(options.onDropCommit ?? ((_publication: { clipId: string; edge: 'start' | 'end'; frame: number }) => ({ ok: true as const })));
   const onRejected = vi.fn();
-  const onSelectClip = vi.fn();
   const onCancel = vi.fn();
   const clearClickSequence = vi.fn();
   const render = () => {
@@ -161,7 +160,6 @@ function createHarness(options: {
       prepareAtFrame,
       onDropCommit,
       onRejected,
-      onSelectClip,
       onCancel,
       clearClickSequence,
     });
@@ -174,7 +172,6 @@ function createHarness(options: {
     prepareAtFrame,
     onDropCommit,
     onRejected,
-    onSelectClip,
     onCancel,
     clearClickSequence,
     render,
@@ -255,13 +252,15 @@ describe('usePhysicsPaintBackgroundClipResize', () => {
     expect(harness.onDropCommit).not.toHaveBeenCalled();
   });
 
-  it('routes a sub-threshold release to clip selection without any store call', () => {
+  it('cleans up a sub-threshold release (click) without a store call — selection is the rail onClick\'s job', () => {
     const harness = createHarness();
     const api = harness.render();
     api.onPointerDown(pointerEvent(harness.source));
     harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 100 }));
-    expect(harness.onSelectClip).toHaveBeenCalledWith('clip-1');
+    // The gesture never selects (the track-rail pattern: the rail's onClick
+    // owns selection) and never commits a resize.
     expect(harness.onDropCommit).not.toHaveBeenCalled();
+    expect(harness.render().ghost.active).toBe(false);
   });
 
   it('cancels on Escape without committing and clears the ghost', () => {

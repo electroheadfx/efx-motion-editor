@@ -24,8 +24,8 @@
  * with the store's `'start-collision'` reason; the strip maps it to the locked
  * copy. A net-zero resize (release at the source's own edge frame) never calls
  * the store port (gesture-level idempotence). A sub-threshold release (a click)
- * routes to the injected `onSelectClip` port — the clip-selection signal
- * consumed by 49-06's right panel — without any store call.
+ * just cleans up — the rail's own `onClick` owns selection (the track-rail
+ * pattern), so the gesture never double-fires selection.
  */
 
 import { useSignal } from '@preact/signals';
@@ -141,9 +141,6 @@ export interface BackgroundClipResizeInput {
   /** Rejection publisher — the strip maps `'start-collision'` to the locked
    *  copy through the status capsule. */
   readonly onRejected?: (reason?: string, detail?: string) => void;
-  /** Click routing — a sub-threshold release selects the clip (49-06's right
-   *  panel) without any store call. */
-  readonly onSelectClip?: (clipId: string) => void;
   /** Live ghost publication (paint only) — the strip bumps its paint tick so
    *  the row re-renders the resize preview. */
   readonly onGhostChange?: (ghost: BackgroundClipResizeGhostState | null) => void;
@@ -313,10 +310,10 @@ export function usePhysicsPaintBackgroundClipResize(
       if (upEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
       session.latestX = upEvent.clientX;
       if (!session.started) {
-        // A sub-threshold release is a CLICK — route it to clip selection
-        // (49-06's right panel) without any store call.
+        // A sub-threshold release is a CLICK — the rail's own onClick owns
+        // selection (the track-rail pattern); the gesture just cleans up so
+        // selection fires exactly once.
         cleanup();
-        input.onSelectClip?.(session.source.clipId);
         return;
       }
       upEvent.preventDefault();

@@ -2260,3 +2260,18 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     expect(gripBlock).not.toContain('crossTrackDrag');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip Bg rail click-to-select pass-through (49-06 UAT round 8)', () => {
+  it('passes onSelectBackgroundClip down to the Bg row so a rail click reaches the controller', () => {
+    const strip = source();
+    const bgRowStart = strip.indexOf('kind="background"');
+    expect(bgRowStart).toBeGreaterThanOrEqual(0);
+    const bgRowEnd = strip.indexOf('/>', bgRowStart);
+    const bgRow = strip.slice(bgRowStart, bgRowEnd);
+    // The whole-rail onClick routes to the controller — without this pass-through
+    // the rail's onClick fires with an undefined handler and selection never
+    // happens.
+    expect(bgRow).toContain('onSelectBackgroundClip={props.onSelectBackgroundClip}');
+    expect(bgRow).toContain('selectedBackgroundClipId={props.selectedBackgroundClipId}');
+  });
+});

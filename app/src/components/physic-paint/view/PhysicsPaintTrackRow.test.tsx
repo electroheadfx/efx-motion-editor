@@ -393,7 +393,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(marker[0].props['data-roto-app-frame']).toBe(7);
   });
 
-  it('49-06 UAT round 8: the whole rail is interactive — cells route pointerdown to the move hook, no anchor onClick double-fire', () => {
+  it('49-06 UAT round 8: the whole rail is interactive — cells route pointerdown to the move hook and the anchor onClick selects (track-rail pattern)', () => {
     const background: BackgroundTrack = {
       id: 'bg-track',
       clips: [{
@@ -409,11 +409,13 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       revision: 1,
     };
     const onMovePointerDown = vi.fn();
+    const onSelectBackgroundClip = vi.fn();
     const tree = render({
       trackId: 'bg-row',
       kind: 'background',
       background,
       backgroundResolutionContext: deriveEfxPaintBackgroundResolution(background, CAPACITY),
+      onSelectBackgroundClip,
       backgroundClipDrag: {
         onPointerDown: onMovePointerDown,
         ghost: { active: false, left: 0, width: 0, blockedEdge: null },
@@ -422,9 +424,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       },
     });
     // The cells container is the whole-rail MOVE handle (like the line) — a
-    // pointerdown on any cell routes to the drag hook, whose sub-threshold
-    // release selects the clip (onSelectClip). The anchor carries NO onClick,
-    // so the hook is the single selection path (no double-toggle).
+    // pointerdown on any cell routes to the drag hook.
     const cells = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cells'));
     expect(cells).toHaveLength(1);
     expect(cells[0].props['data-bg-clip-id']).toBe('bg-clip-1');
@@ -433,9 +433,14 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(typeof cellsPointerDown).toBe('function');
     cellsPointerDown?.({ stopPropagation: vi.fn() } as unknown as PointerEvent);
     expect(onMovePointerDown).toHaveBeenCalledTimes(1);
+    // The anchor's onClick owns selection (the track-rail pattern) — a plain
+    // click selects the clip; a suppressed click (post-drag) is swallowed.
     const anchor = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-anchor'));
     expect(anchor).toHaveLength(1);
-    expect((anchor[0].props as { onClick?: unknown }).onClick).toBeUndefined();
+    const onClick = (anchor[0].props as { onClick?: () => void }).onClick;
+    expect(typeof onClick).toBe('function');
+    onClick?.();
+    expect(onSelectBackgroundClip).toHaveBeenCalledWith('bg-clip-1');
   });
 
   it('49-06 UAT round 3: every Bg cell is a whole-rail move handle and the first/last carry resize sub-handles', () => {

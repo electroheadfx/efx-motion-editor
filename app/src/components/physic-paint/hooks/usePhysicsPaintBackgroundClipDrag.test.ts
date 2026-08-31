@@ -137,7 +137,6 @@ function createHarness(options: {
   const onDropCommit = vi.fn(options.onDropCommit ?? ((_publication: { clipId: string; landingFrame: number }) => ({ ok: true as const })));
   const onRejected = vi.fn();
   const onPreviewChange = vi.fn();
-  const onSelectClip = vi.fn();
   const onCancel = vi.fn();
   const clearClickSequence = vi.fn();
   const render = () => {
@@ -156,7 +155,6 @@ function createHarness(options: {
       onDropCommit,
       onRejected,
       onPreviewChange,
-      onSelectClip,
       onCancel,
       clearClickSequence,
     });
@@ -170,7 +168,6 @@ function createHarness(options: {
     onDropCommit,
     onRejected,
     onPreviewChange,
-    onSelectClip,
     onCancel,
     clearClickSequence,
     render,
@@ -371,14 +368,17 @@ describe('usePhysicsPaintBackgroundClipDrag', () => {
     expect(harness.onDropCommit).not.toHaveBeenCalled();
   });
 
-  it('routes a sub-threshold release (click) to clip selection without a store call', () => {
+  it('cleans up a sub-threshold release (click) without a store call — selection is the rail onClick\'s job', () => {
     const harness = createHarness();
     const api = harness.render();
     api.onPointerDown(pointerEvent(harness.source));
     harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 100 }));
 
-    expect(harness.onSelectClip).toHaveBeenCalledWith('clip-1');
+    // The gesture never selects (the track-rail pattern: the rail's onClick
+    // owns selection) and never commits a move.
     expect(harness.onDropCommit).not.toHaveBeenCalled();
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
   });
 
   it('is row-fixed: the API exposes no cross-track signals and projection ignores vertical movement', () => {

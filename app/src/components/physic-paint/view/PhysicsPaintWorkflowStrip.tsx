@@ -2170,9 +2170,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       }
     },
     onPreviewChange: () => { backgroundClipPaintTick.value += 1; },
-    // A click on a Bg clip rail routes clip selection to the right-panel
-    // `Background Clip` section (consumed by 49-06) — no store call.
-    onSelectClip: (clipId) => props.onSelectBackgroundClip?.(clipId),
     clearClickSequence: () => {},
     onCancel: () => { backgroundDragSourceRef.current = null; },
   });
@@ -2261,7 +2258,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         props.rotoPhysicalActions?.publishStatus?.("Couldn't resize the clip here. The frame is inside an existing clip. Nothing changed.");
       }
     },
-    onSelectClip: (clipId) => props.onSelectBackgroundClip?.(clipId),
     onGhostChange: () => { backgroundClipPaintTick.value += 1; },
     clearClickSequence: () => {},
     onCancel: () => { backgroundResizeSourceRef.current = null; },
@@ -3957,6 +3953,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       backgroundClipResize={backgroundClipResize}
                       backgroundClipDragGhost={backgroundClipDrag.ghost}
                       backgroundClipDragPreview={backgroundClipDrag.preview}
+                      onSelectBackgroundClip={props.onSelectBackgroundClip}
                       onSelectBackgroundFrame={props.onSelectBackgroundFrame}
                       selectedBackgroundClipId={props.selectedBackgroundClipId}
                       backgroundPlacementFrame={props.backgroundPlacementFrame}
