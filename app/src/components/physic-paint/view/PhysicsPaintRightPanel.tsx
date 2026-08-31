@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { signal } from '@preact/signals';
+import { signal, type Signal } from '@preact/signals';
 import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
@@ -57,6 +57,14 @@ export interface PhysicsPaintRightPanelProps {
    * track-only selection shows the Track section (UI-SPEC right-panel rows).
    */
   backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;
+  /**
+   * 49-06 (UAT round 2): the tool-pane tab signal, owned by the Studio so a
+   * Paint track selection returns the panel to Track option and a Bg rail
+   * selection opens the Background option tab (a THIRD tab — it never replaces
+   * Track option). The right panel reads `.value` in its render body (the
+   * 38-11 signal-bypasses-memo pattern) and writes it on tab clicks.
+   */
+  toolTab?: Signal<'paint' | 'track' | 'background'>;
 }
 
 /** The five BlendMode values offered by the track Blend select (TML-04). */
@@ -245,10 +253,11 @@ export function PhysicsPaintRightPanel({
   onTrackBlendChange,
   scripts,
   backgroundClipSection,
+  toolTab: toolTabSignal,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
-  // 49-06 (S5): the selected Bg clip id drives the Track-tab exclusivity. The
-  // signal read subscribes this memoized panel to selection changes (the
+  // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
+  // The signal read subscribes this memoized panel to selection changes (the
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
   const [hexInput, setHexInput] = useState(color);
@@ -258,11 +267,26 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
-  // 47 UAT: the tool pane's two tabs are MANUAL ONLY — track selection,
-  // tool changes, and paint activity never move the tab (an earlier
-  // auto-select fought a periodic paint-revision event and reverted the
-  // user's choice ~1s later; the user chose to switch tabs by hand).
-  const [toolTab, setToolTab] = useState<'paint' | 'track'>('paint');
+  // 47 UAT: the tool pane's Paint/Track tabs are MANUAL ONLY — tool changes
+  // and paint activity never move the tab (an earlier auto-select fought a
+  // periodic paint-revision event and reverted the user's choice ~1s later).
+  // 49-06 (UAT round 2): the tab signal is Studio-owned so a Paint track
+  // selection returns to Track option and a Bg rail selection opens the
+  // Background option tab. A selected Bg clip FORCES the Background tab; the
+  // Paint/Track tabs stay manual otherwise.
+  const toolTab = toolTabSignal?.value ?? 'paint';
+  // A selected Bg clip FORCES the Background tab; a stale 'background' tab with
+  // no selection (e.g. the clip was deleted) falls back to Track option.
+  const effectiveToolTab = selectedBackgroundClipId ? 'background' : (toolTab === 'background' ? 'track' : toolTab);
+  const setToolTab = (tab: 'paint' | 'track' | 'background') => {
+    if (toolTabSignal) toolTabSignal.value = tab;
+  };
+  // Clicking a Paint/Track tab while a Bg clip is selected clears the selection
+  // so the click is responsive (the Background tab is forced by the selection).
+  const selectToolTab = (tab: 'paint' | 'track') => {
+    setToolTab(tab);
+    if (backgroundClipSection) backgroundClipSection.selectedBackgroundClipId.value = null;
+  };
   // Three resizable sections (36.15-12, UAT Gap H-4; default shares from
   // 36.15-13 Gap I-2, trimmed by Gap J): brush color, tool, and
   // Scripts/Onion/Motion take 361.25:213:272 of the content height by default;
@@ -601,25 +625,40 @@ export function PhysicsPaintRightPanel({
           <div class="physics-paint-options-tabs physics-paint-options-tabs-tool" role="tablist" aria-label="Physics Paint tool option panels">
           <button
             type="button"
-            class={`physics-paint-options-tab physics-paint-tab-paint-option${toolTab === 'paint' ? ' active' : ''}`}
+            class={`physics-paint-options-tab physics-paint-tab-paint-option${effectiveToolTab === 'paint' ? ' active' : ''}`}
             role="tab"
-            aria-selected={toolTab === 'paint'}
-            onClick={() => setToolTab('paint')}
+            aria-selected={effectiveToolTab === 'paint'}
+            onClick={() => selectToolTab('paint')}
           >
             Paint option
           </button>
           <button
             type="button"
-            class={`physics-paint-options-tab physics-paint-tab-track-option${toolTab === 'track' ? ' active' : ''}`}
+            class={`physics-paint-options-tab physics-paint-tab-track-option${effectiveToolTab === 'track' ? ' active' : ''}`}
             role="tab"
-            aria-selected={toolTab === 'track'}
-            onClick={() => setToolTab('track')}
+            aria-selected={effectiveToolTab === 'track'}
+            onClick={() => selectToolTab('track')}
           >
             Track option
           </button>
+          {/* 49-06 (UAT round 2): the Background option tab is a THIRD tab shown
+              only while a Bg clip is selected — it never replaces Track option.
+              A selected clip forces it active; selecting a Paint track (or
+              clicking Paint/Track) clears the selection and returns to Track. */}
+          {selectedBackgroundClipId ? (
+            <button
+              type="button"
+              class="physics-paint-options-tab physics-paint-tab-background-option active"
+              role="tab"
+              aria-selected
+              onClick={() => setToolTab('background')}
+            >
+              Background option
+            </button>
+          ) : null}
       </div>
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
-        {toolTab === 'paint' ? (
+        {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
             {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
@@ -636,9 +675,9 @@ export function PhysicsPaintRightPanel({
               </div>
             </div>
           </div>
-        ) : selectedBackgroundClipId ? (
-          // 49-06 (S5): a selected Bg clip flips the Track tab to the Background
-          // Clip properties section. Keyed by clip id so a selection change
+        ) : effectiveToolTab === 'background' ? (
+          // 49-06 (S5): a selected Bg clip shows the Background Clip properties
+          // section in its OWN tab. Keyed by clip id so a selection change
           // remounts the section with fresh draft state (no effect-driven sync).
           <PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />
         ) : (

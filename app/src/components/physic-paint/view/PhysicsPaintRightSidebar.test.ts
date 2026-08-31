@@ -40,12 +40,16 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
     expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
 
-    // The tool pane's own tablist: Paint option FIRST and default-open
-    // (useState('paint')), Track option second.
+    // The tool pane's own tablist: Paint option FIRST and default-open, Track
+    // option second, and the conditional Background option tab (49-06 UAT round
+    // 2 — shown only while a Bg clip is selected, never replacing Track).
     const toolTabStart = rightPanel.indexOf('aria-label="Physics Paint tool option panels"');
     const toolTabs = rightPanel.slice(toolTabStart, rightPanel.indexOf('</div>', toolTabStart));
-    expectInOrder(toolTabs, ['Paint option', 'Track option']);
-    expect(rightPanel).toContain("useState<'paint' | 'track'>('paint')");
+    expectInOrder(toolTabs, ['Paint option', 'Track option', 'Background option']);
+    // 49-06 (UAT round 2): the tab is a Studio-owned signal — the panel reads
+    // it (the 38-11 signal-bypasses-memo pattern) so a Paint track selection
+    // returns to Track option and a Bg rail selection opens Background option.
+    expect(rightPanel).toContain("toolTabSignal?.value ?? 'paint'");
 
     const lowerStart = rightPanel.indexOf('aria-label="Physics Paint option panels"');
     const lowerEnd = rightPanel.indexOf('</div>', lowerStart);
@@ -58,9 +62,10 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toContain('physics-paint-tab-log');
     expect(rightPanel).not.toMatch(/>\s*LOG\s*</);
 
-    // Two tablists remain: the tool pane's two tabs + the lower group's three.
+    // Two tablists remain: the tool pane's tabs (Paint/Track + the conditional
+    // Background option) + the lower group's three.
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(5);
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
 
     for (const label of ['Actions', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));

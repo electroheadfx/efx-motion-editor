@@ -768,7 +768,10 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
 
     const context = deriveEfxPaintBackgroundResolution(doc.background, PHYSIC_PAINT_MAX_APPLY_FRAMES);
     const range = context.ranges.find((candidate) => candidate.loopId === clip.id)!;
-    expect(range.sourceKeyIds).toEqual(sourceRefs);
+    // 49-06 (UAT round 2): sourceKeyIds are composite (clip id + ref) so a ref
+    // shared by two clips never collides in the resolver's keyId map; the
+    // per-frame query decodes back to the raw ref.
+    expect(range.sourceKeyIds).toEqual(sourceRefs.map((ref) => `${clip.id}::${ref}`));
     for (let frame = 0; frame < 15; frame += 1) {
       const resolution = resolveEfxPaintBackgroundFrame(context, frame, new Set(sourceRefs));
       expect(resolution.kind).toBe('content');

@@ -20,7 +20,32 @@ import {
   _setPhysicPaintMarkDirtyCallback,
   physicPaintStore,
 } from '../../../stores/physicPaintStore';
+import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
+import type { BackgroundTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+
+// The Bg clip rail target uses the styled-tooltip hook and useRef; the render
+// tests materialize the vnode tree as plain function calls (no DOM/hook
+// context), so the hook, its portal host, and useRef are stubbed to inert
+// values.
+vi.mock('./PhysicsPaintStyledTooltip', () => ({
+  useStyledTooltip: () => ({
+    visible: false,
+    onPointerEnter: () => {},
+    onPointerLeave: () => {},
+    onFocus: () => {},
+    onBlur: () => {},
+    hide: () => {},
+  }),
+  PhysicsPaintStyledTooltip: () => null,
+}));
+vi.mock('preact/hooks', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('preact/hooks')>();
+  return {
+    ...actual,
+    useRef: (initial: unknown) => ({ current: initial }),
+  };
+});
 
 const LAYER = 'layer-track-row-uat';
 const TRACK = 'track-row-uat-a';
@@ -266,25 +291,60 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(onSelectTrackFrame).toHaveBeenCalledWith(TRACK, 7);
   });
 
-  it('49-06 UAT: clicking an EMPTY Background row cell clears any selected Bg clip (Track section reachable)', () => {
-    const onDeselectBackgroundClip = vi.fn();
+  it('49-06 UAT round 2: clicking an EMPTY Background row cell is the placement gesture (selects the target frame)', () => {
+    const onSelectBackgroundFrame = vi.fn();
     const tree = PhysicsPaintTrackRow({
       trackId: 'bg-row',
       layerId: LAYER,
       frameCells: FRAME_CELLS,
       kind: 'background',
-      onDeselectBackgroundClip,
+      onSelectBackgroundFrame,
     }) as TestVNode;
     const row = findAll(materialize(tree), (vnode) => hasClass(vnode, 'physics-paint-track-row'))[0];
     const rowProps = row.props as { onClick: (event: MouseEvent) => void };
-    // A cell click deselects — the only Bg-row cell-click intent (never
-    // navigates/selects).
+    // A cell click selects the target frame — the only Bg-row cell-click intent
+    // (never navigates/selects).
     const cell = { dataset: { rotoAppFrame: '7' } };
     rowProps.onClick({ target: { closest: () => cell }, stopPropagation: vi.fn() } as unknown as MouseEvent);
-    expect(onDeselectBackgroundClip).toHaveBeenCalledTimes(1);
-    // A non-cell click (rail overlay) does NOT deselect.
+    expect(onSelectBackgroundFrame).toHaveBeenCalledWith(7);
+    // A non-cell click (rail overlay) does NOT select a frame.
     rowProps.onClick({ target: null, stopPropagation: vi.fn() } as unknown as MouseEvent);
-    expect(onDeselectBackgroundClip).toHaveBeenCalledTimes(1);
+    expect(onSelectBackgroundFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('49-06 UAT round 2: the selected Bg clip rail paints the orange selection class and the placement cell carries the marker', () => {
+    const background: BackgroundTrack = {
+      id: 'bg-track',
+      clips: [{
+        id: 'bg-clip-1',
+        startFrame: 2,
+        sourceFrameRefs: ['k0'],
+        repeat: { mode: 'finite', count: 2 },
+        sourceKind: 'imported-background',
+        revision: 1,
+      }],
+      fallback: { mode: 'transparent' },
+      visible: true,
+      revision: 1,
+    };
+    const tree = render({
+      trackId: 'bg-row',
+      kind: 'background',
+      background,
+      backgroundResolutionContext: deriveEfxPaintBackgroundResolution(background, CAPACITY),
+      selectedBackgroundClipId: 'bg-clip-1',
+      backgroundPlacementFrame: 7,
+    });
+    const rail = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-target'));
+    expect(rail).toHaveLength(1);
+    expect(String(rail[0].props.class)).toContain('selected');
+    expect(rail[0].props['aria-pressed']).toBe(true);
+    // The lane carries NO text — the badge span is gone (47 lock).
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-badge'))).toHaveLength(0);
+    // The placement-target cell carries the marker class.
+    const marker = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-placement-target'));
+    expect(marker).toHaveLength(1);
+    expect(marker[0].props['data-roto-app-frame']).toBe(7);
   });
 
   it('fires the one-click rail selection intents with the rail identity (UAT round 5)', () => {

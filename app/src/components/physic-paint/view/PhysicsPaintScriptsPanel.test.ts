@@ -81,7 +81,10 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     // so the lower group keeps its three tabs and the LOG tab stays gone.
     expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
     expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(5);
+    // 49-06 (UAT round 2): the tool pane's Paint/Track tabs plus the
+    // conditional Background option tab (shown only while a Bg clip is
+    // selected) — 6 role=tab buttons in the source.
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
     expect(rightPanel).toContain("setOptionsTab('scripts'); void scripts.library.enterScripts()");
     expect(rightPanel).toContain("optionsTab === 'scripts'");

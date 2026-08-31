@@ -322,17 +322,15 @@ describe('canonical accepted Group feedback copy', () => {
   });
 });
 
-describe('Background clip rail presentation (49-06 UAT: compact badge)', () => {
-  it('carries the COMPACT `× {N}` / `× ∞` badge while the full facts stay in the tooltip', () => {
+describe('Background clip rail presentation (49-06 UAT round 2: no lane text)', () => {
+  it('keeps the full cycle facts in the tooltip only — the lane surface carries NO text (47 lock)', () => {
     const finite = projectPhysicsPaintBackgroundClipPresentation(range({ repeat: 5, requestedEnd: 40 }));
-    expect(finite.compactBadge).toBe('× 5');
     expect(finite.cycleLabel).toBe('Cycle 4f × 5 = 20f');
     expect(finite.tooltipLines).toEqual([
       'Background clip at F12',
       'Cycle 4f × 5 = 20f',
     ]);
     const infinite = projectPhysicsPaintBackgroundClipPresentation(range({ repeat: 'infinity', requestedEnd: Infinity }));
-    expect(infinite.compactBadge).toBe('× ∞');
     expect(infinite.cycleLabel).toBe('Cycle 4f × ∞');
   });
 });

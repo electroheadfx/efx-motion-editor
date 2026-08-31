@@ -343,6 +343,15 @@ export function PhysicsPaintStudio() {
   // 49-05 Task 2 (S4): the selected Background clip — a click on a Bg clip rail
   // routes here; the right-panel `Background Clip` section (49-06) consumes it.
   const selectedBackgroundClipId = useSignal<string | null>(null);
+  // 49-06 (UAT round 2): the placement-target frame — clicking an empty Bg row
+  // cell selects it; the Import control then lands the new clip AT that frame
+  // (import-at-playhead alone was undiscoverable — the frame click is the
+  // placement gesture).
+  const backgroundPlacementFrame = useSignal<number | null>(null);
+  // 49-06 (UAT round 2): the right-panel tool tab. The Studio owns it so a Paint
+  // track selection returns the panel to Track option and a Bg rail selection
+  // opens the Background option tab (selection-driven, never stuck on the clip).
+  const rightPanelToolTab = useSignal<'paint' | 'track' | 'background'>('paint');
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -2878,7 +2887,7 @@ export function PhysicsPaintStudio() {
     deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -2919,6 +2928,10 @@ export function PhysicsPaintStudio() {
     backgroundClipSection: launchContext?.layerId
       ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
       : undefined,
+    // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
+    // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
+    // to Track option and a Bg rail selection opens the Background option tab.
+    toolTab: rightPanelToolTab,
     onColorChange: setBrushColor,
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,
@@ -3302,7 +3315,8 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
-      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onDeselectBackgroundClip: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onSelectBackgroundFrame: undefined,
+      selectedBackgroundClipId: null, backgroundPlacementFrame: null,
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
@@ -3310,23 +3324,42 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
-      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onDeselectBackgroundClip: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onSelectBackgroundFrame: undefined,
+      selectedBackgroundClipId: null, backgroundPlacementFrame: null,
     };
     return {
       layerId,
       tracks: document.tracks,
       activeTrackId: document.activeTrackId,
       background: document.background,
-      onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
+      // 49-06 (UAT round 2): selecting a Paint track returns the right panel to
+      // Track option — it clears any selected Bg clip (the Background tab
+      // disappears) and switches the tool tab to Track.
+      onSelectTrack: (trackId: string) => {
+        setActiveTrackId(layerId, trackId);
+        selectedBackgroundClipId.value = null;
+        rightPanelToolTab.value = 'track';
+      },
       onSelectTrackFrame: handleSelectTrackFrame,
       onSelectTrackRail: handleSelectTrackRail,
-      // 49-06 (UAT): the mutual exclusion is selection-driven — the Track
-      // section must stay reachable, so a same-clip re-click TOGGLES the
-      // selection off (nothing else in the app can clear it).
+      // 49-06 (UAT round 2): a Bg rail click opens the Background option tab
+      // (a THIRD tab — it never replaces Track option). Same-clip re-click
+      // toggles the selection off and returns to Track option.
       onSelectBackgroundClip: (clipId: string) => {
-        selectedBackgroundClipId.value = selectedBackgroundClipId.value === clipId ? null : clipId;
+        const next = selectedBackgroundClipId.value === clipId ? null : clipId;
+        selectedBackgroundClipId.value = next;
+        rightPanelToolTab.value = next === null ? 'track' : 'background';
       },
-      onDeselectBackgroundClip: () => { selectedBackgroundClipId.value = null; },
+      // 49-06 (UAT round 2): the placement gesture — clicking an empty Bg cell
+      // selects the target frame (the Import control lands there) and clears
+      // any selected clip so the Track section stays reachable.
+      onSelectBackgroundFrame: (frame: number) => {
+        backgroundPlacementFrame.value = frame;
+        selectedBackgroundClipId.value = null;
+        rightPanelToolTab.value = 'track';
+      },
+      selectedBackgroundClipId: selectedBackgroundClipId.value,
+      backgroundPlacementFrame: backgroundPlacementFrame.value,
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
       onToggleSolo: handleToggleSolo,
@@ -3337,7 +3370,7 @@ export function PhysicsPaintStudio() {
       onReorderTrack: handleReorderTrack,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, efxPaintVersion.value]);
+  }, [launchContext?.layerId, efxPaintVersion.value, selectedBackgroundClipId.value, backgroundPlacementFrame.value]);
   // 47-01: the Studio window owns its own efxPaintStore instance — track CRUD
   // mutates the CHILD document only. Push it to the main window on every
   // document mutation so the main window's save path serializes the same
@@ -3444,8 +3477,12 @@ export function PhysicsPaintStudio() {
   const handleConfirmBackgroundPicker = (sortedIds: string[]) => {
     const layerId = launchContext?.layerId;
     if (!layerId || sortedIds.length === 0) return;
+    // 49-06 (UAT round 2): the placement gesture — the clip lands at the
+    // clicked empty Bg cell frame (backgroundPlacementFrame), falling back to
+    // the playhead when no frame was clicked.
+    const landingFrame = backgroundPlacementFrame.value ?? currentFrame;
     const result = addBackgroundClip(layerId, {
-      startFrame: currentFrame,
+      startFrame: landingFrame,
       sourceFrameRefs: sortedIds,
       repeat: { mode: 'finite', count: 1 },
     });
@@ -3464,6 +3501,9 @@ export function PhysicsPaintStudio() {
     // 'content' instead of 'missing' (the monitor paper fond symptom).
     const accepted = getEfxPaintDocument(layerId);
     if (accepted) void hydrateBackgroundSourceImagesFromLibrary(accepted);
+    // The placement marker is consumed — a stale target would collide with the
+    // just-created clip on the next import.
+    backgroundPlacementFrame.value = null;
     backgroundPicker.cancel();
   };
   const viewModel = usePhysicsPaintStudioViewModel({

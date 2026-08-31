@@ -3239,17 +3239,20 @@ button.destructive {
    (D-12). */
 .physics-paint-bg-clip-rail {
   position: absolute;
-  inset: 0;
+  /* 49-06 (UAT round 2): the rail is a FILLED span over the cells area (the
+     lane's 8px rail band is above it) — the clip extent reads like Paint
+     track cells, never a thin line. */
+  top: 8px;
+  bottom: 0;
   z-index: 4;
   width: 100%;
-  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-bg-clip-rail-anchor {
   position: absolute;
   top: 0;
-  height: 8px;
+  bottom: 0;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3258,7 +3261,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 8px;
+  height: 100%;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3276,24 +3279,31 @@ button.destructive {
 
 .physics-paint-bg-clip-rail-segment {
   position: absolute;
-  inset: 4px 0 auto 0;
-  height: 4px;
-  /* 49-06 (UAT): the span must READ as a clip extent on the muted #3c3e40 row
-     (a visible neutral — purple/cyan-free per UI-SPEC S3) with the shared
-     #f8fafc boundary caps from the boundary-* classes on the rail target. */
-  background: #99a2b3;
+  inset: 0;
+  height: 100%;
+  /* 49-06 (UAT round 2): the filled span color — #4a7eac (a visible neutral
+     blue, purple/cyan-free per UI-SPEC S3) with the shared #f8fafc boundary
+     caps from the boundary-* classes on the rail target. */
+  background: #4a7eac;
   pointer-events: none;
 }
 
-.physics-paint-bg-clip-rail-target:hover:not(:disabled) .physics-paint-bg-clip-rail-segment,
-.physics-paint-bg-clip-rail-target:focus-visible:not(:disabled) .physics-paint-bg-clip-rail-segment {
-  background: #b7c0ce;
+.physics-paint-bg-clip-rail-target:hover:not(:disabled):not(.selected) .physics-paint-bg-clip-rail-segment,
+.physics-paint-bg-clip-rail-target:focus-visible:not(:disabled):not(.selected) .physics-paint-bg-clip-rail-segment {
+  background: #5a8fc0;
+}
+
+/* 49-06 (UAT round 2): the selected Bg clip/rail paints the SAME orange as the
+   rest of the timeline selection contract (#f5a623) — it overrides the
+   shortened warning so a selected clip always reads selected. */
+.physics-paint-bg-clip-rail-target.selected .physics-paint-bg-clip-rail-segment {
+  background: #f5a623;
 }
 
 /* Shortened visual (D-12): the loop stops at the next clip / parent bound —
    a distinct warning-tinted segment (UI-SPEC Warning #FFB020, truncated-end and
-   shortened-loop treatments only). The badge never changes (requested duration). */
-.physics-paint-bg-clip-rail-target.shortened .physics-paint-bg-clip-rail-segment {
+   shortened-loop treatments only). */
+.physics-paint-bg-clip-rail-target.shortened:not(.selected) .physics-paint-bg-clip-rail-segment {
   background: #ffb020;
 }
 
@@ -3303,26 +3313,11 @@ button.destructive {
   clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 100%, 0 100%);
 }
 
-.physics-paint-bg-clip-rail-badge {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 8px;
-  max-width: 100%;
-  padding: 0 4px;
-  display: inline-flex;
-  align-items: center;
-  background: #2a2c2e;
-  color: #9ca3af;
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-  z-index: 1;
+/* 49-06 (UAT round 2): the placement-target marker on the clicked empty Bg
+   cell — a 2px accent line at the cell's top so the import-at-frame gesture
+   reads. The cell keeps its transparent fill (the marker is the only paint). */
+.physics-paint-roto-cell.physics-paint-bg-placement-target {
+  box-shadow: inset 0 2px 0 0 #f5a623;
 }
 
 .physics-paint-bg-clip-rail-ghost {

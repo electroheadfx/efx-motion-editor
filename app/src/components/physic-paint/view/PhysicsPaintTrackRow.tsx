@@ -105,11 +105,20 @@ export interface PhysicsPaintTrackRowProps {
   /** One-click rail selection on a non-active row: activates the track and
    *  selects the clicked Key Rail / Loop Clip rail in the same click. */
   readonly onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
-  /** 49-06 (UAT): clicking an EMPTY Background row cell clears any selected Bg
-   *  clip — the right-panel Track section must stay reachable (selection-driven
-   *  exclusivity). The Bg row never navigates/selects, so this is its only
-   *  cell-click intent. */
-  readonly onDeselectBackgroundClip?: () => void;
+  /** 49-06 (UAT round 2): clicking an EMPTY Background row cell is the
+   *  placement gesture — it selects the target frame (the import icon then
+   *  imports AT that frame) and clears any selected Bg clip so the right-panel
+   *  Track section stays reachable. The Bg row never navigates/selects, so this
+   *  is its only cell-click intent. */
+  readonly onSelectBackgroundFrame?: (frame: number) => void;
+  /** 49-06 (UAT round 2): the selected Bg clip id — the matching rail paints
+   *  the orange selection treatment (same contract as the rest of the
+   *  timeline). */
+  readonly selectedBackgroundClipId?: string | null;
+  /** 49-06 (UAT round 2): the placement-target frame — the clicked empty Bg
+   *  cell carries a subtle marker so the import-at-frame gesture is
+   *  discoverable. */
+  readonly backgroundPlacementFrame?: number | null;
   /* ---- 49-05 (S4): the fixed Background row's clip rails ---- */
   /** The document's Background track — the Bg row renders its clips as rails. */
   readonly background?: BackgroundTrack | null;
@@ -317,18 +326,23 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   readonly presentation: PhysicsPaintBackgroundClipPresentation;
   readonly left: number;
   readonly width: number;
+  /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
+   *  rail paints the orange selection treatment (timeline selection contract). */
+  readonly selected: boolean;
   readonly onPointerDown?: (event: PointerEvent) => void;
 }
 
 /**
- * One Bg clip rail: the neutral (purple/cyan-free) rail on the muted row with
- * the requested badge (`Cycle {N}f × {R} = {T}f` / `Cycle {N}f × ∞`), the
+ * One Bg clip rail: a FILLED span on the muted row (49-06 UAT round 2 — the
+ * clip extent reads like Paint track cells, never a thin line), with the
  * shortened visual + `Loop shortened by next clip`, the diagonal cut on a
  * partial cycle, and the `next clip — interrupts the loop` tooltip line — all
- * from resolver facts only (capsule-never-math, Pitfall 10/m2). The rail
- * carries `data-bg-clip-id` / `data-bg-clip-start` so the strip's drag hook
- * resolves the source from the pressed element; pointer-down hands the gesture
- * to the row-local drag hook (row-fixed law — never the cross-track machinery).
+ * from resolver facts only (capsule-never-math, Pitfall 10/m2). The Phase 47
+ * surface lock forbids ANY text on the lane — repeat facts live in the right
+ * panel and the tooltip. The rail carries `data-bg-clip-id` /
+ * `data-bg-clip-start` so the strip's drag hook resolves the source from the
+ * pressed element; pointer-down hands the gesture to the row-local drag hook
+ * (row-fixed law — never the cross-track machinery).
  */
 function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipRailTargetProps) {
   const tooltip = useStyledTooltip();
@@ -343,8 +357,9 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
     >
       <button
         type="button"
-        class={`physics-paint-rail-target physics-paint-bg-clip-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
+        class={`physics-paint-rail-target physics-paint-bg-clip-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end${props.selected ? ' selected' : ''}${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
         aria-label={props.presentation.accessibleName}
+        aria-pressed={props.selected}
         data-bg-clip-id={props.clipId}
         data-bg-clip-start={props.startFrame}
         onPointerDown={(event) => {
@@ -356,11 +371,6 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-bg-clip-rail-segment" aria-hidden="true" />
-        {/* 49-06 (UAT): the rail badge is COMPACT — `× {N}` / `× ∞` (UI-SPEC
-            D-06). The verbose `Cycle {N}f × {R} = {T}f` facts live in the
-            tooltip only; the Phase 47 surface lock forbids product math text
-            on the lane. */}
-        <span class="physics-paint-bg-clip-rail-badge" aria-hidden="true">{props.presentation.compactBadge}</span>
       </button>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
@@ -394,7 +404,9 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onNavigateToFrame,
     onSelectTrackFrame,
     onSelectTrackRail,
-    onDeselectBackgroundClip,
+    onSelectBackgroundFrame,
+    selectedBackgroundClipId = null,
+    backgroundPlacementFrame = null,
     background = null,
     backgroundResolutionContext = null,
     backgroundClipDrag = null,
@@ -427,11 +439,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     const target = event.target as HTMLElement | null;
     const cell = target?.closest?.('[data-roto-app-frame]') as HTMLElement | null;
     const frame = cell ? Number(cell.dataset.rotoAppFrame) : NaN;
-    // 49-06 (UAT): the fixed Bg row's only cell-click intent — deselect. A rail
-    // click never reaches here (the rail target is not a [data-roto-app-frame]
-    // cell), so only EMPTY cells clear the selection.
+    // 49-06 (UAT round 2): the fixed Bg row's only cell-click intent — the
+    // placement gesture. A rail click never reaches here (the rail target is
+    // not a [data-roto-app-frame] cell), so only EMPTY cells select the target
+    // frame; the controller clears any selected clip in the same click.
     if (kind === 'background' && Number.isInteger(frame)) {
-      onDeselectBackgroundClip?.();
+      onSelectBackgroundFrame?.(frame);
       return;
     }
     if (onSelectTrackFrame && Number.isInteger(frame)) {
@@ -463,7 +476,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             // classes as the active lane — the repeat design (gray + dot)
             // never changes when the track is selected or not.
             const linkedClass = loopVisuals.linkedClassByFrame.get(frame);
-            const cellClass = `physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}${linkedClass ? ` ${linkedClass}` : ''}`;
+            // 49-06 (UAT round 2): the clicked empty Bg cell carries the
+            // placement-target marker so the import-at-frame gesture reads.
+            const placementClass = kind === 'background' && backgroundPlacementFrame === frame
+              ? ' physics-paint-bg-placement-target'
+              : '';
+            const cellClass = `physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}${linkedClass ? ` ${linkedClass}` : ''}${placementClass}`;
             return (
               <span
                 key={frame}
@@ -554,6 +572,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   presentation={presentation}
                   left={geometry.left}
                   width={geometry.width}
+                  selected={selectedBackgroundClipId === clip.id}
                   onPointerDown={backgroundClipDrag?.onPointerDown}
                 />
               );

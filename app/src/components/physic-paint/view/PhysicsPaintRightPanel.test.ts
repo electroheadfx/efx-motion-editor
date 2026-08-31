@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
+import { signal } from '@preact/signals';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
 
@@ -75,6 +76,10 @@ function sameDeps(previous: unknown[] | undefined, next: unknown[]) {
 }
 
 let runtime = new HookRuntime();
+// 49-06 (UAT round 2): the tool-pane tab is a Studio-owned signal. The harness
+// shares ONE signal across renders so a manual tab click sticks through
+// re-renders (the 47 UAT contract) and a Bg clip selection forces Background.
+let toolTabSignal = signal<'paint' | 'track' | 'background'>('paint');
 
 vi.mock('preact/hooks', () => ({
   useState: <T,>(initial: T | (() => T)) => runtime.useState(initial),
@@ -92,6 +97,16 @@ vi.mock('./PhysicsPaintScriptsPanel', () => ({
   PhysicsPaintScriptsPanel: () => null,
 }));
 vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null }));
+// The Background Clip section is signals-driven (useSignal only); the harness
+// walks components as plain function calls, so useSignal maps to the real
+// signal core (the BackgroundAssetPickerView.test.ts pattern).
+vi.mock('@preact/signals', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@preact/signals')>();
+  return {
+    ...actual,
+    useSignal: <Value,>(value: Value) => actual.signal(value),
+  };
+});
 
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
@@ -120,6 +135,7 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     onTrackOpacityChange: vi.fn(),
     onTrackBlendChange: vi.fn(),
     scripts: { library: { enterScripts: vi.fn() } } as unknown as PhysicsPaintRightPanelProps['scripts'],
+    toolTab: toolTabSignal,
     ...overrides,
   };
 }
@@ -199,6 +215,7 @@ function renderPanelWithTrackTab(props: PhysicsPaintRightPanelProps): AnyVNode {
 
 beforeEach(() => {
   runtime = new HookRuntime();
+  toolTabSignal = signal<'paint' | 'track' | 'background'>('paint');
   vi.clearAllMocks();
   mocks.loadFavoriteColors.mockResolvedValue([]);
   mocks.loadRecentColors.mockResolvedValue([]);
@@ -319,6 +336,55 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
     expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
     expect(findById(onPaint, 'physics-edge-detail')).toBeDefined();
+  });
+
+  it('49-06 UAT round 2: a selected Bg clip shows the Background option tab — a THIRD tab that never replaces Track option', () => {
+    const selectedBackgroundClipId = signal<string | null>('clip-1');
+    const tree = renderPanel(baseProps({
+      backgroundClipSection: {
+        layerId: 'layer-1',
+        selectedBackgroundClipId,
+        ports: {},
+      },
+    }));
+    // The Background option tab appears and is active.
+    expect(findByClass(tree, 'physics-paint-tab-background-option').props['aria-selected']).toBe(true);
+    // Track option is STILL present — it is never replaced by the clip section.
+    expect(findByClass(tree, 'physics-paint-tab-track-option')).toBeDefined();
+    expect(findByClass(tree, 'physics-paint-tab-paint-option')).toBeDefined();
+    // The Track section content is NOT shown while a clip is selected.
+    const trackOpacity = childrenOf(tree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function' && vnode.props?.id === 'physics-track-opacity';
+    });
+    expect(trackOpacity).toBeUndefined();
+  });
+
+  it('49-06 UAT round 2: clearing the Bg selection returns the panel to the manual tab (Track option)', () => {
+    const selectedBackgroundClipId = signal<string | null>('clip-1');
+    const props = baseProps({
+      backgroundClipSection: {
+        layerId: 'layer-1',
+        selectedBackgroundClipId,
+        ports: {},
+      },
+    });
+    const withClip = renderPanel(props);
+    expect(findByClass(withClip, 'physics-paint-tab-background-option').props['aria-selected']).toBe(true);
+    // The controller clears the selection (a Paint track click) AND returns
+    // the tool tab to Track — the Background tab disappears and the manual
+    // Track tab shows again.
+    selectedBackgroundClipId.value = null;
+    toolTabSignal.value = 'track';
+    const cleared = renderPanel(props);
+    const backgroundTab = childrenOf(cleared).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-tab-background-option');
+    });
+    expect(backgroundTab).toBeUndefined();
+    expect(findByClass(cleared, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+    expect(findById(cleared, 'physics-track-opacity')).toBeDefined();
   });
 });
 

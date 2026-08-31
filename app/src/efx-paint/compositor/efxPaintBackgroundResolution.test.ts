@@ -60,7 +60,9 @@ describe('deriveEfxPaintBackgroundResolution — FrameLoopClip → resolver inpu
     expect(context.ranges[0]).toMatchObject({
       loopId: 'c1',
       placementStart: 15,
-      sourceKeyIds: ['s1', 's2', 's3'],
+      // 49-06 (UAT round 2): sourceKeyIds are composite (clip id + ref) so a
+      // ref shared by two clips never collides in the resolver's keyId map.
+      sourceKeyIds: ['c1::s1', 'c1::s2', 'c1::s3'],
       repeat: 2,
     });
     // mode ← 'progressive' (the resolver's static/progressive distinction is
@@ -89,10 +91,11 @@ describe('deriveEfxPaintBackgroundResolution — FrameLoopClip → resolver inpu
     });
     const context = deriveEfxPaintBackgroundResolution(makeBackground([clip]), 40);
     // keyIdByAppFrame is the resolver's real-key lookup index — it exposes
-    // exactly the synthetic identity placement the adapter built.
-    expect(context.keyIdByAppFrame.get(15)).toBe('s1');
-    expect(context.keyIdByAppFrame.get(16)).toBe('s2');
-    expect(context.keyIdByAppFrame.get(17)).toBe('s3');
+    // exactly the synthetic identity placement the adapter built. The keyId is
+    // composite (clip id + ref) so a shared ref across clips stays unique.
+    expect(context.keyIdByAppFrame.get(15)).toBe('c1::s1');
+    expect(context.keyIdByAppFrame.get(16)).toBe('c1::s2');
+    expect(context.keyIdByAppFrame.get(17)).toBe('c1::s3');
     expect(context.keyIdByAppFrame.size).toBe(3);
   });
 
@@ -320,5 +323,40 @@ describe('resolveEfxPaintBackgroundFrame — content / gap / missing per the spe
     }
     expect(resolveEfxPaintBackgroundFrame(context, 20, known)).toEqual({ kind: 'gap' });
     expect(resolveEfxPaintBackgroundFrame(context, 35, known)).toEqual({ kind: 'gap' });
+  });
+
+  it('49-06 UAT round 2: two clips sharing a source ref derive without a duplicate keyId throw', () => {
+    // Re-importing the same image creates a SECOND clip with the same ref. The
+    // composite keyId (clip id + ref) keeps the resolver's strict keyId map
+    // unique — the old raw-ref keyId collided and threw
+    // `PhysicPaintRotoLoopRanges: duplicate keyId`.
+    const c1 = makeClip({
+      id: 'c1',
+      startFrame: 0,
+      sourceFrameRefs: Object.freeze(['s0', 's1']),
+      repeat: { mode: 'finite', count: 2 },
+    });
+    const c2 = makeClip({
+      id: 'c2',
+      startFrame: 10,
+      sourceFrameRefs: Object.freeze(['s0', 's1']),
+      repeat: { mode: 'finite', count: 2 },
+    });
+    const context = deriveEfxPaintBackgroundResolution(makeBackground([c1, c2]), 40);
+    const known = new Set(['s0', 's1']);
+    // Each clip's own cycle resolves its refs — the composite keyId decodes
+    // back to the raw ref for the known-source oracle.
+    expect(resolveEfxPaintBackgroundFrame(context, 0, known)).toEqual({
+      kind: 'content', clipId: 'c1', sourceRef: 's0',
+    });
+    expect(resolveEfxPaintBackgroundFrame(context, 1, known)).toEqual({
+      kind: 'content', clipId: 'c1', sourceRef: 's1',
+    });
+    expect(resolveEfxPaintBackgroundFrame(context, 10, known)).toEqual({
+      kind: 'content', clipId: 'c2', sourceRef: 's0',
+    });
+    expect(resolveEfxPaintBackgroundFrame(context, 11, known)).toEqual({
+      kind: 'content', clipId: 'c2', sourceRef: 's1',
+    });
   });
 });

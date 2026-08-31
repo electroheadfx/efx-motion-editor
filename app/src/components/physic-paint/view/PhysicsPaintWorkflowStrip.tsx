@@ -410,9 +410,16 @@ export interface PhysicsPaintWorkflowStripProps {
    *  right-panel `Background Clip` section (consumed by 49-06). The strip never
    *  owns the selection signal — the controller does. */
   onSelectBackgroundClip?: (clipId: string) => void;
-  /** 49-06 (UAT): clicking an EMPTY Background row cell clears any selected Bg
-   *  clip so the Track section stays reachable (selection-driven exclusivity). */
-  onDeselectBackgroundClip?: () => void;
+  /** 49-06 (UAT round 2): clicking an EMPTY Background row cell is the
+   *  placement gesture — the controller selects the target frame (the import
+   *  icon then imports AT that frame) and clears any selected Bg clip. */
+  onSelectBackgroundFrame?: (frame: number) => void;
+  /** 49-06 (UAT round 2): the selected Bg clip id — the matching rail paints
+   *  the orange selection treatment. */
+  selectedBackgroundClipId?: string | null;
+  /** 49-06 (UAT round 2): the placement-target frame — the clicked empty Bg
+   *  cell carries a subtle marker. */
+  backgroundPlacementFrame?: number | null;
 }
 
 const RULER_STEP = 3;
@@ -3848,7 +3855,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       backgroundClipDrag={backgroundClipDrag}
                       backgroundClipDragGhost={backgroundClipDrag.ghost}
                       backgroundClipDragPreview={backgroundClipDrag.preview}
-                      onDeselectBackgroundClip={props.onDeselectBackgroundClip}
+                      onSelectBackgroundFrame={props.onSelectBackgroundFrame}
+                      selectedBackgroundClipId={props.selectedBackgroundClipId}
+                      backgroundPlacementFrame={props.backgroundPlacementFrame}
                     />
                   ) : null}
                 </>

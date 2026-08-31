@@ -435,6 +435,14 @@ export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string
   if (_backgroundSourceImages.get(sourceRef) === dataUrl) return;
   _backgroundSourceImages.set(sourceRef, dataUrl);
   _flattenedMemo.clear();
+  // 49-06 (UAT round 2): the async hydration (import/reopen) registers bytes
+  // AFTER the document mutation already bumped efxPaintVersion — without a
+  // clock bump here the monitor never re-runs and the freshly registered clip
+  // stays invisible (the _compositorDecode onload/onerror bump idiom, MEMORY:
+  // always bump AND subscribe). The memo clear alone is not enough — the
+  // flattened key's clip terms don't cover runtime bytes, so a stale record
+  // would survive without it, but the re-render needs the version clock.
+  physicPaintVersion.value++;
 }
 
 /**

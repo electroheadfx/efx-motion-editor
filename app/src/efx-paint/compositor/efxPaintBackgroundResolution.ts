@@ -65,19 +65,36 @@ const _backgroundResolutionCache = new WeakMap<
 >();
 
 /**
+ * One synthetic identity keyId per (clip, ref) — unique across clips that
+ * share a source image (49-06 UAT round 2: re-importing the same image must
+ * never collide). The resolver's keyId map is strict (duplicate keyId throws),
+ * so the clip id prefixes the ref; the ref is recovered by splitting on the
+ * first `::` (clip ids are UUIDs, refs are imageStore ids — neither contains
+ * the separator).
+ */
+function backgroundSourceKey(clipId: string, ref: string): string {
+  return `${clipId}::${ref}`;
+}
+
+function backgroundSourceRef(key: string): string {
+  return key.slice(key.indexOf('::') + 2);
+}
+
+/**
  * Map ONE document `FrameLoopClip` to the resolver's `PhysicPaintRotoLoopClip`
  * contract (Pitfall P-48-2). Exact field correspondence:
- * loopId ← id, placementStart ← startFrame, sourceKeyIds ← sourceFrameRefs,
- * repeat ← finite count or 'infinity', mode ← 'progressive' (the resolver's
- * static/progressive distinction is a Hold/PlayScript concern, not a
- * Background one). Malformed clips (empty refs, negative start, count < 1)
- * fail the resolver's own strict validation at derivation time.
+ * loopId ← id, placementStart ← startFrame, sourceKeyIds ← sourceFrameRefs
+ * (composite-keyed so a ref shared by two clips stays unique), repeat ← finite
+ * count or 'infinity', mode ← 'progressive' (the resolver's static/progressive
+ * distinction is a Hold/PlayScript concern, not a Background one). Malformed
+ * clips (empty refs, negative start, count < 1) fail the resolver's own strict
+ * validation at derivation time.
  */
 function mapFrameLoopClipToResolverClip(clip: FrameLoopClip): PhysicPaintRotoLoopClip {
   return {
     loopId: clip.id,
     placementStart: clip.startFrame,
-    sourceKeyIds: [...clip.sourceFrameRefs],
+    sourceKeyIds: clip.sourceFrameRefs.map((ref) => backgroundSourceKey(clip.id, ref)),
     repeat: clip.repeat.mode === 'infinite' ? 'infinity' : clip.repeat.count,
     mode: 'progressive',
   };
@@ -104,9 +121,11 @@ export function deriveEfxPaintBackgroundResolution(
   for (const clip of background.clips) {
     // One synthetic identity per source ref: the clip's own source cycle is
     // placed at [startFrame, startFrame + refs.length), so the resolver's
-    // modulo source mapping addresses exactly that cycle.
+    // modulo source mapping addresses exactly that cycle. The keyId is
+    // composite (clip id + ref) so two clips sharing a source image never
+    // collide in the resolver's strict keyId map (49-06 UAT round 2).
     clip.sourceFrameRefs.forEach((ref, index) => {
-      identities.push({ keyId: ref, appFrame: clip.startFrame + index });
+      identities.push({ keyId: backgroundSourceKey(clip.id, ref), appFrame: clip.startFrame + index });
     });
     loopClips.push(mapFrameLoopClipToResolverClip(clip));
   }
@@ -139,17 +158,20 @@ export function resolveEfxPaintBackgroundFrame(
     case 'empty':
       return Object.freeze({ kind: 'gap' }) as EfxPaintBackgroundFrameResolution;
     case 'real': {
-      // A synthetic identity at this frame names a source ref directly.
+      // A synthetic identity at this frame names a source ref directly. The
+      // keyId is composite (clip id + ref) — the range check compares composite
+      // ids, the known-source oracle and the report need the raw ref.
       const range = findOwningRange(context, frame);
       if (range === null || !range.sourceKeyIds.includes(resolution.keyId)) {
         return Object.freeze({ kind: 'gap' }) as EfxPaintBackgroundFrameResolution;
       }
-      return resolveContentOrMissing(range.loopId, resolution.keyId, knownSources);
+      return resolveContentOrMissing(range.loopId, backgroundSourceRef(resolution.keyId), knownSources);
     }
     case 'linked': {
       // The resolver reports the cycle position (sourceKeyId) — never
-      // re-derived modulo here (Pitfall 10).
-      return resolveContentOrMissing(resolution.loopId, resolution.sourceKeyId, knownSources);
+      // re-derived modulo here (Pitfall 10). Decode the composite keyId back
+      // to the raw ref for the known-source oracle.
+      return resolveContentOrMissing(resolution.loopId, backgroundSourceRef(resolution.sourceKeyId), knownSources);
     }
     case 'linked-gap':
       // A strict interior with interpolation disabled resolves 'linked-gap' —
@@ -157,10 +179,11 @@ export function resolveEfxPaintBackgroundFrame(
       return Object.freeze({ kind: 'gap' }) as EfxPaintBackgroundFrameResolution;
     case 'linked-unresolved':
       // D-31 → D-09: dangling refs name exactly the missing list, never throw.
+      // The resolver reports composite keyIds; the report carries raw refs.
       return Object.freeze({
         kind: 'missing',
         clipId: resolution.loopId,
-        missingRefs: Object.freeze([...resolution.missingSourceKeyIds]),
+        missingRefs: Object.freeze(resolution.missingSourceKeyIds.map(backgroundSourceRef)),
       }) as EfxPaintBackgroundFrameResolution;
     case 'linked-generated':
       // Impossible: Background derives with interpolationEnabled === false,

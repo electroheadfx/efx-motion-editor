@@ -1336,12 +1336,14 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     expect(studio).toContain('onImportBackground: () => backgroundPicker.openPicker(),');
   });
 
-  it('Confirm calls addBackgroundClip exactly once with the playhead frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)', () => {
-    // The handler reads the CURRENT playhead frame at Confirm time (never
-    // cached at picker-open time) and passes the natural-sorted ids as the
+  it('Confirm calls addBackgroundClip exactly once with the placement frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)', () => {
+    // 49-06 (UAT round 2): the handler reads the clicked empty Bg cell frame
+    // (the placement gesture) at Confirm time, falling back to the playhead
+    // when no frame was clicked, and passes the natural-sorted ids as the
     // source-frame cycle order with the finite-1 default repeat.
     expect(studio).toContain('const result = addBackgroundClip(layerId, {');
-    expect(studio).toContain('startFrame: currentFrame,');
+    expect(studio).toContain('const landingFrame = backgroundPlacementFrame.value ?? currentFrame;');
+    expect(studio).toContain('startFrame: landingFrame,');
     expect(studio).toContain('sourceFrameRefs: sortedIds,');
     expect(studio).toContain("repeat: { mode: 'finite', count: 1 },");
     // Exactly one call site — the handler invokes the store op once per Confirm.
