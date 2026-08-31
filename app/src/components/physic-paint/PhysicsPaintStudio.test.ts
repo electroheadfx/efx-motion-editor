@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+const backgroundPickerView = readFileSync(fileURLToPath(new URL('./view/BackgroundAssetPickerView.tsx', import.meta.url)), 'utf8');
+const capability = readFileSync(fileURLToPath(new URL('../../../src-tauri/capabilities/physics-paint.json', import.meta.url)), 'utf8');
+
 const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
 const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const main = readFileSync(fileURLToPath(new URL('../../main.tsx', import.meta.url)), 'utf8');
@@ -1216,5 +1219,59 @@ describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-
     expect(rasterSurface).not.toContain('repeating-conic-gradient');
     expect(rasterSurface).not.toContain('transparency-checkerboard');
     expect(rasterSurface).not.toContain('#777 0% 25%');
+  });
+});
+
+describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
+  it('wires the signal-driven picker controller to the image-library bridge consumer and imageStore import path', () => {
+    expect(studio).toContain('useBackgroundAssetPickerController({');
+    expect(studio).toContain('requestLibrary: () => requestImageLibrary()');
+    expect(studio).toContain('importFiles: (paths, projectDir) => imageStore.importFiles(paths, projectDir)');
+    expect(studio).toContain('openNativeImageDialog({');
+    expect(studio).toContain("filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'] }]");
+    expect(studio).toContain('refreshLibrary: async () => {');
+    expect(studio).toContain('mergeImageLibraries(result.ok ? result.images : [], studioImages)');
+    // The controller is signal-driven — no useState hook call in the new
+    // picker wiring (the only "useState" occurrence is the comment).
+    expect(backgroundPickerView).not.toContain('useState(');
+    expect(backgroundPickerView).toContain('useSignal');
+    expect(backgroundPickerView).toContain('useComputed');
+  });
+
+  it('mounts the picker as an overlay inside the canvas region — the engine canvas never unmounts (D-01 lock)', () => {
+    expect(studioView).toContain('backgroundPicker?: ComponentProps<typeof BackgroundAssetPickerView>');
+    expect(studioView).toContain('{backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}');
+    // The picker overlay renders AFTER the always-mounted canvas stack in the
+    // JSX — a sibling overlay, never a replacement. The engine canvas stays
+    // mounted underneath (D-01 lock).
+    const canvasStackIndex = studioView.indexOf('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
+    const pickerOverlayIndex = studioView.indexOf('{backgroundPicker?.open ? <BackgroundAssetPickerView');
+    expect(canvasStackIndex).toBeGreaterThanOrEqual(0);
+    expect(pickerOverlayIndex).toBeGreaterThan(canvasStackIndex);
+    // The canvas mount is unconditional — never gated on the picker being closed.
+    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(studioView).not.toContain('!backgroundPicker?.open ? <MemoizedPhysicsPaintCanvasStack');
+  });
+
+  it('emits the confirmed selection natural-sorted by original filename (D-02, one ordering authority)', () => {
+    expect(studio).toContain('sortImages: (images) => sortImagesByOriginalFilename(images, (image) => image.original_filename)');
+    expect(backgroundPickerView).toContain('sortImagesByOriginalFilename(images, (image) => image.original_filename)');
+    expect(backgroundPickerView).toContain('buildConfirmedImageIds(');
+    // The picker never re-derives ordering from asset UUIDs or click order.
+    expect(backgroundPickerView).not.toContain('.sort((a, b) => a.id');
+  });
+
+  it('keeps the picker decoupled from sequenceStore and audioStore (Pitfall 4)', () => {
+    const pickerSurface = [backgroundPickerView, studioView].join('\n');
+    expect(pickerSurface).not.toContain('sequenceStore');
+    expect(pickerSurface).not.toContain('audioStore');
+    expect(pickerSurface).not.toContain('getAllAssetUsages');
+    expect(pickerSurface).not.toContain('cascadeRemoveAsset');
+  });
+
+  it('grants exactly the dialog:allow-open capability with no fs:* permission (Pitfall 3)', () => {
+    expect(capability).toContain('"dialog:allow-open"');
+    expect(capability).not.toContain('fs:');
+    expect(capability).not.toContain('"fs:');
   });
 });

@@ -12,6 +12,7 @@ import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
+import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
@@ -220,11 +221,13 @@ export interface PhysicsPaintStudioViewProps {
   status: {
     shortcutsVisible: boolean;
   };
+  /** 49-04 (Task 2): the scoped full-area asset picker (S2) swap. */
+  backgroundPicker?: ComponentProps<typeof BackgroundAssetPickerView>;
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status, backgroundPicker } = props;
   return (
     <main class="demo-shell">
       <section
@@ -238,6 +241,9 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
           <MemoizedPhysicsPaintCanvasStack {...canvas} />
+          {/* 49-04 (Task 2): the picker is an overlay INSIDE the canvas region —
+              the engine canvas stays mounted underneath (D-01 lock). */}
+          {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
         </section>
 
         <PhysicsPaintRightPanelRegion

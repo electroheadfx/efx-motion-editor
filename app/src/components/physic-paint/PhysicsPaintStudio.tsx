@@ -3,6 +3,7 @@ import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@pr
 import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
+import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
@@ -107,6 +108,11 @@ import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryCont
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
+import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
+import { requestImageLibrary } from '../../lib/physicPaintBridge';
+import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
+import { imageStore } from '../../stores/imageStore';
+import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -300,6 +306,20 @@ function useTrailingThrottledRevision(source: ReadonlySignal<number>, delayMs: n
  */
 function readDocumentActiveTrackId(layerId: string): string {
   return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+}
+
+/**
+ * 49-04 (Task 2): merges the main-webview library (authoritative imageStore)
+ * with the Studio realm's own imageStore (which gains newly imported images via
+ * importFiles) so the picker grid shows both after an in-picker import. The
+ * main webview is the save-path authority; the Studio realm's copy is the
+ * immediate post-import source. Dedupe by asset id — the same file imported
+ * once is never duplicated.
+ */
+function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceImageRef[]): MceImageRef[] {
+  const byId = new Map<string, MceImageRef>();
+  for (const image of [...main, ...studio]) byId.set(image.id, image);
+  return [...byId.values()];
 }
 
 export function PhysicsPaintStudio() {
@@ -3316,6 +3336,54 @@ export function PhysicsPaintStudio() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, physicPaintVersion.value]);
+  // 49-04 (Task 2): the scoped full-area asset picker (S2). The Studio realm's
+  // imageStore is empty (Pitfall 2), so the picker populates its grid from the
+  // main webview via the image-library bridge pair and imports new images
+  // through the native dialog (capability dialog:allow-open, Task 1). The
+  // controller is signal-driven (no useState — efx-preact-reactivity).
+  const backgroundPicker = useBackgroundAssetPickerController({
+    requestLibrary: () => requestImageLibrary(),
+    importFiles: (paths, projectDir) => imageStore.importFiles(paths, projectDir),
+    openDialog: async () => {
+      const selected = await openNativeImageDialog({
+        multiple: true,
+        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'] }],
+      });
+      if (!selected) return null;
+      return Array.isArray(selected) ? selected : [selected];
+    },
+    sortImages: (images) => sortImagesByOriginalFilename(images, (image) => image.original_filename),
+    refreshLibrary: async () => {
+      const result = await requestImageLibrary();
+      const dir = backgroundPicker.projectDir.peek();
+      const studioImages = dir ? imageStore.toMceImages(dir) : [];
+      return mergeImageLibraries(result.ok ? result.images : [], studioImages);
+    },
+  });
+  // 49-04 (Task 2): temporary dev hook for the native checkpoint (Task 3) —
+  // the S1 Import control lands in 49-05 and becomes the real opener. Exposed
+  // as window.__openBackgroundPicker() so the user can invoke the picker from
+  // the Studio console during UAT.
+  const backgroundPickerOpenHookRef = useRef<(() => Promise<void>) | null>(null);
+  backgroundPickerOpenHookRef.current = () => backgroundPicker.openPicker();
+  useEffect(() => {
+    (window as unknown as { __openBackgroundPicker?: () => void }).__openBackgroundPicker = () => {
+      void backgroundPickerOpenHookRef.current?.();
+    };
+    return () => {
+      delete (window as unknown as { __openBackgroundPicker?: () => void }).__openBackgroundPicker;
+    };
+  }, []);
+  // 49-04 (Task 2): Confirm emits the natural-sorted selection to the caller.
+  // The clip-creation wiring (sourceFrameRefs ordered by original filename)
+  // lands in 49-05; here the picker closes and the selection clears.
+  const handleConfirmBackgroundPicker = (sortedIds: string[]) => {
+    backgroundPicker.cancel();
+    // 49-05: create the background clip from sortedIds at the current playhead.
+    // The natural-sorted reference order is the clip's source-frame cycle
+    // order (D-02); the picker closes here and the selection clears.
+    void sortedIds;
+  };
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -3396,6 +3464,18 @@ export function PhysicsPaintStudio() {
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
       },
     status: { shortcutsVisible },
+    backgroundPicker: {
+      open: backgroundPicker.open.value,
+      images: backgroundPicker.images.value,
+      projectDir: backgroundPicker.projectDir.value,
+      selectedIds: backgroundPicker.selectedIds.value,
+      status: backgroundPicker.status.value,
+      importing: backgroundPicker.importing.value,
+      onToggleSelect: backgroundPicker.toggleSelect,
+      onConfirm: handleConfirmBackgroundPicker,
+      onCancel: backgroundPicker.cancel,
+      onImport: backgroundPicker.importImages,
+    },
   });
   const soleOccurrenceDeleteDialog = soleOccurrenceDeleteTarget === null
     ? null
