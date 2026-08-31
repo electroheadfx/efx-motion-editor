@@ -13,7 +13,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageLibraryListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
@@ -113,6 +113,11 @@ if (window.location.pathname === '/physics-paint') {
     await installPhysicPaintRotoAuthorityListener();
     await installPhysicPaintStateSaveListener();
     await installPhysicPaintThumbnailEncodeListener();
+    // 49-04: the main webview answers the Studio's image-library request/result
+    // bridge pair (the picker grid + in-picker Import refresh). Without this
+    // install the child's emitTo('main', ...) has no receiver and every request
+    // times out. Main window only; app-lifetime install like the siblings.
+    await installPhysicPaintImageLibraryListener();
     // Route physic-paint:seek-frame navigation events from the standalone
     // Physics Paint window to the editor timeline. Awaited install like the
     // sibling bridge installs above; the discarded cleanup handle matches the

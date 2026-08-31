@@ -56,6 +56,15 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain('PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT');
   });
 
+  it('installs the image-library request listener in the app entry point (49-04 picker)', () => {
+    // The main webview must register the request listener or the Studio's
+    // emitTo('main', ...) has no receiver and every picker request times out.
+    expect(main).toContain('installPhysicPaintImageLibraryListener');
+    expect(main).toContain('installPhysicPaintImageLibraryListener()');
+    expect(bridge).toContain('PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT');
+    expect(bridge).toContain('PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT');
+  });
+
   it('keeps Save, Load/Paintbrush, Create Group, and cached Roto playback distinct', () => {
     const save = scriptsPanel.indexOf('label="Save Action"');
     const paintbrush = scriptsPanel.indexOf('label="Load + Apply to Frame"');
