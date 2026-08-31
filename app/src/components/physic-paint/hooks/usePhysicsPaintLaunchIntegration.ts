@@ -11,6 +11,8 @@ import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudi
 import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
 import { registerDocument } from '../../../stores/efxPaintStore';
+import { imageStore } from '../../../stores/imageStore';
+import { requestImageLibrary } from '../../../lib/physicPaintBridge';
 import { PHYSIC_PAINT_SESSION_DOCUMENT_KEY } from '../bridge/physicsPaintBridgeTransport';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
@@ -138,6 +140,17 @@ export function usePhysicsPaintLaunchIntegration(input: {
       return;
     }
 
+    // 49-06 (UAT round 2): the child realm's imageStore is a SEPARATE instance
+    // from the main webview's — it only gains images via the picker's import.
+    // Load the project library into it BEFORE the document registration so the
+    // background source hydration (`imageStore.getById`) resolves EXISTING
+    // library refs and every reopened clip (a fresh session's imageStore is
+    // empty, so getById returned undefined and the hydration skipped every ref
+    // — the reopened clip stayed invisible).
+    const library = await requestImageLibrary();
+    if (library.ok && library.projectDir) {
+      imageStore.loadFromMceImages(library.images, library.projectDir);
+    }
     // The carried v1.0 document IS the session: install it into the child's
     // efxPaintStore so the session-file save path resolves the document.
     if (hydration.context.document) registerDocument(hydration.context.document);

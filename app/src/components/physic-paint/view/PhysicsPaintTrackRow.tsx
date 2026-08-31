@@ -50,6 +50,7 @@ import type {
   BackgroundClipDragGhostState,
   BackgroundClipDragPreviewState,
 } from '../hooks/usePhysicsPaintBackgroundClipDrag';
+import type { BackgroundClipResizeApi } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
@@ -126,6 +127,9 @@ export interface PhysicsPaintTrackRowProps {
   readonly backgroundResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
   /** The row-local Bg clip drag hook API — each rail binds onPointerDown. */
   readonly backgroundClipDrag?: BackgroundClipDragApi | null;
+  /** 49-06 (UAT round 2): the row-local Bg clip RESIZE hook API — the FIRST and
+   *  LAST cells of each clip bind onPointerDown to resize the start/end. */
+  readonly backgroundClipResize?: BackgroundClipResizeApi | null;
   /** Live drag ghost geometry (paint only — never canonical). */
   readonly backgroundClipDragGhost?: BackgroundClipDragGhostState | null;
   /** Live drag preview publication (paint only — never canonical). */
@@ -327,26 +331,30 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   readonly left: number;
   readonly width: number;
   /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
-   *  rail paints the orange selection treatment (timeline selection contract). */
+   *  cells paint the orange selection treatment (timeline selection contract). */
   readonly selected: boolean;
-  readonly onPointerDown?: (event: PointerEvent) => void;
+  /** 49-06 (UAT round 2): the row-local MOVE drag hook — middle cells bind it. */
+  readonly onMovePointerDown?: (event: PointerEvent) => void;
+  /** 49-06 (UAT round 2): the row-local RESIZE drag hook — the FIRST and LAST
+   *  cells bind it (push the edge to set the clip's start/end). */
+  readonly onResizePointerDown?: (event: PointerEvent) => void;
 }
 
 /**
- * One Bg clip rail: a FILLED span on the muted row (49-06 UAT round 2 — the
- * clip extent reads like Paint track cells, never a thin line), with the
- * shortened visual + `Loop shortened by next clip`, the diagonal cut on a
- * partial cycle, and the `next clip — interrupts the loop` tooltip line — all
- * from resolver facts only (capsule-never-math, Pitfall 10/m2). The Phase 47
- * surface lock forbids ANY text on the lane — repeat facts live in the right
- * panel and the tooltip. The rail carries `data-bg-clip-id` /
- * `data-bg-clip-start` so the strip's drag hook resolves the source from the
- * pressed element; pointer-down hands the gesture to the row-local drag hook
+ * One Bg clip as a GROUP OF CELLS on the fixed Bg row (49-06 UAT round 2): each
+ * frame of the clip's extent is an individual filled cell (like Paint track
+ * cells), so the user can push the FIRST and LAST cells to resize the clip's
+ * start/end. The Phase 47 surface lock forbids ANY text on the lane — repeat
+ * facts live in the right panel and the tooltip. The cells carry
+ * `data-bg-clip-id` / `data-bg-clip-start` (and `data-bg-clip-edge` on the
+ * first/last) so the strip's drag/resize hooks resolve the source from the
+ * pressed element; pointer-down hands the gesture to the row-local hooks
  * (row-fixed law — never the cross-track machinery).
  */
 function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipRailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const cellCount = Math.max(1, Math.round(props.width / ROW_CELL_WIDTH_PX));
   return (
     <span
       ref={anchorRef}
@@ -355,23 +363,37 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
-      <button
-        type="button"
-        class={`physics-paint-rail-target physics-paint-bg-clip-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end${props.selected ? ' selected' : ''}${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
+      <div
+        class={`physics-paint-bg-clip-cells${props.selected ? ' selected' : ''}${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
+        role="group"
         aria-label={props.presentation.accessibleName}
-        aria-pressed={props.selected}
         data-bg-clip-id={props.clipId}
         data-bg-clip-start={props.startFrame}
-        onPointerDown={(event) => {
-          // A drag begins on this rail — never let the hover pill pop mid-gesture.
-          tooltip.hide();
-          props.onPointerDown?.(event as unknown as PointerEvent);
-        }}
-        onFocus={tooltip.onFocus}
-        onBlur={tooltip.onBlur}
       >
-        <span class="physics-paint-rail-segment physics-paint-bg-clip-rail-segment" aria-hidden="true" />
-      </button>
+        {Array.from({ length: cellCount }, (_, index) => {
+          const isFirst = index === 0;
+          const isLast = index === cellCount - 1;
+          return (
+            <span
+              key={index}
+              class={`physics-paint-bg-clip-cell${isFirst ? ' physics-paint-bg-clip-cell-first' : ''}${isLast ? ' physics-paint-bg-clip-cell-last' : ''}`}
+              data-bg-clip-id={props.clipId}
+              data-bg-clip-start={props.startFrame}
+              data-bg-clip-edge={isFirst ? 'start' : isLast ? 'end' : undefined}
+              onPointerDown={(event) => {
+                // A drag/resize begins on this cell — never let the hover pill
+                // pop mid-gesture.
+                tooltip.hide();
+                const pointerEvent = event as unknown as PointerEvent;
+                if (isFirst || isLast) props.onResizePointerDown?.(pointerEvent);
+                else props.onMovePointerDown?.(pointerEvent);
+              }}
+              onFocus={tooltip.onFocus}
+              onBlur={tooltip.onBlur}
+            />
+          );
+        })}
+      </div>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
           {props.presentation.tooltipLines.map((line, index) => (
@@ -410,6 +432,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     background = null,
     backgroundResolutionContext = null,
     backgroundClipDrag = null,
+    backgroundClipResize = null,
     backgroundClipDragGhost = null,
   } = props;
   const rowClass = [
@@ -573,7 +596,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   left={geometry.left}
                   width={geometry.width}
                   selected={selectedBackgroundClipId === clip.id}
-                  onPointerDown={backgroundClipDrag?.onPointerDown}
+                  onMovePointerDown={backgroundClipDrag?.onPointerDown}
+                  onResizePointerDown={backgroundClipResize?.onPointerDown}
                 />
               );
             })}
@@ -581,6 +605,15 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
               <span
                 class={`physics-paint-bg-clip-rail-ghost${backgroundClipDragGhost.blockedEdge ? ` blocked-edge-${backgroundClipDragGhost.blockedEdge}` : ''}`}
                 style={{ left: `${backgroundClipDragGhost.left}px`, width: `${backgroundClipDragGhost.width}px` }}
+                aria-hidden="true"
+              />
+            ) : null}
+            {/* 49-06 (UAT round 2): the RESIZE ghost — the new extent preview
+                while pushing the first/last cell (paint only, never canonical). */}
+            {backgroundClipResize?.ghost.active ? (
+              <span
+                class={`physics-paint-bg-clip-rail-ghost physics-paint-bg-clip-resize-ghost${backgroundClipResize.ghost.blockedEdge ? ` blocked-edge-${backgroundClipResize.ghost.blockedEdge}` : ''}`}
+                style={{ left: `${backgroundClipResize.ghost.left}px`, width: `${backgroundClipResize.ghost.width}px` }}
                 aria-hidden="true"
               />
             ) : null}

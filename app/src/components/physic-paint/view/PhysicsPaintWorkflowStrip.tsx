@@ -112,6 +112,7 @@ import {
 } from '../hooks/usePhysicsPaintCrossTrackDrag';
 import { usePhysicsPaintRulerScrub } from '../hooks/usePhysicsPaintRulerScrub';
 import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackgroundClipDrag';
+import { usePhysicsPaintBackgroundClipResize, type BackgroundClipResizeSource } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
@@ -123,6 +124,7 @@ import {
   MAX_TRACK_NAME_LENGTH,
   moveBackgroundClip,
   requestDeleteTrack,
+  setBackgroundClipRepeat,
   TRACK_NAME_CONTROL_CHAR,
   type TrackDeletePreview,
 } from '../../../stores/efxPaintStore';
@@ -2165,6 +2167,88 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     clearClickSequence: () => {},
     onCancel: () => { backgroundDragSourceRef.current = null; },
   });
+  // 49-06 (UAT round 2): the Bg clip RESIZE gesture — the FIRST and LAST cells
+  // of each clip are resize handles. The start edge commits through
+  // moveBackgroundClip; the end edge commits through setBackgroundClipRepeat
+  // with the repeat that makes the requested end reach the dragged frame (the
+  // resolver's cycle length is the only math — capsule-never-math).
+  const backgroundResizeSourceRef = useRef<{
+    clipId: string; edge: 'start' | 'end'; startFrame: number; endFrame: number; cycleLength: number;
+  } | null>(null);
+  const backgroundClipResize = usePhysicsPaintBackgroundClipResize({
+    windowLike: undefined,
+    resolveSource: (event) => {
+      const target = event.currentTarget as HTMLElement | null;
+      const cell = target?.closest?.('[data-bg-clip-id]') as HTMLElement | null;
+      if (!cell) return null;
+      const clipId = cell.dataset.bgClipId;
+      const edge = cell.dataset.bgClipEdge;
+      const startFrame = Number(cell.dataset.bgClipStart);
+      if (!clipId || (edge !== 'start' && edge !== 'end') || !Number.isInteger(startFrame)) return null;
+      const range = backgroundResolutionContext?.ranges.find((candidate) => candidate.loopId === clipId);
+      if (!range) return null;
+      const source: BackgroundClipResizeSource = {
+        clipId,
+        edge,
+        startFrame,
+        endFrame: range.effectiveEnd,
+        cycleLength: Math.max(1, range.cycleLength),
+      };
+      backgroundResizeSourceRef.current = source;
+      return source;
+    },
+    projectFrame: ({ clientX }) => {
+      const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
+      const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
+      return Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+    },
+    clampFrame: (proposedFrame) => {
+      const source = backgroundResizeSourceRef.current;
+      if (!source) return { frame: proposedFrame, left: 0, width: 0, blockedEdge: null };
+      if (source.edge === 'start') {
+        const frame = Math.max(0, Math.min(source.endFrame - 1, proposedFrame));
+        return {
+          frame,
+          left: frame * ROTO_CELL_WIDTH_PX,
+          width: Math.max(ROTO_CELL_WIDTH_PX, (source.endFrame - frame) * ROTO_CELL_WIDTH_PX),
+          blockedEdge: frame === proposedFrame ? null : (proposedFrame > frame ? 'right' : 'left'),
+        };
+      }
+      const frame = Math.max(source.startFrame + 1, Math.min(frameCells.length, proposedFrame));
+      return {
+        frame,
+        left: source.startFrame * ROTO_CELL_WIDTH_PX,
+        width: Math.max(ROTO_CELL_WIDTH_PX, (frame - source.startFrame) * ROTO_CELL_WIDTH_PX),
+        blockedEdge: frame === proposedFrame ? null : (proposedFrame > frame ? 'right' : 'left'),
+      };
+    },
+    prepareAtFrame: (frame) => {
+      const source = backgroundResizeSourceRef.current;
+      if (!source) return { ok: false, reason: 'clip-not-found' };
+      return { ok: true, publication: Object.freeze({ clipId: source.clipId, edge: source.edge, frame }) };
+    },
+    onDropCommit: (publication) => {
+      if (!props.layerId) return { ok: false, reason: 'clip-not-found' };
+      if (publication.edge === 'start') {
+        return moveBackgroundClip(props.layerId, publication.clipId, publication.frame);
+      }
+      const source = backgroundResizeSourceRef.current;
+      if (!source) return { ok: false, reason: 'clip-not-found' };
+      const duration = Math.max(1, publication.frame - source.startFrame);
+      const count = Math.max(1, Math.ceil(duration / source.cycleLength));
+      return setBackgroundClipRepeat(props.layerId, publication.clipId, { mode: 'finite', count });
+    },
+    onRejected: (reason) => {
+      if (reason === 'start-collision') {
+        props.rotoPhysicalActions?.setApplyStatus?.('error');
+        props.rotoPhysicalActions?.publishStatus?.("Couldn't resize the clip here. The frame is inside an existing clip. Nothing changed.");
+      }
+    },
+    onSelectClip: (clipId) => props.onSelectBackgroundClip?.(clipId),
+    onGhostChange: () => { backgroundClipPaintTick.value += 1; },
+    clearClickSequence: () => {},
+    onCancel: () => { backgroundResizeSourceRef.current = null; },
+  });
   // Read the tick so the strip re-renders on live ghost/preview updates.
   backgroundClipPaintTick.value;
   // 260827-s52 Task 1 (NLE ruler seek): a pointer-down on the time ruler seeks
@@ -3853,6 +3937,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       background={props.background}
                       backgroundResolutionContext={backgroundResolutionContext}
                       backgroundClipDrag={backgroundClipDrag}
+                      backgroundClipResize={backgroundClipResize}
                       backgroundClipDragGhost={backgroundClipDrag.ghost}
                       backgroundClipDragPreview={backgroundClipDrag.preview}
                       onSelectBackgroundFrame={props.onSelectBackgroundFrame}

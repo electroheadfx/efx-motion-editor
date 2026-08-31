@@ -335,10 +335,16 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       selectedBackgroundClipId: 'bg-clip-1',
       backgroundPlacementFrame: 7,
     });
-    const rail = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-target'));
-    expect(rail).toHaveLength(1);
-    expect(String(rail[0].props.class)).toContain('selected');
-    expect(rail[0].props['aria-pressed']).toBe(true);
+    // The clip renders as a GROUP OF CELLS (one per frame of the extent) with
+    // the selected orange treatment on the container.
+    const cells = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cells'));
+    expect(cells).toHaveLength(1);
+    expect(String(cells[0].props.class)).toContain('selected');
+    const cellSpans = findAll(cells[0], (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell'));
+    expect(cellSpans.length).toBeGreaterThan(0);
+    // The FIRST and LAST cells are the resize handles (ew-resize cursor).
+    expect(findAll(cells[0], (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell-first'))).toHaveLength(1);
+    expect(findAll(cells[0], (vnode) => hasClass(vnode, 'physics-paint-bg-clip-cell-last'))).toHaveLength(1);
     // The lane carries NO text — the badge span is gone (47 lock).
     expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-badge'))).toHaveLength(0);
     // The placement-target cell carries the marker class.

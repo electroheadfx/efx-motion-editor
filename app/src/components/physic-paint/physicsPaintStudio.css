@@ -3257,59 +3257,66 @@ button.destructive {
   pointer-events: auto;
 }
 
-.physics-paint-bg-clip-rail-target {
+/* 49-06 (UAT round 2): the Bg clip renders as a GROUP OF CELLS — one filled
+   cell per frame of the clip's extent (like Paint track cells), so the user
+   can push the FIRST and LAST cells to resize the clip's start/end. The cells
+   fill the anchor; each cell is ~18px (the row's frame pitch). */
+.physics-paint-bg-clip-cells {
   position: absolute;
   inset: 0;
+  display: flex;
   width: 100%;
   height: 100%;
-  min-width: 12px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.physics-paint-bg-clip-rail-target:hover:not(:disabled),
-.physics-paint-bg-clip-rail-target:focus-visible:not(:disabled) {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.physics-paint-bg-clip-rail-segment {
-  position: absolute;
-  inset: 0;
-  height: 100%;
-  /* 49-06 (UAT round 2): the filled span color — #4a7eac (a visible neutral
-     blue, purple/cyan-free per UI-SPEC S3) with the shared #f8fafc boundary
-     caps from the boundary-* classes on the rail target. */
-  background: #4a7eac;
   pointer-events: none;
 }
 
-.physics-paint-bg-clip-rail-target:hover:not(:disabled):not(.selected) .physics-paint-bg-clip-rail-segment,
-.physics-paint-bg-clip-rail-target:focus-visible:not(:disabled):not(.selected) .physics-paint-bg-clip-rail-segment {
+.physics-paint-bg-clip-cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* The filled cell color — #4a7eac (a visible neutral blue, purple/cyan-free
+     per UI-SPEC S3). */
+  background: #4a7eac;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.physics-paint-bg-clip-cell:hover {
   background: #5a8fc0;
 }
 
-/* 49-06 (UAT round 2): the selected Bg clip/rail paints the SAME orange as the
-   rest of the timeline selection contract (#f5a623) — it overrides the
-   shortened warning so a selected clip always reads selected. */
-.physics-paint-bg-clip-rail-target.selected .physics-paint-bg-clip-rail-segment {
+/* The FIRST and LAST cells are the resize handles — the ew-resize cursor
+   signals the push-to-resize gesture. */
+.physics-paint-bg-clip-cell-first,
+.physics-paint-bg-clip-cell-last {
+  cursor: ew-resize;
+}
+
+.physics-paint-bg-clip-cell-first {
+  border-left: 1px solid #f8fafc;
+}
+
+.physics-paint-bg-clip-cell-last {
+  border-right: 1px solid #f8fafc;
+}
+
+/* 49-06 (UAT round 2): the selected Bg clip paints the SAME orange as the rest
+   of the timeline selection contract (#f5a623) — it overrides the shortened
+   warning so a selected clip always reads selected. */
+.physics-paint-bg-clip-cells.selected .physics-paint-bg-clip-cell {
   background: #f5a623;
 }
 
 /* Shortened visual (D-12): the loop stops at the next clip / parent bound —
-   a distinct warning-tinted segment (UI-SPEC Warning #FFB020, truncated-end and
+   the LAST cell tints warning (UI-SPEC Warning #FFB020, truncated-end and
    shortened-loop treatments only). */
-.physics-paint-bg-clip-rail-target.shortened:not(.selected) .physics-paint-bg-clip-rail-segment {
+.physics-paint-bg-clip-cells.shortened:not(.selected) .physics-paint-bg-clip-cell-last {
   background: #ffb020;
 }
 
 /* Diagonal cut on a partial cycle (D-21): the effective end lands mid-cycle —
-   a 45° notch on the rail's right edge. */
-.physics-paint-bg-clip-rail-target.partial-cycle .physics-paint-bg-clip-rail-segment {
+   a 45° notch on the last cell's right edge. */
+.physics-paint-bg-clip-cells.partial-cycle .physics-paint-bg-clip-cell-last {
   clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 100%, 0 100%);
 }
 
@@ -3333,6 +3340,13 @@ button.destructive {
 .physics-paint-bg-clip-rail-ghost.blocked-edge-left,
 .physics-paint-bg-clip-rail-ghost.blocked-edge-right {
   box-shadow: inset 0 0 0 2px #ff6b6b;
+}
+
+/* 49-06 (UAT round 2): the RESIZE ghost — the new extent preview while pushing
+   the first/last cell. Same band as the move ghost, tinted blue so the resize
+   reads distinctly. */
+.physics-paint-bg-clip-resize-ghost {
+  background: #4a7eac;
 }
 
 /* 43.4 Key Rails share the integrated 12px rail band without changing its

@@ -489,21 +489,38 @@ export async function hydrateBackgroundSourceImages(
   }));
 }
 
-/** Fetch efxasset:// bytes and convert to a dataUrl; null on any failure (T-49-02-04). */
-async function _decodeEfxAssetBytes(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
+/**
+ * Decode efxasset:// bytes to a dataUrl; null on any failure (T-49-02-04).
+ *
+ * 49-06 (UAT round 2): the `<img>` loader is the PROVEN efxasset:// path in the
+ * child webview — the picker grid and the imageStore display both load
+ * `assetUrl(...)` through `<img src>`, while `fetch` on a custom scheme is not
+ * guaranteed in every WebKit build (the clip stayed invisible: the hydration
+ * silently skipped every ref). Load through an Image and rasterize to a dataUrl
+ * (PNG) so the compositor's `_compositorDecode` decodes the same way.
+ */
+function _decodeEfxAssetBytes(url: string): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL());
+      } catch {
+        resolve(null);
+      }
+    };
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
 }
 
 /** Production ports: library asset id → efxasset:// URL → decoded bytes → registry. */
