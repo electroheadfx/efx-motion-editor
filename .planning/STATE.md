@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 48
 current_phase_name: Internal Compositor and Flattened Parent Result
 status: complete
-stopped_at: Phase 49 context gathered
-last_updated: "2026-08-30T07:06:15.782Z"
+stopped_at: Phase 49 UI-SPEC approved
+last_updated: "2026-08-31T05:55:48.420Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 48 complete — compositor + flattened parent result
-state_head: d9f3b821fa2caaa2966e3649f39c9f8545b96292
+state_head: 0c68be5c1d2ce0d33fd22558686f11f47ef7cbbd
 progress:
   total_phases: 9
   completed_phases: 1
@@ -217,8 +217,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/49-fixed-background-track-and-imported-loop-clips/49-CONTEXT.md
+**Resume file:** /Users/lmarques/Dev/efx-motion-editor/.planning/phases/49-fixed-background-track-and-imported-loop-clips/49-UI-SPEC.md
 
-Last session: 2026-08-30T07:06:15.383Z
-Stopped at: Phase 49 context gathered
+Last session: 2026-08-31T05:55:47.995Z
+Stopped at: Phase 49 UI-SPEC approved
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
