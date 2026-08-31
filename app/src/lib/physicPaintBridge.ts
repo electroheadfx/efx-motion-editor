@@ -1,8 +1,9 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import {
   buildCanonicalMoveGroupOverrideRecords,
@@ -56,6 +57,7 @@ import {
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
+import { imageStore } from '../stores/imageStore';
 import { resolveSequenceTimelineRange, trackLayouts } from './frameMap';
 import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
@@ -91,6 +93,22 @@ export const PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT = 'physic-paint:state-save-re
 export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-result';
 export const PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT = 'physic-paint:thumbnail-encode-request';
 export const PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT = 'physic-paint:thumbnail-encode-result';
+/**
+ * 49-04 (Task 1): the image-library request/result pair that fills the Studio
+ * realm's empty imageStore (Pitfall 2). The Studio webview requests
+ * `{ images: MceImageRef[], projectDir: string }` from the main webview — the
+ * authoritative imageStore realm — so the scoped asset picker can render the
+ * project library and legally import new images inside it (Pitfall 3).
+ */
+export const PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT = 'physic-paint:image-library-request';
+export const PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT = 'physic-paint:image-library-result';
+
+/**
+ * Structural twin of usePhysicsPaintParentBridge's PhysicsPaintBridgeMode —
+ * declared here (not imported) so physicPaintBridge never imports from the
+ * component layer, which would create a circular import.
+ */
+export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
 export const PHYSIC_PAINT_WINDOW_LABEL = 'efx-physic-paint';
 const PHYSIC_PAINT_FALLBACK_PATH = '/physics-paint';
@@ -2282,6 +2300,163 @@ export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Prom
   } catch (error) {
     return failure(String(error));
   }
+}
+
+/**
+ * 49-04 (Task 1): pure publisher-side handler for the image-library request.
+ * The main webview answers with the authoritative imageStore realm's current
+ * `{ images, projectDir }` snapshot. `state` is injected so the handler is
+ * unit-testable without a live store; the production wiring passes
+ * `{ getImages: () => imageStore.toMceImages(projectDir), getProjectDir: () => projectStore.dirPath.peek() }`.
+ */
+export interface PhysicPaintImageLibraryStatePorts {
+  readonly getImages: () => MceImageRef[];
+  readonly getProjectDir: () => string;
+}
+
+export function applyPhysicPaintImageLibraryRequest(
+  value: unknown,
+  state: PhysicPaintImageLibraryStatePorts,
+): PhysicPaintImageLibraryResult {
+  const request = isPhysicPaintImageLibraryRequest(value) ? value : null;
+  const operationId = request?.operationId ?? 'invalid-operation';
+  if (!request) return { operationId, ok: false, images: [], projectDir: '', error: 'Invalid image library request' };
+  const projectDir = state.getProjectDir();
+  if (!projectDir) return { operationId, ok: false, images: [], projectDir: '', error: 'No project directory is open.' };
+  return { operationId, ok: true, images: state.getImages(), projectDir };
+}
+
+export interface ImageLibraryRequestLifecyclePorts {
+  readonly getBridgeMode: () => PhysicsPaintBridgeMode;
+  readonly detectBridgeMode?: () => Promise<PhysicsPaintBridgeMode>;
+  readonly sendRequest: (request: PhysicPaintImageLibraryRequest, bridgeMode: PhysicsPaintBridgeMode) => Promise<void>;
+  readonly setRequestTimeout?: (handler: () => void, timeout: number) => ReturnType<typeof setTimeout>;
+  readonly clearRequestTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
+}
+
+export interface ImageLibraryRequestLifecycle {
+  readonly request: () => Promise<PhysicPaintImageLibraryResult>;
+  readonly handleResult: (result: PhysicPaintImageLibraryResult) => void;
+  readonly dispose: () => void;
+  readonly pendingCount: () => number;
+}
+
+function failedImageLibraryResult(operationId: string, error: string): PhysicPaintImageLibraryResult {
+  return { operationId, ok: false, images: [], projectDir: '', error };
+}
+
+/**
+ * 49-04 (Task 1): consumer-side request lifecycle mirroring
+ * createRotoScriptLibraryRequestLifecycle — pending Map keyed by operationId,
+ * settle() resolves the matching promise, request() enforces a 15s timeout,
+ * handleResult() settles by operationId, dispose() settles all pending.
+ */
+export function createImageLibraryRequestLifecycle(ports: ImageLibraryRequestLifecyclePorts): ImageLibraryRequestLifecycle {
+  const pending = new Map<string, { operationId: string; resolve: (result: PhysicPaintImageLibraryResult) => void; timeout: ReturnType<typeof setTimeout> }>();
+  const setRequestTimeout = ports.setRequestTimeout ?? setTimeout;
+  const clearRequestTimeout = ports.clearRequestTimeout ?? clearTimeout;
+  let disposed = false;
+
+  function settle(operationId: string, result: PhysicPaintImageLibraryResult): void {
+    const operation = pending.get(operationId);
+    if (!operation) return;
+    pending.delete(operationId);
+    clearRequestTimeout(operation.timeout);
+    operation.resolve(result);
+  }
+
+  function request(): Promise<PhysicPaintImageLibraryResult> {
+    const operationId = `physics-paint-image-library-${Date.now()}-${crypto.randomUUID()}`;
+    if (disposed) return Promise.resolve(failedImageLibraryResult(operationId, 'Image library request was disposed.'));
+    return new Promise((resolve) => {
+      const timeout = setRequestTimeout(() => settle(operationId, failedImageLibraryResult(operationId, 'Image library request timed out.')), 15_000);
+      pending.set(operationId, { operationId, resolve, timeout });
+      void (async () => {
+        const configuredMode = ports.getBridgeMode();
+        const currentBridgeMode = configuredMode === 'Unavailable' && ports.detectBridgeMode ? await ports.detectBridgeMode() : configuredMode;
+        await ports.sendRequest({ operationId }, currentBridgeMode);
+      })().catch((error) => settle(operationId, failedImageLibraryResult(operationId, String(error))));
+    });
+  }
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    for (const operation of [...pending.values()]) {
+      settle(operation.operationId, failedImageLibraryResult(operation.operationId, 'Image library request was disposed.'));
+    }
+  }
+
+  return {
+    request,
+    handleResult: (result) => settle(result.operationId, result),
+    dispose,
+    pendingCount: () => pending.size,
+  };
+}
+
+/**
+ * 49-04 (Task 1): consumer-side convenience entry point used by the Studio
+ * realm. Self-contained (mirrors createPhysicPaintThumbnailNativeEncoder) so
+ * physicPaintBridge never imports from the component layer — avoiding the
+ * circular import with usePhysicsPaintParentBridge.
+ */
+export async function requestImageLibrary(): Promise<PhysicPaintImageLibraryResult> {
+  const eventApi = await import('@tauri-apps/api/event');
+  if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') {
+    return failedImageLibraryResult('invalid-operation', 'Image library bridge is unavailable');
+  }
+  const operationId = `physics-paint-image-library-${Date.now()}-${crypto.randomUUID()}`;
+  let timeout = 0;
+  let unlisten: (() => void) | undefined;
+  try {
+    let resolveResult: (result: PhysicPaintImageLibraryResult) => void = () => {};
+    const resultPromise = new Promise<PhysicPaintImageLibraryResult>((resolve) => { resolveResult = resolve; });
+    unlisten = await eventApi.listen(PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT, (event) => {
+      if (!isPhysicPaintImageLibraryResult(event.payload) || event.payload.operationId !== operationId) return;
+      resolveResult(event.payload);
+    });
+    timeout = window.setTimeout(() => resolveResult(failedImageLibraryResult(operationId, 'Image library request timed out')), 15_000);
+    await eventApi.emitTo('main', PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, { operationId });
+    return await resultPromise;
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+    unlisten?.();
+  }
+}
+
+export async function installPhysicPaintImageLibraryListener(): Promise<() => void> {
+  const emitResult = async (result: PhysicPaintImageLibraryResult, source?: Pick<Window, 'postMessage'> | null) => {
+    if (isTauriRuntime()) {
+      const eventApi = await import('@tauri-apps/api/event');
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT, result);
+    }
+    if (typeof window !== 'undefined') {
+      const message = { type: PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT, payload: result };
+      window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT, { detail: result }));
+      source?.postMessage?.(message, window.location.origin);
+      window.opener?.postMessage?.(message, window.location.origin);
+    }
+  };
+  const state: PhysicPaintImageLibraryStatePorts = {
+    getImages: () => imageStore.toMceImages(projectStore.dirPath.peek() ?? ''),
+    getProjectDir: () => projectStore.dirPath.peek() ?? '',
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, async (event) => emitResult(applyPhysicPaintImageLibraryRequest(event.payload, state)));
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => { void emitResult(applyPhysicPaintImageLibraryRequest((event as CustomEvent).detail, state)); };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    void emitResult(applyPhysicPaintImageLibraryRequest(event.data.payload, state), source);
+  };
+  window.addEventListener(PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => { window.removeEventListener(PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {

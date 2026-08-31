@@ -2,6 +2,7 @@ import type { EfxPaintDocument } from '@efxlab/efx-physic-paint';
 import type { EfxPaintDocument as EfxPaintDocumentPayload } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
+import type { MceImageRef } from './project';
 import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
@@ -1964,6 +1965,35 @@ export interface PhysicPaintScriptLibraryResultMessage {
   payload: PhysicPaintScriptLibraryResult;
 }
 
+/**
+ * 49-04 (Task 1): the image-library request/result pair that fills the Studio
+ * realm's empty imageStore (Pitfall 2). The Studio webview requests
+ * `{ images: MceImageRef[], projectDir: string }` from the main webview — the
+ * authoritative imageStore realm — so the scoped asset picker can render the
+ * project library and legally import new images inside it (Pitfall 3).
+ */
+export interface PhysicPaintImageLibraryRequest {
+  operationId: string;
+}
+
+export interface PhysicPaintImageLibraryResult {
+  operationId: string;
+  ok: boolean;
+  images: MceImageRef[];
+  projectDir: string;
+  error?: string;
+}
+
+export interface PhysicPaintImageLibraryRequestMessage {
+  type: 'physic-paint:image-library-request';
+  payload: PhysicPaintImageLibraryRequest;
+}
+
+export interface PhysicPaintImageLibraryResultMessage {
+  type: 'physic-paint:image-library-result';
+  payload: PhysicPaintImageLibraryResult;
+}
+
 export interface PhysicPaintReadinessState {
   ready: boolean;
   engineReady: boolean;
@@ -2244,6 +2274,40 @@ export function isPhysicPaintScriptLibraryResult(value: unknown): value is Physi
 
 export function isPhysicPaintScriptLibraryResultMessage(value: unknown): value is PhysicPaintScriptLibraryResultMessage {
   return Boolean(isRecord(value) && value.type === 'physic-paint:script-library-result' && isPhysicPaintScriptLibraryResult(value.payload));
+}
+
+export function isMceImageRef(value: unknown): value is MceImageRef {
+  return Boolean(
+    isRecord(value) &&
+      hasOnlyKeys(value, ['id', 'original_filename', 'relative_path', 'thumbnail_relative_path', 'width', 'height', 'format']) &&
+      isNonEmptyString(value.id) &&
+      isNonEmptyString(value.original_filename) &&
+      isNonEmptyString(value.relative_path) &&
+      isNonEmptyString(value.thumbnail_relative_path) &&
+      isNonNegativeInteger(value.width) &&
+      isNonNegativeInteger(value.height) &&
+      isNonEmptyString(value.format)
+  );
+}
+
+export function isPhysicPaintImageLibraryRequest(value: unknown): value is PhysicPaintImageLibraryRequest {
+  return Boolean(isRecord(value) && hasOnlyKeys(value, ['operationId']) && isBoundedOperationId(value.operationId));
+}
+
+export function isPhysicPaintImageLibraryResult(value: unknown): value is PhysicPaintImageLibraryResult {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'images', 'projectDir', 'error'])) return false;
+  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
+  if (!Array.isArray(value.images) || !value.images.every(isMceImageRef)) return false;
+  if (typeof value.projectDir !== 'string' || value.projectDir.length === 0) return false;
+  return value.error === undefined || typeof value.error === 'string';
+}
+
+export function isPhysicPaintImageLibraryRequestMessage(value: unknown): value is PhysicPaintImageLibraryRequestMessage {
+  return Boolean(isRecord(value) && value.type === 'physic-paint:image-library-request' && isPhysicPaintImageLibraryRequest(value.payload));
+}
+
+export function isPhysicPaintImageLibraryResultMessage(value: unknown): value is PhysicPaintImageLibraryResultMessage {
+  return Boolean(isRecord(value) && value.type === 'physic-paint:image-library-result' && isPhysicPaintImageLibraryResult(value.payload));
 }
 
 export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is PhysicPaintRotoAuthorityRequest {
