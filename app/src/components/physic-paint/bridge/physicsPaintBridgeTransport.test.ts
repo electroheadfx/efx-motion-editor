@@ -117,4 +117,14 @@ describe('image-library bridge pair (49-04, Task 1)', () => {
     expect(PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT).toBe('physic-paint:image-library-request');
     expect(PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT).toBe('physic-paint:image-library-result');
   });
+
+  it('PROJECT-DIR FALLBACK: the production wiring resolves tempProjectDir when dirPath is null (49-04 UAT fix)', () => {
+    // The main flow (ImportedView) uses `dirPath ?? tempProjectDir`; the bridge
+    // must match so a temp-dir-opened project (dirPath null) does not report
+    // "No project directory is open." and import does not silently no-op.
+    const bridge = readFileSync(fileURLToPath(new URL('../../../lib/physicPaintBridge.ts', import.meta.url)), 'utf8');
+    expect(bridge).toContain("import { tempProjectDir } from './projectDir';");
+    expect(bridge).toContain("getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? '')");
+    expect(bridge).toContain("getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? ''");
+  });
 });

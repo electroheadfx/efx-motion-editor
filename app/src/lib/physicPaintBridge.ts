@@ -58,6 +58,7 @@ import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
 import { imageStore } from '../stores/imageStore';
+import { tempProjectDir } from './projectDir';
 import { resolveSequenceTimelineRange, trackLayouts } from './frameMap';
 import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
@@ -2439,8 +2440,8 @@ export async function installPhysicPaintImageLibraryListener(): Promise<() => vo
     }
   };
   const state: PhysicPaintImageLibraryStatePorts = {
-    getImages: () => imageStore.toMceImages(projectStore.dirPath.peek() ?? ''),
-    getProjectDir: () => projectStore.dirPath.peek() ?? '',
+    getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? ''),
+    getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? '',
   };
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
