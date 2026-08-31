@@ -4671,7 +4671,7 @@ button.destructive {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px;
+  background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 20px 20px;
 }
 
 .physics-paint-tracks-group > .demo-canvas-shell {

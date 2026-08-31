@@ -1206,7 +1206,7 @@ describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-
 
   it('uses the two-gray repeating-conic-gradient treatment clipped to canvas bounds', () => {
     expect(css).toContain('.physics-paint-transparency-checkerboard');
-    expect(css).toContain('background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px;');
+    expect(css).toContain('background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 20px 20px;');
     expect(css).toContain('position: absolute;');
     expect(css).toContain('z-index: 0;');
     expect(css).toContain('pointer-events: none;');
