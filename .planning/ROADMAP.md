@@ -356,12 +356,12 @@ Plans:
   4. Gaps reveal the document fallback (solid color or transparency) identically in Studio, flattened parent output, main preview, and export.
   5. Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen.
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 49-01-PLAN.md — BackgroundFallback union extension: paper mode + parser + canonical encoder in lockstep, round-trip/rejection contract (D-11 model, TDD)
+- [x] 49-01-PLAN.md — BackgroundFallback union extension: paper mode + parser + canonical encoder in lockstep, round-trip/rejection contract (D-11 model, TDD)
 - [ ] 49-02-PLAN.md — clip CRUD ops + natural sort util (D-02) + undo-by-reference + source-byte hydration (BKG-03/04/05/07/08/09, TDD)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -454,7 +454,7 @@ Plans:
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
-| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 0/6 | Planned | - |
+| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 1/6 | In Progress|  |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 0/TBD | Not started | - |
