@@ -112,6 +112,9 @@ export interface PhysicsPaintTrackRowProps {
    *  Track section stays reachable. The Bg row never navigates/selects, so this
    *  is its only cell-click intent. */
   readonly onSelectBackgroundFrame?: (frame: number) => void;
+  /** 49-06 (UAT round 8): click-to-select a Bg clip — the whole rail routes a
+   *  click here (the right-panel Background Clip section consumes it). */
+  readonly onSelectBackgroundClip?: (clipId: string) => void;
   /** 49-06 (UAT round 2): the selected Bg clip id — the matching rail paints
    *  the orange selection treatment (same contract as the rest of the
    *  timeline). */
@@ -333,6 +336,11 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
    *  cells paint the orange selection treatment (timeline selection contract). */
   readonly selected: boolean;
+  /** 49-06 (UAT round 8): click-to-select — the whole rail (cells + line +
+   *  markers) routes a click to clip selection. The line's drag and the
+   *  markers' resize still own their pointer gestures; the click event on
+   *  release bubbles here and selects the clip. */
+  readonly onSelect?: (clipId: string) => void;
   /** 49-06 (UAT round 2): the row-local MOVE drag hook — middle cells bind it. */
   readonly onMovePointerDown?: (event: PointerEvent) => void;
   /** 49-06 (UAT round 2): the row-local RESIZE drag hook — the FIRST and LAST
@@ -365,6 +373,7 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
       style={{ left: `${props.left}px`, width: `${props.width}px` }}
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
+      onClick={() => props.onSelect?.(props.clipId)}
     >
       {/* The cells — the clip extent fill (visual only, pointer-events none).
           The interaction lives on the rail line + markers above. */}
@@ -447,6 +456,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onSelectTrackFrame,
     onSelectTrackRail,
     onSelectBackgroundFrame,
+    onSelectBackgroundClip,
     selectedBackgroundClipId = null,
     backgroundPlacementFrame = null,
     background = null,
@@ -616,6 +626,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   left={geometry.left}
                   width={geometry.width}
                   selected={selectedBackgroundClipId === clip.id}
+                  onSelect={onSelectBackgroundClip}
                   onMovePointerDown={backgroundClipDrag?.onPointerDown}
                   onResizePointerDown={backgroundClipResize?.onPointerDown}
                 />
