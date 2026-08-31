@@ -763,7 +763,10 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(capsuleIndex).toBeGreaterThan(navigationIndex);
     expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
     const capsule = code.slice(code.indexOf('function PhysicsPaintWorkflowLiveStatus'), code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'));
-    expect(capsule).toContain('role="status"');
+    // 49-05 (UI-SPEC): the capsule keeps the polite live region, and rejections
+    // additionally announce with role="alert" — the role is conditional on the
+    // error tone, never a static status role.
+    expect(capsule).toContain("role={props.isError ? 'alert' : 'status'}");
     expect(capsule).toContain('aria-live="polite"');
     expect(capsule).toContain('<Info size={16}');
     expect(capsule).toContain('physics-paint-status-capsule-text');

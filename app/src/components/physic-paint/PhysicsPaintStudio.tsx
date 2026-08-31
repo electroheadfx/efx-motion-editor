@@ -7,6 +7,7 @@ import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
+  addBackgroundClip,
   addTrack,
   commitDeleteTrack,
   duplicateTrack,
@@ -3403,17 +3404,31 @@ export function PhysicsPaintStudio() {
       delete (window as unknown as { __openBackgroundPicker?: () => void }).__openBackgroundPicker;
     };
   }, []);
-  // 49-04 (Task 2): Confirm emits the natural-sorted selection to the caller.
-  // The clip-creation wiring (sourceFrameRefs ordered by original filename)
-  // lands in 49-05; here the picker closes and the selection clears.
+  // 49-05 (Task 1): Confirm creates the Background clip at the CURRENT playhead
+  // frame — read at Confirm time from the live cursor position (launchContext
+  // startFrame updates on every navigation), never cached at picker-open time
+  // (BKG-02/D-03). The natural-sorted reference order is the clip's source-frame
+  // cycle order (D-02); the repeat defaults to finite 1. A playhead strictly
+  // inside an existing clip rejects through the capsule with the locked import
+  // copy (BKG-03/D-04) and the picker STAYS open so the selection survives;
+  // success closes the picker and the rail reflects the accepted state via the
+  // existing reactive plumbing.
   const handleConfirmBackgroundPicker = (sortedIds: string[]) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId || sortedIds.length === 0) return;
+    const result = addBackgroundClip(layerId, {
+      startFrame: currentFrame,
+      sourceFrameRefs: sortedIds,
+      repeat: { mode: 'finite', count: 1 },
+    });
+    if (!result.ok) {
+      if (result.reason === 'start-collision') {
+        setApplyStatus('error');
+        setApplyMessage("Couldn't place the clip here. The playhead is inside an existing clip. Nothing changed.");
+      }
+      return;
+    }
     backgroundPicker.cancel();
-    // 49-04 (Task 3): the natural-sorted reference order is the clip's
-    // source-frame cycle order (D-02). 49-05 wires the clip creation; until it
-    // lands, the checkpoint verifies the emitted order via this dev console
-    // log (the plan's sanctioned path when the clip tooltip is not yet live).
-    console.log('[49-04] background picker confirmed (natural-sorted):', sortedIds);
-    // 49-05: create the background clip from sortedIds at the current playhead.
   };
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
@@ -3436,6 +3451,9 @@ export function PhysicsPaintStudio() {
         onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,
         onDeleteTrack: multiTrackRowBundle.onDeleteTrack,
         onReorderTrack: multiTrackRowBundle.onReorderTrack,
+        // 49-05 (Task 1, S1): the locked Bg row's Import control opens the
+        // 49-04 picker swap — the engine canvas stays mounted underneath.
+        onImportBackground: () => backgroundPicker.openPicker(),
         // 47 close-out UAT round 7: the one-click cross-track selection intents
         // — an EXPLICIT field list, so a bundle field that isn't forwarded here
         // silently dies (rounds 5-7's intents were computed but dropped, and

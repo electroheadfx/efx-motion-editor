@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const backgroundPickerView = readFileSync(fileURLToPath(new URL('./view/BackgroundAssetPickerView.tsx', import.meta.url)), 'utf8');
 const capability = readFileSync(fileURLToPath(new URL('../../../src-tauri/capabilities/physics-paint.json', import.meta.url)), 'utf8');
+const trackRow = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTrackRow.tsx', import.meta.url)), 'utf8');
+const headerColumn = readFileSync(fileURLToPath(new URL('./view/physicsPaintTrackHeaderColumn.tsx', import.meta.url)), 'utf8');
 
 const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
 const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
@@ -1305,5 +1307,74 @@ describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
     expect(capability).toContain('"dialog:allow-open"');
     expect(capability).not.toContain('fs:');
     expect(capability).not.toContain('"fs:');
+  });
+});
+
+describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04)', () => {
+  it('mounts the Import icon button on the locked Bg header with the 24px hit target and aria-label (S1)', () => {
+    // The Bg row header carries exactly ONE action — the Import control —
+    // alongside the lock indicator (D-06 lock semantics: no reorder grab, no
+    // duplicate/delete hover actions).
+    expect(trackRow).toContain('aria-label="Import images"');
+    expect(trackRow).toContain('class="physics-paint-bg-import-button"');
+    expect(trackRow).toContain('onClick={() => onImportBackground?.()}');
+    expect(trackRow).toContain('ImagePlus size={14}');
+    // The 24px hit target is enforced in the stylesheet (UI-SPEC accessibility).
+    expect(css).toContain('.physics-paint-bg-import-button');
+    expect(css).toContain('width: 24px;');
+    expect(css).toContain('height: 24px;');
+  });
+
+  it('threads onImportBackground from the strip through the header column to the Bg header', () => {
+    // The strip exposes the intent and forwards it to the hook-free header
+    // column, which passes it to the Bg PhysicsPaintTrackRowHeader.
+    expect(workflowStrip).toContain('onImportBackground?: () => void;');
+    expect(workflowStrip).toContain('onImportBackground: props.onImportBackground,');
+    expect(headerColumn).toContain('onImportBackground?: () => void;');
+    expect(headerColumn).toContain('onImportBackground={onImportBackground}');
+    // The Studio routes the intent to the 49-04 picker swap (engine untouched).
+    expect(studio).toContain('onImportBackground: () => backgroundPicker.openPicker(),');
+  });
+
+  it('Confirm calls addBackgroundClip exactly once with the playhead frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)', () => {
+    // The handler reads the CURRENT playhead frame at Confirm time (never
+    // cached at picker-open time) and passes the natural-sorted ids as the
+    // source-frame cycle order with the finite-1 default repeat.
+    expect(studio).toContain('const result = addBackgroundClip(layerId, {');
+    expect(studio).toContain('startFrame: currentFrame,');
+    expect(studio).toContain('sourceFrameRefs: sortedIds,');
+    expect(studio).toContain("repeat: { mode: 'finite', count: 1 },");
+    // Exactly one call site — the handler invokes the store op once per Confirm.
+    const callSites = studio.split('addBackgroundClip(layerId, {').length - 1;
+    expect(callSites).toBe(1);
+  });
+
+  it('rejects a playhead strictly inside an existing clip with the exact locked copy and keeps the picker open (BKG-03/D-04)', () => {
+    // The rejection copy appears EXACTLY once and matches the UI-SPEC table
+    // verbatim; the picker stays open so the selection survives (no cancel in
+    // the rejection branch).
+    const copy = "Couldn't place the clip here. The playhead is inside an existing clip. Nothing changed.";
+    const occurrences = studio.split(copy).length - 1;
+    expect(occurrences).toBe(1);
+    expect(studio).toContain("if (result.reason === 'start-collision') {");
+    expect(studio).toContain("setApplyStatus('error');");
+    expect(studio).toContain(`setApplyMessage("${copy}");`);
+    // The rejection branch returns WITHOUT closing the picker.
+    const rejectionBranch = studio.slice(studio.indexOf("if (result.reason === 'start-collision') {"), studio.indexOf('backgroundPicker.cancel();'));
+    expect(rejectionBranch).not.toContain('backgroundPicker.cancel()');
+    // The capsule announces rejections with role="alert" (UI-SPEC).
+    expect(workflowStrip).toContain("role={props.isError ? 'alert' : 'status'}");
+  });
+
+  it('closes the picker on success and leaves Cancel with zero store interaction', () => {
+    // Success path closes the picker (the rail reflects accepted state via the
+    // existing reactive plumbing).
+    expect(studio).toContain('backgroundPicker.cancel();');
+    // Cancel routes to the controller's cancel — the controller's cancel only
+    // clears the open/selection/status signals, never a store op.
+    expect(studio).toContain('onCancel: backgroundPicker.cancel,');
+    expect(backgroundPickerView).toContain('const cancel = () => {');
+    expect(backgroundPickerView).toContain('open.value = false;');
+    expect(backgroundPickerView).not.toContain('addBackgroundClip');
   });
 });

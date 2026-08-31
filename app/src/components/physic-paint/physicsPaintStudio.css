@@ -4035,6 +4035,43 @@ button.destructive {
   color: #6d7378;
 }
 
+/* 49-05 (S1): the Bg row's single action — the Import control. Muted row
+   family (same tones as the lock + tool buttons) with the 24px hit target
+   (UI-SPEC accessibility); the icon stays pinned at 14x14 so it never
+   collapses inside the button. */
+.physics-paint-bg-import-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #d8dde3;
+  cursor: pointer;
+}
+
+.physics-paint-bg-import-button:hover {
+  background: #45505c;
+  border-color: #69727c;
+  color: #e5edf8;
+}
+
+.physics-paint-bg-import-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-import-button svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
 /* Background checkerboard icon (4 cells, mockup Bg row). */
 .physics-paint-bg-checker {
   flex: 0 0 auto;

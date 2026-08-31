@@ -400,6 +400,9 @@ export interface PhysicsPaintWorkflowStripProps {
   /** 47-02 Task 2: header-drag reorder intent (controller routes through
    *  reorderTrack(layerId, trackId, newOrder) — writes the order field only). */
   onReorderTrack?: (trackId: string, newOrder: number) => void;
+  /** 49-05 Task 1 (S1): the locked Bg row's Import control — the controller
+   *  routes it through the Studio's picker swap signal (49-04 mount). */
+  onImportBackground?: () => void;
 }
 
 const RULER_STEP = 3;
@@ -677,7 +680,7 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
   return (
     <div
       class={`physics-paint-status-capsule${props.isError ? ' physics-paint-status-capsule-error' : ''}`}
-      role="status"
+      role={props.isError ? 'alert' : 'status'}
       aria-live="polite"
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
@@ -3669,6 +3672,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             onHeaderScroll: syncHeaderScroll,
             verticalScrollbar: verticalScrollbar,
             onVerticalScrollbarPointerDown: handleVerticalScrollbarPointerDown,
+            onImportBackground: props.onImportBackground,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks

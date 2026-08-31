@@ -101,6 +101,10 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly verticalScrollbar?: PhysicsPaintHeaderVerticalScrollbar | null;
   /** Pill pointerdown — drag/click scrolls the rows region. */
   readonly onVerticalScrollbarPointerDown?: (event: PointerEvent) => void;
+  /** 49-05 Task 1 (S1): the locked Bg row's Import control — the strip wires
+   *  it through the Studio's picker swap signal (49-04 mount). The Bg row is
+   *  the only header that carries an import affordance (D-06 lock semantics). */
+  readonly onImportBackground?: () => void;
 }
 
 /**
@@ -140,6 +144,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onHeaderScroll,
     verticalScrollbar,
     onVerticalScrollbarPointerDown,
+    onImportBackground,
   } = props;
   const deletable = tracks.length > 1;
   return (
@@ -192,6 +197,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               trackId={background.id}
               label="Bg"
               kind="background"
+              onImportBackground={onImportBackground}
             />
           ) : null}
         </div>

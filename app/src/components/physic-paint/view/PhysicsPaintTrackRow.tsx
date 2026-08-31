@@ -25,7 +25,7 @@
  * grab, no rename, no duplicate, no delete (D-06).
  */
 
-import { Blend, Copy, Eye, EyeOff, GripVertical, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
+import { Blend, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
@@ -494,6 +494,10 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onToggleTools?: (trackId: string) => void;
   /** Pointer left the tool panel (or the whole header) — closes it. */
   readonly onCloseTools?: () => void;
+  /** 49-05 (S1): the Bg row's ONLY action — opens the scoped asset picker.
+   *  The locked Background row carries no reorder grab, no duplicate/delete
+   *  hover actions (47-CONTEXT D-06); Import is its single affordance. */
+  readonly onImportBackground?: () => void;
 }
 
 /**
@@ -532,6 +536,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     toolsOpen = false,
     onToggleTools,
     onCloseTools,
+    onImportBackground,
   } = props;
   const isActive = activeTrackId === trackId;
   const isBackground = kind === 'background';
@@ -564,6 +569,18 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
         <span class="physics-paint-track-row-lock" title="Background layer — fixed position" aria-hidden="true">
           <Lock size={12} />
         </span>
+        {/* 49-05 (S1): the Bg row's single action — the Import control. 24px
+            hit target (UI-SPEC accessibility), aria-label per the copywriting
+            table; clicking opens the scoped asset picker (49-04 mount). */}
+        <button
+          type="button"
+          class="physics-paint-bg-import-button"
+          aria-label="Import images"
+          title="Import images"
+          onClick={() => onImportBackground?.()}
+        >
+          <ImagePlus size={14} aria-hidden="true" />
+        </button>
       </div>
     );
   }
