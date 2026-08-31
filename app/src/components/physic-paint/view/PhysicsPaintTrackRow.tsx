@@ -25,6 +25,7 @@
  * grab, no rename, no duplicate, no delete (D-06).
  */
 
+import { useRef } from 'preact/hooks';
 import { Blend, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
@@ -33,13 +34,23 @@ import {
   derivePhysicPaintRotoLoopRanges,
   type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoLoopRange,
+  type PhysicPaintRotoLoopResolutionContext,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
 import {
+  projectPhysicsPaintBackgroundClipPresentation,
   projectPhysicsPaintLoopClipGeometry,
+  type PhysicsPaintBackgroundClipPresentation,
   type PhysicsPaintGroupSynchronizationDot,
 } from './physicsPaintLoopClipPresentation';
+import type { BackgroundTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type {
+  BackgroundClipDragApi,
+  BackgroundClipDragGhostState,
+  BackgroundClipDragPreviewState,
+} from '../hooks/usePhysicsPaintBackgroundClipDrag';
+import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
@@ -94,6 +105,17 @@ export interface PhysicsPaintTrackRowProps {
   /** One-click rail selection on a non-active row: activates the track and
    *  selects the clicked Key Rail / Loop Clip rail in the same click. */
   readonly onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
+  /* ---- 49-05 (S4): the fixed Background row's clip rails ---- */
+  /** The document's Background track — the Bg row renders its clips as rails. */
+  readonly background?: BackgroundTrack | null;
+  /** The derived Background resolution context (resolver facts authority). */
+  readonly backgroundResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
+  /** The row-local Bg clip drag hook API — each rail binds onPointerDown. */
+  readonly backgroundClipDrag?: BackgroundClipDragApi | null;
+  /** Live drag ghost geometry (paint only — never canonical). */
+  readonly backgroundClipDragGhost?: BackgroundClipDragGhostState | null;
+  /** Live drag preview publication (paint only — never canonical). */
+  readonly backgroundClipDragPreview?: BackgroundClipDragPreviewState | null;
 }
 
 type TrackRowCellState = 'cached' | 'generated' | 'empty';
@@ -283,6 +305,67 @@ function resolveTrackRowLoopVisuals(
   return { lines, linkedClassByFrame };
 }
 
+/* ---- 49-05 (S4): one Background clip rail on the fixed Bg row ---- */
+interface PhysicsPaintBackgroundClipRailTargetProps {
+  readonly clipId: string;
+  readonly startFrame: number;
+  readonly presentation: PhysicsPaintBackgroundClipPresentation;
+  readonly left: number;
+  readonly width: number;
+  readonly onPointerDown?: (event: PointerEvent) => void;
+}
+
+/**
+ * One Bg clip rail: the neutral (purple/cyan-free) rail on the muted row with
+ * the requested badge (`Cycle {N}f × {R} = {T}f` / `Cycle {N}f × ∞`), the
+ * shortened visual + `Loop shortened by next clip`, the diagonal cut on a
+ * partial cycle, and the `next clip — interrupts the loop` tooltip line — all
+ * from resolver facts only (capsule-never-math, Pitfall 10/m2). The rail
+ * carries `data-bg-clip-id` / `data-bg-clip-start` so the strip's drag hook
+ * resolves the source from the pressed element; pointer-down hands the gesture
+ * to the row-local drag hook (row-fixed law — never the cross-track machinery).
+ */
+function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipRailTargetProps) {
+  const tooltip = useStyledTooltip();
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  return (
+    <span
+      ref={anchorRef}
+      class="physics-paint-bg-clip-rail-anchor"
+      style={{ left: `${props.left}px`, width: `${props.width}px` }}
+      onPointerEnter={tooltip.onPointerEnter}
+      onPointerLeave={tooltip.onPointerLeave}
+    >
+      <button
+        type="button"
+        class={`physics-paint-rail-target physics-paint-bg-clip-rail-target${props.presentation.shortened ? ' shortened' : ''}${props.presentation.partialCycle ? ' partial-cycle' : ''}`}
+        aria-label={props.presentation.accessibleName}
+        data-bg-clip-id={props.clipId}
+        data-bg-clip-start={props.startFrame}
+        onPointerDown={(event) => {
+          // A drag begins on this rail — never let the hover pill pop mid-gesture.
+          tooltip.hide();
+          props.onPointerDown?.(event as unknown as PointerEvent);
+        }}
+        onFocus={tooltip.onFocus}
+        onBlur={tooltip.onBlur}
+      >
+        <span class="physics-paint-rail-segment physics-paint-bg-clip-rail-segment" aria-hidden="true" />
+        <span class="physics-paint-bg-clip-rail-badge" aria-hidden="true">{props.presentation.cycleLabel}</span>
+      </button>
+      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
+        <span class="physics-paint-loop-clip-tooltip-copy">
+          {props.presentation.tooltipLines.map((line, index) => (
+            index === 0
+              ? <strong key={line}>{line}</strong>
+              : <span key={`${index}:${line}`}>{line}</span>
+          ))}
+        </span>
+      </PhysicsPaintStyledTooltip>
+    </span>
+  );
+}
+
 /**
  * One 30px track row's cells track. The active track's row keeps the strip's
  * rich lane (rails + interactive cells) in the strip; this component renders
@@ -302,6 +385,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onNavigateToFrame,
     onSelectTrackFrame,
     onSelectTrackRail,
+    background = null,
+    backgroundResolutionContext = null,
+    backgroundClipDrag = null,
+    backgroundClipDragGhost = null,
   } = props;
   const rowClass = [
     'physics-paint-track-row',
@@ -425,6 +512,44 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             ) : null}
           </span>
         ))}
+        {/* 49-05 (S4): the fixed Background row's clip rails — one neutral
+            rail per clip in ascending startFrame order, badge + shortened +
+            partial-cycle facts all from the resolver (capsule-never-math).
+            The drag hook's ghost paints above the accepted rails; the ghost
+            is presentation-only and never mutates the document. */}
+        {kind === 'background' && background && backgroundResolutionContext ? (
+          <div class="physics-paint-bg-clip-rail" role="group" aria-label="Background clips">
+            {background.clips.map((clip) => {
+              const range = backgroundResolutionContext.ranges.find((candidate) => candidate.loopId === clip.id);
+              if (!range) return null;
+              const presentation = projectPhysicsPaintBackgroundClipPresentation(range);
+              const geometry = projectPhysicsPaintLoopClipGeometry(
+                range,
+                { startFrame: 0, endFrameExclusive: frameCells.length },
+                ROW_CELL_WIDTH_PX,
+              );
+              if (!geometry) return null;
+              return (
+                <PhysicsPaintBackgroundClipRailTarget
+                  key={clip.id}
+                  clipId={clip.id}
+                  startFrame={clip.startFrame}
+                  presentation={presentation}
+                  left={geometry.left}
+                  width={geometry.width}
+                  onPointerDown={backgroundClipDrag?.onPointerDown}
+                />
+              );
+            })}
+            {backgroundClipDragGhost?.active ? (
+              <span
+                class={`physics-paint-bg-clip-rail-ghost${backgroundClipDragGhost.blockedEdge ? ` blocked-edge-${backgroundClipDragGhost.blockedEdge}` : ''}`}
+                style={{ left: `${backgroundClipDragGhost.left}px`, width: `${backgroundClipDragGhost.width}px` }}
+                aria-hidden="true"
+              />
+            ) : null}
+          </div>
+        ) : null}
         {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px
             accent line at the frame position where the dragged content lands
             inside this destination row (left = frame × the 18px pitch). Pure

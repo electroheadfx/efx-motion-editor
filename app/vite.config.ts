@@ -223,7 +223,11 @@ export default defineConfig({
     // + efxPaintHideSolo + the store's getFlattenedFrame seam) entered the main
     // chunk via physicPaintStore, measured 1171.47 kB. Budget raised to 1180
     // (measured value + ~8.5 kB headroom).
-    chunkSizeWarningLimit: 1180,
+    // Measurement note (2026-08-31): 49-05's Background-row surface (the
+    // row-local Bg clip drag hook + the Bg clip rail presentation + the strip
+    // wiring) entered the main chunk, measured 1180.63 kB. Budget raised to 1190
+    // (measured value + ~9.4 kB headroom).
+    chunkSizeWarningLimit: 1190,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

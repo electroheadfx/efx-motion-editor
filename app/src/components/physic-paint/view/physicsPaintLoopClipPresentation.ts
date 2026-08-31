@@ -274,3 +274,57 @@ export function projectPhysicsPaintLoopClipGeometry(
   };
 }
 
+/**
+ * 49-05 (S4): the Background clip rail presentation. Bg clips have no
+ * scriptId, so `projectPhysicsPaintLoopClipPresentation` would report the
+ * wrong 'Source Action unavailable' lifecycle — this projection reads ONLY the
+ * resolver facts (`range.truncated`/`partialCycle`/`effectiveEnd`/`repeat`/
+ * `cycleLength`) and never computes loop math (capsule-never-math, Pitfall
+ * 10/m2). The badge always shows the REQUESTED duration; the shortened state
+ * is a distinct visual + label (D-12).
+ */
+export interface PhysicsPaintBackgroundClipPresentation {
+  readonly clipId: string;
+  /** `Cycle {N}f × {R} = {T}f` / `Cycle {N}f × ∞` — the requested badge. */
+  readonly cycleLabel: string;
+  /** True when a next clip (or the capacity bound) shortens the loop (D-12). */
+  readonly shortened: boolean;
+  /** True when the effective end lands mid-cycle rather than on a cycle boundary (D-21). */
+  readonly partialCycle: boolean;
+  /** 'Loop shortened by next clip' when shortened, else null (English, D-14). */
+  readonly shortenedLabel: string | null;
+  /** 'next clip — interrupts the loop' when shortened, else null (D-14). */
+  readonly interruptionTooltipLine: string | null;
+  readonly tooltipLines: readonly string[];
+  readonly accessibleName: string;
+}
+
+export function projectPhysicsPaintBackgroundClipPresentation(
+  range: PhysicPaintRotoLoopRange,
+): PhysicsPaintBackgroundClipPresentation {
+  const cycleLabel = range.repeat === 'infinity'
+    ? `Cycle ${range.cycleLength}f × ∞`
+    : `Cycle ${range.cycleLength}f × ${range.repeat} = ${range.cycleLength * range.repeat}f`;
+  const shortened = Boolean(range.truncated);
+  const partialCycle = range.partialCycle;
+  const shortenedLabel = shortened ? 'Loop shortened by next clip' : null;
+  const interruptionTooltipLine = shortened ? 'next clip — interrupts the loop' : null;
+  const tooltipLines = [
+    `Background clip at F${range.phaseOrigin}`,
+    cycleLabel,
+    ...(shortenedLabel ? [shortenedLabel] : []),
+    ...(interruptionTooltipLine ? [interruptionTooltipLine] : []),
+  ];
+  const accessibleName = `Background clip at frame ${range.phaseOrigin}. ${cycleLabel}.${shortenedLabel ? ` ${shortenedLabel}.` : ''}`;
+  return {
+    clipId: range.loopId,
+    cycleLabel,
+    shortened,
+    partialCycle,
+    shortenedLabel,
+    interruptionTooltipLine,
+    tooltipLines,
+    accessibleName,
+  };
+}
+

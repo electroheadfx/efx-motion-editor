@@ -338,6 +338,9 @@ export function PhysicsPaintStudio() {
   // the view-model literal: that would re-subscribe the whole Studio per tick.
   const rotoPlaybackFrameIndex = useSignal(0);
   const rotoPlaybackFrameCount = useSignal(0);
+  // 49-05 Task 2 (S4): the selected Background clip — a click on a Bg clip rail
+  // routes here; the right-panel `Background Clip` section (49-06) consumes it.
+  const selectedBackgroundClipId = useSignal<string | null>(null);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -3281,7 +3284,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
-      onSelectTrackFrame: undefined, onSelectTrackRail: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined,
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
@@ -3289,7 +3292,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
-      onSelectTrackFrame: undefined, onSelectTrackRail: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined,
     };
     return {
       layerId,
@@ -3299,6 +3302,7 @@ export function PhysicsPaintStudio() {
       onSelectTrack: (trackId: string) => setActiveTrackId(layerId, trackId),
       onSelectTrackFrame: handleSelectTrackFrame,
       onSelectTrackRail: handleSelectTrackRail,
+      onSelectBackgroundClip: (clipId: string) => { selectedBackgroundClipId.value = clipId; },
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
       onToggleSolo: handleToggleSolo,
@@ -3454,6 +3458,9 @@ export function PhysicsPaintStudio() {
         // 49-05 (Task 1, S1): the locked Bg row's Import control opens the
         // 49-04 picker swap — the engine canvas stays mounted underneath.
         onImportBackground: () => backgroundPicker.openPicker(),
+        // 49-05 (Task 2, S4): a click on a Bg clip rail routes clip selection
+        // to the right-panel `Background Clip` section (consumed by 49-06).
+        onSelectBackgroundClip: multiTrackRowBundle.onSelectBackgroundClip,
         // 47 close-out UAT round 7: the one-click cross-track selection intents
         // — an EXPLICIT field list, so a bundle field that isn't forwarded here
         // silently dies (rounds 5-7's intents were computed but dropped, and

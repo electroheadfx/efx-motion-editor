@@ -134,7 +134,7 @@ function createHarness(options: {
     ok: true as const,
     publication: Object.freeze({ clipId: 'clip-1', landingFrame: destination }),
   })));
-  const onDropCommit = vi.fn(options.onDropCommit ?? (async (_publication: { clipId: string; landingFrame: number }) => ({ ok: true as const })));
+  const onDropCommit = vi.fn(options.onDropCommit ?? ((_publication: { clipId: string; landingFrame: number }) => ({ ok: true as const })));
   const onRejected = vi.fn();
   const onPreviewChange = vi.fn();
   const onSelectClip = vi.fn();
@@ -363,6 +363,9 @@ describe('usePhysicsPaintBackgroundClipDrag', () => {
     const api = harness.render();
     api.onPointerDown(pointerEvent(harness.source));
     harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    // Preview-is-the-commit: the release lands at the LAST previewed frame, so
+    // a net-zero move must preview back at the source's own start frame first.
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 100 }));
     harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 100 }));
 
     expect(harness.onDropCommit).not.toHaveBeenCalled();

@@ -111,6 +111,8 @@ import {
   type CrossTrackRowBounds,
 } from '../hooks/usePhysicsPaintCrossTrackDrag';
 import { usePhysicsPaintRulerScrub } from '../hooks/usePhysicsPaintRulerScrub';
+import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackgroundClipDrag';
+import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
@@ -119,6 +121,7 @@ import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/doc
 // lives exclusively in the PhysicsPaintDeleteTrackDialog leaf).
 import {
   MAX_TRACK_NAME_LENGTH,
+  moveBackgroundClip,
   requestDeleteTrack,
   TRACK_NAME_CONTROL_CHAR,
   type TrackDeletePreview,
@@ -403,6 +406,10 @@ export interface PhysicsPaintWorkflowStripProps {
   /** 49-05 Task 1 (S1): the locked Bg row's Import control — the controller
    *  routes it through the Studio's picker swap signal (49-04 mount). */
   onImportBackground?: () => void;
+  /** 49-05 Task 2 (S4): a click on a Bg clip rail routes clip selection to the
+   *  right-panel `Background Clip` section (consumed by 49-06). The strip never
+   *  owns the selection signal — the controller does. */
+  onSelectBackgroundClip?: (clipId: string) => void;
 }
 
 const RULER_STEP = 3;
@@ -2059,6 +2066,97 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status),
     resolveSource: resolveCrossTrackDragSource,
   });
+  // 49-05 Task 2 (S4): the fixed Background row's clip rails ────────────────
+  // The row-local drag hook adapts the Phase 43 machinery to the single fixed
+  // Bg row (row-fixed law, Phase 47 D-15): the gesture never leaves the row,
+  // never enters the cross-track machinery, and never mutates the document
+  // before release (release-time commit only). The resolver is the ONLY extent
+  // authority — the strip derives the background resolution context once per
+  // background record identity and the hook reads facts through the injected
+  // ports (capsule-never-math, Pitfall 10/m2).
+  const backgroundResolutionContext = useMemo(() => {
+    if (!props.background) return null;
+    try {
+      return deriveEfxPaintBackgroundResolution(props.background, frameCells.length);
+    } catch {
+      // Fails closed (mirrors the store's collision verdict): a malformed
+      // background never crashes the strip — the row renders skeleton cells.
+      return null;
+    }
+  }, [props.background, frameCells.length]);
+  // The current drag source, captured at pointer-down and consumed by the
+  // clamp/prepare ports (the hook's prepareAtDestination receives only the
+  // destination — the strip owns the clip identity).
+  const backgroundDragSourceRef = useRef<{ clipId: string; startFrame: number } | null>(null);
+  // Subscribes the strip to the hook's ghost/preview signal changes (the hook
+  // bumps onPreviewChange on every live preview update).
+  const backgroundClipPaintTick = useSignal(0);
+  const backgroundClipDrag = usePhysicsPaintBackgroundClipDrag({
+    windowLike: undefined,
+    resolveSource: (event) => {
+      const target = event.currentTarget as HTMLElement | null;
+      const rail = target?.closest?.('[data-bg-clip-id]') as HTMLElement | null;
+      if (!rail) return null;
+      const clipId = rail.dataset.bgClipId;
+      const startFrame = Number(rail.dataset.bgClipStart);
+      if (!clipId || !Number.isInteger(startFrame)) return null;
+      const source = { clipId, startFrame };
+      backgroundDragSourceRef.current = source;
+      return source;
+    },
+    // Row-fixed projection: horizontal pointer geometry only — vertical
+    // movement can never influence the landing frame (row-fixed law).
+    projectDestination: ({ clientX }) => {
+      const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
+      const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
+      return Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+    },
+    clampDestination: (proposedDestination) => {
+      const source = backgroundDragSourceRef.current;
+      const range = source && backgroundResolutionContext
+        ? backgroundResolutionContext.ranges.find((candidate) => candidate.loopId === source.clipId)
+        : null;
+      // The ghost width mirrors the clip's CURRENT effective extent (a resolver
+      // fact) — never recomputed loop math (capsule-never-math).
+      const durationFrames = range ? Math.max(1, range.effectiveEnd - range.phaseOrigin) : 1;
+      const destination = Math.max(0, Math.min(frameCells.length - 1, proposedDestination));
+      return {
+        destination,
+        left: destination * ROTO_CELL_WIDTH_PX,
+        width: Math.max(ROTO_CELL_WIDTH_PX, durationFrames * ROTO_CELL_WIDTH_PX),
+        blockedEdge: destination === proposedDestination
+          ? null
+          : proposedDestination > destination ? 'right' : 'left',
+      };
+    },
+    prepareAtDestination: (destination) => {
+      const source = backgroundDragSourceRef.current;
+      if (!source) return { ok: false, reason: 'clip-not-found' };
+      return { ok: true, publication: Object.freeze({ clipId: source.clipId, landingFrame: destination }) };
+    },
+    // The single commit path (D-05): moveBackgroundClip owns the collision
+    // verdict — the hook never computes move semantics.
+    onDropCommit: (publication) => {
+      if (!props.layerId) return { ok: false, reason: 'clip-not-found' };
+      return moveBackgroundClip(props.layerId, publication.clipId, publication.landingFrame);
+    },
+    // D-04 symmetric law: the drag rejection surfaces the locked drag copy
+    // through the same capsule the import path uses.
+    onRejected: (reason) => {
+      if (reason === 'start-collision') {
+        props.rotoPhysicalActions?.setApplyStatus?.('error');
+        props.rotoPhysicalActions?.publishStatus?.("Couldn't move the clip here. The landing frame is inside an existing clip. Nothing changed.");
+      }
+    },
+    onPreviewChange: () => { backgroundClipPaintTick.value += 1; },
+    // A click on a Bg clip rail routes clip selection to the right-panel
+    // `Background Clip` section (consumed by 49-06) — no store call.
+    onSelectClip: (clipId) => props.onSelectBackgroundClip?.(clipId),
+    clearClickSequence: () => {},
+    onCancel: () => { backgroundDragSourceRef.current = null; },
+  });
+  // Read the tick so the strip re-renders on live ghost/preview updates.
+  backgroundClipPaintTick.value;
   // 260827-s52 Task 1 (NLE ruler seek): a pointer-down on the time ruler seeks
   // the playhead through the SAME cursor-only navigation port the armed-Push
   // click uses (handleLanePushClickCapture) — never selection, never the active
@@ -3742,6 +3840,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       layerId={props.layerId!}
                       frameCells={frameCells}
                       kind="background"
+                      background={props.background}
+                      backgroundResolutionContext={backgroundResolutionContext}
+                      backgroundClipDrag={backgroundClipDrag}
+                      backgroundClipDragGhost={backgroundClipDrag.ghost}
+                      backgroundClipDragPreview={backgroundClipDrag.preview}
                     />
                   ) : null}
                 </>

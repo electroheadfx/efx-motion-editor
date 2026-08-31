@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1180 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1190 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1180 desktop budget').toBe(1180);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1190 desktop budget').toBe(1190);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1180 desktop budget',
+    'emits no chunk-size warning at the 1190 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -203,11 +203,14 @@ describe('production vite build', () => {
       // Measured 2026-08-28: 1171.47 kB after 48-03's flattened-compositor
       // delivery entered the main chunk via physicPaintStore; budget raised
       // 1165 → 1180.
+      // Measured 2026-08-31: 1180.63 kB after 49-05's Background-row surface
+      // (Bg clip drag hook + rail presentation + strip wiring) entered the main
+      // chunk; budget raised 1180 → 1190.
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1180 desktop budget',
+        'no chunk-size warning may be emitted at the 1190 desktop budget',
       ).toBe(0);
     },
   );
