@@ -3358,8 +3358,10 @@ button.destructive {
 
 /* 49-06 (UAT round 7): the SELECTED line is the SAME orange as the selected
    cells (#f5a623, the timeline selection contract) — the selected rail reads
-   orange, and the right-panel Background Clip options relate to it. */
-.physics-paint-bg-clip-rail-line.selected::before {
+   orange, and the right-panel Background Clip options relate to it. The anchor
+   prefix raises the specificity above the hover rule so a selected line stays
+   orange even while the cursor is over it. */
+.physics-paint-bg-clip-rail-anchor .physics-paint-bg-clip-rail-line.selected::before {
   background: #f5a623;
 }
 

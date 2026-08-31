@@ -277,7 +277,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // NOT change during a move/resize — only the drag/resize GHOST is a white
     // line drawn on top of it (white on orange).
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('background: #195991');
-    expect(cssRule('.physics-paint-bg-clip-rail-line.selected::before {')).toContain('background: #f5a623');
+    expect(cssRule('.physics-paint-bg-clip-rail-anchor .physics-paint-bg-clip-rail-line.selected::before {')).toContain('background: #f5a623');
     expect(cssRule('.physics-paint-bg-clip-rail-ghost {')).toContain('background: #f8fafc');
     expect(cssRule('.physics-paint-bg-clip-rail-ghost {')).toContain('z-index: 4');
     // The START/END markers are the resize handles (ew-resize cursor) — the
