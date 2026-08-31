@@ -3095,11 +3095,13 @@ export function PhysicsPaintStudio() {
     setApplyStatus('error');
     setApplyMessage(`Missing source on ${summary.missingCount} track(s) — first: ${trackName ?? summary.firstTrackId}`);
   }, [launchContext, setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
     // row-click active-track switch re-targets the editing base promptly.
+    // 49-04 (UAT fix): settings.background is a dep so the checkerboard verdict
+    // re-resolves when the engine-side background mode changes.
     const programMonitorLayerId = launchContext?.layerId ?? null;
     const programMonitorActiveTrackId = programMonitorLayerId
       ? getEfxPaintDocument(programMonitorLayerId)?.activeTrackId ?? null
@@ -3126,12 +3128,17 @@ export function PhysicsPaintStudio() {
     const fondBackground = fondInstruction ? fondInstructionToFondMetadata(fondInstruction) : null;
     // 49-03 (D-12): the transparency checkerboard shows ONLY when the effective
     // fond is fully transparent for the current frame — transparent fallback
-    // (no fond instruction) AND no clip covering the frame (the gap verdict,
-    // consumed from the store's already-resolved background-frame plumbing, not
-    // a re-resolution). With a solid or paper fallback active the fond shows as
-    // today and the checkerboard layer is absent.
+    // (no fond instruction) AND the engine-side active background mode is
+    // transparent (settings.background — the fond=fallback mapping is not fully
+    // wired yet, so a paper/solid engine mode must suppress the checkerboard
+    // even while the document fallback is still transparent) AND no clip
+    // covering the frame (the gap verdict, consumed from the store's
+    // already-resolved background-frame plumbing, not a re-resolution). With a
+    // solid or paper fallback active the fond shows as today and the
+    // checkerboard layer is absent.
     const showTransparencyCheckerboard = programMonitorLayerId !== null
       && fondInstruction === null
+      && settings.background === 'transparent'
       && physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap';
     return {
       cachedRotoReferenceUrl,

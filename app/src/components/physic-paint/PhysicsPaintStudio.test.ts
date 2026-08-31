@@ -1183,10 +1183,15 @@ describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-
   it('shows the checkerboard only in the no-fond case and keeps the fond layer as today', () => {
     // The checkerboard flag is true ONLY when the effective fond is fully
     // transparent for the current frame: transparent fallback (no fond
-    // instruction) AND no clip covering the frame (the gap verdict, consumed
-    // from the store's already-resolved background-frame plumbing).
+    // instruction) AND the engine-side active background mode is transparent
+    // (settings.background — the fond=fallback mapping is not fully wired yet,
+    // so a paper/solid engine mode suppresses the checkerboard even while the
+    // document fallback is still transparent) AND no clip covering the frame
+    // (the gap verdict, consumed from the store's already-resolved
+    // background-frame plumbing).
     expect(studio).toContain('const showTransparencyCheckerboard = programMonitorLayerId !== null');
     expect(studio).toContain('&& fondInstruction === null');
+    expect(studio).toContain("&& settings.background === 'transparent'");
     expect(studio).toContain("&& physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap'");
     expect(studio).toContain('showTransparencyCheckerboard,');
     // The view renders the checkerboard layer beneath the monitor content,
