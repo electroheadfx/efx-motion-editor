@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 49
 current_phase_name: Fixed Background Track and Imported Loop Clips
 status: executing
-stopped_at: Completed 49-01-PLAN.md
-last_updated: "2026-08-31T11:17:22.774Z"
+stopped_at: Completed 49-02-PLAN.md
+last_updated: "2026-08-31T11:44:45.607Z"
 last_activity: 2026-08-31
 last_activity_desc: Phase 49 execution started
-state_head: 8b94c8fbebc7c45913ddb98357b62963919347ec
+state_head: 379d6bda2240f2b572dff6ed25d70f91bdb01c87
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 31
-  completed_plans: 26
+  completed_plans: 27
   percent: 11
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 49 (Fixed Background Track and Imported Loop Clips) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-31 — Phase 49 execution started
 
@@ -91,6 +91,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 48-internal-compositor-and-flattened-parent-result P48-03 | 42min | 3 tasks | 13 files |
 | Phase 48 P05 | 20 | 2 tasks | 11 files |
 | Phase 49 P01 | 3 | 2 tasks | 5 files |
+| Phase 49 P02 | 20 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -188,6 +189,10 @@ Recent decisions affecting current work:
 - [Phase 48]: Phase 48 P05: During playback currentFrame is constant, so the monitor resolves the playing frame through the per-tick playbackTick signal reference (38.1-D-01) — the literal getFlattenedFrame(layerId, currentFrame) instruction would freeze playback
 - [Phase 48]: Phase 48 P05: The missing-source capsule publish reads the FULL including path (not excluding) so an active-track Hold source missing is still reported, gated on !isPlaying, compare-then-write in both directions
 - [Phase 49]: White maps to the existing solid arm as { mode: 'solid', color: '#ffffff' } — the total parser/encoder round-trips it with zero information loss, so NO distinct 'white' literal is added (RESEARCH Open Q2 resolved by the Test 4 gate) — Round-trip gate passed with the solid arm; allow-list assertion locks the union to exactly transparent, solid, paper
+- [Phase 49]: Hydration factored into a testable hydrateBackgroundSourceImages(document, ports) with injectable ports plus a production wrapper hydrateBackgroundSourceImagesFromLibrary — the plan's 'no new export unless the hydration helper is factored out' clause applied because the tests need the export
+- [Phase 49]: Hydration wired into hydrateRuntimeFromDocument in efxPaintStore.ts (Rule 3 deviation — the plan's Task 3 files_modified listed only physicPaintStore.ts + test, but the hydrate seam lives in efxPaintStore.ts, already a plan-modified file)
+- [Phase 49]: Registration is runtime-only: no documentRevision bump, no undo record, no dirty callback — re-saving a hydrated document produces an identical dedup fingerprint (BKG-09 save dedup proven by test)
+- [Phase 49]: Unknown asset ids resolve to null and are skipped at hydration — the knownSources-miss path reports them (D-10 fail-closed), never a throw and never placeholder content
 
 ### Pending Todos
 
@@ -221,6 +226,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-08-31T11:17:22.472Z
-Stopped at: Completed 49-01-PLAN.md
+Last session: 2026-08-31T11:44:45.266Z
+Stopped at: Completed 49-02-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning

@@ -50,14 +50,14 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 ### BKG — Background Track (Phase 5)
 
 - [ ] **BKG-01**: Exactly one fixed Background track per EFX Paint document, beneath all Paint tracks, contributing to flattened output
-- [ ] **BKG-02**: User can import one still image or an ordered image sequence as a Background clip (source cycle)
-- [ ] **BKG-03**: Background clips are sequential and non-overlapping; move/insert reject or snap collisions
-- [ ] **BKG-04**: User can set start frame and finite repeat count (1..∞) or infinity per clip
-- [ ] **BKG-05**: Loop resolution follows cycleLength × repeatCount, bounded by next clip start and parent end; next clip interrupts without overlap after full or partial cycle
+- [x] **BKG-02**: User can import one still image or an ordered image sequence as a Background clip (source cycle)
+- [x] **BKG-03**: Background clips are sequential and non-overlapping; move/insert reject or snap collisions
+- [x] **BKG-04**: User can set start frame and finite repeat count (1..∞) or infinity per clip
+- [x] **BKG-05**: Loop resolution follows cycleLength × repeatCount, bounded by next clip start and parent end; next clip interrupts without overlap after full or partial cycle
 - [ ] **BKG-06**: Gaps reveal the document fallback (solid color or transparency)
-- [ ] **BKG-07**: Source-frame references remain linked across all repetitions; no durable asset duplication
-- [ ] **BKG-08**: Undo/redo clip creation, move, repeat changes, import references, deletion, and fallback changes by reference
-- [ ] **BKG-09**: Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen
+- [x] **BKG-07**: Source-frame references remain linked across all repetitions; no durable asset duplication
+- [x] **BKG-08**: Undo/redo clip creation, move, repeat changes, import references, deletion, and fallback changes by reference
+- [x] **BKG-09**: Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen
 
 ### REF — Photo/Reference Track (Phase 6)
 
@@ -157,14 +157,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMP-05 | Phase 48 | Complete |
 | CMP-06 | Phase 48 | Complete |
 | BKG-01 | Phase 49 | Pending |
-| BKG-02 | Phase 49 | Pending |
-| BKG-03 | Phase 49 | Pending |
-| BKG-04 | Phase 49 | Pending |
-| BKG-05 | Phase 49 | Pending |
+| BKG-02 | Phase 49 | Complete |
+| BKG-03 | Phase 49 | Complete |
+| BKG-04 | Phase 49 | Complete |
+| BKG-05 | Phase 49 | Complete |
 | BKG-06 | Phase 49 | Pending |
-| BKG-07 | Phase 49 | Pending |
-| BKG-08 | Phase 49 | Pending |
-| BKG-09 | Phase 49 | Pending |
+| BKG-07 | Phase 49 | Complete |
+| BKG-08 | Phase 49 | Complete |
+| BKG-09 | Phase 49 | Complete |
 | REF-01 | Phase 50 | Pending |
 | REF-02 | Phase 50 | Pending |
 | REF-03 | Phase 50 | Pending |
