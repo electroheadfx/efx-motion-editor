@@ -393,6 +393,37 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(marker[0].props['data-roto-app-frame']).toBe(7);
   });
 
+  it('49-06 UAT round 8: clicking the Bg rail routes the click to clip selection (whole rail clickable)', () => {
+    const background: BackgroundTrack = {
+      id: 'bg-track',
+      clips: [{
+        id: 'bg-clip-1',
+        startFrame: 2,
+        sourceFrameRefs: ['k0'],
+        repeat: { mode: 'finite', count: 2 },
+        sourceKind: 'imported-background',
+        revision: 1,
+      }],
+      fallback: { mode: 'transparent' },
+      visible: true,
+      revision: 1,
+    };
+    const onSelectBackgroundClip = vi.fn();
+    const tree = render({
+      trackId: 'bg-row',
+      kind: 'background',
+      background,
+      backgroundResolutionContext: deriveEfxPaintBackgroundResolution(background, CAPACITY),
+      onSelectBackgroundClip,
+    });
+    const anchor = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-clip-rail-anchor'));
+    expect(anchor).toHaveLength(1);
+    const onClick = (anchor[0].props as { onClick?: () => void }).onClick;
+    expect(typeof onClick).toBe('function');
+    onClick?.();
+    expect(onSelectBackgroundClip).toHaveBeenCalledWith('bg-clip-1');
+  });
+
   it('49-06 UAT round 3: every Bg cell is a whole-rail move handle and the first/last carry resize sub-handles', () => {
     const background: BackgroundTrack = {
       id: 'bg-track',

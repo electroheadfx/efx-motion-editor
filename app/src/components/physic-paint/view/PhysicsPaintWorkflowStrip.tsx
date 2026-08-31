@@ -3957,6 +3957,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       backgroundClipResize={backgroundClipResize}
                       backgroundClipDragGhost={backgroundClipDrag.ghost}
                       backgroundClipDragPreview={backgroundClipDrag.preview}
+                      onSelectBackgroundClip={props.onSelectBackgroundClip}
                       onSelectBackgroundFrame={props.onSelectBackgroundFrame}
                       selectedBackgroundClipId={props.selectedBackgroundClipId}
                       backgroundPlacementFrame={props.backgroundPlacementFrame}
