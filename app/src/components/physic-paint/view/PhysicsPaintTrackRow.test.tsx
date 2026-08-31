@@ -273,11 +273,14 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // gap between stacked Bg clips.
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('inset: 4px 0 auto 0');
     // 49-06 (UAT round 7): the RESTING line is the neutral blue; the SELECTED
-    // line is #195991 (the selection indicator); an active MOVE/RESIZE gesture
-    // turns the LINE white (the cells stay blue — only the line changes).
+    // line is the SAME orange as the selected cells (#f5a623); an active
+    // MOVE/RESIZE gesture turns the LINE white (the cells stay blue — only the
+    // line changes), and the drag/resize GHOST is a white line on top of it.
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('background: #4a7eac');
-    expect(cssRule('.physics-paint-bg-clip-rail-line.selected::before {')).toContain('background: #195991');
+    expect(cssRule('.physics-paint-bg-clip-rail-line.selected::before {')).toContain('background: #f5a623');
     expect(cssRule('.physics-paint-bg-clip-rail-line.editing::before {')).toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-bg-clip-rail-ghost {')).toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-bg-clip-rail-ghost {')).toContain('z-index: 4');
     // The START/END markers are the resize handles (ew-resize cursor) — the
     // element IS the 2px x 4px #f8fafc cap (the track's shared boundary cap,
     // no extra rectangle), anchored to the line's outer edges at the same
