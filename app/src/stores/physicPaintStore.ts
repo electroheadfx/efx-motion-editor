@@ -2,7 +2,7 @@ import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
-import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
+import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
@@ -910,24 +910,30 @@ function _trackContentRevision(layerId: string, trackId: string, frame: number):
  * v1.0 rendering law (locked): the paper fond is NOT track content. Per-track
  * rasters stay transparent where unpainted so upper tracks composite normally
  * (opacity+blend) instead of masking lower ones; the paper is drawn ONCE
- * beneath the flattened composite as the document fond. The fond metadata is
- * the lowest-order track's non-transparent paper setting — stable across
- * active-track switches, hide/solo, and the monitor's active-track exclusion.
- * The texture-less deterministic draw (color fill + grain) matches the 48-03
+ * beneath the flattened composite as the document fond.
+ *
+ * 49-03 (D-11 consumption half): the fond is the DOCUMENT FALLBACK — the
+ * single authority for every surface (store instruction, monitor fond, row gap
+ * swatches, flattened parent output, main preview, export). The per-track
+ * `_rotoBackgroundMetadata` fond walk is DELETED, not shadowed (Pitfall 1):
+ * transparent → no instruction; solid → solid fill; paper → paper draw with
+ * paperGrain/grainStrength. Instruction construction stays in
+ * `resolveMissingRotoFrameDraw` (one place, no second switch). The
+ * texture-less deterministic draw (color fill + grain) matches the 48-03
  * flattened-path reference (paperCanvas deliberately null).
  */
 function _resolveDocumentFondInstruction(
   layerId: string,
   efxDocument: EfxPaintDocument,
 ): Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }> | null {
-  const orderedTracks = [...efxDocument.tracks].sort((left, right) => left.order - right.order);
-  for (const track of orderedTracks) {
-    const metadata = _rotoBackgroundMetadata.get(layerId)?.get(track.id);
-    if (!metadata || metadata.background === 'transparent') continue;
-    const instruction = resolveMissingRotoFrameDraw(layerId, 0, { backgroundState: { mode: 'paper', metadata } });
-    if (instruction.kind === 'background-only') return instruction;
-  }
-  return null;
+  const fallback = efxDocument.background.fallback;
+  if (fallback.mode === 'transparent') return null;
+  const backgroundState: MissingRotoFrameBackgroundState =
+    fallback.mode === 'solid'
+      ? { mode: 'color', color: fallback.color }
+      : { mode: 'paper', metadata: { background: fallback.texture, paperGrain: fallback.paperGrain ? fallback.texture : '', grainStrength: fallback.grainStrength } };
+  const instruction = resolveMissingRotoFrameDraw(layerId, 0, { backgroundState });
+  return instruction.kind === 'background-only' ? instruction : null;
 }
 
 /**

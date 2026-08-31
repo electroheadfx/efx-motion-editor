@@ -27,7 +27,13 @@ import type {
 } from './efxPaintDocument';
 import { parseEfxPaintDocument, parseInternalPaintTrack } from './efxPaintDocumentParsers';
 
-function encodeCanonicalBackgroundFallback(fallback: BackgroundFallback): string {
+/**
+ * Canonical per-mode fallback term (49-03): the single source of truth for the
+ * fallback's content encoding, shared by the document/composite revisions AND
+ * the flattened cache key's dedicated `fallback:` term — no second hand-written
+ * switch that can drift (T-49-03-02).
+ */
+export function encodeCanonicalBackgroundFallback(fallback: BackgroundFallback): string {
   if (fallback.mode === 'transparent') return 'transparent;';
   if (fallback.mode === 'solid') return `solid:${encodeCanonicalString(fallback.color)}`;
   return `paper:${encodeCanonicalString(fallback.texture)}:${validatedBoolean(fallback.paperGrain)}:${encodeCanonicalNumber(fallback.grainStrength)}`;

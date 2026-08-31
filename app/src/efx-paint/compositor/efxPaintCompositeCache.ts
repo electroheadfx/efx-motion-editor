@@ -29,7 +29,10 @@
  * store-side primitive 48-03 wires per layerId.
  */
 
-import { buildEfxPaintCompositeRevision } from '../document/efxPaintDocumentRevision';
+import {
+  buildEfxPaintCompositeRevision,
+  encodeCanonicalBackgroundFallback,
+} from '../document/efxPaintDocumentRevision';
 import {
   encodeCanonicalNumber,
   encodeCanonicalString,
@@ -123,6 +126,12 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     `config:${configTerm}`,
     `tracks:${encodeCanonicalNumber(participatingEntries.length)}:${trackTerms}`,
     `bg:${encodeCanonicalNumber(document.background.revision)}`,
+    // 49-03 (BKG-09/CMP-04 carried): the dedicated fallback-content term — the
+    // canonical per-mode encoding of the fallback record (single source, the
+    // document revision encoder's term — T-49-03-02). A fallback-mode change
+    // with an unchanged background.revision still rotates the key, so a stale
+    // fond raster is never served (Pitfall 1).
+    `fallback:${encodeCanonicalBackgroundFallback(document.background.fallback)}`,
     `clips:${encodeCanonicalNumber(backgroundClipRevisions.length)}:${clipTerms}`,
     ...(excludedIds.length > 0
       ? [`excl:${encodeCanonicalNumber(excludedIds.length)}:${excludedIds.map((id) => encodeCanonicalString(id)).join('')}`]
