@@ -13,6 +13,7 @@ import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
+import { PhysicsPaintReferenceGhostLayer } from './PhysicsPaintReferenceGhostLayer';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
@@ -68,6 +69,14 @@ interface PhysicsPaintCanvasStackViewProps {
    * never in the flattened raster, main preview, or export.
    */
   showTransparencyCheckerboard?: boolean;
+  /**
+   * 50-04 (S3): the reference ghost monitor-paint layer — a narrow leaf canvas
+   * drawn ON TOP of the composite (onion-ghost family, D-09) and the
+   * fail-closed missing-source publication seam (D-04). Present whenever the
+   * Studio has a launch layer; the ghost is absent during playback by not
+   * drawing (D-14).
+   */
+  referenceGhost?: ComponentProps<typeof PhysicsPaintReferenceGhostLayer> | null;
 }
 
 /**
@@ -198,6 +207,20 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           ) : null}
           {!props.programMonitor ? <PhysicsPaintRotoPlaybackImage tick={props.cachedRotoPlaybackTick} /> : null}
           {!props.cachedRotoPlaybackActive ? props.onionOverlay : null}
+        </div>
+      ) : null}
+      {/* 50-04 (S3): the reference ghost monitor-paint layer — a sibling of the
+          onion overlay (same z-index 5 family, above the composite, beneath
+          selection/tool paint). The ghost draws ON TOP of the composite and is
+          monitor paint only — it never enters the flattened raster, main
+          preview, or export (D-06). */}
+      {canvasBounds && props.referenceGhost ? (
+        <div
+          class="physics-paint-reference-ghost"
+          aria-hidden="true"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />
         </div>
       ) : null}
     </div>

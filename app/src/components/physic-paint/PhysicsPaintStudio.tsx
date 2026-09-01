@@ -3196,7 +3196,25 @@ export function PhysicsPaintStudio() {
     setApplyStatus('error');
     setApplyMessage(`Missing source on ${summary.missingCount} track(s) — first: ${trackName ?? summary.firstTrackId}`);
   }, [launchContext, setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight], () => {
+  // 50-04 (S3): the reference missing-source capsule publication handler — maps
+  // the ghost layer's compare-then-write boolean to the existing red-warning
+  // status-capsule surface (D-04, Phase 48 D-09 family). A missing reference
+  // source (a track exists but the resolved source frame is null) raises the
+  // fixed copy; a resolved source or no track restores the idle capsule. The
+  // report is INDEPENDENT of the visibility preference — fail-closed reporting
+  // fires even when the overlay toggle is off. The ghost layer already dedupes
+  // steady/cleared state, so every call here is a genuine state transition
+  // (idempotent setter law; never a render-body write).
+  const handleReferenceMissingSourceChange = useCallback((missing: boolean) => {
+    if (missing) {
+      setApplyStatus('error');
+      setApplyMessage('Missing reference source — use Replace source to re-link.');
+    } else {
+      setApplyStatus('idle');
+      setApplyMessage(null);
+    }
+  }, [setApplyStatus, setApplyMessage]);
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -3264,6 +3282,21 @@ export function PhysicsPaintStudio() {
         height: canvasHeight,
         playbackTick: rotoCachedPlayback.playbackTick,
         onMissingSourcesChange: handleProgramMonitorMissingChange,
+      } : null,
+      // 50-04 (S3): the reference ghost monitor-paint layer — concrete values
+      // only. The ghost layer subscribes to the store version clocks in its OWN
+      // effect; this memo re-resolves on document changes (efxPaintVersion.value)
+      // so a source/opacity/transform/visibility change re-targets the draw. The
+      // zoom is the project→working scale (paperTextureScale) so the reference
+      // image (project resolution) fits the working canvas.
+      referenceGhost: programMonitorLayerId ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying,
+        width: canvasWidth,
+        height: canvasHeight,
+        zoom: paperTextureScale,
+        onMissingSourceChange: handleReferenceMissingSourceChange,
       } : null,
     };
   });

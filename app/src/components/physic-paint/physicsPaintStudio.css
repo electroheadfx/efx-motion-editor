@@ -5010,6 +5010,23 @@ button.destructive {
   pointer-events: none;
 }
 
+/* 50-04 (S3): the reference ghost monitor-paint layer — a sibling of the onion
+   overlay (z-index 5 family, above the composite, beneath selection/tool
+   paint). Monitor paint only: pointer-events none so every interaction passes
+   through to the engine canvas beneath. */
+.physics-paint-reference-ghost {
+  position: absolute;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.physics-paint-reference-ghost > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .physics-paint-onion-frame {
   position: absolute;
   inset: 0;

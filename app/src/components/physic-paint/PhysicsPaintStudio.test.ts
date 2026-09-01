@@ -1570,3 +1570,45 @@ describe('Physics Paint missing Background source placeholder fill (49-06 UAT)',
     expect(trackMissingBlock).not.toContain('fillStyle');
   });
 });
+
+describe('Physics Paint reference ghost mount + missing-source capsule (50-04, S3/D-04/D-06/D-14)', () => {
+  it('mounts the reference ghost in the monitor-paint layer seat above the composite (S3)', () => {
+    // The Studio threads a referenceGhost config into the canvas stack; the view
+    // renders the ghost layer as a sibling of the onion overlay (z-index 5).
+    expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
+    expect(studio).toContain('zoom: paperTextureScale,');
+    expect(studio).toContain('onMissingSourceChange: handleReferenceMissingSourceChange,');
+    expect(studioView).toContain('referenceGhost?: ComponentProps<typeof PhysicsPaintReferenceGhostLayer> | null;');
+    expect(studioView).toContain('{canvasBounds && props.referenceGhost ? (');
+    expect(studioView).toContain('<PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />');
+    // The ghost layer renders AFTER the tracks group (above the composite).
+    const tracksGroupIndex = studioView.indexOf('physics-paint-tracks-group');
+    const ghostIndex = studioView.indexOf('physics-paint-reference-ghost');
+    expect(tracksGroupIndex).toBeGreaterThanOrEqual(0);
+    expect(ghostIndex).toBeGreaterThan(tracksGroupIndex);
+  });
+
+  it('surfaces the missing reference source through the status capsule with the red warning triangle (D-04)', () => {
+    expect(studio).toContain('const handleReferenceMissingSourceChange = useCallback((missing: boolean) => {');
+    expect(studio).toContain("setApplyStatus('error');");
+    expect(studio).toContain("setApplyMessage('Missing reference source — use Replace source to re-link.');");
+  });
+
+  it('keeps the ghost monitor-paint only — no reference input reaches the compositor or export (D-06)', () => {
+    // The ghost draw module is imported only by the Studio view layer; the
+    // compositor/flattened cache/preview/export never reference the ghost or the
+    // photo/reference track.
+    expect(compositor).not.toContain('drawReferenceGhost');
+    expect(flattenedCache).not.toContain('drawReferenceGhost');
+    expect(previewRenderer).not.toContain('drawReferenceGhost');
+    expect(exportRenderer).not.toContain('drawReferenceGhost');
+    expect(compositor).not.toContain('photoReference');
+  });
+
+  it('hides the ghost during playback by not drawing (D-14)', () => {
+    // The ghost layer passes isPlaying into the draw; the decision returns
+    // draw:false during playback (no opacity trick, no cache entry).
+    expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
+    expect(studio).toContain('isPlaying,');
+  });
+});
