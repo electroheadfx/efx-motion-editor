@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
 import {
   _setEfxPaintMarkDirtyCallback,
@@ -31,14 +29,6 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
     tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
   };
 }
-
-const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
-  frameIndex,
-  appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
-  width: 100,
-  height: 50,
-});
 
 type OkPhotoReferenceMutation = { ok: true; descriptor: BackgroundEditDescriptor | null };
 

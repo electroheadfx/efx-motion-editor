@@ -14,7 +14,7 @@
  */
 
 import { signal } from '@preact/signals';
-import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceMode, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -554,7 +554,9 @@ export type BackgroundEditOperationKind =
   | 'resize-background-clip'
   | 'set-background-clip-source'
   | 'delete-background-clip'
-  | 'set-background-fallback';
+  | 'set-background-fallback'
+  | 'set-photo-reference-source'
+  | 'set-photo-reference-mode';
 
 /**
  * Acceptance descriptor emitted by every committed Background op (BKG-08).
@@ -1017,6 +1019,241 @@ export function setBackgroundFallback(
       after: next,
     },
   };
+}
+
+// ============================================================================
+// Photo/reference track CRUD (50-02 Task 1)
+// ============================================================================
+//
+// The six photo/reference setters funnel every UI surface (picker confirm,
+// right panel, ghost overlay) through the RESEARCH Pattern 1 field-class split:
+// `setPhotoReferenceSource` and `setPhotoReferenceMode` are DOCUMENT MUTATIONS —
+// they create/replace the track, bump the track `revision` AND the document
+// `documentRevision` counter, and record by reference on the unified ledger via
+// `recordBackgroundEdit` (new operation kinds `'set-photo-reference-source'` and
+// `'set-photo-reference-mode'`). `setPhotoReferenceVisible`,
+// `setPhotoReferenceOpacity`, `setPhotoReferenceTransform`, and
+// `setPhotoReferenceTransformLocked` are DISPLAY PREFERENCES — they persist on
+// the track but record NO undo entry and do NOT bump the revision counter
+// (D-11/D-12/D-13, the `_setTrackDisplayProperty` vs mutation-setter split).
+
+/** The locked PhotoReferenceMode union as a lookup set (efxPaintDocument.ts:103). */
+const PHOTO_REFERENCE_MODES: ReadonlySet<PhotoReferenceMode> = new Set([
+  'reference-only',
+  'reveal-source',
+  'masked-transform-source',
+]);
+
+/** Closed rejection-reason union for the photo/reference setters. */
+export type PhotoReferenceMutationRejectionReason =
+  | 'no-document'
+  | 'no-photo-reference'
+  | 'invalid-source-refs'
+  | 'invalid-mode'
+  | 'invalid-opacity'
+  | 'invalid-transform';
+
+/** Result of a photo/reference document mutation (source replace / mode switch). */
+export type PhotoReferenceMutationResult =
+  | { readonly ok: true; readonly descriptor: BackgroundEditDescriptor | null }
+  | { readonly ok: false; readonly reason: PhotoReferenceMutationRejectionReason };
+
+/** Result of a photo/reference display-preference setter (no undo, no revision bump). */
+export type PhotoReferenceDisplayResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: PhotoReferenceMutationRejectionReason };
+
+/** Ordered source-ref equality (D-02: order is meaningful — frame N → refs[N]). */
+function _sameSourceRefs(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((ref, index) => ref === b[index]);
+}
+
+/** Fail-closed structural check of a PhotoReferenceTransform (D-13: five finite numbers). */
+function _isValidTransform(transform: PhotoReferenceTransform): boolean {
+  return Number.isFinite(transform.x)
+    && Number.isFinite(transform.y)
+    && Number.isFinite(transform.scaleX)
+    && Number.isFinite(transform.scaleY)
+    && Number.isFinite(transform.rotation);
+}
+
+/**
+ * Shared display-preference setter body (D-11/D-12/D-13). Follows the
+ * `_setTrackDisplayProperty` shape — fail-closed on absent document / absent
+ * track, early no-op on an identical value, immutable next document,
+ * `_documents.set` — but the write does NOT bump documentRevision or the track
+ * revision (display prefs are not `buildEfxPaintDocumentRevision` terms) and
+ * records NO undo entry. It fires the efxPaint dirty callback exactly once via
+ * `_notifyChange` so the ghost overlay re-renders.
+ */
+function _setPhotoReferenceDisplayProperty(
+  layerId: string,
+  patch: (track: PhotoReferenceTrack) => PhotoReferenceTrack,
+  isChanged: (track: PhotoReferenceTrack) => boolean,
+): PhotoReferenceDisplayResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  const track = document.photoReference;
+  if (!track) return { ok: false, reason: 'no-photo-reference' };
+  if (!isChanged(track)) return { ok: true };
+  const next: EfxPaintDocument = { ...document, photoReference: patch(track) };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true };
+}
+
+/**
+ * Set (create or replace) the photo/reference source cycle (D-03). The first
+ * call creates the track with the locked defaults (mode `reference-only`,
+ * visibleInStudio true, opacity 0.5, transform centered, transformLocked true,
+ * revision 0); a later call REPLACES the source cycle, bumping the track
+ * `revision` AND the document `documentRevision` counter, and records ONE undo
+ * entry by reference. A same-source write is a no-op (no revision bump, no
+ * undo). Rejects fail-closed on an absent document or invalid refs.
+ */
+export function setPhotoReferenceSource(
+  layerId: string,
+  sourceFrameRefs: readonly string[],
+): PhotoReferenceMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (!_isValidSourceRefs(sourceFrameRefs)) return { ok: false, reason: 'invalid-source-refs' };
+
+  const existing = document.photoReference;
+  if (existing === null) {
+    const newTrack: PhotoReferenceTrack = Object.freeze({
+      id: crypto.randomUUID(),
+      sourceFrameRefs: Object.freeze([...sourceFrameRefs]),
+      mode: 'reference-only',
+      revision: 0,
+      visibleInStudio: true,
+      opacity: 0.5,
+      transform: Object.freeze({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }),
+      transformLocked: true,
+    });
+    const candidate: EfxPaintDocument = { ...document, photoReference: newTrack };
+    const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+    _documents.set(layerId, next);
+    _notifyChange();
+    return {
+      ok: true,
+      descriptor: {
+        operationId: crypto.randomUUID(),
+        operationKind: 'set-photo-reference-source',
+        before: document,
+        after: next,
+      },
+    };
+  }
+
+  if (_sameSourceRefs(existing.sourceFrameRefs, sourceFrameRefs)) {
+    return { ok: true, descriptor: null };
+  }
+  const candidate: EfxPaintDocument = {
+    ...document,
+    photoReference: {
+      ...existing,
+      sourceFrameRefs: Object.freeze([...sourceFrameRefs]),
+      revision: existing.revision + 1,
+    },
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-photo-reference-source',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Switch the photo/reference source mode (D-07). Bumps the track `revision` AND
+ * the document `documentRevision` counter and records ONE undo entry by
+ * reference. A same-mode write is a no-op. Rejects fail-closed on an absent
+ * document, an absent track, or a mode outside the locked union.
+ */
+export function setPhotoReferenceMode(
+  layerId: string,
+  mode: PhotoReferenceMode,
+): PhotoReferenceMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  const track = document.photoReference;
+  if (!track) return { ok: false, reason: 'no-photo-reference' };
+  if (!PHOTO_REFERENCE_MODES.has(mode)) return { ok: false, reason: 'invalid-mode' };
+  if (track.mode === mode) return { ok: true, descriptor: null };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    photoReference: { ...track, mode, revision: track.revision + 1 },
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-photo-reference-mode',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/** Show/hide the photo/reference track in the Studio (D-11 — display preference). */
+export function setPhotoReferenceVisible(layerId: string, visible: boolean): PhotoReferenceDisplayResult {
+  return _setPhotoReferenceDisplayProperty(
+    layerId,
+    (track) => ({ ...track, visibleInStudio: visible }),
+    (track) => track.visibleInStudio !== visible,
+  );
+}
+
+/**
+ * Set the photo/reference track's Studio opacity (D-12 — display preference).
+ * Accepts 0..1 floats and stores them exactly; out-of-range finite values are
+ * clamped into 0..1; non-finite values are rejected fail-closed.
+ */
+export function setPhotoReferenceOpacity(layerId: string, opacity: number): PhotoReferenceDisplayResult {
+  if (!Number.isFinite(opacity)) return { ok: false, reason: 'invalid-opacity' };
+  const clamped = Math.min(1, Math.max(0, opacity));
+  return _setPhotoReferenceDisplayProperty(
+    layerId,
+    (track) => ({ ...track, opacity: clamped }),
+    (track) => track.opacity !== clamped,
+  );
+}
+
+/**
+ * Set the photo/reference track's display transform (D-13 — display
+ * preference). Rejects fail-closed on a non-finite field; a same-value write is
+ * a no-op.
+ */
+export function setPhotoReferenceTransform(layerId: string, transform: PhotoReferenceTransform): PhotoReferenceDisplayResult {
+  if (!_isValidTransform(transform)) return { ok: false, reason: 'invalid-transform' };
+  return _setPhotoReferenceDisplayProperty(
+    layerId,
+    (track) => ({ ...track, transform: Object.freeze({ ...transform }) }),
+    (track) => track.transform.x !== transform.x
+      || track.transform.y !== transform.y
+      || track.transform.scaleX !== transform.scaleX
+      || track.transform.scaleY !== transform.scaleY
+      || track.transform.rotation !== transform.rotation,
+  );
+}
+
+/** Lock/unlock the photo/reference track's transform (D-13 — display preference). */
+export function setPhotoReferenceTransformLocked(layerId: string, locked: boolean): PhotoReferenceDisplayResult {
+  return _setPhotoReferenceDisplayProperty(
+    layerId,
+    (track) => ({ ...track, transformLocked: locked }),
+    (track) => track.transformLocked !== locked,
+  );
 }
 
 /** Empty the store and bump the version signal (project close hook). */
