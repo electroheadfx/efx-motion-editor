@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 50
 current_phase_name: Photo/Reference Track
 status: executing
-stopped_at: Completed 50-04-PLAN.md
-last_updated: "2026-09-01T17:30:39.994Z"
+stopped_at: Completed 50-05-PLAN.md
+last_updated: "2026-09-01T17:51:27.200Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 50 execution started
-state_head: 3f62e6bc2fbcbc239b2438207dd246b574144040
+state_head: 9eb3824f7db7421a625c700fcf45e47d17077f79
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 37
-  completed_plans: 35
+  completed_plans: 36
   percent: 22
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 50 (Photo/Reference Track) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-09-01 — Phase 50 execution started
 
@@ -100,6 +100,7 @@ Progress: [██░░░░░░░░] 22%
 | Phase 50 P02 | 4min | 3 tasks | 3 files |
 | Phase 50 P03 | 12 | 2 tasks | 12 files |
 | Phase 50 P04 | 15min | 2 tasks | 7 files |
+| Phase 50 P05 | 19 | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,11 @@ Recent decisions affecting current work:
 - [Phase 50]: shouldDrawReferenceGhost bridges getReferenceSourceFrameVerdict through document.parentLayerId (the store function takes a layerId, not a document); the missing-source condition is computed separately (track exists AND verdict null)
 - [Phase 50]: zoom = paperTextureScale (project→working scale) so the reference image (project resolution) fits the working canvas; the ghost layer is a dedicated leaf canvas mounted at z-index 5 above the composite
 - [Phase 50]: The missing-source report uses the existing status capsule (setApplyStatus('error') + 'Missing reference source — use Replace source to re-link.'), independent of the visibility preference
+- [Phase 50]: The transform handles are a dedicated component (PhysicsPaintReferenceTransformHandles) + a pure geometry module (getReferenceBounds), NOT inlined into the Studio — the geometry is testable in isolation and the component follows the ghost layer's narrow-leaf pattern
+- [Phase 50]: getReferenceBounds computes the SAME bounding box the ghost draws: natural project resolution scaled by zoom (paperTextureScale) to working space, centered at (canvasWidth/2 + x*zoom, canvasHeight/2 + y*zoom), then rotated by rotation and scaled by scaleX/scaleY — no aspect-fit, no crop
+- [Phase 50]: The image dimensions are decoded async via new Image() from the frame-aligned verdict's dataUrl and held in a useSignal (no useState); a missing track/verdict/decode failure clears the size fail-closed (no handles without a resolved source, D-04)
+- [Phase 50]: The section ports route mode → setPhotoReferenceMode (undoable mutation), opacity → setPhotoReferenceOpacity, lock → setPhotoReferenceTransformLocked (display preferences, no undo) — the mutation vs display-preference split holds at the right-panel boundary (T-50-05-01)
+- [Phase 50]: Escape re-lock is a keyboard action (relockReferenceTransform) returning true only when the transform was actually unlocked, layered between the solo disarm and selection collapse so one Escape handles at most one layer (Pitfall 2)
 
 ### Pending Todos
 
@@ -257,6 +263,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-09-01T17:30:39.453Z
-Stopped at: Completed 50-04-PLAN.md
+Last session: 2026-09-01T17:51:26.565Z
+Stopped at: Completed 50-05-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
