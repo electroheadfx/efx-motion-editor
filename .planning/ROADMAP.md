@@ -182,7 +182,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 - [x] **Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches** - Track-local addressing, revisions, dirty state, and async authority (completed 2026-08-27; UAT deferred items re-run in Phase 47 UAT)
 - [x] **Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls** - Multi-row Paint timeline with track CRUD, active selection, hide/solo, opacity/blend (completed 2026-08-27; filmstrip capsule layer removed by user demand, rail status dot close-out)
 - [x] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster (completed 2026-08-30; Background-row native UAT deferred to Phase 49 — no live authoring UI yet, compositor-side covered by the green matrix suite)
-- [ ] **Phase 49: Fixed Background Track and Imported Loop Clips** - Background clips with finite/infinite repeat, gaps, and fallback
+- [x] **Phase 49: Fixed Background Track and Imported Loop Clips** - Background clips with finite/infinite repeat, gaps, and fallback (completed 2026-09-01; phase-closing native UAT approved)
 - [ ] **Phase 50: Photo/Reference Track** - Reference-only / reveal-source / masked-transform-source modes
 - [ ] **Phase 51: Read-only Audio Preview** - Synchronized main-editor audio monitoring across internal tracks
 - [ ] **Phase 52: Shared Mask Compositor and Reveal** - Photo source revealed through Paint/PlayScript coverage
@@ -356,7 +356,7 @@ Plans:
   4. Gaps reveal the document fallback (solid color or transparency) identically in Studio, flattened parent output, main preview, and export.
   5. Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen.
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -378,7 +378,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 49-06-PLAN.md — right-panel Background Clip properties (D-06/D-07/D-08) + blocking native UAT (BKG-01..BKG-09)
+- [x] 49-06-PLAN.md — right-panel Background Clip properties (D-06/D-07/D-08) + blocking native UAT (BKG-01..BKG-09)
 
 ### Phase 50: Photo/Reference Track
 
