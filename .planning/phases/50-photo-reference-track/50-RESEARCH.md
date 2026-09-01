@@ -384,22 +384,22 @@ The photo/reference track must be serialized into the document (like `serializeR
 
 **If this table is empty:** (not applicable — three assumptions logged above)
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact `PhotoSourceReference` field shape**
+1. **RESOLVED: Exact `PhotoSourceReference` field shape** (Plan 50-01)
    - What we know: the SPECS sketch shows `source: PhotoSourceReference` with `sourceFrameRefs: FrameAssetReference[]` on the sibling `FrameLoopClip`; the document model uses `readonly string[]` for `sourceFrameRefs`.
    - What's unclear: whether the reference source is a bare `readonly string[]` of asset IDs (mirroring `FrameLoopClip.sourceFrameRefs`) or a richer object.
-   - Recommendation: Use `readonly string[]` of library asset IDs (natural filename sort order), mirroring `FrameLoopClip.sourceFrameRefs` — this is Claude's Discretion and the lowest-risk choice.
+   - Resolution: Use `readonly string[]` of library asset IDs (natural filename sort order), mirroring `FrameLoopClip.sourceFrameRefs` — this is Claude's Discretion and the lowest-risk choice.
 
-2. **Shared vs parallel source registry**
+2. **RESOLVED: Shared vs parallel source registry** (Plan 50-02)
    - What we know: `_backgroundSourceImages` is a module-level `Map<string, string>` keyed by sourceRef.
    - What's unclear: whether the reference source reuses the same map or gets its own.
-   - Recommendation: A parallel `_referenceSourceImages` map (or a shared map) both work; prefer a parallel map to keep the reference's fail-closed resolution and revision term independent of the Background track's clip lifecycle.
+   - Resolution: A parallel `_referenceSourceImages` map (or a shared map) both work; prefer a parallel map to keep the reference's fail-closed resolution and revision term independent of the Background track's clip lifecycle.
 
-3. **Where the display-preference fields live**
+3. **RESOLVED: Where the display-preference fields live** (Plan 50-01)
    - What we know: the spec sketch puts `visibleInStudio` on the track; opacity/transform/lock are "display properties" per D-12/D-13.
    - What's unclear: whether opacity/transform/lock are fields on the track or a separate runtime map.
-   - Recommendation: Store them on the `PhotoReferenceTrack` (or a sibling display-preferences object) so save/reopen persistence is automatic via the existing serialize/hydrate path.
+   - Resolution: Store them on the `PhotoReferenceTrack` (or a sibling display-preferences object) so save/reopen persistence is automatic via the existing serialize/hydrate path.
 
 ## Environment Availability
 

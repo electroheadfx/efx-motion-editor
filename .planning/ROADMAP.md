@@ -396,11 +396,28 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 50-01-PLAN.md — PhotoReferenceTrack model + fail-closed parser + canonical revision encoder (REF-01, REF-05)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 50-02-PLAN.md — store CRUD + source registry + frame-aligned resolution + D-06 exclusion + serialize/hydrate (REF-02, REF-03, REF-04)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 50-03-PLAN.md — Photo row + reference picker import with natural sort and replace (REF-01, REF-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 50-04-PLAN.md — ghost draw + missing-source capsule (REF-03, REF-04)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 50-05-PLAN.md — right-panel section + reference transform (REF-02, REF-03)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 50-06-PLAN.md — persistence round-trip + native UAT (REF-05)
 
 ### Phase 51: Read-only Audio Preview
