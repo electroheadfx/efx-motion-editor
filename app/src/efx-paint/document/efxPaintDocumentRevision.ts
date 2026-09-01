@@ -24,6 +24,7 @@ import type {
   EfxPaintDocument,
   FrameLoopClip,
   InternalPaintTrack,
+  PhotoReferenceTrack,
 } from './efxPaintDocument';
 import { parseEfxPaintDocument, parseInternalPaintTrack } from './efxPaintDocumentParsers';
 
@@ -97,6 +98,24 @@ function encodeValidatedEfxPaintTrackContent(track: InternalPaintTrack): string 
   ].join('');
 }
 
+/**
+ * Canonical photo/reference term (50-01): covers the document-mutation fields
+ * (`id`, ordered `sourceFrameRefs`, `mode`, `revision`) and EXCLUDES the
+ * display-preference fields (`visibleInStudio`, `opacity`, `transform`,
+ * `transformLocked`) so a display-preference change never bumps the document
+ * revision (D-07 vs D-11/D-12/D-13 split). A null track contributes an empty
+ * term (D-29 idiom).
+ */
+function encodeCanonicalPhotoReference(track: PhotoReferenceTrack | null): string {
+  if (track === null) return '';
+  return [
+    encodeCanonicalString(track.id),
+    `${track.sourceFrameRefs.length}:${track.sourceFrameRefs.map(encodeCanonicalString).join('')}`,
+    encodeCanonicalString(track.mode),
+    encodeCanonicalNumber(track.revision),
+  ].join('');
+}
+
 function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): string {
   const orderedTracks = [...document.tracks].sort((a, b) => a.id.localeCompare(b.id));
   const tracksTerm = `tracks:${orderedTracks.length}:${orderedTracks.map(encodeValidatedEfxPaintTrackContent).join('')}`;
@@ -114,7 +133,7 @@ function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): str
     `fallback:${encodeCanonicalBackgroundFallback(document.background.fallback)}`,
     `bgvisible:${validatedBoolean(document.background.visible)}`,
     `bgrevision:${encodeCanonicalNumber(document.background.revision)}`,
-    'photo:null;',
+    `photo:${encodeCanonicalPhotoReference(document.photoReference)}`,
     `composite:${encodeCanonicalNumber(document.compositeRevision)}`,
   ].join('');
 }

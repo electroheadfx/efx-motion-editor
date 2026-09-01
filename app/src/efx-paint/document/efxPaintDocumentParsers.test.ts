@@ -44,14 +44,20 @@ describe('PhotoReferenceTrack round-trip, encoder, and fail-closed parse', () =>
   });
 
   it('mode changes the canonical revision; opacity does not (D-07 vs D-12)', () => {
-    const referenceOnly = documentWithPhotoReference({ ...validPhotoReferenceTrack(), mode: 'reference-only' });
-    const revealSource = documentWithPhotoReference({ ...validPhotoReferenceTrack(), mode: 'reveal-source' });
+    const base = documentWithPhotoReference();
+
+    const referenceOnly = JSON.parse(JSON.stringify(base));
+    referenceOnly.photoReference.mode = 'reference-only';
+    const revealSource = JSON.parse(JSON.stringify(base));
+    revealSource.photoReference.mode = 'reveal-source';
     expect(buildEfxPaintDocumentRevision(revealSource)).not.toBe(
       buildEfxPaintDocumentRevision(referenceOnly),
     );
 
-    const opacity05 = documentWithPhotoReference({ ...validPhotoReferenceTrack(), opacity: 0.5 });
-    const opacity08 = documentWithPhotoReference({ ...validPhotoReferenceTrack(), opacity: 0.8 });
+    const opacity05 = JSON.parse(JSON.stringify(base));
+    opacity05.photoReference.opacity = 0.5;
+    const opacity08 = JSON.parse(JSON.stringify(base));
+    opacity08.photoReference.opacity = 0.8;
     expect(buildEfxPaintDocumentRevision(opacity08)).toBe(
       buildEfxPaintDocumentRevision(opacity05),
     );
@@ -63,7 +69,8 @@ describe('PhotoReferenceTrack round-trip, encoder, and fail-closed parse', () =>
     ).toThrow(/mode/);
 
     const missingRefs = documentWithPhotoReference();
-    delete (missingRefs.photoReference as MutablePhotoReferenceTrack).sourceFrameRefs;
+    const { sourceFrameRefs: _omitRefs, ...trackWithoutRefs } = missingRefs.photoReference as MutablePhotoReferenceTrack;
+    missingRefs.photoReference = trackWithoutRefs;
     expect(() => parseEfxPaintDocument(missingRefs)).toThrow(/sourceFrameRefs/);
 
     expect(() =>

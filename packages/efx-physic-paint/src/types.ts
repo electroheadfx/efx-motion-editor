@@ -275,6 +275,33 @@ export interface BackgroundTrack {
   readonly revision: number
 }
 
+/**
+ * Photo/reference source mode union (mirrors the app-side schema, D-05). The
+ * reserved `'photo'` fond mode is deliberately absent (D-08).
+ */
+export type PhotoReferenceMode = 'reference-only' | 'reveal-source' | 'masked-transform-source'
+
+/** Photo/reference display transform (mirrors the app-side schema, D-13). */
+export interface PhotoReferenceTransform {
+  readonly x: number
+  readonly y: number
+  readonly scaleX: number
+  readonly scaleY: number
+  readonly rotation: number
+}
+
+/** The single photo/reference track (mirrors the app-side schema, Phase 50-01). */
+export interface PhotoReferenceTrack {
+  readonly id: string
+  readonly sourceFrameRefs: readonly string[]
+  readonly mode: PhotoReferenceMode
+  readonly revision: number
+  readonly visibleInStudio: boolean
+  readonly opacity: number
+  readonly transform: PhotoReferenceTransform
+  readonly transformLocked: boolean
+}
+
 /** The v1.0 EFX Physic Paint document owned by one parent layer (mirrors the app-side schema). */
 export interface EfxPaintDocument {
   readonly version: number
@@ -283,7 +310,7 @@ export interface EfxPaintDocument {
   readonly activeTrackId: string
   readonly tracks: readonly InternalPaintTrack[]
   readonly background: BackgroundTrack
-  readonly photoReference: null
+  readonly photoReference: PhotoReferenceTrack | null
   readonly compositeRevision: number
 }
 

@@ -25,6 +25,9 @@ import {
   type FrameLoopClipScale,
   type InternalPaintTrack,
   type PaperTexture,
+  type PhotoReferenceMode,
+  type PhotoReferenceTrack,
+  type PhotoReferenceTransform,
 } from './efxPaintDocument';
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -62,6 +65,9 @@ const REPEAT_INFINITE_KEYS = new Set(['mode']);
 const SCALE_KEYS = new Set(['x', 'y']);
 const CACHED_FRAME_REF_KEYS = new Set(['cachePath', 'width', 'height']);
 const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
+const PHOTO_REFERENCE_KEYS = new Set(['id', 'sourceFrameRefs', 'mode', 'revision', 'visibleInStudio', 'opacity', 'transform', 'transformLocked']);
+const PHOTO_REFERENCE_MODES = new Set(['reference-only', 'reveal-source', 'masked-transform-source']);
+const PHOTO_TRANSFORM_KEYS = new Set(['x', 'y', 'scaleX', 'scaleY', 'rotation']);
 
 function isBlendMode(value: unknown): value is BlendMode {
   return typeof value === 'string' && BLEND_MODES.has(value);
@@ -299,6 +305,81 @@ function parseBackgroundTrack(value: unknown): BackgroundTrack {
   });
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function parsePhotoReferenceTransform(value: unknown): PhotoReferenceTransform {
+  if (!isPlainRecord(value)) {
+    throw new Error('PhotoReferenceTrack: transform must be a record.');
+  }
+  if (!hasOnlyKeys(value, PHOTO_TRANSFORM_KEYS) || Object.keys(value).length !== PHOTO_TRANSFORM_KEYS.size) {
+    throw new Error('PhotoReferenceTrack: transform must contain exactly x, y, scaleX, scaleY, rotation.');
+  }
+  if (!isFiniteNumber(value.x)) {
+    throw new Error('PhotoReferenceTrack: transform.x must be a finite number.');
+  }
+  if (!isFiniteNumber(value.y)) {
+    throw new Error('PhotoReferenceTrack: transform.y must be a finite number.');
+  }
+  if (!isFiniteNumber(value.scaleX)) {
+    throw new Error('PhotoReferenceTrack: transform.scaleX must be a finite number.');
+  }
+  if (!isFiniteNumber(value.scaleY)) {
+    throw new Error('PhotoReferenceTrack: transform.scaleY must be a finite number.');
+  }
+  if (!isFiniteNumber(value.rotation)) {
+    throw new Error('PhotoReferenceTrack: transform.rotation must be a finite number.');
+  }
+  return Object.freeze({
+    x: value.x,
+    y: value.y,
+    scaleX: value.scaleX,
+    scaleY: value.scaleY,
+    rotation: value.rotation,
+  });
+}
+
+function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
+  if (!isPlainRecord(value)) {
+    throw new Error('PhotoReferenceTrack: expected a record.');
+  }
+  if (!hasOnlyKeys(value, PHOTO_REFERENCE_KEYS)) {
+    throw new Error('PhotoReferenceTrack: unknown members; expected exactly id, sourceFrameRefs, mode, revision, visibleInStudio, opacity, transform, transformLocked.');
+  }
+  if (!isNonEmptyString(value.id)) {
+    throw new Error('PhotoReferenceTrack: id must be a non-empty string.');
+  }
+  if (!Array.isArray(value.sourceFrameRefs) || !value.sourceFrameRefs.every(isNonEmptyString)) {
+    throw new Error('PhotoReferenceTrack: sourceFrameRefs must be an array of non-empty strings.');
+  }
+  if (typeof value.mode !== 'string' || !PHOTO_REFERENCE_MODES.has(value.mode)) {
+    throw new Error('PhotoReferenceTrack: mode must be reference-only, reveal-source, or masked-transform-source.');
+  }
+  if (!isNonNegativeInteger(value.revision)) {
+    throw new Error('PhotoReferenceTrack: revision must be a non-negative integer.');
+  }
+  if (typeof value.visibleInStudio !== 'boolean') {
+    throw new Error('PhotoReferenceTrack: visibleInStudio must be a boolean.');
+  }
+  if (typeof value.opacity !== 'number' || !Number.isFinite(value.opacity) || value.opacity < 0 || value.opacity > 1) {
+    throw new Error('PhotoReferenceTrack: opacity must be a finite number between 0 and 1.');
+  }
+  if (typeof value.transformLocked !== 'boolean') {
+    throw new Error('PhotoReferenceTrack: transformLocked must be a boolean.');
+  }
+  return Object.freeze({
+    id: value.id,
+    sourceFrameRefs: Object.freeze([...value.sourceFrameRefs]),
+    mode: value.mode as PhotoReferenceMode,
+    revision: value.revision,
+    visibleInStudio: value.visibleInStudio,
+    opacity: value.opacity,
+    transform: parsePhotoReferenceTransform(value.transform),
+    transformLocked: value.transformLocked,
+  });
+}
+
 /**
  * Reconstruct a validated {@link EfxPaintDocument} from untrusted input.
  *
@@ -324,9 +405,6 @@ export function parseEfxPaintDocument(value: unknown): EfxPaintDocument {
   if (!isNonNegativeInteger(value.compositeRevision)) {
     throw new Error('EfxPaintDocument: compositeRevision must be a non-negative integer.');
   }
-  if (value.photoReference !== null) {
-    throw new Error('EfxPaintDocument: photoReference must be null.');
-  }
   if (!Array.isArray(value.tracks)) {
     throw new Error('EfxPaintDocument: tracks must be an array.');
   }
@@ -351,7 +429,7 @@ export function parseEfxPaintDocument(value: unknown): EfxPaintDocument {
     activeTrackId: value.activeTrackId,
     tracks,
     background: parseBackgroundTrack(value.background),
-    photoReference: null,
+    photoReference: value.photoReference === null ? null : parsePhotoReferenceTrack(value.photoReference),
     compositeRevision: value.compositeRevision,
   });
 }

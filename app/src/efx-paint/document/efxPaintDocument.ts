@@ -94,6 +94,46 @@ export interface BackgroundTrack {
   readonly revision: number;
 }
 
+/**
+ * Photo/reference source mode union (D-05): the three locked modes. The
+ * reserved `'photo'` fond mode is deliberately absent (D-08) — wiring it would
+ * draw reference pixels as the document fallback, which is part of the
+ * flattened output and violates the D-06 exclusion lock.
+ */
+export type PhotoReferenceMode = 'reference-only' | 'reveal-source' | 'masked-transform-source';
+
+/**
+ * Photo/reference display transform (D-13): position, scale, and rotation.
+ * A display preference — persisted on the track but never a document mutation
+ * and never a revision term.
+ */
+export interface PhotoReferenceTransform {
+  readonly x: number;
+  readonly y: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly rotation: number;
+}
+
+/**
+ * The single photo/reference track (Phase 50-01). Carries two field classes:
+ * document-mutation fields (`id`, `sourceFrameRefs`, `mode`, `revision`) and
+ * display-preference fields (`visibleInStudio`, `opacity`, `transform`,
+ * `transformLocked`). The source identity is an ordered `readonly string[]` of
+ * library asset IDs in natural-filename-sort order (D-02), mirroring
+ * `FrameLoopClip.sourceFrameRefs`.
+ */
+export interface PhotoReferenceTrack {
+  readonly id: string;
+  readonly sourceFrameRefs: readonly string[];
+  readonly mode: PhotoReferenceMode;
+  readonly revision: number;
+  readonly visibleInStudio: boolean;
+  readonly opacity: number;
+  readonly transform: PhotoReferenceTransform;
+  readonly transformLocked: boolean;
+}
+
 /** The v1.0 EFX Physic Paint document owned by one parent layer. */
 export interface EfxPaintDocument {
   readonly version: number;
@@ -102,7 +142,7 @@ export interface EfxPaintDocument {
   readonly activeTrackId: string;
   readonly tracks: readonly InternalPaintTrack[];
   readonly background: BackgroundTrack;
-  readonly photoReference: null;
+  readonly photoReference: PhotoReferenceTrack | null;
   readonly compositeRevision: number;
 }
 
