@@ -156,6 +156,10 @@ export interface BackgroundAssetPickerViewProps {
   onConfirm: (sortedIds: string[]) => void;
   onCancel: () => void;
   onImport: () => void;
+  /** 50-03 (S2): the picker's title + aria-label. Defaults to the Bg copy
+   *  ("Import background images"); the reference picker passes
+   *  "Import reference images" (D-01 region swap reuse). */
+  title?: string;
 }
 
 /**
@@ -196,11 +200,12 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
 
   const empty = props.images.length === 0;
   const error = props.status.kind === 'error' ? props.status.message : null;
+  const title = props.title ?? 'Import background images';
 
   return (
-    <div class="physics-paint-background-picker" role="region" aria-label="Import background images">
+    <div class="physics-paint-background-picker" role="region" aria-label={title}>
       <div class="physics-paint-background-picker-topbar">
-        <span class="physics-paint-background-picker-title">Import background images</span>
+        <span class="physics-paint-background-picker-title">{title}</span>
         <div class="physics-paint-background-picker-actions">
           <button
             type="button"

@@ -1266,7 +1266,7 @@ describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
   it('wires the signal-driven picker controller to the image-library bridge consumer and imageStore import path', () => {
     expect(studio).toContain('useBackgroundAssetPickerController({');
     expect(studio).toContain('requestLibrary: () => requestImageLibrary()');
-    expect(studio).toContain('importFiles: (paths, projectDir) => imageStore.importFiles(paths, projectDir)');
+    expect(studio).toContain('importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir)');
     expect(studio).toContain('openNativeImageDialog({');
     expect(studio).toContain("filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'] }]");
     expect(studio).toContain('refreshLibrary: async () => {');
@@ -1294,7 +1294,7 @@ describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
   });
 
   it('emits the confirmed selection natural-sorted by original filename (D-02, one ordering authority)', () => {
-    expect(studio).toContain('sortImages: (images) => sortImagesByOriginalFilename(images, (image) => image.original_filename)');
+    expect(studio).toContain('sortImages: (images: readonly MceImageRef[]) => sortImagesByOriginalFilename(images, (image) => image.original_filename)');
     expect(backgroundPickerView).toContain('sortImagesByOriginalFilename(images, (image) => image.original_filename)');
     expect(backgroundPickerView).toContain('buildConfirmedImageIds(');
     // The picker never re-derives ordering from asset UUIDs or click order.
@@ -1390,6 +1390,72 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     expect(backgroundPickerView).toContain('const cancel = () => {');
     expect(backgroundPickerView).toContain('open.value = false;');
     expect(backgroundPickerView).not.toContain('addBackgroundClip');
+  });
+});
+
+describe('Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03)', () => {
+  it('reuses the BackgroundAssetPickerView region swap for the reference picker (D-01)', () => {
+    // The reference picker is a SECOND instance of the same full-area region
+    // swap — the engine canvas stays mounted underneath, never replaced.
+    expect(studioView).toContain('referencePicker?: ComponentProps<typeof BackgroundAssetPickerView>');
+    expect(studioView).toContain('{referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}');
+    // The reference overlay renders AFTER the always-mounted canvas stack.
+    const canvasStackIndex = studioView.indexOf('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
+    const referenceOverlayIndex = studioView.indexOf('{referencePicker?.open ? <BackgroundAssetPickerView');
+    expect(canvasStackIndex).toBeGreaterThanOrEqual(0);
+    expect(referenceOverlayIndex).toBeGreaterThan(canvasStackIndex);
+  });
+
+  it('threads the Photo row intents from the workflow block to the store and the reference picker', () => {
+    // The workflow block forwards the document's photo/reference track and the
+    // two intents: visibility routes to setPhotoReferenceVisible (D-11), import
+    // routes to the reference picker (D-03).
+    expect(studio).toContain('photoReference: multiTrackRowBundle.photoReference,');
+    expect(studio).toContain('onToggleReferenceVisible: (visible: boolean) => {');
+    expect(studio).toContain('if (layerId) setPhotoReferenceVisible(layerId, visible);');
+    expect(studio).toContain('onImportReference: () => referencePicker.openPicker(),');
+  });
+
+  it('assembles the referencePicker view-model block with reference copy and a replace-on-confirm handler', () => {
+    expect(studio).toContain('referencePicker: {');
+    expect(studio).toContain("title: 'Import reference images',");
+    expect(studio).toContain('onConfirm: handleConfirmReferencePicker,');
+    expect(studio).toContain('onCancel: handleCancelReferencePicker,');
+    expect(studio).toContain('onImport: referencePicker.importImages,');
+  });
+
+  it('Confirm calls setPhotoReferenceSource exactly once and announces the replacement capsule note (D-03)', () => {
+    expect(studio).toContain('const result = setPhotoReferenceSource(layerId, sortedIds);');
+    expect(studio).toContain("publishOperationResult('Reference source replaced.');");
+    // Exactly one call site — the handler invokes the store op once per Confirm.
+    const callSites = studio.split('setPhotoReferenceSource(layerId, sortedIds)').length - 1;
+    expect(callSites).toBe(1);
+    // The reference confirm handler REPLACES the source — it never adds a clip.
+    const confirmHandler = studio.slice(
+      studio.indexOf('const handleConfirmReferencePicker = (sortedIds: string[]) => {'),
+      studio.indexOf('const handleCancelReferencePicker = () => {'),
+    );
+    expect(confirmHandler).not.toContain('addBackgroundClip');
+  });
+
+  it('hydrates the confirmed reference source bytes through the library path (REF-04)', () => {
+    expect(studio).toContain('hydrateReferenceSourceImagesFromLibrary(');
+    expect(studio).toContain('referencePicker.images.peek()');
+    expect(studio).toContain('referencePicker.projectDir.peek()');
+  });
+
+  it('Cancel returns to the Studio untouched — zero store interaction', () => {
+    expect(studio).toContain('onCancel: handleCancelReferencePicker,');
+    expect(studio).toContain('const handleCancelReferencePicker = () => {');
+    expect(studio).toContain('referencePicker.cancel();');
+    // The reference picker's cancel never mutates the document.
+    expect(backgroundPickerView).not.toContain('setPhotoReferenceSource');
+  });
+
+  it('keeps the picker title configurable with the Bg copy as the default', () => {
+    expect(backgroundPickerView).toContain('title?: string;');
+    expect(backgroundPickerView).toContain("const title = props.title ?? 'Import background images';");
+    expect(backgroundPickerView).toContain('aria-label={title}');
   });
 });
 

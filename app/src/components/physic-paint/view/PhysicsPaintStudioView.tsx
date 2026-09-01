@@ -223,11 +223,14 @@ export interface PhysicsPaintStudioViewProps {
   };
   /** 49-04 (Task 2): the scoped full-area asset picker (S2) swap. */
   backgroundPicker?: ComponentProps<typeof BackgroundAssetPickerView>;
+  /** 50-03 (S2): the reference picker — the same full-area region swap reused
+   *  for the Photo row's Import/Replace control (D-01). */
+  referencePicker?: ComponentProps<typeof BackgroundAssetPickerView>;
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status, backgroundPicker } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status, backgroundPicker, referencePicker } = props;
   return (
     <main class="demo-shell">
       <section
@@ -244,6 +247,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
           {/* 49-04 (Task 2): the picker is an overlay INSIDE the canvas region —
               the engine canvas stays mounted underneath (D-01 lock). */}
           {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
+          {referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}
         </section>
 
         <PhysicsPaintRightPanelRegion

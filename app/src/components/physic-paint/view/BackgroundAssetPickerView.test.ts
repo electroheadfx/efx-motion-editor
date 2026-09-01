@@ -238,7 +238,8 @@ describe('BackgroundAssetPickerView surface contract', () => {
   it('renders a full-area region swap with named Confirm/Cancel and an in-picker Import (S2)', () => {
     const code = source();
     expect(code).toContain('role="region"');
-    expect(code).toContain('aria-label="Import background images"');
+    expect(code).toContain('aria-label={title}');
+    expect(code).toContain("const title = props.title ?? 'Import background images';");
     expect(code).toContain('physics-paint-background-picker-confirm');
     expect(code).toContain('physics-paint-background-picker-import');
     expect(code).toContain('props.onConfirm(');

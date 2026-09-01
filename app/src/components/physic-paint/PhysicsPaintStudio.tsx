@@ -5,7 +5,7 @@ import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopCli
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
   addBackgroundClip,
   addTrack,
@@ -22,6 +22,8 @@ import {
   setBackgroundClipScale,
   setBackgroundClipSource,
   setBackgroundFallback,
+  setPhotoReferenceSource,
+  setPhotoReferenceVisible,
   setTrackBlend,
   setTrackOpacity,
   setTrackSolo,
@@ -3353,7 +3355,7 @@ export function PhysicsPaintStudio() {
   const multiTrackRowBundle = useMemo(() => {
     const layerId = launchContext?.layerId;
     if (!layerId) return {
-      layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined,
+      layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined, photoReference: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
@@ -3362,7 +3364,7 @@ export function PhysicsPaintStudio() {
     };
     const document = getEfxPaintDocument(layerId);
     if (!document) return {
-      layerId, tracks: undefined, activeTrackId: undefined, background: undefined,
+      layerId, tracks: undefined, activeTrackId: undefined, background: undefined, photoReference: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
       onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
@@ -3374,6 +3376,7 @@ export function PhysicsPaintStudio() {
       tracks: document.tracks,
       activeTrackId: document.activeTrackId,
       background: document.background,
+      photoReference: document.photoReference,
       // 49-06 (UAT round 2): selecting a Paint track returns the right panel to
       // Track option — it clears any selected Bg clip (the Background tab
       // disappears) and switches the tool tab to Track.
@@ -3491,9 +3494,14 @@ export function PhysicsPaintStudio() {
   // main webview via the image-library bridge pair and imports new images
   // through the native dialog (capability dialog:allow-open, Task 1). The
   // controller is signal-driven (no useState — efx-preact-reactivity).
-  const backgroundPicker = useBackgroundAssetPickerController({
+  // 50-03 (S2): the reference picker reuses the SAME controller + view as the
+  // Bg picker (D-01) — only the title and the Confirm handler differ. The four
+  // bridge/imageStore ports are shared; each controller keeps its own
+  // refreshLibrary closure so the self-referencing projectDir peek stays
+  // instance-local.
+  const sharedPickerPorts = {
     requestLibrary: () => requestImageLibrary(),
-    importFiles: (paths, projectDir) => imageStore.importFiles(paths, projectDir),
+    importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir),
     openDialog: async () => {
       const selected = await openNativeImageDialog({
         multiple: true,
@@ -3502,10 +3510,22 @@ export function PhysicsPaintStudio() {
       if (!selected) return null;
       return Array.isArray(selected) ? selected : [selected];
     },
-    sortImages: (images) => sortImagesByOriginalFilename(images, (image) => image.original_filename),
+    sortImages: (images: readonly MceImageRef[]) => sortImagesByOriginalFilename(images, (image) => image.original_filename),
+  };
+  const backgroundPicker = useBackgroundAssetPickerController({
+    ...sharedPickerPorts,
     refreshLibrary: async () => {
       const result = await requestImageLibrary();
       const dir = backgroundPicker.projectDir.peek();
+      const studioImages = dir ? imageStore.toMceImages(dir) : [];
+      return mergeImageLibraries(result.ok ? result.images : [], studioImages);
+    },
+  });
+  const referencePicker = useBackgroundAssetPickerController({
+    ...sharedPickerPorts,
+    refreshLibrary: async () => {
+      const result = await requestImageLibrary();
+      const dir = referencePicker.projectDir.peek();
       const studioImages = dir ? imageStore.toMceImages(dir) : [];
       return mergeImageLibraries(result.ok ? result.images : [], studioImages);
     },
@@ -3616,6 +3636,43 @@ export function PhysicsPaintStudio() {
     backgroundReplaceTargetClipId.value = null;
     backgroundPicker.cancel();
   };
+  // 50-03 (S2): Confirm REPLACES the reference source in one undoable operation
+  // (D-03). The confirmed ids are already natural-sorted by the picker's
+  // buildConfirmedImageIds (D-02 — never asset UUID or click order); the store
+  // call bumps the source revision (REF-04) and records one undo entry. The
+  // reference source bytes hydrate through the library path so the ghost draw
+  // (Plan 50-04) resolves them. Success announces the replacement capsule note.
+  const handleConfirmReferencePicker = (sortedIds: string[]) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId || sortedIds.length === 0) return;
+    const result = setPhotoReferenceSource(layerId, sortedIds);
+    if (!result.ok) {
+      setApplyStatus('error');
+      setApplyMessage(result.reason === 'invalid-source-refs'
+        ? "Couldn't set the reference source. The selection is invalid."
+        : "Couldn't set the reference source.");
+      return;
+    }
+    // Warm the reference registry with the freshly confirmed refs (mirrors the
+    // Bg picker's hydration — the reopened path is the sole production writer,
+    // and a fresh import never passed through it).
+    const accepted = getEfxPaintDocument(layerId);
+    if (accepted) {
+      const pickerImages = referencePicker.images.peek();
+      const pickerDir = referencePicker.projectDir.peek();
+      void hydrateReferenceSourceImagesFromLibrary(
+        accepted,
+        pickerDir ? { images: pickerImages, projectDir: pickerDir } : undefined,
+      );
+    }
+    publishOperationResult('Reference source replaced.');
+    referencePicker.cancel();
+  };
+  // 50-03 (S2): Cancel returns to the Studio untouched — no source change, no
+  // document mutation.
+  const handleCancelReferencePicker = () => {
+    referencePicker.cancel();
+  };
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -3628,6 +3685,16 @@ export function PhysicsPaintStudio() {
         tracks: multiTrackRowBundle.tracks,
         activeTrackId: multiTrackRowBundle.activeTrackId,
         background: multiTrackRowBundle.background,
+        // 50-03 (S1): the fixed Photo row — the document's photo/reference
+        // track flows down so the header renders its eye/import state, and the
+        // two intents route to the store (D-11 visibility) and the reference
+        // picker (D-03 import/replace).
+        photoReference: multiTrackRowBundle.photoReference,
+        onToggleReferenceVisible: (visible: boolean) => {
+          const layerId = launchContext?.layerId;
+          if (layerId) setPhotoReferenceVisible(layerId, visible);
+        },
+        onImportReference: () => referencePicker.openPicker(),
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
@@ -3721,6 +3788,21 @@ export function PhysicsPaintStudio() {
       onConfirm: handleConfirmBackgroundPicker,
       onCancel: handleCancelBackgroundPicker,
       onImport: backgroundPicker.importImages,
+    },
+    // 50-03 (S2): the reference picker reuses the same full-area region swap
+    // (D-01) with reference-specific copy and a replace-on-confirm handler.
+    referencePicker: {
+      open: referencePicker.open.value,
+      images: referencePicker.images.value,
+      projectDir: referencePicker.projectDir.value,
+      selectedIds: referencePicker.selectedIds.value,
+      status: referencePicker.status.value,
+      importing: referencePicker.importing.value,
+      onToggleSelect: referencePicker.toggleSelect,
+      onConfirm: handleConfirmReferencePicker,
+      onCancel: handleCancelReferencePicker,
+      onImport: referencePicker.importImages,
+      title: 'Import reference images',
     },
   });
   const soleOccurrenceDeleteDialog = soleOccurrenceDeleteTarget === null
