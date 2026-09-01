@@ -3402,12 +3402,10 @@ button.destructive {
   right: 0;
 }
 
-/* 49-06 (UAT round 2): the selected Bg clip paints the SAME orange as the rest
-   of the timeline selection contract (#f5a623) — it overrides the shortened
-   warning so a selected clip always reads selected. */
-.physics-paint-bg-clip-cells.selected .physics-paint-bg-clip-cell {
-  background: #f5a623;
-}
+/* 49-06 (UAT round 9): the selected Bg clip turns ONLY the rail LINE orange
+   (#f5a623) — the cells keep their neutral blue fill. The `selected` class on
+   the cells container is kept so the shortened warning stays suppressed while
+   selected (the :not(.selected) guard below). */
 
 /* Shortened visual (D-12): the loop stops at the next clip / parent bound —
    the LAST cell tints warning (UI-SPEC Warning #FFB020, truncated-end and
