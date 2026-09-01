@@ -454,7 +454,7 @@ Plans:
 | 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
-| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 5/6 | In Progress|  |
+| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 6/6 | Complete    | 2026-09-01 |
 | 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 0/TBD | Not started | - |
