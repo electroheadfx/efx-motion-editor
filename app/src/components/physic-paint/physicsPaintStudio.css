@@ -3287,6 +3287,14 @@ button.destructive {
   background: #5a8fc0;
 }
 
+/* 49-06 (UAT round 9): the filmstrip — a cell with a source image paints it
+   cover-fit (the ≤2048px dataUrl downscales to the 18px cell; the browser
+   reuses the already-decoded registry image, so no extra decode). */
+.physics-paint-bg-clip-cell.has-image {
+  background-size: cover;
+  background-position: center;
+}
+
 /* 49-06 (UAT round 3): the vertical separator between adjacent cells — an
    inset 1px line on every cell except the first, so the clip reads as a GROUP
    OF CELLS (the user's round-3 correction). box-shadow (not border) keeps the

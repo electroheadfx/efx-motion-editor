@@ -1727,6 +1727,16 @@ export const physicPaintStore = {
   },
 
   /**
+   * 49-06 (UAT round 9): the runtime dataUrl for one Background source ref —
+   * the Bg rail's filmstrip cells read it to paint the source image instead of
+   * the neutral fill. Null when the ref has no registered bytes (the clip
+   * hasn't hydrated yet, or the ref is dangling).
+   */
+  getBackgroundSourceImageDataUrl(sourceRef: string): string | null {
+    return _backgroundSourceImages.get(sourceRef) ?? null;
+  },
+
+  /**
    * 48-03 D-11/CMP-01: the full flattened composite (see
    * {@link _resolveFlattenedFrame}). `includeFond` (default true) controls
    * whether the record carries the document paper fond; the Studio monitor

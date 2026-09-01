@@ -44,7 +44,7 @@ import {
   type PhysicsPaintBackgroundClipPresentation,
   type PhysicsPaintGroupSynchronizationDot,
 } from './physicsPaintLoopClipPresentation';
-import type { BackgroundTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 import type {
   BackgroundClipDragApi,
   BackgroundClipDragGhostState,
@@ -55,6 +55,32 @@ import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyle
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
+
+/**
+ * 49-06 (UAT round 9): the filmstrip cap — a Bg rail shows the source image on
+ * at most this many cells. The images are already decoded in the runtime
+ * registry, but each cell downscales the (≤2048px) dataUrl, so very long clips
+ * stay light by leaving cells past the cap on the neutral fill.
+ */
+const MAX_BG_CELL_IMAGES = 30;
+
+/**
+ * 49-06 (UAT round 9): the per-cell source dataUrl for one Bg clip's filmstrip.
+ * Cell i covers frame `startFrame + i`, which the resolver maps to
+ * `sourceFrameRefs[i % refs.length]` (the clip's own source cycle). Null when
+ * the ref has no registered bytes (not yet hydrated / dangling) — the cell
+ * falls back to the neutral fill.
+ */
+function resolveBackgroundClipCellImages(clip: FrameLoopClip, cellCount: number): readonly (string | null)[] {
+  const refs = clip.sourceFrameRefs;
+  if (refs.length === 0) return [];
+  const images: (string | null)[] = [];
+  const capped = Math.min(cellCount, MAX_BG_CELL_IMAGES);
+  for (let index = 0; index < capped; index += 1) {
+    images.push(physicPaintStore.getBackgroundSourceImageDataUrl(refs[index % refs.length]));
+  }
+  return images;
+}
 
 export type PhysicsPaintTrackRowKind = 'paint' | 'background';
 
@@ -350,6 +376,10 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   /** 49-06 (UAT round 2): the row-local RESIZE drag hook — the FIRST and LAST
    *  cells bind it (push the edge to set the clip's start/end). */
   readonly onResizePointerDown?: (event: PointerEvent) => void;
+  /** 49-06 (UAT round 9): the filmstrip — one source dataUrl per cell (null =
+   *  neutral fill). Length is capped at MAX_BG_CELL_IMAGES; cells past it stay
+   *  on the fill. */
+  readonly cellImages?: readonly (string | null)[];
 }
 
 /**
@@ -402,7 +432,11 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
         }}
       >
         {Array.from({ length: cellCount }, (_, index) => (
-          <span key={index} class="physics-paint-bg-clip-cell" />
+          <span
+            key={index}
+            class={`physics-paint-bg-clip-cell${props.cellImages?.[index] ? ' has-image' : ''}`}
+            style={props.cellImages?.[index] ? { backgroundImage: `url(${props.cellImages[index]})` } : undefined}
+          />
         ))}
       </div>
       {/* 49-06 (UAT round 4): the rail LINE — exactly like the track's Key Rail
@@ -636,6 +670,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                 ROW_CELL_WIDTH_PX,
               );
               if (!geometry) return null;
+              const cellCount = Math.max(1, Math.round(geometry.width / ROW_CELL_WIDTH_PX));
+              const cellImages = resolveBackgroundClipCellImages(clip, cellCount);
               return (
                 <PhysicsPaintBackgroundClipRailTarget
                   key={clip.id}
@@ -653,6 +689,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   }}
                   onMovePointerDown={backgroundClipDrag?.onPointerDown}
                   onResizePointerDown={backgroundClipResize?.onPointerDown}
+                  cellImages={cellImages}
                 />
               );
             })}
