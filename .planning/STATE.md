@@ -4,17 +4,17 @@ milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 50
 current_phase_name: Photo/Reference Track
-status: executing
-stopped_at: Completed 50-05-PLAN.md
-last_updated: "2026-09-01T17:51:27.200Z"
+status: verifying
+stopped_at: Completed 50-06-PLAN.md
+last_updated: "2026-09-01T17:57:42.349Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 50 execution started
-state_head: 9eb3824f7db7421a625c700fcf45e47d17077f79
+state_head: c9695f8b9533b56055ec86fd4bfd9decb1c32d15
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 37
-  completed_plans: 36
+  completed_plans: 37
   percent: 22
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 Phase: 50 (Photo/Reference Track) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-01 — Phase 50 execution started
 
 Progress: [██░░░░░░░░] 22%
@@ -101,6 +101,7 @@ Progress: [██░░░░░░░░] 22%
 | Phase 50 P03 | 12 | 2 tasks | 12 files |
 | Phase 50 P04 | 15min | 2 tasks | 7 files |
 | Phase 50 P05 | 19 | 3 tasks | 11 files |
+| Phase 50 P06 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -230,6 +231,9 @@ Recent decisions affecting current work:
 - [Phase 50]: The image dimensions are decoded async via new Image() from the frame-aligned verdict's dataUrl and held in a useSignal (no useState); a missing track/verdict/decode failure clears the size fail-closed (no handles without a resolved source, D-04)
 - [Phase 50]: The section ports route mode → setPhotoReferenceMode (undoable mutation), opacity → setPhotoReferenceOpacity, lock → setPhotoReferenceTransformLocked (display preferences, no undo) — the mutation vs display-preference split holds at the right-panel boundary (T-50-05-01)
 - [Phase 50]: Escape re-lock is a keyboard action (relockReferenceTransform) returning true only when the transform was actually unlocked, layered between the solo disarm and selection collapse so one Escape handles at most one layer (Pitfall 2)
+- [Phase 50]: The persistence round-trip asserts on parsed.photoReference deep-equal to the pre-save track — the photoReference field rides the ...document spread in serializeRuntimeIntoDocument, so the round-trip is structural and the only genuinely new persistence work was already proven in Plan 50-02.
+- [Phase 50]: The D-06 non-regression is a token allow-list scan over the four raster surfaces (compositor, flattenedCache, previewRenderer, exportRenderer) — fourteen reference-input tokens must not appear in any of them.
+- [Phase 50]: The end-to-end contract consolidates the per-plan wiring assertions (50-03 picker, 50-04 ghost, 50-05 section/transform/Escape) into one integration proof, plus the save/reopen seam (hydrateReferenceSourceImagesFromLibrary).
 
 ### Pending Todos
 
@@ -263,6 +267,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-09-01T17:51:26.565Z
-Stopped at: Completed 50-05-PLAN.md
+Last session: 2026-09-01T17:57:37.036Z
+Stopped at: Completed 50-06-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
