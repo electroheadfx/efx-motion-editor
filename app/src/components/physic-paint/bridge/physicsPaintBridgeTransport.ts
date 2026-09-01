@@ -59,6 +59,19 @@ export async function sendPhysicPaintScriptLibraryRequest(request: PhysicPaintSc
 }
 
 /**
+ * The child→main document sync payload (49-06 UAT round 11). The child carries
+ * its runtime background source bytes alongside the document: the main window's
+ * source registry is only hydrated at project load, so a clip added during the
+ * child session (the Bg-picker import) would resolve 'missing' in the main
+ * composite without this transfer (the "main app has no Bg render" symptom).
+ */
+export interface EfxPaintDocumentSyncPayload {
+  readonly document: EfxPaintDocument;
+  /** sourceRef → decoded dataUrl, for the refs this document's clips use. */
+  readonly backgroundSources?: Readonly<Record<string, string>>;
+}
+
+/**
  * 47-01: child→main document sync. The Studio window owns its own
  * efxPaintStore instance; track CRUD (add/rename/reorder/duplicate/delete,
  * display props, active-track switch) mutates the CHILD document only. The
@@ -67,16 +80,23 @@ export async function sendPhysicPaintScriptLibraryRequest(request: PhysicPaintSc
  * re-registers it (idempotency guarded by revision) and the project save
  * re-projects frames/rotoPhysical from the main window's own runtime.
  */
-export async function sendEfxPaintDocumentSync(document: EfxPaintDocument, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
+export async function sendEfxPaintDocumentSync(
+  document: EfxPaintDocument,
+  bridgeMode: PhysicsPaintBridgeMode,
+  backgroundSources?: Readonly<Record<string, string>>,
+): Promise<void> {
+  const payload: EfxPaintDocumentSyncPayload = backgroundSources
+    ? { document, backgroundSources }
+    : { document };
   if (bridgeMode === 'Tauri') {
     const eventApi = await import('@tauri-apps/api/event');
     if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
-    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, document);
+    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload);
     return;
   }
   if (bridgeMode === 'Browser fallback') {
     if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
-    window.opener.postMessage({ type: PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload: document }, window.location.origin);
+    window.opener.postMessage({ type: PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload }, window.location.origin);
     return;
   }
   throw new Error('App bridge is not connected');

@@ -53,6 +53,7 @@ import {
   installPhysicPaintApplyListener,
   installPhysicPaintAudioContextPublisher,
   installPhysicPaintAudioOwnershipListener,
+  installPhysicPaintEfxPaintDocumentListener,
   installPhysicPaintFrameSyncListener,
   isPhysicPaintChildAudioClaimed,
   openPhysicPaintCanvas,
@@ -61,6 +62,7 @@ import {
   PHYSIC_PAINT_AUDIO_CONTEXT_EVENT,
   PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT,
   PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT,
+  PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT,
   PHYSIC_PAINT_LAUNCH_EVENT,
   publishPhysicPaintAudioPlaybackState,
 } from './physicPaintBridge';
@@ -901,6 +903,48 @@ describe('physicPaintBridge', () => {
       // Invalid payloads are ignored (state unchanged).
       custom(new CustomEvent(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, { detail: { claim: 'yes' } }));
       expect(isPhysicPaintChildAudioClaimed()).toBe(false);
+    } finally {
+      unlisten();
+    }
+  });
+
+  it('registers the child-carried background source bytes on document sync so a child-added clip renders in the main composite (49-06 UAT round 11)', async () => {
+    const unlisten = await installPhysicPaintEfxPaintDocumentListener();
+    try {
+      const addListener = window.addEventListener as ReturnType<typeof vi.fn>;
+      const custom = addListener.mock.calls.find(([name]) => name === PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT)?.[1] as (event: Event) => void;
+      expect(typeof custom).toBe('function');
+      // Before the sync the main realm knows neither the child-added clip's
+      // source ref nor its bytes.
+      expect(physicPaintStore.getBackgroundSourceImageDataUrl('ref-shot-imported')).toBeNull();
+      expect(physicPaintStore.getBackgroundFrameVerdict('phys-layer-1', 0)).toBe('gap');
+      const dataUrl = 'data:image/png;base64,aW1wb3J0ZWQtc2hvdA==';
+      custom(new CustomEvent(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, {
+        detail: {
+          document: {
+            ...makeTrackDocument('phys-layer-1'),
+            documentRevision: 1,
+            background: {
+              ...makeTrackDocument('phys-layer-1').background,
+              revision: 1,
+              clips: [{
+                id: 'bg-clip-1',
+                startFrame: 0,
+                sourceFrameRefs: ['ref-shot-imported'],
+                repeat: { mode: 'finite', count: 1 },
+                sourceKind: 'imported-background',
+                revision: 1,
+              }],
+            },
+          },
+          backgroundSources: { 'ref-shot-imported': dataUrl },
+        },
+      }));
+      // The carried bytes reach the main registry AND the newly covered frame
+      // resolves 'content' — the main-app flattened composite renders the
+      // child-session import instead of 'missing' (the "no Bg render" symptom).
+      expect(physicPaintStore.getBackgroundSourceImageDataUrl('ref-shot-imported')).toBe(dataUrl);
+      expect(physicPaintStore.getBackgroundFrameVerdict('phys-layer-1', 0)).toBe('content');
     } finally {
       unlisten();
     }

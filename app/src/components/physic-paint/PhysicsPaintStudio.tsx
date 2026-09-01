@@ -3410,6 +3410,19 @@ export function PhysicsPaintStudio() {
       document = getEfxPaintDocument(layerId);
     }
     if (!document) return;
+    // 49-06 (UAT round 11): carry the runtime background source bytes to the
+    // main window — ITS registry is only hydrated at project load, so a clip
+    // added during the child session (the Bg-picker import) resolves 'missing'
+    // in the main composite without this transfer. Only the refs this
+    // document's clips use, and only those with registered bytes.
+    const backgroundSources: Record<string, string> = {};
+    for (const clip of document.background.clips) {
+      for (const ref of clip.sourceFrameRefs) {
+        if (backgroundSources[ref]) continue;
+        const dataUrl = physicPaintStore.getBackgroundSourceImageDataUrl(ref);
+        if (dataUrl !== null) backgroundSources[ref] = dataUrl;
+      }
+    }
     // Crash-recovery checkpoint: the compositor-death watchdog reloads the
     // child when the window goes black. sessionStorage survives the reload, so
     // the Studio rehydrates from THIS document instead of the stale launch
@@ -3419,7 +3432,11 @@ export function PhysicsPaintStudio() {
     } catch {
       // Quota exceeded — the launch-context fallback still applies on reload.
     }
-    void sendEfxPaintDocumentSync(document, mode).catch((error) => {
+    void sendEfxPaintDocumentSync(
+      document,
+      mode,
+      Object.keys(backgroundSources).length > 0 ? backgroundSources : undefined,
+    ).catch((error) => {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     });
   };

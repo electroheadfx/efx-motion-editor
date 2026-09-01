@@ -52,6 +52,7 @@ import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
   physicPaintStore,
+  registerBackgroundSourceImage,
   type PhysicPaintRotoPhysicalOperationLeaseToken,
 } from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
@@ -2810,7 +2811,22 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
 export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() => void> {
   const applyDocument = (payload: unknown) => {
     try {
-      const document = parseEfxPaintDocument(payload);
+      // 49-06 (UAT round 11): the child carries its runtime background source
+      // bytes with the document sync ({ document, backgroundSources }). Register
+      // them BEFORE the revision guard — a re-pushed UNCHANGED document still
+      // transfers bytes the parent's project-load hydration missed (a clip added
+      // during the child session resolves 'missing' otherwise: the main-app
+      // "no Bg render" symptom). registerBackgroundSourceImage is a no-op for an
+      // already-identical byte.
+      const incoming = payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload as { document?: unknown; backgroundSources?: unknown }
+        : {};
+      if (incoming.backgroundSources && typeof incoming.backgroundSources === 'object') {
+        for (const [ref, dataUrl] of Object.entries(incoming.backgroundSources)) {
+          if (typeof dataUrl === 'string' && dataUrl.length > 0) registerBackgroundSourceImage(ref, dataUrl);
+        }
+      }
+      const document = parseEfxPaintDocument(incoming.document ?? payload);
       const current = getEfxPaintDocument(document.parentLayerId);
       if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
       registerEfxPaintDocument(document);

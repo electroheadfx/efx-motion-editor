@@ -202,7 +202,7 @@ describe('Physics Paint Play Script integration contract', () => {
     // save path serializes ITS document. The child must push every document
     // mutation (track CRUD) to the main window or the added track never lands
     // in the .mce.
-    expect(studio).toContain('sendEfxPaintDocumentSync(document, mode)');
+    expect(studio).toContain('sendEfxPaintDocumentSync(');
     expect(studio).toContain("if (mode !== 'Tauri' && mode !== 'Browser fallback') return;");
     expect(studio).toContain('// eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [launchContext?.layerId, efxPaintVersion.value]);');
     expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
@@ -210,8 +210,13 @@ describe('Physics Paint Play Script integration contract', () => {
     // idempotency-guarded by document revision (the launch push is a no-op).
     expect(bridge).toContain("PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document'");
     expect(bridge).toContain('installPhysicPaintEfxPaintDocumentListener');
-    expect(bridge).toContain('const document = parseEfxPaintDocument(payload);');
+    expect(bridge).toContain('parseEfxPaintDocument(incoming.document ?? payload)');
     expect(bridge).toContain('buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)');
+    // 49-06 (UAT round 11): the child carries its runtime background source
+    // bytes with the sync (the main window's registry is only hydrated at
+    // project load), and the listener registers them BEFORE the revision guard.
+    expect(studio).toContain('getBackgroundSourceImageDataUrl(ref)');
+    expect(bridge).toContain('registerBackgroundSourceImage(ref, dataUrl)');
   });
 });
 
