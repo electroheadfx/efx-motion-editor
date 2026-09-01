@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 50
 current_phase_name: Photo/Reference Track
 status: planning
-stopped_at: Phase 50 context gathered
-last_updated: "2026-09-01T15:47:04.495Z"
+stopped_at: Phase 50 UI-SPEC approved
+last_updated: "2026-09-01T16:01:41.776Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 49 complete, transitioned to Phase 50
-state_head: 7c5cb50af0abe30fc1fc1a69a2dca3e00d90dde5
+state_head: 07be986700b02d9eb2cfe84c662f67a66b9e686c
 progress:
   total_phases: 9
   completed_phases: 2
@@ -238,8 +238,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/50-photo-reference-track/50-CONTEXT.md
+**Resume file:** /Users/lmarques/Dev/efx-motion-editor/.planning/phases/50-photo-reference-track/50-UI-SPEC.md
 
-Last session: 2026-09-01T15:47:03.972Z
-Stopped at: Phase 50 context gathered
+Last session: 2026-09-01T16:01:41.337Z
+Stopped at: Phase 50 UI-SPEC approved
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
