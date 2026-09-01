@@ -2546,6 +2546,25 @@ export function PhysicsPaintStudio() {
     if (result.ok) setActiveTrackId(layerId, result.trackId);
     else setApplyMessage(result.error);
   }, [launchContext?.layerId]);
+  // 49-06 UAT: the timeline delete path for a selected Background clip — the
+  // Delete/Backspace shortcut AND the selected-rail trash button route here.
+  // Mirrors the section's dialog-free D-08 delete: call the store op, clear
+  // the selection on success so the Track section is reachable again.
+  const handleDeleteSelectedBackgroundClip = useCallback(() => {
+    const layerId = launchContext?.layerId;
+    const clipId = selectedBackgroundClipId.peek();
+    if (!layerId || clipId === null) return;
+    const result = deleteBackgroundClip(layerId, clipId);
+    if (result.ok) {
+      // 49-06 UAT: the delete is one unified-ledger undo step (BKG-08, D-08) —
+      // Cmd/Ctrl+Z restores the clip by reference, Cmd/Ctrl+Shift+Z re-deletes.
+      if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+      selectedBackgroundClipId.value = null;
+      rightPanelToolTab.value = 'track';
+    } else {
+      setApplyMessage(result.reason === 'clip-not-found' ? "Couldn't delete the clip." : result.reason);
+    }
+  }, [launchContext?.layerId]);
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
     state: {
       currentFrame,
@@ -2554,6 +2573,8 @@ export function PhysicsPaintStudio() {
       // 43.4 defect 9: selection-gated real-key cycling activates only when a
       // real key is in the primary selection.
       hasSelectedRotoKey: selectedKeyId.value !== null,
+      // 49-06 UAT: a selected Bg rail owns Delete/Backspace (selection-driven).
+      hasSelectedBackgroundClip: selectedBackgroundClipId.value !== null,
     },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
@@ -2586,6 +2607,8 @@ export function PhysicsPaintStudio() {
       cutRotoKey: cutRotoFrame,
       pasteRotoKey: pasteRotoFrame,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
+      // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
+      deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
       selectAllRotoKeys,
       disarmPushTool,
       // 43.6-06 (D-04): the solo disarm layer sits between the push disarm
@@ -2892,7 +2915,13 @@ export function PhysicsPaintStudio() {
     setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),
     // 49-06 (UAT round 9): the resize % control — contain-fit scale percentages.
     setScale: (layerId: string, clipId: string, scale: FrameLoopClipScale) => setBackgroundClipScale(layerId, clipId, scale),
-    deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),
+    deleteClip: (layerId: string, clipId: string) => {
+      // 49-06 UAT: the sidebar trash delete rides the same unified-ledger
+      // undo step as the Delete/Backspace shortcut (BKG-08, D-08).
+      const result = deleteBackgroundClip(layerId, clipId);
+      if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+      return result;
+    },
     // 49-06 (UAT round 7): Replace opens the picker targeting the selected clip.
     replaceSource: (_layerId: string, clipId: string) => {
       backgroundReplaceTargetClipId.value = clipId;

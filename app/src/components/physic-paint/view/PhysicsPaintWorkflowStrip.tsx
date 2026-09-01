@@ -3878,6 +3878,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             verticalScrollbar: verticalScrollbar,
             onVerticalScrollbarPointerDown: handleVerticalScrollbarPointerDown,
             onImportBackground: props.onImportBackground,
+            // 49-06 UAT: a selected Bg clip paints the Bg row header selected
+            // (like a selected track) and blanks every normal track's active
+            // highlight — the Bg row reads as THE current selection.
+            backgroundSelected: (props.selectedBackgroundClipId ?? null) !== null,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks

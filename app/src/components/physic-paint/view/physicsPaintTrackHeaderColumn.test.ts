@@ -151,6 +151,7 @@ interface ColumnRenderOptions {
   readonly tracks: readonly InternalPaintTrack[];
   readonly activeTrackId: string;
   readonly background: BackgroundTrack | null;
+  readonly backgroundSelected?: boolean;
   readonly onSelectTrack?: (trackId: string) => void;
   readonly onToggleVisible?: (trackId: string) => void;
   readonly onToggleSolo?: (trackId: string) => void;
@@ -167,6 +168,7 @@ function renderColumn(options: ColumnRenderOptions): TestVNode {
     layerId: options.layerId ?? 'header-column-layer',
     tracks: options.tracks,
     activeTrackId: options.activeTrackId,
+    backgroundSelected: options.backgroundSelected,
     background: options.background,
     onSelectTrack: options.onSelectTrack ?? vi.fn(),
     onToggleVisible: options.onToggleVisible ?? vi.fn(),
@@ -706,6 +708,28 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-grip'))).toHaveLength(0);
+  });
+
+  it('paints the Bg row header SELECTED when a Bg clip is selected and blanks every normal track\'s active highlight (49-06 UAT)', () => {
+    const fixture = makeTwoTrackFixture();
+    const root = renderFixture(fixture, { activeTrackId: fixture.trackA.id, backgroundSelected: true });
+
+    // The Bg row header carries the selected treatment + aria-pressed.
+    const bg = headerCell(root, fixture.background.id);
+    expect(hasClass(bg, 'physics-paint-track-row-header-selected')).toBe(true);
+    expect(String(bg.props['aria-pressed'])).toBe('true');
+    expect(hasClass(bg, 'physics-paint-track-row-header-background')).toBe(true);
+    // The row stays non-interactive (D-06 lock semantics) even when selected.
+    expect(bg.props.role).toBeUndefined();
+
+    // NO normal track paints the active highlight while the Bg row is selected.
+    expect(hasClass(headerCell(root, fixture.trackA.id), 'physics-paint-track-row-header-active')).toBe(false);
+    expect(hasClass(headerCell(root, fixture.trackB.id), 'physics-paint-track-row-header-active')).toBe(false);
+
+    // Without a selected Bg clip the normal active highlight returns.
+    const idleRoot = renderFixture(fixture, { activeTrackId: fixture.trackA.id });
+    expect(hasClass(headerCell(idleRoot, fixture.trackA.id), 'physics-paint-track-row-header-active')).toBe(true);
+    expect(hasClass(headerCell(idleRoot, fixture.background.id), 'physics-paint-track-row-header-selected')).toBe(false);
   });
 
   it('adds a track from the column + button and exposes duplicate/delete actions per Paint row (D-07)', () => {

@@ -77,7 +77,12 @@ import type {
   RotoPhysicalEditRecordsPort,
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
-import { getActiveTrackId, setActiveTrackId } from '../../../stores/efxPaintStore';
+import {
+  getActiveTrackId,
+  registerDocument,
+  setActiveTrackId,
+  type BackgroundEditDescriptor,
+} from '../../../stores/efxPaintStore';
 
 // 46 UAT debug hook: capture why a Paste/Duplicate command is (or is not)
 // recorded and why an Undo replay is rejected. Gated off by default; enable
@@ -168,10 +173,19 @@ interface PaintBarrier {
   readonly mutationId: number;
 }
 
+/** 49-06 UAT: a committed Background document edit (delete) recorded in the
+ *  unified ledger — undo restores `before`, redo re-applies `after` (BKG-08,
+ *  D-08). The descriptor carries the exact document objects by reference. */
+interface BackgroundEditCommand {
+  readonly kind: 'background';
+  readonly descriptor: BackgroundEditDescriptor;
+}
+
 type RotoPhysicalEditHistoryEntry<EngineState> =
   | RotoPhysicalEditCommand<EngineState>
   | ReferencedActionHistoryCommand
-  | PaintBarrier;
+  | PaintBarrier
+  | BackgroundEditCommand;
 
 interface RotoPhysicalEditCoordinatorRoute<EngineState> {
   executePhysicalEdit: (
@@ -665,6 +679,18 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     publishAvailability();
   }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
 
+  /** 49-06 UAT: record a committed Background document edit (delete) as one
+   *  unified-ledger command. The descriptor's before/after are the exact
+   *  document objects by reference — undo restores `before`, redo re-applies
+   *  `after` (BKG-08, D-08). Clears redo exactly once, like every ordinary
+   *  command. */
+  const recordBackgroundEdit = useCallback((descriptor: BackgroundEditDescriptor) => {
+    appliedRef.current.push({ kind: 'background', descriptor });
+    trimAppliedHistory();
+    discardRedoHistory();
+    publishAvailability();
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
+
   // Signal effects subscribe only to external acceptance streams. Ordinary
   // coordinator acceptance and committed referenced-Action acceptance remain
   // distinct so referenced commands can never fall through snapshot replay.
@@ -739,6 +765,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       if (top !== entry || top.kind !== 'referenced-action') return false;
       appliedRef.current.pop();
       redoRef.current.push(top);
+      publishAvailability();
+      return true;
+    }
+    if (entry.kind === 'background') {
+      // 49-06 UAT: a Background document edit restores the exact prior
+      // document by reference (BKG-08, D-08) — no coordinator replay seam.
+      appliedRef.current.pop();
+      redoRef.current.push(entry);
+      registerDocument(entry.descriptor.before);
       publishAvailability();
       return true;
     }
@@ -822,6 +857,14 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       publishAvailability();
       return true;
     }
+    if (entry.kind === 'background') {
+      // 49-06 UAT: redo re-applies the post-edit document by reference.
+      redoRef.current.pop();
+      appliedRef.current.push(entry);
+      registerDocument(entry.descriptor.after);
+      publishAvailability();
+      return true;
+    }
     const identity = inputRef.current.identity;
     if (!identity) return false;
     const beforeRevision = snapshotRevision(entry.before);
@@ -859,6 +902,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     clear,
     observePaintMutation,
     recordAcceptedEdit,
+    recordBackgroundEdit,
     reconcilePaintBarriers,
     undo,
     redo,

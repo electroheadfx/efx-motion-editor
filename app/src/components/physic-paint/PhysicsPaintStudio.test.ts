@@ -18,6 +18,7 @@ const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
 const navigationCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoNavigationCoordinator.ts', import.meta.url)), 'utf8');
 const physicalEditCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditCoordinator.ts', import.meta.url)), 'utf8');
+const historyHook = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditHistory.ts', import.meta.url)), 'utf8');
 const memoizedTopBarPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintTopBar.ts', import.meta.url));
 const memoizedTopBar = existsSync(memoizedTopBarPath) ? readFileSync(memoizedTopBarPath, 'utf8') : '';
 const memoizedPlayScriptDialogPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintPlayScriptDialog.ts', import.meta.url));
@@ -1403,7 +1404,7 @@ describe('Physics Paint Background Clip section (49-06, S5 right-panel propertie
     expect(studio).toContain('const backgroundClipSectionPortsRef = useRef({');
     expect(studio).toContain('getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,');
     expect(studio).toContain('setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),');
-    expect(studio).toContain('deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),');
+    expect(studio).toContain('deleteClip: (layerId: string, clipId: string) => {');
     expect(studio).toContain('replaceSource: (_layerId: string, clipId: string) => {');
     expect(studio).toContain('backgroundReplaceTargetClipId.value = clipId;');
     expect(studio).toContain('resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,');
@@ -1447,5 +1448,59 @@ describe('Physics Paint Background Clip section (49-06, S5 right-panel propertie
     const viewStart = section.indexOf('export function PhysicsPaintBackgroundClipSection');
     const viewBlock = section.slice(viewStart);
     expect(viewBlock).not.toContain('clip.id');
+  });
+});
+
+describe('Physics Paint Bg rail timeline delete (49-06 UAT)', () => {
+  it('routes Delete/Backspace through one shared dialog-free handler that records a unified-ledger undo step', () => {
+    // The shared handler mirrors the section's D-08 delete: store op, record the
+    // descriptor so Cmd/Ctrl+Z restores the clip, clear the selection on success
+    // so the Track section stays reachable.
+    expect(studio).toContain('const handleDeleteSelectedBackgroundClip = useCallback(() => {');
+    expect(studio).toContain('const result = deleteBackgroundClip(layerId, clipId);');
+    expect(studio).toContain('if (result.ok) {');
+    expect(studio).toContain('if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+    expect(studio).toContain('selectedBackgroundClipId.value = null;');
+    // The keyboard state/actions expose a SELECTED Bg clip to the dispatcher.
+    expect(studio).toContain('hasSelectedBackgroundClip: selectedBackgroundClipId.value !== null,');
+    expect(studio).toContain('deleteBackgroundClip: handleDeleteSelectedBackgroundClip,');
+    // The sidebar trash delete rides the same unified-ledger undo step.
+    expect(studio).toContain('if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+    // The unified ledger records the delete as one undoable command.
+    expect(historyHook).toContain("const recordBackgroundEdit = useCallback((descriptor: BackgroundEditDescriptor) => {");
+    expect(historyHook).toContain("appliedRef.current.push({ kind: 'background', descriptor });");
+    expect(historyHook).toContain('registerDocument(entry.descriptor.before);');
+    expect(historyHook).toContain('registerDocument(entry.descriptor.after);');
+    expect(historyHook).toContain('recordBackgroundEdit,');
+  });
+
+  it('paints the Bg row header selected in the left sidebar when a Bg rail is selected (no normal track selected)', () => {
+    // The strip derives the Bg-selected state from the forwarded selection id.
+    expect(workflowStrip).toContain('backgroundSelected: (props.selectedBackgroundClipId ?? null) !== null,');
+    // The column blanks every normal track's active highlight and marks the
+    // Bg row selected (visual selection only — the document active track and
+    // the rich lane are unchanged).
+    expect(headerColumn).toContain("readonly backgroundSelected?: boolean;");
+    expect(headerColumn).toContain("const effectiveActiveTrackId = backgroundSelected ? '' : activeTrackId;");
+    expect(headerColumn).toContain('selected={backgroundSelected}');
+    expect(trackRow).toContain("physics-paint-track-row-header-selected");
+    expect(trackRow).toContain("aria-pressed={selected ? 'true' : undefined}");
+    expect(css).toContain('.physics-paint-track-row-header-background.physics-paint-track-row-header-selected');
+  });
+});
+
+describe('Physics Paint missing Background source placeholder fill (49-06 UAT)', () => {
+  it('renders a solid color for a missing Background clip instead of transparent, while track sources stay transparent', () => {
+    // The compositor owns ONE deterministic constant — shared by Studio preview,
+    // main preview, and export (same pure path, CMP-01).
+    expect(compositor).toContain('export const EFX_PAINT_BACKGROUND_MISSING_FILL');
+    expect(compositor).toContain("ctx.fillStyle = EFX_PAINT_BACKGROUND_MISSING_FILL;");
+    expect(compositor).toContain("ctx.globalCompositeOperation = 'destination-over';");
+    // The D-09 track-missing branch still pushes the report entry WITHOUT a fill.
+    const trackMissingBlock = compositor.slice(
+      compositor.indexOf('if (resolution.kind === \'missing\')'),
+      compositor.indexOf('// 2-3. Background contribution'),
+    );
+    expect(trackMissingBlock).not.toContain('fillStyle');
   });
 });

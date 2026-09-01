@@ -21,7 +21,9 @@
  *     pixels AND a report entry (D-09, CMP-05);
  *  4. the Background contribution (D-03, `resolveBackgroundFrame`) composites
  *     BENEATH all Paint tracks via destination-over — it never enters the
- *     track blend modes;
+ *     track blend modes. A missing BACKGROUND source draws the
+ *     `EFX_PAINT_BACKGROUND_MISSING_FILL` placeholder (49-06 UAT) + a report
+ *     entry — a missing TRACK source stays transparent (D-09, CMP-05);
  *  5. the document fallback (solid fill) composites BENEATH everything via
  *     destination-over; transparency is the already-cleared canvas;
  *  6. one flattened raster + missing-source report.
@@ -76,6 +78,17 @@ export function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperatio
 export type EfxPaintTrackContentResolution =
   | { readonly kind: 'content'; readonly raster: CanvasImageSource }
   | { readonly kind: 'missing'; readonly missingRefs: readonly string[] };
+
+/**
+ * 49-06 UAT: the placeholder fill for a MISSING Background source. Track
+ * sources stay transparent on missing (D-09 — erasing a track would be wrong),
+ * but a missing BACKGROUND clip must stay visible so the user spots it and
+ * replaces the source from the right panel: the clip's extent (the full frame,
+ * destination-over beneath the tracks) renders this solid slate instead of
+ * revealing the fallback. Deterministic — no timing/registry read, so it never
+ * perturbs the flattened cache key.
+ */
+export const EFX_PAINT_BACKGROUND_MISSING_FILL = '#4b5563';
 
 /**
  * The Background contribution resolved by the injected port (D-03 seam).
@@ -310,6 +323,18 @@ export function compositeFrame(
         frame,
         missingRefs: backgroundResolution.missingRefs,
       });
+      // 49-06 UAT: a missing BACKGROUND clip renders a solid placeholder fill
+      // (destination-over, beneath the tracks — the same position the content
+      // draw would occupy) instead of revealing the fallback, so the user sees
+      // the clip occupies the frame and can replace its source from the right
+      // panel. Track sources stay transparent on missing — only the background
+      // gains this fill.
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = EFX_PAINT_BACKGROUND_MISSING_FILL;
+      ctx.fillRect(0, 0, size.width, size.height);
+      ctx.restore();
     }
   }
 

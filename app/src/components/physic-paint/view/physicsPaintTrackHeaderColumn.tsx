@@ -46,6 +46,10 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly tracks: readonly InternalPaintTrack[];
   /** The document's active track id — the matching row gets the accent (D-04). */
   readonly activeTrackId: string;
+  /** 49-06 UAT: true while a Bg clip rail is selected — the Bg row header
+   *  paints the selected treatment (like a selected track) and NO normal track
+   *  header paints active, so the Bg row reads as THE current selection. */
+  readonly backgroundSelected?: boolean;
   /** The fixed Background track rendered as the locked last 'Bg' row (D-06). */
   readonly background: BackgroundTrack | null;
   /** Row-click intent; the strip wires it through setActiveTrackId (47-01). */
@@ -118,6 +122,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
   const {
     tracks,
     activeTrackId,
+    backgroundSelected = false,
     background,
     onSelectTrack,
     onToggleVisible,
@@ -147,6 +152,11 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onImportBackground,
   } = props;
   const deletable = tracks.length > 1;
+  // 49-06 UAT: while a Bg clip is selected, NO normal track header paints the
+  // active accent — the Bg row is the only "selected" header. The document's
+  // active track is unchanged (the rich lane still renders it); this blanks
+  // only the header highlight.
+  const effectiveActiveTrackId = backgroundSelected ? '' : activeTrackId;
   return (
     <div ref={headerColumnRef} class="physics-paint-header-column">
       <PhysicsPaintTrackColumnStrip trackCount={tracks.length} onAddTrack={onAddTrack} />
@@ -157,7 +167,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               key={track.id}
               trackId={track.id}
               label={track.name}
-              activeTrackId={activeTrackId}
+              activeTrackId={effectiveActiveTrackId}
               onSelectTrack={onSelectTrack}
               visible={track.visible}
               reorderable
@@ -197,6 +207,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               trackId={background.id}
               label="Bg"
               kind="background"
+              selected={backgroundSelected}
               onImportBackground={onImportBackground}
             />
           ) : null}

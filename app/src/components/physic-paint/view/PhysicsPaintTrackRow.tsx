@@ -734,6 +734,11 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly label: string;
   /** 'background' renders the fixed muted Bg header skeleton. */
   readonly kind?: PhysicsPaintTrackRowKind;
+  /** 49-06 UAT: true while the Bg track is the "visible selection" — a Bg clip
+   *  rail is selected and the Bg row header highlights like a selected track
+   *  (the normal track headers lose their active highlight at the same time,
+   *  so the Bg row reads as THE selection). */
+  readonly selected?: boolean;
   /** The document's current active track id — the matching header gets the active treatment. */
   readonly activeTrackId?: string;
   /** Header-click intent; the controller routes it through setActiveTrackId. */
@@ -801,6 +806,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     trackId,
     label,
     kind = 'paint',
+    selected = false,
     activeTrackId,
     onSelectTrack,
     visible = true,
@@ -834,15 +840,19 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     'physics-paint-track-row-header',
     isActive ? 'physics-paint-track-row-header-active' : '',
     isBackground ? 'physics-paint-track-row-header-background' : '',
+    isBackground && selected ? 'physics-paint-track-row-header-selected' : '',
   ].filter(Boolean).join(' ');
   if (isBackground) {
     // The Background row is not selectable and has no hover capability for now
     // (D-06 lock semantics): render a plain header cell — no role=button, no
-    // tabIndex, no click/keyboard selection, no hover tools.
+    // tabIndex, no click/keyboard selection, no hover tools. 49-06 UAT: a
+    // selected Bg CLIP still paints this row selected (the visual selection),
+    // but the row stays non-interactive — selection is clip-driven.
     return (
       <div
         class={headerClass}
         data-track-id={trackId}
+        aria-pressed={selected ? 'true' : undefined}
         aria-label={`${label} row`}
       >
         <span class="physics-paint-bg-checker" aria-hidden="true">

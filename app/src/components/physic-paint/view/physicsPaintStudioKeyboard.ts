@@ -7,6 +7,10 @@ export interface PhysicsPaintStudioKeyboardState {
   mutationLocked: boolean;
   /** True when a real key is in the primary selection (43.4 defect 9 gate). */
   hasSelectedRotoKey: boolean;
+  /** 49-06 UAT: true while a Bg clip rail is the primary selection — a
+   *  selection-driven Delete/Backspace then owns that clip (timeline delete
+   *  for Bg rails, mirrored by the selected-rail trash button). */
+  hasSelectedBackgroundClip?: boolean;
   /** True while the toolbox popover is open (role="dialog" aria-modal="false"). */
   toolboxPopoverOpen?: boolean;
 }
@@ -28,6 +32,8 @@ export interface PhysicsPaintStudioKeyboardActions {
   cutRotoKey?: () => void;
   pasteRotoKey?: () => void;
   deleteRotoKey?: () => void;
+  /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
+  deleteBackgroundClip?: () => void;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
   /** Dismiss the toolbox popover; handled on Escape before collapseRotoSelection
@@ -158,6 +164,20 @@ export function dispatchPhysicsPaintStudioKeyDown(
     && !event.altKey
     && !event.shiftKey
   ) {
+    // 49-06 UAT: a SELECTED Bg clip owns Delete/Backspace. The deletion is
+    // selection-driven (the rail click owns selection; the key never needs the
+    // rail to hold focus), so it fires from the strip body or a selected rail
+    // — but never while a real modal is open (the roto-side modal guard) nor
+    // while typing in a field (isPhysicsPaintShortcutTarget at the top).
+    if (state.hasSelectedBackgroundClip && actions.deleteBackgroundClip) {
+      // Same modal guard as the roto-side path (Pitfall 1): the KEY lives
+      // anywhere, so the check is document-wide, not focus-scoped.
+      if (event.target instanceof Element && event.target.ownerDocument.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      if (state.mutationLocked) return;
+      actions.deleteBackgroundClip();
+      return;
+    }
     if (!actions.deleteRotoKey || !isPhysicsPaintRotoDeleteTarget(event.target)) return;
     event.preventDefault();
     if (state.mutationLocked) return;

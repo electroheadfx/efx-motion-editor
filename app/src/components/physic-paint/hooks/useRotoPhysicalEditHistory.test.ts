@@ -28,6 +28,8 @@ import type {
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   _setEfxPaintMarkDirtyCallback,
+  addBackgroundClip,
+  deleteBackgroundClip,
   getActiveTrackId,
   getDocument,
   registerDocument,
@@ -338,6 +340,60 @@ describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
     expect(JSON.stringify(current.loopClips)).toBe(JSON.stringify(before.loopClips));
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(executePhysicalEdit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => {
+  it('records a Bg clip delete as one unified-ledger undo step and restores/re-applies the document by reference', async () => {
+    const layerId = 'layer-bg-undo';
+    registerDocument(createEfxPaintDocument(layerId));
+    const added = addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 } });
+    expect(added.ok).toBe(true);
+    if (!added.ok) throw new Error('add must succeed');
+    const deleted = deleteBackgroundClip(layerId, added.clipId);
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error('delete must succeed');
+    const descriptor = deleted.descriptor;
+    expect(descriptor).not.toBeNull();
+    if (!descriptor) throw new Error('delete must emit a descriptor');
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    // after the delete, the clip is gone
+    expect(getDocument(layerId)!.background.clips).toHaveLength(0);
+
+    // Undo restores the exact pre-delete document by reference (BKG-08, D-08).
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(1);
+    expect(getDocument(layerId)!.background.clips[0]!.id).toBe(added.clipId);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // Redo re-applies the post-delete document.
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(0);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 });
 

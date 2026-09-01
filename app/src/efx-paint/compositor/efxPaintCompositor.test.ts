@@ -25,7 +25,7 @@ import {
 } from './efxPaintBackgroundResolution';
 import type { EfxPaintBackgroundFrameResolution } from './efxPaintBackgroundResolution';
 import { createKeyedMemo } from './efxPaintCompositeCache';
-import { compositeFrame } from './efxPaintCompositor';
+import { compositeFrame, EFX_PAINT_BACKGROUND_MISSING_FILL } from './efxPaintCompositor';
 import type {
   EfxPaintCompositorPorts,
   EfxPaintCompositeResult,
@@ -612,7 +612,7 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     ]);
   });
 
-  it('a missing Background source contributes transparent pixels AND a report entry keyed by the background track id (D-09)', () => {
+  it('a missing Background source renders the placeholder fill AND a report entry keyed by the background track id (49-06 UAT)', () => {
     const { ops, ports } = makeHarness({
       content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
       background: 'missing',
@@ -625,6 +625,13 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws).toEqual([
       { type: 'drawImage', source: 'track-a', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+    // 49-06 UAT: the missing Background fills the WHOLE canvas destination-over
+    // (beneath the tracks, in the content-draw position) so the missing clip
+    // stays visible for replacement from the right panel — never transparent.
+    const fills = ops.filter((op) => op.type === 'fillRect');
+    expect(fills).toEqual([
+      { type: 'fillRect', x: 0, y: 0, w: 4, h: 3, fillStyle: EFX_PAINT_BACKGROUND_MISSING_FILL, globalAlpha: 1, globalCompositeOperation: 'destination-over' },
     ]);
   });
 

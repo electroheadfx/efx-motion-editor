@@ -3958,6 +3958,21 @@ button.destructive {
   background: #3c3e40;
 }
 
+/* 49-06 UAT: the Bg row header paints SELECTED when a Bg clip rail is selected —
+   matching the orange rail selection (#f5a623) as the left border + a tinted
+   row, so the Bg row reads as "a track that is selected". Sits below the
+   background rules (same specificity, later wins), and the active-track style
+   is blanked at the column level while a Bg clip is selected. */
+.physics-paint-track-row-header-background.physics-paint-track-row-header-selected {
+  border-left: 3px solid #f5a623;
+  background: #4a3f2a;
+}
+
+.physics-paint-track-row-header-background.physics-paint-track-row-header-selected .physics-paint-track-row-label {
+  color: #ffffff;
+  font-weight: 700;
+}
+
 /* Fixed Background row lane: muted tone (D-06). */
 .physics-paint-track-row-background {
   background: #3c3e40;
