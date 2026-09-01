@@ -393,12 +393,12 @@ Plans:
   4. Missing source is visible and recoverable; source revision invalidates dependent Reveal/transformation results.
   5. Save/reopen preserves source identity and mode.
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 50-01-PLAN.md — PhotoReferenceTrack model + fail-closed parser + canonical revision encoder (REF-01, REF-05)
+- [x] 50-01-PLAN.md — PhotoReferenceTrack model + fail-closed parser + canonical revision encoder (REF-01, REF-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -480,7 +480,7 @@ Plans:
 | 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 6/6 | Complete    | 2026-09-01 |
-| 50. Photo/Reference Track | v1.0.0 | 0/TBD | Not started | - |
+| 50. Photo/Reference Track | v1.0.0 | 1/6 | In Progress|  |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 0/TBD | Not started | - |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |

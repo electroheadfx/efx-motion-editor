@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 50
 current_phase_name: Photo/Reference Track
 status: executing
-stopped_at: Phase 50 UI-SPEC approved
-last_updated: "2026-09-01T16:32:58.415Z"
+stopped_at: Completed 50-01-PLAN.md
+last_updated: "2026-09-01T16:51:02.885Z"
 last_activity: 2026-09-01
-last_activity_desc: Phase 49 complete, transitioned to Phase 50
-state_head: 58a74b72687595e91843260da4667dbc79bb1741
+last_activity_desc: Phase 50 execution started
+state_head: a93e9d000d7c9a16a57ed081404fcd887cd708fc
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 37
-  completed_plans: 31
+  completed_plans: 32
   percent: 22
 ---
 
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 49 — Fixed Background Track and Imported Loop Clips
+**Current focus:** Phase 50 — Photo/Reference Track
 
 ## Current Position
 
-Phase: 50 (Photo/Reference Track) — READY TO EXECUTE
-Plan: Not started
+Phase: 50 (Photo/Reference Track) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-09-01 — Phase 49 complete, transitioned to Phase 50
+Last activity: 2026-09-01 — Phase 50 execution started
 
-Progress: [█░░░░░░░░░] 11%
+Progress: [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
@@ -96,6 +96,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 49-fixed-background-track-and-imported-loop-clips P03 | 45 | 3 tasks | 13 files |
 | Phase 49-fixed-background-track-and-imported-loop-clips P05 | 4h | 2 tasks | 12 files |
 | Phase 49-fixed-background-track-and-imported-loop-clips P06 | 2d | 2 tasks | 15 files |
+| Phase 50 P01 | 16 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,9 @@ Recent decisions affecting current work:
 - [Phase 49]: Ghost width comes from resolver facts: range.effectiveEnd - range.phaseOrigin (never recomputed in the strip) — capsule-never-math carried
 - [Phase 49]: The commit port is synchronous: moveBackgroundClip returns BackgroundClipMutationResult directly, so there is no commit-in-flight window — the UI-SPEC busy contract (aria-busy on rail targets) is structurally inapplicable; rejection preserves geometry/selection/focus and the capsule announces with role=alert
 - [Phase 49]: Chunk budget raised 1180 -> 1190 following the documented measurement pattern (9th raise): the Bg row surface measured 1180.63 kB
+- [Phase 50]: PhotoReferenceTrack field shape: source identity is an ordered readonly string[] of library asset IDs in natural-filename-sort order (D-02), mirroring FrameLoopClip.sourceFrameRefs; display preferences (visibleInStudio, opacity, transform, transformLocked) ride on the track itself.
+- [Phase 50]: Document-mutation fields (id, sourceFrameRefs, mode, revision) enter the canonical revision term; display-preference fields (visibleInStudio, opacity, transform, transformLocked) are validated but EXCLUDED from the encoder (D-07 vs D-11/D-12/D-13 split).
+- [Phase 50]: The reserved 'photo' fond mode stays absent from the PhotoReferenceMode union (D-08); the parser rejects it fail-closed.
 
 ### Pending Todos
 
@@ -238,8 +242,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** /Users/lmarques/Dev/efx-motion-editor/.planning/phases/50-photo-reference-track/50-UI-SPEC.md
+**Resume file:** None
 
-Last session: 2026-09-01T16:01:41.337Z
-Stopped at: Phase 50 UI-SPEC approved
+Last session: 2026-09-01T16:51:02.354Z
+Stopped at: Completed 50-01-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning

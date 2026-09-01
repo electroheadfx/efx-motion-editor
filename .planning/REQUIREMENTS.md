@@ -61,11 +61,11 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### REF — Photo/Reference Track (Phase 6)
 
-- [ ] **REF-01**: One photo/reference track per EFX Paint document with stable source identity and revision
+- [x] **REF-01**: One photo/reference track per EFX Paint document with stable source identity and revision
 - [ ] **REF-02**: Photo/reference track supports reference-only, reveal-source, and masked-transform-source modes
 - [ ] **REF-03**: Reference-only visibility is excluded from ordinary flattened Paint output
 - [ ] **REF-04**: Source revision invalidates dependent Reveal/transformation results; missing source is visible and recoverable
-- [ ] **REF-05**: Save/reopen preserves source identity and mode
+- [x] **REF-05**: Save/reopen preserves source identity and mode
 
 ### AUD — Audio Preview (Phase 7)
 
@@ -165,11 +165,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BKG-07 | Phase 49 | Complete |
 | BKG-08 | Phase 49 | Complete |
 | BKG-09 | Phase 49 | Complete |
-| REF-01 | Phase 50 | Pending |
+| REF-01 | Phase 50 | Complete |
 | REF-02 | Phase 50 | Pending |
 | REF-03 | Phase 50 | Pending |
 | REF-04 | Phase 50 | Pending |
-| REF-05 | Phase 50 | Pending |
+| REF-05 | Phase 50 | Complete |
 | AUD-01 | Phase 51 | Pending |
 | AUD-02 | Phase 51 | Pending |
 | AUD-03 | Phase 51 | Pending |
