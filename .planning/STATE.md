@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 50
-current_phase_name: Photo/Reference Track
-status: verifying
-stopped_at: Completed 50-06-PLAN.md
-last_updated: "2026-09-01T17:57:42.349Z"
+current_phase: 51
+current_phase_name: Read-only Audio Preview
+status: ready_for_next_phase
+stopped_at: Completed Phase 50 — native UAT approved, ready for Phase 51 planning
+last_updated: "2026-09-01T21:00:40Z"
 last_activity: 2026-09-01
-last_activity_desc: Phase 50 execution started
+last_activity_desc: Phase 50 closed (native UAT approved)
 state_head: c9695f8b9533b56055ec86fd4bfd9decb1c32d15
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 6
   total_plans: 37
   completed_plans: 37
-  percent: 22
+  percent: 67
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 50 — Photo/Reference Track
+**Current focus:** Next up — Phase 51 (Read-only Audio Preview); Phase 50 (Photo/Reference Track) CLOSED
 
 ## Current Position
 
-Phase: 50 (Photo/Reference Track) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-09-01 — Phase 50 execution started
+Phase: 51 (Read-only Audio Preview) — NOT STARTED
+Plan: 0 of TBD
+Status: Phase 50 CLOSED — phase-closing native UAT approved 2026-09-01 (dialog modal redesign + launch-hydration fix + overlay paint-block fix + rotation handle + liquid-glass restyle)
+Last activity: 2026-09-01 — Phase 50 closed
 
-Progress: [██░░░░░░░░] 22%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
