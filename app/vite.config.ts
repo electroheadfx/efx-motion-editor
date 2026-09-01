@@ -227,7 +227,12 @@ export default defineConfig({
     // row-local Bg clip drag hook + the Bg clip rail presentation + the strip
     // wiring) entered the main chunk, measured 1180.63 kB. Budget raised to 1190
     // (measured value + ~9.4 kB headroom).
-    chunkSizeWarningLimit: 1190,
+    // Measurement note (2026-09-01): 50-02's photo reference store stack (six
+    // photo/reference setters + the reference source registry + reopen
+    // hydration) entered the main chunk via efxPaintStore/physicPaintStore,
+    // measured 1190.19 kB. Budget raised to 1200 (measured value + ~9.8 kB
+    // headroom).
+    chunkSizeWarningLimit: 1200,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
