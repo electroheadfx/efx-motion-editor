@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 50
 current_phase_name: Photo/Reference Track
 status: executing
-stopped_at: Completed 50-02-PLAN.md
-last_updated: "2026-09-01T17:02:31.887Z"
+stopped_at: Completed 50-03-PLAN.md
+last_updated: "2026-09-01T17:18:18.946Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 50 execution started
-state_head: 2d9f80e0411acb3558f2771c4626eafea66b0934
+state_head: 6c6976108d0fbb57ccaafca0ae092ce91f5b8b09
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 37
-  completed_plans: 33
+  completed_plans: 34
   percent: 22
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 50 (Photo/Reference Track) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-01 — Phase 50 execution started
 
@@ -98,6 +98,7 @@ Progress: [██░░░░░░░░] 22%
 | Phase 49-fixed-background-track-and-imported-loop-clips P06 | 2d | 2 tasks | 15 files |
 | Phase 50 P01 | 16 | 2 tasks | 5 files |
 | Phase 50 P02 | 4min | 3 tasks | 3 files |
+| Phase 50 P03 | 12 | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,9 @@ Recent decisions affecting current work:
 - [Phase 50]: Photo reference setters split: setPhotoReferenceSource/Mode are undoable document mutations (bump track revision + documentRevision, record by reference); setPhotoReferenceVisible/Opacity/Transform/TransformLocked are display preferences (no undo, no revision bump).
 - [Phase 50]: Reference registry is a PARALLEL _referenceSourceImages map (independent of Background clip lifecycle); registerReferenceSourceImage bumps physicPaintVersion but never clears the flattened memo (D-06).
 - [Phase 50]: _referenceSourceRevision preserves sourceFrameRefs ORDER (frame N → refs[N], D-15) — unlike _backgroundSourceRevision which sorts a deduped set.
+- [Phase 50]: Reference picker is a second useBackgroundAssetPickerController instance sharing a ports object; only the Confirm handler (replace vs add-clip) and title differ
+- [Phase 50]: Confirm replaces the source via setPhotoReferenceSource with natural-sorted ids (D-02); the replacement capsule note uses publishOperationResult, not setApplyMessage
+- [Phase 50]: BackgroundAssetPickerView gained a title prop (default Import background images) so the same region swap serves both pickers (D-01)
 
 ### Pending Todos
 
@@ -248,6 +252,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-09-01T17:02:31.349Z
-Stopped at: Completed 50-02-PLAN.md
+Last session: 2026-09-01T17:18:18.400Z
+Stopped at: Completed 50-03-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
