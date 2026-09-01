@@ -655,6 +655,72 @@ export function hydrateBackgroundSourceImagesFromLibrary(
 }
 
 /**
+ * 50-02 Task 3 (REF-05): the reopen-path reference source-byte hydration. The
+ * SOLE production writer of the reference source registry on document
+ * register/hydrate — without it every reopened reference reports Source
+ * missing. It enumerates `document.photoReference.sourceFrameRefs` (NOT the
+ * background clips), dedupes, resolves each ref to its library asset URL,
+ * decodes bytes, and calls `registerReferenceSourceImage(sourceRef, dataUrl)`.
+ * The ports are injectable so the contract tests drive a fake decoder; the
+ * production caller (`hydrateReferenceSourceImagesFromLibrary`) supplies the
+ * real imageStore/efxasset/fetch ports. Registration is runtime-only: it never
+ * touches documentRevision, the undo ledger, or the dirty callback.
+ */
+export async function hydrateReferenceSourceImages(
+  document: EfxPaintDocument,
+  ports: BackgroundSourceHydrationPorts,
+): Promise<BackgroundSourceHydrationResult> {
+  const track = document.photoReference;
+  if (track === null) return { registered: [], missing: [] };
+  const distinctRefs = new Set(track.sourceFrameRefs);
+  const registered: string[] = [];
+  const missing: { ref: string; reason: 'asset-not-found' | 'decode-failed' }[] = [];
+  await Promise.all(Array.from(distinctRefs).map(async (ref) => {
+    const urls = ports.resolveAssetUrls(ref);
+    if (urls.length === 0) {
+      missing.push({ ref, reason: 'asset-not-found' });
+      return;
+    }
+    for (const url of urls) {
+      const dataUrl = await ports.decodeBytes(url);
+      if (dataUrl !== null) {
+        ports.register(ref, dataUrl);
+        registered.push(ref);
+        return;
+      }
+    }
+    missing.push({ ref, reason: 'decode-failed' });
+  }));
+  return { registered, missing };
+}
+
+/**
+ * Production ports for the reference source hydration: library asset id →
+ * efxasset:// URL → decoded bytes → reference registry. Mirrors
+ * `hydrateBackgroundSourceImagesFromLibrary` (imageStore primary, picker list
+ * fallback) but registers into `_referenceSourceImages`.
+ */
+export function hydrateReferenceSourceImagesFromLibrary(
+  document: EfxPaintDocument,
+  fallback?: { images: readonly MceImageRef[]; projectDir: string },
+): Promise<BackgroundSourceHydrationResult> {
+  return hydrateReferenceSourceImages(document, {
+    resolveAssetUrls: (ref) => {
+      const urls: string[] = [];
+      const image = imageStore.getById(ref);
+      if (image) urls.push(assetUrl(image.project_path));
+      if (fallback) {
+        const pickerImage = fallback.images.find((candidate) => candidate.id === ref);
+        if (pickerImage) urls.push(assetUrl(`${fallback.projectDir}/${pickerImage.relative_path}`));
+      }
+      return urls;
+    },
+    decodeBytes: _decodeEfxAssetBytes,
+    register: registerReferenceSourceImage,
+  });
+}
+
+/**
  * Background resolution capacity bound. The plan's "parent sequence frame
  * count" is not reachable from this store without an ESM cycle, so the store's
  * own universal parent-end bound (PHYSIC_PAINT_MAX_APPLY_FRAMES, the same

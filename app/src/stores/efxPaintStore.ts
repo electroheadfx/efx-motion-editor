@@ -21,7 +21,7 @@ import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
-import { bumpTrackRevision, hydrateBackgroundSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
+import { bumpTrackRevision, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -1323,4 +1323,9 @@ export function hydrateRuntimeFromDocument(
   // (null this tick, re-render on decode-complete). Registration is
   // runtime-only: no documentRevision bump, no undo record, no dirty callback.
   void hydrateBackgroundSourceImagesFromLibrary(document);
+  // 50-02 Task 3 (REF-05): the parallel reference source-byte hydration — the
+  // reopen path warms `_referenceSourceImages` so the ghost overlay resolves
+  // the reference source frames after a project reopen. Same fire-and-forget
+  // runtime-only contract as the background hydration.
+  void hydrateReferenceSourceImagesFromLibrary(document);
 }
