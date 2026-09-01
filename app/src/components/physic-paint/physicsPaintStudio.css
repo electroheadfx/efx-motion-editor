@@ -5027,6 +5027,17 @@ button.destructive {
   height: 100%;
 }
 
+/* 50-05 (Task 2, S4): the reference transform handles overlay — a sibling of
+   the ghost layer, ABOVE it (z-index 6) so the handles are visible and
+   interactive. The overlay owns pointer events ONLY while the transform is
+   unlocked (the component renders pointer-events none when locked/playing), so
+   painting gestures pass through to the engine canvas beneath by default. */
+.physics-paint-reference-transform {
+  position: absolute;
+  z-index: 6;
+  overflow: hidden;
+}
+
 .physics-paint-onion-frame {
   position: absolute;
   inset: 0;

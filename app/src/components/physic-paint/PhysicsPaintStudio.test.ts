@@ -41,6 +41,10 @@ const compositor = readFileSync(fileURLToPath(new URL('../../efx-paint/composito
 const flattenedCache = readFileSync(fileURLToPath(new URL('../../efx-paint/compositor/efxPaintCompositeCache.ts', import.meta.url)), 'utf8');
 const previewRenderer = readFileSync(fileURLToPath(new URL('../../lib/previewRenderer.ts', import.meta.url)), 'utf8');
 const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRenderer.ts', import.meta.url)), 'utf8');
+// 50-05 (Task 2, S4): the reference transform handles surface — the interactive
+// overlay + the pure bounds geometry it consumes.
+const referenceTransformHandles = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)), 'utf8');
+const referenceTransform = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransform.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -1610,5 +1614,57 @@ describe('Physics Paint reference ghost mount + missing-source capsule (50-04, S
     // draw:false during playback (no opacity trick, no cache entry).
     expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
     expect(studio).toContain('isPlaying,');
+  });
+});
+
+describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () => {
+  it('writes the transform to the display property setter, never layerStore/keyframeStore (D-13)', () => {
+    // The reference is not a layer: the handles write to setPhotoReferenceTransform
+    // (a display preference) and must never import layerStore/keyframeStore.
+    expect(referenceTransformHandles).toContain('setPhotoReferenceTransform');
+    expect(referenceTransformHandles).not.toContain("from '../../../stores/layerStore'");
+    expect(referenceTransformHandles).not.toContain("from '../../../stores/keyframeStore'");
+  });
+
+  it('mounts the transform handles overlay above the ghost layer (S4)', () => {
+    // The Studio threads a referenceTransformHandles config into the canvas stack;
+    // the view renders the overlay as a sibling of the ghost layer (z-index 6).
+    expect(studio).toContain('referenceTransformHandles: programMonitorLayerId ? {');
+    expect(studio).toContain('zoom: paperTextureScale,');
+    expect(studioView).toContain('referenceTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;');
+    expect(studioView).toContain('{canvasBounds && props.referenceTransformHandles ? (');
+    expect(studioView).toContain('<PhysicsPaintReferenceTransformHandles {...props.referenceTransformHandles} />');
+    // The overlay renders AFTER the ghost layer (above it).
+    const ghostIndex = studioView.indexOf('physics-paint-reference-ghost');
+    const transformIndex = studioView.indexOf('physics-paint-reference-transform');
+    expect(ghostIndex).toBeGreaterThanOrEqual(0);
+    expect(transformIndex).toBeGreaterThan(ghostIndex);
+  });
+
+  it('is locked by default — no handles, no canvas grab (D-13)', () => {
+    // While transformLocked is true the overlay renders pointer-events none, so
+    // painting gestures pass through to the engine canvas beneath.
+    expect(referenceTransformHandles).toContain('transformLocked');
+    expect(referenceTransformHandles).toContain("pointerEvents: 'none'");
+    expect(referenceTransformHandles).toContain("pointerEvents: 'all'");
+  });
+
+  it('keeps the transform monitor-paint only — never the compositor or cache keys (D-13, D-06)', () => {
+    // The transform writes to display properties only; the compositor/flattened
+    // cache/preview/export never reference the transform handles or the
+    // photo/reference transform.
+    expect(compositor).not.toContain('setPhotoReferenceTransform');
+    expect(flattenedCache).not.toContain('setPhotoReferenceTransform');
+    expect(previewRenderer).not.toContain('setPhotoReferenceTransform');
+    expect(exportRenderer).not.toContain('setPhotoReferenceTransform');
+    expect(compositor).not.toContain('PhysicsPaintReferenceTransformHandles');
+  });
+
+  it('computes the bounds in working space from the accepted display transform (D-13)', () => {
+    // The pure geometry module computes the SAME bounding box the ghost draws
+    // (natural size scaled by zoom, centered, then rotated/scaled).
+    expect(referenceTransform).toContain('export function getReferenceBounds');
+    expect(referenceTransform).toContain('imageWidth * zoom');
+    expect(referenceTransform).toContain('transform.rotation');
   });
 });

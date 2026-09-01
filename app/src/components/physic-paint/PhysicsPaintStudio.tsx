@@ -3298,6 +3298,20 @@ export function PhysicsPaintStudio() {
         zoom: paperTextureScale,
         onMissingSourceChange: handleReferenceMissingSourceChange,
       } : null,
+      // 50-05 (Task 2, S4): the reference transform handles overlay — concrete
+      // values only. The handles component subscribes to the store version
+      // clocks in its OWN effect; this memo re-resolves on document changes
+      // (efxPaintVersion.value) so a transform/lock change re-targets the
+      // overlay. The zoom is the project→working scale (paperTextureScale) so
+      // the handles overlay the ghost exactly (D-13).
+      referenceTransformHandles: programMonitorLayerId ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying,
+        width: canvasWidth,
+        height: canvasHeight,
+        zoom: paperTextureScale,
+      } : null,
     };
   });
   // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active

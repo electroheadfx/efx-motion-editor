@@ -14,6 +14,7 @@ import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
 import { PhysicsPaintReferenceGhostLayer } from './PhysicsPaintReferenceGhostLayer';
+import { PhysicsPaintReferenceTransformHandles } from './PhysicsPaintReferenceTransformHandles';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
@@ -77,6 +78,14 @@ interface PhysicsPaintCanvasStackViewProps {
    * drawing (D-14).
    */
   referenceGhost?: ComponentProps<typeof PhysicsPaintReferenceGhostLayer> | null;
+  /**
+   * 50-05 (Task 2, S4): the reference transform handles overlay — a sibling of
+   * the ghost layer, ABOVE it (z-index 6). Present whenever the Studio has a
+   * launch layer; the overlay owns pointer events ONLY while the transform is
+   * unlocked (the component renders pointer-events none when locked/playing),
+   * so painting gestures pass through by default (D-13).
+   */
+  referenceTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;
 }
 
 /**
@@ -221,6 +230,18 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           <PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />
+        </div>
+      ) : null}
+      {/* 50-05 (Task 2, S4): the reference transform handles overlay — a sibling
+          of the ghost layer, ABOVE it (z-index 6). The overlay owns pointer
+          events ONLY while the transform is unlocked (pointer-events none when
+          locked/playing), so painting gestures pass through by default (D-13). */}
+      {canvasBounds && props.referenceTransformHandles ? (
+        <div
+          class="physics-paint-reference-transform"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <PhysicsPaintReferenceTransformHandles {...props.referenceTransformHandles} />
         </div>
       ) : null}
     </div>
