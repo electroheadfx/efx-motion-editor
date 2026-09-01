@@ -395,6 +395,55 @@ describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => 
     expect(getDocument(layerId)!.background.clips).toHaveLength(0);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
+
+  it('fails closed on Undo when an unrecorded edit diverged the live document (CR-01)', async () => {
+    const layerId = 'layer-bg-guard';
+    registerDocument(createEfxPaintDocument(layerId));
+    const added = addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 } });
+    expect(added.ok).toBe(true);
+    if (!added.ok) throw new Error('add must succeed');
+    const deleted = deleteBackgroundClip(layerId, added.clipId);
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error('delete must succeed');
+    const descriptor = deleted.descriptor;
+    if (!descriptor) throw new Error('delete must emit a descriptor');
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // An UNRECORDED add after the delete diverges the live document from the
+    // recorded `after` object — Undo must fail closed (stack untouched, the
+    // added clip survives) instead of clobbering it with the snapshot restore.
+    const unrecorded = addBackgroundClip(layerId, { startFrame: 5, sourceFrameRefs: ['asset-b'], repeat: { mode: 'finite', count: 1 } });
+    expect(unrecorded.ok).toBe(true);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(1);
+
+    expect(await history.undo()).toBe(false);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(1);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
 });
 
 describe('useRotoPhysicalEditHistory rigid group drag', () => {

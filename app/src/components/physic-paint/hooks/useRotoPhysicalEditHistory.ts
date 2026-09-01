@@ -79,6 +79,7 @@ import type {
 } from '../roto/rotoCoordinatorPorts';
 import {
   getActiveTrackId,
+  getDocument,
   registerDocument,
   setActiveTrackId,
   type BackgroundEditDescriptor,
@@ -771,6 +772,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (entry.kind === 'background') {
       // 49-06 UAT: a Background document edit restores the exact prior
       // document by reference (BKG-08, D-08) — no coordinator replay seam.
+      // Live-state authority guard (CR-01): undo only when the live document
+      // is still the recorded `after` object. An unrecorded edit since the
+      // delete (add/move/repeat/scale/fallback — only delete records) would
+      // otherwise be clobbered by the snapshot restore. Fail closed (stack
+      // untouched) on divergence, mirroring the physical path's authority check.
+      if (getDocument(entry.descriptor.after.parentLayerId) !== entry.descriptor.after) return false;
       appliedRef.current.pop();
       redoRef.current.push(entry);
       registerDocument(entry.descriptor.before);
@@ -859,6 +866,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     if (entry.kind === 'background') {
       // 49-06 UAT: redo re-applies the post-edit document by reference.
+      // Symmetric live-state authority guard (CR-01): redo only when the live
+      // document is still the recorded `before` object — an unrecorded edit
+      // since the undo would otherwise be clobbered. Fail closed on divergence.
+      if (getDocument(entry.descriptor.before.parentLayerId) !== entry.descriptor.before) return false;
       redoRef.current.pop();
       appliedRef.current.push(entry);
       registerDocument(entry.descriptor.after);
