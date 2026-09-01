@@ -1,7 +1,8 @@
 ---
 phase: 50
 slug: photo-reference-track
-status: draft
+status: approved
+reviewed_at: 2026-09-01
 shadcn_initialized: false
 preset: none
 created: 2026-09-01
@@ -335,47 +336,43 @@ English product copy only. Never display a raw track UUID, raw source UUID, or r
 
 ## UI Considerations
 
-Applicable state considerations resolved: 24 covered, 10 dismissed, 0 backstop, 0 unresolved.
+UI-consideration probe (post-checker): 6 surfaces classified, element kinds confirmed with the user (E3 ghost overlay = `media`, E4 transform handles = `interactive-control`, `form` added to E2/E5). 33 applicable state considerations resolved: **23 explicit, 10 dismissed, 0 backstop, 0 unresolved**. State copy lives in `## Copywriting Contract`; the rows below reference it without restating.
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | Photo row / band | ✅ covered | No source → no band, `Import images` CTA, right-panel fact `No source imported`; ghost absent |
-| populated | Photo row / band | ✅ covered | Source present → full-range passive band, `Replace source` CTA, facts `{N} image(s)`, ghost per cursor frame |
-| zero-one-many | Photo row / band | ✅ covered | Exactly one Photo row per document; zero sources → empty state; one source at a time (D-03) — the many case is impossible by law and never rendered |
-| error | Photo row / band | ✅ covered | Missing source → ghost absent, `Source missing` band/tooltip status, capsule re-link copy with red triangle; prior state preserved (D-04) |
-| overflow | Photo row / band | ✅ covered | The band clips at the shared horizontal viewport and returns on scroll; it never wraps or stacks; span is bounded by the visible frame window |
-| long-text | Photo row / band | ✖ dismissed | The band carries no persistent product text; facts live in fixed-format tooltips; raw UUID text prohibited |
-| loading | Photo row / band | ✅ covered | Commit-in-flight keeps accepted band/CTA; mutation controls `aria-disabled`; no optimistic source or mode facts |
-| partial | Photo row / band | ✖ dismissed | The band is atomic full-range or absent — a partial band cannot occur under the 1:1 clamped law (D-15) |
-| empty | reference asset picker | ✅ covered | Empty library → `Drag & drop images here or use Import button`; zero selection keeps `Confirm` disabled until at least one image is selected (49-UI-SPEC picker row carried) |
-| loading | reference asset picker | ✅ covered | Library refresh on open shows the grid as it becomes available; the engine underneath stays paused but mounted — no blank canvas flash |
-| error | reference asset picker | ✅ covered | Import failures leave the picker open with prior selection preserved; the reason surfaces through the existing status channel |
-| populated | reference asset picker | ✅ covered | Images-only grid with multi-select marks; already-imported images reuse existing assets without copying |
-| overflow | reference asset picker | ✅ covered | The grid scrolls within the full-area panel; tiles never wrap out of the region |
-| zero-one-many | reference asset picker | ✅ covered | Zero → empty state; one → single importable item (cycle length 1); many → scrollable grid; Confirm order is always natural filename sort regardless of click order |
-| long-text | reference asset picker | ✅ covered | Long filenames truncate with ellipsis on tiles; full names in hover tooltips |
-| partial | reference asset picker | ✖ dismissed | The grid refreshes fully on open — no partial-render case; an import failure is the error state above |
-| empty | ghost overlay | ✅ covered | Overlay off (`visibleInStudio` false), no source, or playback → ghost not drawn at all; the flattened output is identical in every case (REF-03 acceptance) |
-| populated | ghost overlay | ✅ covered | Ghost draws over the composite at the overlay opacity, transformed, resolved per cursor frame; monitor paint only |
-| error | ghost overlay | ✅ covered | Missing source → ghost absent + capsule report (fail-closed, never a placeholder fill or stripe — Phase 48 D-09 excision carried) |
-| long-text | ghost overlay | ✖ dismissed | The ghost is pixel content, not text; no truncation case |
-| overflow | ghost overlay | ✅ covered | Transform can move/scale the source beyond canvas bounds — it clips at the monitor's canvas bounds like any monitor paint; never affects export |
-| empty | Mode control | ✖ dismissed | The mode always has a value — `reference-only` default on source creation; the empty case cannot occur under the 3-option union |
-| populated | Mode control | ✅ covered | Three segments always render, one active; identical overlay behavior in all modes (flag-only, D-06) |
-| error | Mode control | ✅ covered | A failed mutation leaves the previous mode active; the reason surfaces through the status capsule |
-| zero-one-many | Mode control | ✖ dismissed | Fixed 3-option segmented control; exactly one active mode always — no variance |
-| long-text | Mode control | ✖ dismissed | Labels are fixed short words (`Reference only`, `Reveal source`, `Masked transform`); no user text |
-| loading | Overlay opacity slider | ✅ covered | Drag previews live from the current value; release commits; no optimistic persisted fact during drag |
-| error | Overlay opacity slider | ✖ dismissed | The slider is constrained 0–100 — no invalid-input path exists |
-| long-text | Overlay opacity slider | ✖ dismissed | Fixed-format `{N}%` tabular-nums readout; no user text |
-| loading | transform lock / handles | ✅ covered | Unlock/lock are synchronous display-property changes — no in-flight window; handle geometry reads accepted display state |
-| error | transform lock / handles | ✖ dismissed | Display properties are local persisted preferences — there is no rejected-mutation path (no document mutation, no undo record) |
-| overflow | right-panel `Photo Reference` section | ✖ dismissed | The right panel scrolls vertically as today; fields are fixed-format and cannot overflow their rows |
-| long-text | right-panel `Photo Reference` section | ✖ dismissed | All values are fixed-format numerics/labels; raw UUID text prohibited |
-| overflow | status capsule | ✅ covered | Capsule text ellipsizes on one line; the full reason is available through the styled tooltip |
-| error | status capsule | ✅ covered | Missing-source and replacement copy are the fixed English strings in the copywriting table; `role="alert"` announces them |
-| empty | status capsule | ✅ covered | Idle context renders the existing status capsule; no phase-specific idle treatment |
-| long-text | status capsule | ✅ covered | One-line ellipsis; tooltip carries the full reason |
+| Element | Category | Status | Resolution / Reason |
+|---------|----------|--------|---------------------|
+| Photo row (S1) | empty | resolved (explicit) | No source → no band; `Import images` CTA; right-panel fact `No source imported`; ghost absent |
+| Photo row (S1) | loading | resolved (explicit) | Commit-in-flight keeps accepted band/CTA; mutation controls `aria-disabled`; no optimistic source/mode facts |
+| Photo row (S1) | error | resolved (explicit) | Missing source → ghost absent, `Source missing` band/tooltip status, capsule re-link copy (D-04); prior mode, visibility, transform, and selection preserved |
+| Photo row (S1) | populated | resolved (explicit) | Source present → full-range passive band, `Replace source` CTA, `{N} image(s)` facts, ghost per cursor frame |
+| Photo row (S1) | overflow | resolved (explicit) | The band clips at the shared horizontal viewport and returns on scroll; it never wraps or stacks |
+| Photo row (S1) | zero-one-many | resolved (explicit) | Exactly one Photo row per document; zero sources → empty state; one source at a time (D-03) — the many case is impossible by law and never rendered |
+| Photo row (S1) | partial | dismissed | The band is atomic full-range or absent — a partial band cannot occur under the 1:1 clamped law (D-15) |
+| Photo row (S1) | long-text | dismissed | The band carries no persistent product text; facts live in fixed-format tooltips; raw UUID text prohibited |
+| Reference asset picker (S2) | empty | resolved (explicit) | Empty library → picker empty-state copy (`Drag & drop images here or use Import button`); `Confirm` disabled until at least one image is selected |
+| Reference asset picker (S2) | loading | resolved (explicit) | Library refresh on open shows the grid as it becomes available; the engine underneath stays paused but mounted — no blank canvas flash |
+| Reference asset picker (S2) | error | resolved (explicit) | Import failures leave the picker open with prior selection preserved; the reason surfaces through the existing status channel |
+| Reference asset picker (S2) | populated | resolved (explicit) | Images-only grid with multi-select marks; already-imported images reuse existing assets without copying |
+| Reference asset picker (S2) | overflow | resolved (explicit) | The grid scrolls within the full-area panel; tiles never wrap out of the region |
+| Reference asset picker (S2) | zero-one-many | resolved (explicit) | Zero → empty state; one → single importable item (cycle length 1); many → scrollable grid; Confirm order is always natural filename sort regardless of click order (D-02) |
+| Reference asset picker (S2) | long-text | resolved (explicit) | Long filenames truncate with ellipsis on tiles; full names in hover tooltips |
+| Reference asset picker (S2) | partial | dismissed | The grid refreshes fully on open — no partial-render case; an import failure is the error state above |
+| Ghost overlay (S3) | empty | resolved (explicit) | Overlay off, no source, or playback → ghost not drawn at all; the flattened output is identical in every case (REF-03 acceptance) |
+| Ghost overlay (S3) | loading | resolved (explicit) | Ghost draws only from accepted canonical state; commit-in-flight keeps the last accepted ghost frame — no skeleton or placeholder (Phase 48 D-09 excision carried) |
+| Ghost overlay (S3) | error | resolved (explicit) | Missing source → ghost absent + capsule report; fail-closed, never a placeholder fill or stripe |
+| Ghost overlay (S3) | populated | resolved (explicit) | Ghost draws over the composite at the overlay opacity, transformed, resolved per cursor frame; monitor paint only |
+| Transform handles (S4) | loading | resolved (explicit) | Unlock/lock are synchronous display-property changes — no in-flight window; handle geometry reads accepted display state |
+| Transform handles (S4) | error | dismissed | Display properties are local persisted preferences — there is no rejected-mutation path (no document mutation, no undo record) |
+| Transform handles (S4) | long-text | dismissed | Handles are graphics with aria labels; no user text |
+| Right-panel section (S5) | empty | dismissed | The mode always has a value — `reference-only` default on source creation; the empty case cannot occur under the 3-option union |
+| Right-panel section (S5) | loading | resolved (explicit) | During controller prep/commit, mutation controls are `aria-disabled`; the opacity drag previews live and commits on release — no optimistic persisted facts |
+| Right-panel section (S5) | error | resolved (explicit) | A failed mode mutation leaves the previous mode active; the reason surfaces through the status capsule |
+| Right-panel section (S5) | populated | resolved (explicit) | Three segments always render, one active; identical overlay behavior in all modes (flag-only, D-06) |
+| Right-panel section (S5) | partial | dismissed | Fixed control set — all controls render together; no partial-field case |
+| Right-panel section (S5) | overflow | dismissed | The right panel scrolls vertically as today; fields are fixed-format and cannot overflow their rows |
+| Right-panel section (S5) | zero-one-many | dismissed | Fixed 3-option segmented control; exactly one active mode always — no variance |
+| Right-panel section (S5) | long-text | dismissed | All values are fixed-format numerics/labels; raw UUID text prohibited |
+| Status capsule (S6) | overflow | resolved (explicit) | Capsule text ellipsizes on one line; the full reason is available through the styled tooltip |
+| Status capsule (S6) | long-text | resolved (explicit) | One-line ellipsis; the styled tooltip carries the full reason |
 
 ---
 
