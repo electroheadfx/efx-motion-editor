@@ -52,6 +52,10 @@ export interface PhysicsPaintStudioKeyboardActions {
    *  the solo layer sits between the push disarm layer and selection collapse.
    *  No Solo key binding exists — activation is toolbar-only. */
   disarmSolo?: () => boolean;
+  /** 50-05 (Task 3, D-13): re-lock the reference transform. Returns true ONLY
+   *  when the transform was actually unlocked (reference-transform mode), so
+   *  the Escape layer consumes at most one layer (Pitfall 2). */
+  relockReferenceTransform?: () => boolean;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -229,6 +233,13 @@ export function dispatchPhysicsPaintStudioKeyDown(
     // solo was actually armed — between the push disarm layer and selection
     // collapse. One Escape handles at most one layer.
     if (actions.disarmSolo?.()) {
+      event.preventDefault();
+      return;
+    }
+    // 50-05 (Task 3, D-13): reference-transform re-lock layer — consumes the
+    // Escape only when the transform was actually unlocked (reference-transform
+    // mode). One Escape handles at most one layer (Pitfall 2).
+    if (actions.relockReferenceTransform?.()) {
       event.preventDefault();
       return;
     }

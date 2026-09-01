@@ -45,6 +45,7 @@ const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRende
 // overlay + the pure bounds geometry it consumes.
 const referenceTransformHandles = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)), 'utf8');
 const referenceTransform = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransform.ts', import.meta.url)), 'utf8');
+const studioKeyboard = readFileSync(fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -1666,5 +1667,42 @@ describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () =
     expect(referenceTransform).toContain('export function getReferenceBounds');
     expect(referenceTransform).toContain('imageWidth * zoom');
     expect(referenceTransform).toContain('transform.rotation');
+  });
+});
+
+describe('Physics Paint photo reference section mount + Escape re-lock (50-05, S5/D-13/D-06)', () => {
+  it('mounts the Photo Reference section in the right panel Track option tab (S5)', () => {
+    // The Studio threads a photoReferenceSection config into the right panel;
+    // the panel renders the section in the Track option tab.
+    expect(studio).toContain('photoReferenceSection: launchContext?.layerId');
+    expect(studio).toContain('photoReferenceSectionPortsRef');
+    expect(rightPanel).toContain('photoReferenceSection?: PhysicsPaintPhotoReferenceSectionProps;');
+    expect(rightPanel).toContain('<PhysicsPaintPhotoReferenceSection {...photoReferenceSection} />');
+  });
+
+  it('wires the section ports to the store setters (mode mutation + display preferences)', () => {
+    // The section ports route mode → setPhotoReferenceMode (undoable mutation),
+    // opacity → setPhotoReferenceOpacity, lock → setPhotoReferenceTransformLocked
+    // (display preferences, no undo).
+    expect(studio).toContain('setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode)');
+    expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
+    expect(studio).toContain('setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked)');
+  });
+
+  it('wires Escape to re-lock the transform from anywhere in reference-transform mode (D-13)', () => {
+    // The keyboard action returns true only when the transform was actually
+    // unlocked; the Escape layer consumes at most one layer (Pitfall 2).
+    expect(studio).toContain('relockReferenceTransform: () => {');
+    expect(studio).toContain('setPhotoReferenceTransformLocked(layerId, true);');
+    expect(studioKeyboard).toContain('relockReferenceTransform?: () => boolean;');
+    expect(studioKeyboard).toContain('if (actions.relockReferenceTransform?.())');
+  });
+
+  it('keeps the mode switch flag-only — no compositor change (D-06)', () => {
+    // The mode switch writes to the photo/reference track only; the compositor
+    // never references the mode or the section.
+    expect(compositor).not.toContain('setPhotoReferenceMode');
+    expect(compositor).not.toContain('PhysicsPaintPhotoReferenceSection');
+    expect(compositor).not.toContain('photoReference');
   });
 });

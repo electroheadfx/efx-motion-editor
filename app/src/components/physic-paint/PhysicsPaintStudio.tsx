@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat, FrameLoopClipScale, PhotoReferenceMode } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -24,6 +24,9 @@ import {
   setBackgroundFallback,
   setPhotoReferenceSource,
   setPhotoReferenceVisible,
+  setPhotoReferenceMode,
+  setPhotoReferenceOpacity,
+  setPhotoReferenceTransformLocked,
   setTrackBlend,
   setTrackOpacity,
   setTrackSolo,
@@ -2616,6 +2619,18 @@ export function PhysicsPaintStudio() {
       // 43.6-06 (D-04): the solo disarm layer sits between the push disarm
       // layer and selection collapse in the Escape chain.
       disarmSolo,
+      // 50-05 (Task 3, D-13): Escape re-locks the reference transform from
+      // anywhere in reference-transform mode. Returns true ONLY when the
+      // transform was actually unlocked (one Escape handles at most one layer).
+      relockReferenceTransform: () => {
+        const layerId = launchContext?.layerId;
+        if (!layerId) return false;
+        const document = getEfxPaintDocument(layerId);
+        const track = document?.photoReference;
+        if (!track || track.transformLocked) return false;
+        setPhotoReferenceTransformLocked(layerId, true);
+        return true;
+      },
       collapseRotoSelection: () => {
         // 43.6 D-04: the rail-set is the top selection layer — one Escape
         // collapses the set without touching the key selection (Pitfall 2).
@@ -2931,7 +2946,18 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
+  // 50-05 (Task 3, S5): the Photo Reference section ports are identity-stable —
+  // the store ops and the imageStore resolver never change, so the ref is
+  // created once and the memo deps only need the launch layer id (a row-click
+  // active-track switch re-resolves the memo through efxPaintVersion).
+  const photoReferenceSectionPortsRef = useRef({
+    getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
+    setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode),
+    setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity),
+    setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked),
+    resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
+  });
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, photoReferenceSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -2971,6 +2997,13 @@ export function PhysicsPaintStudio() {
     // tab; the ports are identity-stable so the memo stays cacheable.
     backgroundClipSection: launchContext?.layerId
       ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
+      : undefined,
+    // 50-05 (Task 3, S5): the Photo Reference section props — a PERSISTENT
+    // section (exactly one photo/reference track per document, REF-01) rendered
+    // in the Track option tab. The ports are identity-stable so the memo stays
+    // cacheable; the section reads accepted canonical state only.
+    photoReferenceSection: launchContext?.layerId
+      ? { layerId: launchContext.layerId, ports: photoReferenceSectionPortsRef.current }
       : undefined,
     // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
