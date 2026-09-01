@@ -2193,7 +2193,7 @@ describe('physicPaintStore', () => {
 
     function hydrationPorts(registered: Map<string, string>) {
       return {
-        resolveAssetUrl: (ref: string) => (ref.startsWith('asset-') ? `efxasset://localhost/${ref}.png` : null),
+        resolveAssetUrls: (ref: string) => (ref.startsWith('asset-') ? [`efxasset://localhost/${ref}.png`] : []),
         decodeBytes: async (url: string) => `data:image/png;base64,${btoa(url)}`,
         register: (ref: string, dataUrl: string) => {
           registered.set(ref, dataUrl);
@@ -2236,7 +2236,7 @@ describe('physicPaintStore', () => {
       // resolveAssetUrl returns null for the absent id, so hydration skips it.
       const ports = {
         ...hydrationPorts(registered),
-        resolveAssetUrl: (ref: string) => (ref === 'asset-present' ? 'efxasset://localhost/asset-present.png' : null),
+        resolveAssetUrls: (ref: string) => (ref === 'asset-present' ? ['efxasset://localhost/asset-present.png'] : []),
       };
       registerDocument(flatDocument([], {
         visible: true,
@@ -2268,7 +2268,7 @@ describe('physicPaintStore', () => {
       const bgDataUrl = makeFrame(0, 0).dataUrl;
       const registered = new Map<string, string>();
       const ports = {
-        resolveAssetUrl: (ref: string) => (ref === 'bg-ref-1' ? 'efxasset://localhost/bg.png' : null),
+        resolveAssetUrls: (ref: string) => (ref === 'bg-ref-1' ? ['efxasset://localhost/bg.png'] : []),
         decodeBytes: async (url: string) => (url === 'efxasset://localhost/bg.png' ? bgDataUrl : null),
         register: (ref: string, dataUrl: string) => {
           registered.set(ref, dataUrl);
@@ -2312,6 +2312,37 @@ describe('physicPaintStore', () => {
       expect(after).toBe(before);
       expect(after.documentRevision).toBe(before.documentRevision);
       expect(buildEfxPaintDocumentRevision(after)).toBe(beforeRevision);
+    });
+
+    it('FALLBACK URL IS TRIED: when the primary URL fails to decode, the next candidate URL registers the ref (the Bg-picker import path)', async () => {
+      const registered = new Map<string, string>();
+      const decodeCalls: string[] = [];
+      const ports = {
+        resolveAssetUrls: (ref: string) => (ref === 'asset-a'
+          ? ['efxasset://localhost/primary.png', 'efxasset://localhost/fallback.png']
+          : []),
+        decodeBytes: async (url: string) => {
+          decodeCalls.push(url);
+          return url === 'efxasset://localhost/fallback.png' ? 'data:image/png;base64,fallback' : null;
+        },
+        register: (ref: string, dataUrl: string) => {
+          registered.set(ref, dataUrl);
+          registerBackgroundSourceImage(ref, dataUrl);
+        },
+      };
+      registerDocument(flatDocument([], {
+        visible: true,
+        clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+      await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, ports);
+
+      // The primary URL failed to decode; the fallback URL succeeded and
+      // registered the ref — the clip renders instead of staying paper fond.
+      expect(decodeCalls).toEqual(['efxasset://localhost/primary.png', 'efxasset://localhost/fallback.png']);
+      expect(registered.get('asset-a')).toBe('data:image/png;base64,fallback');
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
+      expect(record).not.toBeNull();
+      expect(record!.missing).toEqual([]);
     });
     });
   });

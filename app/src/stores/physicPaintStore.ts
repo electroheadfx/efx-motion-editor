@@ -465,8 +465,16 @@ export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string
  * pending decodes resolve conservatively and re-render on decode-complete.
  */
 export interface BackgroundSourceHydrationPorts {
-  /** Resolve a library asset id to its efxasset:// URL, or null when absent. */
-  resolveAssetUrl: (sourceRef: string) => string | null;
+  /**
+   * Resolve a library asset id to its candidate efxasset:// URLs, in priority
+   * order. The hydration tries each until one decodes — a freshly imported
+   * image can resolve through the child realm's imageStore (project_path) OR
+   * the picker's library list (projectDir/relative_path), and either may be
+   * the servable one (49-06 UAT round 9: the Bg-picker import rendered only
+   * after the main-Studio import, because the two resolvers produced
+   * different URLs and only the fallback decoded). Empty = absent.
+   */
+  resolveAssetUrls: (sourceRef: string) => readonly string[];
   /** Fetch + decode the asset URL bytes into a dataUrl, or null on failure. */
   decodeBytes: (url: string) => Promise<string | null>;
   /** Register decoded bytes for a source ref (the existing registerBackgroundSourceImage). */
@@ -491,18 +499,23 @@ export async function hydrateBackgroundSourceImages(
   const registered: string[] = [];
   const missing: { ref: string; reason: 'asset-not-found' | 'decode-failed' }[] = [];
   await Promise.all(Array.from(distinctRefs).map(async (ref) => {
-    const url = ports.resolveAssetUrl(ref);
-    if (url === null) {
+    const urls = ports.resolveAssetUrls(ref);
+    if (urls.length === 0) {
       missing.push({ ref, reason: 'asset-not-found' });
       return;
     }
-    const dataUrl = await ports.decodeBytes(url);
-    if (dataUrl === null) {
-      missing.push({ ref, reason: 'decode-failed' });
-      return;
+    // Try each candidate URL in priority order — the first that decodes wins.
+    // A freshly imported image can resolve through the imageStore OR the
+    // picker fallback, and only one of the two URLs may be servable.
+    for (const url of urls) {
+      const dataUrl = await ports.decodeBytes(url);
+      if (dataUrl !== null) {
+        ports.register(ref, dataUrl);
+        registered.push(ref);
+        return;
+      }
     }
-    ports.register(ref, dataUrl);
-    registered.push(ref);
+    missing.push({ ref, reason: 'decode-failed' });
   }));
   return { registered, missing };
 }
@@ -603,14 +616,22 @@ export function hydrateBackgroundSourceImagesFromLibrary(
   fallback?: { images: readonly MceImageRef[]; projectDir: string },
 ): Promise<BackgroundSourceHydrationResult> {
   return hydrateBackgroundSourceImages(document, {
-    resolveAssetUrl: (ref) => {
+    // 49-06 (UAT round 9): BOTH candidate URLs, in priority order — the child
+    // realm's imageStore (project_path) first, then the picker's library list
+    // (projectDir/relative_path). A freshly imported image can be in either,
+    // and only one of the two URLs may be servable by the efxasset:// protocol
+    // (the Bg-picker import rendered only after the main-Studio import, which
+    // resolved through the fallback). The hydration tries each until one
+    // decodes, so the ref registers regardless of which path is correct.
+    resolveAssetUrls: (ref) => {
+      const urls: string[] = [];
       const image = imageStore.getById(ref);
-      if (image) return assetUrl(image.project_path);
+      if (image) urls.push(assetUrl(image.project_path));
       if (fallback) {
         const pickerImage = fallback.images.find((candidate) => candidate.id === ref);
-        if (pickerImage) return assetUrl(`${fallback.projectDir}/${pickerImage.relative_path}`);
+        if (pickerImage) urls.push(assetUrl(`${fallback.projectDir}/${pickerImage.relative_path}`));
       }
-      return null;
+      return urls;
     },
     decodeBytes: _decodeEfxAssetBytes,
     register: registerBackgroundSourceImage,
