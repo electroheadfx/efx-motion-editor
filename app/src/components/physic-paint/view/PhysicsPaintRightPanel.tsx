@@ -15,7 +15,6 @@ import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from 
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';
-import { PhysicsPaintPhotoReferenceSection, type PhysicsPaintPhotoReferenceSectionProps } from './PhysicsPaintPhotoReferenceSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 
@@ -58,12 +57,6 @@ export interface PhysicsPaintRightPanelProps {
    * track-only selection shows the Track section (UI-SPEC right-panel rows).
    */
   backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;
-  /**
-   * 50-05 (Task 3, S5): the `Photo Reference` section — a PERSISTENT section
-   * (exactly one photo/reference track per document, REF-01) rendered in the
-   * Track option tab. Reads accepted canonical state only (no optimistic facts).
-   */
-  photoReferenceSection?: PhysicsPaintPhotoReferenceSectionProps;
   /**
    * 49-06 (UAT round 2): the tool-pane tab signal, owned by the Studio so a
    * Paint track selection returns the panel to Track option and a Bg rail
@@ -260,7 +253,6 @@ export function PhysicsPaintRightPanel({
   onTrackBlendChange,
   scripts,
   backgroundClipSection,
-  photoReferenceSection,
   toolTab: toolTabSignal,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
@@ -705,11 +697,6 @@ export function PhysicsPaintRightPanel({
                 </select>
               </label>
             </div>
-            {/* 50-05 (Task 3, S5): the Photo Reference section — a PERSISTENT
-                section (exactly one photo/reference track per document, REF-01)
-                rendered in the Track option tab. Reads accepted canonical state
-                only (no optimistic facts). */}
-            {photoReferenceSection ? <PhysicsPaintPhotoReferenceSection {...photoReferenceSection} /> : null}
           </div>
         )}
           </section>

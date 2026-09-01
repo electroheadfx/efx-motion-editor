@@ -16,6 +16,7 @@ const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightP
 const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const launchIntegration = readFileSync(fileURLToPath(new URL('./hooks/usePhysicsPaintLaunchIntegration.ts', import.meta.url)), 'utf8');
 const navigationCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoNavigationCoordinator.ts', import.meta.url)), 'utf8');
 const physicalEditCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditCoordinator.ts', import.meta.url)), 'utf8');
 const historyHook = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditHistory.ts', import.meta.url)), 'utf8');
@@ -1174,7 +1175,7 @@ describe('localized render instrumentation', () => {
     expect(engineLifecycle).toContain('}, [engine, input.launchContext?.document?.background?.fallback]);');
   });
 
-  it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and two Studio identity resolves', () => {
+  it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and three Studio identity resolves', () => {
     expect(countOccurrences(toolRail, 'memo(')).toBe(1);
     expect(countOccurrences(rightPanel, 'memo(')).toBe(0);
     expect(countOccurrences(memoizedTopBar, 'memo(')).toBe(1);
@@ -1182,7 +1183,9 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(rightPanelRegion, 'memo(')).toBe(1);
     expect(countOccurrences(studioView, 'memo(')).toBe(1);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(7);
+    // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
+    // canvasMount, referenceDialog (50-UAT modal redesign).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(8);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -1411,14 +1414,17 @@ describe('Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-0
     expect(referenceOverlayIndex).toBeGreaterThan(canvasStackIndex);
   });
 
-  it('threads the Photo row intents from the workflow block to the store and the reference picker', () => {
+  it('threads the photo/reference intents from the workflow block to the dialog and the reference picker', () => {
     // The workflow block forwards the document's photo/reference track and the
-    // two intents: visibility routes to setPhotoReferenceVisible (D-11), import
-    // routes to the reference picker (D-03).
+    // open-dialog intent; the dialog bundle owns Import/Replace (D-03, via the
+    // picker) and the store ports (Remove → clearPhotoReference + the unified
+    // undo ledger, D-03 remove).
     expect(studio).toContain('photoReference: multiTrackRowBundle.photoReference,');
-    expect(studio).toContain('onToggleReferenceVisible: (visible: boolean) => {');
-    expect(studio).toContain('if (layerId) setPhotoReferenceVisible(layerId, visible);');
-    expect(studio).toContain('onImportReference: () => referencePicker.openPicker(),');
+    expect(studio).toContain('onOpenReference: () => { referenceDialogOpen.value = true; },');
+    expect(studio).toContain('onImportSource: () => referencePicker.openPicker(),');
+    expect(studio).toContain('clearReference: (layerId: string) => {');
+    expect(studio).toContain('const result = clearPhotoReference(layerId);');
+    expect(studio).toContain('if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
   });
 
   it('assembles the referencePicker view-model block with reference copy and a replace-on-confirm handler', () => {
@@ -1650,6 +1656,18 @@ describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () =
     expect(referenceTransformHandles).toContain("pointerEvents: 'all'");
   });
 
+  it('passes painting through the overlay WRAPPER — it is pointer-events none even with no reference (50-UAT round 2 regression)', () => {
+    // The .physics-paint-reference-transform wrapper is mounted over the canvas
+    // region on EVERY layer launch (with or without a photo reference). Removing
+    // the photo reference does NOT unmount it, so the wrapper itself must be
+    // pointer-events none — otherwise it swallows every paint gesture and the
+    // brush cursor turns into the default arrow ("I can't anymore paint").
+    const wrapperRule = css.split('}')
+      .find((block) => block.includes('.physics-paint-reference-transform') && block.includes('pointer-events: none'));
+    expect(wrapperRule, 'Missing pointer-events: none on .physics-paint-reference-transform').toBeDefined();
+    expect(wrapperRule).toContain('z-index: 6');
+  });
+
   it('keeps the transform monitor-paint only — never the compositor or cache keys (D-13, D-06)', () => {
     // The transform writes to display properties only; the compositor/flattened
     // cache/preview/export never reference the transform handles or the
@@ -1668,16 +1686,32 @@ describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () =
     expect(referenceTransform).toContain('imageWidth * zoom');
     expect(referenceTransform).toContain('transform.rotation');
   });
+
+  it('renders a VISIBLE and interactive rotation handle above the top edge (D-13 spec)', () => {
+    // The spec (D-13) requires a rotation handle. It is a decorative stem +
+    // knob (stem line pointer-events none; the SVG wrapper is pointer-events
+    // none) whose knob is a DIRECT rotate target in handlePointerDown — checked
+    // before the corner/edge handles and the corner rotation zones.
+    expect(referenceTransformHandles).toContain('const rotHandle = {');
+    expect(referenceTransformHandles).toContain('topMid.x + (normalX / normalLen) * (20 / zoom)');
+    expect(referenceTransformHandles).toContain('cursor: getCursorForHandle(null, true, transform.rotation)');
+    expect(referenceTransformHandles).toContain("handleType: 'rotate',");
+    expect(referenceTransformHandles).toContain('startBounds: bounds');
+  });
 });
 
-describe('Physics Paint photo reference section mount + Escape re-lock (50-05, S5/D-13/D-06)', () => {
-  it('mounts the Photo Reference section in the right panel Track option tab (S5)', () => {
-    // The Studio threads a photoReferenceSection config into the right panel;
-    // the panel renders the section in the Track option tab.
-    expect(studio).toContain('photoReferenceSection: launchContext?.layerId');
+describe('Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50-05, S5/D-13/D-06)', () => {
+  it('mounts the Photo Reference dialog opened from the strip camera icon (S5/50-UAT)', () => {
+    // The Studio threads a referenceDialog bundle into the view (memo re-resolves
+    // on every document mutation); the camera icon opens it; the right-panel
+    // Track option tab no longer carries the Photo Reference section (50-UAT
+    // modal redesign — all controls moved into the floating dialog).
+    expect(studio).toContain('const referenceDialog = referenceDialogPropsMemo.resolve(');
+    expect(studio).toContain('referenceDialogOpen.value = true;');
     expect(studio).toContain('photoReferenceSectionPortsRef');
-    expect(rightPanel).toContain('photoReferenceSection?: PhysicsPaintPhotoReferenceSectionProps;');
-    expect(rightPanel).toContain('<PhysicsPaintPhotoReferenceSection {...photoReferenceSection} />');
+    expect(studioView).toContain('<PhysicsPaintPhotoReferenceDialog {...referenceDialog} />');
+    expect(studioView).toContain('MemoizedPhysicsPaintPlayScriptDialog');
+    expect(rightPanel).not.toContain('photoReferenceSection');
   });
 
   it('wires the section ports to the store setters (mode mutation + display preferences)', () => {
@@ -1709,13 +1743,13 @@ describe('Physics Paint photo reference section mount + Escape re-lock (50-05, S
 
 describe('Physics Paint photo reference end-to-end integration contract (50-06, REF-05)', () => {
   it('wires the full flow: import → Photo row band → ghost → mode → opacity → transform → Escape re-lock → save/reopen', () => {
-    // Import source (D-01/D-03): the Photo row Import/Replace control opens the
+    // Import source (D-01/D-03): the dialog's Import/Replace button opens the
     // reference picker; Confirm replaces the source via setPhotoReferenceSource.
-    expect(studio).toContain('onImportReference: () => referencePicker.openPicker(),');
+    expect(studio).toContain('onImportSource: () => referencePicker.openPicker(),');
     expect(studio).toContain('const result = setPhotoReferenceSource(layerId, sortedIds);');
-    // Photo row band (S1): the passive reference band renders when a source exists.
-    expect(trackRow).toContain('physics-paint-photo-reference-band');
-    expect(trackRow).toContain('aria-label="Reference source"');
+    // 50-UAT redesign: the photo/reference is a strip camera icon, NOT a track
+    // row — the timeline lane carries no Photo band (the ghost is the visual).
+    expect(trackRow).not.toContain('physics-paint-photo-reference-band');
     // Ghost overlay (S3): the ghost draws in the monitor-paint layer seat.
     expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
     expect(studioView).toContain('<PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />');
@@ -1730,6 +1764,18 @@ describe('Physics Paint photo reference end-to-end integration contract (50-06, 
     expect(studioKeyboard).toContain('if (actions.relockReferenceTransform?.())');
     // Save/reopen (REF-05): the reopen path hydrates the reference source bytes.
     expect(studio).toContain('hydrateReferenceSourceImagesFromLibrary(');
+  });
+
+  it('re-opens a persisted reference — the launch path hydrates the reference source bytes like the background (50-UAT round-2)', () => {
+    // The Physic Paint reopen path installs the carried document and hydrates the
+    // source registries from the loaded project library. It hydrated the
+    // BACKGROUND (Phase 49 round-7 fix) but NOT the reference — registerDocument
+    // alone left `_referenceSourceImages` empty, so every reopened reference
+    // resolved 'missing' and the ghost stayed invisible until a fresh Replace.
+    // The reference hydrates alongside the background WITH the library fallback.
+    expect(launchIntegration).toContain('registerDocument(hydration.context.document);');
+    expect(launchIntegration).toContain("void hydrateBackgroundSourceImagesFromLibrary(hydration.context.document, launchLibrary);");
+    expect(launchIntegration).toContain("void hydrateReferenceSourceImagesFromLibrary(hydration.context.document, launchLibrary);");
   });
 
   it('keeps the reference out of flattened output in every mode — no reference input reaches the compositor, cache, preview, or export (D-06)', () => {

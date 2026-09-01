@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRef, type St
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
-import { physicPaintStore, hydrateBackgroundSourceImagesFromLibrary } from '../../../stores/physicPaintStore';
+import {
+  physicPaintStore,
+  hydrateBackgroundSourceImagesFromLibrary,
+  hydrateReferenceSourceImagesFromLibrary,
+} from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
 import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
@@ -166,6 +170,13 @@ export function usePhysicsPaintLaunchIntegration(input: {
         ? { images: library.images, projectDir: library.projectDir }
         : undefined;
       void hydrateBackgroundSourceImagesFromLibrary(hydration.context.document, launchLibrary);
+      // 50-UAT (round-2 report): the SAME reopen gap existed for the photo
+      // reference — registerDocument alone leaves `_referenceSourceImages`
+      // empty, so every reopened reference resolves 'missing' and the ghost
+      // stays invisible until a fresh Replace re-warms the registry. Run the
+      // parallel reference hydration WITH the library fallback so reopened
+      // references render again.
+      void hydrateReferenceSourceImagesFromLibrary(hydration.context.document, launchLibrary);
     }
     resetRotoSessionForLaunch(hydration.context);
     // 49-04 (UAT fix): hydrate the Studio settings from the DOCUMENT FALLBACK

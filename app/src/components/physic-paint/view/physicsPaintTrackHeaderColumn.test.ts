@@ -581,17 +581,16 @@ function findNode(root: unknown, predicate: (vnode: TestVNode) => boolean): Test
 }
 
 describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
-  it('renders every Paint track as a row plus the fixed Photo row and exactly one locked Bg row at the bottom (TML-01/07)', () => {
+  it('renders every Paint track as a row plus exactly one locked Bg row at the bottom (TML-01/07)', () => {
     const fixture = makeTwoTrackFixture();
     const root = renderFixture(fixture);
     const cells = headerCells(root);
-    // 2 Paint rows + the fixed Photo row + exactly 1 Bg row, in document order,
-    // Photo directly above Bg, Bg always last (50-03 S1).
-    expect(cells).toHaveLength(4);
+    // 2 Paint rows + exactly 1 Bg row, in document order, Bg always last
+    // (50-UAT redesign: the photo/reference is a strip camera icon, NOT a row).
+    expect(cells).toHaveLength(3);
     expect(cells.map((cell) => cell.props['data-track-id'])).toEqual([
       fixture.trackA.id,
       fixture.trackB.id,
-      'photo-reference-row',
       fixture.background.id,
     ]);
     // Every row carries its name as the label cell text.
@@ -600,9 +599,20 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
       const text = String(label.props.children);
       if (cell.props['data-track-id'] === fixture.trackA.id) expect(text).toBe('Track 1');
       if (cell.props['data-track-id'] === fixture.trackB.id) expect(text).toBe('Paint 2');
-      if (cell.props['data-track-id'] === 'photo-reference-row') expect(text).toBe('Photo');
       if (cell.props['data-track-id'] === fixture.background.id) expect(text).toBe('Bg');
     }
+  });
+
+  it('renders the photo/reference camera icon in the top strip (50-UAT redesign)', () => {
+    const fixture = makeTwoTrackFixture();
+    const root = renderFixture(fixture);
+    const strip = findOne(root, (vnode) => vnode.type === PhysicsPaintTrackColumnStrip);
+    const expanded = expandComponent(strip);
+    const camera = findOne(expanded, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo'));
+    expect(camera).toBeDefined();
+    // No source yet — the icon is the plain import affordance (no X badge).
+    expect(hasClass(camera, 'has-reference')).toBe(false);
+    expect(findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo-remove'))).toHaveLength(0);
   });
 
   it('marks the active track row with the accent class and moves it when activeTrackId switches (TML-03)', () => {

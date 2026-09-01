@@ -556,7 +556,8 @@ export type BackgroundEditOperationKind =
   | 'delete-background-clip'
   | 'set-background-fallback'
   | 'set-photo-reference-source'
-  | 'set-photo-reference-mode';
+  | 'set-photo-reference-mode'
+  | 'clear-photo-reference';
 
 /**
  * Acceptance descriptor emitted by every committed Background op (BKG-08).
@@ -1254,6 +1255,32 @@ export function setPhotoReferenceTransformLocked(layerId: string, locked: boolea
     (track) => ({ ...track, transformLocked: locked }),
     (track) => track.transformLocked !== locked,
   );
+}
+
+/**
+ * Remove the photo/reference track entirely (D-03 remove). A DOCUMENT MUTATION —
+ * sets `photoReference` back to null, bumps the document `documentRevision`
+ * counter, and records ONE undo entry by reference (operation kind
+ * `'clear-photo-reference'`). Undo restores the exact prior track object; redo
+ * re-applies the null. Rejects fail-closed on an absent document or an already
+ * absent track (no-op when there is nothing to remove).
+ */
+export function clearPhotoReference(layerId: string): PhotoReferenceMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (document.photoReference === null) return { ok: false, reason: 'no-photo-reference' };
+  const next: EfxPaintDocument = { ...document, photoReference: null, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'clear-photo-reference',
+      before: document,
+      after: next,
+    },
+  };
 }
 
 /** Empty the store and bump the version signal (project close hook). */

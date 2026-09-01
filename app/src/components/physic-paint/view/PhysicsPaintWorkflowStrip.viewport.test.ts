@@ -627,7 +627,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       return { document, trackA, trackB };
     }
 
-    it('renders every Paint track as a row plus the fixed Photo row and exactly one Background row (TML-01)', () => {
+    it('renders every Paint track as a row plus exactly one Background row (TML-01)', () => {
       const layerId = 'multi-track-layer';
       const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
       const harness = createWorkflowHarness({
@@ -639,11 +639,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       harness.render();
 
       const rows = harness.trackRows();
-      expect(rows).toHaveLength(4);
+      expect(rows).toHaveLength(3);
       const ids = rows.map((row) => row.props['data-track-id']);
       expect(ids).toContain(trackA.id);
       expect(ids).toContain(trackB.id);
-      expect(ids).toContain('photo-reference-row');
       expect(ids).toContain(document.background.id);
       // Every row renders the shared frameCells extent. The active lane emits
       // opaque RotoTimelineCellButton vnodes (frame + cellClass), the
@@ -741,11 +740,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       });
       harness.render();
 
-      // Every row — the active lane, the non-active Paint row, the fixed Photo
-      // row, and the fixed Background row — gets exactly one header cell in the
-      // header column.
+      // Every row — the active lane, the non-active Paint row, and the fixed
+      // Background row — gets exactly one header cell in the header column.
       const headers = harness.rowHeaders();
-      expect(headers).toHaveLength(4);
+      expect(headers).toHaveLength(3);
       const activeHeader = headers.find((h) => h.props['data-track-id'] === trackA.id);
       expect(activeHeader).toBeDefined();
       expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
@@ -777,18 +775,6 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
 
-      // 50-03 (S1): the fixed Photo row header — a plain non-selectable cell
-      // with the camera glyph, lock indicator, eye toggle, and Import/Replace.
-      const photoHeader = headers.find((h) => h.props['data-track-id'] === 'photo-reference-row');
-      expect(photoHeader).toBeDefined();
-      expect(photoHeader!.props['aria-label']).toBe('Photo row');
-      expect(photoHeader!.props.class).toContain('physics-paint-track-row-header-photo-reference');
-      expect(photoHeader!.props.role).toBeUndefined();
-      expect(photoHeader!.props.tabIndex).toBeUndefined();
-      expect(photoHeader!.props.onClick).toBeUndefined();
-      const photoLabel = findOne(photoHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
-      expect(String(photoLabel.props.children)).toBe('Photo');
-
       // The header column is a sibling of the horizontal scroller, never a
       // descendant — so it stays pinned while the frame cells scroll (D-05).
       expect(harness.headerInsideScroller()).toHaveLength(0);
@@ -798,7 +784,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(headerRows).toBeDefined();
       // Header cells live inside the header-rows band, so each 30px header
       // cell aligns 1:1 with its 30px row.
-      expect(harness.headerRowsHeaders()).toHaveLength(4);
+      expect(harness.headerRowsHeaders()).toHaveLength(3);
     });
 
     it('keeps the rows-region a distinct band holding the active lane (UI-SPEC rows region)', () => {
@@ -819,8 +805,8 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(rowsRegion.props['data-rows']).toBe('multi');
       const lane = findOne(rowsRegion, (vnode) => hasClass(vnode, 'physics-paint-lane'));
       expect(lane).toBeDefined();
-      // 2 presentational Paint rows + the fixed Photo row (50-03 S1).
-      expect(harness.rowsRegionRows()).toHaveLength(3);
+      // 2 presentational Paint rows (50-UAT redesign: no Photo row).
+      expect(harness.rowsRegionRows()).toHaveLength(2);
     });
 
     it('defaults the strip height to exactly the rows content, capped at 270px (UAT round 3 flexible height)', () => {
@@ -836,10 +822,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 2 Paint rows + 1 Photo row + 1 Bg row = 4 rows × 30px = 120px content;
-      // chrome 124px → default = min(124 + 120, 270) = 244px (all rows visible,
+      // 2 Paint rows + 1 Bg row = 3 rows × 30px = 90px content;
+      // chrome 124px → default = min(124 + 90, 270) = 214px (all rows visible,
       // no dead space, no scroll).
-      expect(String(stripStyle.height)).toBe('244px');
+      expect(String(stripStyle.height)).toBe('214px');
     });
 
     it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
@@ -912,7 +898,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       harness.render();
 
       const rows = harness.trackRows();
-      expect(rows.map((row) => row.props['data-track-id'])).toEqual([trackA.id, trackB.id, 'photo-reference-row', document.background.id]);
+      expect(rows.map((row) => row.props['data-track-id'])).toEqual([trackA.id, trackB.id, document.background.id]);
       // The active track is the rich lane: its cells are opaque
       // RotoTimelineCellButton vnodes (frame prop); the presentational row's
       // cells are rendered spans (data-roto-app-frame).
@@ -922,7 +908,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(String(aCells[0].props['data-roto-app-frame'])).toBe('0');
       // The pinned header column mirrors the same document order 1:1.
       const headers = harness.rowHeaders();
-      expect(headers.map((header) => header.props['data-track-id'])).toEqual([trackA.id, trackB.id, 'photo-reference-row', document.background.id]);
+      expect(headers.map((header) => header.props['data-track-id'])).toEqual([trackA.id, trackB.id, document.background.id]);
     });
 
     it('fades a hidden Paint row to gray without removing any cell (TML-04 hide presentation)', () => {

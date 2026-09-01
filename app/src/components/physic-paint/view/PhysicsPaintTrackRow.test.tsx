@@ -15,13 +15,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
 import {
   _setPhysicPaintMarkDirtyCallback,
   physicPaintStore,
 } from '../../../stores/physicPaintStore';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
-import type { BackgroundTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 
 // The Bg clip rail target uses the styled-tooltip hook and useRef; the render
@@ -539,109 +539,40 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
   });
 });
 
-describe('PhysicsPaintTrackRow — 50-03 Photo row (S1)', () => {
-  const photoReference: PhotoReferenceTrack = {
-    id: 'photo-ref-track',
-    sourceFrameRefs: ['shot_1', 'shot_2'],
-    mode: 'reference-only',
-    revision: 0,
-    visibleInStudio: true,
-    opacity: 0.5,
-    transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
-    transformLocked: true,
-  };
-
-  function renderHeader(overrides: Partial<Parameters<typeof PhysicsPaintTrackRowHeader>[0]> = {}) {
-    return materialize(PhysicsPaintTrackRowHeader({
-      trackId: 'photo-ref-track',
-      label: 'Photo',
-      kind: 'photo-reference',
-      photoReference,
+describe('PhysicsPaintTrackColumnStrip — 50-UAT photo/reference camera icon (S1, modal redesign)', () => {
+  function renderStrip(overrides: Partial<Parameters<typeof PhysicsPaintTrackColumnStrip>[0]> = {}) {
+    return materialize(PhysicsPaintTrackColumnStrip({
+      trackCount: 2,
+      onAddTrack: () => {},
       ...overrides,
     }));
   }
 
-  it('renders the Photo header with camera glyph, Photo label, lock, eye toggle, and Import/Replace control (S1)', () => {
-    const tree = renderHeader();
-    // Camera glyph — NEVER the Bg checker swatch (spec stop condition).
-    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-photo-reference-glyph'))).toHaveLength(1);
-    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-bg-checker'))).toHaveLength(0);
-    // Label "Photo".
-    const label = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
-    expect(label).toHaveLength(1);
-    expect(String(label[0].props.children)).toBe('Photo');
-    // Lock indicator with the fixed-position tooltip.
-    const lock = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-lock'));
-    expect(lock).toHaveLength(1);
-    expect(lock[0].props.title).toBe('Reference layer — fixed position');
-    // Eye toggle (D-11).
-    expect(findAll(tree, (vnode) => vnode.props['aria-label'] === 'Toggle reference visibility')).toHaveLength(1);
-    // Import/Replace control (D-03) — source present → "Replace source".
-    expect(findAll(tree, (vnode) => vnode.props['aria-label'] === 'Replace source')).toHaveLength(1);
+  it('renders the camera icon between the title group and the + button (50-UAT)', () => {
+    const tree = renderStrip();
+    const camera = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo'));
+    expect(camera).toHaveLength(1);
+    expect(camera[0].props['aria-label']).toBe('Photo reference settings');
+    // No source yet — the plain affordance, no active state, no X badge.
+    expect(hasClass(camera[0], 'has-reference')).toBe(false);
+    // The X remove badge is GONE (50-UAT round 2 — remove lives in the dialog).
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo-remove'))).toHaveLength(0);
+    // The + add-track button still renders.
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-add'))).toHaveLength(1);
   });
 
-  it('is not selectable as a track — no role=button, no tabIndex (D-06)', () => {
-    const tree = renderHeader();
-    const header = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-header-photo-reference'));
-    expect(header).toHaveLength(1);
-    expect(header[0].props.role).toBeUndefined();
-    expect(header[0].props.tabIndex).toBeUndefined();
-    expect(header[0].props['aria-label']).toBe('Photo row');
+  it('shows the active state when a source exists — still no X badge (50-UAT)', () => {
+    const tree = renderStrip({ hasReference: true });
+    const camera = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo'));
+    expect(hasClass(camera[0], 'has-reference')).toBe(true);
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo-remove'))).toHaveLength(0);
   });
 
-  it('renders the passive band when a source exists and an empty lane when none (D-15)', () => {
-    const withSource = render({ trackId: 'photo-ref-row', kind: 'photo-reference', photoReference });
-    expect(findAll(withSource, (vnode) => hasClass(vnode, 'physics-paint-photo-reference-band'))).toHaveLength(1);
-    const band = findAll(withSource, (vnode) => hasClass(vnode, 'physics-paint-photo-reference-band'))[0];
-    expect(band.props['aria-label']).toBe('Reference source');
-    expect(band.props.role).toBe('group');
-
-    const withoutSource = render({ trackId: 'photo-ref-row', kind: 'photo-reference', photoReference: null });
-    expect(findAll(withoutSource, (vnode) => hasClass(vnode, 'physics-paint-photo-reference-band'))).toHaveLength(0);
-  });
-
-  it('the eye toggle drives visibleInStudio — aria-pressed reflects it (D-11)', () => {
-    const visible = renderHeader({ photoReference: { ...photoReference, visibleInStudio: true } });
-    const eyeVisible = findAll(visible, (vnode) => vnode.props['aria-label'] === 'Toggle reference visibility');
-    expect(eyeVisible[0].props['aria-pressed']).toBe('true');
-
-    const hidden = renderHeader({ photoReference: { ...photoReference, visibleInStudio: false } });
-    const eyeHidden = findAll(hidden, (vnode) => vnode.props['aria-label'] === 'Toggle reference visibility');
-    expect(eyeHidden[0].props['aria-pressed']).toBe('false');
-  });
-
-  it('the CTA reads Import images when no source and Replace source when a source exists (D-03)', () => {
-    const noSource = renderHeader({ photoReference: null });
-    expect(findAll(noSource, (vnode) => vnode.props['aria-label'] === 'Import images')).toHaveLength(1);
-    expect(findAll(noSource, (vnode) => vnode.props['aria-label'] === 'Replace source')).toHaveLength(0);
-
-    const withSource = renderHeader({ photoReference });
-    expect(findAll(withSource, (vnode) => vnode.props['aria-label'] === 'Replace source')).toHaveLength(1);
-    expect(findAll(withSource, (vnode) => vnode.props['aria-label'] === 'Import images')).toHaveLength(0);
-  });
-
-  it('fires the eye toggle and Import/Replace intents through their ports', () => {
-    const onToggleReferenceVisible = vi.fn();
-    const onImportReference = vi.fn();
-    const tree = renderHeader({ onToggleReferenceVisible, onImportReference });
-
-    const eye = findAll(tree, (vnode) => vnode.props['aria-label'] === 'Toggle reference visibility')[0];
-    (eye.props as { onClick: () => void }).onClick();
-    expect(onToggleReferenceVisible).toHaveBeenCalledWith(false);
-
-    const cta = findAll(tree, (vnode) => vnode.props['aria-label'] === 'Replace source')[0];
-    (cta.props as { onClick: () => void }).onClick();
-    expect(onImportReference).toHaveBeenCalledTimes(1);
-  });
-
-  it('the passive band is a muted desaturated tone distinct from every Paint rail color (UI-SPEC)', () => {
-    const bandRule = cssRule('.physics-paint-photo-reference-band {');
-    expect(bandRule).toContain('background: #5a5e62');
-    // Never a Paint rail color (purple/cyan) or the orange selection.
-    expect(bandRule).not.toContain('#8b5cf6');
-    expect(bandRule).not.toContain('#06b6d4');
-    expect(bandRule).not.toContain('#f5a623');
-    // The Photo row is never a select target (cursor default, not pointer).
-    expect(cssRule('.physics-paint-track-row-photo-reference {')).toContain('cursor: default');
+  it('routes the camera click to the open-dialog intent (50-UAT)', () => {
+    const onOpenReference = vi.fn();
+    const tree = renderStrip({ onOpenReference });
+    const camera = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo'))[0];
+    (camera.props as { onClick: () => void }).onClick();
+    expect(onOpenReference).toHaveBeenCalledTimes(1);
   });
 });

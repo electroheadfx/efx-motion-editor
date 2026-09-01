@@ -3733,6 +3733,450 @@ button.destructive {
   outline-offset: 1px;
 }
 
+/* 50-03 (S1): the strip's right-side action cluster — the photo/reference
+   camera icon and the '+' add-track button. */
+.physics-paint-track-column-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 50-UAT (modal redesign): the photo/reference camera icon in the top strip —
+   the floating-setting entry point that replaced the Photo track row (50-UAT
+   redesign). Same 18px hit target as the '+' button; the active state (a
+   source exists) tints the icon. The X remove badge is GONE — Remove lives in
+   the Photo Reference dialog (50-UAT round 2). */
+.physics-paint-track-column-photo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 6px;
+  background: #3a424c;
+  color: #8a939c;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-track-column-photo:hover {
+  background: #45505c;
+  color: #e5edf8;
+}
+
+.physics-paint-track-column-photo:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-track-column-photo.has-reference {
+  color: #7799bb;
+  border-color: #4a5a6e;
+}
+
+
+/* 50-UAT (modal redesign, round 2): the floating Photo Reference dialog — a
+   MOVABLE settings card opened from the strip camera icon (Play Script dialog
+   pattern: the fixed root stays pointer-events none so the Studio palette stays
+   interactive; only the surface is hit-testable). The layout matches the user's
+   compact 252px mockup: dark card, short segment labels, custom slider,
+   two-state toggles, source chip, and a labeled primary action + icon-only
+   Remove. ALL photo/reference controls live here — the right-panel section is
+   gone. */
+.physics-paint-photo-reference-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #eceff2;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.physics-paint-photo-reference-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 252px;
+  max-width: 92%;
+  max-height: 90%;
+  /* 50-UAT round 3: liquid-glass surface (the toolbox popover treatment) — a
+     translucent dark panel over a ::before backdrop blur so the canvas paints
+     show through the frosted card. */
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: rgba(28, 30, 34, 0.66);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
+  outline: none;
+}
+
+/* Liquid-glass backdrop layer (43.5-02 toolbox treatment): the blur/saturate
+   tint sits on an empty ::before so the surface stays a plain positioned
+   card — no containing-block surprise for the floating element beneath. */
+.physics-paint-photo-reference-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(10, 12, 15, 0.28);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+  pointer-events: none;
+}
+
+.physics-paint-photo-reference-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.physics-paint-photo-reference-dialog.physics-paint-photo-reference-dragging .physics-paint-photo-reference-header {
+  cursor: grabbing;
+}
+
+.physics-paint-photo-reference-header-icon {
+  flex: 0 0 auto;
+  color: #7fa1ff;
+}
+
+.physics-paint-photo-reference-header strong {
+  color: #eceff2;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-header-spacer {
+  flex: 1 1 0;
+}
+
+.physics-paint-photo-reference-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #2a3540;
+  color: #b9c3ce;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-close:hover {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-photo-reference-close:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* Mode segmented control — 3 equal segments on a recessed rail. */
+.physics-paint-photo-reference-mode {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  height: 28px;
+  border: 1px solid #2a3540;
+  border-radius: 8px;
+  background: #161d25;
+}
+
+.physics-paint-photo-reference-mode-segment {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa5b1;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-mode-segment:hover {
+  color: #c6cfd8;
+}
+
+.physics-paint-photo-reference-mode-segment.active {
+  border-color: #5a87ff;
+  background: #2f67e8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.physics-paint-photo-reference-mode-segment:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-hint {
+  color: #7e8894;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+/* Opacity block — uppercase tracked label, custom slider. */
+.physics-paint-photo-reference-opacity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.physics-paint-photo-reference-opacity-labels {
+  display: flex;
+  align-items: center;
+}
+
+.physics-paint-photo-reference-label {
+  text-transform: uppercase;
+  color: #8a94a0;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-label-spacer {
+  flex: 1 1 0;
+  height: 1px;
+}
+
+.physics-paint-photo-reference-opacity output {
+  color: #eceff2;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-slider {
+  position: relative;
+  height: 14px;
+}
+
+.physics-paint-photo-reference-slider-rail,
+.physics-paint-photo-reference-slider-fill {
+  position: absolute;
+  top: 5px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.physics-paint-photo-reference-slider-rail {
+  left: 0;
+  right: 0;
+  background: #37424e;
+}
+
+.physics-paint-photo-reference-slider-fill {
+  left: 0;
+  background: #2f67e8;
+}
+
+.physics-paint-photo-reference-slider-thumb {
+  position: absolute;
+  top: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.53);
+}
+
+/* The transparent native input owns all slider gestures (it is the real
+   aria-bearing control); the rail/fill/thumb above are its visual proxy. */
+.physics-paint-photo-reference-slider-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-slider-input:focus-visible {
+  outline: none;
+}
+
+.physics-paint-photo-reference-slider:focus-within {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* Two-state toggle row — Locked/Visible. */
+.physics-paint-photo-reference-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.physics-paint-photo-reference-toggle {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #3d5fb0;
+  border-radius: 8px;
+  background: #1d2e4e;
+  color: #cfe0ff;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-toggle svg {
+  color: #8fb0ff;
+}
+
+.physics-paint-photo-reference-toggle[aria-pressed='false'] {
+  border-color: #3a4652;
+  background: #232d38;
+  color: #9aa5b1;
+}
+
+.physics-paint-photo-reference-toggle[aria-pressed='false'] svg {
+  color: #7e8894;
+}
+
+.physics-paint-photo-reference-toggle:hover {
+  filter: brightness(1.12);
+}
+
+.physics-paint-photo-reference-toggle:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-divider {
+  height: 1px;
+  background: #2a3540;
+}
+
+/* Source row — uppercase label, count chip. */
+.physics-paint-photo-reference-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.physics-paint-photo-reference-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid #3a4652;
+  border-radius: 5px;
+  background: #232d38;
+  color: #c6cfd8;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-chip-icon {
+  color: #9aa5b1;
+}
+
+.physics-paint-photo-reference-empty {
+  color: #7e8894;
+  font-size: 10px;
+}
+
+/* Action row — labeled primary (Import/Replace) + icon-only Remove. */
+.physics-paint-photo-reference-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.physics-paint-photo-reference-import {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #5a87ff;
+  border-radius: 8px;
+  background: #2f67e8;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-import:hover {
+  background: #3a75f0;
+}
+
+.physics-paint-photo-reference-import:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #6e3a34;
+  border-radius: 8px;
+  background: #3a2321;
+  color: #f0907e;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-remove:hover {
+  background: #4a2b28;
+}
+
+.physics-paint-photo-reference-remove:focus-visible {
+  outline: 2px solid #f0907e;
+  outline-offset: 1px;
+}
+
 /* Pinned header-rows band, vertically synced with the rows-region (D-05).
    47-01 UAT round 5: the band and the vertical pill scrollbar share one flex
    row (.physics-paint-header-rows-wrap) inside the pinned column, so the
@@ -5029,13 +5473,21 @@ button.destructive {
 
 /* 50-05 (Task 2, S4): the reference transform handles overlay — a sibling of
    the ghost layer, ABOVE it (z-index 6) so the handles are visible and
-   interactive. The overlay owns pointer events ONLY while the transform is
-   unlocked (the component renders pointer-events none when locked/playing), so
-   painting gestures pass through to the engine canvas beneath by default. */
+   interactive. The overlay owns pointer events ONLY on its own interactive
+   children (the bounds polygon, rotation-zone circles, and handle rects — each
+   pointer-events: all); the wrapper AND the locked inner div are
+   pointer-events NONE so every paint gesture passes through to the engine
+   canvas beneath by default (50-UAT round 2 — the wrapper was auto, which
+   swallowed ALL painting over the canvas region even with no photo reference). */
 .physics-paint-reference-transform {
   position: absolute;
   z-index: 6;
-  overflow: hidden;
+  /* 50-UAT: overflow visible so the rotation handle (a stem + knob above the
+     box's top edge, D-13) renders and stays clickable even when it extends past
+     the canvas region boundary; pointer-events none keeps every paint gesture
+     pass-through (the interactive children own pointer-events all). */
+  overflow: visible;
+  pointer-events: none;
 }
 
 .physics-paint-onion-frame {

@@ -27,6 +27,7 @@ import {
   setPhotoReferenceMode,
   setPhotoReferenceOpacity,
   setPhotoReferenceTransformLocked,
+  clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
   setTrackSolo,
@@ -363,6 +364,11 @@ export function PhysicsPaintStudio() {
   // track selection returns the panel to Track option and a Bg rail selection
   // opens the Background option tab (selection-driven, never stuck on the clip).
   const rightPanelToolTab = useSignal<'paint' | 'track' | 'background'>('paint');
+  // 50-UAT (modal redesign): the floating Photo Reference dialog — a Studio-owned
+  // signal so the strip camera icon opens it and the dialog self-closes. The
+  // dialog stays open behind the full-area reference picker so an Import/
+  // Replace confirm updates it in place.
+  const referenceDialogOpen = useSignal(false);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -517,6 +523,7 @@ export function PhysicsPaintStudio() {
   const toolRailPropsMemo = useRef(createIdentityMemo()).current;
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
   const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
+  const referenceDialogPropsMemo = useRef(createIdentityMemo()).current;
   const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
@@ -2946,18 +2953,24 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  // 50-05 (Task 3, S5): the Photo Reference section ports are identity-stable —
-  // the store ops and the imageStore resolver never change, so the ref is
-  // created once and the memo deps only need the launch layer id (a row-click
-  // active-track switch re-resolves the memo through efxPaintVersion).
+  // 50-UAT (modal redesign): the Photo Reference dialog ports are identity-
+  // stable — the store ops and the imageStore resolver never change, so the ref
+  // is created once and the dialog memo deps stay small (the dialog re-resolves
+  // through efxPaintVersion on every document mutation).
   const photoReferenceSectionPortsRef = useRef({
     getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
     setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode),
     setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity),
     setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked),
+    setVisible: (layerId: string, visible: boolean) => setPhotoReferenceVisible(layerId, visible),
+    clearReference: (layerId: string) => {
+      const result = clearPhotoReference(layerId);
+      if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+      return result;
+    },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, photoReferenceSectionPortsRef, rightPanelToolTab], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -2997,13 +3010,6 @@ export function PhysicsPaintStudio() {
     // tab; the ports are identity-stable so the memo stays cacheable.
     backgroundClipSection: launchContext?.layerId
       ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
-      : undefined,
-    // 50-05 (Task 3, S5): the Photo Reference section props — a PERSISTENT
-    // section (exactly one photo/reference track per document, REF-01) rendered
-    // in the Track option tab. The ports are identity-stable so the memo stays
-    // cacheable; the section reads accepted canonical state only.
-    photoReferenceSection: launchContext?.layerId
-      ? { layerId: launchContext.layerId, ports: photoReferenceSectionPortsRef.current }
       : undefined,
     // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
@@ -3753,6 +3759,21 @@ export function PhysicsPaintStudio() {
   const handleCancelReferencePicker = () => {
     referencePicker.cancel();
   };
+  // 50-UAT (modal redesign): the floating Photo Reference dialog bundle — the
+  // dialog reads the document through the SAME identity-stable store ports and
+  // re-resolves on every document mutation (efxPaintVersion) so its controls
+  // always reflect accepted state. The camera icon opens it; Escape/X close it;
+  // the Import/Replace source button opens the reference picker behind it.
+  const referenceDialog = referenceDialogPropsMemo.resolve(
+    [referenceDialogOpen.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
+    () => ({
+      open: referenceDialogOpen.value,
+      layerId: launchContext?.layerId ?? null,
+      ports: photoReferenceSectionPortsRef.current,
+      onClose: () => { referenceDialogOpen.value = false; },
+      onImportSource: () => referencePicker.openPicker(),
+    }),
+  );
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -3760,21 +3781,17 @@ export function PhysicsPaintStudio() {
     canvas: canvasStack,
     rightPanel,
     playScriptDialog,
+    referenceDialog,
     workflow: {
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,
         activeTrackId: multiTrackRowBundle.activeTrackId,
         background: multiTrackRowBundle.background,
-        // 50-03 (S1): the fixed Photo row — the document's photo/reference
-        // track flows down so the header renders its eye/import state, and the
-        // two intents route to the store (D-11 visibility) and the reference
-        // picker (D-03 import/replace).
+        // 50-UAT (modal redesign): the photo/reference camera icon opens the
+        // floating Photo Reference dialog (the dialog owns Import/Replace/
+        // Remove and every setting — no X badge on the icon, 50-UAT round 2).
         photoReference: multiTrackRowBundle.photoReference,
-        onToggleReferenceVisible: (visible: boolean) => {
-          const layerId = launchContext?.layerId;
-          if (layerId) setPhotoReferenceVisible(layerId, visible);
-        },
-        onImportReference: () => referencePicker.openPicker(),
+        onOpenReference: () => { referenceDialogOpen.value = true; },
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,

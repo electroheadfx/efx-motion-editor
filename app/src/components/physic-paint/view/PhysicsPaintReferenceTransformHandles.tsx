@@ -9,6 +9,7 @@ import {
   hitTestHandles,
   getRotationZone,
   pointInPolygon,
+  getCursorForHandle,
 } from '../../canvas/transformHandles';
 import type { HandleType, LayerBounds } from '../../canvas/transformHandles';
 
@@ -135,6 +136,21 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   const cornerSize = 8 / zoom;
   const edgeSize = 6 / zoom;
 
+  // 50-UAT (D-13 spec gap fix): the VISIBLE rotation handle — a stem + circle
+  // above the top-edge midpoint along the box's outward normal, counter-scaled
+  // to a fixed 20px stem / 5px knob on screen. The corner rotation zones stay
+  // (drag near a corner also rotates); the knob makes rotation discoverable.
+  const topMid = { x: (tl.x + tr.x) / 2, y: (tl.y + tr.y) / 2 };
+  const normalX = topMid.x - bounds.center.x;
+  const normalY = topMid.y - bounds.center.y;
+  const normalLen = Math.hypot(normalX, normalY) || 1;
+  const rotHandle = {
+    x: topMid.x + (normalX / normalLen) * (20 / zoom),
+    y: topMid.y + (normalY / normalLen) * (20 / zoom),
+  };
+  const rotHandleRadius = 5 / zoom;
+  const rotHandleHitRadius = 8 / zoom;
+
   function getWorkingPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
     const container = containerRef.current;
     if (!container) return { x: 0, y: 0 };
@@ -149,6 +165,24 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   function handlePointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
     const point = getWorkingPointFromClient(e.clientX, e.clientY);
+
+    // 50-UAT (D-13 spec): the visible rotation knob is a direct rotate target —
+    // checked BEFORE the corner/edge handles and the corner rotation zone.
+    const rotDx = point.x - rotHandle.x;
+    const rotDy = point.y - rotHandle.y;
+    if (rotDx * rotDx + rotDy * rotDy <= rotHandleHitRadius * rotHandleHitRadius) {
+      e.preventDefault();
+      dragRef.current = {
+        mode: 'pending',
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startTransform: { ...transform },
+        handleType: 'rotate',
+        startBounds: bounds,
+      };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
 
     const handleHit = hitTestHandles(point, handles, zoom);
     if (handleHit) {
@@ -302,13 +336,17 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     }
   }
 
+  // 50-UAT (bounds-only capture): the overlay container is pointer-events NONE
+  // so painting outside the reference passes through to the engine canvas. The
+  // SVG children (bounds polygon, rotation-zone circles, handle rects) are the
+  // ONLY hit targets — each carries pointer-events: all and bubbles to the SVG
+  // root's handlers. The handler logic (hitTestHandles → getRotationZone →
+  // pointInPolygon) is unchanged; the SVG hit-testing only decides WHETHER the
+  // event fires at all.
   return (
     <div
       ref={containerRef}
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'all', cursor: 'move' }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
       aria-label="Reference transform"
     >
       <svg
@@ -322,14 +360,54 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         }}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
         <polygon
           points={polyPoints}
-          fill="none"
+          fill="transparent"
           stroke="#4A90D9"
           stroke-width={strokeWidth}
           vector-effect="non-scaling-stroke"
+          style={{ pointerEvents: 'all', cursor: 'move' }}
         />
+        {/* 50-UAT (D-13 spec): the VISIBLE rotation handle — a decorative stem
+            (pointer-events none, pass-through) plus an interactive knob that
+            enters rotate mode (handlePointerDown's direct rotation target). */}
+        <line
+          x1={topMid.x}
+          y1={topMid.y}
+          x2={rotHandle.x}
+          y2={rotHandle.y}
+          stroke="#4A90D9"
+          stroke-width={strokeWidth}
+          vector-effect="non-scaling-stroke"
+          aria-hidden="true"
+        />
+        <circle
+          cx={rotHandle.x}
+          cy={rotHandle.y}
+          r={rotHandleRadius}
+          fill="white"
+          stroke="#4A90D9"
+          stroke-width={strokeWidth}
+          vector-effect="non-scaling-stroke"
+          style={{ pointerEvents: 'all', cursor: getCursorForHandle(null, true, transform.rotation) }}
+        />
+        {/* Rotation-zone hit circles — one per corner, radius = the 15px screen
+            rotation zone (getRotationZone). Transparent fill + pointer-events
+            all; the handler disambiguates rotate vs move by pointInPolygon. */}
+        {bounds.corners.map((corner, index) => (
+          <circle
+            key={`rotation-zone-${index}`}
+            cx={corner.x}
+            cy={corner.y}
+            r={15 / zoom}
+            fill="transparent"
+            style={{ pointerEvents: 'all', cursor: 'grab' }}
+          />
+        ))}
         {handles.filter((h) => h.type.startsWith('corner')).map((h) => (
           <rect
             key={h.type}
@@ -341,6 +419,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
             stroke="#4A90D9"
             stroke-width={strokeWidth}
             vector-effect="non-scaling-stroke"
+            style={{ pointerEvents: 'all' }}
           />
         ))}
         {handles.filter((h) => h.type.startsWith('edge')).map((h) => (
@@ -354,6 +433,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
             stroke="#4A90D9"
             stroke-width={strokeWidth}
             vector-effect="non-scaling-stroke"
+            style={{ pointerEvents: 'all' }}
           />
         ))}
       </svg>

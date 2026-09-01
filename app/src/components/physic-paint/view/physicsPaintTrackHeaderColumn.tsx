@@ -109,14 +109,15 @@ export interface PhysicsPaintTrackHeaderColumnProps {
    *  it through the Studio's picker swap signal (49-04 mount). The Bg row is
    *  the only header that carries an import affordance (D-06 lock semantics). */
   readonly onImportBackground?: () => void;
-  /* ---- 50-03 (S1): the fixed Photo row, directly ABOVE the Bg row ---- */
-  /** The document's photo/reference track (null = no source yet). The Photo
-   *  row header always renders — one per document (REF-01). */
+  /* ---- 50-UAT (modal redesign): the photo/reference affordance — a camera
+     icon in the top strip (NOT a track row, per the 50-UAT redesign). One per
+     document (REF-01). The icon opens the floating Photo Reference dialog
+     (Import/Replace/Remove and every setting live there — the X-badge remove
+     is gone, 50-UAT round 2). ---- */
+  /** The document's photo/reference track (null = no source yet). */
   readonly photoReference?: PhotoReferenceTrack | null;
-  /** The Photo row's eye toggle intent (D-11). */
-  readonly onToggleReferenceVisible?: (visible: boolean) => void;
-  /** The Photo row's Import/Replace control (D-03). */
-  readonly onImportReference?: () => void;
+  /** The strip camera icon's open-dialog intent. */
+  readonly onOpenReference?: () => void;
 }
 
 /**
@@ -159,8 +160,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onVerticalScrollbarPointerDown,
     onImportBackground,
     photoReference = null,
-    onToggleReferenceVisible,
-    onImportReference,
+    onOpenReference,
   } = props;
   const deletable = tracks.length > 1;
   // 49-06 UAT: while a Bg clip is selected, NO normal track header paints the
@@ -170,7 +170,12 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
   const effectiveActiveTrackId = backgroundSelected ? '' : activeTrackId;
   return (
     <div ref={headerColumnRef} class="physics-paint-header-column">
-      <PhysicsPaintTrackColumnStrip trackCount={tracks.length} onAddTrack={onAddTrack} />
+      <PhysicsPaintTrackColumnStrip
+        trackCount={tracks.length}
+        onAddTrack={onAddTrack}
+        hasReference={photoReference !== null && photoReference.sourceFrameRefs.length > 0}
+        onOpenReference={onOpenReference}
+      />
       <div class="physics-paint-header-rows-wrap">
         <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={onHeaderScroll}>
           {tracks.map((track) => (
@@ -212,18 +217,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               aria-hidden="true"
             />
           ) : null}
-          {/* 50-03 (S1): the fixed Photo row — always present, directly ABOVE
-              the Bg row. The track may be null (no source yet); the header
-              still renders with the Import CTA and the lane stays empty. */}
-          <PhysicsPaintTrackRowHeader
-            key={photoReference?.id ?? 'photo-reference-row'}
-            trackId={photoReference?.id ?? 'photo-reference-row'}
-            label="Photo"
-            kind="photo-reference"
-            photoReference={photoReference}
-            onToggleReferenceVisible={onToggleReferenceVisible}
-            onImportReference={onImportReference}
-          />
           {background ? (
             <PhysicsPaintTrackRowHeader
               key={background.id}

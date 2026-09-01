@@ -44,7 +44,7 @@ import {
   type PhysicsPaintBackgroundClipPresentation,
   type PhysicsPaintGroupSynchronizationDot,
 } from './physicsPaintLoopClipPresentation';
-import type { BackgroundTrack, FrameLoopClip, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 import type {
   BackgroundClipDragApi,
   BackgroundClipDragGhostState,
@@ -82,7 +82,7 @@ function resolveBackgroundClipCellImages(clip: FrameLoopClip, cellCount: number)
   return images;
 }
 
-export type PhysicsPaintTrackRowKind = 'paint' | 'background' | 'photo-reference';
+export type PhysicsPaintTrackRowKind = 'paint' | 'background';
 
 /**
  * One rail identity on a non-active row, carried to the controller by a
@@ -163,12 +163,6 @@ export interface PhysicsPaintTrackRowProps {
   readonly backgroundClipDragGhost?: BackgroundClipDragGhostState | null;
   /** Live drag preview publication (paint only — never canonical). */
   readonly backgroundClipDragPreview?: BackgroundClipDragPreviewState | null;
-  /* ---- 50-03 (S1): the fixed Photo row's passive reference band ---- */
-  /** The document's photo/reference track — the Photo row renders a passive
-   *  muted band spanning frame 0..parent end when a source exists (D-15 1:1
-   *  law), and an empty lane when none. Never a content track: no rails, no
-   *  clips, no drag, no reorder, no duplicate/delete (D-06). */
-  readonly photoReference?: PhotoReferenceTrack | null;
 }
 
 type TrackRowCellState = 'cached' | 'generated' | 'empty';
@@ -523,12 +517,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     backgroundClipDrag = null,
     backgroundClipResize = null,
     backgroundClipDragGhost = null,
-    photoReference = null,
   } = props;
   const rowClass = [
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
-    kind === 'photo-reference' ? 'physics-paint-track-row-photo-reference' : '',
     visible === false ? 'physics-paint-track-row-hidden' : '',
     crossDestination ? 'physics-paint-track-row-cross-destination' : '',
   ].filter(Boolean).join(' ');
@@ -608,14 +600,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             );
           })}
         </div>
-        {/* 50-03 (S1): the Photo row's passive reference band — a muted
-            full-range bar spanning frame 0..parent end when a source exists
-            (D-15 1:1 law), empty lane when none. Pure feedback: no rails, no
-            clips, no drag, no hit target — the reference is never a content
-            track (D-06). */}
-        {kind === 'photo-reference' && photoReference && photoReference.sourceFrameRefs.length > 0 ? (
-          <div class="physics-paint-photo-reference-band" role="group" aria-label="Reference source" />
-        ) : null}
         {/* Always-on read-only rails (47 close-out UAT round 4): the SAME
             classes the active lane's rails render — a read-only rail-target
             wrapper (12px band) holding the family's segment, so caps, colors
@@ -805,15 +789,6 @@ export interface PhysicsPaintTrackRowHeaderProps {
    *  The locked Background row carries no reorder grab, no duplicate/delete
    *  hover actions (47-CONTEXT D-06); Import is its single affordance. */
   readonly onImportBackground?: () => void;
-  /* ---- 50-03 (S1): the fixed Photo row header ---- */
-  /** The document's photo/reference track — drives the eye toggle's pressed
-   *  state and the Import/Replace CTA label (D-03). Null = no source yet. */
-  readonly photoReference?: PhotoReferenceTrack | null;
-  /** The Photo row's eye toggle intent — routes through setPhotoReferenceVisible
-   *  (D-11, a display preference, never a document mutation). */
-  readonly onToggleReferenceVisible?: (visible: boolean) => void;
-  /** The Photo row's Import/Replace control — opens the reference picker (D-03). */
-  readonly onImportReference?: () => void;
 }
 
 /**
@@ -854,13 +829,9 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onToggleTools,
     onCloseTools,
     onImportBackground,
-    photoReference = null,
-    onToggleReferenceVisible,
-    onImportReference,
   } = props;
   const isActive = activeTrackId === trackId;
   const isBackground = kind === 'background';
-  const isPhotoReference = kind === 'photo-reference';
   // 47 UAT: the per-row frame-blending toggle reads THIS track's canonical
   // interpolation state (same store read the toolbox toggle uses, keyed by
   // the row's own trackId — never the active track's, T-47-04).
@@ -870,7 +841,6 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     isActive ? 'physics-paint-track-row-header-active' : '',
     isBackground ? 'physics-paint-track-row-header-background' : '',
     isBackground && selected ? 'physics-paint-track-row-header-selected' : '',
-    isPhotoReference ? 'physics-paint-track-row-header-photo-reference' : '',
   ].filter(Boolean).join(' ');
   if (isBackground) {
     // The Background row is not selectable and has no hover capability for now
@@ -904,50 +874,6 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           aria-label="Import images"
           title="Import images"
           onClick={() => onImportBackground?.()}
-        >
-          <ImagePlus size={14} aria-hidden="true" />
-        </button>
-      </div>
-    );
-  }
-  if (isPhotoReference) {
-    // 50-03 (S1): the Photo row is NOT selectable as a track (no role=button,
-    // no tabIndex, no click/keyboard selection) — the photo/reference track is
-    // never the active Paint track (D-06, not a content track). The header
-    // mirrors the Bg header but with a camera glyph (NEVER the Bg checker
-    // swatch), the eye toggle driving visibleInStudio (D-11), and the
-    // Import/Replace control (D-03).
-    const hasSource = photoReference !== null && photoReference.sourceFrameRefs.length > 0;
-    const visibleInStudio = photoReference?.visibleInStudio ?? false;
-    return (
-      <div
-        class={headerClass}
-        data-track-id={trackId}
-        aria-label={`${label} row`}
-      >
-        <span class="physics-paint-photo-reference-glyph" aria-hidden="true">
-          <Camera size={12} />
-        </span>
-        <span class="physics-paint-track-row-label">{label}</span>
-        <span class="physics-paint-track-row-lock" title="Reference layer — fixed position" aria-hidden="true">
-          <Lock size={12} />
-        </span>
-        <button
-          type="button"
-          class="physics-paint-track-row-tool-button"
-          aria-label="Toggle reference visibility"
-          aria-pressed={visibleInStudio ? 'true' : 'false'}
-          title={visibleInStudio ? 'Hide reference' : 'Show reference'}
-          onClick={() => onToggleReferenceVisible?.(!visibleInStudio)}
-        >
-          {visibleInStudio ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
-        </button>
-        <button
-          type="button"
-          class="physics-paint-bg-import-button"
-          aria-label={hasSource ? 'Replace source' : 'Import images'}
-          title={hasSource ? 'Replace source' : 'Import images'}
-          onClick={() => onImportReference?.()}
         >
           <ImagePlus size={14} aria-hidden="true" />
         </button>
@@ -1143,15 +1069,27 @@ export interface PhysicsPaintTrackColumnStripProps {
   readonly trackCount: number;
   /** '+' add intent — routes through addTrack. */
   readonly onAddTrack?: () => void;
+  /* ---- 50-UAT (modal redesign): the photo/reference camera icon in the strip
+     — the SOLE photo reference affordance. It opens the floating Photo
+     Reference dialog (Import/Replace/Remove and every display setting live in
+     the dialog — no X badge on the icon, 50-UAT round 2). ---- */
+  /** True when a photo/reference source exists — the icon shows the active
+   *  state. */
+  readonly hasReference?: boolean;
+  /** Camera icon click — opens the floating Photo Reference dialog. */
+  readonly onOpenReference?: () => void;
 }
 
 /**
  * The pinned header column's top strip (the mockup "Tracks" bar): layers icon,
- * "Tracks" title, count badge, and the '+' add-track button. Sits in the
- * 28 px ruler spacer slot so it aligns with the frame ruler.
+ * "Tracks" title, count badge, the photo/reference camera icon, and the '+'
+ * add-track button. Sits in the 28 px ruler spacer slot so it aligns with the
+ * frame ruler. The camera icon is the photo/reference affordance — a lightweight
+ * icon, NOT a track row (50-UAT redesign); it opens the settings dialog (50-UAT
+ * modal redesign).
  */
 export function PhysicsPaintTrackColumnStrip(props: PhysicsPaintTrackColumnStripProps) {
-  const { trackCount, onAddTrack } = props;
+  const { trackCount, onAddTrack, hasReference = false, onOpenReference } = props;
   return (
     <div class="physics-paint-track-column-strip">
       <span class="physics-paint-track-column-title-group">
@@ -1161,15 +1099,26 @@ export function PhysicsPaintTrackColumnStrip(props: PhysicsPaintTrackColumnStrip
           {trackCount}
         </span>
       </span>
-      <button
-        type="button"
-        class="physics-paint-track-column-add"
-        aria-label="Add track"
-        title="Add track"
-        onClick={() => onAddTrack?.()}
-      >
-        <Plus size={11} strokeWidth={2.5} aria-hidden="true" />
-      </button>
+      <span class="physics-paint-track-column-actions">
+        <button
+          type="button"
+          class={`physics-paint-track-column-photo${hasReference ? ' has-reference' : ''}`}
+          aria-label="Photo reference settings"
+          title="Photo reference settings"
+          onClick={() => onOpenReference?.()}
+        >
+          <Camera size={13} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="physics-paint-track-column-add"
+          aria-label="Add track"
+          title="Add track"
+          onClick={() => onAddTrack?.()}
+        >
+          <Plus size={11} strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      </span>
     </div>
   );
 }

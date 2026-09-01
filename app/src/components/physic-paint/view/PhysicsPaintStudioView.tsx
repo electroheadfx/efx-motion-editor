@@ -8,6 +8,7 @@ import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintC
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
+import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
@@ -261,6 +262,9 @@ export interface PhysicsPaintStudioViewProps {
   canvas: PhysicsPaintCanvasStackViewProps;
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
+  /** 50-UAT (modal redesign): the floating Photo Reference dialog — a movable
+   *  dialog opened from the strip camera icon (Play Script dialog pattern). */
+  referenceDialog?: ComponentProps<typeof PhysicsPaintPhotoReferenceDialog> | null;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
@@ -274,7 +278,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status, backgroundPicker, referencePicker } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, workflow, status, backgroundPicker, referencePicker } = props;
   return (
     <main class="demo-shell">
       <section
@@ -301,6 +305,8 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         />
 
         <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
+
+        {referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
 
         <PhysicsPaintWorkflowStrip {...workflow} />
 
