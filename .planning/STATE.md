@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 50
 current_phase_name: Photo/Reference Track
 status: executing
-stopped_at: Completed 50-03-PLAN.md
-last_updated: "2026-09-01T17:18:18.946Z"
+stopped_at: Completed 50-04-PLAN.md
+last_updated: "2026-09-01T17:30:39.994Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 50 execution started
-state_head: 6c6976108d0fbb57ccaafca0ae092ce91f5b8b09
+state_head: 3f62e6bc2fbcbc239b2438207dd246b574144040
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 37
-  completed_plans: 34
+  completed_plans: 35
   percent: 22
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 50 (Photo/Reference Track) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-09-01 — Phase 50 execution started
 
@@ -99,6 +99,7 @@ Progress: [██░░░░░░░░] 22%
 | Phase 50 P01 | 16 | 2 tasks | 5 files |
 | Phase 50 P02 | 4min | 3 tasks | 3 files |
 | Phase 50 P03 | 12 | 2 tasks | 12 files |
+| Phase 50 P04 | 15min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -219,6 +220,10 @@ Recent decisions affecting current work:
 - [Phase 50]: Reference picker is a second useBackgroundAssetPickerController instance sharing a ports object; only the Confirm handler (replace vs add-clip) and title differ
 - [Phase 50]: Confirm replaces the source via setPhotoReferenceSource with natural-sorted ids (D-02); the replacement capsule note uses publishOperationResult, not setApplyMessage
 - [Phase 50]: BackgroundAssetPickerView gained a title prop (default Import background images) so the same region swap serves both pickers (D-01)
+- [Phase 50]: The reference ghost is a canvas draw (drawReferenceGhost(ctx, document, frame, zoom, isPlaying)) rather than an <img> like the onion overlay — the display transform (position/scale/rotation, D-13) requires canvas translate/rotate/scale
+- [Phase 50]: shouldDrawReferenceGhost bridges getReferenceSourceFrameVerdict through document.parentLayerId (the store function takes a layerId, not a document); the missing-source condition is computed separately (track exists AND verdict null)
+- [Phase 50]: zoom = paperTextureScale (project→working scale) so the reference image (project resolution) fits the working canvas; the ghost layer is a dedicated leaf canvas mounted at z-index 5 above the composite
+- [Phase 50]: The missing-source report uses the existing status capsule (setApplyStatus('error') + 'Missing reference source — use Replace source to re-link.'), independent of the visibility preference
 
 ### Pending Todos
 
@@ -252,6 +257,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 **Resume file:** None
 
-Last session: 2026-09-01T17:18:18.400Z
-Stopped at: Completed 50-03-PLAN.md
+Last session: 2026-09-01T17:30:39.453Z
+Stopped at: Completed 50-04-PLAN.md
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
