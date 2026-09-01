@@ -273,12 +273,35 @@ export function compositeFrame(
       if (raster !== null) {
         // D-04: the Background has no opacity/blend — its draw is a plain
         // destination-over at globalAlpha 1, never re-scaled by track opacity.
-        // Like track rasters, the source image draws scaled to the
-        // project-space composite size.
+        // 49-06 (UAT round 9): the source draws CONTAIN-FIT (preserving its
+        // aspect ratio, centered — never a stretch-to-fill deformation) at the
+        // clip's scale percentages (100 = the contain-fit base). The bars left
+        // by a mismatched ratio reveal the fallback drawn beneath.
+        const clip = document.background.clips.find((candidate) => candidate.id === backgroundResolution.clipId);
+        const scale = clip?.scale ?? { x: 100, y: 100 };
+        // CanvasImageSource has no width/height on the union type — the decoded
+        // source (an <img> or canvas) always exposes them. When they're
+        // unavailable (a test stub) fall back to the pre-49-09 stretch-to-fill.
+        const source = raster as { width: number; height: number };
+        const sourceWidth = source.width;
+        const sourceHeight = source.height;
+        let drawX = 0;
+        let drawY = 0;
+        let drawWidth = size.width;
+        let drawHeight = size.height;
+        if (Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) && sourceWidth > 0 && sourceHeight > 0) {
+          const containScale = Math.min(size.width / sourceWidth, size.height / sourceHeight);
+          const baseWidth = sourceWidth * containScale;
+          const baseHeight = sourceHeight * containScale;
+          drawWidth = baseWidth * (scale.x / 100);
+          drawHeight = baseHeight * (scale.y / 100);
+          drawX = (size.width - drawWidth) / 2;
+          drawY = (size.height - drawHeight) / 2;
+        }
         ctx.save();
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'destination-over';
-        ctx.drawImage(raster, 0, 0, size.width, size.height);
+        ctx.drawImage(raster, drawX, drawY, drawWidth, drawHeight);
         ctx.restore();
       }
     } else if (backgroundResolution.kind === 'missing') {

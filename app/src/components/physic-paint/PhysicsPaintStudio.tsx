@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -19,6 +19,7 @@ import {
   serializeRuntimeIntoDocument,
   setActiveTrackId,
   setBackgroundClipRepeat,
+  setBackgroundClipScale,
   setBackgroundClipSource,
   setBackgroundFallback,
   setTrackBlend,
@@ -2889,6 +2890,8 @@ export function PhysicsPaintStudio() {
   const backgroundClipSectionPortsRef = useRef({
     getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
     setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),
+    // 49-06 (UAT round 9): the resize % control — contain-fit scale percentages.
+    setScale: (layerId: string, clipId: string, scale: FrameLoopClipScale) => setBackgroundClipScale(layerId, clipId, scale),
     deleteClip: (layerId: string, clipId: string) => deleteBackgroundClip(layerId, clipId),
     // 49-06 (UAT round 7): Replace opens the picker targeting the selected clip.
     replaceSource: (_layerId: string, clipId: string) => {

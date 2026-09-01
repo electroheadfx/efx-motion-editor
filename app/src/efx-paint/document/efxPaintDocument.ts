@@ -35,7 +35,19 @@ export type FrameLoopClipRepeat =
   | { readonly mode: 'finite'; readonly count: number }
   | { readonly mode: 'infinite' };
 
-/** One Background Loop Clip (spec sketch: id, startFrame, sourceFrameRefs, repeat, sourceKind, revision). */
+/**
+ * Background Loop Clip scale — percentages (100 = the contain-fit base: the
+ * image scaled to fit the project canvas preserving its aspect ratio). x and y
+ * scale independently; the right-panel Global % control sets both to the same
+ * value. 49-06 (UAT round 9): the compositor draws the source contain-fit and
+ * centered, then applies this scale — never a stretch-to-fill deformation.
+ */
+export interface FrameLoopClipScale {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** One Background Loop Clip (spec sketch: id, startFrame, sourceFrameRefs, repeat, sourceKind, revision, scale). */
 export interface FrameLoopClip {
   readonly id: string;
   readonly startFrame: number;
@@ -43,6 +55,12 @@ export interface FrameLoopClip {
   readonly repeat: FrameLoopClipRepeat;
   readonly sourceKind: 'playscript-hold' | 'imported-background';
   readonly revision: number;
+  /**
+   * 49-06 (UAT round 9): the contain-fit + scale draw percentages. OPTIONAL on
+   * the raw type — older documents lack it; the parser always normalizes it to
+   * 100/100, and consumers fall back to that when absent.
+   */
+  readonly scale?: FrameLoopClipScale;
 }
 
 /** Cached-frame sidecar reference record (sidecar cachePath + width/height). */

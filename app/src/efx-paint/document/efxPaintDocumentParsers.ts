@@ -22,6 +22,7 @@ import {
   type EfxPaintDocument,
   type FrameLoopClip,
   type FrameLoopClipRepeat,
+  type FrameLoopClipScale,
   type InternalPaintTrack,
   type PaperTexture,
 } from './efxPaintDocument';
@@ -44,6 +45,10 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
+function isFinitePositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'compositeRevision']);
 const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity', 'blendMode', 'revision', 'frames', 'rotoPhysical', 'loopClips']);
 const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision']);
@@ -51,9 +56,10 @@ const FALLBACK_TRANSPARENT_KEYS = new Set(['mode']);
 const FALLBACK_SOLID_KEYS = new Set(['mode', 'color']);
 const FALLBACK_PAPER_KEYS = new Set(['mode', 'texture', 'paperGrain', 'grainStrength']);
 const PAPER_TEXTURES = new Set(['canvas1', 'canvas2', 'canvas3']);
-const LOOP_CLIP_KEYS = new Set(['id', 'startFrame', 'sourceFrameRefs', 'repeat', 'sourceKind', 'revision']);
+const LOOP_CLIP_KEYS = new Set(['id', 'startFrame', 'sourceFrameRefs', 'repeat', 'sourceKind', 'revision', 'scale']);
 const REPEAT_FINITE_KEYS = new Set(['mode', 'count']);
 const REPEAT_INFINITE_KEYS = new Set(['mode']);
+const SCALE_KEYS = new Set(['x', 'y']);
 const CACHED_FRAME_REF_KEYS = new Set(['cachePath', 'width', 'height']);
 const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
 
@@ -141,6 +147,21 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
   if (!isNonNegativeInteger(value.revision)) {
     throw new Error('FrameLoopClip: revision must be a non-negative integer.');
   }
+  // 49-06 (UAT round 9): the scale is OPTIONAL — a clip without it (older
+  // documents) defaults to 100/100 (contain-fit, no deformation). When present
+  // it must be a record with finite positive x/y percentages.
+  let scale: FrameLoopClipScale;
+  if (value.scale === undefined) {
+    scale = Object.freeze({ x: 100, y: 100 });
+  } else {
+    if (!isPlainRecord(value.scale) || !hasOnlyKeys(value.scale, SCALE_KEYS)) {
+      throw new Error('FrameLoopClip: scale must contain exactly x, y.');
+    }
+    if (!isFinitePositiveNumber(value.scale.x) || !isFinitePositiveNumber(value.scale.y)) {
+      throw new Error('FrameLoopClip: scale x/y must be finite positive numbers.');
+    }
+    scale = Object.freeze({ x: value.scale.x, y: value.scale.y });
+  }
   return Object.freeze({
     id: value.id,
     startFrame: value.startFrame,
@@ -148,6 +169,7 @@ function parseFrameLoopClip(value: unknown): FrameLoopClip {
     repeat,
     sourceKind: value.sourceKind,
     revision: value.revision,
+    scale,
   });
 }
 

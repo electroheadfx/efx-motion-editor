@@ -1,7 +1,7 @@
 import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { Trash2 } from 'lucide-preact';
-import type { EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat } from '../../../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../../efx-paint/document/efxPaintDocument';
 import type { BackgroundClipMutationResult } from '../../../stores/efxPaintStore';
 
 /**
@@ -35,6 +35,8 @@ export interface PhysicsPaintBackgroundClipSectionPorts {
   setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => BackgroundClipMutationResult;
   /** 49-02 store op: deleteBackgroundClip(layerId, clipId) — no dialog (D-08). */
   deleteClip: (layerId: string, clipId: string) => BackgroundClipMutationResult;
+  /** 49-06 (UAT round 9): setBackgroundClipScale(layerId, clipId, scale). */
+  setScale: (layerId: string, clipId: string, scale: FrameLoopClipScale) => BackgroundClipMutationResult;
   /** 49-06 (UAT round 7): open the picker in replace mode for this clip. */
   replaceSource: (layerId: string, clipId: string) => void;
   /** sourceRef → original filename (D-02: natural order is the stored refs order). */
@@ -55,6 +57,13 @@ export interface PhysicsPaintBackgroundClipSectionController {
   repeatError: Signal<string | null>;
   isInfinite: boolean;
   filenames: string[];
+  scaleXDraft: Signal<string>;
+  scaleYDraft: Signal<string>;
+  scaleGlobalDraft: Signal<string>;
+  scaleError: Signal<string | null>;
+  commitScaleX: () => void;
+  commitScaleY: () => void;
+  commitScaleGlobal: () => void;
   commitRepeat: () => void;
   toggleInfinity: (enabled: boolean) => void;
   handleDelete: () => void;
@@ -63,6 +72,9 @@ export interface PhysicsPaintBackgroundClipSectionController {
 
 /** The locked repeat hint copy (UI-SPEC Copywriting Contract). */
 export const BACKGROUND_REPEAT_HINT = 'Enter a positive integer.';
+
+/** 49-06 (UAT round 9): the locked scale hint copy. */
+export const BACKGROUND_SCALE_HINT = 'Enter a positive number.';
 
 /** PlayScript parseRepeat idiom (D-06): digits only, safe integer >= 1. */
 function parsePositiveInteger(text: string): number | null {
@@ -73,6 +85,15 @@ function parsePositiveInteger(text: string): number | null {
   return count;
 }
 
+/** 49-06 (UAT round 9): a finite positive percentage (decimals allowed). */
+function parsePositiveNumber(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
 export function usePhysicsPaintBackgroundClipSectionController({
   layerId,
   selectedBackgroundClipId,
@@ -80,6 +101,7 @@ export function usePhysicsPaintBackgroundClipSectionController({
 }: PhysicsPaintBackgroundClipSectionProps): PhysicsPaintBackgroundClipSectionController {
   const getDocument = ports.getDocument ?? defaultPorts.getDocument;
   const setRepeat = ports.setRepeat ?? defaultPorts.setRepeat;
+  const setScale = ports.setScale ?? defaultPorts.setScale;
   const deleteClip = ports.deleteClip ?? defaultPorts.deleteClip;
   const replaceSource = ports.replaceSource ?? defaultPorts.replaceSource;
   const resolveFilename = ports.resolveFilename ?? defaultPorts.resolveFilename;
@@ -89,12 +111,57 @@ export function usePhysicsPaintBackgroundClipSectionController({
   const clip = selectedClipId
     ? document?.background.clips.find((candidate) => candidate.id === selectedClipId)
     : undefined;
+  // 49-06 (UAT round 9): the scale is OPTIONAL on the raw clip type (older
+  // documents) — the parser and consumers fall back to 100/100.
+  const clipScale = clip?.scale ?? { x: 100, y: 100 };
 
   // Draft state is keyed by clip id at the mount site, so these signals are
   // created fresh per selected clip (no effect-driven sync needed).
   const repeatDraft = useSignal<string>(clip?.repeat.mode === 'finite' ? String(clip.repeat.count) : '');
   const repeatError = useSignal<string | null>(null);
   const lastFiniteCount = useSignal<number>(clip?.repeat.mode === 'finite' ? clip.repeat.count : 1);
+  // 49-06 (UAT round 9): the scale drafts — X%, Y%, and the Global % that sets
+  // both axes to the same value. Commit on blur/Enter; invalid input never
+  // commits and the prior accepted value stays visible.
+  const scaleXDraft = useSignal<string>(clip ? String(clipScale.x) : '100');
+  const scaleYDraft = useSignal<string>(clip ? String(clipScale.y) : '100');
+  const scaleGlobalDraft = useSignal<string>(clip ? String(clipScale.x) : '100');
+  const scaleError = useSignal<string | null>(null);
+
+  const commitScaleAxis = (axis: 'x' | 'y', draft: Signal<string>) => {
+    if (!clip) return;
+    const value = parsePositiveNumber(draft.value);
+    if (value === null) {
+      scaleError.value = BACKGROUND_SCALE_HINT;
+      draft.value = String(axis === 'x' ? clipScale.x : clipScale.y);
+      return;
+    }
+    const next = axis === 'x' ? { x: value, y: clipScale.y } : { x: clipScale.x, y: value };
+    const result = setScale(layerId, clip.id, next);
+    if (!result.ok) {
+      scaleError.value = BACKGROUND_SCALE_HINT;
+      draft.value = String(axis === 'x' ? clipScale.x : clipScale.y);
+      return;
+    }
+    scaleError.value = null;
+  };
+
+  const commitScaleGlobal = () => {
+    if (!clip) return;
+    const value = parsePositiveNumber(scaleGlobalDraft.value);
+    if (value === null) {
+      scaleError.value = BACKGROUND_SCALE_HINT;
+      scaleGlobalDraft.value = String(clipScale.x);
+      return;
+    }
+    const result = setScale(layerId, clip.id, { x: value, y: value });
+    if (!result.ok) {
+      scaleError.value = BACKGROUND_SCALE_HINT;
+      scaleGlobalDraft.value = String(clipScale.x);
+      return;
+    }
+    scaleError.value = null;
+  };
 
   const commitRepeat = () => {
     if (!clip) return;
@@ -157,6 +224,13 @@ export function usePhysicsPaintBackgroundClipSectionController({
     repeatError,
     isInfinite: clip?.repeat.mode === 'infinite',
     filenames,
+    scaleXDraft,
+    scaleYDraft,
+    scaleGlobalDraft,
+    scaleError,
+    commitScaleX: () => commitScaleAxis('x', scaleXDraft),
+    commitScaleY: () => commitScaleAxis('y', scaleYDraft),
+    commitScaleGlobal,
     commitRepeat,
     toggleInfinity,
     handleDelete,
@@ -165,8 +239,10 @@ export function usePhysicsPaintBackgroundClipSectionController({
 }
 
 export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundClipSectionProps) {
-  const { clip, repeatDraft, repeatError, isInfinite, filenames, commitRepeat, toggleInfinity, handleDelete, handleReplace } =
-    usePhysicsPaintBackgroundClipSectionController(props);
+  const {
+    clip, repeatDraft, repeatError, isInfinite, filenames, commitRepeat, toggleInfinity, handleDelete, handleReplace,
+    scaleXDraft, scaleYDraft, scaleGlobalDraft, scaleError, commitScaleX, commitScaleY, commitScaleGlobal,
+  } = usePhysicsPaintBackgroundClipSectionController(props);
   if (!clip) return null;
   return (
     <section class="physics-paint-right-section physics-paint-bg-clip-section" aria-label="Background Clip">
@@ -217,6 +293,67 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
             {clip.sourceFrameRefs.length} image(s)
           </span>
         </div>
+        {/* 49-06 (UAT round 9): the resize % controls — Global sets both axes,
+            X and Y scale each independently (100 = the contain-fit base). */}
+        <div class="physics-paint-option-row">
+          <span class="physics-paint-right-label">Global %</span>
+          <input
+            class="physics-paint-bg-scale-input"
+            aria-label="Global scale percent"
+            aria-invalid={Boolean(scaleError.value)}
+            inputMode="decimal"
+            value={scaleGlobalDraft.value}
+            onInput={(event) => {
+              scaleError.value = null;
+              scaleGlobalDraft.value = (event.currentTarget as HTMLInputElement).value;
+            }}
+            onBlur={commitScaleGlobal}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitScaleGlobal();
+            }}
+          />
+        </div>
+        <div class="physics-paint-option-row">
+          <span class="physics-paint-right-label">X %</span>
+          <input
+            class="physics-paint-bg-scale-input"
+            aria-label="X scale percent"
+            aria-invalid={Boolean(scaleError.value)}
+            inputMode="decimal"
+            value={scaleXDraft.value}
+            onInput={(event) => {
+              scaleError.value = null;
+              scaleXDraft.value = (event.currentTarget as HTMLInputElement).value;
+            }}
+            onBlur={commitScaleX}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitScaleX();
+            }}
+          />
+        </div>
+        <div class="physics-paint-option-row">
+          <span class="physics-paint-right-label">Y %</span>
+          <input
+            class="physics-paint-bg-scale-input"
+            aria-label="Y scale percent"
+            aria-invalid={Boolean(scaleError.value)}
+            inputMode="decimal"
+            value={scaleYDraft.value}
+            onInput={(event) => {
+              scaleError.value = null;
+              scaleYDraft.value = (event.currentTarget as HTMLInputElement).value;
+            }}
+            onBlur={commitScaleY}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitScaleY();
+            }}
+          />
+        </div>
+        <span
+          class={`physics-paint-bg-repeat-hint${scaleError.value ? ' physics-paint-bg-repeat-hint-error' : ''}`}
+        >
+          {BACKGROUND_SCALE_HINT}
+        </span>
         <div class="physics-paint-bg-clip-actions">
           <button
             type="button"
@@ -246,6 +383,7 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
 const defaultPorts: PhysicsPaintBackgroundClipSectionPorts = {
   getDocument: () => undefined,
   setRepeat: () => ({ ok: false, reason: 'clip-not-found' }),
+  setScale: () => ({ ok: false, reason: 'clip-not-found' }),
   deleteClip: () => ({ ok: false, reason: 'clip-not-found' }),
   replaceSource: () => {},
   resolveFilename: () => undefined,

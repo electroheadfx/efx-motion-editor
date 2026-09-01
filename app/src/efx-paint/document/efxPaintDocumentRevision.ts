@@ -50,6 +50,10 @@ function encodeCanonicalLoopClips(clips: readonly FrameLoopClip[]): string {
       : 'infinite;',
     encodeCanonicalString(clip.sourceKind),
     encodeCanonicalNumber(clip.revision),
+    // 49-06 (UAT round 9): the scale is part of the clip content — a scale
+    // change must rotate the document revision (and thus the flattened cache
+    // key) so the composite re-renders with the new draw size.
+    `scale:${encodeCanonicalNumber((clip.scale ?? { x: 100, y: 100 }).x)}:${encodeCanonicalNumber((clip.scale ?? { x: 100, y: 100 }).y)}`,
   ].join('')).join('')}`;
 }
 

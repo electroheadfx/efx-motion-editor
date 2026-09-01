@@ -7,7 +7,7 @@ import {
   type PhysicsPaintBackgroundClipSectionPorts,
   type PhysicsPaintBackgroundClipSectionProps,
 } from './PhysicsPaintBackgroundClipSection';
-import type { EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat } from '../../../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../../efx-paint/document/efxPaintDocument';
 import type { BackgroundClipMutationResult } from '../../../stores/efxPaintStore';
 
 /**
@@ -85,9 +85,16 @@ function createHarness(initialClips: readonly FrameLoopClip[], selection: string
     return { ok: true, clipId, descriptor: null };
   });
   const replaceSource = vi.fn((_layerId: string, _clipId: string) => {});
+  const setScale = vi.fn((_layerId: string, clipId: string, scale: FrameLoopClipScale): BackgroundClipMutationResult => {
+    const clip = state.clips.find((candidate) => candidate.id === clipId);
+    if (!clip) return { ok: false, reason: 'clip-not-found' };
+    state.clips = state.clips.map((candidate) => (candidate.id === clipId ? { ...candidate, scale } : candidate));
+    return { ok: true, clipId, descriptor: null };
+  });
   const ports: PhysicsPaintBackgroundClipSectionPorts = {
     getDocument: () => makeDocument(state.clips),
     setRepeat,
+    setScale,
     deleteClip,
     replaceSource,
     resolveFilename: (ref) => FILENAMES[ref],

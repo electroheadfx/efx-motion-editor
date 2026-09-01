@@ -14,7 +14,7 @@
  */
 
 import { signal } from '@preact/signals';
-import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -541,6 +541,7 @@ const BACKGROUND_RESOLUTION_CAPACITY = PHYSIC_PAINT_MAX_APPLY_FRAMES;
 export type BackgroundMutationRejectionReason =
   | 'start-collision'
   | 'invalid-repeat'
+  | 'invalid-scale'
   | 'clip-not-found'
   | 'invalid-source-refs';
 
@@ -549,6 +550,7 @@ export type BackgroundEditOperationKind =
   | 'add-background-clip'
   | 'move-background-clip'
   | 'set-background-clip-repeat'
+  | 'set-background-clip-scale'
   | 'resize-background-clip'
   | 'set-background-clip-source'
   | 'delete-background-clip'
@@ -583,6 +585,10 @@ function _isValidStartFrame(value: number): boolean {
 }
 
 /** Repeat contract (BKG-04): finite integers >= 1, or { mode: 'infinite' }. */
+function _isValidScale(scale: FrameLoopClipScale): boolean {
+  return Number.isFinite(scale.x) && scale.x > 0 && Number.isFinite(scale.y) && scale.y > 0;
+}
+
 function _isValidRepeat(repeat: FrameLoopClipRepeat): boolean {
   if (repeat.mode === 'infinite') return true;
   return Number.isInteger(repeat.count) && repeat.count >= 1;
@@ -678,6 +684,9 @@ export function addBackgroundClip(
     repeat: input.repeat,
     sourceKind: 'imported-background',
     revision: 0,
+    // 49-06 (UAT round 9): a fresh clip starts at 100/100 — the image draws
+    // contain-fit (no ratio deformation), centered, at its natural fit size.
+    scale: Object.freeze({ x: 100, y: 100 }),
   };
   const candidate: EfxPaintDocument = {
     ...document,
@@ -786,6 +795,54 @@ export function setBackgroundClipRepeat(
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'set-background-clip-repeat',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Set one Background Loop Clip's draw scale (49-06 UAT round 9): the contain-fit
+ * percentages (100 = the image scaled to fit the project canvas preserving its
+ * aspect ratio). x and y scale independently; the right-panel Global % control
+ * sets both to the same value. Rejects fail-closed on an absent document,
+ * unknown clip, or non-finite/non-positive percentages. A same-value write is a
+ * revision-stable no-op (BKG-09).
+ */
+export function setBackgroundClipScale(
+  layerId: string,
+  clipId: string,
+  scale: FrameLoopClipScale,
+): BackgroundClipMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (!document.background.clips.some((candidate) => candidate.id === clipId)) {
+    return { ok: false, reason: 'clip-not-found' };
+  }
+  if (!_isValidScale(scale)) return { ok: false, reason: 'invalid-scale' };
+  const candidate: EfxPaintDocument = {
+    ...document,
+    background: {
+      ...document.background,
+      clips: _sortClipsByStartFrame(
+        document.background.clips.map((clip) =>
+          clip.id === clipId ? { ...clip, scale: Object.freeze({ x: scale.x, y: scale.y }) } : clip,
+        ),
+      ),
+    },
+  };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, clipId, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    clipId,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-background-clip-scale',
       before: document,
       after: next,
     },

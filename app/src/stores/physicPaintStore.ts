@@ -1631,7 +1631,8 @@ function _resolveFlattenedFrame(
   // renders on some frames of the rail but not others" regression).
   const backgroundClipRevisions = efxDocument.background.clips.map((clip) => {
     const repeatTerm = clip.repeat.mode === 'infinite' ? 'inf' : `x${clip.repeat.count}`;
-    return `${clip.id}:${clip.startFrame}:${repeatTerm}:${clip.revision}`;
+    const scale = clip.scale ?? { x: 100, y: 100 };
+    return `${clip.id}:${clip.startFrame}:${repeatTerm}:${scale.x}:${scale.y}:${clip.revision}`;
   });
   const flattenedKey = deriveEfxPaintFlattenedCacheKey({
     document: efxDocument,

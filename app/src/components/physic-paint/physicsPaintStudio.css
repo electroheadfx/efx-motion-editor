@@ -4360,6 +4360,26 @@ button.destructive {
   opacity: 0.4;
 }
 
+/* 49-06 (UAT round 9): the resize % inputs — same numeric-input geometry as
+   the repeat input, fixed-width so the three rows align. */
+.physics-paint-bg-scale-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid #4a5058;
+  border-radius: 4px;
+  background: #20262d;
+  color: #e5edf8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-bg-scale-input:focus {
+  border-color: #6f90ff;
+  outline: none;
+}
+
 .physics-paint-bg-repeat-infinity {
   flex: 0 0 auto;
   display: inline-flex;
