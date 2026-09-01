@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
+import { physicPaintStore, _setPhysicPaintMarkDirtyCallback, registerReferenceSourceImage, _referenceSourceRevision } from './physicPaintStore';
 import {
   _setEfxPaintMarkDirtyCallback,
   efxPaintVersion,
@@ -148,5 +148,80 @@ describe('photo reference CRUD (50-02 Task 1)', () => {
     expect(getDocument(layerId)!.documentRevision).toBe(revBefore);
     expect(efxPaintVersion.value).toBe(versionBefore);
     expect(dirty).not.toHaveBeenCalled();
+  });
+});
+
+describe('photo reference registry + resolution (50-02 Task 2)', () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  it('resolves frame N to source frame N, clamped at sequence end (D-15)', () => {
+    const layerId = 'layer-photo';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['f0', 'f1', 'f2']);
+    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f1', 'data:f1');
+    registerReferenceSourceImage('f2', 'data:f2');
+
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'f0', dataUrl: 'data:f0', clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toEqual({ ref: 'f1', dataUrl: 'data:f1', clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 2)).toEqual({ ref: 'f2', dataUrl: 'data:f2', clamped: false });
+    // frame 3 clamps to the last source frame (sequence end holds)
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 3)).toEqual({ ref: 'f2', dataUrl: 'data:f2', clamped: true });
+
+    // a single-image track is a cycle of length 1
+    setPhotoReferenceSource(layerId, ['solo']);
+    registerReferenceSourceImage('solo', 'data:solo');
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'solo', dataUrl: 'data:solo', clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 5)).toEqual({ ref: 'solo', dataUrl: 'data:solo', clamped: true });
+  });
+
+  it('missing source resolves to null with a :missing revision suffix (D-04)', () => {
+    const layerId = 'layer-photo';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['present', 'absent']);
+    registerReferenceSourceImage('present', 'data:present');
+
+    // present resolves
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'present', dataUrl: 'data:present', clamped: false });
+    // absent resolves to null (never a placeholder, never silent transparency)
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toBeNull();
+
+    // the revision term carries a :missing suffix for the absent ref
+    const revision = _referenceSourceRevision(getDocument(layerId)!);
+    expect(revision).toContain('present:');
+    expect(revision).toContain('absent:missing');
+  });
+
+  it('_referenceSourceRevision changes on source/dataUrl change, is stable otherwise, and is empty when null', () => {
+    const layerId = 'layer-photo';
+    registerDocument(makeTrackDocument(layerId));
+    // null track → empty term
+    expect(_referenceSourceRevision(getDocument(layerId)!)).toBe('');
+
+    setPhotoReferenceSource(layerId, ['a']);
+    const empty = _referenceSourceRevision(getDocument(layerId)!);
+    expect(empty).toBe('a:missing');
+
+    registerReferenceSourceImage('a', 'data:aaa');
+    const withBytes = _referenceSourceRevision(getDocument(layerId)!);
+    expect(withBytes).not.toBe(empty);
+    expect(withBytes).toContain('a:');
+
+    // stable when the registry is unchanged
+    expect(_referenceSourceRevision(getDocument(layerId)!)).toBe(withBytes);
+
+    // changes when the dataUrl changes
+    registerReferenceSourceImage('a', 'data:bbb');
+    expect(_referenceSourceRevision(getDocument(layerId)!)).not.toBe(withBytes);
+
+    // changes when the source ref is replaced
+    setPhotoReferenceSource(layerId, ['b']);
+    registerReferenceSourceImage('b', 'data:bbb');
+    expect(_referenceSourceRevision(getDocument(layerId)!)).toContain('b:');
   });
 });
