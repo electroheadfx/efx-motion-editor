@@ -447,6 +447,22 @@ export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string
 }
 
 /**
+ * Photo/reference sourceRef → dataUrl registry (50-02 Task 2). A PARALLEL map
+ * to `_backgroundSourceImages` — the reference's fail-closed resolution stays
+ * independent of the Background clip lifecycle (RESEARCH Open Question 2).
+ * Registering bytes bumps the physicPaintVersion clock (so the ghost overlay
+ * re-renders when bytes arrive) but does NOT clear the flattened memo: the
+ * reference never enters the flattened path (D-06), so a reference bytes
+ * arrival must not invalidate the flattened composite.
+ */
+const _referenceSourceImages = new Map<string, string>();
+export function registerReferenceSourceImage(sourceRef: string, dataUrl: string): void {
+  if (_referenceSourceImages.get(sourceRef) === dataUrl) return;
+  _referenceSourceImages.set(sourceRef, dataUrl);
+  physicPaintVersion.value++;
+}
+
+/**
  * 49-02 Task 3 (BKG-09, Pitfall 5): the reopen-path source-byte hydration.
  *
  * The hydration step is the SOLE production writer of the runtime source
@@ -1125,6 +1141,30 @@ function _resolveBackgroundSourceImage(sourceRef: string): HTMLImageElement | nu
   return _compositorDecode(dataUrl);
 }
 
+/** 50-02 Task 2: the frame-aligned reference source verdict for the ghost draw path. */
+export interface ReferenceSourceFrameVerdict {
+  readonly ref: string;
+  readonly dataUrl: string;
+  readonly clamped: boolean;
+}
+
+/**
+ * 50-02 Task 2: frame-aligned fail-closed reference resolution (D-15, D-04).
+ * Application frame N resolves to source frame N, 1:1 from frame 0, clamped at
+ * the sequence end (last source frame holds). A missing source ref resolves to
+ * null (never a placeholder, never silent transparency). Resolution is per
+ * cursor frame, never once at import (Pitfall M5).
+ */
+function _resolveReferenceSourceImage(document: EfxPaintDocument, frame: number): ReferenceSourceFrameVerdict | null {
+  const track = document.photoReference;
+  if (track === null || track.sourceFrameRefs.length === 0) return null;
+  const index = Math.min(frame, track.sourceFrameRefs.length - 1);
+  const ref = track.sourceFrameRefs[index];
+  const dataUrl = _referenceSourceImages.get(ref);
+  if (dataUrl === undefined) return null;
+  return { ref, dataUrl, clamped: index !== frame };
+}
+
 function _getCombinedRotoMetadata(layerId: string, trackId: string): PhysicPaintRotoCacheFrame[] {
   return [
     ...Array.from(_rotoCacheMetadata.get(layerId)?.get(trackId)?.values() ?? []),
@@ -1593,6 +1633,24 @@ function _backgroundSourceRevision(document: EfxPaintDocument): string {
 }
 
 /**
+ * 50-02 Task 2: the runtime reference source-bytes state for ONE document —
+ * `ref:length:prefix` per source ref IN ORDER (the order is meaningful: frame N
+ * → refs[N], D-15), `missing` when the ref has no registered bytes. A null
+ * track contributes an empty term. This term is the deterministic revision the
+ * ghost overlay and the band tooltip consume to detect a source/dataUrl change
+ * (REF-04). Exported as a test seam (underscore-prefixed, like
+ * `_setEfxPaintMarkDirtyCallback`).
+ */
+export function _referenceSourceRevision(document: EfxPaintDocument): string {
+  const track = document.photoReference;
+  if (track === null) return '';
+  return track.sourceFrameRefs.map((ref) => {
+    const dataUrl = _referenceSourceImages.get(ref);
+    return dataUrl === undefined ? `${ref}:missing` : `${ref}:${dataUrl.length}:${dataUrl.slice(0, 64)}`;
+  }).join('|');
+}
+
+/**
  * 48-03 D-11/CMP-01 + 48-05 D-05: one flattened straight-alpha raster per
  * (layerId, frame) over the participating set EXCLUDING `excludeTrackIds`
  * (empty set = the full participating set). Guard-first; on success the
@@ -1812,6 +1870,18 @@ export const physicPaintStore = {
     if (!efxDocument) return 'gap';
     const context = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
     return resolveEfxPaintBackgroundFrame(context, frame, new Set(_backgroundSourceImages.keys())).kind;
+  },
+
+  /**
+   * 50-02 Task 2: the frame-aligned reference source verdict for the ghost draw
+   * path (Plan 50-04) and the band tooltip. Returns null when the layer has no
+   * document, no photo reference track, or the resolved source ref is missing
+   * (D-04 fail-closed).
+   */
+  getReferenceSourceFrameVerdict(layerId: string, frame: number): ReferenceSourceFrameVerdict | null {
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return null;
+    return _resolveReferenceSourceImage(efxDocument, frame);
   },
 
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {
@@ -2309,7 +2379,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -2342,6 +2412,7 @@ export const physicPaintStore = {
     _compositorImageLoading.clear();
     _compositorImageFailed.clear();
     _backgroundSourceImages.clear();
+    _referenceSourceImages.clear();
     trackRevisions.clear();
     _notifyVisualChange();
   },
