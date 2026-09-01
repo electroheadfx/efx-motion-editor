@@ -1706,3 +1706,56 @@ describe('Physics Paint photo reference section mount + Escape re-lock (50-05, S
     expect(compositor).not.toContain('photoReference');
   });
 });
+
+describe('Physics Paint photo reference end-to-end integration contract (50-06, REF-05)', () => {
+  it('wires the full flow: import → Photo row band → ghost → mode → opacity → transform → Escape re-lock → save/reopen', () => {
+    // Import source (D-01/D-03): the Photo row Import/Replace control opens the
+    // reference picker; Confirm replaces the source via setPhotoReferenceSource.
+    expect(studio).toContain('onImportReference: () => referencePicker.openPicker(),');
+    expect(studio).toContain('const result = setPhotoReferenceSource(layerId, sortedIds);');
+    // Photo row band (S1): the passive reference band renders when a source exists.
+    expect(trackRow).toContain('physics-paint-photo-reference-band');
+    expect(trackRow).toContain('aria-label="Reference source"');
+    // Ghost overlay (S3): the ghost draws in the monitor-paint layer seat.
+    expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
+    expect(studioView).toContain('<PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />');
+    // Mode switch (D-05/D-07): the right-panel section routes mode → setPhotoReferenceMode.
+    expect(studio).toContain('setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode)');
+    // Opacity slider (D-12): routes opacity → setPhotoReferenceOpacity.
+    expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
+    // Transform handles (D-13): the overlay writes to setPhotoReferenceTransform.
+    expect(referenceTransformHandles).toContain('setPhotoReferenceTransform');
+    // Escape re-lock (D-13): the keyboard action re-locks the transform.
+    expect(studio).toContain('relockReferenceTransform: () => {');
+    expect(studioKeyboard).toContain('if (actions.relockReferenceTransform?.())');
+    // Save/reopen (REF-05): the reopen path hydrates the reference source bytes.
+    expect(studio).toContain('hydrateReferenceSourceImagesFromLibrary(');
+  });
+
+  it('keeps the reference out of flattened output in every mode — no reference input reaches the compositor, cache, preview, or export (D-06)', () => {
+    // The D-06 exclusion is structural: the compositor, flattened cache, preview
+    // renderer, and export renderer receive NO reference-input threading, so the
+    // reference never reaches flattened output in any mode — even after
+    // save/reopen (the persistence path carries the track, not the raster).
+    const rasterSurface = [compositor, flattenedCache, previewRenderer, exportRenderer].join('\n');
+    const referenceTokens = [
+      'photoReference',
+      'drawReferenceGhost',
+      'getReferenceSourceFrameVerdict',
+      'registerReferenceSourceImage',
+      'setPhotoReferenceSource',
+      'setPhotoReferenceMode',
+      'setPhotoReferenceVisible',
+      'setPhotoReferenceOpacity',
+      'setPhotoReferenceTransform',
+      'setPhotoReferenceTransformLocked',
+      'PhysicsPaintReferenceGhostLayer',
+      'PhysicsPaintReferenceTransformHandles',
+      'PhysicsPaintPhotoReferenceSection',
+      'getReferenceBounds',
+    ];
+    for (const token of referenceTokens) {
+      expect(rasterSurface).not.toContain(token);
+    }
+  });
+});
