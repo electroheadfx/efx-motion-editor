@@ -25,7 +25,7 @@
  */
 
 import type { Ref } from 'preact';
-import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 
 /** Row pitch of the pinned header cells (mirrors the strip's
@@ -109,6 +109,14 @@ export interface PhysicsPaintTrackHeaderColumnProps {
    *  it through the Studio's picker swap signal (49-04 mount). The Bg row is
    *  the only header that carries an import affordance (D-06 lock semantics). */
   readonly onImportBackground?: () => void;
+  /* ---- 50-03 (S1): the fixed Photo row, directly ABOVE the Bg row ---- */
+  /** The document's photo/reference track (null = no source yet). The Photo
+   *  row header always renders — one per document (REF-01). */
+  readonly photoReference?: PhotoReferenceTrack | null;
+  /** The Photo row's eye toggle intent (D-11). */
+  readonly onToggleReferenceVisible?: (visible: boolean) => void;
+  /** The Photo row's Import/Replace control (D-03). */
+  readonly onImportReference?: () => void;
 }
 
 /**
@@ -150,6 +158,9 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     verticalScrollbar,
     onVerticalScrollbarPointerDown,
     onImportBackground,
+    photoReference = null,
+    onToggleReferenceVisible,
+    onImportReference,
   } = props;
   const deletable = tracks.length > 1;
   // 49-06 UAT: while a Bg clip is selected, NO normal track header paints the
@@ -201,6 +212,18 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               aria-hidden="true"
             />
           ) : null}
+          {/* 50-03 (S1): the fixed Photo row — always present, directly ABOVE
+              the Bg row. The track may be null (no source yet); the header
+              still renders with the Import CTA and the lane stays empty. */}
+          <PhysicsPaintTrackRowHeader
+            key={photoReference?.id ?? 'photo-reference-row'}
+            trackId={photoReference?.id ?? 'photo-reference-row'}
+            label="Photo"
+            kind="photo-reference"
+            photoReference={photoReference}
+            onToggleReferenceVisible={onToggleReferenceVisible}
+            onImportReference={onImportReference}
+          />
           {background ? (
             <PhysicsPaintTrackRowHeader
               key={background.id}

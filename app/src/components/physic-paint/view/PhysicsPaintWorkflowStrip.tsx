@@ -115,7 +115,7 @@ import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackg
 import { usePhysicsPaintBackgroundClipResize, type BackgroundClipResizeSource } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
 // requestDeleteTrack preview plus the rename-validation constants — every
 // destructive mutation routes through a controller intent (the delete commit
@@ -423,6 +423,14 @@ export interface PhysicsPaintWorkflowStripProps {
   /** 49-06 (UAT round 2): the placement-target frame — the clicked empty Bg
    *  cell carries a subtle marker. */
   backgroundPlacementFrame?: number | null;
+  /* ---- 50-03 (S1): the fixed Photo row, directly ABOVE the Bg row ---- */
+  /** The document's photo/reference track (null = no source yet). The Photo
+   *  row always renders — one per document (REF-01). */
+  photoReference?: PhotoReferenceTrack | null;
+  /** The Photo row's eye toggle intent (D-11). */
+  onToggleReferenceVisible?: (visible: boolean) => void;
+  /** The Photo row's Import/Replace control (D-03). */
+  onImportReference?: () => void;
 }
 
 const RULER_STEP = 3;
@@ -1230,7 +1238,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const [stripHeightOverride, setStripHeightOverride] = useState<number | null>(null);
   const stripResizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const trackCount = props.tracks?.length ?? 0;
-  const rowCount = trackCount > 0 ? trackCount + (props.background ? 1 : 0) : 1;
+  // 50-03 (S1): the fixed Photo row is always present (one per document), so
+  // the auto strip height reserves one extra row above the Bg row.
+  const rowCount = trackCount > 0 ? trackCount + 1 + (props.background ? 1 : 0) : 1;
   const contentHeightPx = rowCount * STRIP_ROW_HEIGHT_PX;
   const maxStripHeightPx = STRIP_CHROME_HEIGHT_PX + contentHeightPx;
   const minStripHeightPx = STRIP_CHROME_HEIGHT_PX + STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX;
@@ -3882,6 +3892,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // (like a selected track) and blanks every normal track's active
             // highlight — the Bg row reads as THE current selection.
             backgroundSelected: (props.selectedBackgroundClipId ?? null) !== null,
+            // 50-03 (S1): the fixed Photo row header (always present, above Bg).
+            photoReference: props.photoReference ?? null,
+            onToggleReferenceVisible: props.onToggleReferenceVisible,
+            onImportReference: props.onImportReference,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
@@ -3944,6 +3958,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         />
                       ),
                   )}
+                  {/* 50-03 (S1): the fixed Photo row — always present, directly
+                      ABOVE the Bg row. Passive band when a source exists, empty
+                      lane when none (D-06: never a content track). */}
+                  <PhysicsPaintTrackRow
+                    key={props.photoReference?.id ?? 'photo-reference-row'}
+                    trackId={props.photoReference?.id ?? 'photo-reference-row'}
+                    layerId={props.layerId!}
+                    frameCells={frameCells}
+                    kind="photo-reference"
+                    photoReference={props.photoReference ?? null}
+                  />
                   {props.background ? (
                     <PhysicsPaintTrackRow
                       key={props.background.id}

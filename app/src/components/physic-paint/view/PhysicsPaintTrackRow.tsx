@@ -26,7 +26,7 @@
  */
 
 import { useRef } from 'preact/hooks';
-import { Blend, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
+import { Blend, Camera, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { isSoloArmed } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
@@ -44,7 +44,7 @@ import {
   type PhysicsPaintBackgroundClipPresentation,
   type PhysicsPaintGroupSynchronizationDot,
 } from './physicsPaintLoopClipPresentation';
-import type { BackgroundTrack, FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, FrameLoopClip, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type {
   BackgroundClipDragApi,
   BackgroundClipDragGhostState,
@@ -82,7 +82,7 @@ function resolveBackgroundClipCellImages(clip: FrameLoopClip, cellCount: number)
   return images;
 }
 
-export type PhysicsPaintTrackRowKind = 'paint' | 'background';
+export type PhysicsPaintTrackRowKind = 'paint' | 'background' | 'photo-reference';
 
 /**
  * One rail identity on a non-active row, carried to the controller by a
@@ -163,6 +163,12 @@ export interface PhysicsPaintTrackRowProps {
   readonly backgroundClipDragGhost?: BackgroundClipDragGhostState | null;
   /** Live drag preview publication (paint only — never canonical). */
   readonly backgroundClipDragPreview?: BackgroundClipDragPreviewState | null;
+  /* ---- 50-03 (S1): the fixed Photo row's passive reference band ---- */
+  /** The document's photo/reference track — the Photo row renders a passive
+   *  muted band spanning frame 0..parent end when a source exists (D-15 1:1
+   *  law), and an empty lane when none. Never a content track: no rails, no
+   *  clips, no drag, no reorder, no duplicate/delete (D-06). */
+  readonly photoReference?: PhotoReferenceTrack | null;
 }
 
 type TrackRowCellState = 'cached' | 'generated' | 'empty';
@@ -517,10 +523,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     backgroundClipDrag = null,
     backgroundClipResize = null,
     backgroundClipDragGhost = null,
+    photoReference = null,
   } = props;
   const rowClass = [
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
+    kind === 'photo-reference' ? 'physics-paint-track-row-photo-reference' : '',
     visible === false ? 'physics-paint-track-row-hidden' : '',
     crossDestination ? 'physics-paint-track-row-cross-destination' : '',
   ].filter(Boolean).join(' ');
@@ -600,6 +608,14 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             );
           })}
         </div>
+        {/* 50-03 (S1): the Photo row's passive reference band — a muted
+            full-range bar spanning frame 0..parent end when a source exists
+            (D-15 1:1 law), empty lane when none. Pure feedback: no rails, no
+            clips, no drag, no hit target — the reference is never a content
+            track (D-06). */}
+        {kind === 'photo-reference' && photoReference && photoReference.sourceFrameRefs.length > 0 ? (
+          <div class="physics-paint-photo-reference-band" role="group" aria-label="Reference source" />
+        ) : null}
         {/* Always-on read-only rails (47 close-out UAT round 4): the SAME
             classes the active lane's rails render — a read-only rail-target
             wrapper (12px band) holding the family's segment, so caps, colors
@@ -789,6 +805,15 @@ export interface PhysicsPaintTrackRowHeaderProps {
    *  The locked Background row carries no reorder grab, no duplicate/delete
    *  hover actions (47-CONTEXT D-06); Import is its single affordance. */
   readonly onImportBackground?: () => void;
+  /* ---- 50-03 (S1): the fixed Photo row header ---- */
+  /** The document's photo/reference track — drives the eye toggle's pressed
+   *  state and the Import/Replace CTA label (D-03). Null = no source yet. */
+  readonly photoReference?: PhotoReferenceTrack | null;
+  /** The Photo row's eye toggle intent — routes through setPhotoReferenceVisible
+   *  (D-11, a display preference, never a document mutation). */
+  readonly onToggleReferenceVisible?: (visible: boolean) => void;
+  /** The Photo row's Import/Replace control — opens the reference picker (D-03). */
+  readonly onImportReference?: () => void;
 }
 
 /**
@@ -829,9 +854,13 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onToggleTools,
     onCloseTools,
     onImportBackground,
+    photoReference = null,
+    onToggleReferenceVisible,
+    onImportReference,
   } = props;
   const isActive = activeTrackId === trackId;
   const isBackground = kind === 'background';
+  const isPhotoReference = kind === 'photo-reference';
   // 47 UAT: the per-row frame-blending toggle reads THIS track's canonical
   // interpolation state (same store read the toolbox toggle uses, keyed by
   // the row's own trackId — never the active track's, T-47-04).
@@ -841,6 +870,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     isActive ? 'physics-paint-track-row-header-active' : '',
     isBackground ? 'physics-paint-track-row-header-background' : '',
     isBackground && selected ? 'physics-paint-track-row-header-selected' : '',
+    isPhotoReference ? 'physics-paint-track-row-header-photo-reference' : '',
   ].filter(Boolean).join(' ');
   if (isBackground) {
     // The Background row is not selectable and has no hover capability for now
@@ -874,6 +904,50 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           aria-label="Import images"
           title="Import images"
           onClick={() => onImportBackground?.()}
+        >
+          <ImagePlus size={14} aria-hidden="true" />
+        </button>
+      </div>
+    );
+  }
+  if (isPhotoReference) {
+    // 50-03 (S1): the Photo row is NOT selectable as a track (no role=button,
+    // no tabIndex, no click/keyboard selection) — the photo/reference track is
+    // never the active Paint track (D-06, not a content track). The header
+    // mirrors the Bg header but with a camera glyph (NEVER the Bg checker
+    // swatch), the eye toggle driving visibleInStudio (D-11), and the
+    // Import/Replace control (D-03).
+    const hasSource = photoReference !== null && photoReference.sourceFrameRefs.length > 0;
+    const visibleInStudio = photoReference?.visibleInStudio ?? false;
+    return (
+      <div
+        class={headerClass}
+        data-track-id={trackId}
+        aria-label={`${label} row`}
+      >
+        <span class="physics-paint-photo-reference-glyph" aria-hidden="true">
+          <Camera size={12} />
+        </span>
+        <span class="physics-paint-track-row-label">{label}</span>
+        <span class="physics-paint-track-row-lock" title="Reference layer — fixed position" aria-hidden="true">
+          <Lock size={12} />
+        </span>
+        <button
+          type="button"
+          class="physics-paint-track-row-tool-button"
+          aria-label="Toggle reference visibility"
+          aria-pressed={visibleInStudio ? 'true' : 'false'}
+          title={visibleInStudio ? 'Hide reference' : 'Show reference'}
+          onClick={() => onToggleReferenceVisible?.(!visibleInStudio)}
+        >
+          {visibleInStudio ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
+        </button>
+        <button
+          type="button"
+          class="physics-paint-bg-import-button"
+          aria-label={hasSource ? 'Replace source' : 'Import images'}
+          title={hasSource ? 'Replace source' : 'Import images'}
+          onClick={() => onImportReference?.()}
         >
           <ImagePlus size={14} aria-hidden="true" />
         </button>

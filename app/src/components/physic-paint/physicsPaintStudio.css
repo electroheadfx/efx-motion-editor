@@ -3978,6 +3978,49 @@ button.destructive {
   background: #3c3e40;
 }
 
+/* 50-03 (S1): the fixed Photo row header — the same muted fixed-row tone as
+   the Bg header, but never selectable (no role=button, no tab-select). */
+.physics-paint-track-row-header-photo-reference {
+  background: #3c3e40;
+  cursor: default;
+}
+
+.physics-paint-track-row-header-photo-reference:hover {
+  background: #3c3e40;
+}
+
+/* 50-03 (S1): the Photo row's identity glyph — a camera icon, NEVER the Bg
+   checker swatch (spec stop condition: Background confused with the
+   photo/reference track). */
+.physics-paint-photo-reference-glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #8a939c;
+}
+
+/* 50-03 (S1): the fixed Photo row lane — muted tone, never a select target
+   (the reference is not a content track, D-06). */
+.physics-paint-track-row-photo-reference {
+  background: #3c3e40;
+  cursor: default;
+}
+
+/* 50-03 (S1): the passive reference band — a muted desaturated full-range bar
+   spanning frame 0..parent end when a source exists (D-15 1:1 law). Distinct
+   from every Paint rail color (no purple/cyan, no orange, no status colors);
+   presence/absence is the only signal. Pure feedback: no hit target. */
+.physics-paint-photo-reference-band {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: #5a5e62;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 .physics-paint-track-row-label {
   flex: 1 1 auto;
   min-width: 0;
