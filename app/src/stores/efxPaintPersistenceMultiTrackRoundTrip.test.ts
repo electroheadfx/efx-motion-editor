@@ -12,6 +12,12 @@ import {
   registerDocument,
   reset,
   serializeRuntimeIntoDocument,
+  setPhotoReferenceMode,
+  setPhotoReferenceOpacity,
+  setPhotoReferenceSource,
+  setPhotoReferenceTransform,
+  setPhotoReferenceTransformLocked,
+  setPhotoReferenceVisible,
 } from './efxPaintStore';
 
 const TEST_TRACK_ID = 'track-1';
@@ -109,5 +115,58 @@ describe('47-01: multi-track persistence round-trip (user scenario — added tra
     expect(physicPaintStore.getRotoRealKeyRecords('layer-L', newTrackId).map((record) => record.keyId))
       .toEqual(['new-key-1', 'new-key-2']);
     expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).size).toBe(1);
+  });
+});
+
+describe('50-06: photo reference track round-trip (REF-05 — save/reopen preserves all fields)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setEfxPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    reset();
+  });
+
+  it('photo reference track survives serialize → parse → hydrate with all seven fields intact and idempotent', () => {
+    const document = makeTrackDocument('layer-L');
+    registerDocument(document);
+
+    // Establish a full photo/reference track via the Plan 50-02 setters: the
+    // source cycle (natural filename sort order), the mode (a document
+    // mutation), and the four display preferences (visibleInStudio, opacity,
+    // transform, transformLocked).
+    expect(setPhotoReferenceSource('layer-L', ['shot_1', 'shot_2', 'shot_10']).ok).toBe(true);
+    expect(setPhotoReferenceMode('layer-L', 'reveal-source').ok).toBe(true);
+    expect(setPhotoReferenceOpacity('layer-L', 0.8).ok).toBe(true);
+    expect(setPhotoReferenceVisible('layer-L', false).ok).toBe(true);
+    expect(setPhotoReferenceTransform('layer-L', { x: 12, y: 34, scaleX: 1.5, scaleY: 0.75, rotation: 0.3 }).ok).toBe(true);
+    expect(setPhotoReferenceTransformLocked('layer-L', false).ok).toBe(true);
+
+    const preSave = getDocument('layer-L')?.photoReference;
+    expect(preSave).toBeDefined();
+
+    // Serialize → parse → hydrate (the reopen path).
+    const projected = serializeRuntimeIntoDocument('layer-L');
+    const parsed = parseEfxPaintDocument(projected);
+    physicPaintStore.reset();
+    hydrateRuntimeFromDocument(parsed, new Map<string, Map<number, PhysicPaintRenderedFrame>>());
+
+    // The hydrated document's photoReference deep-equals the pre-save track on
+    // ALL fields (id, sourceFrameRefs, mode, revision, visibleInStudio, opacity,
+    // transform, transformLocked).
+    expect(parsed.photoReference).toEqual(preSave);
+
+    // Explicit per-field contract (REF-05 success criterion 5 + D-11/D-12/D-13):
+    // the display-preference fields survive alongside the mutation fields.
+    expect(parsed.photoReference?.sourceFrameRefs).toEqual(['shot_1', 'shot_2', 'shot_10']);
+    expect(parsed.photoReference?.mode).toBe('reveal-source');
+    expect(parsed.photoReference?.visibleInStudio).toBe(false);
+    expect(parsed.photoReference?.opacity).toBe(0.8);
+    expect(parsed.photoReference?.transform).toEqual({ x: 12, y: 34, scaleX: 1.5, scaleY: 0.75, rotation: 0.3 });
+    expect(parsed.photoReference?.transformLocked).toBe(false);
+    expect(parsed.photoReference?.revision).toBe(1);
+
+    // Idempotency: serialize → hydrate → serialize is stable (REF-05 probe).
+    const reserialized = serializeRuntimeIntoDocument('layer-L');
+    expect(reserialized.photoReference).toEqual(parsed.photoReference);
   });
 });
