@@ -1603,7 +1603,15 @@ function _resolveFlattenedFrame(
     const revision = _trackContentRevision(layerId, track.id, frame);
     if (revision !== null) trackContentRevisions.set(track.id, revision);
   }
-  const backgroundClipRevisions = efxDocument.background.clips.map((clip) => `${clip.id}:${clip.revision}`);
+  // 49-06 (UAT round 9): the clip term MUST cover startFrame + repeat too —
+  // `clip.revision` is only bumped by setBackgroundClipSource, so a move or
+  // resize left the flattened key stable, the memo served a stale record, and
+  // the monitor's compare-then-draw guard skipped the redraw (the "image
+  // renders on some frames of the rail but not others" regression).
+  const backgroundClipRevisions = efxDocument.background.clips.map((clip) => {
+    const repeatTerm = clip.repeat.mode === 'infinite' ? 'inf' : `x${clip.repeat.count}`;
+    return `${clip.id}:${clip.startFrame}:${repeatTerm}:${clip.revision}`;
+  });
   const flattenedKey = deriveEfxPaintFlattenedCacheKey({
     document: efxDocument,
     trackContentRevisions,

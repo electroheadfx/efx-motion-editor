@@ -3594,6 +3594,14 @@ export function PhysicsPaintStudio() {
         // 49-05 (Task 2, S4): a click on a Bg clip rail routes clip selection
         // to the right-panel `Background Clip` section (consumed by 49-06).
         onSelectBackgroundClip: multiTrackRowBundle.onSelectBackgroundClip,
+        // 49-06 (UAT round 9): the selected Bg clip id + placement frame MUST
+        // be forwarded here too — the strip/row read them to paint the orange
+        // selected rail and the placement marker. Dropping them (as rounds 1-8
+        // did) makes the rail never render selected no matter how the user
+        // clicks, drags, or resizes.
+        onSelectBackgroundFrame: multiTrackRowBundle.onSelectBackgroundFrame,
+        selectedBackgroundClipId: multiTrackRowBundle.selectedBackgroundClipId,
+        backgroundPlacementFrame: multiTrackRowBundle.backgroundPlacementFrame,
         // 47 close-out UAT round 7: the one-click cross-track selection intents
         // — an EXPLICIT field list, so a bundle field that isn't forwarded here
         // silently dies (rounds 5-7's intents were computed but dropped, and
