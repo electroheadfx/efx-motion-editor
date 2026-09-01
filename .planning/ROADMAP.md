@@ -393,7 +393,15 @@ Plans:
   4. Missing source is visible and recoverable; source revision invalidates dependent Reveal/transformation results.
   5. Save/reopen preserves source identity and mode.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 50-01-PLAN.md — PhotoReferenceTrack model + fail-closed parser + canonical revision encoder (REF-01, REF-05)
+- [ ] 50-02-PLAN.md — store CRUD + source registry + frame-aligned resolution + D-06 exclusion + serialize/hydrate (REF-02, REF-03, REF-04)
+- [ ] 50-03-PLAN.md — Photo row + reference picker import with natural sort and replace (REF-01, REF-04)
+- [ ] 50-04-PLAN.md — ghost draw + missing-source capsule (REF-03, REF-04)
+- [ ] 50-05-PLAN.md — right-panel section + reference transform (REF-02, REF-03)
+- [ ] 50-06-PLAN.md — persistence round-trip + native UAT (REF-05)
 
 ### Phase 51: Read-only Audio Preview
 
