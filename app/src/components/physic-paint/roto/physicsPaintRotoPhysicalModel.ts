@@ -276,6 +276,13 @@ export interface PhysicPaintRotoLoopClip {
   readonly sourceKeyIds: readonly string[];
   readonly repeat: number | 'infinity';
   readonly mode: 'progressive' | 'static';
+  /**
+   * Rail-kind discriminator (Phase 52, D-03/D-26): the reveal rail is a NEW
+   * member of the existing Loop Clip record family. Absent means `'playscript'`
+   * (existing records — no migration, no default serialization change);
+   * `'reveal'` marks a reveal rail whose baked keys are the source cycle.
+   */
+  readonly railKind?: 'playscript' | 'reveal';
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
@@ -391,6 +398,7 @@ const PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS = new Set([
 ]);
 const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
   ...PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS,
+  'railKind',
   'scriptId',
   'motion',
   'overrideColor',
@@ -629,6 +637,9 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
     if (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1) return false;
   }
   if (value.mode !== 'progressive' && value.mode !== 'static') return false;
+  // 52-01 (D-03): railKind is a fail-closed allowlist — absent means
+  // 'playscript' (existing records), unknown values are rejected.
+  if (value.railKind !== undefined && value.railKind !== 'playscript' && value.railKind !== 'reveal') return false;
   // 43-06 provenance: all-or-nothing — any provenance key requires all three.
   const hasProvenance = value.scriptId !== undefined || value.motion !== undefined || value.overrideColor !== undefined;
   if (hasProvenance) {
@@ -709,6 +720,7 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       sourceKeyIds: Object.freeze([...entry.sourceKeyIds]),
       repeat: entry.repeat,
       mode: entry.mode,
+      ...(entry.railKind !== undefined ? { railKind: entry.railKind } : {}),
       ...(entry.scriptId !== undefined
         ? {
             scriptId: entry.scriptId,
@@ -1070,6 +1082,10 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
     ...clip.sourceKeyIds.map(encodeCanonicalString),
     clip.repeat === 'infinity' ? encodeCanonicalString('infinity') : encodeCanonicalNumber(clip.repeat),
     encodeCanonicalString(clip.mode),
+    // 52-01 (D-03): the rail-kind discriminator joins the fingerprint when
+    // present — a reveal rail and a playscript rail with identical cycles are
+    // distinct content.
+    ...(clip.railKind !== undefined ? [encodeCanonicalString(clip.railKind)] : []),
     // 43-06 provenance joins the fingerprint when present (all-or-nothing).
     ...(clip.scriptId !== undefined
       ? [

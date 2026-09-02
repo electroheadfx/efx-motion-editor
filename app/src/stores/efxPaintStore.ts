@@ -18,10 +18,13 @@ import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReferen
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
-import { bumpTrackRevision, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
+import { bumpTrackRevision, commitRevealBake, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -557,7 +560,15 @@ export type BackgroundEditOperationKind =
   | 'set-background-fallback'
   | 'set-photo-reference-source'
   | 'set-photo-reference-mode'
-  | 'clear-photo-reference';
+  | 'clear-photo-reference'
+  // 52-01 (RVL-06): the reveal rail mutations — each committed reveal op is one
+  // undo-ledger entry by reference. 'reveal-create' is emitted by the create
+  // mutation; 'reveal-replay'/'reveal-delete'/'reveal-span' are reserved for the
+  // later plans that wire the replay/delete/span-edit surfaces.
+  | 'reveal-create'
+  | 'reveal-replay'
+  | 'reveal-delete'
+  | 'reveal-span';
 
 /**
  * Acceptance descriptor emitted by every committed Background op (BKG-08).
@@ -1277,6 +1288,332 @@ export function clearPhotoReference(layerId: string): PhotoReferenceMutationResu
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'clear-photo-reference',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+// ============================================================================
+// Reveal rail CRUD (52-01 Task 1, D-01/D-03/D-11)
+// ============================================================================
+//
+// The reveal rail is the 4th rail kind on the single track type: a
+// `PhysicPaintRotoLoopClip`-shaped record with `railKind: 'reveal'` whose
+// baked keys are the source cycle. Creating the rail IS the first bake (D-11):
+// the mutation loads the library script snapshot, runs the bake commit path in
+// physicPaintStore (which reads the reference via `_resolveReferenceSourceImage`
+// and commits the baked `PhysicPaintRotoRealKeyRecord`s through the existing
+// acknowledged physical-edit transaction), then builds the immutable next
+// document with the new Loop Clip record and records ONE undo-ledger entry by
+// reference (RVL-06).
+
+/** Loads a library script snapshot by id for the reveal bake (D-10: the rail references the library script, never a copy). */
+export type RevealRailScriptLoader = (scriptId: string) => Promise<RotoPaintScript | null>;
+
+let _revealScriptLoader: RevealRailScriptLoader | null = null;
+
+/** Inject the reveal script loader (wired from the SCRIPTS library controller). */
+export function _setEfxPaintRevealScriptLoader(loader: RevealRailScriptLoader | null): void {
+  _revealScriptLoader = loader;
+}
+
+/** Closed rejection-reason union for the reveal rail mutations. */
+export type RevealRailMutationRejectionReason =
+  | 'no-document'
+  | 'no-photo-reference'
+  | 'no-track'
+  | 'script-loader-unavailable'
+  | 'script-not-found'
+  | 'invalid-variant'
+  | 'invalid-span'
+  | 'bake-failed'
+  | 'loop-clip-failed';
+
+/** Result of a reveal rail mutation (create/replay/delete/span). */
+export type RevealRailMutationResult =
+  | { readonly ok: true; readonly descriptor: BackgroundEditDescriptor | null }
+  | { readonly ok: false; readonly reason: RevealRailMutationRejectionReason };
+
+/**
+ * Create a reveal rail on one track AND bake it in one action (D-11). Fail-closes
+ * when the document, the photo reference, or the target track is absent (D-12
+ * creation guard), when the variant is outside the locked union, when the span is
+ * malformed, or when the library script cannot be loaded (D-13). The bake commit
+ * path runs first (reference resolved frame-aligned, fail-closed on missing);
+ * only after the keys are committed does the mutation build the next document
+ * with the new `railKind: 'reveal'` Loop Clip record (sourceKeyIds = the baked
+ * key ids), bump `documentRevision`, and record ONE `'reveal-create'` undo entry
+ * by reference.
+ */
+export async function createRevealRail(
+  layerId: string,
+  input: {
+    trackId: string;
+    scriptId: string;
+    variant: 'progressive' | 'static';
+    startFrame: number;
+    frameCount: number;
+    signal?: AbortSignal;
+    onProgress?: (completed: number, total: number) => void;
+  },
+): Promise<RevealRailMutationResult> {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (document.photoReference === null) return { ok: false, reason: 'no-photo-reference' };
+  if (!document.tracks.some((candidate) => candidate.id === input.trackId)) return { ok: false, reason: 'no-track' };
+  if (input.variant !== 'progressive' && input.variant !== 'static') return { ok: false, reason: 'invalid-variant' };
+  if (!Number.isInteger(input.startFrame) || input.startFrame < 0) return { ok: false, reason: 'invalid-span' };
+  if (!Number.isInteger(input.frameCount) || input.frameCount < 1) return { ok: false, reason: 'invalid-span' };
+  if (!_revealScriptLoader) return { ok: false, reason: 'script-loader-unavailable' };
+  const script = await _revealScriptLoader(input.scriptId);
+  if (!script) return { ok: false, reason: 'script-not-found' };
+
+  // Creation IS the first bake (D-11): the bake commit path reads the reference
+  // via `_resolveReferenceSourceImage` (frame-aligned, null-on-missing → fail-closed)
+  // and commits the baked records through the acknowledged physical-edit transaction.
+  const bakeResult = await commitRevealBake({
+    layerId,
+    trackId: input.trackId,
+    script,
+    frameCount: input.frameCount,
+    canonicalStart: input.startFrame,
+    motion: { deformation: 0, position: 0 },
+    mode: input.variant,
+    signal: input.signal ?? new AbortController().signal,
+    onProgress: input.onProgress,
+  });
+  if (!bakeResult.ok) return { ok: false, reason: 'bake-failed' };
+
+  // The rail record: a `PhysicPaintRotoLoopClip`-shaped member of the existing
+  // family, discriminated by `railKind: 'reveal'` (D-03). The baked keys are the
+  // source cycle; repeat/endless derives at read time (D-08).
+  const loopClip: PhysicPaintRotoLoopClip = {
+    loopId: createPhysicPaintRotoKeyId(),
+    placementStart: input.startFrame,
+    sourceKeyIds: bakeResult.records.map((record) => record.keyId),
+    repeat: 1,
+    mode: input.variant,
+    railKind: 'reveal',
+    scriptId: input.scriptId,
+    // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+  };
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, input.trackId);
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, input.trackId, [...currentLoopClips, loopClip]);
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+
+  // Build the immutable next document: re-project the target track's runtime
+  // (the runtime is the authority — the baked keys + the new Loop Clip ride the
+  // rotoPhysical projection), bump documentRevision, record the undo entry.
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) => {
+      if (current.id !== input.trackId) return current;
+      const rotoPhysical = physicPaintStore.extractRuntimeStateForDocument(layerId, input.trackId).rotoPhysical;
+      return { ...current, rotoPhysical };
+    }),
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'reveal-create',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/** Locate the reveal rail record + its owning track id, or null when absent. */
+function _findRevealRail(
+  document: EfxPaintDocument,
+  layerId: string,
+  loopId: string,
+): { trackId: string; clip: PhysicPaintRotoLoopClip } | null {
+  for (const track of document.tracks) {
+    const clips = physicPaintStore.getRotoPhysicalLoopClips(layerId, track.id);
+    const found = clips.find((clip) => clip.loopId === loopId && clip.railKind === 'reveal');
+    if (found) return { trackId: track.id, clip: found };
+  }
+  return null;
+}
+
+/** Re-project one track's runtime into the document rotoPhysical projection. */
+function _projectTrackRotoPhysical(layerId: string, trackId: string): Pick<InternalPaintTrack, 'rotoPhysical'> {
+  return { rotoPhysical: physicPaintStore.extractRuntimeStateForDocument(layerId, trackId).rotoPhysical };
+}
+
+/**
+ * Replay a reveal rail (D-05/D-11): re-bakes the rail span from the current
+ * script + reference, OVERWRITING every baked key in the span (hand edits are
+ * replaced — recovery is via undo, never partial refresh). One undo-ledger
+ * entry (`'reveal-replay'`) restores the prior baked keys including hand edits.
+ * Fail-closes when the reference was removed after creation (D-12) or the
+ * library script was deleted (D-13) — no keys written, existing keys untouched.
+ */
+export async function replayRevealRail(
+  layerId: string,
+  loopId: string,
+  input: { signal?: AbortSignal; onProgress?: (completed: number, total: number) => void } = {},
+): Promise<RevealRailMutationResult> {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (document.photoReference === null) return { ok: false, reason: 'no-photo-reference' };
+  const rail = _findRevealRail(document, layerId, loopId);
+  if (!rail) return { ok: false, reason: 'no-track' };
+  if (!_revealScriptLoader) return { ok: false, reason: 'script-loader-unavailable' };
+  const script = await _revealScriptLoader(rail.clip.scriptId ?? '');
+  if (!script) return { ok: false, reason: 'script-not-found' };
+
+  const frameCount = rail.clip.sourceKeyIds.length;
+  const bakeResult = await commitRevealBake({
+    layerId,
+    trackId: rail.trackId,
+    script,
+    frameCount,
+    canonicalStart: rail.clip.placementStart,
+    motion: rail.clip.motion ?? { deformation: 0, position: 0 },
+    mode: rail.clip.mode,
+    signal: input.signal ?? new AbortController().signal,
+    onProgress: input.onProgress,
+  });
+  if (!bakeResult.ok) return { ok: false, reason: 'bake-failed' };
+
+  const updatedClip: PhysicPaintRotoLoopClip = {
+    ...rail.clip,
+    sourceKeyIds: bakeResult.records.map((record) => record.keyId),
+  };
+  const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
+    layerId,
+    rail.trackId,
+    currentClips.map((clip) => (clip.loopId === loopId ? updatedClip : clip)),
+  );
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) =>
+      current.id === rail.trackId ? { ...current, ..._projectTrackRotoPhysical(layerId, rail.trackId) } : current,
+    ),
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'reveal-replay',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Delete a reveal rail (D-06): removes the rail AND its baked keys as one unit
+ * (rail, baked keys, and span move and delete together). One undo-ledger entry
+ * (`'reveal-delete'`) restores the whole unit by reference.
+ */
+export function deleteRevealRail(layerId: string, loopId: string): RevealRailMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  const rail = _findRevealRail(document, layerId, loopId);
+  if (!rail) return { ok: false, reason: 'no-track' };
+
+  const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
+    layerId,
+    rail.trackId,
+    currentClips.filter((clip) => clip.loopId !== loopId),
+  );
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+
+  const keyIdSet = new Set(rail.clip.sourceKeyIds);
+  const records = physicPaintStore.getRotoRealKeyRecords(layerId, rail.trackId);
+  const remaining = records.filter((record) => !keyIdSet.has(record.keyId));
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, rail.trackId);
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
+  const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);
+  if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
+
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) =>
+      current.id === rail.trackId ? { ...current, ..._projectTrackRotoPhysical(layerId, rail.trackId) } : current,
+    ),
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'reveal-delete',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * Resize a reveal rail's span (D-07): SHORTENING deletes the baked keys now
+ * outside the span (undo recovers); stretching keeps existing keys and leaves
+ * the new frames empty until a voluntary Replay. One undo-ledger entry
+ * (`'reveal-span'`) restores the prior span + keys by reference.
+ */
+export function resizeRevealRail(layerId: string, loopId: string, newEndExclusive: number): RevealRailMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  const rail = _findRevealRail(document, layerId, loopId);
+  if (!rail) return { ok: false, reason: 'no-track' };
+  if (!Number.isInteger(newEndExclusive) || newEndExclusive <= rail.clip.placementStart) {
+    return { ok: false, reason: 'invalid-span' };
+  }
+
+  // Shorten deletes the baked keys now outside the span (D-07).
+  const keyIdSet = new Set(rail.clip.sourceKeyIds);
+  const records = physicPaintStore.getRotoRealKeyRecords(layerId, rail.trackId);
+  const remaining = records.filter((record) => {
+    if (!keyIdSet.has(record.keyId)) return true;
+    return record.appFrame < newEndExclusive;
+  });
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, rail.trackId);
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
+  const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);
+  if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
+
+  const survivingKeyIds = rail.clip.sourceKeyIds.filter((keyId) => remaining.some((record) => record.keyId === keyId));
+  const updatedClip: PhysicPaintRotoLoopClip = { ...rail.clip, sourceKeyIds: survivingKeyIds };
+  const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
+    layerId,
+    rail.trackId,
+    currentClips.map((clip) => (clip.loopId === loopId ? updatedClip : clip)),
+  );
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) =>
+      current.id === rail.trackId ? { ...current, ..._projectTrackRotoPhysical(layerId, rail.trackId) } : current,
+    ),
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'reveal-span',
       before: document,
       after: next,
     },

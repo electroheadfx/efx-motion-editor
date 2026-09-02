@@ -73,6 +73,9 @@ import {
   type RotoRailSetPasteImpact,
 } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
+import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
+import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
+import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -1229,6 +1232,101 @@ function _resolveReferenceSourceImage(document: EfxPaintDocument, frame: number)
   const dataUrl = _referenceSourceImages.get(ref);
   if (dataUrl === undefined) return null;
   return { ref, dataUrl, clamped: index !== frame };
+}
+
+// ---------------------------------------------------------------------------
+// 52-01 (D-01/D-11/D-12): the reveal bake commit path.
+//
+// The bake reads the reference via `_resolveReferenceSourceImage` (frame-aligned,
+// null-on-missing → fail-closed) plus the reference transform — NEVER the
+// composited preview (Pitfall 2, T-52-01). It runs the reveal bake render
+// function and commits the resulting `PhysicPaintRotoRealKeyRecord`s through the
+// existing acknowledged physical-edit transaction (`replaceRotoPhysicalRecords`,
+// which revalidates the canonical revision before any write — T-52-02). The
+// span's prior records are replaced (D-05/D-17); records outside the span are
+// preserved. An interrupted or aborted bake writes no keys (D-11).
+// ---------------------------------------------------------------------------
+
+/** Input to the reveal bake commit path (52-01 Task 1 step 4). */
+export interface RevealBakeInput {
+  layerId: string;
+  trackId: string;
+  script: RotoPaintScript;
+  frameCount: number;
+  canonicalStart: number;
+  motion: Readonly<{ deformation: number; position: number }>;
+  mode: 'progressive' | 'static';
+  signal: AbortSignal;
+  onProgress?: (completed: number, total: number) => void;
+}
+
+/** Closed result of the reveal bake commit path. */
+export type RevealBakeResult =
+  | { ok: true; records: readonly PhysicPaintRotoRealKeyRecord[] }
+  | { ok: false; error: string };
+
+export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBakeResult> {
+  const document = getEfxPaintDocument(input.layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  const track = document.photoReference;
+  if (track === null) return { ok: false, error: 'no photo reference' };
+
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(input.layerId, input.trackId);
+  if (input.canonicalStart + input.frameCount > capacity) {
+    return { ok: false, error: 'reveal span exceeds capacity' };
+  }
+
+  // Frame-aligned reference resolution (D-15): null-on-missing fails closed —
+  // a missing reference must never bake garbage (D-12, T-52-01).
+  const verdict = _resolveReferenceSourceImage(document, input.canonicalStart);
+  if (verdict === null) return { ok: false, error: 'missing reference source' };
+
+  const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+  let staged;
+  try {
+    staged = await renderRotoRevealFrames({
+      script: input.script,
+      frameCount: input.frameCount,
+      canonicalStart: input.canonicalStart,
+      motion: input.motion,
+      mode: input.mode,
+      size,
+      reference: { dataUrl: verdict.dataUrl, transform: track.transform },
+      signal: input.signal,
+      onProgress: input.onProgress,
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'reveal bake failed' };
+  }
+
+  const bakedRecords: PhysicPaintRotoRealKeyRecord[] = staged.map((frame) => ({
+    kind: 'real-key',
+    keyId: createPhysicPaintRotoKeyId(),
+    appFrame: frame.appFrame,
+    payload: {
+      frameIndex: frame.frameIndex,
+      appFrame: frame.appFrame,
+      dataUrl: frame.dataUrl,
+      width: frame.width,
+      height: frame.height,
+    },
+  }));
+
+  // D-05/D-17: the bake replaces the span's records (the defining paint strokes
+  // are the generation medium); records outside the span are preserved.
+  const existingRecords = physicPaintStore.getRotoRealKeyRecords(input.layerId, input.trackId);
+  const spanStart = input.canonicalStart;
+  const spanEnd = input.canonicalStart + input.frameCount;
+  const outsideSpan = existingRecords.filter((record) => record.appFrame < spanStart || record.appFrame >= spanEnd);
+  const merged = [...outsideSpan, ...bakedRecords];
+
+  // The acknowledged physical-edit transaction: validates the complete record set
+  // and revalidates the canonical revision before any write (T-52-02).
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(input.layerId, input.trackId);
+  const commitResult = physicPaintStore.replaceRotoPhysicalRecords(input.layerId, input.trackId, merged, interpolation, capacity);
+  if (!commitResult.ok) return { ok: false, error: commitResult.error };
+
+  return { ok: true, records: bakedRecords };
 }
 
 function _getCombinedRotoMetadata(layerId: string, trackId: string): PhysicPaintRotoCacheFrame[] {
