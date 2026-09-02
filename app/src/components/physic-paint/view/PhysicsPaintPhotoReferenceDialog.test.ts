@@ -8,10 +8,14 @@ import {
   usePhysicsPaintPhotoReferenceController,
   PHOTO_REFERENCE_EMPTY_SOURCE,
   PHOTO_REFERENCE_UNLOCKED_TOOLTIP,
+  REVEAL_UNAVAILABLE_NO_REFERENCE_COPY,
+  REVEAL_WITH_SCRIPT_COPY,
   type PhysicsPaintPhotoReferencePorts,
+  type RevealCreateInput,
+  type RevealScriptRow,
 } from './physicsPaintPhotoReferenceController';
 import type { EfxPaintDocument, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
-import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult } from '../../../stores/efxPaintStore';
+import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult, RevealRailMutationResult } from '../../../stores/efxPaintStore';
 
 /**
  * 50-UAT (modal redesign) contract tests for the floating Photo Reference
@@ -87,6 +91,11 @@ function makeDocument(photoReference: PhotoReferenceTrack | null): EfxPaintDocum
   };
 }
 
+const SCRIPT_ROWS: readonly RevealScriptRow[] = [
+  { id: 'script-a', name: 'Reveal sweep', brushCount: 3, thumbnail: { dataUrl: 'data:image/webp;base64,thumb-a', width: 96, height: 64 } },
+  { id: 'script-b', name: 'Hold reveal', brushCount: 1, thumbnail: { dataUrl: 'data:image/webp;base64,thumb-b', width: 96, height: 64 } },
+];
+
 /** Store-simulating harness: the fake setters mutate a mutable track exactly
  *  like the 50-02 store ops (validation + commit), so the controller tests
  *  exercise the real commit flow without importing the store. */
@@ -112,6 +121,10 @@ function createHarness(initialTrack: PhotoReferenceTrack | null) {
     state.track = null;
     return { ok: true, descriptor: null };
   });
+  const createReveal = vi.fn((_layerId: string, _input: RevealCreateInput): Promise<RevealRailMutationResult> => {
+    if (!state.track) return Promise.resolve({ ok: false, reason: 'no-photo-reference' });
+    return Promise.resolve({ ok: true, descriptor: null });
+  });
   const ports: PhysicsPaintPhotoReferencePorts = {
     getDocument: () => makeDocument(state.track),
     setOpacity,
@@ -119,12 +132,17 @@ function createHarness(initialTrack: PhotoReferenceTrack | null) {
     setVisible,
     clearReference,
     resolveFilename: (ref) => FILENAMES[ref],
+    getActiveTrackId: () => 'track-1',
+    getScriptRows: () => SCRIPT_ROWS,
+    createReveal,
+    getCurrentFrame: () => 4,
+    getScriptNaturalDuration: () => 2,
   };
   const render = () => usePhysicsPaintPhotoReferenceController({
     layerId: 'layer-1',
     ports,
   });
-  return { state, setOpacity, setTransformLocked, setVisible, clearReference, ports, render };
+  return { state, setOpacity, setTransformLocked, setVisible, clearReference, createReveal, ports, render };
 }
 
 function childrenOf(node: unknown): unknown[] {
@@ -406,5 +424,163 @@ describe('PhysicsPaintPhotoReferenceDialog view (50-UAT, render + accessibility)
       onImportSource: () => {},
     }) as unknown;
     expect(tree).toBeNull();
+  });
+});
+
+describe('usePhysicsPaintPhotoReferenceController reveal-creation flow (52-04, D-16/D-19)', () => {
+  it('exposes the reveal-creation state machine closed by default', () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    expect(controller.revealCreationOpen.value).toBe(false);
+    expect(controller.revealScriptId.value).toBeNull();
+    expect(controller.revealVariant.value).toBe('progressive');
+    expect(controller.revealProgress.value).toBeNull();
+    expect(controller.revealBusy.value).toBe(false);
+    expect(controller.revealError.value).toBeNull();
+    expect(controller.revealScriptRows).toEqual(SCRIPT_ROWS);
+  });
+
+  it('openRevealCreation opens the surface and resets the error/progress', () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    expect(controller.revealCreationOpen.value).toBe(true);
+  });
+
+  it('selectRevealScript picks a library script (unfiltered — D-26)', () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-b');
+    expect(controller.revealScriptId.value).toBe('script-b');
+  });
+
+  it('setRevealVariant sets the creation-time variant (D-26)', () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.setRevealVariant('static');
+    expect(controller.revealVariant.value).toBe('static');
+  });
+
+  it('createRevealRail calls the create-reveal-rail mutation on the current track with the natural duration (D-11/D-20)', async () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-a');
+    controller.setRevealVariant('static');
+    await controller.createRevealRail();
+    expect(harness.createReveal).toHaveBeenCalledTimes(1);
+    const [layerId, input] = harness.createReveal.mock.calls[0] as [string, RevealCreateInput];
+    expect(layerId).toBe('layer-1');
+    expect(input.trackId).toBe('track-1');
+    expect(input.scriptId).toBe('script-a');
+    expect(input.variant).toBe('static');
+    // D-20: the default span starts at the current playhead and covers the
+    // script's natural duration.
+    expect(input.startFrame).toBe(4);
+    expect(input.frameCount).toBe(2);
+    // Creation IS the first bake: the flow closes on success.
+    expect(controller.revealCreationOpen.value).toBe(false);
+    expect(controller.revealScriptId.value).toBeNull();
+  });
+
+  it('createRevealRail reports the onProgress bar during the bake (D-11)', async () => {
+    const harness = createHarness(makeTrack());
+    const captured: { onProgress: ((completed: number, total: number) => void) | null } = { onProgress: null };
+    harness.createReveal.mockImplementation((_layerId: string, input: RevealCreateInput): Promise<RevealRailMutationResult> => {
+      captured.onProgress = input.onProgress ?? null;
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ ok: true, descriptor: null }), 0);
+      });
+    });
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-a');
+    const pending = controller.createRevealRail();
+    expect(controller.revealBusy.value).toBe(true);
+    captured.onProgress?.(1, 2);
+    expect(controller.revealProgress.value).toEqual({ completed: 1, total: 2 });
+    await pending;
+    expect(controller.revealBusy.value).toBe(false);
+    expect(controller.revealProgress.value).toBeNull();
+  });
+
+  it('createRevealRail surfaces the fail-closed rejection copy when the reference is missing (D-12)', async () => {
+    const harness = createHarness(makeTrack());
+    harness.createReveal.mockResolvedValue({ ok: false, reason: 'no-photo-reference' });
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-a');
+    await controller.createRevealRail();
+    expect(controller.revealError.value).toBe(REVEAL_UNAVAILABLE_NO_REFERENCE_COPY);
+    // The surface stays open so the user can retry after re-placing a reference.
+    expect(controller.revealCreationOpen.value).toBe(true);
+  });
+
+  it('cancelRevealCreation closes the surface without creating', () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-a');
+    controller.cancelRevealCreation();
+    expect(controller.revealCreationOpen.value).toBe(false);
+    expect(controller.revealScriptId.value).toBeNull();
+    expect(harness.createReveal).not.toHaveBeenCalled();
+  });
+});
+
+describe('PhysicsPaintPhotoReferenceDialog reveal-creation surface (52-04, D-16/D-19)', () => {
+  it('renders the "Reveal with script…" CTA gated on a placed reference (D-12)', () => {
+    const withSource = createHarness(makeTrack());
+    const withTree = renderDialog({ ports: withSource.ports });
+    const revealWith = childrenOf(withTree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-photo-reference-reveal');
+    }) as AnyVNode | undefined;
+    expect(revealWith, 'Missing Reveal with script button').toBeDefined();
+    expect(textContent(revealWith)).toContain(REVEAL_WITH_SCRIPT_COPY);
+    expect(revealWith!.props['disabled']).toBe(false);
+
+    const withoutSource = createHarness(null);
+    const withoutTree = renderDialog({ ports: withoutSource.ports });
+    const revealWithout = childrenOf(withoutTree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-photo-reference-reveal');
+    }) as AnyVNode | undefined;
+    expect(revealWithout, 'Missing gated Reveal button').toBeDefined();
+    expect(revealWithout!.props['disabled']).toBe(true);
+    expect(revealWithout!.props['title']).toBe(REVEAL_UNAVAILABLE_NO_REFERENCE_COPY);
+  });
+
+  it('opens the reveal-creation surface with the unfiltered SCRIPTS picker and variant choice (D-26)', () => {
+    const harness = createHarness(makeTrack());
+    const tree = renderDialog({ ports: harness.ports, revealCreationRequested: true });
+    const surface = childrenOf(tree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-photo-reference-reveal-creation');
+    }) as AnyVNode | undefined;
+    expect(surface, 'Missing reveal-creation surface').toBeDefined();
+    expect(textContent(surface)).toContain('Reveal sweep');
+    expect(textContent(surface)).toContain('Hold reveal');
+    expect(textContent(surface)).toContain('Reveal / Motion');
+    expect(textContent(surface)).toContain('Reveal / Static');
+  });
+
+  it('renders the Create button disabled until a script is selected (the create flow is controller-owned)', () => {
+    const harness = createHarness(makeTrack());
+    const tree = renderDialog({ ports: harness.ports, revealCreationRequested: true });
+    const create = childrenOf(tree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-photo-reference-reveal-create');
+    }) as AnyVNode | undefined;
+    expect(create, 'Missing Create button').toBeDefined();
+    // No script selected yet — the create+bake action is gated (D-12).
+    expect(create!.props['disabled']).toBe(true);
+    fireClick(create!);
+    expect(harness.createReveal).not.toHaveBeenCalled();
   });
 });

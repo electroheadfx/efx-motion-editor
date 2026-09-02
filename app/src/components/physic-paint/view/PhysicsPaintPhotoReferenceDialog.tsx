@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { Camera, Eye, EyeOff, Image, ImageUp, Lock, LockOpen, Trash2, X } from 'lucide-preact';
+import { Camera, Eye, EyeOff, Image, ImageUp, Lock, LockOpen, Trash2, WandSparkles, X } from 'lucide-preact';
 import {
   usePhysicsPaintPhotoReferenceController,
   PHOTO_REFERENCE_EMPTY_SOURCE,
   PHOTO_REFERENCE_UNLOCKED_TOOLTIP,
+  REVEAL_UNAVAILABLE_NO_REFERENCE_COPY,
+  REVEAL_VARIANT_OPTIONS,
+  REVEAL_WITH_SCRIPT_COPY,
   type PhysicsPaintPhotoReferencePorts,
 } from './physicsPaintPhotoReferenceController';
 
@@ -47,6 +50,9 @@ export interface PhysicsPaintPhotoReferenceDialogProps {
   onClose: () => void;
   /** Import/Replace source intent — opens the full-area reference picker. */
   onImportSource: () => void;
+  /** 52-04 (D-19): pre-open the reveal-creation surface — the track rail-creation
+   *  flow entry (the modal's "Reveal with script…" button opens it directly). */
+  revealCreationRequested?: boolean;
 }
 
 export function PhysicsPaintPhotoReferenceDialog({
@@ -55,6 +61,7 @@ export function PhysicsPaintPhotoReferenceDialog({
   ports,
   onClose,
   onImportSource,
+  revealCreationRequested = false,
 }: PhysicsPaintPhotoReferenceDialogProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{ pointerX: number; pointerY: number; baseX: number; baseY: number; rect: { left: number; top: number; width: number } | null } | null>(null);
@@ -121,12 +128,25 @@ export function PhysicsPaintPhotoReferenceDialog({
     draggingRef.current = false;
   };
 
+  // 52-04 (D-19): the controller is created before the early return so the
+  // reveal-creation flow can be pre-opened by the track rail-creation entry
+  // (revealCreationRequested) even when the dialog is already mounted. The
+  // controller reads the document through the ports; a null layer id resolves
+  // to the empty defaults and the dialog still renders nothing.
+  const controller = usePhysicsPaintPhotoReferenceController({ layerId: layerId ?? '', ports, revealCreationRequested });
+  // The track-flow entry flips the prop while the dialog may already be open —
+  // open the flow from the LIVE controller (never a render-captured closure).
+  useEffect(() => {
+    if (revealCreationRequested && open) controller.openRevealCreation();
+  }, [revealCreationRequested, open]);
+
   if (!open || !layerId) return null;
 
-  const controller = usePhysicsPaintPhotoReferenceController({ layerId, ports });
   const {
     previewOpacityPercent, transformLocked, visibleInStudio, sourceCount, filenames, hasSource,
     previewOpacity, commitOpacity, toggleTransformLocked, toggleVisible, removeReference,
+    revealCreationOpen, revealScriptId, revealVariant, revealProgress, revealBusy, revealError,
+    revealScriptRows, openRevealCreation, selectRevealScript, setRevealVariant, createRevealRail, cancelRevealCreation,
   } = controller;
 
   return (
@@ -260,6 +280,104 @@ export function PhysicsPaintPhotoReferenceDialog({
               </button>
             ) : null}
           </div>
+
+          {/* 52-04 (D-16/D-19): the "Reveal with script…" primary CTA — gated on a
+              placed reference (D-12 creation guard). The button is a thin render
+              shell; the reveal-creation state machine lives in the controller. */}
+          <button
+            type="button"
+            class="physics-paint-photo-reference-reveal"
+            aria-label={REVEAL_WITH_SCRIPT_COPY}
+            aria-disabled={!hasSource ? 'true' : undefined}
+            title={hasSource ? REVEAL_WITH_SCRIPT_COPY : REVEAL_UNAVAILABLE_NO_REFERENCE_COPY}
+            disabled={!hasSource}
+            onClick={openRevealCreation}
+          >
+            <WandSparkles size={13} aria-hidden="true" />
+            <span>{REVEAL_WITH_SCRIPT_COPY}</span>
+          </button>
+
+          {/* 52-04 (D-11/D-26): the reveal-creation surface — the UNFILTERED SCRIPTS
+              picker, the creation-time variant choice, and the create+bake action
+              with the onProgress bar. Creation IS the first bake (D-11). */}
+          {revealCreationOpen.value ? (
+            <div class="physics-paint-photo-reference-reveal-creation" role="group" aria-label="Reveal with script">
+              <div class="physics-paint-photo-reference-reveal-scripts" role="listbox" aria-label="Choose a script">
+                {revealScriptRows.length === 0 ? (
+                  <span class="physics-paint-photo-reference-reveal-empty">No project scripts yet. Save a script in the SCRIPTS library first.</span>
+                ) : revealScriptRows.map((row) => {
+                  const selected = revealScriptId.value === row.id;
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected ? 'true' : 'false'}
+                      class={`physics-paint-photo-reference-reveal-script${selected ? ' selected' : ''}`}
+                      disabled={revealBusy.value}
+                      onClick={() => selectRevealScript(row.id)}
+                    >
+                      <img class="physics-paint-photo-reference-reveal-thumbnail" src={row.thumbnail.dataUrl} width={row.thumbnail.width} height={row.thumbnail.height} alt="" />
+                      <span class="physics-paint-photo-reference-reveal-script-copy">
+                        <span class="physics-paint-photo-reference-reveal-script-name">{row.name}</span>
+                        <span class="physics-paint-photo-reference-reveal-script-count">{row.brushCount} {row.brushCount === 1 ? 'brush' : 'brushes'}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div class="physics-paint-photo-reference-reveal-variants" role="radiogroup" aria-label="Reveal variant">
+                {REVEAL_VARIANT_OPTIONS.map((option) => {
+                  const checked = revealVariant.value === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked ? 'true' : 'false'}
+                      class={`physics-paint-photo-reference-reveal-variant${checked ? ' active' : ''}`}
+                      disabled={revealBusy.value}
+                      title={option.helper}
+                      onClick={() => setRevealVariant(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {revealProgress.value ? (
+                <div class="physics-paint-photo-reference-reveal-progress">
+                  <progress max={revealProgress.value.total} value={revealProgress.value.completed}>
+                    {revealProgress.value.completed}/{revealProgress.value.total}
+                  </progress>
+                  <span>{revealProgress.value.completed}/{revealProgress.value.total}</span>
+                </div>
+              ) : null}
+              {revealError.value ? (
+                <span role="alert" class="physics-paint-photo-reference-reveal-error">{revealError.value}</span>
+              ) : null}
+              <div class="physics-paint-photo-reference-reveal-actions">
+                <button
+                  type="button"
+                  class="physics-paint-photo-reference-reveal-create"
+                  aria-label="Create reveal rail"
+                  disabled={revealScriptId.value === null || revealBusy.value}
+                  onClick={() => { void createRevealRail(); }}
+                >
+                  {revealBusy.value ? 'Baking…' : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  class="physics-paint-photo-reference-reveal-cancel"
+                  aria-label="Cancel reveal creation"
+                  disabled={revealBusy.value}
+                  onClick={cancelRevealCreation}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

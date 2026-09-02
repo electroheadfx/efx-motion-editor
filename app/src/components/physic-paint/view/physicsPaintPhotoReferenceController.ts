@@ -1,7 +1,12 @@
 import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
-import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult } from '../../../stores/efxPaintStore';
+import type {
+  PhotoReferenceDisplayResult,
+  PhotoReferenceMutationResult,
+  RevealRailMutationRejectionReason,
+  RevealRailMutationResult,
+} from '../../../stores/efxPaintStore';
 
 /**
  * 50-05 (S5): the Photo Reference controller — the shared state machine behind
@@ -50,12 +55,47 @@ export interface PhysicsPaintPhotoReferencePorts {
   clearReference: (layerId: string) => PhotoReferenceMutationResult;
   /** sourceRef → original filename (D-02: natural order is the stored refs order). */
   resolveFilename: (sourceRef: string) => string | undefined;
+  /* ---- 52-04 (D-16/D-19): the reveal-rail creation flow ports ---- */
+  /** The document's current active track id — the reveal rail's target (D-19). */
+  getActiveTrackId: (layerId: string) => string | null;
+  /** The SCRIPTS library rows, UNFILTERED — scripts carry no kind field (D-26). */
+  getScriptRows: () => readonly RevealScriptRow[];
+  /** The create-reveal-rail mutation from Plan 01 — creation IS the first bake (D-11). */
+  createReveal: (layerId: string, input: RevealCreateInput) => Promise<RevealRailMutationResult>;
+  /** The current playhead/cursor frame — the default rail span start (D-20). */
+  getCurrentFrame: () => number;
+  /** The script's natural duration at the current motion parameters (D-20). */
+  getScriptNaturalDuration: (scriptId: string) => number | null;
+}
+
+/** 52-04: the reveal rail variant (D-03/D-26) — mirrors RotoPlayScriptMode. */
+export type RevealRailVariant = 'progressive' | 'static';
+
+/** 52-04: one SCRIPTS library row projected for the reveal picker (unfiltered — D-26). */
+export interface RevealScriptRow {
+  readonly id: string;
+  readonly name: string;
+  readonly brushCount: number;
+  readonly thumbnail: { readonly dataUrl: string; readonly width: number; readonly height: number };
+}
+
+/** 52-04: input to the create-reveal-rail mutation (Plan 01) — creation IS the first bake (D-11). */
+export interface RevealCreateInput {
+  readonly trackId: string;
+  readonly scriptId: string;
+  readonly variant: RevealRailVariant;
+  readonly startFrame: number;
+  readonly frameCount: number;
+  readonly onProgress?: (completed: number, total: number) => void;
 }
 
 export interface PhysicsPaintPhotoReferenceControllerProps {
   layerId: string;
   /** Injectable ports for tests; production defaults hit the real store. */
   ports?: Partial<PhysicsPaintPhotoReferencePorts>;
+  /** 52-04 (D-19): pre-open the reveal-creation surface — the track rail-creation
+   *  flow entry (the modal's "Reveal with script…" button opens it directly). */
+  revealCreationRequested?: boolean;
 }
 
 export interface PhysicsPaintPhotoReferenceController {
@@ -78,6 +118,31 @@ export interface PhysicsPaintPhotoReferenceController {
   /** Invert the visibility from the LIVE document (always reversible, 50-UAT fix). */
   toggleVisible: () => void;
   removeReference: () => void;
+  /* ---- 52-04 (D-16/D-19): the reveal-rail creation flow state machine ---- */
+  /** The SCRIPTS library rows the picker shows (unfiltered — D-26). */
+  revealScriptRows: readonly RevealScriptRow[];
+  /** True while the reveal-creation surface is open (the SCRIPTS picker + variant). */
+  revealCreationOpen: Signal<boolean>;
+  /** The selected library script id (null until the user picks one). */
+  revealScriptId: Signal<string | null>;
+  /** The creation-time variant (D-26) — fixed at creation, never changes after (D-21). */
+  revealVariant: Signal<RevealRailVariant>;
+  /** The bake onProgress bar (completed/total) — creation IS the first bake (D-11). */
+  revealProgress: Signal<{ completed: number; total: number } | null>;
+  /** True while the create+bake mutation is running. */
+  revealBusy: Signal<boolean>;
+  /** The fail-closed rejection copy (D-12/D-13), or null when no error. */
+  revealError: Signal<string | null>;
+  /** Open the reveal-creation surface (the "Reveal with script…" entry, D-16). */
+  openRevealCreation: () => void;
+  /** Select a library script in the picker (unfiltered — D-26). */
+  selectRevealScript: (scriptId: string) => void;
+  /** Set the creation-time variant (D-26). */
+  setRevealVariant: (variant: RevealRailVariant) => void;
+  /** Create the reveal rail on the current track AND bake it in one action (D-11). */
+  createRevealRail: () => Promise<void>;
+  /** Close the reveal-creation surface without creating. */
+  cancelRevealCreation: () => void;
 }
 
 /** The locked empty-source fact copy (UI-SPEC Copywriting Contract). */
@@ -86,12 +151,33 @@ export const PHOTO_REFERENCE_EMPTY_SOURCE = 'No source imported';
 /** The locked unlock tooltip copy (UI-SPEC Copywriting Contract). */
 export const PHOTO_REFERENCE_UNLOCKED_TOOLTIP = 'Unlocked — canvas gestures move the reference';
 
+/* ---- 52-04 (D-16/D-19): the reveal-rail creation flow copy (UI-SPEC Copywriting Contract) ---- */
+
+/** The locked primary CTA copy (UI-SPEC Copywriting Contract). */
+export const REVEAL_WITH_SCRIPT_COPY = 'Reveal with script…';
+
+/** The locked empty-source gate copy (UI-SPEC Copywriting Contract). */
+export const REVEAL_UNAVAILABLE_NO_REFERENCE_COPY = 'Reveal unavailable — no reference placed. Place a reference to replay.';
+
+/** The locked deleted-script fail-closed copy (UI-SPEC Copywriting Contract). */
+export const REVEAL_UNAVAILABLE_SCRIPT_DELETED_COPY = 'Reveal unavailable — script deleted. Re-link a script to replay.';
+
+/** The locked variant labels (D-03/D-26 — mirror the PlayScript Motion/Static duality). */
+export const REVEAL_VARIANT_OPTIONS: ReadonlyArray<{ value: RevealRailVariant; label: string; helper: string }> = [
+  { value: 'progressive', label: 'Reveal / Motion', helper: 'The reveal extends frame after frame across the span.' },
+  { value: 'static', label: 'Reveal / Static', helper: 'Every frame carries the entire revealed photo with per-frame brush variation.' },
+];
+
+/** The default rail span (D-20) when the script's natural duration is unknown — mirrors the PlayScript dialog default. */
+const DEFAULT_REVEAL_FRAME_COUNT = 3;
+
 /** The default opacity (50%) as a 0..100 display integer (D-12, UI-SPEC). */
 const DEFAULT_OPACITY_PERCENT = 50;
 
 export function usePhysicsPaintPhotoReferenceController({
   layerId,
   ports = {},
+  revealCreationRequested = false,
 }: PhysicsPaintPhotoReferenceControllerProps): PhysicsPaintPhotoReferenceController {
   const getDocument = ports.getDocument ?? defaultPorts.getDocument;
   const setOpacity = ports.setOpacity ?? defaultPorts.setOpacity;
@@ -99,6 +185,11 @@ export function usePhysicsPaintPhotoReferenceController({
   const setVisible = ports.setVisible ?? defaultPorts.setVisible;
   const clearReference = ports.clearReference ?? defaultPorts.clearReference;
   const resolveFilename = ports.resolveFilename ?? defaultPorts.resolveFilename;
+  const getActiveTrackId = ports.getActiveTrackId ?? defaultPorts.getActiveTrackId;
+  const getScriptRows = ports.getScriptRows ?? defaultPorts.getScriptRows;
+  const createReveal = ports.createReveal ?? defaultPorts.createReveal;
+  const getCurrentFrame = ports.getCurrentFrame ?? defaultPorts.getCurrentFrame;
+  const getScriptNaturalDuration = ports.getScriptNaturalDuration ?? defaultPorts.getScriptNaturalDuration;
 
   const document = getDocument(layerId);
   const track = document?.photoReference ?? null;
@@ -145,6 +236,78 @@ export function usePhysicsPaintPhotoReferenceController({
     clearReference(layerId);
   };
 
+  /* ---- 52-04 (D-16/D-19): the reveal-rail creation flow state machine ----
+     Signals only (efx-preact-reactivity): the flow's open/script/variant/
+     progress/busy/error state lives here; the dialog is a thin render shell.
+     Creation IS the first bake (D-11): createRevealRail calls the Plan 01
+     create-reveal-rail mutation with the onProgress bar, and the rail lands
+     baked. The variant is fixed at creation (D-21); the picker is unfiltered
+     (D-26). */
+  const revealCreationOpen = useSignal(revealCreationRequested);
+  const revealScriptId = useSignal<string | null>(null);
+  const revealVariant = useSignal<RevealRailVariant>('progressive');
+  const revealProgress = useSignal<{ completed: number; total: number } | null>(null);
+  const revealBusy = useSignal(false);
+  const revealError = useSignal<string | null>(null);
+  const revealScriptRows = getScriptRows();
+
+  const openRevealCreation = () => {
+    if (revealBusy.value) return;
+    revealCreationOpen.value = true;
+    revealError.value = null;
+    revealProgress.value = null;
+  };
+
+  const selectRevealScript = (scriptId: string) => {
+    if (revealBusy.value) return;
+    revealScriptId.value = scriptId;
+    revealError.value = null;
+  };
+
+  const setRevealVariant = (variant: RevealRailVariant) => {
+    if (revealBusy.value) return;
+    revealVariant.value = variant;
+  };
+
+  const createRevealRail = async () => {
+    if (revealBusy.value) return;
+    const scriptId = revealScriptId.value;
+    if (!scriptId) return;
+    const trackId = getActiveTrackId(layerId);
+    if (!trackId) return;
+    const startFrame = getCurrentFrame();
+    const frameCount = getScriptNaturalDuration(scriptId) ?? DEFAULT_REVEAL_FRAME_COUNT;
+    revealBusy.value = true;
+    revealError.value = null;
+    revealProgress.value = null;
+    const result = await createReveal(layerId, {
+      trackId,
+      scriptId,
+      variant: revealVariant.value,
+      startFrame,
+      frameCount,
+      onProgress: (completed, total) => {
+        revealProgress.value = { completed, total };
+      },
+    });
+    revealBusy.value = false;
+    revealProgress.value = null;
+    if (result.ok) {
+      revealCreationOpen.value = false;
+      revealScriptId.value = null;
+    } else {
+      revealError.value = mapRevealRejectionReason(result.reason);
+    }
+  };
+
+  const cancelRevealCreation = () => {
+    if (revealBusy.value) return;
+    revealCreationOpen.value = false;
+    revealScriptId.value = null;
+    revealError.value = null;
+    revealProgress.value = null;
+  };
+
   return {
     opacityPercent,
     opacityDraft,
@@ -159,6 +322,18 @@ export function usePhysicsPaintPhotoReferenceController({
     toggleTransformLocked,
     toggleVisible,
     removeReference,
+    revealScriptRows,
+    revealCreationOpen,
+    revealScriptId,
+    revealVariant,
+    revealProgress,
+    revealBusy,
+    revealError,
+    openRevealCreation,
+    selectRevealScript,
+    setRevealVariant,
+    createRevealRail,
+    cancelRevealCreation,
   };
 }
 
@@ -170,4 +345,33 @@ const defaultPorts: PhysicsPaintPhotoReferencePorts = {
   setVisible: () => ({ ok: false, reason: 'no-photo-reference' }),
   clearReference: () => ({ ok: false, reason: 'no-photo-reference' }),
   resolveFilename: () => undefined,
+  getActiveTrackId: () => null,
+  getScriptRows: () => [],
+  createReveal: () => Promise.resolve({ ok: false, reason: 'no-document' }),
+  getCurrentFrame: () => 0,
+  getScriptNaturalDuration: () => null,
 };
+
+/** 52-04: map a create-reveal-rail rejection to the locked fail-closed copy (D-12/D-13). */
+function mapRevealRejectionReason(reason: RevealRailMutationRejectionReason): string {
+  switch (reason) {
+    case 'no-photo-reference':
+      return REVEAL_UNAVAILABLE_NO_REFERENCE_COPY;
+    case 'script-not-found':
+      return REVEAL_UNAVAILABLE_SCRIPT_DELETED_COPY;
+    case 'no-track':
+      return 'Reveal unavailable — no target track.';
+    case 'script-loader-unavailable':
+      return 'Reveal unavailable — script library is not ready.';
+    case 'invalid-variant':
+      return 'Reveal unavailable — invalid variant.';
+    case 'invalid-span':
+      return 'Reveal unavailable — invalid span.';
+    case 'bake-failed':
+      return 'Reveal bake failed. Nothing changed.';
+    case 'loop-clip-failed':
+      return 'Reveal rail creation failed. Nothing changed.';
+    case 'no-document':
+      return 'Reveal unavailable — no document.';
+  }
+}
