@@ -40,12 +40,17 @@ created: "2026-09-02"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 52-01-01 | 01 | 1 | RVL-01 | T-52-01 / — | Bake-into-keys, no runtime compositor | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts` | ❌ W0 | ⬜ pending |
-| 52-01-02 | 01 | 1 | RVL-02 | T-52-01 / — | Empty coverage → transparent; full → full reference; partial → soft edges; eraser removes | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts` | ❌ W0 | ⬜ pending |
-| 52-01-03 | 01 | 1 | RVL-03 | T-52-01 / — | Progressive bakes progressively; static bakes full coverage per frame | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts` | ❌ W0 | ⬜ pending |
-| 52-02-01 | 02 | 1 | RVL-04 | T-52-02 / — | Baked keys are ordinary track content in flattened output | integration | `pnpm --filter efx-motion-editor exec vitest run app/src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts` | ❌ W0 | ⬜ pending |
-| 52-02-02 | 02 | 1 | RVL-05 | T-52-02 / — | Reference never leaks into output except via reveal keys | unit (token allow-list) | `pnpm --filter efx-motion-editor exec vitest run app/src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts` | ❌ W0 | ⬜ pending |
-| 52-03-01 | 03 | 2 | RVL-06 | T-52-03 / — | Undo/redo by reference; save/reopen/export preserve | unit + round-trip | `pnpm --filter efx-motion-editor exec vitest run app/src/stores/efxPaintStore.reveal.test.ts app/src/efx-paint/document/efxPaintDocumentParsers.reveal.test.ts` | ❌ W0 | ⬜ pending |
+| 52-01-01 | 01 | 1 | RVL-01, RVL-04, RVL-06 | T-52-01 / T-52-02 / T-52-03 | Bake-into-keys end-to-end: create + bake + flattened + undo | integration | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts app/src/stores/efxPaintStore.reveal.test.ts` | ❌ W0 | ⬜ pending |
+| 52-01-02 | 01 | 1 | RVL-02, RVL-03 | T-52-01 | Empty coverage → transparent; full → full reference; partial → soft edges; eraser removes; progressive vs static | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts` | ❌ W0 | ⬜ pending |
+| 52-01-03 | 01 | 1 | RVL-06 | T-52-03 | Undo/redo by reference (create/replay/delete/span) | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/stores/efxPaintStore.reveal.test.ts` | ❌ W0 | ⬜ pending |
+| 52-02-01 | 02 | 2 | RVL-05 | T-52-04 | Remove PhotoReferenceMode (D-15 clean break) | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/efx-paint/document/efxPaintDocumentParsers.reveal.test.ts` | ❌ W0 | ⬜ pending |
+| 52-02-02 | 02 | 2 | RVL-06 | T-52-04 | Mode-free PhotoReferenceTrack round-trip; legacy mode rejected fail-closed | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/efx-paint/document/efxPaintDocumentParsers.reveal.test.ts` | ❌ W0 | ⬜ pending |
+| 52-03-01 | 03 | 2 | RVL-04 | T-52-05 | Reveal rail color + status dot + tooltip freshness | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts` | ✅ | ⬜ pending |
+| 52-03-02 | 03 | 2 | RVL-04 | T-52-05 | Replay control reusing Regenerate pattern + disabled reason | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts` | ✅ | ⬜ pending |
+| 52-04-01 | 04 | 3 | RVL-01 | T-52-06 | "Reveal with script…" button gated on placed reference | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/view/physicsPaintPhotoReferenceDialog.test.ts` | ✅ | ⬜ pending |
+| 52-04-02 | 04 | 3 | RVL-01 | T-52-06 | Wire creation flow: picker → variant → create + bake | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/view/physicsPaintPhotoReferenceDialog.test.ts` | ✅ | ⬜ pending |
+| 52-04-03 | 04 | 3 | RVL-01 | T-52-06 | Track rail-creation flow: reveal as 4th rail kind | unit | `pnpm --filter efx-motion-editor exec vitest run app/src/components/physic-paint/view/physicsPaintWorkflowPresentation.test.ts` | ✅ | ⬜ pending |
+| 52-05-01 | 05 | 3 | RVL-05 | T-52-07 | Token allow-list over the four raster surfaces | unit (token allow-list) | `pnpm --filter efx-motion-editor exec vitest run app/src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -66,6 +71,7 @@ created: "2026-09-02"
 |----------|-------------|------------|-------------------|
 | Reveal rail visual look (emerald/teal line, status dot, tooltip freshness) | RVL-04 | Pixel-level rail styling is not asserted by unit tests | Native UAT: create a reveal rail, verify green-family color, 20x4px status dot, tooltip freshness line |
 | "Reveal with script…" modal flow with onProgress bar | RVL-01 | Modal interaction + progress bar are UI-surface behaviors | Native UAT: place reference, paint, save script, run "Reveal with script…", verify rail lands baked |
+| Track rail-creation flow (kind `reveal` → picker → create + bake) | RVL-01 | Track rail-creation entry point is a UI-surface behavior | Native UAT: place reference, create a reveal rail from the track flow, verify rail lands baked |
 | Fail-closed capsule warnings (missing reference / deleted script) | RVL-05 | Status-capsule surface is visual | Native UAT: remove reference after creation, Replay → red warning capsule, keys untouched |
 
 ---
