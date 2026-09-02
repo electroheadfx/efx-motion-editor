@@ -17,6 +17,7 @@ import {
   replayRevealRail,
   reset,
   resizeRevealRail,
+  resyncRuntimeForBackgroundEdit,
   setPhotoReferenceSource,
 } from './efxPaintStore';
 import type { BackgroundEditDescriptor } from './efxPaintStore';
@@ -27,6 +28,14 @@ import type { BackgroundEditDescriptor } from './efxPaintStore';
  * `BackgroundEditDescriptor` with a distinct `'reveal-*'` operation kind and
  * `before`/`after` by reference — undo restores the prior document object,
  * redo re-applies the next one, never raster-byte snapshots.
+ *
+ * 52 CR-01: the reveal mutations ALSO write the runtime store (baked records
+ * via commitRevealBake, rail clip via replaceRotoPhysicalLoopClips). The
+ * shared 'background' undo/redo path restores the document by reference and
+ * calls `resyncRuntimeForBackgroundEdit` to re-install the affected track's
+ * runtime from the restored document. These tests mirror that exact seam and
+ * assert the runtime (`physicPaintStore.getRotoPhysicalLoopClips` /
+ * `getRotoRealKeyRecords`) as well as the document object.
  */
 
 const harness = vi.hoisted(() => ({
@@ -214,17 +223,34 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const preCreate = getDocument(layerId)!;
     const descriptor = await createRail(layerId);
 
-    // Undo: restore the exact prior document object by reference — the
-    // pre-rail document carries no rail and no baked keys (RVL-06).
+    // The reveal mutation wrote the runtime too — the rail clip + baked keys
+    // are live (CR-01 baseline for the undo assertions below).
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(2);
+
+    // Undo mirrors the real path (useRotoPhysicalEditHistory.ts 'background'
+    // branch): resync the affected track's runtime from the `before` document,
+    // then restore the exact prior document object by reference — the pre-rail
+    // document carries no rail and no baked keys (RVL-06).
+    expect(resyncRuntimeForBackgroundEdit(descriptor, 'undo')).toBe(true);
     registerDocument(descriptor.before);
     expect(getDocument(layerId)).toBe(preCreate);
     expect(getDocument(layerId)!.tracks[0].rotoPhysical).toBeNull();
+    // CR-01: the runtime is re-synced too — no orphaned rail clip, no orphaned
+    // baked key records (previously they survived undo and were re-projected by
+    // the next serializeRuntimeIntoDocument).
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(0);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(0);
 
-    // Redo: re-apply the exact post-create document object by reference.
+    // Redo: re-apply the exact post-create document object by reference and
+    // re-sync the runtime back to the created rail + keys.
+    expect(resyncRuntimeForBackgroundEdit(descriptor, 'redo')).toBe(true);
     registerDocument(descriptor.after);
     expect(getDocument(layerId)).toBe(descriptor.after);
     expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips).toHaveLength(1);
     expect(getDocument(layerId)!.tracks[0].rotoPhysical!.realKeyRecords).toHaveLength(2);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(2);
   });
 });
 
@@ -267,12 +293,21 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     const records = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
     expect(records).toHaveLength(2);
     expect(records.every((record) => record.payload.dataUrl === replayedPng)).toBe(true);
+    // The rail clip survives replay (its span is re-baked, D-05).
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(1);
 
-    // Undo restores the prior baked keys (the pre-replay document by reference).
+    // Undo mirrors the real path: resync the runtime from the pre-replay
+    // document, then restore the prior baked keys by reference (D-05 — the
+    // pre-replay PNG_1X1 keys, not the replayedPng overwrite, return).
+    expect(resyncRuntimeForBackgroundEdit(replayDescriptor, 'undo')).toBe(true);
     registerDocument(replayDescriptor.before);
     expect(getDocument(layerId)).toBe(preReplay);
     const restored = getDocument(layerId)!.tracks[0].rotoPhysical!.realKeyRecords;
     expect(restored.map((record) => record.payload.dataUrl)).toEqual([PNG_1X1, PNG_1X1]);
+    // CR-01: the RUNTIME is re-synced too — the replayedPng records are gone
+    // (previously the runtime kept them and the next serialize re-projected the
+    // overwritten keys back into the document).
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.payload.dataUrl)).toEqual([PNG_1X1, PNG_1X1]);
   });
 
   it('delete reveal rail is one undo-ledger entry; undo restores the whole rail + keys unit (D-06)', async () => {
@@ -291,16 +326,23 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     expect(deleteDescriptor.before).toBe(preDelete);
     expect(deleteDescriptor.after).toBe(getDocument(layerId));
 
-    // The rail + baked keys are gone as one unit.
+    // The rail + baked keys are gone as one unit (document AND runtime).
     const afterDelete = getDocument(layerId)!;
     expect(afterDelete.tracks[0].rotoPhysical!.loopClips).toHaveLength(0);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(0);
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(0);
 
-    // Undo restores the whole rail + keys unit by reference.
+    // Undo mirrors the real path: resync the runtime from the pre-delete
+    // document, then restore the whole rail + keys unit by reference.
+    expect(resyncRuntimeForBackgroundEdit(deleteDescriptor, 'undo')).toBe(true);
     registerDocument(deleteDescriptor.before);
     expect(getDocument(layerId)).toBe(preDelete);
     expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips).toHaveLength(1);
     expect(getDocument(layerId)!.tracks[0].rotoPhysical!.realKeyRecords).toHaveLength(2);
+    // CR-01: the runtime is re-synced too — the rail clip and its baked keys
+    // are restored for rendering / strip display.
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(2);
   });
 
   it('span shrink is one undo-ledger entry; undo recovers the deleted keys (D-07)', async () => {
@@ -325,10 +367,16 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     expect(records.map((record) => record.appFrame)).toEqual([10, 11]);
     expect(afterShrink.tracks[0].rotoPhysical!.loopClips[0].sourceKeyIds).toHaveLength(2);
 
-    // Undo recovers the deleted key by reference.
+    // Undo mirrors the real path: resync the runtime from the pre-shrink
+    // document, then recover the deleted key by reference.
+    expect(resyncRuntimeForBackgroundEdit(shrinkDescriptor, 'undo')).toBe(true);
     registerDocument(shrinkDescriptor.before);
     expect(getDocument(layerId)).toBe(preShrink);
     expect(getDocument(layerId)!.tracks[0].rotoPhysical!.realKeyRecords.map((record) => record.appFrame)).toEqual([10, 11, 12]);
+    // CR-01: the runtime is re-synced too — frame 12's baked key is back in
+    // both the record set and the rail clip source cycle.
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.appFrame)).toEqual([10, 11, 12]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0].sourceKeyIds).toHaveLength(3);
   });
 
   it('undo/redo operate by reference — before/after are the exact document objects (RVL-06)', async () => {

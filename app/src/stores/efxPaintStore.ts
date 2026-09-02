@@ -1651,3 +1651,59 @@ export function hydrateRuntimeFromDocument(
   // runtime-only contract as the background hydration.
   void hydrateReferenceSourceImagesFromLibrary(document);
 }
+
+/**
+ * CR-01 fix (52-REVIEW / 52-VERIFICATION): re-sync the runtime store for a
+ * background undo/redo restore. The four reveal mutations
+ * (create/replay/delete/resize) write BOTH the document AND the runtime —
+ * baked records through commitRevealBake, the rail clip through
+ * replaceRotoPhysicalLoopClips. The shared 'background' undo/redo branch in
+ * useRotoPhysicalEditHistory restores only the document by reference, so the
+ * runtime kept rendering the orphaned rail (the Studio reads the rail list
+ * from physicPaintStore.getRotoPhysicalLoopClips) and the next
+ * serializeRuntimeIntoDocument re-projected the orphaned baked keys back into
+ * the document — effectively undoing the undo.
+ *
+ * This is the track-scoped counterpart of {@link hydrateRuntimeFromDocument}:
+ * it installs exactly the affected track's rotoPhysical (records + rail clips)
+ * from the target document (`before` for undo, `after` for redo) into the
+ * runtime with no frame bytes. The reveal baked keys are RECORD-level content
+ * — their pixels ride the record payload dataUrl (inline PNG, validated by
+ * `isRenderedPngDataUrl`) and the structural compositor path decodes them on
+ * demand, so an empty frame-byte cache is correct and safe: the raster cache
+ * is derived, never the source of truth. Installing track-scoped (never the
+ * whole document) preserves other tracks' runtime records that may be ahead of
+ * the document (in-flight edits not yet serialized), exactly like the physical
+ * undo/redo path restores only the affected track.
+ *
+ * The affected track is the single track whose object identity differs between
+ * `before` and `after` (the reveal mutations replace exactly one track's
+ * rotoPhysical projection while every other track keeps reference identity).
+ * Background entries that do not change any track's rotoPhysical (Phase 49
+ * background clip edits, photo reference set/clear, background fallback) no-op
+ * and return true — their undo path is untouched (BKG-08/D-08). Returns false
+ * only when an affected track needs resyncing but the install fails; callers
+ * fail the undo/redo closed (nothing restored, stacks untouched).
+ */
+export function resyncRuntimeForBackgroundEdit(
+  descriptor: BackgroundEditDescriptor,
+  direction: 'undo' | 'redo',
+): boolean {
+  const { before, after } = descriptor;
+  if (before.tracks.length !== after.tracks.length) return true;
+  const target = direction === 'undo' ? before : after;
+  for (let index = 0; index < before.tracks.length; index += 1) {
+    if (before.tracks[index] === after.tracks[index]) continue;
+    const track = target.tracks[index];
+    try {
+      physicPaintStore.installRuntimeStateFromDocument(target.parentLayerId, track.id, {
+        trackId: track.id,
+        frames: new Map(),
+        rotoPhysical: track.rotoPhysical,
+      });
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}

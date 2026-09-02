@@ -81,6 +81,7 @@ import {
   getActiveTrackId,
   getDocument,
   registerDocument,
+  resyncRuntimeForBackgroundEdit,
   setActiveTrackId,
   type BackgroundEditDescriptor,
 } from '../../../stores/efxPaintStore';
@@ -778,6 +779,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // otherwise be clobbered by the snapshot restore. Fail closed (stack
       // untouched) on divergence, mirroring the physical path's authority check.
       if (getDocument(entry.descriptor.after.parentLayerId) !== entry.descriptor.after) return false;
+      // 52 CR-01: the reveal mutations write the runtime as well as the
+      // document (baked records + rail clip). Resync the affected track's
+      // runtime from the restored `before` document BEFORE publishing either
+      // change, so a failed install fails the undo closed (document not yet
+      // restored, stacks untouched). Non-reveal background entries no-op.
+      if (!resyncRuntimeForBackgroundEdit(entry.descriptor, 'undo')) return false;
       appliedRef.current.pop();
       redoRef.current.push(entry);
       registerDocument(entry.descriptor.before);
@@ -870,6 +877,9 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // document is still the recorded `before` object — an unrecorded edit
       // since the undo would otherwise be clobbered. Fail closed on divergence.
       if (getDocument(entry.descriptor.before.parentLayerId) !== entry.descriptor.before) return false;
+      // 52 CR-01: symmetric runtime resync from the restored `after` document
+      // (see the undo branch above).
+      if (!resyncRuntimeForBackgroundEdit(entry.descriptor, 'redo')) return false;
       redoRef.current.pop();
       appliedRef.current.push(entry);
       registerDocument(entry.descriptor.after);
