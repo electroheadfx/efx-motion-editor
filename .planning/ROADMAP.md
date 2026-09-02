@@ -447,7 +447,7 @@ Plans:
   4. Reveal result is written to or represented by an internal Paint/result track and included in flattened output; photo reference visibility alone never leaks into output.
   5. Undo/redo by reference (not raster-byte snapshots); save/reopen and export preserve the result.
 
-**Plans**: 3/5 plans executed
+**Plans**: 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -461,8 +461,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 52-04-PLAN.md — "Reveal with script…" modal entry
-- [ ] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
+- [x] 52-04-PLAN.md — "Reveal with script…" modal entry
+- [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
 ### Phase 53: Integrated v1.0.0 Acceptance
 
@@ -497,5 +497,5 @@ Plans:
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 6/6 | Complete    | 2026-09-01 |
 | 50. Photo/Reference Track | v1.0.0 | 6/6 | Complete | 2026-09-01 |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
-| 52. Shared Mask Compositor and Reveal | v1.0.0 | 3/5 | In Progress|  |
+| 52. Shared Mask Compositor and Reveal | v1.0.0 | 5/5 | In Progress|  |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |
