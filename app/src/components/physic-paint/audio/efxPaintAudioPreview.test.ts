@@ -429,6 +429,49 @@ describe('efxPaintAudioMonitor (Play wiring, truth table section 3 dispatch)', (
   });
 });
 
+describe('seek wiring regression (260902-cfa: D-02 seek-restart / D-09 silent re-anchor)', () => {
+  beforeEach(() => {
+    efxPaintAudioMonitor.stop();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  it('seek-while-idle re-anchors silently (D-09/D-02): positionedAt repositions the anchor with zero engine dispatch', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.positionedAt(144);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.ensureContext).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+  });
+
+  it('seek-while-playing is a full seek-restart (truth table section 5): playAtCursor at the new cursor performs stopAll then re-dispatch', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    efxPaintAudioMonitor.playAtCursor(120, 288);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(2);
+    // stopAll runs BEFORE the second (new-cursor) play dispatch.
+    expect(mockedAudioEngine.stopAll.mock.invocationCallOrder[0])
+      .toBeLessThan(mockedAudioEngine.play.mock.invocationCallOrder[1]);
+    // The second play uses the new-cursor mapping:
+    // sourceOffset = (inFrame + slipOffset + (120 - offsetFrame)) / fps.
+    expect(mockedAudioEngine.play).toHaveBeenLastCalledWith(
+      'track-1',
+      (24 + 12 + (120 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      // effectiveEnd = min(48 + (240 - 24), 288) = 264 (trim caps before range end)
+      (264 - 120) / 24,
+    );
+  });
+});
+
 describe('efxPaintAudioMonitor sync behaviors (41-03: D-09 scrub, D-10 drift, D-11 loop wrap, A6 fps note)', () => {
   beforeEach(() => {
     efxPaintAudioMonitor.stop();
