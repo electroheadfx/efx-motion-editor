@@ -472,6 +472,74 @@ describe('seek wiring regression (260902-cfa: D-02 seek-restart / D-09 silent re
   });
 });
 
+describe('audible scrub (260902-cfa amendment: D-02 throttled snippet / D-09 silent when muted)', () => {
+  beforeEach(() => {
+    efxPaintAudioMonitor.stop();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  it('scrubAt dispatches a short snippet at the cursor through playAtCursor, throttled to ~120ms', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    efxPaintAudioMonitor.scrubAt(96);
+    // Snippet window: cursor + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES (4).
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenLastCalledWith(
+      'track-1',
+      (24 + 12 + (96 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (100 - 96) / 24,
+    );
+    // 100ms later — inside the 120ms throttle: no re-dispatch.
+    nowSpy.mockReturnValue(1100);
+    efxPaintAudioMonitor.scrubAt(120);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    // 200ms after the first dispatch: a fresh snippet re-dispatches.
+    nowSpy.mockReturnValue(1200);
+    efxPaintAudioMonitor.scrubAt(144);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(2);
+    expect(mockedAudioEngine.play).toHaveBeenLastCalledWith(
+      'track-1',
+      (24 + 12 + (144 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (148 - 144) / 24,
+    );
+  });
+
+  it('scrubAt with the toggle off re-anchors silently — zero engine dispatch (D-09 unchanged)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    setAudioPreviewEnabled(false);
+    efxPaintAudioMonitor.scrubAt(96);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.ensureContext).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    expect(efxPaintAudioMonitor.getAnchorAppFrame()).toBe(96);
+    setAudioPreviewEnabled(true);
+  });
+
+  it('scrubEnd stops the snippet and re-anchors at the final frame', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.scrubAt(96);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    efxPaintAudioMonitor.scrubEnd(120);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    expect(efxPaintAudioMonitor.getAnchorAppFrame()).toBe(120);
+  });
+});
+
 describe('efxPaintAudioMonitor sync behaviors (41-03: D-09 scrub, D-10 drift, D-11 loop wrap, A6 fps note)', () => {
   beforeEach(() => {
     efxPaintAudioMonitor.stop();

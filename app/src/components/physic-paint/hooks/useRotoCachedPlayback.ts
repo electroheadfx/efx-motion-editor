@@ -58,6 +58,8 @@ export interface RotoCachedPlayback<Frame> {
   stop: () => void;
   toggle: () => void;
   seek: (targetAppFrame: number) => void;
+  scrub: (targetAppFrame: number) => void;
+  scrubEnd: (finalAppFrame: number) => void;
   updateFps: (fps: number) => void;
   resetForLaunch: (settings: PhysicPaintRotoPlaybackSettings) => void;
 }
@@ -283,6 +285,26 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     efxPaintAudioMonitor.positionedAt(targetAppFrame);
   }, [isActive, playbackTick]);
 
+  // D-02 amendment (audible scrub): the ruler-drag funnel. While active the
+  // scrub is a seek-restart (same as seek — the ruler scrub while playing
+  // keeps the animation running from the new frame). While idle it routes to
+  // the monitor's throttled short snippet (scrubAt) — audible when the session
+  // toggle is On, a silent positionedAt re-anchor when muted (D-09 unchanged).
+  const scrub = useCallback((targetAppFrame: number) => {
+    if (isActive) {
+      seek(targetAppFrame);
+      return;
+    }
+    efxPaintAudioMonitor.scrubAt(targetAppFrame);
+  }, [isActive, seek]);
+
+  // D-02 amendment: drag release — stop the snippet and re-anchor at the final
+  // frame. A no-op while active (the seek-restart already handled audio).
+  const scrubEnd = useCallback((finalAppFrame: number) => {
+    if (isActive) return;
+    efxPaintAudioMonitor.scrubEnd(finalAppFrame);
+  }, [isActive]);
+
   const setLoop = useCallback((nextLoop: boolean) => {
     settingsRef.current = { ...settingsRef.current, loop: nextLoop };
     setLoopState(nextLoop);
@@ -337,6 +359,8 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     stop,
     toggle,
     seek,
+    scrub,
+    scrubEnd,
     updateFps,
     resetForLaunch,
   };

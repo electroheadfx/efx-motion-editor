@@ -39,6 +39,8 @@ const audioMocks = vi.hoisted(() => ({
   playAtCursor: vi.fn(),
   stop: vi.fn(),
   positionedAt: vi.fn(),
+  scrubAt: vi.fn(),
+  scrubEnd: vi.fn(),
   noteFpsMismatchOnce: vi.fn(() => null as string | null),
   notifyLoopWrap: vi.fn(),
   checkDrift: vi.fn(),
@@ -53,6 +55,8 @@ vi.mock('../audio/efxPaintAudioMonitor', () => ({
     playAtCursor: audioMocks.playAtCursor,
     stop: audioMocks.stop,
     positionedAt: audioMocks.positionedAt,
+    scrubAt: audioMocks.scrubAt,
+    scrubEnd: audioMocks.scrubEnd,
     noteFpsMismatchOnce: audioMocks.noteFpsMismatchOnce,
     notifyLoopWrap: audioMocks.notifyLoopWrap,
     checkDrift: audioMocks.checkDrift,
@@ -456,6 +460,8 @@ describe('useRotoCachedPlayback', () => {
       audioMocks.playAtCursor.mockReset();
       audioMocks.stop.mockReset();
       audioMocks.positionedAt.mockReset();
+      audioMocks.scrubAt.mockReset();
+      audioMocks.scrubEnd.mockReset();
       audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
       audioMocks.notifyLoopWrap.mockReset();
       audioMocks.checkDrift.mockReset();
@@ -547,6 +553,53 @@ describe('useRotoCachedPlayback', () => {
       playback.seek(9);
       expect(audioMocks.positionedAt).toHaveBeenCalledWith(9);
       expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    // D-02 amendment (audible scrub): the scrub funnel routes idle scrubs to
+    // the monitor's throttled snippet (scrubAt) and active scrubs to the
+    // seek-restart path; scrubEnd stops the snippet and re-anchors.
+    it('scrub while idle dispatches scrubAt (audible snippet funnel)', () => {
+      const { harness } = createSeekHarness();
+      const playback = harness.render();
+      expect(playback.isActive).toBe(false);
+
+      playback.scrub(9);
+      expect(audioMocks.scrubAt).toHaveBeenCalledWith(9);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      expect(audioMocks.positionedAt).not.toHaveBeenCalled();
+    });
+
+    it('scrub while active re-anchors and dispatches playAtCursor (seek-restart)', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(playback.isActive).toBe(true);
+
+      playback.scrub(9);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledWith(9, 11);
+      expect(audioMocks.scrubAt).not.toHaveBeenCalled();
+      expect(playback.frame).toEqual({ id: 'second' });
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+      vi.useRealTimers();
+    });
+
+    it('scrubEnd while idle stops the snippet and re-anchors at the final frame', () => {
+      const { harness } = createSeekHarness();
+      const playback = harness.render();
+      playback.scrubEnd(9);
+      expect(audioMocks.scrubEnd).toHaveBeenCalledWith(9);
+    });
+
+    it('scrubEnd while active is a no-op (the seek-restart already handled audio)', () => {
+      const { harness } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      playback.scrubEnd(9);
+      expect(audioMocks.scrubEnd).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
   });
