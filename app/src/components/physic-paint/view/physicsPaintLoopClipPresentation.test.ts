@@ -322,6 +322,91 @@ describe('canonical accepted Group feedback copy', () => {
   });
 });
 
+describe('reveal rail presentation (52-03 D-22/D-23/D-24)', () => {
+  function revealClip(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
+    return {
+      loopId: 'reveal-loop',
+      placementStart: 12,
+      sourceKeyIds: ['R1', 'R2', 'R3', 'R4'],
+      repeat: 1,
+      mode: 'progressive',
+      railKind: 'reveal',
+      scriptId: 'reveal-script',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      ...overrides,
+    };
+  }
+
+  it('defaults the reveal rail line color to the variant color (D-22)', () => {
+    const motion = projectPhysicsPaintLoopClipPresentation(range(), revealClip(), 'Reveal Script');
+    expect(motion).toMatchObject({
+      railKind: 'reveal',
+      overrideColor: '#10b981',
+    });
+    const staticRail = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip({ mode: 'static' }),
+      'Reveal Script',
+    );
+    expect(staticRail.overrideColor).toBe('#14b8a6');
+  });
+
+  it('honors a per-rail overrideColor over the variant default (D-22)', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip({ overrideColor: '#ff0000' }),
+      'Reveal Script',
+    );
+    expect(presentation.overrideColor).toBe('#ff0000');
+  });
+
+  it('appends the freshness line after the Status line (D-23)', () => {
+    const fresh = projectPhysicsPaintLoopClipPresentation(range(), revealClip(), 'Reveal Script');
+    expect(fresh.freshnessLine).toBe('baked from current script & reference');
+    expect(fresh.tooltipLines[4]).toBe('Status: Synchronized with Action.');
+    expect(fresh.tooltipLines[5]).toBe('baked from current script & reference');
+    expect(fresh.accessibleName).toContain('baked from current script & reference');
+
+    const stale = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip({ syncState: 'modified' }),
+      'Reveal Script',
+    );
+    expect(stale.freshnessLine).toBe('stale — script or reference changed since bake, Replay to refresh');
+    expect(stale.tooltipLines[5]).toBe('stale — script or reference changed since bake, Replay to refresh');
+  });
+
+  it('never presents a stale reveal bake as fresh (D-23 prohibition)', () => {
+    const deletedScript = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip(),
+      'Reveal Script',
+      { scriptExists: false },
+    );
+    expect(deletedScript.freshnessLine).toBe('stale — script or reference changed since bake, Replay to refresh');
+    const removedReference = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip(),
+      'Reveal Script',
+      { referencePlaced: false },
+    );
+    expect(removedReference.freshnessLine).toBe('stale — script or reference changed since bake, Replay to refresh');
+  });
+
+  it('keeps playscript rails free of the reveal surface (D-22/D-23)', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
+    expect(presentation).toMatchObject({
+      railKind: 'playscript',
+      overrideColor: null,
+      freshnessLine: null,
+    });
+    expect(presentation.tooltipLines).not.toContain('baked from current script & reference');
+  });
+});
+
 describe('Background clip rail presentation (49-06 UAT round 2: no lane text)', () => {
   it('keeps the full cycle facts in the tooltip only — the lane surface carries NO text (47 lock)', () => {
     const finite = projectPhysicsPaintBackgroundClipPresentation(range({ repeat: 5, requestedEnd: 40 }));

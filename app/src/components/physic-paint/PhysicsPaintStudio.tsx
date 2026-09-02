@@ -1972,15 +1972,23 @@ export function PhysicsPaintStudio() {
   const loopPresentations = useMemo(() => {
     const clipsById = new Map(rotoLoopClips.map((clip) => [clip.loopId, clip]));
     const scriptsById = new Map(loopScriptRows.map((row) => [row.id, row]));
+    // 52-03 (D-12/D-13/D-24): the reveal rail's Replay disabled reason needs
+    // the reference + script state the presentation cannot see on its own.
+    const referencePlaced = launchContext
+      ? (getEfxPaintDocument(launchContext.layerId)?.photoReference !== null)
+      : undefined;
     return new Map((loopResolutionContext?.ranges ?? []).map((range) => {
       const clip = clipsById.get(range.loopId);
       const sourceScriptName = clip?.scriptId ? scriptsById.get(clip.scriptId)?.name ?? null : null;
       return [
         range.loopId,
-        projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName),
+        projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName, {
+          referencePlaced,
+          scriptExists: clip?.scriptId ? scriptsById.has(clip.scriptId) : undefined,
+        }),
       ] as const;
     }));
-  }, [loopResolutionContext, loopScriptRows, rotoLoopClips]);
+  }, [loopResolutionContext, loopScriptRows, rotoLoopClips, launchContext, efxPaintVersion.value]);
   const selectedActionId = rotoScriptLibrary.selectedId.value;
   const selectedAction = selectedActionId === null
     ? null

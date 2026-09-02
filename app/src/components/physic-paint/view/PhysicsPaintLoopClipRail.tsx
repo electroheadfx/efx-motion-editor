@@ -16,6 +16,8 @@ import type {
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   projectPhysicsPaintLoopClipGeometry,
+  REVEAL_MOTION_HOVER_COLOR,
+  REVEAL_STATIC_HOVER_COLOR,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import {
@@ -179,6 +181,18 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const tooltipLines = setSentence
     ? [...presentation.tooltipLines, setSentence.trim()]
     : presentation.tooltipLines;
+  // 52-03 (D-22): the reveal rail inherits the Loop Clip overrideColor
+  // mechanism — the variant color is the DEFAULT overrideColor, overridable
+  // per rail. The rail line color rides a CSS variable so the existing
+  // mode/selected/unresolved rules keep working (one color system, not two).
+  const isReveal = presentation.railKind === 'reveal';
+  const railColor = isReveal ? presentation.overrideColor : null;
+  const railColorHover = isReveal
+    ? (presentation.mode === 'static' ? REVEAL_STATIC_HOVER_COLOR : REVEAL_MOTION_HOVER_COLOR)
+    : null;
+  const railStyle = railColor
+    ? { '--rail-color': railColor, ...(railColorHover ? { '--rail-color-hover': railColorHover } : {}) }
+    : undefined;
 
   const clearPendingSingleClick = () => {
     if (pendingSingleClickRef.current === null) return;
@@ -309,7 +323,8 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     >
       <button
         type="button"
-        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${isReveal ? ' rail-kind-reveal' : ''}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        style={railStyle}
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
         data-rail-first-frame={range.placementStart}

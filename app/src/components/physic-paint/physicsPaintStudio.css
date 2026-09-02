@@ -3104,6 +3104,46 @@ button.destructive {
   background: #67e8f9;
 }
 
+/* 52-03 (D-22): the reveal rail's green-family line colors. The variant color
+   is the DEFAULT overrideColor (emerald motion / teal static), overridable per
+   rail via the existing 43-06 mechanism — the rail target sets --rail-color
+   and --rail-color-hover from the presentation. These rules win over the
+   playscript mode rules by specificity; the shared selected/unresolved colors
+   stay identical across every rail family (one color system, not two). */
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color, #10b981);
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color, #14b8a6);
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #6ee7b7);
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #5eead4);
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.selected .physics-paint-loop-clip-rail-segment {
+  background: #f59e0b;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.unresolved .physics-paint-loop-clip-rail-segment {
+  background: #ff6b6b;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #6ee7b7);
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #5eead4);
+}
+
 .physics-paint-loop-clip-lifecycle-dot {
   position: absolute;
   /* Rectangle over the 4px rail segment: same height, exactly covering it. */

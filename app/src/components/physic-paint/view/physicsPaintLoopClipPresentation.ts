@@ -21,7 +21,27 @@ export interface PhysicsPaintLoopClipPresentationOptions {
   readonly groupDisplayName?: string | null;
   readonly fragment?: PhysicsPaintGroupFragmentContext | null;
   readonly linkedActionName?: string | null;
+  /** Whether the photo reference is placed (reveal rails only, D-12/D-24). */
+  readonly referencePlaced?: boolean;
+  /** Whether the linked library script still exists (reveal rails only, D-13/D-24). */
+  readonly scriptExists?: boolean;
 }
+
+// 52-03 (D-22): the reveal rail's green-family line colors. The variant color
+// is the DEFAULT overrideColor — a reveal rail with `overrideColor: null`
+// renders emerald (motion) / teal (static), overridable per rail via the
+// existing 43-06 mechanism. Hover shades mirror the Loop Clip convention
+// (500 base → 300 hover) per the UI-SPEC.
+export const REVEAL_MOTION_COLOR = '#10b981';
+export const REVEAL_STATIC_COLOR = '#14b8a6';
+export const REVEAL_MOTION_HOVER_COLOR = '#6ee7b7';
+export const REVEAL_STATIC_HOVER_COLOR = '#5eead4';
+
+// 52-03 (D-23): the reveal rail's tooltip freshness line — the one line the
+// Loop Clip tooltip does not have. Fresh when the bake matches the current
+// script + reference; stale when either changed since the bake.
+export const REVEAL_FRESH_LINE = 'baked from current script & reference';
+export const REVEAL_STALE_LINE = 'stale — script or reference changed since bake, Replay to refresh';
 
 export interface PhysicsPaintLoopClipPresentation {
   readonly loopId: string;
@@ -43,6 +63,13 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly mode: PhysicPaintRotoLoopClip['mode'];
   readonly modeLabel: 'Motion' | 'Static';
   readonly groupTypeLabel: 'Motion Rail' | 'Static Rail';
+  /** Rail-kind discriminator (52-01 D-03): 'reveal' marks a reveal rail. */
+  readonly railKind: 'playscript' | 'reveal';
+  /** The rail line color (D-22): the reveal rail's variant color is the
+   *  DEFAULT overrideColor, overridable per rail via the 43-06 mechanism. */
+  readonly overrideColor: string | null;
+  /** The reveal rail's tooltip freshness line (D-23), null for playscript rails. */
+  readonly freshnessLine: string | null;
   readonly lifecycle: PhysicsPaintGroupLifecycle;
   readonly statusLabel: string;
   readonly synchronizationDot: PhysicsPaintGroupSynchronizationDot | null;
@@ -98,6 +125,21 @@ export function projectPhysicsPaintLoopClipPresentation(
   const statusLabel = statusLabelFor(lifecycle);
   const synchronizationDot = lifecycle === 'unresolved' ? null : lifecycle;
   const regenerateDisabledReason = regenerateDisabledReasonFor(lifecycle);
+  // 52-03 (D-22/D-23/D-24): the reveal rail surface. The variant color is the
+  // DEFAULT overrideColor (emerald motion / teal static), overridable per rail
+  // via the existing 43-06 mechanism. The freshness line honestly reflects
+  // whether the script or reference changed since the bake (D-23 prohibition:
+  // a stale bake is never presented as fresh). The Replay disabled reason
+  // mirrors `regenerateDisabledReasonFor` (D-24).
+  const railKind = clip?.railKind ?? 'playscript';
+  const isReveal = railKind === 'reveal';
+  const overrideColor = isReveal
+    ? (clip?.overrideColor ?? (mode === 'static' ? REVEAL_STATIC_COLOR : REVEAL_MOTION_COLOR))
+    : (clip?.overrideColor ?? null);
+  const referencePlaced = options.referencePlaced;
+  const scriptExists = options.scriptExists;
+  const isFresh = lifecycle === 'synchronized' && scriptExists !== false && referencePlaced !== false;
+  const freshnessLine = isReveal ? (isFresh ? REVEAL_FRESH_LINE : REVEAL_STALE_LINE) : null;
   const fragment = options.fragment ?? null;
   const fragmentLabel = fragment && fragment.count > 1
     ? `Range F${fragment.start}–F${fragment.endExclusive - 1} · Fragment ${fragment.index} of ${fragment.count}`
@@ -121,19 +163,22 @@ export function projectPhysicsPaintLoopClipPresentation(
   const interruptionTooltipLine = shortened ? 'next clip — interrupts the loop' : null;
   // 47 UAT: the capsule carries at most one compact badge — the shortened
   // phrase moved from the capsule surface into the tooltip.
+  // 52-03 (D-23): the freshness line is appended AFTER the Status line — same
+  // tooltipLines array, no new rendering path.
   const tooltipLines = [
     displayName,
     `Type: ${modeLabel}`,
     cycleLabel,
     `Effective ${effectiveDuration}f`,
     `Status: ${statusLabel}`,
+    ...(freshnessLine ? [freshnessLine] : []),
     ...(shortenedLabel ? [shortenedLabel] : []),
     ...(interruptionTooltipLine ? [interruptionTooltipLine] : []),
     ...(fragmentLabel ? [fragmentLabel] : []),
   ];
   const accessibleName = fragmentLabel && fragment
-    ? `${displayName}. Fragment ${fragment.index} of ${fragment.count}, frames ${fragment.start} through ${fragment.endExclusive - 1}. ${groupTypeLabel}. ${statusLabel}${linkedDescription ? ` ${linkedDescription}` : ''}`
-    : `${displayName}. ${groupTypeLabel}. ${cycleLabel}. Effective ${effectiveDuration} frames. ${statusLabel}${linkedDescription ? ` ${linkedDescription}` : ''}`;
+    ? `${displayName}. Fragment ${fragment.index} of ${fragment.count}, frames ${fragment.start} through ${fragment.endExclusive - 1}. ${groupTypeLabel}. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`
+    : `${displayName}. ${groupTypeLabel}. ${cycleLabel}. Effective ${effectiveDuration} frames. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`;
 
   return {
     loopId: range.loopId,
@@ -150,6 +195,9 @@ export function projectPhysicsPaintLoopClipPresentation(
     mode,
     modeLabel,
     groupTypeLabel,
+    railKind,
+    overrideColor,
+    freshnessLine,
     lifecycle,
     statusLabel,
     synchronizationDot,
