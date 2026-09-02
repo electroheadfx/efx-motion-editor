@@ -38,6 +38,7 @@ const audioMocks = vi.hoisted(() => ({
   prepare: vi.fn<(...args: unknown[]) => Promise<void>>(),
   playAtCursor: vi.fn(),
   stop: vi.fn(),
+  positionedAt: vi.fn(),
   noteFpsMismatchOnce: vi.fn(() => null as string | null),
   notifyLoopWrap: vi.fn(),
   checkDrift: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('../audio/efxPaintAudioMonitor', () => ({
     prepare: audioMocks.prepare,
     playAtCursor: audioMocks.playAtCursor,
     stop: audioMocks.stop,
+    positionedAt: audioMocks.positionedAt,
     noteFpsMismatchOnce: audioMocks.noteFpsMismatchOnce,
     notifyLoopWrap: audioMocks.notifyLoopWrap,
     checkDrift: audioMocks.checkDrift,
@@ -439,6 +441,113 @@ describe('useRotoCachedPlayback', () => {
 
       expect(audioMocks.prepare).not.toHaveBeenCalled();
       expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+    });
+  });
+
+  // D-02 seek wiring (260902-cfa): seek-while-playing is a full audio
+  // seek-restart at the new cursor (playAtCursor = stopAll + re-dispatch,
+  // truth table section 5); seek-while-idle / out-of-range / after-stop is a
+  // silent re-anchor (positionedAt, D-09) with zero engine dispatch.
+  describe('seek (D-02 seek-restart / D-09 silent re-anchor)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      installWindowTimers();
+      audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+      audioMocks.playAtCursor.mockReset();
+      audioMocks.stop.mockReset();
+      audioMocks.positionedAt.mockReset();
+      audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+      audioMocks.notifyLoopWrap.mockReset();
+      audioMocks.checkDrift.mockReset();
+      audioMocks.claimAudio.mockReset();
+      audioMocks.ownershipConfigure.mockReset();
+      audioMocks.getSection.mockReset().mockReturnValue(null);
+    });
+
+    const seekFrames = [
+      { appFrame: 8, frame: { id: 'first' } },
+      { appFrame: 9, frame: { id: 'second' } },
+      { appFrame: 10, frame: { id: 'third' } },
+    ];
+
+    function createSeekHarness() {
+      const onFrame = vi.fn();
+      const harness = createHarness({
+        initialSettings: { loop: false, fps: 2 },
+        workflowMode: 'roto',
+        getFrames: () => seekFrames,
+        onStart: vi.fn(),
+        onFrame,
+        setIsPlaying: vi.fn(),
+      });
+      return { harness, onFrame };
+    }
+
+    it('seek while active re-anchors at the target and dispatches playAtCursor exactly once', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(playback.isActive).toBe(true);
+      expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+
+      // Advance one tick: now showing frame 9 (index 1).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+
+      // Seek to frame 9 while playing: re-anchor + full audio seek-restart.
+      playback.seek(9);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledTimes(1);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledWith(9, 11);
+      expect(playback.frame).toEqual({ id: 'second' });
+
+      // The next timer tick shows the frame AFTER the target (frame 10).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+      vi.useRealTimers();
+    });
+
+    it('seek while idle dispatches positionedAt with zero engine calls', () => {
+      const { harness } = createSeekHarness();
+      const playback = harness.render();
+      expect(playback.isActive).toBe(false);
+
+      playback.seek(9);
+      expect(audioMocks.positionedAt).toHaveBeenCalledWith(9);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      expect(audioMocks.prepare).not.toHaveBeenCalled();
+    });
+
+    it('seek to an out-of-range appFrame is a silent re-anchor — positionedAt only, no frame-index change', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(playback.isActive).toBe(true);
+      expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+
+      playback.seek(99); // not in getFrames()
+      expect(audioMocks.positionedAt).toHaveBeenCalledWith(99);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      // No frame-index change: the next tick still shows frame 9 (index 1).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+      vi.useRealTimers();
+    });
+
+    it('seek after stop() is a silent re-anchor — positionedAt only', () => {
+      const { harness } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      playback.stop();
+      playback = harness.render();
+      expect(playback.isActive).toBe(false);
+
+      playback.seek(9);
+      expect(audioMocks.positionedAt).toHaveBeenCalledWith(9);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      vi.useRealTimers();
     });
   });
 });
