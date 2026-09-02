@@ -1749,11 +1749,10 @@ describe('Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50
     expect(rightPanel).not.toContain('photoReferenceSection');
   });
 
-  it('wires the section ports to the store setters (mode mutation + display preferences)', () => {
-    // The section ports route mode → setPhotoReferenceMode (undoable mutation),
-    // opacity → setPhotoReferenceOpacity, lock → setPhotoReferenceTransformLocked
-    // (display preferences, no undo).
-    expect(studio).toContain('setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode)');
+  it('wires the section ports to the store setters (display preferences)', () => {
+    // The section ports route opacity → setPhotoReferenceOpacity, lock →
+    // setPhotoReferenceTransformLocked (display preferences, no undo). The
+    // Phase 50 mode port is REMOVED (52-02, D-15 clean break).
     expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
     expect(studio).toContain('setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked)');
   });
@@ -1788,8 +1787,6 @@ describe('Physics Paint photo reference end-to-end integration contract (50-06, 
     // Ghost overlay (S3): the ghost draws in the monitor-paint layer seat.
     expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
     expect(studioView).toContain('<PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />');
-    // Mode switch (D-05/D-07): the right-panel section routes mode → setPhotoReferenceMode.
-    expect(studio).toContain('setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode)');
     // Opacity slider (D-12): routes opacity → setPhotoReferenceOpacity.
     expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
     // Transform handles (D-13): the overlay writes to setPhotoReferenceTransform.
@@ -1825,7 +1822,6 @@ describe('Physics Paint photo reference end-to-end integration contract (50-06, 
       'getReferenceSourceFrameVerdict',
       'registerReferenceSourceImage',
       'setPhotoReferenceSource',
-      'setPhotoReferenceMode',
       'setPhotoReferenceVisible',
       'setPhotoReferenceOpacity',
       'setPhotoReferenceTransform',

@@ -2,10 +2,8 @@ import { useEffect, useRef } from 'preact/hooks';
 import { Camera, Eye, EyeOff, Image, ImageUp, Lock, LockOpen, Trash2, X } from 'lucide-preact';
 import {
   usePhysicsPaintPhotoReferenceController,
-  PHOTO_REFERENCE_MODE_HINT,
   PHOTO_REFERENCE_EMPTY_SOURCE,
   PHOTO_REFERENCE_UNLOCKED_TOOLTIP,
-  PHOTO_REFERENCE_MODE_OPTIONS,
   type PhysicsPaintPhotoReferencePorts,
 } from './physicsPaintPhotoReferenceController';
 
@@ -15,13 +13,15 @@ import {
  * backdrop, no focus trap — the Studio palette stays interactive while the
  * dialog floats above it). It owns ALL photo reference controls — the old
  * right-panel `Photo Reference` section moved here:
- *   - `Mode` 3-segment control (D-05)
  *   - `Overlay opacity` slider (D-12, release-commit)
  *   - `Lock reference transform` toggle (D-13)
  *   - `Show in studio` toggle (D-11)
  *   - Source facts with the Import/Replace source button (D-03) — the same
  *     full-area reference picker opens behind the dialog
  *   - `Remove` (D-03 remove, only when a source exists)
+ *
+ * The Phase 50 `Mode` 3-segment control is REMOVED entirely (52-02, D-15 clean
+ * break) — the `PhotoReferenceMode` flag no longer exists.
  *
  * The component is a thin render shell: the state machine lives in
  * `usePhysicsPaintPhotoReferenceController` (accepted canonical state only, no
@@ -125,8 +125,8 @@ export function PhysicsPaintPhotoReferenceDialog({
 
   const controller = usePhysicsPaintPhotoReferenceController({ layerId, ports });
   const {
-    mode, previewOpacityPercent, transformLocked, visibleInStudio, sourceCount, filenames, hasSource,
-    selectMode, previewOpacity, commitOpacity, toggleTransformLocked, toggleVisible, removeReference,
+    previewOpacityPercent, transformLocked, visibleInStudio, sourceCount, filenames, hasSource,
+    previewOpacity, commitOpacity, toggleTransformLocked, toggleVisible, removeReference,
   } = controller;
 
   return (
@@ -164,29 +164,6 @@ export function PhysicsPaintPhotoReferenceDialog({
           </button>
         </div>
         <div class="physics-paint-photo-reference-content">
-          <div
-            class="physics-paint-photo-reference-mode"
-            role="radiogroup"
-            aria-label="Mode"
-            aria-describedby="physics-photo-reference-mode-hint"
-          >
-            {PHOTO_REFERENCE_MODE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={mode === option.value}
-                class={`physics-paint-photo-reference-mode-segment${mode === option.value ? ' active' : ''}`}
-                onClick={() => selectMode(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <span id="physics-photo-reference-mode-hint" class="physics-paint-photo-reference-hint">
-            {PHOTO_REFERENCE_MODE_HINT}
-          </span>
-
           <div class="physics-paint-photo-reference-opacity">
             <div class="physics-paint-photo-reference-opacity-labels">
               <span class="physics-paint-photo-reference-label">Overlay opacity</span>

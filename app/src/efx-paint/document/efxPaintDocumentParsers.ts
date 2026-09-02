@@ -25,7 +25,6 @@ import {
   type FrameLoopClipScale,
   type InternalPaintTrack,
   type PaperTexture,
-  type PhotoReferenceMode,
   type PhotoReferenceTrack,
   type PhotoReferenceTransform,
 } from './efxPaintDocument';
@@ -65,8 +64,10 @@ const REPEAT_INFINITE_KEYS = new Set(['mode']);
 const SCALE_KEYS = new Set(['x', 'y']);
 const CACHED_FRAME_REF_KEYS = new Set(['cachePath', 'width', 'height']);
 const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
-const PHOTO_REFERENCE_KEYS = new Set(['id', 'sourceFrameRefs', 'mode', 'revision', 'visibleInStudio', 'opacity', 'transform', 'transformLocked']);
-const PHOTO_REFERENCE_MODES = new Set(['reference-only', 'reveal-source', 'masked-transform-source']);
+// 52-02 (D-15): the `mode` member is REMOVED from the allowlist — a legacy
+// mode-bearing record throws (unknown member), never normalized or silently
+// accepted (T-52-04).
+const PHOTO_REFERENCE_KEYS = new Set(['id', 'sourceFrameRefs', 'revision', 'visibleInStudio', 'opacity', 'transform', 'transformLocked']);
 const PHOTO_TRANSFORM_KEYS = new Set(['x', 'y', 'scaleX', 'scaleY', 'rotation']);
 
 function isBlendMode(value: unknown): value is BlendMode {
@@ -345,16 +346,13 @@ function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
     throw new Error('PhotoReferenceTrack: expected a record.');
   }
   if (!hasOnlyKeys(value, PHOTO_REFERENCE_KEYS)) {
-    throw new Error('PhotoReferenceTrack: unknown members; expected exactly id, sourceFrameRefs, mode, revision, visibleInStudio, opacity, transform, transformLocked.');
+    throw new Error('PhotoReferenceTrack: unknown members; expected exactly id, sourceFrameRefs, revision, visibleInStudio, opacity, transform, transformLocked.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('PhotoReferenceTrack: id must be a non-empty string.');
   }
   if (!Array.isArray(value.sourceFrameRefs) || !value.sourceFrameRefs.every(isNonEmptyString)) {
     throw new Error('PhotoReferenceTrack: sourceFrameRefs must be an array of non-empty strings.');
-  }
-  if (typeof value.mode !== 'string' || !PHOTO_REFERENCE_MODES.has(value.mode)) {
-    throw new Error('PhotoReferenceTrack: mode must be reference-only, reveal-source, or masked-transform-source.');
   }
   if (!isNonNegativeInteger(value.revision)) {
     throw new Error('PhotoReferenceTrack: revision must be a non-negative integer.');
@@ -371,7 +369,6 @@ function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
   return Object.freeze({
     id: value.id,
     sourceFrameRefs: Object.freeze([...value.sourceFrameRefs]),
-    mode: value.mode as PhotoReferenceMode,
     revision: value.revision,
     visibleInStudio: value.visibleInStudio,
     opacity: value.opacity,

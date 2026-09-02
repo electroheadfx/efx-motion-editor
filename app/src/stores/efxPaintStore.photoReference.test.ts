@@ -18,7 +18,6 @@ import {
   registerDocument,
   reset,
   serializeRuntimeIntoDocument,
-  setPhotoReferenceMode,
   setPhotoReferenceOpacity,
   setPhotoReferenceSource,
   setPhotoReferenceTransform,
@@ -70,7 +69,6 @@ describe('photo reference CRUD (50-02 Task 1)', () => {
     expect(createDescriptor.after).toBe(getDocument(layerId));
 
     const created = getDocument(layerId)!.photoReference!;
-    expect(created.mode).toBe('reference-only');
     expect(created.visibleInStudio).toBe(true);
     expect(created.opacity).toBe(0.5);
     expect(created.transform).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
@@ -95,26 +93,6 @@ describe('photo reference CRUD (50-02 Task 1)', () => {
     registerDocument(replaceDescriptor.before);
     expect(getDocument(layerId)!.photoReference!.sourceFrameRefs).toEqual(['a', 'b']);
     expect(getDocument(layerId)!.photoReference!.revision).toBe(0);
-  });
-
-  it('setPhotoReferenceMode records one undo entry and bumps track + document revision (D-07)', () => {
-    const layerId = 'layer-photo';
-    registerDocument(makeTrackDocument(layerId));
-    setPhotoReferenceSource(layerId, ['a']);
-    const preMode = getDocument(layerId)!;
-
-    const result = setPhotoReferenceMode(layerId, 'reveal-source');
-    expect(result.ok).toBe(true);
-    const descriptor = (result as OkPhotoReferenceMutation).descriptor!;
-    expect(descriptor.before).toBe(preMode);
-    expect(descriptor.after).toBe(getDocument(layerId));
-    expect(getDocument(layerId)!.photoReference!.mode).toBe('reveal-source');
-    expect(getDocument(layerId)!.photoReference!.revision).toBe(1);
-    expect(getDocument(layerId)!.documentRevision).toBe(preMode.documentRevision + 1);
-
-    // undo restores reference-only
-    registerDocument(descriptor.before);
-    expect(getDocument(layerId)!.photoReference!.mode).toBe('reference-only');
   });
 
   it('display-preference setters persist without undo or revision bump (D-11/D-12/D-13)', () => {
@@ -152,10 +130,6 @@ describe('photo reference CRUD (50-02 Task 1)', () => {
     const sourceNoOp = setPhotoReferenceSource(layerId, ['a']);
     expect(sourceNoOp.ok).toBe(true);
     expect((sourceNoOp as OkPhotoReferenceMutation).descriptor).toBeNull();
-
-    const modeNoOp = setPhotoReferenceMode(layerId, 'reference-only');
-    expect(modeNoOp.ok).toBe(true);
-    expect((modeNoOp as OkPhotoReferenceMutation).descriptor).toBeNull();
 
     expect(setPhotoReferenceOpacity(layerId, 0.5).ok).toBe(true);
     expect(setPhotoReferenceVisible(layerId, true).ok).toBe(true);
@@ -348,7 +322,6 @@ describe('photo reference exclusion + persistence (50-02 Task 3)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['a', 'b']);
-    setPhotoReferenceMode(layerId, 'reveal-source');
     setPhotoReferenceOpacity(layerId, 0.8);
     setPhotoReferenceVisible(layerId, false);
     setPhotoReferenceTransform(layerId, { x: 1, y: 2, scaleX: 1.5, scaleY: 0.5, rotation: 45 });
@@ -357,7 +330,6 @@ describe('photo reference exclusion + persistence (50-02 Task 3)', () => {
     const projected = serializeRuntimeIntoDocument(layerId);
     const photo = projected.photoReference!;
     expect(photo.sourceFrameRefs).toEqual(['a', 'b']);
-    expect(photo.mode).toBe('reveal-source');
     expect(photo.opacity).toBe(0.8);
     expect(photo.visibleInStudio).toBe(false);
     expect(photo.transform).toEqual({ x: 1, y: 2, scaleX: 1.5, scaleY: 0.5, rotation: 45 });

@@ -275,12 +275,6 @@ export interface BackgroundTrack {
   readonly revision: number
 }
 
-/**
- * Photo/reference source mode union (mirrors the app-side schema, D-05). The
- * reserved `'photo'` fond mode is deliberately absent (D-08).
- */
-export type PhotoReferenceMode = 'reference-only' | 'reveal-source' | 'masked-transform-source'
-
 /** Photo/reference display transform (mirrors the app-side schema, D-13). */
 export interface PhotoReferenceTransform {
   readonly x: number
@@ -290,11 +284,14 @@ export interface PhotoReferenceTransform {
   readonly rotation: number
 }
 
-/** The single photo/reference track (mirrors the app-side schema, Phase 50-01). */
+/**
+ * The single photo/reference track (mirrors the app-side schema, Phase 50-01).
+ * The Phase 50 `mode` field is REMOVED (52-02, D-15 clean break) — the reveal
+ * rail bakes the reference as placed regardless of any mode.
+ */
 export interface PhotoReferenceTrack {
   readonly id: string
   readonly sourceFrameRefs: readonly string[]
-  readonly mode: PhotoReferenceMode
   readonly revision: number
   readonly visibleInStudio: boolean
   readonly opacity: number

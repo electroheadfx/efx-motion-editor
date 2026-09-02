@@ -1,17 +1,13 @@
 import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
-import type { EfxPaintDocument, PhotoReferenceMode } from '../../../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult } from '../../../stores/efxPaintStore';
 
 /**
  * 50-05 (S5): the Photo Reference controller — the shared state machine behind
  * the floating Photo Reference dialog (50-UAT modal redesign). Kept as a
  * controller module (no component) so the dialog owns the render surface while
- * the controller owns the four display/mutation controls and the source facts:
- *   - `Mode` 3-segment control (D-05) — one undoable document mutation via
- *     `setPhotoReferenceMode` (D-07). Flag-only in Phase 50: all three modes
- *     show the ghost identically; the ONLY visible difference is the active
- *     segment (D-06 HARD LOCK).
+ * the controller owns the display/mutation controls and the source facts:
  *   - `Overlay opacity` slider (D-12) — a persisted display preference via
  *     `setPhotoReferenceOpacity` (0..1 store, 0..100 display). Live preview
  *     during drag, commit on release (Phase 48 release-commit pattern). NOT an
@@ -24,9 +20,13 @@ import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult } from '
  *   - Source facts `{N} image(s)` with original filenames in natural sort order
  *     in the tooltip, and `No source imported` when empty.
  *
+ * The Phase 50 `Mode` 3-segment control is REMOVED entirely (52-02, D-15 clean
+ * break) — the `PhotoReferenceMode` flag no longer exists; the reveal rail
+ * bakes the reference as placed regardless of any mode.
+ *
  * The controller reads ACCEPTED canonical state only (no optimistic facts,
  * UI-SPEC busy rule). With no photo/reference track it still reports the
- * defaults (mode `reference-only`, opacity 50%, transform locked, visible).
+ * defaults (opacity 50%, transform locked, visible).
  *
  * Signals-only state (efx-preact-reactivity): the controller holds the opacity
  * draft in a signal; the view reads the document via narrow reads. No useState,
@@ -40,8 +40,6 @@ import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult } from '
 export interface PhysicsPaintPhotoReferencePorts {
   /** Document read — the controller never holds its own truth. */
   getDocument: (layerId: string) => EfxPaintDocument | undefined;
-  /** 50-02 store op: setPhotoReferenceMode(layerId, mode) — one undoable mutation (D-07). */
-  setMode: (layerId: string, mode: PhotoReferenceMode) => PhotoReferenceMutationResult;
   /** 50-02 store op: setPhotoReferenceOpacity(layerId, opacity) — display preference (D-12). */
   setOpacity: (layerId: string, opacity: number) => PhotoReferenceDisplayResult;
   /** 50-02 store op: setPhotoReferenceTransformLocked(layerId, locked) — display property (D-13). */
@@ -61,7 +59,6 @@ export interface PhysicsPaintPhotoReferenceControllerProps {
 }
 
 export interface PhysicsPaintPhotoReferenceController {
-  mode: PhotoReferenceMode;
   /** The accepted opacity as a 0..100 integer (display scale). */
   opacityPercent: number;
   /** The live drag draft (null when not dragging) — release-commit (D-12). */
@@ -74,7 +71,6 @@ export interface PhysicsPaintPhotoReferenceController {
   sourceCount: number;
   filenames: string[];
   hasSource: boolean;
-  selectMode: (mode: PhotoReferenceMode) => void;
   previewOpacity: (percent: number) => void;
   commitOpacity: (percent: number) => void;
   /** Invert the lock from the LIVE document (always reversible, 50-UAT fix). */
@@ -84,22 +80,11 @@ export interface PhysicsPaintPhotoReferenceController {
   removeReference: () => void;
 }
 
-/** The locked mode exclusion hint copy (UI-SPEC Copywriting Contract). */
-export const PHOTO_REFERENCE_MODE_HINT = 'The reference never appears in flattened output.';
-
 /** The locked empty-source fact copy (UI-SPEC Copywriting Contract). */
 export const PHOTO_REFERENCE_EMPTY_SOURCE = 'No source imported';
 
 /** The locked unlock tooltip copy (UI-SPEC Copywriting Contract). */
 export const PHOTO_REFERENCE_UNLOCKED_TOOLTIP = 'Unlocked — canvas gestures move the reference';
-
-/** The three locked mode options in canonical order (D-05). Short labels per
- *  the 50-UAT compact dialog mockup ("Reference", "Reveal", "Masked"). */
-export const PHOTO_REFERENCE_MODE_OPTIONS: readonly { value: PhotoReferenceMode; label: string }[] = [
-  { value: 'reference-only', label: 'Reference' },
-  { value: 'reveal-source', label: 'Reveal' },
-  { value: 'masked-transform-source', label: 'Masked' },
-];
 
 /** The default opacity (50%) as a 0..100 display integer (D-12, UI-SPEC). */
 const DEFAULT_OPACITY_PERCENT = 50;
@@ -109,7 +94,6 @@ export function usePhysicsPaintPhotoReferenceController({
   ports = {},
 }: PhysicsPaintPhotoReferenceControllerProps): PhysicsPaintPhotoReferenceController {
   const getDocument = ports.getDocument ?? defaultPorts.getDocument;
-  const setMode = ports.setMode ?? defaultPorts.setMode;
   const setOpacity = ports.setOpacity ?? defaultPorts.setOpacity;
   const setTransformLocked = ports.setTransformLocked ?? defaultPorts.setTransformLocked;
   const setVisible = ports.setVisible ?? defaultPorts.setVisible;
@@ -119,7 +103,6 @@ export function usePhysicsPaintPhotoReferenceController({
   const document = getDocument(layerId);
   const track = document?.photoReference ?? null;
 
-  const mode = track?.mode ?? 'reference-only';
   const opacityPercent = track ? Math.round(track.opacity * 100) : DEFAULT_OPACITY_PERCENT;
   const transformLocked = track?.transformLocked ?? true;
   const visibleInStudio = track?.visibleInStudio ?? true;
@@ -134,10 +117,6 @@ export function usePhysicsPaintPhotoReferenceController({
   // through this signal; the store write happens only on release. Held in a
   // signal so the view re-renders the thumb live without a store write.
   const opacityDraft = useSignal<number | null>(null);
-
-  const selectMode = (nextMode: PhotoReferenceMode) => {
-    setMode(layerId, nextMode);
-  };
 
   const previewOpacity = (percent: number) => {
     opacityDraft.value = percent;
@@ -167,7 +146,6 @@ export function usePhysicsPaintPhotoReferenceController({
   };
 
   return {
-    mode,
     opacityPercent,
     opacityDraft,
     previewOpacityPercent: opacityDraft.value ?? opacityPercent,
@@ -176,7 +154,6 @@ export function usePhysicsPaintPhotoReferenceController({
     sourceCount,
     filenames,
     hasSource: sourceCount > 0,
-    selectMode,
     previewOpacity,
     commitOpacity,
     toggleTransformLocked,
@@ -188,7 +165,6 @@ export function usePhysicsPaintPhotoReferenceController({
 /** Production ports — the real store ops and the imageStore filename resolver. */
 const defaultPorts: PhysicsPaintPhotoReferencePorts = {
   getDocument: () => undefined,
-  setMode: () => ({ ok: false, reason: 'no-photo-reference' }),
   setOpacity: () => ({ ok: false, reason: 'no-photo-reference' }),
   setTransformLocked: () => ({ ok: false, reason: 'no-photo-reference' }),
   setVisible: () => ({ ok: false, reason: 'no-photo-reference' }),

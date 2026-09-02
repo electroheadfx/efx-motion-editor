@@ -100,18 +100,18 @@ function encodeValidatedEfxPaintTrackContent(track: InternalPaintTrack): string 
 
 /**
  * Canonical photo/reference term (50-01): covers the document-mutation fields
- * (`id`, ordered `sourceFrameRefs`, `mode`, `revision`) and EXCLUDES the
+ * (`id`, ordered `sourceFrameRefs`, `revision`) and EXCLUDES the
  * display-preference fields (`visibleInStudio`, `opacity`, `transform`,
  * `transformLocked`) so a display-preference change never bumps the document
- * revision (D-07 vs D-11/D-12/D-13 split). A null track contributes an empty
- * term (D-29 idiom).
+ * revision (D-07 vs D-11/D-12/D-13 split). The Phase 50 `mode` term is REMOVED
+ * (52-02, D-15 clean break). A null track contributes an empty term (D-29
+ * idiom).
  */
 function encodeCanonicalPhotoReference(track: PhotoReferenceTrack | null): string {
   if (track === null) return '';
   return [
     encodeCanonicalString(track.id),
     `${track.sourceFrameRefs.length}:${track.sourceFrameRefs.map(encodeCanonicalString).join('')}`,
-    encodeCanonicalString(track.mode),
     encodeCanonicalNumber(track.revision),
   ].join('');
 }

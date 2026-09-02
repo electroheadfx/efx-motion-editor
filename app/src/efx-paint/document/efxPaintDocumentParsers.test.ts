@@ -6,7 +6,6 @@ import { buildEfxPaintDocumentRevision } from './efxPaintDocumentRevision';
 interface MutablePhotoReferenceTrack {
   id: string;
   sourceFrameRefs: string[];
-  mode: string;
   revision: number;
   visibleInStudio: boolean;
   opacity: number;
@@ -19,7 +18,6 @@ function validPhotoReferenceTrack(): MutablePhotoReferenceTrack {
   return {
     id: 'photo-track-1',
     sourceFrameRefs: ['shot_1', 'shot_2'],
-    mode: 'reference-only',
     revision: 0,
     visibleInStudio: true,
     opacity: 0.5,
@@ -43,16 +41,8 @@ describe('PhotoReferenceTrack round-trip, encoder, and fail-closed parse', () =>
     expect(parsed).toEqual(document);
   });
 
-  it('mode changes the canonical revision; opacity does not (D-07 vs D-12)', () => {
+  it('opacity does not change the canonical revision (D-12)', () => {
     const base = documentWithPhotoReference();
-
-    const referenceOnly = JSON.parse(JSON.stringify(base));
-    referenceOnly.photoReference.mode = 'reference-only';
-    const revealSource = JSON.parse(JSON.stringify(base));
-    revealSource.photoReference.mode = 'reveal-source';
-    expect(buildEfxPaintDocumentRevision(revealSource)).not.toBe(
-      buildEfxPaintDocumentRevision(referenceOnly),
-    );
 
     const opacity05 = JSON.parse(JSON.stringify(base));
     opacity05.photoReference.opacity = 0.5;
@@ -63,11 +53,7 @@ describe('PhotoReferenceTrack round-trip, encoder, and fail-closed parse', () =>
     );
   });
 
-  it('throws fail-closed on unknown mode, missing sourceFrameRefs, and negative revision (ASVS V5)', () => {
-    expect(() =>
-      parseEfxPaintDocument(documentWithPhotoReference({ ...validPhotoReferenceTrack(), mode: 'photo' })),
-    ).toThrow(/mode/);
-
+  it('throws fail-closed on missing sourceFrameRefs and negative revision (ASVS V5)', () => {
     const missingRefs = documentWithPhotoReference();
     const { sourceFrameRefs: _omitRefs, ...trackWithoutRefs } = missingRefs.photoReference as MutablePhotoReferenceTrack;
     missingRefs.photoReference = trackWithoutRefs;
@@ -80,20 +66,6 @@ describe('PhotoReferenceTrack round-trip, encoder, and fail-closed parse', () =>
 });
 
 describe('PhotoReferenceTrack edge cases', () => {
-  it('round-trips each mode and rejects photo and empty-string modes (D-05, D-08)', () => {
-    for (const mode of ['reference-only', 'reveal-source', 'masked-transform-source']) {
-      const document = documentWithPhotoReference({ ...validPhotoReferenceTrack(), mode });
-      const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(document)));
-      expect(parsed.photoReference?.mode).toBe(mode);
-    }
-    expect(() =>
-      parseEfxPaintDocument(documentWithPhotoReference({ ...validPhotoReferenceTrack(), mode: 'photo' })),
-    ).toThrow(/mode/);
-    expect(() =>
-      parseEfxPaintDocument(documentWithPhotoReference({ ...validPhotoReferenceTrack(), mode: '' })),
-    ).toThrow(/mode/);
-  });
-
   it('round-trips boundary opacity and rejects out-of-range/non-finite/non-number (D-12)', () => {
     for (const opacity of [0, 1]) {
       const document = documentWithPhotoReference({ ...validPhotoReferenceTrack(), opacity });
@@ -144,7 +116,6 @@ describe('PhotoReferenceTrack edge cases', () => {
       opacity: track.opacity,
       visibleInStudio: track.visibleInStudio,
       revision: track.revision,
-      mode: track.mode,
       sourceFrameRefs: track.sourceFrameRefs,
       id: track.id,
     };

@@ -6,12 +6,11 @@ import {
 } from './PhysicsPaintPhotoReferenceDialog';
 import {
   usePhysicsPaintPhotoReferenceController,
-  PHOTO_REFERENCE_MODE_HINT,
   PHOTO_REFERENCE_EMPTY_SOURCE,
   PHOTO_REFERENCE_UNLOCKED_TOOLTIP,
   type PhysicsPaintPhotoReferencePorts,
 } from './physicsPaintPhotoReferenceController';
-import type { EfxPaintDocument, PhotoReferenceMode, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhotoReferenceDisplayResult, PhotoReferenceMutationResult } from '../../../stores/efxPaintStore';
 
 /**
@@ -66,7 +65,6 @@ function makeTrack(overrides: Partial<PhotoReferenceTrack> = {}): PhotoReference
   return {
     id: 'photo-ref-1',
     sourceFrameRefs: ['ref-shot-1', 'ref-shot-2', 'ref-shot-10'],
-    mode: 'reference-only',
     revision: 0,
     visibleInStudio: true,
     opacity: 0.5,
@@ -94,11 +92,6 @@ function makeDocument(photoReference: PhotoReferenceTrack | null): EfxPaintDocum
  *  exercise the real commit flow without importing the store. */
 function createHarness(initialTrack: PhotoReferenceTrack | null) {
   const state = { track: initialTrack };
-  const setMode = vi.fn((_layerId: string, mode: PhotoReferenceMode): PhotoReferenceMutationResult => {
-    if (!state.track) return { ok: false, reason: 'no-photo-reference' };
-    state.track = { ...state.track, mode, revision: state.track.revision + 1 };
-    return { ok: true, descriptor: null };
-  });
   const setOpacity = vi.fn((_layerId: string, opacity: number): PhotoReferenceDisplayResult => {
     if (!state.track) return { ok: false, reason: 'no-photo-reference' };
     state.track = { ...state.track, opacity };
@@ -121,7 +114,6 @@ function createHarness(initialTrack: PhotoReferenceTrack | null) {
   });
   const ports: PhysicsPaintPhotoReferencePorts = {
     getDocument: () => makeDocument(state.track),
-    setMode,
     setOpacity,
     setTransformLocked,
     setVisible,
@@ -132,7 +124,7 @@ function createHarness(initialTrack: PhotoReferenceTrack | null) {
     layerId: 'layer-1',
     ports,
   });
-  return { state, setMode, setOpacity, setTransformLocked, setVisible, clearReference, ports, render };
+  return { state, setOpacity, setTransformLocked, setVisible, clearReference, ports, render };
 }
 
 function childrenOf(node: unknown): unknown[] {
@@ -188,7 +180,6 @@ describe('usePhysicsPaintPhotoReferenceController (50-UAT, dialog state machine)
   it('reports the defaults when no photo/reference track exists (empty-source state)', () => {
     const harness = createHarness(null);
     const controller = harness.render();
-    expect(controller.mode).toBe('reference-only');
     expect(controller.opacityPercent).toBe(50);
     expect(controller.transformLocked).toBe(true);
     expect(controller.sourceCount).toBe(0);
@@ -196,24 +187,15 @@ describe('usePhysicsPaintPhotoReferenceController (50-UAT, dialog state machine)
     expect(controller.hasSource).toBe(false);
   });
 
-  it('reads the accepted document state (mode, opacity, lock, source facts)', () => {
-    const harness = createHarness(makeTrack({ mode: 'reveal-source', opacity: 0.75, transformLocked: false }));
+  it('reads the accepted document state (opacity, lock, source facts)', () => {
+    const harness = createHarness(makeTrack({ opacity: 0.75, transformLocked: false }));
     const controller = harness.render();
-    expect(controller.mode).toBe('reveal-source');
     expect(controller.opacityPercent).toBe(75);
     expect(controller.transformLocked).toBe(false);
     expect(controller.sourceCount).toBe(3);
     // Source cycle fact: original filenames in the track's stored order (D-02).
     expect(controller.filenames).toEqual(['shot_1.png', 'shot_2.png', 'shot_10.png']);
     expect(controller.hasSource).toBe(true);
-  });
-
-  it('selectMode routes one undoable mutation through setMode (D-07)', () => {
-    const harness = createHarness(makeTrack());
-    const controller = harness.render();
-    controller.selectMode('masked-transform-source');
-    expect(harness.setMode).toHaveBeenCalledTimes(1);
-    expect(harness.setMode).toHaveBeenCalledWith('layer-1', 'masked-transform-source');
   });
 
   it('commitOpacity routes the 0..1 store value through setOpacity (D-12)', () => {
@@ -294,35 +276,6 @@ describe('PhysicsPaintPhotoReferenceDialog view (50-UAT, render + accessibility)
     expect(dialog, 'Missing role=dialog').toBeDefined();
     expect(textContent(dialog)).toContain('Photo Reference');
     expect(findByLabel(tree, 'Close photo reference')).toBeDefined();
-  });
-
-  it('renders the 3-segment Mode radiogroup with the active segment checked (D-05)', () => {
-    const harness = createHarness(makeTrack({ mode: 'reveal-source' }));
-    const tree = renderDialog({ ports: harness.ports });
-    const group = childrenOf(tree).find((node) => {
-      const vnode = node as AnyVNode;
-      return typeof vnode.type !== 'function' && vnode.props?.['role'] === 'radiogroup';
-    }) as AnyVNode | undefined;
-    expect(group, 'Missing Mode radiogroup').toBeDefined();
-    expect(group!.props['aria-label']).toBe('Mode');
-    expect(group!.props['aria-describedby']).toBe('physics-photo-reference-mode-hint');
-    const radios = childrenOf(group).filter((node) => {
-      const vnode = node as AnyVNode;
-      return typeof vnode.type !== 'function' && vnode.props?.['role'] === 'radio';
-    }) as AnyVNode[];
-    expect(radios).toHaveLength(3);
-    const labels = radios.map((radio) => textContent(radio));
-    // Short labels per the 50-UAT compact mockup.
-    expect(labels).toEqual(['Reference', 'Reveal', 'Masked']);
-    const checked = radios.filter((radio) => radio.props['aria-checked'] === true);
-    expect(checked).toHaveLength(1);
-    expect(textContent(checked[0])).toBe('Reveal');
-  });
-
-  it('renders the exclusion hint copy (D-06 flag-only)', () => {
-    const harness = createHarness(makeTrack());
-    const tree = renderDialog({ ports: harness.ports });
-    expect(textContent(tree)).toContain(PHOTO_REFERENCE_MODE_HINT);
   });
 
   it('renders the Overlay opacity slider with the live aria-valuenow (D-12)', () => {

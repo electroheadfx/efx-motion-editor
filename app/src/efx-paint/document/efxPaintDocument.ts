@@ -95,14 +95,6 @@ export interface BackgroundTrack {
 }
 
 /**
- * Photo/reference source mode union (D-05): the three locked modes. The
- * reserved `'photo'` fond mode is deliberately absent (D-08) — wiring it would
- * draw reference pixels as the document fallback, which is part of the
- * flattened output and violates the D-06 exclusion lock.
- */
-export type PhotoReferenceMode = 'reference-only' | 'reveal-source' | 'masked-transform-source';
-
-/**
  * Photo/reference display transform (D-13): position, scale, and rotation.
  * A display preference — persisted on the track but never a document mutation
  * and never a revision term.
@@ -117,16 +109,17 @@ export interface PhotoReferenceTransform {
 
 /**
  * The single photo/reference track (Phase 50-01). Carries two field classes:
- * document-mutation fields (`id`, `sourceFrameRefs`, `mode`, `revision`) and
+ * document-mutation fields (`id`, `sourceFrameRefs`, `revision`) and
  * display-preference fields (`visibleInStudio`, `opacity`, `transform`,
  * `transformLocked`). The source identity is an ordered `readonly string[]` of
  * library asset IDs in natural-filename-sort order (D-02), mirroring
- * `FrameLoopClip.sourceFrameRefs`.
+ * `FrameLoopClip.sourceFrameRefs`. The Phase 50 `mode` field is REMOVED
+ * entirely (52-02, D-15 clean break) — the reveal rail bakes the reference as
+ * placed regardless of any mode; the real guard is RVL-05.
  */
 export interface PhotoReferenceTrack {
   readonly id: string;
   readonly sourceFrameRefs: readonly string[];
-  readonly mode: PhotoReferenceMode;
   readonly revision: number;
   readonly visibleInStudio: boolean;
   readonly opacity: number;

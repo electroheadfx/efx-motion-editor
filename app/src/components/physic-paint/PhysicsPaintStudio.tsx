@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat, FrameLoopClipScale, PhotoReferenceMode } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -24,7 +24,6 @@ import {
   setBackgroundFallback,
   setPhotoReferenceSource,
   setPhotoReferenceVisible,
-  setPhotoReferenceMode,
   setPhotoReferenceOpacity,
   setPhotoReferenceTransformLocked,
   clearPhotoReference,
@@ -2985,7 +2984,6 @@ export function PhysicsPaintStudio() {
   // through efxPaintVersion on every document mutation).
   const photoReferenceSectionPortsRef = useRef({
     getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
-    setMode: (layerId: string, mode: PhotoReferenceMode) => setPhotoReferenceMode(layerId, mode),
     setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity),
     setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked),
     setVisible: (layerId: string, visible: boolean) => setPhotoReferenceVisible(layerId, visible),

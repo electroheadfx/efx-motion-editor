@@ -14,7 +14,7 @@
  */
 
 import { signal } from '@preact/signals';
-import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceMode, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -559,7 +559,6 @@ export type BackgroundEditOperationKind =
   | 'delete-background-clip'
   | 'set-background-fallback'
   | 'set-photo-reference-source'
-  | 'set-photo-reference-mode'
   | 'clear-photo-reference'
   // 52-01 (RVL-06): the reveal rail mutations — each committed reveal op is one
   // undo-ledger entry by reference. 'reveal-create' is emitted by the create
@@ -1037,31 +1036,25 @@ export function setBackgroundFallback(
 // Photo/reference track CRUD (50-02 Task 1)
 // ============================================================================
 //
-// The six photo/reference setters funnel every UI surface (picker confirm,
-// right panel, ghost overlay) through the RESEARCH Pattern 1 field-class split:
-// `setPhotoReferenceSource` and `setPhotoReferenceMode` are DOCUMENT MUTATIONS —
-// they create/replace the track, bump the track `revision` AND the document
-// `documentRevision` counter, and record by reference on the unified ledger via
-// `recordBackgroundEdit` (new operation kinds `'set-photo-reference-source'` and
-// `'set-photo-reference-mode'`). `setPhotoReferenceVisible`,
-// `setPhotoReferenceOpacity`, `setPhotoReferenceTransform`, and
-// `setPhotoReferenceTransformLocked` are DISPLAY PREFERENCES — they persist on
-// the track but record NO undo entry and do NOT bump the revision counter
-// (D-11/D-12/D-13, the `_setTrackDisplayProperty` vs mutation-setter split).
-
-/** The locked PhotoReferenceMode union as a lookup set (efxPaintDocument.ts:103). */
-const PHOTO_REFERENCE_MODES: ReadonlySet<PhotoReferenceMode> = new Set([
-  'reference-only',
-  'reveal-source',
-  'masked-transform-source',
-]);
+// The photo/reference setters funnel every UI surface (picker confirm, ghost
+// overlay) through the RESEARCH Pattern 1 field-class split:
+// `setPhotoReferenceSource` is a DOCUMENT MUTATION — it creates/replaces the
+// track, bumps the track `revision` AND the document `documentRevision`
+// counter, and records by reference on the unified ledger via
+// `recordBackgroundEdit` (operation kind `'set-photo-reference-source'`).
+// `setPhotoReferenceVisible`, `setPhotoReferenceOpacity`,
+// `setPhotoReferenceTransform`, and `setPhotoReferenceTransformLocked` are
+// DISPLAY PREFERENCES — they persist on the track but record NO undo entry and
+// do NOT bump the revision counter (D-11/D-12/D-13, the
+// `_setTrackDisplayProperty` vs mutation-setter split). The Phase 50
+// `setPhotoReferenceMode` mutation is REMOVED entirely (52-02, D-15 clean
+// break) — no vestigial mode state.
 
 /** Closed rejection-reason union for the photo/reference setters. */
 export type PhotoReferenceMutationRejectionReason =
   | 'no-document'
   | 'no-photo-reference'
   | 'invalid-source-refs'
-  | 'invalid-mode'
   | 'invalid-opacity'
   | 'invalid-transform';
 
@@ -1116,12 +1109,12 @@ function _setPhotoReferenceDisplayProperty(
 
 /**
  * Set (create or replace) the photo/reference source cycle (D-03). The first
- * call creates the track with the locked defaults (mode `reference-only`,
- * visibleInStudio true, opacity 0.5, transform centered, transformLocked true,
- * revision 0); a later call REPLACES the source cycle, bumping the track
- * `revision` AND the document `documentRevision` counter, and records ONE undo
- * entry by reference. A same-source write is a no-op (no revision bump, no
- * undo). Rejects fail-closed on an absent document or invalid refs.
+ * call creates the track with the locked defaults (visibleInStudio true,
+ * opacity 0.5, transform centered, transformLocked true, revision 0); a later
+ * call REPLACES the source cycle, bumping the track `revision` AND the document
+ * `documentRevision` counter, and records ONE undo entry by reference. A
+ * same-source write is a no-op (no revision bump, no undo). Rejects fail-closed
+ * on an absent document or invalid refs.
  */
 export function setPhotoReferenceSource(
   layerId: string,
@@ -1136,7 +1129,6 @@ export function setPhotoReferenceSource(
     const newTrack: PhotoReferenceTrack = Object.freeze({
       id: crypto.randomUUID(),
       sourceFrameRefs: Object.freeze([...sourceFrameRefs]),
-      mode: 'reference-only',
       revision: 0,
       visibleInStudio: true,
       opacity: 0.5,
@@ -1177,40 +1169,6 @@ export function setPhotoReferenceSource(
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'set-photo-reference-source',
-      before: document,
-      after: next,
-    },
-  };
-}
-
-/**
- * Switch the photo/reference source mode (D-07). Bumps the track `revision` AND
- * the document `documentRevision` counter and records ONE undo entry by
- * reference. A same-mode write is a no-op. Rejects fail-closed on an absent
- * document, an absent track, or a mode outside the locked union.
- */
-export function setPhotoReferenceMode(
-  layerId: string,
-  mode: PhotoReferenceMode,
-): PhotoReferenceMutationResult {
-  const document = getDocument(layerId);
-  if (!document) return { ok: false, reason: 'no-document' };
-  const track = document.photoReference;
-  if (!track) return { ok: false, reason: 'no-photo-reference' };
-  if (!PHOTO_REFERENCE_MODES.has(mode)) return { ok: false, reason: 'invalid-mode' };
-  if (track.mode === mode) return { ok: true, descriptor: null };
-  const candidate: EfxPaintDocument = {
-    ...document,
-    photoReference: { ...track, mode, revision: track.revision + 1 },
-  };
-  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
-  _documents.set(layerId, next);
-  _notifyChange();
-  return {
-    ok: true,
-    descriptor: {
-      operationId: crypto.randomUUID(),
-      operationKind: 'set-photo-reference-mode',
       before: document,
       after: next,
     },
