@@ -396,12 +396,51 @@ describe('reveal rail presentation (52-03 D-22/D-23/D-24)', () => {
     expect(removedReference.freshnessLine).toBe('stale — script or reference changed since bake, Replay to refresh');
   });
 
-  it('keeps playscript rails free of the reveal surface (D-22/D-23)', () => {
+  it('computes the Replay disabled reason for the fail-closed cases (D-24)', () => {
+    const noReference = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip(),
+      'Reveal Script',
+      { referencePlaced: false },
+    );
+    expect(noReference.replayDisabledReason).toBe('Replay unavailable — no reference placed.');
+    expect(noReference.tooltipLines).toContain('Replay unavailable — no reference placed.');
+    expect(noReference.accessibleName).toContain('Replay unavailable — no reference placed.');
+
+    const deletedScript = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip(),
+      'Reveal Script',
+      { scriptExists: false },
+    );
+    expect(deletedScript.replayDisabledReason).toBe('Replay unavailable — script deleted.');
+
+    const noScriptId = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip({ scriptId: undefined }),
+      'Reveal Script',
+    );
+    expect(noScriptId.replayDisabledReason).toBe('Replay unavailable — script deleted.');
+  });
+
+  it('leaves Replay enabled for fresh and stale-but-replayable reveal rails (D-24)', () => {
+    const fresh = projectPhysicsPaintLoopClipPresentation(range(), revealClip(), 'Reveal Script');
+    expect(fresh.replayDisabledReason).toBeNull();
+    const stale = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      revealClip({ syncState: 'modified' }),
+      'Reveal Script',
+    );
+    expect(stale.replayDisabledReason).toBeNull();
+  });
+
+  it('keeps playscript rails free of the reveal surface (D-22/D-23/D-24)', () => {
     const presentation = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
     expect(presentation).toMatchObject({
       railKind: 'playscript',
       overrideColor: null,
       freshnessLine: null,
+      replayDisabledReason: null,
     });
     expect(presentation.tooltipLines).not.toContain('baked from current script & reference');
   });

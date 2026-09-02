@@ -193,6 +193,11 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const railStyle = railColor
     ? { '--rail-color': railColor, ...(railColorHover ? { '--rail-color-hover': railColorHover } : {}) }
     : undefined;
+  // 52-03 (D-24): the red unresolved state stays EXCLUSIVELY for the
+  // fail-closed cases (reference removed after creation / script deleted) —
+  // never for a normal pending state. A reveal rail with a Replay disabled
+  // reason IS a fail-closed case, so it paints the shared unresolved red.
+  const revealUnresolved = isReveal && presentation.replayDisabledReason !== null;
 
   const clearPendingSingleClick = () => {
     if (pendingSingleClickRef.current === null) return;
@@ -323,7 +328,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     >
       <button
         type="button"
-        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${isReveal ? ' rail-kind-reveal' : ''}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${isReveal ? ' rail-kind-reveal' : ''}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved || revealUnresolved ? ' unresolved' : ''}`}
         style={railStyle}
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}

@@ -43,6 +43,12 @@ export const REVEAL_STATIC_HOVER_COLOR = '#5eead4';
 export const REVEAL_FRESH_LINE = 'baked from current script & reference';
 export const REVEAL_STALE_LINE = 'stale — script or reference changed since bake, Replay to refresh';
 
+// 52-03 (D-24): the reveal rail's Replay disabled reasons, mirroring the Loop
+// Clip `regenerateDisabledReason` pattern. The red unresolved state stays
+// EXCLUSIVELY for these fail-closed cases — never for a normal pending state.
+export const REVEAL_REPLAY_DISABLED_NO_REFERENCE = 'Replay unavailable — no reference placed.';
+export const REVEAL_REPLAY_DISABLED_SCRIPT_DELETED = 'Replay unavailable — script deleted.';
+
 export interface PhysicsPaintLoopClipPresentation {
   readonly loopId: string;
   readonly displayName: string;
@@ -70,6 +76,8 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly overrideColor: string | null;
   /** The reveal rail's tooltip freshness line (D-23), null for playscript rails. */
   readonly freshnessLine: string | null;
+  /** The reveal rail's Replay disabled reason (D-24), null when Replay can run. */
+  readonly replayDisabledReason: string | null;
   readonly lifecycle: PhysicsPaintGroupLifecycle;
   readonly statusLabel: string;
   readonly synchronizationDot: PhysicsPaintGroupSynchronizationDot | null;
@@ -140,6 +148,9 @@ export function projectPhysicsPaintLoopClipPresentation(
   const scriptExists = options.scriptExists;
   const isFresh = lifecycle === 'synchronized' && scriptExists !== false && referencePlaced !== false;
   const freshnessLine = isReveal ? (isFresh ? REVEAL_FRESH_LINE : REVEAL_STALE_LINE) : null;
+  const replayDisabledReason = isReveal
+    ? replayDisabledReasonFor(lifecycle, referencePlaced, scriptExists)
+    : null;
   const fragment = options.fragment ?? null;
   const fragmentLabel = fragment && fragment.count > 1
     ? `Range F${fragment.start}–F${fragment.endExclusive - 1} · Fragment ${fragment.index} of ${fragment.count}`
@@ -164,7 +175,8 @@ export function projectPhysicsPaintLoopClipPresentation(
   // 47 UAT: the capsule carries at most one compact badge — the shortened
   // phrase moved from the capsule surface into the tooltip.
   // 52-03 (D-23): the freshness line is appended AFTER the Status line — same
-  // tooltipLines array, no new rendering path.
+  // tooltipLines array, no new rendering path. The Replay disabled reason
+  // (D-24) rides the same array so the rail target surfaces it on hover.
   const tooltipLines = [
     displayName,
     `Type: ${modeLabel}`,
@@ -172,13 +184,14 @@ export function projectPhysicsPaintLoopClipPresentation(
     `Effective ${effectiveDuration}f`,
     `Status: ${statusLabel}`,
     ...(freshnessLine ? [freshnessLine] : []),
+    ...(replayDisabledReason ? [replayDisabledReason] : []),
     ...(shortenedLabel ? [shortenedLabel] : []),
     ...(interruptionTooltipLine ? [interruptionTooltipLine] : []),
     ...(fragmentLabel ? [fragmentLabel] : []),
   ];
   const accessibleName = fragmentLabel && fragment
-    ? `${displayName}. Fragment ${fragment.index} of ${fragment.count}, frames ${fragment.start} through ${fragment.endExclusive - 1}. ${groupTypeLabel}. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`
-    : `${displayName}. ${groupTypeLabel}. ${cycleLabel}. Effective ${effectiveDuration} frames. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`;
+    ? `${displayName}. Fragment ${fragment.index} of ${fragment.count}, frames ${fragment.start} through ${fragment.endExclusive - 1}. ${groupTypeLabel}. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${replayDisabledReason ? ` ${replayDisabledReason}` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`
+    : `${displayName}. ${groupTypeLabel}. ${cycleLabel}. Effective ${effectiveDuration} frames. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${replayDisabledReason ? ` ${replayDisabledReason}` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`;
 
   return {
     loopId: range.loopId,
@@ -198,6 +211,7 @@ export function projectPhysicsPaintLoopClipPresentation(
     railKind,
     overrideColor,
     freshnessLine,
+    replayDisabledReason,
     lifecycle,
     statusLabel,
     synchronizationDot,
@@ -301,6 +315,30 @@ function regenerateDisabledReasonFor(lifecycle: PhysicsPaintGroupLifecycle): str
     case 'detached': return 'Regenerate unavailable — Action detached.';
     case 'unavailable': return 'Regenerate unavailable — Source Action unavailable.';
     case 'unresolved': return 'Source missing';
+  }
+}
+
+/**
+ * 52-03 (D-24): the reveal rail's Replay disabled reason, mirroring
+ * `regenerateDisabledReasonFor`. Replay cannot run when the reference was
+ * removed after creation (D-12) or the library script was deleted (D-13) —
+ * both fail closed with existing baked keys untouched. The red unresolved
+ * state stays EXCLUSIVELY for these fail-closed cases, never for a normal
+ * pending state.
+ */
+function replayDisabledReasonFor(
+  lifecycle: PhysicsPaintGroupLifecycle,
+  referencePlaced: boolean | undefined,
+  scriptExists: boolean | undefined,
+): string | null {
+  if (referencePlaced === false) return REVEAL_REPLAY_DISABLED_NO_REFERENCE;
+  if (scriptExists === false) return REVEAL_REPLAY_DISABLED_SCRIPT_DELETED;
+  switch (lifecycle) {
+    case 'modified': return null;
+    case 'synchronized': return null;
+    case 'detached': return REVEAL_REPLAY_DISABLED_SCRIPT_DELETED;
+    case 'unavailable': return REVEAL_REPLAY_DISABLED_SCRIPT_DELETED;
+    case 'unresolved': return REVEAL_REPLAY_DISABLED_NO_REFERENCE;
   }
 }
 
