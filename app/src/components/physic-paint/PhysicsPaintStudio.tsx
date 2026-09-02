@@ -2126,7 +2126,14 @@ export function PhysicsPaintStudio() {
     // capsule falls back to the ambient frame context ("Empty frame • Frame N").
     setApplyStatus('idle');
     setApplyMessage(null);
-    rotoCachedPlayback.stop();
+    // 260902-cfa (D-02): a seek-while-playing navigation keeps the playback
+    // timer running through the flush and re-anchors audio at the new cursor
+    // (rotoCachedPlayback.seek below); an idle seek keeps the current no-op
+    // stop (the monitor stop funnel is idempotent).
+    const wasPlaying = rotoCachedPlayback.isActive;
+    if (!wasPlaying) {
+      rotoCachedPlayback.stop();
+    }
     // 38.1 D-05: begin the navigation generation BEFORE any await so a newer
     // navigation started during the flush supersedes this one.
     const generation = rotoNavigationGeneration.begin();
@@ -2190,6 +2197,10 @@ export function PhysicsPaintStudio() {
     scheduleRotoStartFramePropagation(frame);
     pendingFrameSyncRef.current = frame;
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
+    // 260902-cfa (D-02): the single audio funnel for the seek path — active →
+    // re-anchor + playAtCursor full audio seek-restart at the new cursor;
+    // idle → positionedAt silent re-anchor. No other audio wiring lives here.
+    rotoCachedPlayback.seek(frame);
     return true;
   }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's

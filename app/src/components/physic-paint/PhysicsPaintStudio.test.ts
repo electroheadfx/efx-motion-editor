@@ -1113,6 +1113,25 @@ describe('Workflow navigation render localization', () => {
       expect(navigationOnlyBoundary).not.toContain(editOrHistoryAuthority);
     }
   });
+
+  it('wires the seek path: skips the playback stop when playing and seeks after navigation (D-02)', () => {
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(');
+    const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    // Seek-while-playing keeps the playback timer running through the flush.
+    expect(navigation).toContain('const wasPlaying = rotoCachedPlayback.isActive;');
+    const wasPlayingIndex = navigation.indexOf('const wasPlaying = rotoCachedPlayback.isActive;');
+    const stopIndex = navigation.indexOf('rotoCachedPlayback.stop();');
+    expect(wasPlayingIndex).toBeGreaterThanOrEqual(0);
+    expect(stopIndex).toBeGreaterThan(wasPlayingIndex);
+    expect(navigation.slice(wasPlayingIndex, stopIndex)).toContain('if (!wasPlaying) {');
+    // The seek call is the single audio funnel and lands AFTER the frame-sync.
+    const syncIndex = navigation.indexOf('sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    const seekIndex = navigation.indexOf('rotoCachedPlayback.seek(frame);');
+    expect(syncIndex).toBeGreaterThanOrEqual(0);
+    expect(seekIndex).toBeGreaterThan(syncIndex);
+  });
 });
 
 describe('localized render instrumentation', () => {
