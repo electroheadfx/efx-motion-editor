@@ -49,6 +49,7 @@ export interface RotoCachedPlayback<Frame> {
   start: (fps?: number) => void;
   stop: () => void;
   toggle: () => void;
+  seek: (targetAppFrame: number) => void;
   updateFps: (fps: number) => void;
   resetForLaunch: (settings: PhysicPaintRotoPlaybackSettings) => void;
 }
@@ -69,6 +70,10 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   const [fps, setFps] = useState(initialSettings.fps);
   const settingsRef = useRef<PhysicPaintRotoPlaybackSettings>(initialSettings);
   const timerRef = useRef<number | null>(null);
+  // 260902-cfa (D-02): the playback frame index lives on a ref so the seek
+  // method can re-anchor it mid-playback. Plain mutable ref — never drives
+  // rendering (the per-tick frame flows through playbackTick, 38.1-D-01).
+  const frameIndexRef = useRef(0);
   // 41-CR-01: monotonic playback-session generation. start() bumps it so every
   // fresh start (including updateFps re-entry and resetForLaunch→start) gets a
   // new generation; finishPlayback (the single stop funnel) bumps it again so
@@ -155,7 +160,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     }
     const playbackFps = clampRotoPlaybackFps(requestedFps);
     const missingCount = cachedFrames.filter((entry) => !entry.frame).length;
-    let frameIndex = 0;
+    frameIndexRef.current = 0;
     clearTimer();
     audioSessionRef.current += 1;
     setIsActive(true);
@@ -196,12 +201,12 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       if (fpsNote) publishStatus(fpsNote);
     }
     const showNextFrame = () => {
-      if (frameIndex >= cachedFrames.length) {
+      if (frameIndexRef.current >= cachedFrames.length) {
         if (!settingsRef.current.loop) {
           finishPlayback();
           return;
         }
-        frameIndex = 0;
+        frameIndexRef.current = 0;
         // 41-03 (D-11): every loop wrap re-seeks audio to the mapped loop
         // start via stopAll + restart; source metadata untouched.
         efxPaintAudioMonitor.notifyLoopWrap(
@@ -209,10 +214,10 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
           cachedFrames[cachedFrames.length - 1].appFrame + 1,
         );
       }
-      const cachedFrame = cachedFrames[frameIndex];
-      playbackTick.value = { frameIndex, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
-      inputRef.current.onFrame(frameIndex, cachedFrame.appFrame);
-      frameIndex += 1;
+      const cachedFrame = cachedFrames[frameIndexRef.current];
+      playbackTick.value = { frameIndex: frameIndexRef.current, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
+      inputRef.current.onFrame(frameIndexRef.current, cachedFrame.appFrame);
+      frameIndexRef.current += 1;
       // 41-03 (D-10): drift check with the current Paint cursor. The monitor
       // self-throttles (~every 10 ticks), so the tick itself keeps the 38.1
       // D-01 single-write discipline; no per-frame audio re-sync.
@@ -233,6 +238,34 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     }
     start();
   }, [isActive, start, stop]);
+
+  // 260902-cfa (D-02): the single seek funnel for the ruler/cursor navigation
+  // path. Seek-while-playing is a full audio seek-restart at the new cursor
+  // (playAtCursor = stopAll + re-dispatch, truth table section 5) with the
+  // visual playback re-anchored at the target frame — main-editor seek-restart
+  // parity. Seek-while-idle (or an out-of-range target) is a silent re-anchor
+  // (positionedAt, D-09) with zero engine dispatch. Invoked from the
+  // navigation handler, never from render (efx-preact-reactivity rule 6).
+  const seek = useCallback((targetAppFrame: number) => {
+    const currentInput = inputRef.current;
+    const cachedFrames = currentInput.getFrames();
+    const targetIndex = cachedFrames.findIndex((entry) => entry.appFrame === targetAppFrame);
+    if (isActive && targetIndex >= 0) {
+      // Re-anchor the frame index past the target so the next timer tick shows
+      // the frame AFTER the target (the target itself is displayed now via the
+      // playbackTick write below — no double-display).
+      frameIndexRef.current = targetIndex + 1;
+      const cachedFrame = cachedFrames[targetIndex];
+      playbackTick.value = { frameIndex: targetIndex, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
+      currentInput.onFrame(targetIndex, cachedFrame.appFrame);
+      // Full seek-restart at the new cursor; the range end matches the start()
+      // audio range-end derivation (one past the last cached appFrame).
+      efxPaintAudioMonitor.playAtCursor(targetAppFrame, cachedFrames[cachedFrames.length - 1].appFrame + 1);
+      return;
+    }
+    // D-09 silent re-anchor: idle, after stop, or an out-of-range target.
+    efxPaintAudioMonitor.positionedAt(targetAppFrame);
+  }, [isActive, playbackTick]);
 
   const setLoop = useCallback((nextLoop: boolean) => {
     settingsRef.current = { ...settingsRef.current, loop: nextLoop };
@@ -287,6 +320,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     start,
     stop,
     toggle,
+    seek,
     updateFps,
     resetForLaunch,
   };
