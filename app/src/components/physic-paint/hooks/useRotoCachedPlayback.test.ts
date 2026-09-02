@@ -602,6 +602,25 @@ describe('useRotoCachedPlayback', () => {
       expect(audioMocks.scrubEnd).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
+
+    it('seek while playing re-anchors the loop start at the seek target (loop wraps there)', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.setLoop(true);
+      playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+      // Seek to frame 9 while playing: the loop now wraps to frame 9.
+      playback.seek(9);
+      expect(playback.frame).toEqual({ id: 'second' });
+      // Advance to the end (frame 10, index 2), then wrap to frame 9 (index 1).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+      vi.useRealTimers();
+    });
   });
 });
 
@@ -717,7 +736,7 @@ describe('start honors the current application-frame cursor (D-01)', () => {
     vi.useRealTimers();
   });
 
-  it('loop wrap still returns to the range start, not the cursor (D-01)', () => {
+  it('loop wrap returns to the initial scrub position, not the range start (D-01 amendment)', () => {
     const { harness, onFrame } = createD01Harness(() => 9);
     let playback = harness.render();
     playback.setLoop(true);
@@ -725,7 +744,25 @@ describe('start honors the current application-frame cursor (D-01)', () => {
     playback.start();
     playback = harness.render();
     expect(onFrame).toHaveBeenLastCalledWith(1, 9);
-    // Walk to the end of the enumeration: index 2 (frame 10), then wrap to 0.
+    // Walk to the end of the enumeration: index 2 (frame 10), then wrap to the
+    // initial scrub position (index 1, frame 9) — never the range start.
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    vi.useRealTimers();
+  });
+
+  it('loop wrap from the range start still returns to the range start (default cursor)', () => {
+    const { harness, onFrame } = createD01Harness(() => 0);
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
     vi.advanceTimersByTime(500);
     expect(onFrame).toHaveBeenLastCalledWith(2, 10);
     vi.advanceTimersByTime(500);
@@ -748,6 +785,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     getEndFrame: () => number | null;
     getFrame: (appFrame: number) => Preview | null;
     getSoloWindow?: () => SoloPlaybackWindow | null;
+    getCurrentAppFrame?: () => number;
   }
 
   function createCoordinatorHarness(playback: CoordinatorPlaybackInput) {
@@ -787,6 +825,9 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
           getFrame: (appFrame) => current.getFrame(appFrame),
           ...(current.getSoloWindow !== undefined
             ? { getSoloWindow: () => current.getSoloWindow!() }
+            : {}),
+          ...(current.getCurrentAppFrame !== undefined
+            ? { getCurrentAppFrame: () => current.getCurrentAppFrame!() }
             : {}),
           onStart,
           onFrame,
@@ -902,6 +943,36 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     expect(next.playback.status).toBe('No cached Roto frames yet. Missing frames play transparent/background.');
     expect(harness.onStart).not.toHaveBeenCalled();
     expect(harness.setIsPlaying).not.toHaveBeenCalled();
+  });
+
+  it('armed solo + loop wraps to the initial scrub position inside the solo window (D-01 amendment)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 50,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getSoloWindow: () => ({
+        start: 12,
+        endExclusive: 40,
+        includesFrame: (appFrame) => appFrame % 2 === 0,
+      }),
+      getCurrentAppFrame: () => 14,
+    });
+
+    const coordinator = harness.render();
+    coordinator.playback.start();
+    const next = harness.render();
+
+    expect(next.playback.isActive).toBe(true);
+    // Starts at frame 14 (index 2 in the solo enumeration 12..39).
+    expect(harness.onFrame).toHaveBeenLastCalledWith(2, 14);
+    // Walk to the end of the solo window (index 27 = frame 39), then wrap to
+    // the initial scrub position (index 2 = frame 14) — never the window start.
+    vi.advanceTimersByTime(500 * 25);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(27, 39);
+    vi.advanceTimersByTime(500);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(2, 14);
+    vi.useRealTimers();
   });
 
   it('Pitfall 3 regression: armed solo does not alter the stopped-canvas display lookup (D-18)', () => {

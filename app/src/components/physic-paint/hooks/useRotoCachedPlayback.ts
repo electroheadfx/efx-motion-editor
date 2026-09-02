@@ -84,6 +84,11 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   // method can re-anchor it mid-playback. Plain mutable ref — never drives
   // rendering (the per-tick frame flows through playbackTick, 38.1-D-01).
   const frameIndexRef = useRef(0);
+  // D-01 amendment: the loop-wrap target — the index where the current playback
+  // segment started (the initial scrub position at Play press, or the seek
+  // target of a mid-playback seek-restart). Loop wrap returns here, never the
+  // range start. Plain mutable ref — never drives rendering.
+  const loopStartIndexRef = useRef(0);
   // 41-CR-01: monotonic playback-session generation. start() bumps it so every
   // fresh start (including updateFps re-entry and resetForLaunch→start) gets a
   // new generation; finishPlayback (the single stop funnel) bumps it again so
@@ -173,12 +178,14 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // D-01 (260902-cfa amendment): Play re-anchors at the current
     // application-frame cursor — an idle seek to frame N resumes visually AND
     // audibly at N, never the range start. An out-of-range cursor (or no
-    // matching frame) falls back to the range start; loop wrap still returns
-    // to the range start (the showNextFrame wrap branch below).
+    // matching frame) falls back to the range start. The loop-start index is
+    // the initial scrub position: loop wrap returns here, never the range
+    // start (the showNextFrame wrap branch below).
     const cursorAppFrame = currentInput.getCurrentAppFrame?.() ?? 0;
     const cursorIndex = cachedFrames.findIndex((entry) => entry.appFrame === cursorAppFrame);
     const startIndex = cursorIndex >= 0 ? cursorIndex : 0;
     frameIndexRef.current = startIndex;
+    loopStartIndexRef.current = startIndex;
     clearTimer();
     audioSessionRef.current += 1;
     setIsActive(true);
@@ -224,11 +231,15 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
           finishPlayback();
           return;
         }
-        frameIndexRef.current = 0;
+        // D-01 amendment: loop wrap returns to the initial scrub position
+        // (loopStartIndexRef), never the range start. Clamped defensively in
+        // case the frame list shrank mid-playback.
+        const loopStartIndex = Math.min(loopStartIndexRef.current, cachedFrames.length - 1);
+        frameIndexRef.current = loopStartIndex;
         // 41-03 (D-11): every loop wrap re-seeks audio to the mapped loop
         // start via stopAll + restart; source metadata untouched.
         efxPaintAudioMonitor.notifyLoopWrap(
-          cachedFrames[0].appFrame,
+          cachedFrames[loopStartIndex].appFrame,
           cachedFrames[cachedFrames.length - 1].appFrame + 1,
         );
       }
@@ -273,6 +284,10 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       // the frame AFTER the target (the target itself is displayed now via the
       // playbackTick write below — no double-display).
       frameIndexRef.current = targetIndex + 1;
+      // D-01 amendment: a mid-playback seek-restart moves the loop start to
+      // the seek target — the loop now wraps there, not the initial Play
+      // position.
+      loopStartIndexRef.current = targetIndex;
       const cachedFrame = cachedFrames[targetIndex];
       playbackTick.value = { frameIndex: targetIndex, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
       currentInput.onFrame(targetIndex, cachedFrame.appFrame);
