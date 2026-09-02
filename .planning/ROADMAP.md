@@ -422,7 +422,7 @@ Plans:
 
 ### Phase 51: Read-only Audio Preview
 
-**Goal**: Preserve synchronized listening to main-editor audio while playing the EFX Paint multi-track frame document.
+**Goal**: Preserve synchronized listening to main-editor audio while playing the EFX Paint multi-track frame document. Delivered via quicks 260902-cfa + 260902-cfa-amendments instead of a full phase cycle: audio playback and loop-sync verified live pre-phase; seek wiring, D-01 Play-from-cursor, and audible scrub delivered by the quicks (regression tests pin the Phase 41 truth table); remaining criteria (multi-track sync, toggle non-mutation, release-on-close) verified by native UAT. See 51-CONTEXT.md.
 **Depends on**: Phase 47 (shared application-frame cursor)
 **Requirements**: AUD-01, AUD-02, AUD-03, AUD-04
 **Success Criteria** (what must be TRUE):
@@ -432,7 +432,7 @@ Plans:
   3. Local monitoring On/Off does not mutate source audio; closing Studio releases audio resources.
   4. Multi-track Paint playback remains synchronized with main-editor audio across seek, loop, pause, resume, and stop.
 
-**Plans**: TBD
+**Plans**: Delivered via quicks 260902-cfa + 260902-cfa-amendments (no full phase cycle)
 
 ### Phase 52: Shared Mask Compositor and Reveal
 
