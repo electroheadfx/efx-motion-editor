@@ -1,7 +1,8 @@
 ---
 phase: "52"
 slug: "shared-mask-compositor-and-reveal"
-status: draft
+status: approved
+reviewed_at: "2026-09-02"
 shadcn_initialized: false
 preset: none
 created: "2026-09-02"
@@ -134,17 +135,18 @@ The reveal rail **inherits the Loop Clip `overrideColor` mechanism (43-06)** —
 
 > State coverage for the reveal rail surface. Empty/error COPY lives in `## Copywriting Contract` above — this section covers state coverage and references those rows.
 
-Applicable state considerations resolved: 6 covered, 1 backstop, 0 unresolved.
+Applicable state considerations resolved: 7 covered, 1 backstop, 0 unresolved.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty | reveal rail (no rail yet) | ✅ covered | No empty-list surface: reveal rails are created via the modal "Reveal with script…" or the track rail-creation flow; creation IS the bake (D-11). The photo-reference "No source imported" empty state gates creation. |
-| loading | bake in progress | ✅ covered | Creation/Replay runs the existing per-frame render with the existing onProgress bar (completed/total); no persistent "created but not baked" state (D-11/D-24). |
-| error | missing reference / deleted script | ✅ covered | Fail-closed rejections surface in the status capsule (`role="alert"`, red `TriangleAlert` icon) with the documented error copy; existing baked keys untouched (D-12/D-13). |
-| populated | reveal rail with baked keys | ✅ covered | Green rail line (emerald/teal) + 20x4px lifecycle status dot + tooltip with script name, variant, span, repeat, and freshness line (D-22/D-23). |
-| partial | stale reveal (script/reference changed since bake) | ✅ covered | `modified` status dot (`#fbbf24`) + "stale — script or reference changed since bake, Replay to refresh" tooltip line (D-23). |
-| zero-one-many | multiple reveal rails | ✅ covered | Multiple reveal rails per track (successive spans) and across tracks; each is an independent rail+keys unit; tracks composite via the existing v1.0 compositor law (D-03/D-04). |
-| long-text | script name in tooltip / accessible name | 🧪 backstop | Long library script names render in the tooltip and accessible name; held out as a visual UI-state test (lifts as `{ statement, verification: backstop }`). |
+| empty | reveal rail, photo-ref modal | ✅ covered | No empty-list surface for the rail: reveal rails are created via the modal "Reveal with script…" or the track rail-creation flow; creation IS the bake (D-11). The photo-reference "No source imported" empty state (heading + body) gates creation. |
+| loading | reveal rail, modal, progress bar, Replay, picker | ✅ covered | Creation/Replay runs the existing PlayScript per-frame render with the existing onProgress bar (completed/total) — same as motion/static rail creation (D-11/D-24); no persistent "created but not baked" state. The SCRIPTS picker is a synchronous local library list (no in-flight state). |
+| error | reveal rail, modal, progress bar, Replay, picker | ✅ covered | Fail-closed rejections (missing reference D-12, deleted script D-13) surface in the status capsule (`role="alert"`, red `TriangleAlert`) with the documented error copy; existing baked keys untouched. Replay shows a `regenerateDisabledReason`-style disabled reason ("Replay unavailable — …"). |
+| populated | reveal rail | ✅ covered | Green rail line (emerald `#10b981` motion / teal `#14b8a6` static) + 20x4px lifecycle status dot + tooltip with script name, variant, span, repeat, and freshness line (D-22/D-23). |
+| partial | reveal rail, photo-ref modal | ✅ covered | Stale reveal (script/reference changed since bake) → `modified` status dot (`#fbbf24`) + "stale — script or reference changed since bake, Replay to refresh" tooltip line (D-23). Modal partial (reference placed, no script chosen) → SCRIPTS kind-filtered picker shown, CTA disabled until a script is selected. |
+| overflow | status capsule, rail surface | ✅ covered | Status-capsule error text truncates with ellipsis + full text in tooltip (already in capsule CSS: `overflow: hidden` / `text-overflow: ellipsis` / `nowrap`); the spec makes it explicit and adds the tooltip. Many rails overflow the track vertically; the existing timeline scrolls (Phase 43/47 rail surface). |
+| zero-one-many | reveal rail | ✅ covered | Multiple reveal rails per track (successive spans) and across tracks; each is an independent rail+keys unit; tracks composite via the existing v1.0 compositor law (D-03/D-04). |
+| long-text | tooltip / accessible name / capsule / picker | 🧪 backstop | Long library script names (arbitrary length, D-13) render in the tooltip, accessible name, status-capsule error text, and SCRIPTS picker. Capsule truncation is specified (ellipsis + tooltip); the tooltip/accessible-name long-name rendering is held out as a visual UI-state test (lifts as `{ statement, verification: backstop }`). |
 
 ---
 
@@ -161,12 +163,12 @@ Applicable state considerations resolved: 6 covered, 1 backstop, 0 unresolved.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG (non-blocking — no focal point declared for the Studio surface)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-09-02
