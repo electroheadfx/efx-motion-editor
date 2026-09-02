@@ -1,7 +1,7 @@
 # Phase 52: Shared Mask Compositor and Reveal - Context
 
 **Gathered:** 2026-09-02
-**Updated:** 2026-09-02 (discussion: bake-time look, rail creation, rail look, authoring strokes fate — D-18..D-25; reveal/static semantics corrected)
+**Updated:** 2026-09-02 (discussion: bake-time look, rail creation, rail look, authoring strokes fate — D-18..D-25; reveal/static semantics corrected; planning: script-kind amendment D-26)
 **Status:** Ready for planning
 
 <domain>
@@ -73,6 +73,9 @@ Reveal the photo/reference source through animated coverage from one or more int
 
 ### Re-authoring (this discussion)
 - **D-25:** **Re-authoring = edit the library script, then Replay.** The library script IS the saved coverage; the rail's freshness state (D-23) flags it stale after a script edit. No re-painting on the track. Undo of the bake restores the replaced authoring strokes (D-05/D-17).
+
+### Script-kind amendment (planning, user decision)
+- **D-26:** **Variant is a creation-time choice; the SCRIPTS picker is UNFILTERED.** Library scripts carry no `mode`/`kind` field (verified: `physicsPaintRotoScriptSchema.ts`), so the D-10/D-21 "kind-filtered picker" has nothing to filter on. The rail's variant (`reveal/motion` vs `reveal/static`) is chosen at rail creation — mirroring the existing PlayScript `mode` signal (`RotoPlayScriptMode` in the controller) — and selects the render/bake schedule (progressive vs static). **Any script can serve either variant** (the renderer has both schedules). Re-linking a reveal rail to a different script is **unfiltered**; the rail's variant never changes after creation (D-21 preserved). "No mismatch states" (D-10) is amended: there is no script-kind mismatch state because scripts have no kind. **No script-schema change.** — **Reversibility:** reversible — the variant is a rail property; changing the picker to filter later only affects future rail creation.
 
 ### Claude's Discretion
 - Exact mapping of the reveal rail onto existing machinery (a `FrameLoopClip`-shaped rail variant vs a new rail record), the exact store/document shape for the 4th rail kind, and the "Reveal with script…" modal surface specifics.
