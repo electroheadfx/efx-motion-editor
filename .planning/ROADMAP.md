@@ -447,7 +447,14 @@ Plans:
   4. Reveal result is written to or represented by an internal Paint/result track and included in flattened output; photo reference visibility alone never leaks into output.
   5. Undo/redo by reference (not raster-byte snapshots); save/reopen and export preserve the result.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 52-01-PLAN.md — End-to-end reveal bake (tracer): model + bake + store + flattened + undo
+- [ ] 52-02-PLAN.md — D-15 PhotoReferenceMode removal (clean break) + parser round-trip
+- [ ] 52-03-PLAN.md — Reveal rail surface: color, status dot, tooltip freshness, Replay control
+- [ ] 52-04-PLAN.md — "Reveal with script…" modal entry
+- [ ] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
 ### Phase 53: Integrated v1.0.0 Acceptance
 
