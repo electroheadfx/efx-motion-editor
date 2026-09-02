@@ -5,7 +5,7 @@
 
 **Date:** 2026-09-02
 **Phase:** 52-shared-mask-compositor-and-reveal
-**Areas discussed:** Core re-orientation; Reveal surface; Rail mechanics (replay/drag/repeat); Script linkage & bake lifecycle; Reference input & mode; Authoring workflow; Bake result content; Rail deletion; Span editing; Deleted script
+**Areas discussed:** Core re-orientation; Reveal surface; Rail mechanics (replay/drag/repeat); Script linkage & bake lifecycle; Reference input & mode; Authoring workflow; Bake result content; Rail deletion; Span editing; Deleted script; **Update session: reveal/static semantics correction; Bake-time reference look; Reveal rail creation; Reveal rail look; Authoring strokes fate**
 
 ---
 
@@ -163,3 +163,154 @@ The user rejected the spec's "shared offscreen source-plus-mask compositor evalu
 - Multiple masks per Reveal operation; vector masks / mask tracking / mask keyframes (spec out-of-scope).
 - Deterministic feather (spec-gated on preview/export parity).
 - The superseded "shared offscreen source+mask compositor" architecture — do NOT implement.
+
+---
+
+# Update session (2026-09-02)
+
+## Amendment check (before the areas)
+
+The user flagged a correction to the existing CONTEXT.md before discussing:
+
+- **reveal/static = EXISTING STATIC-RAIL BEHAVIOR** — the script re-plays ALL strokes on EVERY frame of the span, so each frame carries the ENTIRE revealed photo, but the render varies frame-to-frame with the brush and the motion values (exactly like the existing static PlayScript rail). It is NOT a single completed result image. The two variants differ in PER-FRAME COVERAGE: reveal/motion bakes progressive coverage (reveal extends frame after frame); reveal/static bakes full coverage with per-frame brush/motion variation. Both bake per-frame.
+- **Two carried-forward points made explicit:** playback with motion parameters applies to BOTH variants; repeat/endless edits never require a re-bake (repeats derived at read time from the baked source cycle).
+
+Applied to CONTEXT.md: D-03, D-08, D-09, and the specifics section were corrected.
+
+---
+
+## Bake-time reference look
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Full source opacity | The revealed photo bakes at 100% opacity (transform applied, guide opacity ignored). The guide opacity stays a pure painting aid. | ✓ |
+| Guide opacity | The revealed photo bakes at the reference's display opacity (the guide opacity you painted with). The reveal preserves the ghostly look. | |
+| You decide | Leave the exact bake-time opacity/tone interaction to the planner/researcher. | |
+
+**User's choice:** Full source opacity (D-18). The Phase 50 opacity slider stays a pure painting aid; it never affects the baked result. The bake is deterministic.
+
+---
+
+## Reveal rail creation
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Modal only | The photo-reference modal's "Reveal with script…" is the single creation path. | |
+| Track flow only | The reveal rail is created like any other rail from the track's rail-creation flow. | |
+| Both | The modal "Reveal with script…" is the primary guided path AND the track's normal rail-creation flow can also create a reveal rail. | ✓ |
+
+**User's choice:** Both paths, one model (D-19). The modal "Reveal with script…" is the primary guided path (guarantees a placed reference, pre-fills the script, creates the rail on the current track, variant derived from the script kind); the track's normal rail-creation flow can also create a reveal rail (kind reveal, then the SCRIPTS kind-filtered picker). Default rail span = the script's natural duration (the frame count the script covers at the current motion parameters, same length a Loop Clip of this script would cover). Adjustable afterwards through the locked span editing (shrink deletes outside keys / grow leaves empty until Replay).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Allow, fail at Replay | The track flow can create a reveal rail even with no reference placed — Replay then fails closed. | |
+| Require reference | The track flow requires a placed reference before a reveal rail can be created. | ✓ |
+
+**User's choice:** Require reference — the track flow blocks reveal-rail creation until a reference is placed. The fail-closed guard moves to creation time (tightens D-12).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| At cursor | The rail's default span starts at the current playhead/cursor position on the track. | ✓ |
+| At frame 0 | The rail's default span starts at frame 0 of the track. | |
+
+**User's choice:** At cursor (D-20).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Variant fixed | Re-linking is kind-filtered to the rail's variant; the picker prevents mismatches. | ✓ |
+| Variant follows script | Re-linking a different script kind CHANGES the rail's variant to match the new script. | |
+
+**User's choice:** Variant fixed (D-21) — the variant is fixed at creation; the picker prevents mismatches.
+
+---
+
+## Reveal rail look
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Green family | Emerald for reveal/motion, teal for reveal/static. Distinct from gray Key Rail, purple/cyan Loop Clips, orange selection. | ✓ |
+| Purple/cyan reuse | Reveal/motion = purple, reveal/static = cyan, matching the Loop Clip convention. | |
+| Single + marker | One reveal color for both variants, with a small marker distinguishing motion vs static. | |
+
+**User's choice:** Green family (D-22).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Unresolved red | An empty (not-yet-replayed) reveal rail shows the unresolved red state. | |
+| Neutral until baked | The rail shows its normal green line until baked. | |
+| Needs-replay marker | A distinct 'needs replay' marker on the empty rail. | |
+
+**User's choice:** None of these — **creating a reveal rail IS the Replay/bake** (D-11/D-24): same flow as creating a motion/static PlayScript rail today (script selected, per-frame render with the EXISTING onProgress bar completed/total, rail lands baked). There is NO persistent "created but not baked" state — it exists only transiently during the progress bar. The renderer's progressive/static schedules and `renderProgressiveAlphaFrame` coverage path are the reuse anchors for the bake. The red unresolved state stays EXCLUSIVELY for the fail-closed cases (reference removed after creation / script deleted) — never for a normal pending state.
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Status dot yes | The reveal rail gets the same 20x4px status dot as Loop Clip rails. | ✓ |
+| No status dot | The green line + baked keys are enough. | |
+
+**User's choice:** Status dot yes (D-23).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Script + span facts | Tooltip shows the linked script name, variant, span, and repeat. | ✓ |
+| Script + variant only | Tooltip shows only the script name and variant. | |
+
+**User's choice:** Script + span facts, PLUS one line the Loop Clip tooltip doesn't have: freshness state ("baked from current script & reference" vs "stale — script or reference changed since bake, Replay to refresh"). Mirrors the status dot state in text (same tooltipLines pattern, same accessible-name inclusion).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Inherit override | The reveal rail inherits the Loop Clip overrideColor mechanism (43-06) — one color system, not two. | ✓ |
+| Fixed variant color | The reveal rail's variant color is fixed and not overridable. | |
+
+**User's choice:** Inherit override (D-22).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Confirm | Replay surfaces exactly like the existing Loop Clip Regenerate control — same placement, same interaction, regenerateDisabledReason-style disabled reason. | ✓ |
+| Different shape | The replay affordance needs a different shape. | |
+
+**User's choice:** Confirm (D-24) — Replay reuses the Loop Clip Regenerate control pattern. No new custom button.
+
+---
+
+## Authoring strokes fate
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Replace in span | The bake replaces the authoring strokes in the span (D-17 as-is). Undo recovers; paint + reveal together = second track. | ✓ |
+| Auto-move to 2nd track | The bake auto-moves the authoring strokes to a second track before replacing them. | |
+| Keep both in span | The authoring strokes stay and the revealed photo is composited on top. | |
+
+**User's choice:** Replace in span (D-17 confirmed).
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Edit script, Replay | The library script IS the saved coverage; re-authoring = edit the script, then Replay. | ✓ |
+| Undo, re-paint, re-bake | Undo the bake to restore the strokes, re-paint, re-save, re-bake. | |
+
+**User's choice:** Edit script, Replay (D-25) — the rail's freshness state flags it stale; no re-painting on the track.
+
+---
+
+## Wording precision (before write_context)
+
+The user added a wording precision before the context was written:
+
+- The creation-time reference requirement is an **ADDED guard, not a replacement**: the replay-time fail-closed law still stands for the other direction — a reference removed AFTER creation makes Replay fail closed (status-capsule warning, existing baked keys untouched). Creation is gated; replay stays fail-closed. Both guards coexist.
+- The context must carry: replay rewrites only its own span; repeat/endless edits never require a re-bake (derived at read time); playback with motion parameters applies to BOTH variants.
+
+---
+
+## Claude's Discretion (update session)
+
+- Exact mapping of the reveal rail onto existing machinery (a `FrameLoopClip`-shaped rail variant vs a new rail record), the exact store/document shape for the 4th rail kind, and the "Reveal with script…" modal surface specifics.
+- Key density/deduplication for the reveal/motion per-frame bake (D-09).
+- Whether reveal baked keys share the per-track `paintVersion`/revision bump and flattened cache-key rules as ordinary track content (expected: yes, they are ordinary keys).
+
+## Deferred Ideas (update session)
+
+- Live "photo-through-strokes" preview — no live reveal preview while authoring; the reveal is only visible after the bake.
+- Multiple masks per Reveal operation — one script + reference per reveal rail now.
+- Vector masks, mask tracking, and mask keyframes — spec out-of-scope.
+- Deterministic feather for the reveal edge — spec-gated; not attempted in this phase.
+- The old "shared offscreen source+mask compositor" architecture — superseded by D-01; do NOT implement.
+- The Phase 50 `PhotoReferenceMode` flag — removed (D-15), not kept as a semantic marker.
