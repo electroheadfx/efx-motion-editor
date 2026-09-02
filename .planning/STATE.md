@@ -4,12 +4,12 @@ milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 52
 current_phase_name: Shared Mask Compositor and Reveal
-status: ready_for_next_phase
+status: executing
 stopped_at: Phase 52 UI-SPEC approved
-last_updated: "2026-09-02T11:23:59.229Z"
+last_updated: "2026-09-02T11:42:24.516Z"
 last_activity: 2026-09-02
-last_activity_desc: "Completed quick task 260902-cfa-amendments: D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope)"
-state_head: 05e7cdefeaf59abde62d0e3188b05911a2724d9f
+last_activity_desc: Phase 52 execution started
+state_head: 1f36ab2df194daf8ec446204c3f22059cfb7c6de
 progress:
   total_phases: 9
   completed_phases: 3
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Next up — Phase 51 (Read-only Audio Preview); Phase 50 (Photo/Reference Track) CLOSED
+**Current focus:** Phase 52 — Shared Mask Compositor and Reveal
 
 ## Current Position
 
-Phase: 52 (Shared Mask Compositor and Reveal) — READY TO EXECUTE
-Plan: 0 of TBD
-Status: Phase 50 CLOSED — phase-closing native UAT approved 2026-09-01 (dialog modal redesign + launch-hydration fix + overlay paint-block fix + rotation handle + liquid-glass restyle)
-Last activity: 2026-09-02 - Completed quick task 260902-cfa-amendments: D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope)
+Phase: 52 (Shared Mask Compositor and Reveal) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 52
+Last activity: 2026-09-02 — Phase 52 execution started
 
 Progress: [██████░░░░] 67%
 

@@ -447,12 +447,12 @@ Plans:
   4. Reveal result is written to or represented by an internal Paint/result track and included in flattened output; photo reference visibility alone never leaks into output.
   5. Undo/redo by reference (not raster-byte snapshots); save/reopen and export preserve the result.
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 52-01-PLAN.md — End-to-end reveal bake (tracer): model + bake + store + flattened + undo
+- [x] 52-01-PLAN.md — End-to-end reveal bake (tracer): model + bake + store + flattened + undo
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -497,5 +497,5 @@ Plans:
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 6/6 | Complete    | 2026-09-01 |
 | 50. Photo/Reference Track | v1.0.0 | 6/6 | Complete | 2026-09-01 |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
-| 52. Shared Mask Compositor and Reveal | v1.0.0 | 0/TBD | Not started | - |
+| 52. Shared Mask Compositor and Reveal | v1.0.0 | 1/5 | In Progress|  |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |
