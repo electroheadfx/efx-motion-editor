@@ -780,6 +780,10 @@ export function PhysicsPaintStudio() {
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const pendingRotoKeyActionMessageRef = useRef<string | null>(null);
   const pendingFrameSyncRef = useRef<number | null>(null);
+  // D-02 amendment (audible scrub): true while the ruler scrub gesture is armed
+  // (past the 4px threshold). navigateToSyncedPhysicalFrame routes the audio
+  // funnel to scrub (audible snippet) vs seek (silent re-anchor) by this flag.
+  const scrubActiveRef = useRef(false);
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
@@ -2203,8 +2207,15 @@ export function PhysicsPaintStudio() {
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     // 260902-cfa (D-02): the single audio funnel for the seek path — active →
     // re-anchor + playAtCursor full audio seek-restart at the new cursor;
-    // idle → positionedAt silent re-anchor. No other audio wiring lives here.
-    rotoCachedPlayback.seek(frame);
+    // idle → positionedAt silent re-anchor. D-02 amendment: while the ruler
+    // scrub gesture is armed, the idle case routes to scrub (audible snippet
+    // through the monitor) instead of the silent seek. No other audio wiring
+    // lives here.
+    if (scrubActiveRef.current) {
+      rotoCachedPlayback.scrub(frame);
+    } else {
+      rotoCachedPlayback.seek(frame);
+    }
     return true;
   }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
@@ -3887,6 +3898,11 @@ export function PhysicsPaintStudio() {
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
+        // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
+        // routes the navigation audio funnel to scrub; release stops the
+        // snippet and re-anchors at the final frame.
+        onScrubStart: () => { scrubActiveRef.current = true; },
+        onScrubEnd: (frame) => { scrubActiveRef.current = false; rotoCachedPlayback.scrubEnd(frame); },
       },
     status: { shortcutsVisible },
     backgroundPicker: {

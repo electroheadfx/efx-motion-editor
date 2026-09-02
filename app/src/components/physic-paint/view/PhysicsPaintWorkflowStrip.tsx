@@ -357,6 +357,10 @@ export interface PhysicsPaintWorkflowStripProps {
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
+  /** D-02 amendment (audible scrub): ruler scrub armed (4px threshold crossed). */
+  onScrubStart?: () => void;
+  /** D-02 amendment: ruler scrub released — the final frame for the audio re-anchor. */
+  onScrubEnd?: (frame: number) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
   onGoToNextFrame: () => void;
@@ -2284,6 +2288,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     frameCount: () => frameCells.length,
     cellWidthPx: ROTO_CELL_WIDTH_PX,
     onSeek: (frame) => props.onNavigateToSyncedFrame?.(frame),
+    onScrubStart: () => props.onScrubStart?.(),
+    onScrubEnd: (frame) => props.onScrubEnd?.(frame),
   });
   // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the

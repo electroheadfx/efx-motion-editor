@@ -34,6 +34,17 @@ export interface PhysicsPaintRulerScrubOptions {
    * track-activation callback (the ruler gesture is selection-free by law).
    */
   readonly onSeek: (frame: number) => void;
+  /**
+   * D-02 amendment (audible scrub): fired once when horizontal travel crosses
+   * the 4px threshold and scrub mode arms. A plain sub-threshold click never
+   * fires it.
+   */
+  readonly onScrubStart?: () => void;
+  /**
+   * D-02 amendment: fired on release/cancel with the last emitted frame ONLY
+   * when scrub mode had armed — the final position for the audio re-anchor.
+   */
+  readonly onScrubEnd?: (finalFrame: number) => void;
   /** Cell pitch in CSS pixels (the strip passes ROTO_CELL_WIDTH_PX = 18). */
   readonly cellWidthPx?: number;
   readonly windowLike?: RulerScrubWindowLike;
@@ -130,6 +141,9 @@ export function usePhysicsPaintRulerScrub(
       if (session.rulerElement.hasPointerCapture(session.pointerId)) {
         session.rulerElement.releasePointerCapture(session.pointerId);
       }
+      // D-02 amendment: report the final position ONLY when scrub mode had
+      // armed — a plain click never fires onScrubEnd.
+      if (session.scrubbing) options.onScrubEnd?.(session.lastEmittedFrame);
       if (sessionRef.current === session) sessionRef.current = null;
     };
 
@@ -138,6 +152,7 @@ export function usePhysicsPaintRulerScrub(
       if (!session.scrubbing) {
         if (Math.abs(moveEvent.clientX - session.originX) <= RULER_SCRUB_THRESHOLD_PX) return;
         session.scrubbing = true;
+        options.onScrubStart?.();
       }
       session.pendingFrame = frameAt(moveEvent.clientX);
       if (session.rafId === null) {

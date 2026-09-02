@@ -136,6 +136,16 @@ describe('Ruler seek hard contract (selection immunity)', () => {
     expect(code).not.toContain('onSelect');
   });
 
+  it('routes the ruler scrub lifecycle to the onScrubStart/onScrubEnd props (D-02 amendment)', () => {
+    const code = source();
+    const start = code.indexOf('const rulerScrub = usePhysicsPaintRulerScrub({');
+    expect(start).toBeGreaterThan(-1);
+    const end = code.indexOf('});', start);
+    const block = code.slice(start, end + 3);
+    expect(block).toContain('onScrubStart: () => props.onScrubStart?.()');
+    expect(block).toContain('onScrubEnd: (frame) => props.onScrubEnd?.(frame)');
+  });
+
   it('keeps the non-active row click select-then-navigate pair intact', () => {
     // Positive-shape gate: the existing row click behavior is asserted
     // unchanged (cell click selects the frame/key AND navigates).

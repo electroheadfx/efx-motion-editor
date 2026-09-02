@@ -1132,6 +1132,22 @@ describe('Workflow navigation render localization', () => {
     expect(syncIndex).toBeGreaterThanOrEqual(0);
     expect(seekIndex).toBeGreaterThan(syncIndex);
   });
+
+  it('wires the audible scrub path: scrubActiveRef gates seek vs scrub and scrubEnd on release (D-02 amendment)', () => {
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(');
+    const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    // The audio funnel routes by the scrub-active flag — scrub (audible
+    // snippet) while the ruler gesture is armed, seek (silent re-anchor) after.
+    expect(navigation).toContain('if (scrubActiveRef.current) {');
+    expect(navigation).toContain('rotoCachedPlayback.scrub(frame);');
+    expect(navigation).toContain('rotoCachedPlayback.seek(frame);');
+    // The strip props carry the scrub lifecycle: armed sets the flag, release
+    // clears it and stops the snippet at the final frame.
+    expect(studio).toContain('onScrubStart: () => { scrubActiveRef.current = true; }');
+    expect(studio).toContain('onScrubEnd: (frame) => { scrubActiveRef.current = false; rotoCachedPlayback.scrubEnd(frame); }');
+  });
 });
 
 describe('localized render instrumentation', () => {

@@ -94,6 +94,8 @@ function createHarness(options: {
   readonly frameCount?: number;
   readonly rectLeft?: number;
   readonly cellWidthPx?: number;
+  readonly onScrubStart?: () => void;
+  readonly onScrubEnd?: (frame: number) => void;
 } = {}) {
   hookRuntime.reset();
   const windowLike = new WindowDouble();
@@ -107,6 +109,8 @@ function createHarness(options: {
       onSeek,
       cellWidthPx: options.cellWidthPx,
       windowLike,
+      onScrubStart: options.onScrubStart,
+      onScrubEnd: options.onScrubEnd,
     });
   };
   return { windowLike, ruler, onSeek, render, frameCount };
@@ -266,6 +270,40 @@ describe('usePhysicsPaintRulerScrub', () => {
     expect(harness.ruler.released).toEqual([7]);
     expect(harness.windowLike.listenerCount()).toBe(0);
     expect(raf.queue.size).toBe(0);
+  });
+
+  it('fires onScrubStart when scrub arms and onScrubEnd with the last emitted frame on release', () => {
+    const raf = stubAnimationFrame();
+    const onScrubStart = vi.fn();
+    const onScrubEnd = vi.fn();
+    const harness = createHarness({ onScrubStart, onScrubEnd });
+    const api = harness.render();
+    const origin = harness.ruler.rectLeft;
+    api.onPointerDown(pointerEvent(harness.ruler, { clientX: origin }));
+    expect(onScrubStart).not.toHaveBeenCalled();
+
+    // Travel past the 4px threshold → scrub arms → onScrubStart fires once.
+    harness.windowLike.emit('pointermove', pointerEvent(harness.ruler, { clientX: origin + 18 * 3 }));
+    raf.flushAll();
+    expect(onScrubStart).toHaveBeenCalledTimes(1);
+    expect(harness.onSeek).toHaveBeenLastCalledWith(3);
+
+    // Release → onScrubEnd with the last emitted frame (the final position).
+    harness.windowLike.emit('pointerup', pointerEvent(harness.ruler, { clientX: origin + 18 * 3 }));
+    expect(onScrubEnd).toHaveBeenCalledWith(3);
+  });
+
+  it('does not fire onScrubStart/onScrubEnd for a plain click (scrub never armed)', () => {
+    stubAnimationFrame();
+    const onScrubStart = vi.fn();
+    const onScrubEnd = vi.fn();
+    const harness = createHarness({ onScrubStart, onScrubEnd });
+    const api = harness.render();
+    const origin = harness.ruler.rectLeft;
+    api.onPointerDown(pointerEvent(harness.ruler, { clientX: origin }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.ruler, { clientX: origin }));
+    expect(onScrubStart).not.toHaveBeenCalled();
+    expect(onScrubEnd).not.toHaveBeenCalled();
   });
 
   it('ignores non-primary, modified, and non-left-button downs plus a second session while active', () => {
