@@ -30,6 +30,14 @@ export interface UseRotoCachedPlaybackInput<Frame> {
   initialSettings: PhysicPaintRotoPlaybackSettings;
   workflowMode: PhysicsPaintWorkflowMode;
   getFrames: () => RotoCachedPlaybackFrame<Frame>[];
+  /**
+   * D-01 (260902-cfa amendment): the shared application-frame cursor at Play
+   * press time. start() begins visual playback at this frame and dispatches
+   * playAtCursor(cursorAppFrame, rangeEnd) — resume re-anchors at the cursor,
+   * never the range start. Absent (or an out-of-range value) falls back to the
+   * range start.
+   */
+  getCurrentAppFrame?: () => number;
   onStart: (frameCount: number) => void;
   onFrame: (frameIndex: number, appFrame: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -160,7 +168,15 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     }
     const playbackFps = clampRotoPlaybackFps(requestedFps);
     const missingCount = cachedFrames.filter((entry) => !entry.frame).length;
-    frameIndexRef.current = 0;
+    // D-01 (260902-cfa amendment): Play re-anchors at the current
+    // application-frame cursor — an idle seek to frame N resumes visually AND
+    // audibly at N, never the range start. An out-of-range cursor (or no
+    // matching frame) falls back to the range start; loop wrap still returns
+    // to the range start (the showNextFrame wrap branch below).
+    const cursorAppFrame = currentInput.getCurrentAppFrame?.() ?? 0;
+    const cursorIndex = cachedFrames.findIndex((entry) => entry.appFrame === cursorAppFrame);
+    const startIndex = cursorIndex >= 0 ? cursorIndex : 0;
+    frameIndexRef.current = startIndex;
     clearTimer();
     audioSessionRef.current += 1;
     setIsActive(true);
@@ -181,7 +197,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // Store reads use peek() (38.1-D-01); the engine singleton is reused (D-08).
     const audioPreview = efxPaintAudioPreviewStore.getSection();
     if (audioPreview && audioPreview.tracks.length > 0) {
-      const audioCursorAppFrame = cachedFrames[0].appFrame;
+      const audioCursorAppFrame = cachedFrames[startIndex].appFrame;
       const audioPlaybackRangeEnd = cachedFrames[cachedFrames.length - 1].appFrame + 1;
       // 41-CR-01: capture this start's session generation before the async
       // prepare; the deferred play dispatches ONLY when playback is still

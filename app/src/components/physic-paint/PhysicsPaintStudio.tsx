@@ -1577,6 +1577,10 @@ export function PhysicsPaintStudio() {
       // (a sibling track's longer rail must play in full).
       getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalCompositeEndFrame(launchContext.layerId) : null,
       getFrame: findCachedRotoDisplayFrame,
+      // D-01 (260902-cfa amendment): Play re-anchors at the shared
+      // application-frame cursor — an idle seek to frame N resumes there, never
+      // the range start.
+      getCurrentAppFrame: () => currentFrame,
       // 43.6-06 (D-19): the solo window derives from the Plan 01 set, or the
       // single-rail selection as a set of one (D-15), through the Task 1 pure
       // derivation — the ONLY solo filter seam (the getFrames enumeration).

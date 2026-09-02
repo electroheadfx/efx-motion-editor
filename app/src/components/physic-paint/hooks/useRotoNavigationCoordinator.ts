@@ -22,6 +22,12 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
     getEndFrame: () => number | null;
     getFrame: (appFrame: number) => TPreview | null;
     /**
+     * D-01 (260902-cfa amendment): the shared application-frame cursor at Play
+     * press time — start() re-anchors visual + audio playback there. Absent
+     * falls back to the range start.
+     */
+    getCurrentAppFrame?: () => number;
+    /**
      * Optional solo playback window (43.6-06, D-17/D-19). Absent or null
      * returns the byte-identical pre-solo enumeration (disarmed = zero
      * behavior change). When present, the getFrames enumeration restricts to
@@ -83,6 +89,7 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
     onStart: input.playback.onStart,
     onFrame: input.playback.onFrame,
     setIsPlaying: input.playback.setIsPlaying,
+    getCurrentAppFrame: input.playback.getCurrentAppFrame,
   });
 
   const requestNavigation = useCallback(async (targetFrame: number) => {
