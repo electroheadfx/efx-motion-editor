@@ -61,20 +61,20 @@ coverage:
         status: pass
     human_judgment: false
 metrics:
-  duration: 30min
+  duration: 35min
   completed: 2026-09-02
-  tasks: 3
-  commits: 4
+  tasks: 4
+  commits: 5
 actuals:
   tokens: 0
-  tasks: 3
-  commits: 4
+  tasks: 4
+  commits: 5
 status: complete
 ---
 
 # Quick 260902-cfa-amendments: D-01 Play Cursor + D-02 Audible Scrub Summary
 
-**One-liner:** Two D-amendments to the Phase 51 audio-preview wiring — (1) Play now re-anchors at the shared application-frame cursor (an idle seek to frame N resumes visually AND audibly at N, never the range start), and (2) dragging the ruler with playback idle and monitoring enabled plays a throttled short audio snippet at the dragged position, stopping and re-anchoring at the final frame on release — with muted scrub staying silent (D-09 unchanged) and no new UI.
+**One-liner:** Three D-amendments to the Phase 51 audio-preview wiring — (1) Play now re-anchors at the shared application-frame cursor (an idle seek to frame N resumes visually AND audibly at N, never the range start), (2) dragging the ruler with playback idle and monitoring enabled plays a throttled short audio snippet at the dragged position, stopping and re-anchoring at the final frame on release — with muted scrub staying silent (D-09 unchanged) and no new UI, and (3) loop wrap returns to the initial scrub position (or the mid-playback seek target), never the timeline start, while solo mode is unaffected.
 
 ## Performance
 
@@ -89,6 +89,7 @@ status: complete
 - **D-01 fix — Play honors the cursor:** `useRotoCachedPlayback` gains an optional `getCurrentAppFrame` input (default `() => 0`), passed through `useRotoNavigationCoordinator`; the Studio provides `() => currentFrame`. `start()` resolves the cursor index in `cachedFrames` and begins visual playback there, dispatching `playAtCursor(cursorAppFrame, rangeEnd)` — an idle seek to frame N resumes at N, never the range start. An out-of-range cursor (or no matching frame) falls back to the range start; loop wrap still returns to the range start.
 - **D-02 amendment — audible scrub:** `efxPaintAudioMonitor` gains `scrubAt`/`scrubEnd`. Each ruler-drag update re-dispatches a short snippet (`cursor + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES` = 4 frames) through `playAtCursor` (stopAll + re-dispatch), throttled to `EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS` = 120ms to avoid stopAll/re-prepare spam and crackle. With the session toggle Off (or no audio section) the scrub stays a silent `positionedAt` re-anchor (D-09 unchanged) — the toggle check happens in `scrubAt` so a muted scrub never sets the D-14 `toggleSilenced` flag. `scrubEnd` stops the snippet through the single stop funnel and re-anchors at the final frame.
 - **Scrub lifecycle wiring:** `usePhysicsPaintRulerScrub` gains `onScrubStart`/`onScrubEnd` (fired on 4px arm and on release with the last emitted frame; a plain click never fires them). The strip routes them to new props; the Studio tracks a `scrubActiveRef` — `navigateToSyncedPhysicalFrame` routes the audio funnel to `scrub` (audible snippet) while armed, `seek` (silent re-anchor) after, and `onScrubEnd` clears the flag and calls `rotoCachedPlayback.scrubEnd(frame)`.
+- **Loop wrap follows the scrub position:** a `loopStartIndexRef` is set at Play press (the cursor index) and updated by a mid-playback seek-restart (the seek target). The loop-wrap branch resets the frame index there and re-seeks audio to that appFrame — playing from a scrubbed position loops from that position to the end, never back to the timeline start. Solo mode is unaffected: the enumeration is the solo window, so the loop-start is the scrub position inside the window (or the window start when the cursor is outside it).
 - The AUDIO-01 authority boundary is preserved: no new monitor rule, no new UI, no audioStore/timelineStore/playbackEngine import in the child. The existing Volume2/VolumeX toggle governs audible scrub.
 
 ## Task Commits
@@ -101,7 +102,9 @@ Each task was committed atomically:
    - `d326b1f5` (feat)
 3. **Task 3: Scrub lifecycle wiring — ruler scrub hook + strip + Studio** (TDD + contract tests)
    - `9fed9875` (feat)
-4. **Task 4: Docs** — `(docs commit)`
+4. **Task 4: Loop wrap returns to the initial scrub position** (TDD)
+   - `982a343e` (feat)
+5. **Task 5: Docs** — `(docs commit)`
 
 ## Files Created/Modified
 
