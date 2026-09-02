@@ -232,7 +232,11 @@ export default defineConfig({
     // hydration) entered the main chunk via efxPaintStore/physicPaintStore,
     // measured 1190.19 kB. Budget raised to 1200 (measured value + ~9.8 kB
     // headroom).
-    chunkSizeWarningLimit: 1200,
+    // Measurement note (2026-09-02): 52-04's reveal-rail creation surface (the
+    // photo-reference dialog reveal flow + the strip rail-kind menu + the
+    // create-reveal-rail wiring) entered the main chunk, measured 1291.43 kB.
+    // Budget raised to 1300 (measured value + ~8.6 kB headroom).
+    chunkSizeWarningLimit: 1300,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

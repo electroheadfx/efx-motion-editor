@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1200 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1300 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1200 desktop budget').toBe(1200);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1300 desktop budget').toBe(1300);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1200 desktop budget',
+    'emits no chunk-size warning at the 1300 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -210,11 +210,15 @@ describe('production vite build', () => {
       // stack (six photo/reference setters + the reference source registry +
       // reopen hydration) entered the main chunk via efxPaintStore/
       // physicPaintStore; budget raised 1190 → 1200.
+      // Measured 2026-09-02: 1291.43 kB after 52-04's reveal-rail creation
+      // surface (the photo-reference dialog reveal flow + the strip rail-kind
+      // menu + the create-reveal-rail wiring) entered the main chunk; budget
+      // raised 1200 → 1300.
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1200 desktop budget',
+        'no chunk-size warning may be emitted at the 1300 desktop budget',
       ).toBe(0);
     },
   );
