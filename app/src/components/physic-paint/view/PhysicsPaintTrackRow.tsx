@@ -44,6 +44,7 @@ import {
   type PhysicsPaintBackgroundClipPresentation,
   type PhysicsPaintGroupSynchronizationDot,
 } from './physicsPaintLoopClipPresentation';
+import { classifyRotoRailKind, getRotoRailKindLabel, type RotoRailKind } from './physicsPaintWorkflowPresentation';
 import type { BackgroundTrack, FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 import type {
   BackgroundClipDragApi,
@@ -203,6 +204,9 @@ interface TrackRowLoopLine {
   readonly width: number;
   readonly placementFrame: number;
   readonly mode: 'progressive' | 'static';
+  /** 52-04 (D-03/D-19): the rail kind — the reveal rail is the 4th rail kind;
+   *  the row classifies it so the reveal green line reads on every track. */
+  readonly railKind: RotoRailKind;
   readonly unresolved: boolean;
   /** The status dot class (or null when unresolved) — the same lifecycle the
    *  active lane's loop rail paints, so the status reads on every track. */
@@ -333,6 +337,7 @@ function resolveTrackRowLoopVisuals(
       width: geometry.width,
       placementFrame: continuousRange.placementStart,
       mode: clip?.mode ?? 'progressive',
+      railKind: classifyRotoRailKind(clip?.railKind),
       unresolved: Boolean(continuousRange.unresolved),
       lifecycle: resolveTrackRowLoopLifecycle(continuousRange, clip),
     });
@@ -636,10 +641,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
         {loopLines.map((line) => (
           <span
             key={line.loopId}
-            class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
+            class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.railKind === 'reveal' ? ' rail-kind-reveal' : ''}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
             style={{ left: `${line.left}px`, width: `${line.width}px` }}
             role="button"
-            aria-label={`Loop Clip rail at frame ${line.placementFrame}`}
+            aria-label={`${getRotoRailKindLabel(line.railKind)} rail at frame ${line.placementFrame}`}
             onClick={(event) => {
               // Same as the key-rail wrapper: only consume when wired.
               if (!onSelectTrackRail) return;

@@ -17,6 +17,27 @@ export type RotoCellOverlay = 'current' | 'dirty' | 'pending';
 export type RotoCellState = 'Empty' | 'Cached' | 'Generated' | 'Background only';
 export type RotoMissingFrameStatusKind = 'transparent' | 'background-only-interior' | 'background-only-dynamic';
 
+/* ---- 52-04 (D-03/D-19): the rail-kind classification for the track surface ---- */
+
+/** The Loop Clip rail kinds on the single track type (D-03): the reveal rail is
+ *  the 4th rail kind alongside the PlayScript motion/static rails. */
+export type RotoRailKind = 'playscript' | 'reveal';
+
+/** Classify a Loop Clip's rail kind — absent means 'playscript' (no migration). */
+export function classifyRotoRailKind(railKind: RotoRailKind | undefined): RotoRailKind {
+  return railKind === 'reveal' ? 'reveal' : 'playscript';
+}
+
+/** True when the rail is a reveal rail (the 4th rail kind, D-03). */
+export function isRevealRotoRail(railKind: RotoRailKind | undefined): boolean {
+  return classifyRotoRailKind(railKind) === 'reveal';
+}
+
+/** The rail-kind label for the track surface and rail set copy. */
+export function getRotoRailKindLabel(railKind: RotoRailKind | undefined): string {
+  return isRevealRotoRail(railKind) ? 'Reveal' : 'Play Script';
+}
+
 export interface RotoMissingFrameStatus {
   kind: RotoMissingFrameStatusKind;
   label: string;

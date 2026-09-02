@@ -435,6 +435,16 @@ export interface PhysicsPaintWorkflowStripProps {
   photoReference?: PhotoReferenceTrack | null;
   /** The strip camera icon's open-dialog intent. */
   onOpenReference?: () => void;
+  /* ---- 52-04 (D-19): the track rail-creation flow — reveal as the 4th rail kind ---- */
+  /** Choosing a PlayScript rail kind (motion/static) opens the existing PlayScript
+   *  dialog — the same flow that creates a motion/static PlayScript rail today. */
+  onCreatePlayScriptRail?: (mode: 'progressive' | 'static') => void;
+  /** Choosing the reveal rail kind opens the reveal-creation flow — the SAME
+   *  create-reveal-rail mutation as the modal path (one model, two entry points). */
+  onCreateRevealRail?: () => void;
+  /** 52-04 (D-12): the reveal rail-creation guard — a reveal rail cannot be
+   *  created from the track without a placed reference. */
+  revealRailCreationDisabledReason?: string | null;
 }
 
 const RULER_STEP = 3;
@@ -1225,6 +1235,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const lastFocusedKeyRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
+  // 52-04 (D-19): the track rail-creation menu open state — the "Create rail"
+  // button in the action row offers the rail kinds (motion/static/reveal).
+  const railCreateMenuOpen = useSignal(false);
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
   // 47-01 mockup redesign: edit-in-place rename state. The header column is
@@ -1711,6 +1724,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       : ROTO_KEY_BUSY_STATUS_TEMPLATE
     : null;
   const soloTooltip = useStyledTooltip();
+  // 52-04 (D-19): the "Create rail" button tooltip.
+  const railCreateTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -4339,6 +4354,74 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       ? 'Exit solo playback.'
                       : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', soloToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
+                </span>
+              </div>
+              {/* 52-04 (D-19): the track rail-creation flow — a "Create rail"
+                  button offering the rail kinds. Motion/Static open the existing
+                  PlayScript dialog (the same flow that creates a motion/static
+                  PlayScript rail today); Reveal opens the reveal-creation flow
+                  (the SAME create-reveal-rail mutation as the modal path, gated
+                  on a placed reference — D-12). */}
+              <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Create rail"
+                    aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
+                    onFocus={railCreateTooltip.onFocus}
+                    onBlur={railCreateTooltip.onBlur}
+                    onClick={() => {
+                      railCreateTooltip.hide();
+                      railCreateMenuOpen.value = !railCreateMenuOpen.value;
+                    }}
+                  >
+                    <Plus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Rail</span>
+                  </button>
+                  <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
+                    Create a Motion, Static, or Reveal rail on the current track.
+                  </PhysicsPaintStyledTooltip>
+                  {railCreateMenuOpen.value ? (
+                    <div class="physics-paint-rail-create-menu" role="group" aria-label="Rail kind">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('progressive');
+                        }}
+                      >
+                        Motion
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('static');
+                        }}
+                      >
+                        Static
+                      </button>
+                      <button
+                        type="button"
+                        aria-disabled={props.revealRailCreationDisabledReason ? 'true' : undefined}
+                        aria-describedby={props.revealRailCreationDisabledReason ? 'roto-key-action-reason-reveal-rail' : undefined}
+                        onClick={() => {
+                          if (props.revealRailCreationDisabledReason) return;
+                          railCreateMenuOpen.value = false;
+                          props.onCreateRevealRail?.();
+                        }}
+                        onKeyDown={(event) => {
+                          if ((event.key === 'Enter' || event.key === ' ') && props.revealRailCreationDisabledReason) event.preventDefault();
+                        }}
+                      >
+                        Reveal
+                      </button>
+                      {props.revealRailCreationDisabledReason ? (
+                        <span id="roto-key-action-reason-reveal-rail" class="physics-paint-sr-only">{props.revealRailCreationDisabledReason}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </span>
               </div>
             </div>

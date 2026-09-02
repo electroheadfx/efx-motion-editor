@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
+  classifyRotoRailKind,
   collectRotoGroupDragGapPreviewAppFrames,
   getPhysicsPaintEngineStatusTone, getRotoAcceptedCellFillClass, getRotoCellFill,
   getRotoCellPresentationViewModel,
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
+  getRotoRailKindLabel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
   getRotoResolutionCellTooltipCopy, getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext, getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
+  isRevealRotoRail,
   ROTO_STARTS_INTERPOLATION_SEGMENT_COPY,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
@@ -736,5 +739,25 @@ describe('collectRotoGroupDragGapPreviewAppFrames — Group-drag gap preview (43
     );
     expect(collectRotoGroupDragGapPreviewAppFrames(currentCells, proposal, clip))
       .toEqual(new Set([10]));
+  });
+});
+
+describe('rail-kind classification (52-04, D-03/D-19 — the reveal rail is the 4th rail kind)', () => {
+  it('classifies an absent railKind as playscript (no migration)', () => {
+    expect(classifyRotoRailKind(undefined)).toBe('playscript');
+    expect(classifyRotoRailKind('playscript')).toBe('playscript');
+  });
+
+  it('classifies the reveal rail kind (D-03)', () => {
+    expect(classifyRotoRailKind('reveal')).toBe('reveal');
+    expect(isRevealRotoRail('reveal')).toBe(true);
+    expect(isRevealRotoRail(undefined)).toBe(false);
+    expect(isRevealRotoRail('playscript')).toBe(false);
+  });
+
+  it('labels the rail kind for the track surface and rail set copy', () => {
+    expect(getRotoRailKindLabel('reveal')).toBe('Reveal');
+    expect(getRotoRailKindLabel(undefined)).toBe('Play Script');
+    expect(getRotoRailKindLabel('playscript')).toBe('Play Script');
   });
 });

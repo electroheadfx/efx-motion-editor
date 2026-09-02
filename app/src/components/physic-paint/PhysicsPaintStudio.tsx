@@ -371,6 +371,10 @@ export function PhysicsPaintStudio() {
   // dialog stays open behind the full-area reference picker so an Import/
   // Replace confirm updates it in place.
   const referenceDialogOpen = useSignal(false);
+  // 52-04 (D-19): the track rail-creation flow pre-opens the reveal-creation
+  // surface in the photo-reference dialog (the SAME create-reveal-rail mutation
+  // as the modal path — one model, two entry points).
+  const revealCreationRequested = useSignal(false);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -3825,13 +3829,16 @@ export function PhysicsPaintStudio() {
   // always reflect accepted state. The camera icon opens it; Escape/X close it;
   // the Import/Replace source button opens the reference picker behind it.
   const referenceDialog = referenceDialogPropsMemo.resolve(
-    [referenceDialogOpen.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
+    [referenceDialogOpen.value, revealCreationRequested.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
     () => ({
       open: referenceDialogOpen.value,
       layerId: launchContext?.layerId ?? null,
       ports: photoReferenceSectionPortsRef.current,
       onClose: () => { referenceDialogOpen.value = false; },
       onImportSource: () => referencePicker.openPicker(),
+      // 52-04 (D-19): the track rail-creation flow pre-opens the reveal-creation
+      // surface (the dialog's controller opens it from this prop).
+      revealCreationRequested: revealCreationRequested.value,
     }),
   );
   const viewModel = usePhysicsPaintStudioViewModel({
@@ -3852,6 +3859,22 @@ export function PhysicsPaintStudio() {
         // Remove and every setting — no X badge on the icon, 50-UAT round 2).
         photoReference: multiTrackRowBundle.photoReference,
         onOpenReference: () => { referenceDialogOpen.value = true; },
+        // 52-04 (D-19): the track rail-creation flow — Motion/Static open the
+        // existing PlayScript dialog (the same flow that creates a motion/static
+        // PlayScript rail today); Reveal opens the reveal-creation flow in the
+        // photo-reference dialog (the SAME create-reveal-rail mutation as the
+        // modal path), gated on a placed reference (D-12).
+        onCreatePlayScriptRail: (mode) => {
+          rotoPlayScript.mode.value = mode;
+          void rotoPlayScript.openConfirmation();
+        },
+        onCreateRevealRail: () => {
+          revealCreationRequested.value = true;
+          referenceDialogOpen.value = true;
+        },
+        revealRailCreationDisabledReason: multiTrackRowBundle.photoReference === null
+          ? 'Reveal unavailable — no reference placed. Place a reference to create a reveal rail.'
+          : null,
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
