@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 51
 current_phase_name: Read-only Audio Preview
 status: ready_for_next_phase
-stopped_at: Phase 51 context gathered
-last_updated: "2026-09-02T07:51:42.471Z"
+stopped_at: Phase 52 context gathered
+last_updated: "2026-09-02T09:14:06.428Z"
 last_activity: 2026-09-02
 last_activity_desc: "Completed quick task 260902-cfa-amendments: D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope)"
-state_head: 2ee8750539356382b007041c06cfd4deafa52bb2
+state_head: a1957b727e09a46ac76543ba4f77fe89b7685310
 progress:
   total_phases: 9
   completed_phases: 3
@@ -271,8 +271,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/51-read-only-audio-preview/51-CONTEXT.md
+**Resume file:** .planning/phases/52-shared-mask-compositor-and-reveal/52-CONTEXT.md
 
-Last session: 2026-09-02T06:41:21.505Z
-Stopped at: Phase 51 context gathered
+Last session: 2026-09-02T09:14:05.626Z
+Stopped at: Phase 52 context gathered
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
