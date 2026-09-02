@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 51
-current_phase_name: Read-only Audio Preview
+current_phase: 52
+current_phase_name: Shared Mask Compositor and Reveal
 status: ready_for_next_phase
-stopped_at: Phase 52 context gathered
-last_updated: "2026-09-02T10:04:21.086Z"
+stopped_at: Phase 52 UI-SPEC approved
+last_updated: "2026-09-02T11:23:59.229Z"
 last_activity: 2026-09-02
 last_activity_desc: "Completed quick task 260902-cfa-amendments: D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope)"
-state_head: e8f407eeab09eba28e22dbafa28bb10e8a6458a0
+state_head: 05e7cdefeaf59abde62d0e3188b05911a2724d9f
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 37
+  total_plans: 42
   completed_plans: 37
   percent: 33
 ---
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 51 (Read-only Audio Preview) — NOT STARTED
+Phase: 52 (Shared Mask Compositor and Reveal) — READY TO EXECUTE
 Plan: 0 of TBD
 Status: Phase 50 CLOSED — phase-closing native UAT approved 2026-09-01 (dialog modal redesign + launch-hydration fix + overlay paint-block fix + rotation handle + liquid-glass restyle)
 Last activity: 2026-09-02 - Completed quick task 260902-cfa-amendments: D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope)
@@ -271,8 +271,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/52-shared-mask-compositor-and-reveal/52-CONTEXT.md
+**Resume file:** /Users/lmarques/Dev/efx-motion-editor/.planning/phases/52-shared-mask-compositor-and-reveal/52-UI-SPEC.md
 
-Last session: 2026-09-02T10:04:20.286Z
-Stopped at: Phase 52 context gathered
+Last session: 2026-09-02T10:24:21.471Z
+Stopped at: Phase 52 UI-SPEC approved
 Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning

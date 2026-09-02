@@ -450,9 +450,17 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 52-01-PLAN.md — End-to-end reveal bake (tracer): model + bake + store + flattened + undo
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 52-02-PLAN.md — D-15 PhotoReferenceMode removal (clean break) + parser round-trip
 - [ ] 52-03-PLAN.md — Reveal rail surface: color, status dot, tooltip freshness, Replay control
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 52-04-PLAN.md — "Reveal with script…" modal entry
 - [ ] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
