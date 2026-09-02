@@ -7,9 +7,11 @@ import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
+  _setEfxPaintRevealScriptLoader,
   addBackgroundClip,
   addTrack,
   commitDeleteTrack,
+  createRevealRail,
   duplicateTrack,
   efxPaintVersion,
   getDocument as getEfxPaintDocument,
@@ -64,6 +66,7 @@ import {
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
+import type { RevealCreateInput } from './view/physicsPaintPhotoReferenceController';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
@@ -983,6 +986,14 @@ export function PhysicsPaintStudio() {
     getLaunchContext: () => launchContext,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
+  // 52-04 (D-10): the reveal bake loads the library script snapshot by id — the
+  // rail references the library script, never a copy. Wire the store's reveal
+  // script loader to the SCRIPTS library's loadSnapshot so createRevealRail
+  // (Plan 01) can resolve the script for the bake.
+  useEffect(() => {
+    _setEfxPaintRevealScriptLoader((scriptId) => rotoScriptLibrary.loadSnapshot(scriptId));
+    return () => _setEfxPaintRevealScriptLoader(null);
+  }, [rotoScriptLibrary]);
   const physicalMutationAvailable = useComputed(() => {
     physicPaintRotoPhysicalOperationLeaseVersion.value;
     // 47-01: re-resolve the lease for the currently active track — the active
@@ -3001,6 +3012,23 @@ export function PhysicsPaintStudio() {
       return result;
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
+    // 52-04 (D-16/D-19): the reveal-rail creation flow ports — the current
+    // track, the UNFILTERED SCRIPTS library rows (D-26), the create-reveal-rail
+    // mutation (Plan 01, creation IS the first bake — D-11), the current
+    // playhead (D-20 default span start), and the script's natural duration.
+    getActiveTrackId: (layerId: string) => getEfxPaintDocument(layerId)?.activeTrackId ?? null,
+    getScriptRows: () => rotoScriptLibrary.rows.value.map((row) => ({
+      id: row.id,
+      name: row.name,
+      brushCount: row.brushCount,
+      thumbnail: { dataUrl: row.thumbnail.dataUrl, width: row.thumbnail.width, height: row.thumbnail.height },
+    })),
+    createReveal: (layerId: string, input: RevealCreateInput) => createRevealRail(layerId, input),
+    getCurrentFrame: () => currentFrame,
+    // D-20: the script's natural duration at the current motion parameters.
+    // The library script carries no duration field; the PlayScript dialog's
+    // default frame count (3) is the natural span the reveal rail covers.
+    getScriptNaturalDuration: () => null,
   });
   const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
