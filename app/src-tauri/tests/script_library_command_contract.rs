@@ -30,7 +30,7 @@ fn prepare_fixture(direction: &str, mode: &str) -> Value {
     let action_id = Uuid::new_v4().to_string();
     // Canonical revision for this exact fixture document (see the parity
     // vector in script_library_transaction_contract.rs).
-    let canonical_revision = "physical-292-ea77b953";
+    let canonical_revision = "physical-348-c3e91683";
     let physical_document = physical_document(canonical_revision);
     let physical_hash = canonical_physical_hash(&physical_document).unwrap();
     json!({

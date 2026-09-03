@@ -1239,6 +1239,24 @@ fn canonical_string(value: &str) -> String {
     format!("s{}:{};", value.len(), value)
 }
 
+/// G-52-6: mirror of `encodeCanonicalDataUrlPayload` in
+/// physicsPaintRotoPhysicalModel.ts — the payload is fingerprinted by a
+/// head+tail+length token, never the full dataUrl (reveal-baked keys carry
+/// multi-MB PNGs; concatenating them cost ~10s per reveal rail at open).
+/// Validated payloads are ASCII base64, so char/byte slicing agree.
+fn canonical_data_url_payload(data_url: &str) -> String {
+    let head: String = data_url.chars().take(64).collect();
+    let tail: String = data_url
+        .chars()
+        .rev()
+        .take(64)
+        .collect::<Vec<char>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("d{}:{}..{};", data_url.len(), head, tail)
+}
+
 fn canonical_number(value: f64) -> String {
     format!("n{value};")
 }
@@ -1328,7 +1346,7 @@ fn canonical_records(records: &[Value]) -> Result<String, String> {
         encoded.push_str(&canonical_number(app_frame));
         encoded.push_str(&canonical_number(frame_index));
         encoded.push_str(&canonical_number(payload_app_frame));
-        encoded.push_str(&canonical_string(data_url));
+        encoded.push_str(&canonical_data_url_payload(data_url));
         encoded.push_str(&canonical_optional_number(width));
         encoded.push_str(&canonical_optional_number(height));
     }

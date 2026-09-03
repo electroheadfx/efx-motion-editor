@@ -88,7 +88,7 @@ fn prepare_request_with_direction(
     // `buildPhysicPaintRotoPhysicalRevision` in physicsPaintRotoPhysicalModel.ts.
     // Using it keeps the fixture a valid TypeScript document so the parity
     // vector pins both trust boundaries on the same input.
-    let canonical_revision = "physical-292-ea77b953";
+    let canonical_revision = "physical-348-c3e91683";
     let physical_document = physical_document(canonical_revision);
     let physical_hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&physical_document)
@@ -156,7 +156,7 @@ fn canonical_physical_hash_matches_the_typescript_reference_vector() {
     let hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
             .unwrap();
-    assert_eq!(hash, "project-360-b521097e");
+    assert_eq!(hash, "project-416-550fa14e");
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn commit_moves_action_to_hidden_tombstone_and_gates_ordinary_scan() {
     assert_eq!(recovery["state"], "recovery-required");
     assert_eq!(
         recovery["target"]["physicalDocument"]["revision"],
-        "physical-292-ea77b953"
+        "physical-348-c3e91683"
     );
     assert_eq!(recovery["token"], token);
 }
@@ -476,7 +476,7 @@ fn history_undo_and_redo_restore_and_remove_exact_action_authority() {
     assert_eq!(undo_committed["direction"], "undo");
     assert_eq!(
         undo_committed["target"]["physicalRevision"],
-        "physical-292-ea77b953"
+        "physical-348-c3e91683"
     );
     assert_eq!(std::fs::read(&action_path).unwrap(), original_bytes);
     fixture
@@ -491,7 +491,7 @@ fn history_undo_and_redo_restore_and_remove_exact_action_authority() {
     assert_eq!(redo_committed["direction"], "redo");
     assert_eq!(
         redo_committed["target"]["physicalRevision"],
-        "physical-292-ea77b953"
+        "physical-348-c3e91683"
     );
     assert!(!action_path.exists());
     fixture

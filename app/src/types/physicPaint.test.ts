@@ -24,7 +24,10 @@ import {
 import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
+  encodePhysicPaintRotoPhysicalContent,
+  parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { hashCanonicalPhysicalValue } from '../efx-paint/document/efxPaintCanonicalEncoder';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -599,6 +602,110 @@ describe('physic paint payload contracts', () => {
   });
 });
 
+describe('roto physical revision payload tokenization (G-52-6)', () => {
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const revealSizedDataUrl = `data:image/png;base64,${'iVBORw0KGgo'.repeat(40000)}`;
+  const revisionRecord = (keyId: string, appFrame: number, dataUrl: string) => ({
+    kind: 'real-key' as const,
+    keyId,
+    appFrame,
+    payload: { frameIndex: 0, appFrame, dataUrl, width: 1000, height: 650 },
+  });
+
+  it('never embeds the full payload dataUrl in the canonical encoding (reveal-baked keys carry multi-MB PNGs)', () => {
+    // Mutation-verified: the pre-fix encoder concatenated the full dataUrl, so
+    // this assertion fails against it (the encoding contained the payload).
+    const encoded = encodePhysicPaintRotoPhysicalContent(
+      [revisionRecord('key-0', 0, revealSizedDataUrl)],
+      interpolation,
+      [],
+    );
+    expect(encoded.includes(revealSizedDataUrl)).toBe(false);
+    expect(encoded.length).toBeLessThan(1000);
+  });
+
+  it('keeps equal content equal and rotates on any payload change', () => {
+    const records = [revisionRecord('key-0', 0, revealSizedDataUrl)];
+    const base = buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
+    expect(buildPhysicPaintRotoPhysicalRevision(records, interpolation, [])).toBe(base);
+    const changedTail = `${revealSizedDataUrl.slice(0, -4)}BBBB`;
+    expect(buildPhysicPaintRotoPhysicalRevision(
+      [revisionRecord('key-0', 0, changedTail)],
+      interpolation,
+      [],
+    )).not.toBe(base);
+  });
+
+  it('distinguishes same-length payloads that share the PNG-header head (the head-slice collision hole)', () => {
+    // Same encoder + same dimensions → identical head bytes; only the tail of
+    // the deflate stream differs. A head-only token (the previewRenderer idiom)
+    // would collide here; head+tail+length must not.
+    const sharedHead = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg';
+    const a = `${sharedHead}${'A'.repeat(2002)}AAAA`;
+    const b = `${sharedHead}${'A'.repeat(2002)}BBBB`;
+    expect(buildPhysicPaintRotoPhysicalRevision(
+      [revisionRecord('key-0', 0, a)],
+      interpolation,
+      [],
+    )).not.toBe(buildPhysicPaintRotoPhysicalRevision(
+      [revisionRecord('key-0', 0, b)],
+      interpolation,
+      [],
+    ));
+  });
+
+  it('tokenizes group-override payloads too', () => {
+    const encoded = encodePhysicPaintRotoPhysicalContent(
+      [revisionRecord('key-0', 0, 'data:image/png;base64,iVBORw0KGgo=')],
+      interpolation,
+      [],
+      [],
+      [revisionRecord('override-1', 1, revealSizedDataUrl)],
+    );
+    expect(encoded.includes(revealSizedDataUrl)).toBe(false);
+    expect(encoded.length).toBeLessThan(1000);
+  });
+
+  it('accepts a pre-cutover full-dataUrl revision at parse and re-stamps the tokenized one (legacy open path)', () => {
+    // Documents saved before the token cutover carry a revision computed over
+    // the FULL payload dataUrl. The parse accepts that shape once (the D-29
+    // exact-legacy escape idiom) and re-stamps the tokenized revision, so an
+    // old project still opens and its next save is on the fast path.
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
+    const legacySource = `records:1:s5:key-0;n0;n0;n0;s${dataUrl.length}:${dataUrl};u;u;interpolation:0;mode:s9:duplicate;`;
+    const legacyRevision = `physical-${hashCanonicalPhysicalValue(legacySource)}`;
+    const parsed = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 24,
+      realKeyRecords: [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl } }],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: legacyRevision,
+    });
+    expect(parsed.revision).not.toBe(legacyRevision);
+    expect(parsed.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+      [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl } }],
+      interpolation,
+      [],
+    ));
+  });
+
+  it('still fails closed on a genuinely tampered revision', () => {
+    expect(() => parsePhysicPaintRotoPhysicalDocument({
+      capacity: 24,
+      realKeyRecords: [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' } }],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: 'physical-1-deadbeef',
+    })).toThrow('canonical revision mismatch');
+  });
+});
+
 const actionPhysicalDocument = () => {
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const realKeyRecords: never[] = [];
@@ -759,7 +866,7 @@ describe('referenced Action transaction contracts', () => {
       loopClips,
       incomingInterpolationBreakKeyIds: [],
     };
-    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-360-b521097e');
+    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-416-550fa14e');
   });
 
   it('distinguishes every durable journal and retained-history result state', () => {

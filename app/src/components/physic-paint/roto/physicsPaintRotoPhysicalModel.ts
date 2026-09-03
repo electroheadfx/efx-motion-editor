@@ -1004,12 +1004,28 @@ export function encodePhysicPaintRotoPhysicalContent(
   );
 }
 
+/**
+ * G-52-6: fingerprint a raster payload by a content TOKEN, never the full
+ * dataUrl. Reveal-baked keys carry multi-MB PNG dataUrls and this fingerprint
+ * is recomputed at every parse, mutation commit, bridge payload sync + parent
+ * canonical re-verification, and per undo/redo live-authority check —
+ * concatenating the payload cost ~10s per reveal rail at open. Head+tail+length
+ * is O(1) and change-safe for same-encoder PNG output: deflate streams have no
+ * resync points, so any content change cascades to the tail (mirrors the
+ * dataUrl-slice idiom of previewRenderer.ts:114 /
+ * physicPaintStore._trackContentRevision).
+ */
+function encodeCanonicalDataUrlPayload(dataUrl: string): string {
+  return `d${dataUrl.length}:${dataUrl.slice(0, 64)}..${dataUrl.slice(-64)};`;
+}
+
 function encodeValidatedPhysicPaintRotoPhysicalContent(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   interpolation: PhysicPaintRotoInterpolationState,
   loopClips: readonly PhysicPaintRotoLoopClip[],
   incomingInterpolationBreakKeyIds: readonly string[],
   groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [],
+  encodePayloadDataUrl: (dataUrl: string) => string = encodeCanonicalDataUrlPayload,
 ): string {
   const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) => {
     const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
@@ -1018,7 +1034,7 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
       encodeCanonicalNumber(record.appFrame),
       encodeCanonicalNumber(record.payload.frameIndex),
       encodeCanonicalNumber(record.payload.appFrame),
-      encodeCanonicalString(record.payload.dataUrl),
+      encodePayloadDataUrl(record.payload.dataUrl),
       encodeCanonicalOptionalNumber(record.payload.width),
       encodeCanonicalOptionalNumber(record.payload.height),
     ].join('')).join('');
@@ -1232,15 +1248,28 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     groupOverrideRecords,
   );
   if (value.revision !== revision) {
-    const exactLegacyRevision = exactLegacyFiniteLoopClips === null
-      ? null
-      : `physical-${hashCanonicalPhysicalValue(encodeValidatedPhysicPaintRotoPhysicalContent(
-          state.realKeyRecords,
-          state.interpolation,
-          exactLegacyFiniteLoopClips,
-          incomingInterpolationBreakKeyIds,
-        ))}`;
-    if (value.revision !== exactLegacyRevision) {
+    // Legacy acceptance (computed lazily on mismatch only): pre-G-52-6
+    // revisions fingerprinted the FULL payload dataUrl — the multi-MB
+    // concatenation the token cutover removed — so a mismatching document pays
+    // that cost once at open; the next save re-stamps the tokenized revision.
+    // Two pre-cutover shapes: the D-29 exact-legacy finite loop clip escape
+    // (no group overrides, mirroring the original escape) and the modern clip
+    // collection with full-dataUrl encoding (every 43–52-era save).
+    const legacyRevision = (
+      clips: readonly PhysicPaintRotoLoopClip[],
+      overrides: readonly PhysicPaintRotoRealKeyRecord[],
+    ) => `physical-${hashCanonicalPhysicalValue(encodeValidatedPhysicPaintRotoPhysicalContent(
+      state.realKeyRecords,
+      state.interpolation,
+      clips,
+      incomingInterpolationBreakKeyIds,
+      overrides,
+      encodeCanonicalString,
+    ))}`;
+    const accepted = (exactLegacyFiniteLoopClips !== null
+      && value.revision === legacyRevision(exactLegacyFiniteLoopClips, []))
+      || value.revision === legacyRevision(loopClips, groupOverrideRecords);
+    if (!accepted) {
       throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
     }
   }
