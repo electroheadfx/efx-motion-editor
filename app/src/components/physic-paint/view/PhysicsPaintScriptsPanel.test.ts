@@ -114,28 +114,28 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     for (const label of labels) expect(panel).toContain(`label="${label}"`);
     expect(panel.indexOf('label="Save Action"')).toBeLessThan(panel.indexOf('label="Load + Apply to Frame"'));
     expect(panel).toContain('if (selectedLoopClip)');
-    expect(panel).toContain('aria-label={`Selected Group — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}');
     expect(panel).toContain('<dt>Source Action</dt>');
-    expect(panel).toContain('<dt>Group Type</dt>');
-    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Group…"'));
-    expect(panel.indexOf('label="Create Group…"')).toBeLessThan(panel.indexOf('label="Delete Action"'));
+    expect(panel).toContain('<dt>Rail Type</dt>');
+    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Rail…"'));
+    expect(panel.indexOf('label="Create Rail…"')).toBeLessThan(panel.indexOf('label="Delete Action"'));
     expect(panel.indexOf('label="Delete Action"')).toBeLessThan(panel.indexOf('label="Refresh Actions"'));
-    expect(panel).toContain('aria-label={`Edit Group — ${selectedLoopClip.displayName}`}');
-    expect(panel).toContain('label="Create Group…"');
+    expect(panel).toContain('aria-label={`Edit Rail — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('label="Create Rail…"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
     expect(panel).toContain('title={props.title}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
-    expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action'");
+    expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action'");
     expect(panel).not.toContain('Import Script');
     expect(panel).toContain('aria-label="Project Actions"');
     expect(panel).toContain('aria-label="Saved Roto Actions"');
     expect(panel).toContain('No project Actions yet.');
-    expect(panel).toContain('Save the current real Roto frame as an Action to create a Group.');
+    expect(panel).toContain('Save the current real Roto frame as an Action to create a Rail.');
   });
 
-  it('provides an accessible Create Group… dialog distinct from cached Roto playback', () => {
+  it('provides an accessible Create Rail… dialog distinct from cached Roto playback', () => {
     expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
     expect(playScriptDialog).toContain('role="dialog"');
     expect(playScriptDialog).not.toContain('aria-modal="true"');
@@ -144,7 +144,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(playScriptDialog).toContain('id="physics-play-script-max"');
     expect(playScriptDialog).toContain('Enter a positive integer.');
     expect(playScriptDialog).toContain("if (event.key === 'Escape')");
-    expect(playScriptDialog).toContain("if (!regenerateImpact && event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value)");
+    expect(playScriptDialog).toContain("if (!regenerateImpact && event.key === 'Enter' && !playScript.canCancel.value)");
     expect(playScriptDialog).not.toContain("event.key !== 'Tab'");
     expect(playScriptDialog).toContain('inputRef.current?.focus()');
     expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
@@ -564,11 +564,11 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
     expect(copy).toContain('This removes the project Action file and cannot be undone.');
     expect(buttonWithText(tree, 'Cancel')).toBeTruthy();
     expect(buttonWithText(tree, 'Delete Action')).toBeTruthy();
-    expect(copy).not.toContain('Keep Groups');
-    expect(copy).not.toContain('Delete Action and Groups');
+    expect(copy).not.toContain('Keep Rails');
+    expect(copy).not.toContain('Delete Action and Rails');
   });
 
-  it('discloses exact one/many reference counts, visible ranges, ordered Groups, and consequences', () => {
+  it('discloses exact one/many reference counts, visible ranges, ordered Rails, and consequences', () => {
     const library = createFakeLibrary({
       deleteConfirmation: {
         ...actionRow,
@@ -585,15 +585,15 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
     const tree = renderPanel(createFakePlayScript(), library);
     const copy = textOf(tree);
 
-    expect(copy).toContain('This Action is referenced by 2 Groups across 3 visible ranges.');
+    expect(copy).toContain('This Action is referenced by 2 Rails across 3 visible ranges.');
     expect(copy.indexOf('F4–F11')).toBeLessThan(copy.indexOf('F20–F23'));
     expect(copy).toContain('F4–F7, F10–F11');
     expect(copy).toContain('2 ranges');
-    expect(copy).toContain('Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.');
-    expect(copy).toContain('Delete the Action and all 2 referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.');
-    expect(findAll(tree, (vnode) => vnode.type === 'button' && ['Keep Groups', 'Delete Action and Groups', 'Cancel'].includes(String(vnode.props['aria-label']))).map((vnode) => vnode.props['aria-label'])).toEqual([
-      'Keep Groups',
-      'Delete Action and Groups',
+    expect(copy).toContain('Recommended. Delete the Action but keep every Rail, fragment, key, timing value, cache, and rendered result. Rails become detached and timeline space stays occupied.');
+    expect(copy).toContain('Delete the Action and all 2 referencing Rails, including uniquely owned source, cache, and Rail-gap data. Their occupied timeline ranges are freed.');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && ['Keep Rails', 'Delete Action and Rails', 'Cancel'].includes(String(vnode.props['aria-label']))).map((vnode) => vnode.props['aria-label'])).toEqual([
+      'Keep Rails',
+      'Delete Action and Rails',
       'Cancel',
     ]);
   });
@@ -611,8 +611,8 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
       },
     });
     const tree = renderPanel(createFakePlayScript(), library);
-    const keep = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Keep Groups');
-    const cascade = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Delete Action and Groups');
+    const keep = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Keep Rails');
+    const cascade = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Delete Action and Rails');
 
     await (keep.props.onClick as () => Promise<void>)();
     await (cascade.props.onClick as () => Promise<void>)();
@@ -649,16 +649,16 @@ describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
 
     expect(findAll(tree, (vnode) => vnode.props.role === 'option')).toHaveLength(1);
     expect(findAll(tree, (vnode) => vnode.props.role === 'dialog')).toHaveLength(1);
-    for (const label of ['Save Action', 'Load + Apply to Frame', 'Create Group…', 'Delete Action', 'Refresh Actions']) {
+    for (const label of ['Save Action', 'Load + Apply to Frame', 'Create Rail…', 'Delete Action', 'Refresh Actions']) {
       expect(findOne(tree, (vnode) => vnode.props.label === label).props.disabled).toBe(true);
     }
-    for (const label of ['Copy Action', 'Apply to Frame', 'Clear Action Buffer', 'Keep Groups', 'Delete Action and Groups']) {
+    for (const label of ['Copy Action', 'Apply to Frame', 'Clear Action Buffer', 'Keep Rails', 'Delete Action and Rails']) {
       expect(findOne(tree, (vnode) => vnode.props['aria-label'] === label).props['aria-disabled']).toBe('true');
     }
   });
 
   it('shows only controller-mapped recovery or stale copy and never raw diagnostics', () => {
-    const mapped = 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+    const mapped = 'Action or Rail references changed. Nothing changed. Review the affected Rails and try again.';
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary({
       rows: [actionRow], selectedId: actionRow.id, deleteConfirmation: { ...actionRow, referenceImpact },
       deleteError: mapped,
@@ -705,23 +705,23 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     accessibleName: 'Walk Group. Motion Group. Synchronized with Action.',
   } as const;
 
-  it('hides linked navigation when the selected Action has no linked Groups', () => {
+  it('hides linked navigation when the selected Action has no linked Rails', () => {
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: null,
     });
-    expect(textOf(tree)).not.toContain('Linked Groups');
-    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group')).toHaveLength(0);
+    expect(textOf(tree)).not.toContain('Linked Rails');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Rail')).toHaveLength(0);
   });
 
-  it('shows one current link with a single Go to Group action', () => {
+  it('shows one current link with a single Go to Rail action', () => {
     const onGoToGroup = vi.fn();
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: { currentIndex: 0, total: 1, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup },
     });
-    expect(textOf(tree)).toContain('Linked Groups — 1 of 1');
-    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group');
+    expect(textOf(tree)).toContain('Linked Rails — 1 of 1');
+    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Rail');
     (go.props.onClick as () => void)();
     expect(onGoToGroup).toHaveBeenCalledTimes(1);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Previous' || textOf(vnode) === 'Next')).toHaveLength(0);
@@ -733,7 +733,7 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: { currentIndex: 0, total: 3, onPrevious: vi.fn(), onNext, onGoToGroup: vi.fn() },
     });
-    expect(textOf(tree)).toContain('Linked Groups — 1 of 3');
+    expect(textOf(tree)).toContain('Linked Rails — 1 of 3');
     const previous = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Previous');
     const next = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Next');
     expect(previous.props.disabled).toBe(true);
@@ -762,10 +762,10 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
     expect(listIndex).toBe(toolbarIndex + 1);
   });
 
-  it('keeps the Create Group… tooltip fallback covering both modes', () => {
+  it('keeps the Create Rail… tooltip fallback covering both modes', () => {
     const tree = renderPanel(createFakePlayScript());
-    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Group…');
-    expect(playButton.props.title).toBe('Create Group… — Create a Motion or Static Group from the selected Action');
+    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Rail…');
+    expect(playButton.props.title).toBe('Create Rail… — Create a Motion or Static Rail from the selected Action');
     expect(String(playButton.props.title)).not.toContain('Progressive');
   });
 });

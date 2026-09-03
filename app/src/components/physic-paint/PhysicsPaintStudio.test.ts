@@ -74,10 +74,10 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain('PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT');
   });
 
-  it('keeps Save, Load/Paintbrush, Create Group, and cached Roto playback distinct', () => {
+  it('keeps Save, Load/Paintbrush, Create Rail, and cached Roto playback distinct', () => {
     const save = scriptsPanel.indexOf('label="Save Action"');
     const paintbrush = scriptsPanel.indexOf('label="Load + Apply to Frame"');
-    const playScript = scriptsPanel.indexOf('label="Create Group…"');
+    const playScript = scriptsPanel.indexOf('label="Create Rail…"');
     expect(save).toBeGreaterThan(-1);
     expect(paintbrush).toBeGreaterThan(save);
     expect(playScript).toBeGreaterThan(paintbrush);
@@ -578,7 +578,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
     expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
     expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
-    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
+    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`");
   });
 
   it('pins the shared rail focus treatment on both :focus and :focus-visible — no selection box (43.4 defect 6/8, 47 close-out UAT round 10)', () => {
@@ -770,7 +770,7 @@ describe('Physics Paint selection-scoped Group deletion (43.2-17)', () => {
 
   it('renders only the focused sole-occurrence Delete Frame warning', () => {
     expect(studio).toContain('Delete the only frame in “{soleOccurrenceDeleteDialog.groupName}”?');
-    expect(studio).toContain('This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data. The Action is kept.');
+    expect(studio).toContain('This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Action is kept.');
     expect(studio).toContain('>Delete Frame</button>');
     expect(studio).toContain('>Cancel</button>');
     expect(studio).not.toContain('This frame belongs to a {groupDeleteDialog.groupType} Group.');

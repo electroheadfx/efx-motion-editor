@@ -154,13 +154,13 @@ describe('native-approved Physics Paint right sidebar', () => {
   });
 
   it('keeps full-row load-only activation and contextual Actions behavior', () => {
-    expectInOrder(scriptsPanel, ['label="Save Action"', 'label="Load + Apply to Frame"', 'label="Create Group…"', 'label="Delete Action"', 'label="Refresh Actions"']);
+    expectInOrder(scriptsPanel, ['label="Save Action"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Delete Action"', 'label="Refresh Actions"']);
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
-    expect(scriptsPanel).toContain('aria-label={`Edit Group — ${selectedLoopClip.displayName}`}');
-    expect(scriptsPanel).toContain("label=\"Create Group…\" title={`Create Group… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action')}`}");
-    expect(scriptsPanel).toMatch(/label="Create Group…"[^>]*onClick=/);
+    expect(scriptsPanel).toContain('aria-label={`Edit Rail — ${selectedLoopClip.displayName}`}');
+    expect(scriptsPanel).toContain("label=\"Create Rail…\" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action')}`}");
+    expect(scriptsPanel).toMatch(/label="Create Rail…"[^>]*onClick=/);
     expect(scriptsPanel).not.toContain('label="Rename Action"');
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');

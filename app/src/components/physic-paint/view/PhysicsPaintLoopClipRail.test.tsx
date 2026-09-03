@@ -1421,7 +1421,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     const onCloseLoopClip = vi.fn();
     const normalPanel = renderScriptsPanel(null, onOpenLoopEdit, onCloseLoopClip);
-    expect(findAll(normalPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Group…')).toHaveLength(1);
+    expect(findAll(normalPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Rail…')).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'))).toHaveLength(0);
@@ -1429,14 +1429,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const selectedPresentation = presentations.get(selectedLoopClipId) ?? null;
     expect(selectedPresentation?.loopId).toBe(selectedLoopClipId);
     const selectedPanel = renderScriptsPanel(selectedPresentation, onOpenLoopEdit, onCloseLoopClip);
-    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Group — Walk Rail');
-    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Group inspector — Walk Rail');
-    expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Group…')).toHaveLength(0);
+    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Rail — Walk Rail');
+    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Rail inspector — Walk Rail');
+    expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Rail…')).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(0);
     const inspector = findOne(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'));
-    expect(textOf(inspector)).toBe('NameWalk RailSource ActionWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fGroup TypeMotionStatusSynchronized with Action.');
+    expect(textOf(inspector)).toBe('NameWalk RailSource ActionWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fRail TypeMotionStatusSynchronized with Action.');
     expect(textOf(inspector)).not.toContain(rawLoopId);
     (editButton.props.onClick as () => void)();
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(3);

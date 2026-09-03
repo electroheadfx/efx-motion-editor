@@ -1385,6 +1385,63 @@ button.destructive {
   white-space: nowrap;
 }
 
+/* 52-05 (G-52-3): the Create Rail tab strip (apply mode only) — the same
+   segmented language as the mode-group control, spanning the card grid. */
+.physics-paint-play-script-tabs {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
+  background: var(--ps-inset);
+}
+
+.physics-paint-play-script-tab {
+  min-width: 0;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ps-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.physics-paint-play-script-tab:hover:not([aria-selected="true"]):not(:disabled) {
+  background: var(--ps-raised);
+  color: var(--ps-fg);
+}
+
+.physics-paint-play-script-tab[aria-selected="true"] {
+  background: var(--ps-accent);
+  color: oklch(0.99 0 0);
+  box-shadow: 0 1px 4px oklch(0 0 0 / 0.35);
+}
+
+.physics-paint-play-script-tab:disabled { cursor: default; opacity: 0.5; }
+
+/* 52-05 (G-52-3, D-12): the reveal reference guard notice — an actionable row,
+   never a bare error. */
+.physics-paint-play-script-reveal-notice {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 13px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
+  color: var(--ps-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* Body (D-16): two-column card grid; Mode/Motion wiggle/summary bar span both columns.
    NO overflow region — the compact metrics make every row fit at minimum window size. */
 .physics-paint-play-script-content {
@@ -3874,13 +3931,6 @@ button.destructive {
   pointer-events: none;
 }
 
-/* G-52-2b: the base 252px card is the approved 50-UAT mockup — only the
-   reveal-creation surface widens the dialog so the script picker, variant
-   buttons, span row, and Create/Cancel fit without squashing or wrapping. */
-.physics-paint-photo-reference-surface.physics-paint-photo-reference-surface-reveal {
-  width: 344px;
-}
-
 .physics-paint-photo-reference-header {
   display: flex;
   flex: 0 0 auto;
@@ -4224,264 +4274,11 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* 52-04 (D-16/D-19): the "Reveal with script…" primary CTA — the reveal rail
-   creation entry in the photo-reference modal. Gated on a placed reference
-   (D-12); the green family matches the reveal rail identity (D-22). */
-.physics-paint-photo-reference-reveal {
-  flex: 1 1 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid #0f8a6d;
-  border-radius: 8px;
-  background: #0d7a60;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.physics-paint-photo-reference-reveal:hover:not(:disabled) {
-  background: #0f8a6d;
-}
-
-.physics-paint-photo-reference-reveal:focus-visible {
-  outline: 2px solid #10b981;
-  outline-offset: 1px;
-}
-
-.physics-paint-photo-reference-reveal:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* 52-04 (D-11/D-26): the reveal-creation surface — the UNFILTERED SCRIPTS
-   picker, the creation-time variant choice, and the create+bake action. */
-.physics-paint-photo-reference-reveal-creation {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #2a3540;
-  border-radius: 8px;
-  background: #1a222b;
-}
-
-.physics-paint-photo-reference-reveal-scripts {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 132px;
-  overflow-y: auto;
-}
-
-.physics-paint-photo-reference-reveal-empty {
-  color: #7e8894;
-  font-size: 10px;
-  padding: 4px 2px;
-}
-
-.physics-paint-photo-reference-reveal-script {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 6px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: #c6cfd8;
-  font-size: 11px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.physics-paint-photo-reference-reveal-script:hover:not(:disabled) {
-  background: #232d38;
-}
-
-.physics-paint-photo-reference-reveal-script.selected {
-  border-color: #10b981;
-  background: #14352c;
-}
-
-.physics-paint-photo-reference-reveal-script:focus-visible {
-  outline: 2px solid #10b981;
-  outline-offset: 1px;
-}
-
-.physics-paint-photo-reference-reveal-thumbnail {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 24px;
-  object-fit: cover;
-  border-radius: 3px;
-  background: #0f0f0f;
-}
-
-.physics-paint-photo-reference-reveal-script-copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.physics-paint-photo-reference-reveal-script-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.physics-paint-photo-reference-reveal-script-count {
-  color: #7e8894;
-  font-size: 10px;
-}
-
-.physics-paint-photo-reference-reveal-variants {
-  display: flex;
-  gap: 4px;
-}
-
-.physics-paint-photo-reference-reveal-variant {
-  flex: 1 1 0;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid #3a4652;
-  border-radius: 6px;
-  background: #232d38;
-  color: #c6cfd8;
-  font-size: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.physics-paint-photo-reference-reveal-variant:hover:not(:disabled) {
-  background: #2a3540;
-}
-
-.physics-paint-photo-reference-reveal-variant.active {
-  border-color: #10b981;
-  background: #14352c;
-  color: #6ee7b7;
-}
-
-.physics-paint-photo-reference-reveal-variant:focus-visible {
-  outline: 2px solid #10b981;
-  outline-offset: 1px;
-}
-
-/* G-52-2c: the span row — editable frame count plus the "from F{n}" start hint. */
-.physics-paint-photo-reference-reveal-span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.physics-paint-photo-reference-reveal-span input {
-  width: 64px;
-  height: 24px;
-  padding: 0 6px;
-  border: 1px solid #3a4652;
-  border-radius: 6px;
-  background: #232d38;
-  color: #eceff2;
-  font-size: 11px;
-}
-
-.physics-paint-photo-reference-reveal-span input:focus-visible {
-  outline: 2px solid #10b981;
-  outline-offset: 1px;
-}
-
-.physics-paint-photo-reference-reveal-span-hint {
-  color: #7e8894;
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.physics-paint-photo-reference-reveal-progress {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #9aa5b1;
-  font-size: 10px;
-}
-
-.physics-paint-photo-reference-reveal-progress progress {
-  flex: 1 1 0;
-  height: 4px;
-}
-
-.physics-paint-photo-reference-reveal-error {
-  color: #ff6b6b;
-  font-size: 10px;
-}
-
-.physics-paint-photo-reference-reveal-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.physics-paint-photo-reference-reveal-create {
-  flex: 1 1 0;
-  height: 26px;
-  border: 1px solid #0f8a6d;
-  border-radius: 6px;
-  background: #0d7a60;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.physics-paint-photo-reference-reveal-create:hover:not(:disabled) {
-  background: #0f8a6d;
-}
-
-.physics-paint-photo-reference-reveal-create:focus-visible {
-  outline: 2px solid #10b981;
-  outline-offset: 1px;
-}
-
-.physics-paint-photo-reference-reveal-create:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.physics-paint-photo-reference-reveal-cancel {
-  flex: 0 0 auto;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid #3a4652;
-  border-radius: 6px;
-  background: #232d38;
-  color: #c6cfd8;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.physics-paint-photo-reference-reveal-cancel:hover:not(:disabled) {
-  background: #2a3540;
-}
-
-.physics-paint-photo-reference-reveal-cancel:focus-visible {
-  outline: 2px solid #9aa5b1;
-  outline-offset: 1px;
-}
-
-.physics-paint-photo-reference-reveal-cancel:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* 52-04 (D-19): the track rail-creation flow — the "Create rail" button and
-   its rail-kind menu (Motion / Static / Reveal). The reveal entry is gated on
-   a placed reference (D-12); the menu is a compact popover anchored to the
-   button (the icon-action wrapper is position: relative). */
+/* 52-05 (G-52-3): the track rail-creation flow — the "Create rail" button and
+   its rail-kind menu (Motion / Static / Reveal). Reveal opens the Create Rail
+   dialog's Reveal Photo Rail tab; the reference guard lives inside the dialog.
+   The menu is a compact popover anchored to the button (the icon-action
+   wrapper is position: relative). */
 .physics-paint-rail-create-group {
   display: inline-flex;
   align-items: center;

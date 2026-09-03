@@ -66,7 +66,7 @@ import {
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
-import type { RevealCreateInput } from './view/physicsPaintPhotoReferenceController';
+import { mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
@@ -371,10 +371,6 @@ export function PhysicsPaintStudio() {
   // dialog stays open behind the full-area reference picker so an Import/
   // Replace confirm updates it in place.
   const referenceDialogOpen = useSignal(false);
-  // 52-04 (D-19): the track rail-creation flow pre-opens the reveal-creation
-  // surface in the photo-reference dialog (the SAME create-reveal-rail mutation
-  // as the modal path — one model, two entry points).
-  const revealCreationRequested = useSignal(false);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -577,7 +573,7 @@ export function PhysicsPaintStudio() {
     setSoleOccurrenceDeleteError(null);
     const accepted = await groupLifecycleDeleteExecuteRef.current(soleOccurrenceDeleteTarget);
     if (!accepted) {
-      setSoleOccurrenceDeleteError('Delete rejected because the Group changed. Review the current frame and try again.');
+      setSoleOccurrenceDeleteError('Delete rejected because the Rail changed. Review the current frame and try again.');
       return;
     }
     closeSoleOccurrenceDeleteDialog();
@@ -1398,7 +1394,7 @@ export function PhysicsPaintStudio() {
       ? deletedGroupMode === 'static'
         ? `Deleted Static Rail at F${target.phaseOrigin}.`
         : `Deleted Motion Rail at F${target.phaseOrigin}.`
-      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`);
+      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`);
     return accepted !== null;
   };
   railSetDeleteExecuteRef.current = async (target) => {
@@ -1794,6 +1790,30 @@ export function PhysicsPaintStudio() {
         ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())
         : null
     ),
+    // 52-05 (G-52-3): the Reveal Photo Rail tab ports. The D-12 guard is
+    // proactive — no reference → the Photo Reference modal opens directly so the
+    // user places a source and returns to the Create Rail dialog. The create
+    // port routes through the SAME create-reveal-rail mutation as every reveal
+    // path (creation IS the first bake — D-11) and records the unified-ledger
+    // undo entry by reference (CR-01).
+    hasPhotoReference: () => {
+      const document = launchContext ? getEfxPaintDocument(launchContext.layerId) : undefined;
+      const reference = document?.photoReference;
+      return Boolean(reference && reference.sourceFrameRefs.length > 0);
+    },
+    photoReferenceRevision: efxPaintVersion,
+    openPhotoReference: () => { referenceDialogOpen.value = true; },
+    createReveal: async (input) => {
+      const result = await createRevealRail(input.layerId, input);
+      if (result.ok) {
+        if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+        return { ok: true };
+      }
+      return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
+    },
+    // D-20: the script's natural duration — the progressive schedule builds the
+    // drawing stroke by stroke, so one frame per brush is the natural span.
+    getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,
@@ -3016,23 +3036,6 @@ export function PhysicsPaintStudio() {
       return result;
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
-    // 52-04 (D-16/D-19): the reveal-rail creation flow ports — the current
-    // track, the UNFILTERED SCRIPTS library rows (D-26), the create-reveal-rail
-    // mutation (Plan 01, creation IS the first bake — D-11), the current
-    // playhead (D-20 default span start), and the script's natural duration.
-    getActiveTrackId: (layerId: string) => getEfxPaintDocument(layerId)?.activeTrackId ?? null,
-    getScriptRows: () => rotoScriptLibrary.rows.value.map((row) => ({
-      id: row.id,
-      name: row.name,
-      brushCount: row.brushCount,
-      thumbnail: { dataUrl: row.thumbnail.dataUrl, width: row.thumbnail.width, height: row.thumbnail.height },
-    })),
-    createReveal: (layerId: string, input: RevealCreateInput) => createRevealRail(layerId, input),
-    getCurrentFrame: () => currentFrame,
-    // D-20: the script's natural duration at the current motion parameters.
-    // The library script carries no duration field; the PlayScript dialog's
-    // default frame count (3) is the natural span the reveal rail covers.
-    getScriptNaturalDuration: () => null,
   });
   const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
@@ -3829,16 +3832,13 @@ export function PhysicsPaintStudio() {
   // always reflect accepted state. The camera icon opens it; Escape/X close it;
   // the Import/Replace source button opens the reference picker behind it.
   const referenceDialog = referenceDialogPropsMemo.resolve(
-    [referenceDialogOpen.value, revealCreationRequested.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
+    [referenceDialogOpen.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
     () => ({
       open: referenceDialogOpen.value,
       layerId: launchContext?.layerId ?? null,
       ports: photoReferenceSectionPortsRef.current,
       onClose: () => { referenceDialogOpen.value = false; },
       onImportSource: () => referencePicker.openPicker(),
-      // 52-04 (D-19): the track rail-creation flow pre-opens the reveal-creation
-      // surface (the dialog's controller opens it from this prop).
-      revealCreationRequested: revealCreationRequested.value,
     }),
   );
   const viewModel = usePhysicsPaintStudioViewModel({
@@ -3859,22 +3859,18 @@ export function PhysicsPaintStudio() {
         // Remove and every setting — no X badge on the icon, 50-UAT round 2).
         photoReference: multiTrackRowBundle.photoReference,
         onOpenReference: () => { referenceDialogOpen.value = true; },
-        // 52-04 (D-19): the track rail-creation flow — Motion/Static open the
-        // existing PlayScript dialog (the same flow that creates a motion/static
-        // PlayScript rail today); Reveal opens the reveal-creation flow in the
-        // photo-reference dialog (the SAME create-reveal-rail mutation as the
-        // modal path), gated on a placed reference (D-12).
+        // 52-05 (G-52-3): the track rail-creation flow — Motion/Static open the
+        // Create Rail dialog on the Paint tab; Reveal opens the SAME dialog on
+        // the Reveal Photo Rail tab (one model, two entry points, the SAME
+        // create-reveal-rail mutation). The reference guard lives INSIDE the
+        // dialog (proactive Photo Reference modal open — never a disabled menu).
         onCreatePlayScriptRail: (mode) => {
           rotoPlayScript.mode.value = mode;
           void rotoPlayScript.openConfirmation();
         },
         onCreateRevealRail: () => {
-          revealCreationRequested.value = true;
-          referenceDialogOpen.value = true;
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
         },
-        revealRailCreationDisabledReason: multiTrackRowBundle.photoReference === null
-          ? 'Reveal unavailable — no reference placed. Place a reference to create a reveal rail.'
-          : null,
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
@@ -4011,7 +4007,7 @@ export function PhysicsPaintStudio() {
           >
             <header class="physics-paint-group-delete-header">
               <h2 id="physics-paint-group-delete-title">Delete the only frame in “{soleOccurrenceDeleteDialog.groupName}”?</h2>
-              <p>This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data. The Action is kept.</p>
+              <p>This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Action is kept.</p>
             </header>
             {soleOccurrenceDeleteError ? <p class="physics-paint-group-delete-error" role="alert">{soleOccurrenceDeleteError}</p> : null}
             <footer class="physics-paint-group-delete-footer">

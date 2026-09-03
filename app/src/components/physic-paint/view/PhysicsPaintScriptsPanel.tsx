@@ -115,19 +115,19 @@ export function PhysicsPaintScriptsPanel({
 
   if (selectedLoopClip) {
     return (
-      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Group — ${selectedLoopClip.displayName}`}>
+      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}>
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
           <div><dt>Source Action</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
           <div><dt>Placement</dt><dd>{selectedLoopClip.placementLabel}</dd></div>
           <div><dt>Cycle</dt><dd>{selectedLoopClip.cycleLabel}</dd></div>
           <div><dt>Effective</dt><dd>{selectedLoopClip.effectiveLabel}</dd></div>
-          <div><dt>Group Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
+          <div><dt>Rail Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
           <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
         </dl>
         {linkedGroupNavigation ? (
-          <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Group navigation">
-            <strong>Linked Groups — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
+          <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Rail navigation">
+            <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
             <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
               {linkedGroupNavigation.total === 1 ? (
                 <button
@@ -135,7 +135,7 @@ export function PhysicsPaintScriptsPanel({
                   class="physics-paint-loop-clip-inspector-action"
                   onClick={linkedGroupNavigation.onGoToGroup}
                 >
-                  Go to Group
+                  Go to Rail
                 </button>
               ) : (
                 <>
@@ -165,16 +165,16 @@ export function PhysicsPaintScriptsPanel({
             ref={playButtonRef}
             type="button"
             class="physics-paint-loop-clip-inspector-action primary"
-            aria-label={`Edit Group — ${selectedLoopClip.displayName}`}
+            aria-label={`Edit Rail — ${selectedLoopClip.displayName}`}
             onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }}
           >
             <Pencil size={16} aria-hidden="true" />
-            <span>Edit Group</span>
+            <span>Edit Rail</span>
           </button>
           <button
             type="button"
             class="physics-paint-loop-clip-inspector-action"
-            aria-label={`Close Group inspector — ${selectedLoopClip.displayName}`}
+            aria-label={`Close Rail inspector — ${selectedLoopClip.displayName}`}
             onClick={onCloseLoopClip}
           >
             <X size={16} aria-hidden="true" />
@@ -190,7 +190,7 @@ export function PhysicsPaintScriptsPanel({
       <div ref={toolbarRef} class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Actions">
         <IconButton label="Save Action" title={`Save Action — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
         <IconButton label="Load + Apply to Frame" title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Create Group…" title={`Create Group… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
+        <IconButton buttonRef={playButtonRef} label="Create Rail…" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
         <IconButton buttonRef={deleteButtonRef} label="Delete Action" title={`Delete Action — ${actionMutationDisabledReason ?? 'Remove the selected project Action'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
         <IconButton label="Refresh Actions" title={`Refresh Actions — ${actionMutationDisabledReason ?? 'Scan the project Actions folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
@@ -279,8 +279,8 @@ export function PhysicsPaintScriptsPanel({
         </span>
       </div>
       {linkedGroupNavigation ? (
-        <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Group navigation">
-          <strong>Linked Groups — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
+        <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Rail navigation">
+          <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
           <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
             {linkedGroupNavigation.total === 1 ? (
               <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
@@ -356,7 +356,7 @@ export function PhysicsPaintScriptsPanel({
         {!rows.length ? (
           <div class="physics-paint-scripts-empty">
             <p>No project Actions yet.</p>
-            <p>Save the current real Roto frame as an Action to create a Group.</p>
+            <p>Save the current real Roto frame as an Action to create a Rail.</p>
           </div>
         ) : null}
       </div>
@@ -382,9 +382,9 @@ export function PhysicsPaintScriptsPanel({
           {referenceImpact ? (
             <div class="physics-paint-action-delete-groups">
               <p>
-                This Action is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? 'Group' : 'Groups'} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? 'range' : 'ranges'}.
+                This Action is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? 'Rail' : 'Rails'} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? 'range' : 'ranges'}.
               </p>
-              <ul aria-label="Affected Groups">
+              <ul aria-label="Affected Rails">
                 {referenceImpact.affectedGroups.map((group) => (
                   <li key={group.groupId}>
                     <strong>{group.name} · {formatFrameRange(group.placementStart, group.endExclusive)}</strong>
@@ -397,28 +397,28 @@ export function PhysicsPaintScriptsPanel({
                 <button
                   type="button"
                   class="physics-paint-action-delete-choice recommended"
-                  aria-label="Keep Groups"
+                  aria-label="Keep Rails"
                   aria-disabled={confirmationBusy ? 'true' : undefined}
                   onClick={() => {
                     if (confirmationBusy) return;
                     void library.confirmDelete('keep-groups');
                   }}
                 >
-                  <strong>Keep Groups</strong>
-                  <span>Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.</span>
+                  <strong>Keep Rails</strong>
+                  <span>Recommended. Delete the Action but keep every Rail, fragment, key, timing value, cache, and rendered result. Rails become detached and timeline space stays occupied.</span>
                 </button>
                 <button
                   type="button"
                   class="physics-paint-action-delete-choice danger"
-                  aria-label="Delete Action and Groups"
+                  aria-label="Delete Action and Rails"
                   aria-disabled={confirmationBusy ? 'true' : undefined}
                   onClick={() => {
                     if (confirmationBusy) return;
                     void library.confirmDelete('delete-action-and-groups');
                   }}
                 >
-                  <strong>Delete Action and Groups</strong>
-                  <span>Delete the Action and all {referenceImpact.groupCount} referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.</span>
+                  <strong>Delete Action and Rails</strong>
+                  <span>Delete the Action and all {referenceImpact.groupCount} referencing Rails, including uniquely owned source, cache, and Rail-gap data. Their occupied timeline ranges are freed.</span>
                 </button>
                 <button
                   ref={cancelDeleteRef}

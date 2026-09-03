@@ -232,6 +232,43 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     }));
   });
 
+  it('carries the creation-time repeat law and motion wiggle into the bake and the rail record (G-52-3, D-08/D-09)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+
+    const result = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'static',
+      startFrame: 10,
+      frameCount: 2,
+      repeat: 'infinity',
+      motion: { deformation: 10, position: 20 },
+    });
+    expect(result.ok).toBe(true);
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
+      motion: { deformation: 10, position: 20 },
+      mode: 'static',
+    }));
+    const track = getDocument(layerId)!.tracks.find((candidate) => candidate.id === TEST_TRACK_ID)!;
+    expect(track.rotoPhysical!.loopClips[0].repeat).toBe('infinity');
+    expect(track.rotoPhysical!.loopClips[0].motion).toEqual({ deformation: 10, position: 20 });
+
+    // An invalid finite repeat fails closed before any bake.
+    const rejected = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 20,
+      frameCount: 1,
+      repeat: 0,
+    });
+    expect(rejected).toEqual({ ok: false, reason: 'invalid-span' });
+  });
+
   it('undo restores the pre-rail document by reference (RVL-06)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));

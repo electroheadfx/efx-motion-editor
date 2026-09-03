@@ -34,6 +34,28 @@ export type RotoPlayScriptMode = 'progressive' | 'static';
 /** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
 export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit';
 
+/** 52-05 (G-52-3): the Create Rail dialog tabs — Paint Rail or Reveal Photo Rail. */
+export type RotoPlayScriptRailTab = 'paint' | 'reveal';
+
+/** 52-05 (G-52-3): input to the create-reveal-rail port — creation IS the first bake (D-11). */
+export interface RotoRevealRailCreateInput {
+  readonly layerId: string;
+  readonly trackId: string;
+  readonly scriptId: string;
+  readonly variant: 'progressive' | 'static';
+  readonly startFrame: number;
+  readonly frameCount: number;
+  /** The repeat law surfaced at creation (D-08) — same semantics as the Paint Rail. */
+  readonly repeat: number | 'infinity';
+  /** The creation-time motion wiggle feeding the bake (D-09 — both variants). */
+  readonly motion: Readonly<{ deformation: number; position: number }>;
+  readonly signal: AbortSignal;
+  readonly onProgress?: (completed: number, total: number) => void;
+}
+
+/** 52-05 (G-52-3): closed result of the create-reveal-rail port; reason is display-ready copy. */
+export type RotoRevealRailCreateResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+
 /** Uniform result for the atomic loop ops — a rejection always names its reason. */
 export interface RotoPlayScriptLoopOpResult {
   readonly ok: boolean;
@@ -173,6 +195,17 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   /** Complete accepted physical document used for Group lifecycle preparation and stale checks. */
   getPhysicalDocument?: () => PhysicPaintRotoPhysicalDocument | null;
   availabilityRevision?: ReadonlySignal<number>;
+  /* ---- 52-05 (G-52-3): the Reveal Photo Rail tab ports ---- */
+  /** True when the layer has a photo reference with a source — the D-12 creation guard. */
+  hasPhotoReference?: () => boolean;
+  /** Bumped on every document mutation so the reference guard re-resolves live. */
+  photoReferenceRevision?: ReadonlySignal<number>;
+  /** Guard action: open the Photo Reference modal so the user places a source, then return. */
+  openPhotoReference?: () => void;
+  /** The create-reveal-rail mutation (Plan 01) — creation IS the first bake (D-11). */
+  createReveal?: (input: RotoRevealRailCreateInput) => Promise<RotoRevealRailCreateResult>;
+  /** The script's natural duration at the current motion parameters (D-20); null → default. */
+  getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (
     publication: RotoGeneratedPhysicalPublication,
@@ -188,6 +221,8 @@ export interface RotoPlayScriptController {
   max: Signal<boolean>;
   lastFiniteCount: Signal<string>;
   capacity: Signal<number>;
+  /** The span start snapshotted at dialog open (the playhead frame — D-20). */
+  canonicalStart: ReadonlySignal<number | null>;
   mode: Signal<RotoPlayScriptMode>;
   overrideEnabled: Signal<boolean>;
   dialogMotion: Signal<{ deformation: number; position: number }>;
@@ -243,7 +278,22 @@ export interface RotoPlayScriptController {
   duplicateLinkedLoop: (loopId: string, destinationStart: number) => Promise<RotoPlayScriptLoopOpResult>;
   relinkLoop: (loopId: string, targetKeyIds: readonly string[]) => Promise<RotoPlayScriptLoopOpResult>;
   findIdenticalSourceCycle: (input: RotoPlayScriptSourceCycleMatchInput) => RotoPlayScriptIdenticalSourceCycle | null;
-  openConfirmation: () => Promise<void>;
+  /* ---- 52-05 (G-52-3): the Create Rail dialog tabs ---- */
+  /** The active creation tab (apply mode only); edit modes always render the Paint surface. */
+  railTab: Signal<RotoPlayScriptRailTab>;
+  /** The Reveal tab's span-length draft — defaults to the script's natural duration (D-20). */
+  revealCountText: Signal<string>;
+  /** The Reveal tab's parsed span length (capacity-bounded, same law as the Paint tab). */
+  parsedRevealCount: ReadonlySignal<{ count: number | null; error: string | null }>;
+  /** The Reveal tab's Frames validation error, or null. */
+  revealValidationError: ReadonlySignal<string | null>;
+  /** Live D-12 guard fact: a photo reference with a source is placed on the layer. */
+  revealReferencePlaced: ReadonlySignal<boolean>;
+  /** Switch the creation tab; switching to Reveal re-defaults the span from the script. */
+  setRailTab: (tab: RotoPlayScriptRailTab) => void;
+  /** Guard action: open the Photo Reference modal so the user places a source, then return. */
+  requestPhotoReference: () => void;
+  openConfirmation: (options?: { railTab?: RotoPlayScriptRailTab }) => Promise<void>;
   closeConfirmation: () => void;
   confirm: () => Promise<boolean>;
   cancel: () => void;
@@ -281,6 +331,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const regenerateDisabledReason = signal<string | null>(null);
   const regenerateImpact = signal<RotoPlayScriptRegenerateImpact | null>(null);
   const linkChoice = signal<'link' | 'create'>('link');
+  /* ---- 52-05 (G-52-3): the Create Rail dialog tabs ----
+     The Reveal Photo Rail tab carries its own span-length draft (defaulting to
+     the selected script's natural duration — D-20) while the variant, repeat,
+     and motion wiggle ride the SAME signals as the Paint tab (one mutation law). */
+  const railTab = signal<RotoPlayScriptRailTab>('paint');
+  const revealCountText = signal(String(DEFAULT_REVEAL_FRAME_COUNT));
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
@@ -302,9 +358,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       : { count: null, error: 'No real-key capacity remains.' }
     : parseCount(countText.value, capacity.value));
   const validationError = computed(() => parsedCount.value.error);
+  /* 52-05 (G-52-3): the active tab's cycle length drives the shared repeat
+     parsing, the destination range, and the Requested/Effective summary. */
+  const parsedRevealCount = computed(() => parseCount(revealCountText.value, capacity.value));
+  const revealValidationError = computed(() => parsedRevealCount.value.error);
+  const activeParsedCount = computed(() => (railTab.value === 'reveal' && dialogMode.value === 'apply' ? parsedRevealCount.value : parsedCount.value));
+  const revealReferencePlaced = computed(() => {
+    ports.photoReferenceRevision?.value;
+    return ports.hasPhotoReference?.() ?? false;
+  });
   const destinationRange = computed(() => {
     const start = canonicalStart.value;
-    const count = parsedCount.value.count;
+    const count = activeParsedCount.value.count;
     return start === null || count === null ? null : `F${start}–F${start + count - 1}`;
   });
   const canCancel = computed(() => phase.value === 'preparing' || phase.value === 'rendering');
@@ -318,7 +383,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     readonly interpolationEnabled: boolean;
   } | null>(null);
   const parsedRepeat = computed(() => {
-    let cycleDuration = parsedCount.value.count;
+    let cycleDuration = activeParsedCount.value.count;
     if (dialogMode.value === 'loop-edit') {
       const targetId = loopEditTargetId.value;
       const target = targetId === null ? null : currentLoopClips().find((clip) => clip.loopId === targetId) ?? null;
@@ -382,7 +447,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         ? `Requested: ${requested}f (${cycleDuration}f × ${draftRepeat}) · Effective: ${effective}f — shortened by the next clip`
         : `Requested: ${requested}f (${cycleDuration}f × ${draftRepeat}) · Effective: ${effective}f`;
     }
-    const cycle = parsedCount.value.count;
+    const cycle = activeParsedCount.value.count;
     const start = canonicalStart.value;
     const layerEnd = layerEndExclusive.value;
     if (cycle === null || start === null || layerEnd === null) return null;
@@ -490,7 +555,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function setInfinity(enabled: boolean): void {
     if (enabled) {
       // Preserve the last VALID finite repeat; an invalid draft never overwrites it (Pitfall 7).
-      if (parseRepeat(repeatText.peek(), parsedCount.peek().count).count !== null) lastFiniteRepeat.value = repeatText.peek();
+      if (parseRepeat(repeatText.peek(), activeParsedCount.peek().count).count !== null) lastFiniteRepeat.value = repeatText.peek();
       infinity.value = true;
     } else {
       repeatText.value = lastFiniteRepeat.peek();
@@ -503,6 +568,24 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     dialogMotion.value = { ...ports.getMotion() };
   }
 
+  /* 52-05 (G-52-3): switching to the Reveal Photo Rail tab re-defaults the span
+     from the selected script's natural duration (D-20) and runs the reference
+     guard PROACTIVELY — no reference → the Photo Reference modal opens directly
+     so the user places a source and returns to this dialog (never a silent
+     disabled state, never a bare error). */
+  function setRailTab(tab: RotoPlayScriptRailTab): void {
+    if (isBusyPhase(phase.peek())) return;
+    railTab.value = tab;
+    if (tab !== 'reveal') return;
+    const selectedId = ports.library.selectedId.peek();
+    revealCountText.value = String((selectedId ? ports.getScriptNaturalDuration?.(selectedId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT);
+    if (!revealReferencePlaced.peek()) ports.openPhotoReference?.();
+  }
+
+  function requestPhotoReference(): void {
+    ports.openPhotoReference?.();
+  }
+
   // D-08R single resolution path: Original colors (override disabled) → null; Custom color →
   // the CURRENT brush-color port value, validated defensively (T-42-05-01) — a malformed port
   // value falls back to null (Original-colors behavior), mirroring existing input discipline.
@@ -511,7 +594,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return normalizeBrushColor(ports.getBrushColor());
   }
 
-  async function openConfirmation(): Promise<void> {
+  async function openConfirmation(options?: { railTab?: RotoPlayScriptRailTab }): Promise<void> {
     if (disposed || disabledReason.peek()) return;
     ports.stopPlayback();
     const selected = ports.getSelection();
@@ -538,6 +621,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       lastFiniteCount.value = '3';
       max.value = false;
       dialogMotion.value = { ...ports.getMotion() };
+      // 52-05 (G-52-3): the open entry picks the tab — the track rail-creation
+      // flow's Reveal item opens directly on the Reveal Photo Rail tab. The
+      // reveal span defaults to the selected script's natural duration (D-20).
+      railTab.value = options?.railTab ?? 'paint';
+      const selectedScriptId = ports.library.selectedId.peek();
+      revealCountText.value = String((selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT);
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
@@ -589,6 +678,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     // on the mode write, so the prefill assignments below always land after it.
     mode.value = loop.mode;
     dialogMode.value = mode_;
+    railTab.value = 'paint'; // 52-05: edit modes always render the Paint surface
     if (loopEditTargetId.peek() === loop.loopId) loopEditTargetId.value = null;
     loopEditTargetId.value = loop.loopId;
     sourceEditRepairId.value = repair ? loop.loopId : null;
@@ -676,16 +766,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   function groupRegenerateReason(group: PhysicPaintRotoLoopClip, document: PhysicPaintRotoPhysicalDocument | null): string | null {
-    if (ports.library.busy.peek() || ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Group operation.';
-    if (!isRegenerableLifecycleShape(group)) return 'Regenerate unavailable — Group source is unresolved.';
+    if (ports.library.busy.peek() || ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Rail operation.';
+    if (!isRegenerableLifecycleShape(group)) return 'Regenerate unavailable — Rail source is unresolved.';
     if (group.syncState === 'synchronized') return 'Already synchronized with Action.';
     if (group.provenanceState !== 'attached' || !group.scriptId) return 'Regenerate unavailable — Action detached.';
     const action = ports.library.rows.peek().find((row) => row.id === group.scriptId);
     if (!action) return 'Regenerate unavailable — Source Action unavailable.';
-    if (!document || document.revision.length === 0) return 'Regenerate unavailable — Group source is unresolved.';
+    if (!document || document.revision.length === 0) return 'Regenerate unavailable — Rail source is unresolved.';
     const records = new Set(document.realKeyRecords.map((record) => record.keyId));
     if (group.sourceKeyIds.length === 0 || group.sourceKeyIds.some((keyId) => !records.has(keyId))) {
-      return 'Regenerate unavailable — Group source is unresolved.';
+      return 'Regenerate unavailable — Rail source is unresolved.';
     }
     const owned = new Set(group.sourceKeyIds);
     for (const candidate of document.loopClips) {
@@ -696,7 +786,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         || !isRegenerableLifecycleShape(candidate)
         || candidate.scriptId !== group.scriptId
         || candidate.provenanceState !== 'attached') {
-        return 'Regenerate unavailable — Group source sharing is ambiguous.';
+        return 'Regenerate unavailable — Rail source sharing is ambiguous.';
       }
     }
     return null;
@@ -710,26 +800,26 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const reason = groupRegenerateReason(group, document);
     regenerateDisabledReason.value = reason;
     regenerateImpact.value = null;
-    if (reason || !document || !group.scriptId || !group.motion) return rejectLoopOp(reason ?? 'Regenerate unavailable — Group source is unresolved.');
+    if (reason || !document || !group.scriptId || !group.motion) return rejectLoopOp(reason ?? 'Regenerate unavailable — Rail source is unresolved.');
     const action = ports.library.rows.peek().find((row) => row.id === group.scriptId);
     if (!action) return rejectLoopOp('Regenerate unavailable — Source Action unavailable.');
     ports.stopPlayback();
     phase.value = 'preparing';
-    status.value = 'Preparing Group Regenerate…';
+    status.value = 'Preparing Rail Regenerate…';
     error.value = null;
     try {
       const snapshot = await ports.library.loadSnapshot(group.scriptId);
       if (!snapshot) return rejectLoopOp('Regenerate unavailable — Source Action unavailable.');
       const currentDocument = ports.getPhysicalDocument?.() ?? null;
       if (!currentDocument || currentDocument.revision !== document.revision) {
-        return rejectLoopOp('Regenerate rejected — physical Group document changed.');
+        return rejectLoopOp('Regenerate rejected — physical Rail document changed.');
       }
       const currentAction = ports.library.rows.peek().find((row) => row.id === group.scriptId);
       if (!currentAction || currentAction.revision !== action.revision) {
         return rejectLoopOp('Regenerate rejected — saved Action changed.');
       }
       const sourceStart = document.realKeyRecords.find((record) => record.keyId === group.sourceKeyIds[0])?.appFrame;
-      if (sourceStart === undefined) return rejectLoopOp('Regenerate unavailable — Group source is unresolved.');
+      if (sourceStart === undefined) return rejectLoopOp('Regenerate unavailable — Rail source is unresolved.');
       const affected = document.loopClips
         .filter((candidate) => sameOrderedIds(candidate.sourceKeyIds, group.sourceKeyIds)
           && candidate.scriptId === group.scriptId
@@ -740,7 +830,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const actionHash = actionSnapshotHash(snapshot);
       const affectedGroups = Object.freeze(affected.map((candidate) => Object.freeze({
         groupId: candidate.loopId,
-        name: `Group at F${candidate.phaseOrigin!}`,
+        name: `Rail at F${candidate.phaseOrigin!}`,
         range: `F${candidate.phaseOrigin!}–F${candidate.originalEndExclusive! - 1}`,
       })));
       regenerateImpact.value = Object.freeze({
@@ -749,7 +839,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         actionHash,
         documentRevision: document.revision,
         initiatingGroupId: group.loopId,
-        groupName: `Group at F${group.phaseOrigin}`,
+        groupName: `Rail at F${group.phaseOrigin}`,
         groupType: group.mode === 'progressive' ? 'Motion' : 'Static',
         restoredRange: `F${group.phaseOrigin}–F${group.originalEndExclusive - 1}`,
         locallyPaintedFrameCount: group.frameOverrides.length,
@@ -759,8 +849,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         gapRanges: compactFrameRanges(deletedRanges),
         affectedGroups,
         sourceCacheEffects: affectedGroups.length > 1
-          ? 'Rebuilds the saved Action source cycle and refreshes every affected Group cache.'
-          : 'Rebuilds the saved Action source cycle and refreshes the Group cache.',
+          ? 'Rebuilds the saved Action source cycle and refreshes every affected Rail cache.'
+          : 'Rebuilds the saved Action source cycle and refreshes the Rail cache.',
         storedSettings: Object.freeze({
           mode: group.mode,
           motion: Object.freeze({ ...group.motion }),
@@ -773,7 +863,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       prefillEditMode(group, loopEditSnapshot, sourceStart, 'source-edit', false);
       confirmationOpen.value = true;
       phase.value = 'idle';
-      status.value = `Group Regenerate · ${regenerateImpact.value.restoredRange}`;
+      status.value = `Rail Regenerate · ${regenerateImpact.value.restoredRange}`;
       return { ok: true, reason: null };
     } catch (cause) {
       fail(cause);
@@ -980,7 +1070,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           })()
         : target.phaseOrigin + cycleDuration * draftRepeat;
       if (target.frameOverrides?.some((override) => override.appFrame >= originalEndExclusive)) {
-        fail(new Error('Repeat cannot remove locally painted Group frames. Regenerate the Group first.'));
+        fail(new Error('Repeat cannot remove locally painted Rail frames. Regenerate the Rail first.'));
         return false;
       }
       const visibleRanges = target.visibleRanges.flatMap((range) => {
@@ -1000,7 +1090,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }
       }
       if (visibleRanges.length === 0) {
-        fail(new Error('Repeat cannot remove every surviving Group frame.'));
+        fail(new Error('Repeat cannot remove every surviving Rail frame.'));
         return false;
       }
       rebuiltLifecycle = { originalEndExclusive, visibleRanges };
@@ -1081,8 +1171,63 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   async function confirm(): Promise<boolean> {
     if (dialogMode.peek() === 'loop-edit') return updateLoop();
+    if (railTab.peek() === 'reveal') return confirmReveal();
     return confirmGeneration();
   }
+
+  /* 52-05 (G-52-3): the Reveal Photo Rail confirm — creation IS the first bake
+     (D-11), routed through the SAME create-reveal-rail mutation as every reveal
+     path (the rail lands baked, one undo entry). The D-12 reference guard is
+     proactive: no reference → the Photo Reference modal opens so the user places
+     a source and returns; never a silent disabled state, never a bare error.
+     The bake rides the shared phase/abort machinery, so the footer's
+     "Cancel generation" aborts mid-span with no keys written (D-11). */
+  async function confirmReveal(): Promise<boolean> {
+    const selectedId = ports.library.selectedId.peek();
+    const context = ports.getLaunchContext();
+    const start = canonicalStart.peek();
+    const count = parsedRevealCount.peek().count;
+    if (disposed || !selectedId || !context?.project || start === null || count === null || repeatError.peek() !== null) return false;
+    if (disabledReason.peek()) return false;
+    if (!revealReferencePlaced.peek()) { ports.openPhotoReference?.(); return false; }
+    if (!ports.createReveal) return false;
+    const repeatDraft: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
+    if (repeatDraft === null) return false;
+    const acceptedGeneration = ++generation;
+    abortController = new AbortController();
+    const bakeSignal = abortController.signal;
+    ports.stopPlayback();
+    phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Baking 0 / ${count}`; error.value = null;
+    const result = await ports.createReveal({
+      layerId: context.layerId,
+      trackId: ports.getActiveTrackId(context.layerId),
+      scriptId: selectedId,
+      variant: mode.peek(),
+      startFrame: start,
+      frameCount: count,
+      repeat: repeatDraft,
+      motion: { ...dialogMotion.peek() },
+      signal: bakeSignal,
+      onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
+    });
+    if (disposed || generation !== acceptedGeneration || bakeSignal.aborted) {
+      if (!disposed) { phase.value = 'cancelled'; progress.value = null; status.value = 'Reveal bake cancelled'; error.value = null; ports.log(status.value); }
+      return false;
+    }
+    abortController = null;
+    if (!result.ok) {
+      phase.value = 'failed'; progress.value = null; status.value = 'Reveal Rail failed'; error.value = result.reason; ports.log(result.reason, true);
+      return false;
+    }
+    const bakedMotion = { ...dialogMotion.peek() };
+    hasSuccessfulGeneration = true;
+    appliedSummaryLine1.value = `${mode.peek() === 'static' ? 'Reveal Static' : 'Reveal Motion'} · Motion ${bakedMotion.deformation}/${bakedMotion.position}`;
+    appliedSummaryLine2.value = `F${start} · Reveal rail baked · Cycle ${count}f × ${repeatDraft === 'infinity' ? '∞' : repeatDraft}`;
+    phase.value = 'complete'; progress.value = { completed: count, total: count };
+    status.value = `Reveal Rail complete · ${count} frames`;
+    confirmationOpen.value = false; ports.log(status.value); return true;
+  }
+
   async function confirmGeneration(): Promise<boolean> {
     const isSourceEdit = dialogMode.peek() === 'source-edit';
     const editTarget = isSourceEdit ? loopEditTarget.peek() : null;
@@ -1105,15 +1250,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }
         const currentDocument = ports.getPhysicalDocument?.() ?? null;
         if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
-          fail(new Error('Regenerate rejected — physical Group document changed.'));
+          fail(new Error('Regenerate rejected — physical Rail document changed.'));
           return false;
         }
         if (count !== preparedRegenerate.storedSettings.sourceKeyIds.length) {
-          fail(new Error('Regenerate rejected — stored Group settings changed.'));
+          fail(new Error('Regenerate rejected — stored Rail settings changed.'));
           return false;
         }
         const currentTarget = currentDocument.loopClips.find((group) => group.loopId === preparedRegenerate.initiatingGroupId);
-        const reason = currentTarget ? groupRegenerateReason(currentTarget, currentDocument) : 'Regenerate unavailable — Group source is unresolved.';
+        const reason = currentTarget ? groupRegenerateReason(currentTarget, currentDocument) : 'Regenerate unavailable — Rail source is unresolved.';
         if (reason) {
           fail(new Error(reason));
           return false;
@@ -1213,7 +1358,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         const currentDocument = ports.getPhysicalDocument?.() ?? null;
         const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
         if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
-          throw new Error('Regenerate rejected — physical Group document changed.');
+          throw new Error('Regenerate rejected — physical Rail document changed.');
         }
         if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
           throw new Error('Regenerate rejected — saved Action changed.');
@@ -1279,7 +1424,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       } else if (isSourceEdit && editTarget && preparedRegenerate) {
         const acceptedDocument = ports.getPhysicalDocument?.() ?? null;
         if (!acceptedDocument || acceptedDocument.revision !== preparedRegenerate.documentRevision) {
-          throw new Error('Regenerate rejected — physical Group document changed.');
+          throw new Error('Regenerate rejected — physical Rail document changed.');
         }
         let proposalDocument: PhysicPaintRotoPhysicalDocument = {
           ...acceptedDocument,
@@ -1373,12 +1518,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             }
           : { ...basePublication, ...(loopClips ? { loopClips } : {}) };
       phase.value = 'committing';
-      status.value = preparedRegenerate ? 'Committing Group Regenerate…' : 'Committing Play Script…';
+      status.value = preparedRegenerate ? 'Committing Rail Regenerate…' : 'Committing Play Script…';
       abortController = null;
       const revalidateUnderLease = preparedRegenerate ? async (): Promise<string | null> => {
         const currentDocument = ports.getPhysicalDocument?.() ?? null;
         if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
-          return 'Regenerate rejected — physical Group document changed.';
+          return 'Regenerate rejected — physical Rail document changed.';
         }
         const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
         if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
@@ -1409,7 +1554,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       phase.value = 'complete';
       progress.value = { completed: count, total: count };
       status.value = preparedRegenerate
-        ? `Group Regenerate complete · ${preparedRegenerate.affectedGroups.length} Group${preparedRegenerate.affectedGroups.length === 1 ? '' : 's'}`
+        ? `Rail Regenerate complete · ${preparedRegenerate.affectedGroups.length} Rail${preparedRegenerate.affectedGroups.length === 1 ? '' : 's'}`
         : `Play Script complete · ${count} frames`;
       confirmationOpen.value = false; ports.log(status.value); return true;
     } catch (cause) {
@@ -1437,9 +1582,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
   return {
-    confirmationOpen, countText, max, lastFiniteCount, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
+    confirmationOpen, countText, max, lastFiniteCount, capacity, canonicalStart, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
     dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact, loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
+    railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; },
   };
 }
@@ -1451,6 +1597,41 @@ function parseCount(value: string, capacity: number): { count: number | null; er
   if (!Number.isSafeInteger(count) || count <= 0) return { count: null, error: 'Enter a positive integer.' };
   if (count > capacity) return { count: null, error: `Maximum available count is ${capacity}.` };
   return { count, error: null };
+}
+
+/** 52-05 (G-52-3): the reveal span default when the script's natural duration is unknown (D-20). */
+const DEFAULT_REVEAL_FRAME_COUNT = 3;
+
+/* ---- 52-05 (G-52-3): the reveal fail-closed copy (52 UI-SPEC Copywriting Contract) ---- */
+
+/** The locked empty-reference guard copy. */
+export const REVEAL_UNAVAILABLE_NO_REFERENCE_COPY = 'Reveal unavailable — no reference placed. Place a reference to replay.';
+
+/** The locked deleted-script fail-closed copy. */
+export const REVEAL_UNAVAILABLE_SCRIPT_DELETED_COPY = 'Reveal unavailable — script deleted. Re-link a script to replay.';
+
+/** Map a create-reveal-rail rejection reason to the locked fail-closed copy (D-12/D-13). */
+export function mapRevealRailRejectionReason(reason: string): string {
+  switch (reason) {
+    case 'no-photo-reference':
+      return REVEAL_UNAVAILABLE_NO_REFERENCE_COPY;
+    case 'script-not-found':
+      return REVEAL_UNAVAILABLE_SCRIPT_DELETED_COPY;
+    case 'no-track':
+      return 'Reveal unavailable — no target track.';
+    case 'script-loader-unavailable':
+      return 'Reveal unavailable — script library is not ready.';
+    case 'invalid-variant':
+      return 'Reveal unavailable — invalid variant.';
+    case 'invalid-span':
+      return 'Reveal unavailable — invalid span.';
+    case 'bake-failed':
+      return 'Reveal bake failed. Nothing changed.';
+    case 'loop-clip-failed':
+      return 'Reveal rail creation failed. Nothing changed.';
+    default:
+      return 'Reveal unavailable — no document.';
+  }
 }
 
 // Accepts only the canonical #rrggbb form produced by the Studio brush settings; anything else

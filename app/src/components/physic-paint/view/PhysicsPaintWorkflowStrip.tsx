@@ -435,16 +435,17 @@ export interface PhysicsPaintWorkflowStripProps {
   photoReference?: PhotoReferenceTrack | null;
   /** The strip camera icon's open-dialog intent. */
   onOpenReference?: () => void;
-  /* ---- 52-04 (D-19): the track rail-creation flow — reveal as the 4th rail kind ---- */
-  /** Choosing a PlayScript rail kind (motion/static) opens the existing PlayScript
-   *  dialog — the same flow that creates a motion/static PlayScript rail today. */
+  /* ---- 52-05 (G-52-3): the track rail-creation flow — reveal as the 4th rail kind ---- */
+  /** Choosing a PlayScript rail kind (motion/static) opens the Create Rail
+   *  dialog on the Paint tab — the same flow that creates a motion/static
+   *  PlayScript rail today. */
   onCreatePlayScriptRail?: (mode: 'progressive' | 'static') => void;
-  /** Choosing the reveal rail kind opens the reveal-creation flow — the SAME
-   *  create-reveal-rail mutation as the modal path (one model, two entry points). */
+  /** Choosing the reveal rail kind opens the SAME Create Rail dialog on the
+   *  Reveal Photo Rail tab (one model, two entry points, the SAME
+   *  create-reveal-rail mutation). The D-12 reference guard lives inside the
+   *  dialog — it opens the Photo Reference modal proactively, never a disabled
+   *  menu item. */
   onCreateRevealRail?: () => void;
-  /** 52-04 (D-12): the reveal rail-creation guard — a reveal rail cannot be
-   *  created from the track without a placed reference. */
-  revealRailCreationDisabledReason?: string | null;
 }
 
 const RULER_STEP = 3;
@@ -4356,12 +4357,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
-              {/* 52-04 (D-19): the track rail-creation flow — a "Create rail"
-                  button offering the rail kinds. Motion/Static open the existing
-                  PlayScript dialog (the same flow that creates a motion/static
-                  PlayScript rail today); Reveal opens the reveal-creation flow
-                  (the SAME create-reveal-rail mutation as the modal path, gated
-                  on a placed reference — D-12). */}
+              {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
+                  button offering the rail kinds. Motion/Static open the Create
+                  Rail dialog on the Paint tab; Reveal opens the SAME dialog on
+                  the Reveal Photo Rail tab (the SAME create-reveal-rail
+                  mutation — one model, two entry points). */}
               <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
                   <button
@@ -4404,22 +4404,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       </button>
                       <button
                         type="button"
-                        aria-disabled={props.revealRailCreationDisabledReason ? 'true' : undefined}
-                        aria-describedby={props.revealRailCreationDisabledReason ? 'roto-key-action-reason-reveal-rail' : undefined}
                         onClick={() => {
-                          if (props.revealRailCreationDisabledReason) return;
                           railCreateMenuOpen.value = false;
                           props.onCreateRevealRail?.();
-                        }}
-                        onKeyDown={(event) => {
-                          if ((event.key === 'Enter' || event.key === ' ') && props.revealRailCreationDisabledReason) event.preventDefault();
                         }}
                       >
                         Reveal
                       </button>
-                      {props.revealRailCreationDisabledReason ? (
-                        <span id="roto-key-action-reason-reveal-rail" class="physics-paint-sr-only">{props.revealRailCreationDisabledReason}</span>
-                      ) : null}
                     </div>
                   ) : null}
                 </span>

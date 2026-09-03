@@ -131,6 +131,12 @@ interface FakeControllerSeed {
   loopIntentActive?: boolean;
   identicalSourceCycle?: { sourceKeyIds: readonly string[]; loopCount: number; sourceStart: number } | null;
   linkChoice?: 'link' | 'create';
+  // 52-05 (G-52-3): the Create Rail tabs
+  railTab?: 'paint' | 'reveal';
+  revealCountText?: string;
+  revealValidationError?: string | null;
+  revealReferencePlaced?: boolean;
+  canonicalStart?: number | null;
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -173,6 +179,13 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     loopIntentActive: sig(seed.loopIntentActive ?? false),
     identicalSourceCycle: sig(seed.identicalSourceCycle ?? null),
     linkChoice: sig<'link' | 'create'>(seed.linkChoice ?? 'link'),
+    // 52-05 (G-52-3): the Create Rail tabs
+    railTab: sig<'paint' | 'reveal'>(seed.railTab ?? 'paint'),
+    canonicalStart: sig<number | null>(seed.canonicalStart ?? 4),
+    revealCountText: sig(seed.revealCountText ?? '3'),
+    parsedRevealCount: sig<{ count: number | null; error: string | null }>({ count: 3, error: null }),
+    revealValidationError: sig<string | null>(seed.revealValidationError ?? null),
+    revealReferencePlaced: sig(seed.revealReferencePlaced ?? true),
   };
   const controller = {
     ...signals,
@@ -196,6 +209,8 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     duplicateLinkedLoop: vi.fn(async () => ({ ok: true, reason: null })),
     relinkLoop: vi.fn(async () => ({ ok: true, reason: null })),
     findIdenticalSourceCycle: vi.fn(() => null),
+    setRailTab: vi.fn(),
+    requestPhotoReference: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -279,19 +294,22 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
     const content = findOne(tree, byClass('physics-paint-play-script-content'));
+    // 52-05 (G-52-3): the tab branches nest one extra Fragment level — resolve
+    // the RENDERED parent (unwraps every function/Fragment level) instead of one.
     const contentChildren = [...walk(content)]
       .filter((child) => child !== content && typeof child.type !== 'function')
-      .filter((child) => {
-        const parent = parentOf(content, child);
-        return parent === content
-          || (typeof parent?.type === 'function' && parentOf(content, parent) === content);
-      });
+      .filter((child) => renderedParentOf(content, child) === content);
 
-    // Mode card is the first-read element, full width.
+    // 52-05 (G-52-3): the tab strip is the first-read element, full width.
+    const tabStrip = findOne(content, byClass('physics-paint-play-script-tabs'));
+    expect(renderedParentOf(tree, tabStrip)).toBe(content);
+    expect(contentChildren[0]).toBe(tabStrip);
+
+    // Rail Type card follows the tab strip, full width.
     const modeCard = findOne(content, byClass('physics-paint-play-script-card-mode'));
     expect(hasClass(modeCard, 'physics-paint-play-script-card-wide')).toBe(true);
     expect(renderedParentOf(tree, modeCard)).toBe(content);
-    expect(contentChildren[0]).toBe(modeCard);
+    expect(contentChildren[1]).toBe(modeCard);
 
     // (a) Timing card is the LEFT sibling of the right-column stack — same body grid row.
     const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
@@ -326,7 +344,7 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(parentOf(tree, footer)).not.toBe(content);
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Create Group'))).toBe('Create Group');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Create Rail'))).toBe('Create Rail');
   });
 
   it('keeps the body on the 1fr 1fr two-column grid with the right column as a vertical flex stack and NO scroll region (CSS contract)', () => {
@@ -372,7 +390,7 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
     // Title is the first header child; the range readout is the second (right-aligned via CSS).
     const headerChildren = childrenOf(header).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
-    expect(textOf(headerChildren[0])).toBe('Create Group');
+    expect(textOf(headerChildren[0])).toBe('Create Rail');
     expect(textOf(headerChildren[1])).toBe('Max 4 · F4–F7');
     // Footer (progress + Cancel/Generate) renders inside the modal surface, after the body.
     const footer = findOne(surface, byClass('physics-paint-play-script-footer'));
@@ -422,8 +440,8 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
-    const group = findOne(modeCard, byRadioGroup('Group Type'));
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Group Type');
+    const group = findOne(modeCard, byRadioGroup('Rail Type'));
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Rail Type');
     expect(group.props['aria-describedby']).toBe('physics-play-script-mode-helper');
     const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
@@ -440,7 +458,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     const { controller, signals } = createFakeController({ countText: '3' });
     let tree = renderDialog(controller);
     const radioElements = [{ focus: vi.fn() }, { focus: vi.fn() }];
-    const keydown = (key: string) => handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
+    const keydown = (key: string) => handler(findOne(tree, byRadioGroup('Rail Type')), 'onKeyDown')({
       key,
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => radioElements },
@@ -451,7 +469,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     expect(radioElements[1].focus).toHaveBeenCalledTimes(1);
 
     tree = renderDialog(controller);
-    const updated = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
+    const updated = findAll(findOne(tree, byRadioGroup('Rail Type')), (vnode) => vnode.props?.role === 'radio');
     expect(updated[1].props['aria-checked']).toBe(true);
     expect(updated[1].props.tabIndex).toBe(0);
     expect(updated[0].props['aria-checked']).toBe(false);
@@ -470,7 +488,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
   it('checks the clicked option', () => {
     const { controller, signals } = createFakeController({ countText: '3' });
     const tree = renderDialog(controller);
-    const radios = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
+    const radios = findAll(findOne(tree, byRadioGroup('Rail Type')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.mode.value).toBe('static');
   });
@@ -492,14 +510,14 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
   it('keeps the finite Frames draft unchanged when switching between Motion and Static', () => {
     const { controller, signals } = createFakeController({ countText: '3' });
     let tree = renderDialog(controller);
-    const radios = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
+    const radios = findAll(findOne(tree, byRadioGroup('Rail Type')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.mode.value).toBe('static');
     expect(signals.countText.value).toBe('3');
 
     signals.countText.value = '6';
     tree = renderDialog(controller);
-    handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
+    handler(findOne(tree, byRadioGroup('Rail Type')), 'onKeyDown')({
       key: 'ArrowLeft',
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
@@ -510,7 +528,7 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
 });
 
 describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both modes)', () => {
-  it('renders distinct Frames + Max and Repeat + Infinity controls in BOTH Group Types', () => {
+  it('renders distinct Frames + Max and Repeat + Infinity controls in BOTH Rail Types', () => {
     const { controller, signals } = createFakeController();
     for (const mode of ['progressive', 'static'] as const) {
       signals.mode.value = mode;
@@ -686,7 +704,7 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     const error = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-script-inline-error') && hasClass(vnode, 'physics-paint-play-script-dialog-error'));
     expect(textOf(error)).toBe('Parent rejected the Play Script batch.');
     expect(findAll(tree, (vnode) => vnode.type === 'progress')).toHaveLength(0);
-    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Group').props.disabled).toBe(false);
+    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail').props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
   });
@@ -801,7 +819,7 @@ describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (U
 });
 
 describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', () => {
-  it('renders Edit Group immediately from the accepted local loop while authority is pending', () => {
+  it('renders Edit Rail immediately from the accepted local loop while authority is pending', () => {
     const loop: PhysicPaintRotoLoopClip = {
       loopId: 'loop-1',
       placementStart: 10,
@@ -866,11 +884,11 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
     }).toEqual({
       confirmationOpen: true,
       dialogRendered: true,
-      title: 'Edit Group',
+      title: 'Edit Rail',
     });
   });
 
-  it('renders Edit Group from a valid local snapshot while the project has unsaved changes', async () => {
+  it('renders Edit Rail from a valid local snapshot while the project has unsaved changes', async () => {
     const loop: PhysicPaintRotoLoopClip = {
       loopId: 'loop-dirty',
       placementStart: 10,
@@ -936,7 +954,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
       result: { ok: true, reason: null },
       confirmationOpen: true,
       dialogRendered: true,
-      title: 'Edit Group',
+      title: 'Edit Rail',
     });
   });
 });
@@ -959,17 +977,17 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
   it('renders the locked title, range readout, and the Update Static / Regenerate Group actions', () => {
     const { controller } = createFakeController(loopEditSeed);
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Group');
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Rail');
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 5f');
     const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Static'))).toBe('Update Static');
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate Group'))).toBe('Regenerate Group');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate Rail'))).toBe('Regenerate Rail');
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
-    expect(findAll(footer, (vnode) => textOf(vnode) === 'Create Group')).toHaveLength(0);
+    expect(findAll(footer, (vnode) => textOf(vnode) === 'Create Rail')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
   });
 
-  it('uses Update Motion for a Motion Group without changing the loop-edit action route', () => {
+  it('uses Update Motion for a Motion Rail without changing the loop-edit action route', () => {
     const { controller } = createFakeController({
       ...loopEditSeed,
       mode: 'progressive',
@@ -1031,7 +1049,7 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     const tree = renderDialog(controller);
     handler(findOne(tree, (vnode) => textOf(vnode) === 'Update Static'), 'onClick')();
     expect(controller.confirm).toHaveBeenCalledTimes(1);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate Group'), 'onClick')();
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate Rail'), 'onClick')();
     expect(controller.openSourceEdit).toHaveBeenCalledWith('L1');
   });
 
@@ -1042,7 +1060,7 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3a)', () => {
+describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a)', () => {
   const impact = {
     actionId: 'action-1',
     actionRevision: 'action-revision-1',
@@ -1057,8 +1075,8 @@ describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3
     deletedFrameRanges: 'F13, F16–F17',
     fragmentCount: 3,
     gapRanges: 'F13, F16–F17',
-    affectedGroups: [{ groupId: 'G1', name: 'Group at F10', range: 'F10–F19' }],
-    sourceCacheEffects: 'Rebuilds the saved Action source cycle and refreshes the Group cache.',
+    affectedGroups: [{ groupId: 'G1', name: 'Rail at F10', range: 'F10–F19' }],
+    sourceCacheEffects: 'Rebuilds the saved Action source cycle and refreshes the Rail cache.',
     storedSettings: { mode: 'static' as const, motion: { deformation: 0, position: 0 }, overrideColor: null, sourceKeyIds: ['S1', 'S2', 'S3'] },
   };
   const sourceEditSeed = {
@@ -1076,10 +1094,10 @@ describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3
     const { controller } = createFakeController(sourceEditSeed);
     const tree = renderDialog(controller);
     expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-lead')))).toBe('Regenerate discards accepted local Group changes and restores the result from the saved Action and stored Group settings.');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-lead')))).toBe('Regenerate discards accepted local Rail changes and restores the result from the saved Action and stored Rail settings.');
     const facts = findAll(tree, byClass('physics-paint-play-script-regenerate-fact'));
     expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dt')))).toEqual([
-      'Group', 'Group Type', 'Restored range', 'Locally painted frames', 'Deleted frames', 'Fragments', 'Gaps cleared', 'Result', 'Source/cache effects',
+      'Rail', 'Rail Type', 'Restored range', 'Locally painted frames', 'Deleted frames', 'Fragments', 'Gaps cleared', 'Result', 'Source/cache effects',
     ]);
     expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dd')))).toEqual([
       impact.groupName,
@@ -1095,30 +1113,30 @@ describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3
     expect(findAll(tree, (vnode) => vnode.type === 'img' || hasClass(vnode, 'thumbnail'))).toHaveLength(0);
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
     expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep Local Changes'))).toBe('Keep Local Changes');
-    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Group'))).toBe('Regenerate Group');
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail'))).toBe('Regenerate Rail');
   });
 
   it('lists shared Groups once in placement order and uses the exact plural lead and CTA', () => {
     const shared = {
       ...impact,
       affectedGroups: [
-        { groupId: 'G1', name: 'Group at F10', range: 'F10–F19' },
-        { groupId: 'G2', name: 'Group at F30', range: 'F30–F39' },
-        { groupId: 'G3', name: 'Group at F80', range: 'F80–F89' },
+        { groupId: 'G1', name: 'Rail at F10', range: 'F10–F19' },
+        { groupId: 'G2', name: 'Rail at F30', range: 'F30–F39' },
+        { groupId: 'G3', name: 'Rail at F80', range: 'F80–F89' },
       ],
     };
     const { controller } = createFakeController({ ...sourceEditSeed, regenerateImpact: shared, sourceEditSharedLoopCount: 3 });
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-shared-lead')))).toBe('Regenerate will update 3 Groups that share the same accepted source cycle.');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-shared-lead')))).toBe('Regenerate will update 3 Rails that share the same accepted source cycle.');
     expect(findAll(tree, byClass('physics-paint-play-script-regenerate-group-item')).map(textOf)).toEqual([
-      'Group at F10 · F10–F19',
-      'Group at F30 · F30–F39',
-      'Group at F80 · F80–F89',
+      'Rail at F10 · F10–F19',
+      'Rail at F30 · F30–F39',
+      'Rail at F80 · F80–F89',
     ]);
-    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate 3 Groups'))).toBe('Regenerate 3 Groups');
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate 3 Rails'))).toBe('Regenerate 3 Rails');
   });
 
-  it('returns to Edit Group without mutation, disables acceptance while busy, and keeps stale rejection in an alert', () => {
+  it('returns to Edit Rail without mutation, disables acceptance while busy, and keeps stale rejection in an alert', () => {
     const idle = createFakeController(sourceEditSeed);
     let tree = renderDialog(idle.controller);
     handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep Local Changes'), 'onClick')();
@@ -1127,7 +1145,7 @@ describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3
 
     const busy = createFakeController({ ...sourceEditSeed, canCancel: true, progress: { completed: 1, total: 3 } });
     tree = renderDialog(busy.controller);
-    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Group').props.disabled).toBe(true);
+    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail').props.disabled).toBe(true);
 
     const stale = createFakeController({ ...sourceEditSeed, error: 'Regenerate rejected — saved Action changed.' });
     tree = renderDialog(stale.controller);
@@ -1180,11 +1198,11 @@ describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)'
 });
 
 describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
-  it('ships the revised Group action labels in normal casing and never the prohibited terms', () => {
-    for (const locked of ['Edit Group', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Regenerate Group', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel', 'Link to existing cycle', 'Create new cycle']) {
+  it('ships the revised Rail action labels in normal casing and never the prohibited terms', () => {
+    for (const locked of ['Edit Rail', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Regenerate Rail', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel', 'Link to existing cycle', 'Create new cycle']) {
       expect(source).toContain(locked);
     }
-    expect(source).not.toContain('Update Group');
+    expect(source).not.toContain('Update Rail');
     expect(source).not.toContain('clip bloquant');
     expect((source.match(/clip bloquant/g) ?? []).length).toBe(0);
     expect(playScriptCssRule('.physics-paint-play-script-button')).toContain('text-transform: none');
@@ -1203,5 +1221,73 @@ describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
       '--ps-accent-hi:', '--ps-accent:', '--ps-border:', '--ps-error:', '--ps-faint:', '--ps-fg:',
       '--ps-foot:', '--ps-inset:', '--ps-muted:', '--ps-ok:', '--ps-radius:', '--ps-raised:', '--ps-surface:',
     ]);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', () => {
+  it('renders the Paint Rail / Reveal Photo Rail tab strip in apply mode only', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    const tablist = findOne(tree, (vnode) => vnode.props?.role === 'tablist' && vnode.props?.['aria-label'] === 'Rail kind');
+    const tabs = findAll(tablist, (vnode) => vnode.props?.role === 'tab');
+    expect(tabs.map((tab) => textOf(tab))).toEqual(['Paint Rail', 'Reveal Photo Rail']);
+    expect(tabs[0].props['aria-selected']).toBe('true');
+    expect(tabs[1].props['aria-selected']).toBe('false');
+    // The tab click routes through the controller's tab switcher.
+    handler(tabs[1], 'onClick')();
+    expect(controller.setRailTab).toHaveBeenCalledWith('reveal');
+    // Edit modes keep their single-surface layout — no tab strip.
+    const loopEditTree = renderDialog(createFakeController({ dialogMode: 'loop-edit', loopEditTarget: { loopId: 'L1', placementStart: 12, sourceKeyIds: ['a', 'b'], repeat: 1, mode: 'static' } }).controller);
+    expect(findAll(loopEditTree, (vnode) => vnode.props?.role === 'tablist')).toHaveLength(0);
+  });
+
+  it('renders the Reveal tab with Reveal Motion/Static rail types, Timing with the from-hint and Infinity, Motion wiggle, and NO Color card or Max toggle', () => {
+    const { controller } = createFakeController({ railTab: 'reveal', canonicalStart: 4 });
+    const tree = renderDialog(controller);
+    const radios = findAll(findOne(tree, byRadioGroup('Rail Type')), (vnode) => vnode.props?.role === 'radio');
+    expect(radios.map((radio) => textOf(radio))).toEqual(['Reveal Motion', 'Reveal Static']);
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-mode-helper')))).toBe('The reveal extends frame after frame across the span.');
+    // Frames defaults + the playhead-snapshot hint.
+    const frames = findOne(tree, byId('physics-play-script-reveal-count'));
+    expect(frames.props.value).toBe('3');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-card-timing')))).toContain('from F4');
+    // Repeat + Infinity ride the same mutation law as the Paint Rail.
+    expect(findOne(tree, byId('physics-play-script-repeat'))).toBeDefined();
+    expect(findOne(tree, byId('physics-play-script-infinity'))).toBeDefined();
+    // No Color card, no Max toggle, no source-cycle choice on the Reveal tab.
+    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-max'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
+    // Motion wiggle sliders stay (they feed the bake for BOTH variants — D-09).
+    expect(findOne(tree, byClass('physics-paint-play-script-card-motion'))).toBeDefined();
+  });
+
+  it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {
+    const { controller, signals } = createFakeController({ railTab: 'reveal' });
+    const tree = renderDialog(controller);
+    handler(findOne(tree, byId('physics-play-script-reveal-count')), 'onInput')({ currentTarget: { value: '7' } });
+    expect(signals.revealCountText.value).toBe('7');
+    const invalid = renderDialog(createFakeController({ railTab: 'reveal', revealValidationError: 'Enter a positive integer.' }).controller);
+    const createButton = findOne(invalid, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail');
+    expect(createButton.props.disabled).toBe(true);
+  });
+
+  it('shows the reference guard notice with the Place a reference action when no reference is placed (D-12)', () => {
+    const { controller } = createFakeController({ railTab: 'reveal', revealReferencePlaced: false });
+    const tree = renderDialog(controller);
+    const notice = findOne(tree, byClass('physics-paint-play-script-reveal-notice'));
+    expect(textOf(notice)).toContain('no reference placed yet');
+    handler(findOne(notice, (vnode) => textOf(vnode) === 'Place a reference…'), 'onClick')();
+    expect(controller.requestPhotoReference).toHaveBeenCalledTimes(1);
+    // The notice disappears once a reference is placed.
+    const placed = renderDialog(createFakeController({ railTab: 'reveal', revealReferencePlaced: true }).controller);
+    expect(findAll(placed, byClass('physics-paint-play-script-reveal-notice'))).toHaveLength(0);
+  });
+
+  it('routes the Reveal tab Create through the same confirm entry (creation IS the first bake — D-11)', () => {
+    const { controller } = createFakeController({ railTab: 'reveal' });
+    const tree = renderDialog(controller);
+    handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail'), 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
   });
 });

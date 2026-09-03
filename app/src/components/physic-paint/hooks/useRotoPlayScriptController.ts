@@ -59,6 +59,13 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
       getPhysicalDocument: () => portsRef.current.getPhysicalDocument?.() ?? null,
       availabilityRevision: availabilityRevision.current,
+      // 52-05 (G-52-3): the Reveal Photo Rail tab ports — the D-12 reference
+      // guard (proactive modal open) and the shared create-reveal-rail mutation.
+      hasPhotoReference: () => portsRef.current.hasPhotoReference?.() ?? false,
+      photoReferenceRevision: ports.photoReferenceRevision,
+      openPhotoReference: () => portsRef.current.openPhotoReference?.(),
+      createReveal: (input) => portsRef.current.createReveal?.(input) ?? Promise.resolve({ ok: false, reason: 'Reveal unavailable — create-reveal port is not wired.' }),
+      getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),
       requestAuthority: (operationId, start) => requestWithTimeout(authorityPending.current, operationId, async () => {

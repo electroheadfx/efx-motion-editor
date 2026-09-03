@@ -2196,7 +2196,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       test.controller.repeatText.value = '1';
       expect(await test.controller.confirm()).toBe(false);
       expect(test.commit).not.toHaveBeenCalled();
-      expect(test.controller.error.value).toBe('Repeat cannot remove locally painted Group frames. Regenerate the Group first.');
+      expect(test.controller.error.value).toBe('Repeat cannot remove locally painted Rail frames. Regenerate the Rail first.');
     });
 
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
@@ -2969,7 +2969,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         actionRevision: 'action-revision-1',
         documentRevision: prepared.document.revision,
         initiatingGroupId: 'G1',
-        groupName: 'Group at F10',
+        groupName: 'Rail at F10',
         groupType: 'Static',
         restoredRange: 'F10–F19',
         locallyPaintedFrameCount: 1,
@@ -2978,8 +2978,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         fragmentCount: 2,
         gapRanges: 'F13',
         affectedGroups: [
-          { groupId: 'G1', name: 'Group at F10', range: 'F10–F19' },
-          { groupId: 'G2', name: 'Group at F30', range: 'F30–F39' },
+          { groupId: 'G1', name: 'Rail at F10', range: 'F10–F19' },
+          { groupId: 'G2', name: 'Rail at F30', range: 'F30–F39' },
         ],
       });
       expect(prepared.controller.regenerateImpact.value?.actionHash).toMatch(/^action-/);
@@ -3005,7 +3005,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         lifecycleGroup('G1', 10),
         lifecycleGroup('G2', 30, { sourceKeyIds: ['S1', 'S3'] }),
       ]);
-      expect((await ambiguous.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Group source sharing is ambiguous.');
+      expect((await ambiguous.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Rail source sharing is ambiguous.');
 
       const stale = regenerateHarness([lifecycleGroup('G1', 10)]);
       expect((await stale.controller.openSourceEdit('G1')).ok).toBe(true);
@@ -3149,5 +3149,128 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
     await test.controller.openConfirmation();
     expect(test.controller.confirmationOpen.value).toBe(true);
     expect(test.controller.phase.value).toBe('idle');
+  });
+});
+
+describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)', () => {
+  it('opens on the Reveal tab with the span defaulted to the script natural duration (D-20)', async () => {
+    const test = harness({ getScriptNaturalDuration: () => 5, hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.railTab.value).toBe('reveal');
+    expect(test.controller.revealCountText.value).toBe('5');
+    expect(test.controller.canonicalStart.value).toBe(4);
+  });
+
+  it('defaults the reveal span to 3 when the natural duration is unknown', async () => {
+    const test = harness({ hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.revealCountText.value).toBe('3');
+  });
+
+  it('setRailTab re-defaults the span and runs the reference guard proactively (D-12)', async () => {
+    const openPhotoReference = vi.fn();
+    const test = harness({ hasPhotoReference: () => false, openPhotoReference, getScriptNaturalDuration: () => 2 });
+    await test.controller.openConfirmation();
+    expect(test.controller.railTab.value).toBe('paint');
+    test.controller.revealCountText.value = '7';
+    test.controller.setRailTab('reveal');
+    expect(test.controller.railTab.value).toBe('reveal');
+    expect(test.controller.revealCountText.value).toBe('2');
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirmReveal routes through the create-reveal port with the shared repeat/motion law (D-08/D-09/D-11)', async () => {
+    const createReveal = vi.fn(async (input: { onProgress?: (completed: number, total: number) => void }) => {
+      input.onProgress?.(1, 3);
+      return { ok: true as const };
+    });
+    const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.repeatText.value = '2';
+    test.controller.dialogMotion.value = { deformation: 10, position: 20 };
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal).toHaveBeenCalledTimes(1);
+    const input = createReveal.mock.calls[0][0];
+    expect(input).toMatchObject({
+      layerId: 'layer-1',
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 4,
+      frameCount: 3,
+      repeat: 2,
+      motion: { deformation: 10, position: 20 },
+    });
+    expect(test.controller.confirmationOpen.value).toBe(false);
+    expect(test.controller.status.value).toBe('Reveal Rail complete · 3 frames');
+  });
+
+  it('confirmReveal passes the Infinity repeat through as endless (D-08)', async () => {
+    const createReveal = vi.fn(async (_input: { repeat: number | 'infinity' }) => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.setInfinity(true);
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal.mock.calls[0]![0].repeat).toBe('infinity');
+  });
+
+  it('confirmReveal without a reference opens the Photo Reference modal and never creates (D-12 guard)', async () => {
+    const openPhotoReference = vi.fn();
+    const createReveal = vi.fn(async () => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => false, openPhotoReference, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(await test.controller.confirm()).toBe(false);
+    expect(createReveal).not.toHaveBeenCalled();
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+    // The dialog stays open — the user returns to the Create Rail flow.
+    expect(test.controller.confirmationOpen.value).toBe(true);
+  });
+
+  it('cancelling mid-bake writes nothing and lands in the cancelled phase (D-11)', async () => {
+    const createReveal = vi.fn((input: { signal: AbortSignal }) => new Promise<{ ok: false; reason: string }>((resolve) => {
+      input.signal.addEventListener('abort', () => resolve({ ok: false, reason: 'bake-failed' }));
+    }));
+    const test = harness({ hasPhotoReference: () => true, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    const pending = test.controller.confirm();
+    expect(test.controller.phase.value).toBe('rendering');
+    test.controller.cancel();
+    await pending;
+    expect(test.controller.phase.value).toBe('cancelled');
+    expect(test.controller.error.value).toBeNull();
+    expect(test.controller.status.value).toBe('Reveal bake cancelled');
+  });
+
+  it('rejects an invalid reveal span before calling the mutation (G-52-2c validation)', async () => {
+    const createReveal = vi.fn(async () => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.revealCountText.value = '0';
+    expect(test.controller.revealValidationError.value).toBe('Enter a positive integer.');
+    expect(await test.controller.confirm()).toBe(false);
+    test.controller.revealCountText.value = '5';
+    expect(test.controller.revealValidationError.value).toBe('Maximum available count is 4.');
+    expect(await test.controller.confirm()).toBe(false);
+    expect(createReveal).not.toHaveBeenCalled();
+  });
+
+  it('drives the Requested/Effective summary from the reveal span on the Reveal tab', async () => {
+    const test = harness({ hasPhotoReference: () => true, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.repeatText.value = '2';
+    // Cycle 3f × 2 requested against the 4f boundary (F4–F7) → shortened readout.
+    expect(test.controller.loopReadout.value).toBe('Requested: 6f (3f × 2) · Effective: 4f — shortened by the next clip');
+    // Repeat is shared across tabs (one mutation law) — only the cycle length switches.
+    test.controller.setRailTab('paint');
+    test.controller.repeatText.value = '1';
+    expect(test.controller.loopReadout.value).toBe('Requested: 3f (3f × 1) · Effective: 3f');
+  });
+
+  it('resets to the Paint tab on every plain open and on loop-edit prefill', async () => {
+    const test = harness({ hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.railTab.value).toBe('reveal');
+    await test.controller.openConfirmation();
+    expect(test.controller.railTab.value).toBe('paint');
   });
 });

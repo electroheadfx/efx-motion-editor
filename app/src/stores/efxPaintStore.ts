@@ -1312,6 +1312,10 @@ export async function createRevealRail(
     variant: 'progressive' | 'static';
     startFrame: number;
     frameCount: number;
+    /** G-52-3 (D-08): the repeat law surfaced at creation — same semantics as the Paint Rail. */
+    repeat?: number | 'infinity';
+    /** G-52-3 (D-09): the creation-time motion wiggle feeding the bake (both variants). */
+    motion?: Readonly<{ deformation: number; position: number }>;
     signal?: AbortSignal;
     onProgress?: (completed: number, total: number) => void;
   },
@@ -1323,6 +1327,7 @@ export async function createRevealRail(
   if (input.variant !== 'progressive' && input.variant !== 'static') return { ok: false, reason: 'invalid-variant' };
   if (!Number.isInteger(input.startFrame) || input.startFrame < 0) return { ok: false, reason: 'invalid-span' };
   if (!Number.isInteger(input.frameCount) || input.frameCount < 1) return { ok: false, reason: 'invalid-span' };
+  if (input.repeat !== undefined && input.repeat !== 'infinity' && (!Number.isInteger(input.repeat) || input.repeat < 1)) return { ok: false, reason: 'invalid-span' };
   if (!_revealScriptLoader) return { ok: false, reason: 'script-loader-unavailable' };
   const script = await _revealScriptLoader(input.scriptId);
   if (!script) return { ok: false, reason: 'script-not-found' };
@@ -1330,13 +1335,14 @@ export async function createRevealRail(
   // Creation IS the first bake (D-11): the bake commit path reads the reference
   // via `_resolveReferenceSourceImage` (frame-aligned, null-on-missing → fail-closed)
   // and commits the baked records through the acknowledged physical-edit transaction.
+  const bakeMotion = input.motion ?? { deformation: 0, position: 0 };
   const bakeResult = await commitRevealBake({
     layerId,
     trackId: input.trackId,
     script,
     frameCount: input.frameCount,
     canonicalStart: input.startFrame,
-    motion: { deformation: 0, position: 0 },
+    motion: bakeMotion,
     mode: input.variant,
     signal: input.signal ?? new AbortController().signal,
     onProgress: input.onProgress,
@@ -1345,17 +1351,18 @@ export async function createRevealRail(
 
   // The rail record: a `PhysicPaintRotoLoopClip`-shaped member of the existing
   // family, discriminated by `railKind: 'reveal'` (D-03). The baked keys are the
-  // source cycle; repeat/endless derives at read time (D-08).
+  // source cycle; repeat/endless rides the same mutation law as the Paint Rail
+  // (D-08, G-52-3) and the motion wiggle is frozen as provenance (D-09).
   const loopClip: PhysicPaintRotoLoopClip = {
     loopId: createPhysicPaintRotoKeyId(),
     placementStart: input.startFrame,
     sourceKeyIds: bakeResult.records.map((record) => record.keyId),
-    repeat: 1,
+    repeat: input.repeat ?? 1,
     mode: input.variant,
     railKind: 'reveal',
     scriptId: input.scriptId,
     // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
-    motion: { deformation: 0, position: 0 },
+    motion: { ...bakeMotion },
     overrideColor: null,
   };
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, input.trackId);
