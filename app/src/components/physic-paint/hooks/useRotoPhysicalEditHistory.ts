@@ -85,6 +85,29 @@ import {
   setActiveTrackId,
   type BackgroundEditDescriptor,
 } from '../../../stores/efxPaintStore';
+import { buildEfxPaintDocumentRevision } from '../../../efx-paint/document/efxPaintDocumentRevision';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+
+/**
+ * G-52-5: the live-authority check for background (document-level) entries.
+ * Identity fast path first, then a CONTENT-REVISION comparison. Reference
+ * display-preference writes (opacity/visibility/lock/transform) replace the
+ * document object WITHOUT touching the content fingerprint (the D-07 split
+ * excludes the display fields and never bumps documentRevision) — a bare
+ * identity comparison failed closed forever after any display tweak, killing
+ * undo/redo for the whole ledger. Unrecorded CONTENT edits still rotate the
+ * fingerprint and fail closed (the CR-01 protection is unchanged). Fail
+ * closed on a parse throw.
+ */
+function liveDocumentMatchesRecorded(live: EfxPaintDocument | null, recorded: EfxPaintDocument): boolean {
+  if (live === recorded) return true;
+  if (live === null) return false;
+  try {
+    return buildEfxPaintDocumentRevision(live) === buildEfxPaintDocumentRevision(recorded);
+  } catch {
+    return false;
+  }
+}
 
 // 46 UAT debug hook: capture why a Paste/Duplicate command is (or is not)
 // recorded and why an Undo replay is rejected. Gated off by default; enable
@@ -773,12 +796,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (entry.kind === 'background') {
       // 49-06 UAT: a Background document edit restores the exact prior
       // document by reference (BKG-08, D-08) — no coordinator replay seam.
-      // Live-state authority guard (CR-01): undo only when the live document
-      // is still the recorded `after` object. An unrecorded edit since the
-      // delete (add/move/repeat/scale/fallback — only delete records) would
-      // otherwise be clobbered by the snapshot restore. Fail closed (stack
-      // untouched) on divergence, mirroring the physical path's authority check.
-      if (getDocument(entry.descriptor.after.parentLayerId) !== entry.descriptor.after) return false;
+      // Live-state authority guard (CR-01, G-52-5): undo only when the live
+      // document still matches the recorded `after` by content revision
+      // (identity fast path). An unrecorded CONTENT edit since the record
+      // (add/move/repeat/scale/fallback/source-set) rotates the fingerprint
+      // and fails closed (stack untouched); a display-preference-only write
+      // (reference opacity/lock/visibility/transform) does NOT — it replaces
+      // the document object without touching the fingerprint, and must not
+      // kill the ledger.
+      if (!liveDocumentMatchesRecorded(getDocument(entry.descriptor.after.parentLayerId), entry.descriptor.after)) return false;
       // 52 CR-01: the reveal mutations write the runtime as well as the
       // document (baked records + rail clip). Resync the affected track's
       // runtime from the restored `before` document BEFORE publishing either
@@ -873,10 +899,11 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     if (entry.kind === 'background') {
       // 49-06 UAT: redo re-applies the post-edit document by reference.
-      // Symmetric live-state authority guard (CR-01): redo only when the live
-      // document is still the recorded `before` object — an unrecorded edit
-      // since the undo would otherwise be clobbered. Fail closed on divergence.
-      if (getDocument(entry.descriptor.before.parentLayerId) !== entry.descriptor.before) return false;
+      // Symmetric live-state authority guard (CR-01, G-52-5): redo only when
+      // the live document still matches the recorded `before` by content
+      // revision (identity fast path) — an unrecorded CONTENT edit since the
+      // undo would otherwise be clobbered. Fail closed on divergence.
+      if (!liveDocumentMatchesRecorded(getDocument(entry.descriptor.before.parentLayerId), entry.descriptor.before)) return false;
       // 52 CR-01: symmetric runtime resync from the restored `after` document
       // (see the undo branch above).
       if (!resyncRuntimeForBackgroundEdit(entry.descriptor, 'redo')) return false;

@@ -1484,6 +1484,17 @@ describe('Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-0
     expect(confirmHandler).not.toContain('addBackgroundClip');
   });
 
+  it('Confirm records the source-set descriptor as one unified-ledger undo entry (50-03 D-03, G-52-5)', () => {
+    const confirmHandler = studio.slice(
+      studio.indexOf('const handleConfirmReferencePicker = (sortedIds: string[]) => {'),
+      studio.indexOf('const handleCancelReferencePicker = () => {'),
+    );
+    // The dropped descriptor left an unrecorded document replacement in the
+    // chain — every ledger entry recorded BEFORE a reference placement or
+    // replacement failed the live-authority guard forever (undo/redo died).
+    expect(confirmHandler).toContain('if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+  });
+
   it('hydrates the confirmed reference source bytes through the library path (REF-04)', () => {
     expect(studio).toContain('hydrateReferenceSourceImagesFromLibrary(');
     expect(studio).toContain('referencePicker.images.peek()');

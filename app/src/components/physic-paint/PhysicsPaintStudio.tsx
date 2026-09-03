@@ -3806,6 +3806,12 @@ export function PhysicsPaintStudio() {
         : "Couldn't set the reference source.");
       return;
     }
+    // G-52-5: record the unified-ledger undo entry the 50-03 contract promises
+    // (one undoable operation, D-03). Dropping the descriptor left an
+    // unrecorded document replacement in the chain — every entry recorded
+    // BEFORE a reference placement/replacement failed the live-authority guard
+    // forever, killing undo/redo for the session.
+    if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
     // Warm the reference registry with the freshly confirmed refs (mirrors the
     // Bg picker's hydration — the reopened path is the sole production writer,
     // and a fresh import never passed through it).

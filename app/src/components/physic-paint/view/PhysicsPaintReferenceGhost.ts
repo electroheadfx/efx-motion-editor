@@ -50,10 +50,13 @@ export function shouldDrawReferenceGhost(
  * the default transform (x:0, y:0, scaleX:1, scaleY:1, rotation:0) draws the
  * reference centered and unscaled.
  *
- * The draw is async (the image decodes via `new Image()`); a pending decode
- * draws nothing this tick and the caller re-invokes on the next version-clock
- * bump. The `save`/`restore` pair confines the opacity and transform to this
- * draw so the caller's context state is untouched.
+ * G-52-5: the image comes from the shared decode-once cache
+ * (`physicPaintStore.getDecodedImage`) — never a per-draw `new Image()`
+ * decode. A pending decode draws nothing this tick; the cache's onload bump
+ * of physicPaintVersion re-fires the layer effect, which re-invokes and draws
+ * (decode storms on the main thread made every mutation and scrub sluggish).
+ * The `save`/`restore` pair confines the opacity and transform to this draw
+ * so the caller's context state is untouched.
  */
 export function drawReferenceGhost(
   ctx: CanvasRenderingContext2D,
@@ -66,21 +69,19 @@ export function drawReferenceGhost(
   if (!decision.draw || decision.verdict === null) return;
   const track = document.photoReference;
   if (track === null) return;
-  const image = new Image();
-  image.onload = () => {
-    const canvas = ctx.canvas;
-    const w = image.width * zoom;
-    const h = image.height * zoom;
-    ctx.save();
-    ctx.globalAlpha = track.opacity;
-    ctx.translate(
-      canvas.width / 2 + track.transform.x * zoom,
-      canvas.height / 2 + track.transform.y * zoom,
-    );
-    ctx.rotate(track.transform.rotation * Math.PI / 180);
-    ctx.scale(track.transform.scaleX, track.transform.scaleY);
-    ctx.drawImage(image, -w / 2, -h / 2, w, h);
-    ctx.restore();
-  };
-  image.src = decision.verdict.dataUrl;
+  const image = physicPaintStore.getDecodedImage(decision.verdict.dataUrl);
+  if (image === null) return;
+  const canvas = ctx.canvas;
+  const w = image.width * zoom;
+  const h = image.height * zoom;
+  ctx.save();
+  ctx.globalAlpha = track.opacity;
+  ctx.translate(
+    canvas.width / 2 + track.transform.x * zoom,
+    canvas.height / 2 + track.transform.y * zoom,
+  );
+  ctx.rotate(track.transform.rotation * Math.PI / 180);
+  ctx.scale(track.transform.scaleX, track.transform.scaleY);
+  ctx.drawImage(image, -w / 2, -h / 2, w, h);
+  ctx.restore();
 }

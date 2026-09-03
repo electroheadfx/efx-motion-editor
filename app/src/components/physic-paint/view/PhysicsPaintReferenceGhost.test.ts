@@ -226,6 +226,38 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     expect(draw.source).toBe('data:f0');
   });
 
+  it('decodes the reference once per dataUrl across repeated draws (G-52-5 decode-storm fix)', () => {
+    const layerId = 'layer-photo';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['f0']);
+    registerReferenceSourceImage('f0', 'data:f0');
+    const document = getDocument(layerId)!;
+
+    let constructions = 0;
+    class CountingImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      crossOrigin = '';
+      width = 4;
+      height = 3;
+      private currentSrc = '';
+      constructor() { constructions += 1; }
+      set src(value: string) { this.currentSrc = value; this.onload?.(); }
+      get src(): string { return this.currentSrc; }
+    }
+    vi.stubGlobal('Image', CountingImage);
+    vi.stubGlobal('HTMLImageElement', CountingImage);
+
+    // Repeated draws (frame scrub + version bumps) with the same source: one
+    // decode EVER; every redraw is a plain cached canvas drawImage.
+    for (let draw = 0; draw < 3; draw += 1) {
+      const ops: GhostOp[] = [];
+      drawReferenceGhost(makeContext(ops) as unknown as CanvasRenderingContext2D, document, draw, 1, false);
+      expect(ops.some((op) => op.type === 'drawImage')).toBe(true);
+    }
+    expect(constructions).toBe(1);
+  });
+
   it('converts rotation from degrees to radians (D-13)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));

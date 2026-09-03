@@ -33,8 +33,11 @@ import type { HandleType, LayerBounds } from '../../canvas/transformHandles';
  * the bounds are computed from `track.transform` (the accepted display
  * transform) and the resolved source image's natural dimensions, in WORKING
  * space (the same space the ghost draws in — see `getReferenceBounds`). The
- * image dimensions are decoded async via `new Image()` from the frame-aligned
- * verdict's `dataUrl` and held in a signal (no useState — efx-preact-reactivity).
+ * image dimensions come from the shared decode-once cache
+ * (`physicPaintStore.getDecodedImage`, G-52-5) and are held in a signal (no
+ * useState — efx-preact-reactivity); while `transformLocked` is true (the
+ * default) the effect skips the resolution entirely — the handles are
+ * invisible in that state, so no decode work runs.
  */
 
 export interface PhysicsPaintReferenceTransformHandlesProps {
@@ -71,10 +74,13 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
 
   const { layerId, currentFrame, isPlaying, width, height, zoom } = props;
 
-  // Decode the resolved source image's natural dimensions (async) so the
-  // bounds can be computed. Gated on !isPlaying and a present layerId; a
-  // missing track / missing verdict / decode failure clears the size
-  // (fail-closed — no handles without a resolved source, D-04).
+  // Resolve the source image's natural dimensions through the shared
+  // decode-once cache (G-52-5 — never a per-effect `new Image()` decode; the
+  // cache's onload bump of physicPaintVersion re-fires this effect). Gated on
+  // !isPlaying, a present layerId, AND !transformLocked — the handles are
+  // invisible while locked (the default), so no decode work runs at all. A
+  // missing track / missing verdict / pending or failed decode clears the
+  // size (fail-closed — no handles without a resolved source, D-04).
   useEffect(() => {
     if (isPlaying || !layerId) {
       imageSize.value = null;
@@ -86,7 +92,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       return;
     }
     const track = document.photoReference;
-    if (!track || track.sourceFrameRefs.length === 0) {
+    if (!track || track.sourceFrameRefs.length === 0 || track.transformLocked) {
       imageSize.value = null;
       return;
     }
@@ -95,17 +101,12 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       imageSize.value = null;
       return;
     }
-    const image = new Image();
-    image.onload = () => {
-      imageSize.value = { w: image.width, h: image.height };
-    };
-    image.onerror = () => {
-      imageSize.value = null;
-    };
-    image.src = verdict.dataUrl;
+    const image = physicPaintStore.getDecodedImage(verdict.dataUrl);
+    imageSize.value = image === null ? null : { w: image.width, h: image.height };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
     // clocks are read inside the effect's dep array (narrow leaf subscription,
-    // never the Studio root); a source/transform change re-resolves the size.
+    // never the Studio root); a source/transform/lock change re-resolves the
+    // size, and the cache's decode-complete bump re-fires for a pending decode.
   }, [layerId, currentFrame, isPlaying, efxPaintVersion.value, physicPaintVersion.value]);
 
   // Read accepted display state (narrow reads, no render-body writes).

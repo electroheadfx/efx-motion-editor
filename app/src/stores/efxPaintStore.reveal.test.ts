@@ -18,6 +18,7 @@ import {
   reset,
   resizeRevealRail,
   resyncRuntimeForBackgroundEdit,
+  serializeRuntimeIntoDocument,
   setPhotoReferenceSource,
 } from './efxPaintStore';
 import type { BackgroundEditDescriptor } from './efxPaintStore';
@@ -249,6 +250,23 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     expect(clip.originalEndExclusive).toBe(12);
     expect(clip.visibleRanges).toEqual([{ start: 10, endExclusive: 12 }]);
     expect(clip.frameOverrides).toEqual([]);
+  });
+
+  it('keeps the live document identity stable under serializeRuntimeIntoDocument after a reveal create (G-52-5)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+
+    const descriptor = await createRail(layerId);
+    // The Studio pushes the live runtime projection on every efxPaintVersion
+    // bump (pushLiveProjection). If that projection diverges from the recorded
+    // `after` document, serializeRuntimeIntoDocument installs an UNRECORDED
+    // replacement and the undo live-authority guard (getDocument !== after)
+    // fails closed forever — Cmd+Z dies. The projection must be a revision
+    // no-op so the live object stays the recorded `after` by identity.
+    serializeRuntimeIntoDocument(layerId);
+    expect(getDocument(layerId)).toBe(descriptor.after);
   });
 
   it('pins an Infinity reveal rail lifecycle to one cycle (the resolver extends it to capacity) (G-52-4)', async () => {

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
+const revealHarness = vi.hoisted(() => ({ renderReveal: vi.fn() }));
+
+vi.mock('../roto/physicsPaintRotoPlayScriptRenderer', () => ({
+  renderRotoRevealFrames: revealHarness.renderReveal,
+}));
+
 vi.mock('preact/hooks', () => ({
   useCallback: <Value>(callback: Value) => callback,
   useEffect: (setup: () => void | (() => void)) => setup(),
@@ -28,14 +34,24 @@ import type {
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   _setEfxPaintMarkDirtyCallback,
+  _setEfxPaintRevealScriptLoader,
   addBackgroundClip,
+  createRevealRail,
   deleteBackgroundClip,
   getActiveTrackId,
   getDocument,
   registerDocument,
   reset as resetEfxPaintDocumentStore,
   setActiveTrackId,
+  setPhotoReferenceOpacity,
+  setPhotoReferenceSource,
 } from '../../../stores/efxPaintStore';
+import {
+  _setPhysicPaintCompositorSizeProvider,
+  _setPhysicPaintMarkDirtyCallback,
+  physicPaintStore,
+  registerReferenceSourceImage,
+} from '../../../stores/physicPaintStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -2501,5 +2517,189 @@ describe('useRotoPhysicalEditHistory track-tagged undo/redo (46-03 Task 3 — D-
       !path.startsWith('snapshot.records[') && !path.startsWith('snapshot.groupOverrideRecords[')
     ));
     expect(outsideRecords).toEqual([]);
+  });
+});
+
+describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
+  const REVEAL_TRACK_ID = 'track-1';
+  const REVEAL_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const revealScript = {
+    provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
+    sourceFrame: 0,
+    sourceDisplayFrame: 0,
+    sourceRevision: 1,
+    brushes: [],
+  };
+
+  function registerRevealTrackDocument(layerId: string): void {
+    const base = createEfxPaintDocument(layerId);
+    const track = base.tracks[0]!;
+    registerDocument({
+      ...base,
+      activeTrackId: REVEAL_TRACK_ID,
+      tracks: [{ ...track, id: REVEAL_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    });
+  }
+
+  async function createRevealDescriptor(layerId: string) {
+    revealHarness.renderReveal.mockResolvedValue([
+      { frameIndex: 0, appFrame: 10, dataUrl: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
+      { frameIndex: 1, appFrame: 11, dataUrl: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
+    ]);
+    const result = await createRevealRail(layerId, {
+      trackId: REVEAL_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('reveal create must succeed');
+    expect(result.descriptor).not.toBeNull();
+    return result.descriptor!;
+  }
+
+  function createRevealHistory(layerId: string) {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: REVEAL_TRACK_ID, launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+    return { history, availability };
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintDocumentStore();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+    _setEfxPaintRevealScriptLoader(async () => revealScript);
+    revealHarness.renderReveal.mockReset();
+  });
+
+  it('undoes and redoes a reveal-create entry by reference, resyncing the runtime (G-52-5)', async () => {
+    const layerId = 'layer-reveal-undo';
+    registerRevealTrackDocument(layerId);
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    const descriptor = await createRevealDescriptor(layerId);
+
+    const { history, availability } = createRevealHistory(layerId);
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, REVEAL_TRACK_ID)).toHaveLength(2);
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(0);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, REVEAL_TRACK_ID)).toHaveLength(0);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, REVEAL_TRACK_ID)).toHaveLength(2);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('survives an unrecorded reference display-preference write after the record (G-52-5)', async () => {
+    const layerId = 'layer-reveal-display';
+    registerRevealTrackDocument(layerId);
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    const descriptor = await createRevealDescriptor(layerId);
+
+    const { history } = createRevealHistory(layerId);
+    history.recordBackgroundEdit(descriptor);
+
+    // An unrecorded DISPLAY-PREFERENCE write (opacity/visibility/lock/transform):
+    // replaces the document OBJECT without touching the content fingerprint
+    // (the D-07 split excludes display fields and never bumps documentRevision).
+    // The bare identity guard failed closed forever here — undo/redo died the
+    // moment any reference display control was touched after a recorded entry.
+    expect(setPhotoReferenceOpacity(layerId, 0.9).ok).toBe(true);
+    expect(getDocument(layerId)).not.toBe(descriptor.after);
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(0);
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+  });
+
+  it('still fails closed on an unrecorded CONTENT write after the record (G-52-5: CR-01 unchanged)', async () => {
+    const layerId = 'layer-reveal-content-guard';
+    registerRevealTrackDocument(layerId);
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    const descriptor = await createRevealDescriptor(layerId);
+
+    const { history, availability } = createRevealHistory(layerId);
+    history.recordBackgroundEdit(descriptor);
+
+    // An unrecorded CONTENT replacement (the reference SOURCE set bumps the
+    // content fingerprint — docrev + source refs): the guard must keep failing
+    // closed so the snapshot restore never clobbers the newer source.
+    expect(setPhotoReferenceSource(layerId, ['ref-b']).ok).toBe(true);
+    expect(await history.undo()).toBe(false);
+    expect(getDocument(layerId)).not.toBe(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('chains a recorded reference-set entry below a reveal-create entry (G-52-5)', async () => {
+    const layerId = 'layer-reveal-chain';
+    registerRevealTrackDocument(layerId);
+
+    const { history, availability } = createRevealHistory(layerId);
+
+    // The Studio reference-confirm path now records the source-set descriptor
+    // (50-03's "one undoable operation" contract — previously dropped, which
+    // broke the ledger chain for every entry recorded before a placement).
+    const setResult = setPhotoReferenceSource(layerId, ['ref-a']);
+    expect(setResult.ok).toBe(true);
+    if (!setResult.ok || !setResult.descriptor) throw new Error('reference set must emit a descriptor');
+    history.recordBackgroundEdit(setResult.descriptor);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+
+    const descriptor = await createRevealDescriptor(layerId);
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 2, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(getDocument(layerId)).toBe(setResult.descriptor.after);
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(setResult.descriptor.before);
+    expect(getDocument(layerId)!.photoReference).toBeNull();
+    expect(availability.value).toEqual({ undo: 0, redo: 2 });
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(setResult.descriptor.after);
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(availability.value).toEqual({ undo: 2, redo: 0 });
   });
 });

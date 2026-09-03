@@ -2057,6 +2057,20 @@ export const physicPaintStore = {
     return _resolveReferenceSourceImage(efxDocument, frame);
   },
 
+  /**
+   * G-52-5: the shared decode-once image cache for monitor-surface consumers
+   * (reference ghost draw, reference transform handles). Keyed by dataUrl, one
+   * `new Image()` decode per unique source EVER — a cached redraw is a plain
+   * canvas draw, so per-frame scrub redraws cost nothing. Returns null while
+   * the decode is pending or failed; the onload/onerror bump of
+   * physicPaintVersion re-fires the subscriber effects, which re-invoke and
+   * draw (the _compositorDecode idiom — never a per-draw decode, MEMORY: image
+   * decode storms cause global slowness).
+   */
+  getDecodedImage(dataUrl: string): HTMLImageElement | null {
+    return _compositorDecode(dataUrl);
+  },
+
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {
     const displayFrame = _getRotoDisplayFrame(layerId, trackId, frame);
     if (!displayFrame) return null;
