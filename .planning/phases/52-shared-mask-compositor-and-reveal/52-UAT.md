@@ -38,12 +38,16 @@ result: [pending]
 expected: With NO photo reference placed, entering the Reveal Photo Rail tab (or clicking Create Rail there) opens the Photo Reference modal directly so a source can be imported; the Create Rail dialog stays open behind it; after importing, the reveal tab's guard notice is gone and Create Rail bakes.
 result: [pending]
 
+### 6. Reveal rail tooling interop (G-52-4)
+expected: On a baked reveal rail: paint and +Key/rail creation work on frames after the rail; a baked key copies and pastes elsewhere; key spacing applies to the rail; the rail drags by its line; the rail deletes. The reveal rail behaves exactly like a motion/static rail.
+result: [pending]
+
 ## Summary
 
-total: 5
+total: 6
 passed: 0
 issues: 1
-pending: 4
+pending: 5
 skipped: 0
 blocked: 0
 
@@ -85,3 +89,12 @@ blocked: 0
   artifacts: []
   missing: []
   fix_applied: "2026-09-03 — commit 1b11e1c0. (1) The Photo Reference modal is back to a pure reference control surface (reveal CTA/surface/controller state machine/CSS removed, revealCreationRequested wiring removed). (2) The PlayScript dialog is now the Create Rail dialog with a Paint Rail / Reveal Photo Rail tab strip (apply mode only; edit/regenerate modes keep their single-surface layout). The Reveal tab carries Rail Type (Reveal Motion/Static with caption helpers), Timing (Frames defaulting to natural duration + 'from F{n}' hint + Repeat/Infinity — the D-08 repeat law now surfaced at creation through createRevealRail's new repeat input), Motion wiggle with Reset defaults (fed to the bake for both variants — D-09), and no Color card. The Requested/Effective summary and the Cancel/Create Rail footer are shared; the reveal bake rides the dialog's phase/abort machinery so Cancel generation aborts mid-span with no keys written. (3) The track flow's Create rail → Reveal item opens the same dialog on the Reveal tab (menu-level disabled guard removed). (4) The D-12 guard: entering or confirming the Reveal tab without a placed reference opens the Photo Reference modal directly and shows an actionable notice ('Place a reference…'); the dialog stays open behind it. (5) The Studio createReveal port records the unified-ledger undo entry (the modal path previously dropped the descriptor). (6) Group → Rail renamed across the PlayScript creation/regenerate/inspector copy (Create Rail…, Rail Type, Edit Rail, Regenerate Rail, Linked Rails, Keep Rails / Delete Action and Rails, 'Rail at F{n}' naming, status/log copy). Full suite green (3373 passed) + tsc clean. Awaiting re-run of Tests 1–5."
+- gap_id: G-52-4
+  truth: "A baked reveal rail is fully interoperable with the existing rail tooling: paint/create on frames after it, copy/paste its keys, apply key spacing, drag it by its line, delete it — the same contract as motion/static rails."
+  status: failed
+  reason: "User reported (all four on a baked reveal/motion rail): (a) timeline blocked after the rail — no painting or rail creation on later frames; (b) key copy/paste from the reveal rail broken; (c) key spacing refused; (d) rail drag by the line broken. Traced to two shared roots: (1) cloneLoopClips (useRotoPhysicalEditCoordinator.ts:640-661) rebuilt every clip field-by-field and dropped railKind — a canonical fingerprint term (physicsPaintRotoPhysicalModel.ts:1088) — so every bridge payload on a track carrying a reveal rail failed the parent's canonical re-verification (physicPaintBridge.ts:907/914, :1444-1453) and the edit rejected; (2) the reveal clip was born without the 43-06 lifecycle fields — parse hydrates finite clips (buildDefaultPhysicPaintRotoGroupLifecycle) but never infinity ones, leaving a split-brain shape the group classifier (physicsPaintRotoGroupLifecycle.ts:254-266) and paint-COW proposer reject; an infinity reveal clip additionally derived an UNBOUNDED range (effectiveEnd = capacity), making every later frame resolve linked/render-only."
+  severity: blocker
+  test: 6
+  artifacts: []
+  missing: []
+  fix_applied: "2026-09-03 — commit 1062e30a. (1) cloneLoopClips round-trips railKind, so the staged payload serializes identically to the canonical clips and the bridge re-verification passes for paste/drag/spacing/paint on a reveal-rail track. (2) createRevealRail stamps the full 43-06 lifecycle at creation (syncState/provenanceState/phaseOrigin/originalEndExclusive/visibleRanges/frameOverrides; infinity pins one cycle and the resolver extends it to capacity — the render-neutral shape the payload normalizer already synthesized), so the reveal clip is a first-class Group from birth and never derives an unbounded range; resizeRevealRail keeps the lifecycle consistent with the surviving cycle. (3) buildDuplicatedLoopClip preserves railKind — a pasted/duplicated reveal rail stays a reveal rail. Regression coverage: coordinator payload round-trip test (mutation-verified — fails without the railKind line), creation + infinity lifecycle stamping tests, shrink lifecycle consistency assertions, reveal rail-set paste kind preservation. Full suite green (3377 passed) + tsc clean. Awaiting re-run of Test 6."
