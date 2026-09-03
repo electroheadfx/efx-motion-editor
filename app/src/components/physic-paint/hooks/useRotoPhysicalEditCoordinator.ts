@@ -646,6 +646,15 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
       sourceKeyIds: [...normalized.sourceKeyIds],
       repeat: normalized.repeat,
       mode: normalized.mode,
+      // 52-05 (G-52-4): railKind is a canonical fingerprint term — the clone MUST
+      // round-trip it, or every bridge payload on a track carrying a reveal rail
+      // fails the parent's canonical re-verification (paste/drag/spacing all
+      // reject with a document-mismatch).
+      ...(normalized.railKind !== undefined ? { railKind: normalized.railKind } : {}),
+      // 52-05 (G-52-4): railKind is a canonical fingerprint term — the clone MUST
+      // round-trip it, or every bridge payload on a track carrying a reveal rail
+      // fails the parent's canonical re-verification (paste/drag/spacing all
+      // reject with a document-mismatch).
       // 43-06 provenance rides every clone.
       ...(normalized.scriptId !== undefined
         ? { scriptId: normalized.scriptId, motion: { ...normalized.motion! }, overrideColor: normalized.overrideColor ?? null }

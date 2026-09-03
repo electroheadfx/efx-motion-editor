@@ -232,8 +232,50 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     }));
   });
 
-  it('carries the creation-time repeat law and motion wiggle into the bake and the rail record (G-52-3, D-08/D-09)', async () => {
+  it('stamps the full 43-06 lifecycle at creation so the reveal rail is a first-class Group for every tool (G-52-4)', async () => {
     const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+
+    await createRail(layerId, 10, 2);
+    const track = getDocument(layerId)!.tracks.find((candidate) => candidate.id === TEST_TRACK_ID)!;
+    const clip = track.rotoPhysical!.loopClips[0];
+    // The lifecycle-less split-brain shape poisoned every classifier/consumer
+    // (paint-COW, drag, spacing). The reveal clip is born lifecycle-complete.
+    expect(clip.syncState).toBe('synchronized');
+    expect(clip.provenanceState).toBe('attached');
+    expect(clip.phaseOrigin).toBe(10);
+    expect(clip.originalEndExclusive).toBe(12);
+    expect(clip.visibleRanges).toEqual([{ start: 10, endExclusive: 12 }]);
+    expect(clip.frameOverrides).toEqual([]);
+  });
+
+  it('pins an Infinity reveal rail lifecycle to one cycle (the resolver extends it to capacity) (G-52-4)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+
+    const result = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      repeat: 'infinity',
+    });
+    expect(result.ok).toBe(true);
+    const track = getDocument(layerId)!.tracks.find((candidate) => candidate.id === TEST_TRACK_ID)!;
+    const clip = track.rotoPhysical!.loopClips[0];
+    expect(clip.repeat).toBe('infinity');
+    expect(clip.syncState).toBe('synchronized');
+    expect(clip.originalEndExclusive).toBe(12); // one cycle pinned; never lifecycle-less
+    expect(clip.visibleRanges).toEqual([{ start: 10, endExclusive: 12 }]);
+  });
+
+  it('carries the creation-time repeat law and motion wiggle into the bake and the rail record (G-52-3, D-08/D-09)', async () => {    const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
     registerReferenceSourceImage('ref-a', 'data:ref-a');
@@ -420,6 +462,11 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     const records = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
     expect(records.map((record) => record.appFrame)).toEqual([10, 11]);
     expect(afterShrink.tracks[0].rotoPhysical!.loopClips[0].sourceKeyIds).toHaveLength(2);
+    // G-52-4: the stamped lifecycle follows the surviving cycle so the derived
+    // extent matches the span law exactly.
+    const shrunkClip = afterShrink.tracks[0].rotoPhysical!.loopClips[0];
+    expect(shrunkClip.originalEndExclusive).toBe(12);
+    expect(shrunkClip.visibleRanges).toEqual([{ start: 10, endExclusive: 12 }]);
 
     // Undo mirrors the real path: resync the runtime from the pre-shrink
     // document, then recover the deleted key by reference.

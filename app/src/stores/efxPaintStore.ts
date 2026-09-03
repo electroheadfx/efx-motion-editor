@@ -1353,17 +1353,31 @@ export async function createRevealRail(
   // family, discriminated by `railKind: 'reveal'` (D-03). The baked keys are the
   // source cycle; repeat/endless rides the same mutation law as the Paint Rail
   // (D-08, G-52-3) and the motion wiggle is frozen as provenance (D-09).
+  // G-52-4: stamp the full 43-06 lifecycle at creation so the clip is a
+  // first-class Group for every consumer (classifier, paint-COW, drag, spacing)
+  // from birth — never the lifecycle-less split-brain shape. Infinity pins one
+  // cycle as the original end; the resolver extends it to capacity (the same
+  // render-neutral shape the payload normalizer synthesizes).
+  const revealCycleLength = bakeResult.records.length;
+  const revealRepeat = input.repeat ?? 1;
+  const revealOriginalEnd = input.startFrame + revealCycleLength * (revealRepeat === 'infinity' ? 1 : revealRepeat);
   const loopClip: PhysicPaintRotoLoopClip = {
     loopId: createPhysicPaintRotoKeyId(),
     placementStart: input.startFrame,
     sourceKeyIds: bakeResult.records.map((record) => record.keyId),
-    repeat: input.repeat ?? 1,
+    repeat: revealRepeat,
     mode: input.variant,
     railKind: 'reveal',
     scriptId: input.scriptId,
     // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
     motion: { ...bakeMotion },
     overrideColor: null,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: input.startFrame,
+    originalEndExclusive: revealOriginalEnd,
+    visibleRanges: [{ start: input.startFrame, endExclusive: revealOriginalEnd }],
+    frameOverrides: [],
   };
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, input.trackId);
   const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, input.trackId, [...currentLoopClips, loopClip]);
@@ -1556,7 +1570,18 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
   if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
 
   const survivingKeyIds = rail.clip.sourceKeyIds.filter((keyId) => remaining.some((record) => record.keyId === keyId));
-  const updatedClip: PhysicPaintRotoLoopClip = { ...rail.clip, sourceKeyIds: survivingKeyIds };
+  // G-52-4: keep the stamped 43-06 lifecycle consistent with the surviving
+  // cycle so the derived extent matches the span law exactly (the same shape
+  // the parser would hydrate). Infinity pins one cycle; the resolver extends
+  // it to capacity at read time.
+  const resizedEnd = rail.clip.placementStart
+    + survivingKeyIds.length * (rail.clip.repeat === 'infinity' ? 1 : rail.clip.repeat);
+  const updatedClip: PhysicPaintRotoLoopClip = {
+    ...rail.clip,
+    sourceKeyIds: survivingKeyIds,
+    originalEndExclusive: resizedEnd,
+    visibleRanges: [{ start: rail.clip.placementStart, endExclusive: resizedEnd }],
+  };
   const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
   const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
     layerId,

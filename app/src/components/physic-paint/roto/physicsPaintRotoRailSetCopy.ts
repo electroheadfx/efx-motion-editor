@@ -455,6 +455,9 @@ function buildDuplicatedLoopClip(
     sourceKeyIds: Object.freeze([...sourceKeyIds]),
     repeat: repeatOverride ?? clip.repeat,
     mode: clip.mode,
+    // 52-05 (G-52-4): a copied reveal rail stays a reveal rail — railKind is a
+    // canonical fingerprint term and must ride the duplicate.
+    ...(clip.railKind !== undefined ? { railKind: clip.railKind } : {}),
     ...(clip.scriptId !== undefined
       ? {
           scriptId: clip.scriptId,

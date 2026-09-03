@@ -1088,6 +1088,57 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     test.coordinator.cancelPhysicalEdit('disposal');
   });
 
+  it('round-trips railKind + the stamped lifecycle through the staged payload — the bridge canonical re-verification contract (G-52-4)', async () => {
+    const test = harness();
+    // A reveal rail exactly as createRevealRail stamps it (52-05): full 43-06
+    // lifecycle + railKind. The payload clone MUST round-trip every fingerprint
+    // term or the parent's canonical re-verification rejects EVERY physical edit
+    // on the track (paste/drag/spacing all fail with a document-mismatch).
+    const revealClip: PhysicPaintRotoLoopClip = {
+      loopId: 'R1',
+      placementStart: 12,
+      sourceKeyIds: ['RA', 'RB'],
+      repeat: 1,
+      mode: 'progressive',
+      railKind: 'reveal',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 12,
+      originalEndExclusive: 14,
+      visibleRanges: [{ start: 12, endExclusive: 14 }],
+      frameOverrides: [],
+    };
+    const records = [record('A', 0), record('B', 4), record('C', 8), record('RA', 12), record('RB', 13)];
+    const interpolationOn = { enabled: true as const, mode: 'duplicate' as const };
+    const doc = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation: interpolationOn,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 6,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolationOn, [revealClip], [], []),
+      loopClips: [revealClip],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(doc);
+
+    // Painting a new key AFTER the reveal rail is the G-52-4a path: the paste
+    // must stage with the reveal clip intact.
+    expect(await test.executePasteKey(6)).toBe(true);
+    const payloadClips = test.getPayload()?.loopClips ?? [];
+    expect(payloadClips).toHaveLength(1);
+    expect(payloadClips[0]!.railKind).toBe('reveal');
+    // The exact bridge comparison (validateCanonical*): proposed ≡ canonical.
+    expect(payloadClips[0]).toEqual(doc.loopClips[0]);
+    test.coordinator.cancelPhysicalEdit('disposal');
+  });
+
   it('publishes an accepted empty segment only at settlement and reconciles its retained frame', async () => {
     const test = harness();
     const beforeRecords = test.getRecords();
