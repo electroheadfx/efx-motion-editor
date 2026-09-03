@@ -76,6 +76,7 @@ import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPa
 import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { getPhysicsPaintWorkingSize } from '../components/physic-paint/engine/physicsPaintCanvasSizing';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -1281,7 +1282,15 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   const verdict = _resolveReferenceSourceImage(document, input.canonicalStart);
   if (verdict === null) return { ok: false, error: 'missing reference source' };
 
-  const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+  // The bake renders at the WORKING canvas size — the same size authority as
+  // the PlayScript path (Studio `getSize` port) — because script strokes live
+  // in working coordinates. Rendering at project size squashes coverage into
+  // the up-left quadrant and makes the reference mask sample the wrong region
+  // (G-52-2a). The project→working zoom rides with the reference so the mask
+  // composite reproduces the ghost draw math exactly.
+  const projectSize = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+  const size = getPhysicsPaintWorkingSize(projectSize.width, projectSize.height);
+  const referenceZoom = size.width / projectSize.width;
   let staged;
   try {
     staged = await renderRotoRevealFrames({
@@ -1291,7 +1300,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       motion: input.motion,
       mode: input.mode,
       size,
-      reference: { dataUrl: verdict.dataUrl, transform: track.transform },
+      reference: { dataUrl: verdict.dataUrl, transform: track.transform, zoom: referenceZoom },
       signal: input.signal,
       onProgress: input.onProgress,
     });

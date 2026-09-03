@@ -127,6 +127,10 @@ export interface PhysicsPaintPhotoReferenceController {
   revealScriptId: Signal<string | null>;
   /** The creation-time variant (D-26) — fixed at creation, never changes after (D-21). */
   revealVariant: Signal<RevealRailVariant>;
+  /** The span start — the playhead frame snapshotted when the surface opens (D-20, G-52-2c). */
+  revealSpanStart: Signal<number>;
+  /** The span length — editable, defaults to the script's natural duration (G-52-2c). */
+  revealFrameCount: Signal<number>;
   /** The bake onProgress bar (completed/total) — creation IS the first bake (D-11). */
   revealProgress: Signal<{ completed: number; total: number } | null>;
   /** True while the create+bake mutation is running. */
@@ -139,6 +143,8 @@ export interface PhysicsPaintPhotoReferenceController {
   selectRevealScript: (scriptId: string) => void;
   /** Set the creation-time variant (D-26). */
   setRevealVariant: (variant: RevealRailVariant) => void;
+  /** Set the editable span length (G-52-2c) — validated at creation time. */
+  setRevealFrameCount: (frames: number) => void;
   /** Create the reveal rail on the current track AND bake it in one action (D-11). */
   createRevealRail: () => Promise<void>;
   /** Close the reveal-creation surface without creating. */
@@ -246,6 +252,12 @@ export function usePhysicsPaintPhotoReferenceController({
   const revealCreationOpen = useSignal(revealCreationRequested);
   const revealScriptId = useSignal<string | null>(null);
   const revealVariant = useSignal<RevealRailVariant>('progressive');
+  // G-52-2c: the span is visible and editable at creation. The start is the
+  // playhead frame snapshotted when the surface opens (D-20); the length
+  // defaults to the selected script's natural duration and is re-defaulted on
+  // each script pick so the user always sees what will bake.
+  const revealSpanStart = useSignal(0);
+  const revealFrameCount = useSignal(DEFAULT_REVEAL_FRAME_COUNT);
   const revealProgress = useSignal<{ completed: number; total: number } | null>(null);
   const revealBusy = useSignal(false);
   const revealError = useSignal<string | null>(null);
@@ -256,17 +268,26 @@ export function usePhysicsPaintPhotoReferenceController({
     revealCreationOpen.value = true;
     revealError.value = null;
     revealProgress.value = null;
+    revealSpanStart.value = getCurrentFrame();
+    const selected = revealScriptId.value;
+    revealFrameCount.value = (selected ? getScriptNaturalDuration(selected) : null) ?? DEFAULT_REVEAL_FRAME_COUNT;
   };
 
   const selectRevealScript = (scriptId: string) => {
     if (revealBusy.value) return;
     revealScriptId.value = scriptId;
     revealError.value = null;
+    revealFrameCount.value = getScriptNaturalDuration(scriptId) ?? DEFAULT_REVEAL_FRAME_COUNT;
   };
 
   const setRevealVariant = (variant: RevealRailVariant) => {
     if (revealBusy.value) return;
     revealVariant.value = variant;
+  };
+
+  const setRevealFrameCount = (frames: number) => {
+    if (revealBusy.value) return;
+    revealFrameCount.value = frames;
   };
 
   const createRevealRail = async () => {
@@ -275,8 +296,12 @@ export function usePhysicsPaintPhotoReferenceController({
     if (!scriptId) return;
     const trackId = getActiveTrackId(layerId);
     if (!trackId) return;
-    const startFrame = getCurrentFrame();
-    const frameCount = getScriptNaturalDuration(scriptId) ?? DEFAULT_REVEAL_FRAME_COUNT;
+    const startFrame = revealSpanStart.value;
+    const frameCount = revealFrameCount.value;
+    if (!Number.isInteger(frameCount) || frameCount < 1) {
+      revealError.value = mapRevealRejectionReason('invalid-span');
+      return;
+    }
     revealBusy.value = true;
     revealError.value = null;
     revealProgress.value = null;
@@ -326,12 +351,15 @@ export function usePhysicsPaintPhotoReferenceController({
     revealCreationOpen,
     revealScriptId,
     revealVariant,
+    revealSpanStart,
+    revealFrameCount,
     revealProgress,
     revealBusy,
     revealError,
     openRevealCreation,
     selectRevealScript,
     setRevealVariant,
+    setRevealFrameCount,
     createRevealRail,
     cancelRevealCreation,
   };

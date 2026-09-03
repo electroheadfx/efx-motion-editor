@@ -527,6 +527,46 @@ describe('usePhysicsPaintPhotoReferenceController reveal-creation flow (52-04, D
     expect(controller.revealScriptId.value).toBeNull();
     expect(harness.createReveal).not.toHaveBeenCalled();
   });
+
+  it('surfaces the span at creation: playhead start snapshot + natural-duration default (G-52-2c)', () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    // The start is the playhead frame snapshotted at open (D-20).
+    expect(controller.revealSpanStart.value).toBe(4);
+    // No script picked yet: the length falls back to the default (3).
+    expect(controller.revealFrameCount.value).toBe(3);
+    // Picking a script re-defaults the length to its natural duration.
+    controller.selectRevealScript('script-a');
+    expect(controller.revealFrameCount.value).toBe(2);
+  });
+
+  it('createRevealRail uses the user-edited span length (G-52-2c)', async () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-a');
+    controller.setRevealFrameCount(7);
+    await controller.createRevealRail();
+    const [, input] = harness.createReveal.mock.calls[0] as [string, RevealCreateInput];
+    expect(input.startFrame).toBe(4);
+    expect(input.frameCount).toBe(7);
+  });
+
+  it('createRevealRail rejects a non-positive or non-integer span length without calling the mutation (G-52-2c)', async () => {
+    const harness = createHarness(makeTrack());
+    const controller = harness.render();
+    controller.openRevealCreation();
+    controller.selectRevealScript('script-a');
+    controller.setRevealFrameCount(0);
+    await controller.createRevealRail();
+    expect(harness.createReveal).not.toHaveBeenCalled();
+    expect(controller.revealError.value).toBe('Reveal unavailable — invalid span.');
+    controller.setRevealFrameCount(2.5);
+    await controller.createRevealRail();
+    expect(harness.createReveal).not.toHaveBeenCalled();
+    expect(controller.revealError.value).toBe('Reveal unavailable — invalid span.');
+  });
 });
 
 describe('PhysicsPaintPhotoReferenceDialog reveal-creation surface (52-04, D-16/D-19)', () => {

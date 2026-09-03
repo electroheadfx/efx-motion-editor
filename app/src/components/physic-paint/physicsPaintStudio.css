@@ -3874,6 +3874,13 @@ button.destructive {
   pointer-events: none;
 }
 
+/* G-52-2b: the base 252px card is the approved 50-UAT mockup — only the
+   reveal-creation surface widens the dialog so the script picker, variant
+   buttons, span row, and Create/Cancel fit without squashing or wrapping. */
+.physics-paint-photo-reference-surface.physics-paint-photo-reference-surface-reveal {
+  width: 344px;
+}
+
 .physics-paint-photo-reference-header {
   display: flex;
   flex: 0 0 auto;
@@ -4341,12 +4348,14 @@ button.destructive {
 .physics-paint-photo-reference-reveal-variant {
   flex: 1 1 0;
   height: 26px;
+  padding: 0 6px;
   border: 1px solid #3a4652;
   border-radius: 6px;
   background: #232d38;
   color: #c6cfd8;
   font-size: 10px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -4363,6 +4372,35 @@ button.destructive {
 .physics-paint-photo-reference-reveal-variant:focus-visible {
   outline: 2px solid #10b981;
   outline-offset: 1px;
+}
+
+/* G-52-2c: the span row — editable frame count plus the "from F{n}" start hint. */
+.physics-paint-photo-reference-reveal-span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.physics-paint-photo-reference-reveal-span input {
+  width: 64px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #232d38;
+  color: #eceff2;
+  font-size: 11px;
+}
+
+.physics-paint-photo-reference-reveal-span input:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-reveal-span-hint {
+  color: #7e8894;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .physics-paint-photo-reference-reveal-progress {

@@ -146,8 +146,12 @@ export function PhysicsPaintPhotoReferenceDialog({
     previewOpacityPercent, transformLocked, visibleInStudio, sourceCount, filenames, hasSource,
     previewOpacity, commitOpacity, toggleTransformLocked, toggleVisible, removeReference,
     revealCreationOpen, revealScriptId, revealVariant, revealProgress, revealBusy, revealError,
-    revealScriptRows, openRevealCreation, selectRevealScript, setRevealVariant, createRevealRail, cancelRevealCreation,
+    revealSpanStart, revealFrameCount,
+    revealScriptRows, openRevealCreation, selectRevealScript, setRevealVariant, setRevealFrameCount, createRevealRail, cancelRevealCreation,
   } = controller;
+
+  // G-52-2c: Create stays disabled until the span length is a positive integer.
+  const revealFrameCountValid = Number.isInteger(revealFrameCount.value) && revealFrameCount.value >= 1;
 
   return (
     <div
@@ -162,7 +166,7 @@ export function PhysicsPaintPhotoReferenceDialog({
         }
       }}
     >
-      <div ref={surfaceRef} class="physics-paint-photo-reference-surface" tabIndex={-1}>
+      <div ref={surfaceRef} class={`physics-paint-photo-reference-surface${revealCreationOpen.value ? ' physics-paint-photo-reference-surface-reveal' : ''}`} tabIndex={-1}>
         <div
           class="physics-paint-photo-reference-header"
           onPointerDown={onHeaderPointerDown}
@@ -345,6 +349,23 @@ export function PhysicsPaintPhotoReferenceDialog({
                   );
                 })}
               </div>
+              {/* G-52-2c: the span is visible and editable at creation — the
+                  length defaults to the script's natural duration, the start is
+                  the playhead snapshot shown as "from F{n}". */}
+              <div class="physics-paint-photo-reference-reveal-span">
+                <label class="physics-paint-photo-reference-label" for="physics-photo-reference-reveal-frames">Frames</label>
+                <input
+                  id="physics-photo-reference-reveal-frames"
+                  type="number"
+                  min={1}
+                  step={1}
+                  aria-label="Reveal span length in frames"
+                  value={revealFrameCount.value}
+                  disabled={revealBusy.value}
+                  onInput={(event) => setRevealFrameCount(Number((event.currentTarget as HTMLInputElement).value))}
+                />
+                <span class="physics-paint-photo-reference-reveal-span-hint">from F{revealSpanStart.value}</span>
+              </div>
               {revealProgress.value ? (
                 <div class="physics-paint-photo-reference-reveal-progress">
                   <progress max={revealProgress.value.total} value={revealProgress.value.completed}>
@@ -361,7 +382,7 @@ export function PhysicsPaintPhotoReferenceDialog({
                   type="button"
                   class="physics-paint-photo-reference-reveal-create"
                   aria-label="Create reveal rail"
-                  disabled={revealScriptId.value === null || revealBusy.value}
+                  disabled={revealScriptId.value === null || revealBusy.value || !revealFrameCountValid}
                   onClick={() => { void createRevealRail(); }}
                 >
                   {revealBusy.value ? 'Baking…' : 'Create'}

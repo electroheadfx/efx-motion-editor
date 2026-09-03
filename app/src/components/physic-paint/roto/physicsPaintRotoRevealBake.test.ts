@@ -21,7 +21,7 @@ type MaskOp =
   | { type: 'translate'; x: number; y: number }
   | { type: 'rotate'; radians: number }
   | { type: 'scale'; x: number; y: number }
-  | { type: 'drawImage'; source: string; globalAlpha: number; globalCompositeOperation: string }
+  | { type: 'drawImage'; source: string; args: number[]; globalAlpha: number; globalCompositeOperation: string }
   | { type: 'setComposite'; op: string };
 
 const harness = vi.hoisted(() => ({
@@ -82,11 +82,11 @@ class RecordingContext {
   translate(x: number, y: number): void { this.ops.push({ type: 'translate', x, y }); }
   rotate(radians: number): void { this.ops.push({ type: 'rotate', radians }); }
   scale(x: number, y: number): void { this.ops.push({ type: 'scale', x, y }); }
-  drawImage(source?: unknown, ..._args: number[]): void {
+  drawImage(source?: unknown, ...args: number[]): void {
     const sourceLabel = source !== null && typeof source === 'object' && 'src' in source
       ? String((source as { src: unknown }).src)
       : 'canvas';
-    this.ops.push({ type: 'drawImage', source: sourceLabel, globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
+    this.ops.push({ type: 'drawImage', source: sourceLabel, args, globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
   }
 }
 
@@ -121,7 +121,7 @@ function input(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}
     motion: { deformation: 0, position: 0 },
     mode: 'progressive',
     size: { width: 10, height: 10 },
-    reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 } },
+    reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
     signal: new AbortController().signal,
     ...extra,
   };
@@ -203,10 +203,10 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
 
   it('draws the reference AS PLACED at full opacity, then applies the coverage alpha as destination-in (D-14/D-17/D-18)', async () => {
     await renderRotoRevealFrames(input({
-      reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 } },
+      reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
     }));
     const ops = harness.maskOps;
-    // The reference draw: save → translate(center + x, center + y) → rotate → scale → drawImage(ref, full alpha) → restore
+    // The reference draw: save → translate(center + x·zoom, center + y·zoom) → rotate → scale → drawImage(ref, full alpha) → restore
     const referenceDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,ref');
     expect(referenceDraw).toBeGreaterThan(-1);
     const draw = ops[referenceDraw] as Extract<MaskOp, { type: 'drawImage' }>;
@@ -224,6 +224,19 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
     expect(rotate.radians).toBeCloseTo((45 * Math.PI) / 180);
     const scale = ops.find((op) => op.type === 'scale') as Extract<MaskOp, { type: 'scale' }>;
     expect(scale).toEqual({ type: 'scale', x: 1.5, y: 0.5 });
+  });
+
+  it('scales the reference draw by zoom — the ghost math — so baked keys overlay the ghost (G-52-2a)', async () => {
+    // Working size 10×10 with zoom 0.5 (a 20×20 project): the reference image
+    // (4×3) draws at 2×1.5 and the transform translation scales by zoom.
+    await renderRotoRevealFrames(input({
+      reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 2, y: 3, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 0.5 },
+    }));
+    const ops = harness.maskOps;
+    const translate = ops.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
+    expect(translate).toEqual({ type: 'translate', x: 5 + 2 * 0.5, y: 5 + 3 * 0.5 });
+    const referenceDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,ref') as Extract<MaskOp, { type: 'drawImage' }>;
+    expect(referenceDraw.args).toEqual([-1, -0.75, 2, 1.5]);
   });
 
   it('is deterministic: the same script + reference + motion produce identical staged output', async () => {

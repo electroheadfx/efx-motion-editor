@@ -215,6 +215,23 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('bakes at the WORKING canvas size with the project→working zoom, matching the PlayScript size authority (G-52-2a)', async () => {
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 1920, height: 1080 }));
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+
+    await createRail(layerId);
+    // Script strokes live in working coordinates: the bake must render at
+    // getPhysicsPaintWorkingSize(1920×1080) = 1000×563 — never the project
+    // size — and hand the mask composite the ghost zoom (1000/1920).
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
+      size: { width: 1000, height: 563 },
+      reference: expect.objectContaining({ zoom: 1000 / 1920 }),
+    }));
+  });
+
   it('undo restores the pre-rail document by reference (RVL-06)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));

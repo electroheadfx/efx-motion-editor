@@ -51,6 +51,8 @@ export interface RotoRevealRenderInput {
   reference: Readonly<{
     dataUrl: string;
     transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>;
+    /** Project→working scale (working size / project size) — the ghost draw's `zoom`. */
+    zoom: number;
   }>;
   signal: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
@@ -116,7 +118,7 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
       try {
         scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes);
         throwIfAborted(input.signal);
-        masked = compositeRevealMask(referenceImage, scriptAlpha, input.size, input.reference.transform);
+        masked = compositeRevealMask(referenceImage, scriptAlpha, input.size, input.reference.transform, input.reference.zoom);
         throwIfAborted(input.signal);
         const encoded = await encodeRotoFrameFromCanvas(masked, destination, input.size);
         throwIfAborted(input.signal);
@@ -150,12 +152,18 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
  * pixels where coverage is non-zero and transparency elsewhere, straight-alpha
  * encoded (Pitfall 1: `destination-in` keeps the destination RGB unmodified, so
  * semi-transparent edge pixels are NOT premultiplied).
+ *
+ * The draw reproduces the reference ghost math (PhysicsPaintReferenceGhost)
+ * exactly, so baked keys overlay the ghost pixel-perfectly: image and
+ * transform translation are scaled by `zoom` (the project→working scale,
+ * G-52-2a) while the bake canvas and coverage alpha live at working size.
  */
 function compositeRevealMask(
   referenceImage: HTMLImageElement,
   scriptAlphaCanvas: HTMLCanvasElement,
   size: Readonly<{ width: number; height: number }>,
   transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
+  zoom: number,
 ): HTMLCanvasElement {
   const output = document.createElement('canvas');
   output.width = size.width;
@@ -164,11 +172,11 @@ function compositeRevealMask(
   if (!context) throw new Error('Could not composite reveal mask: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);
-  const w = referenceImage.width;
-  const h = referenceImage.height;
+  const w = referenceImage.width * zoom;
+  const h = referenceImage.height * zoom;
   context.save();
   context.globalAlpha = 1;
-  context.translate(size.width / 2 + transform.x, size.height / 2 + transform.y);
+  context.translate(size.width / 2 + transform.x * zoom, size.height / 2 + transform.y * zoom);
   context.rotate((transform.rotation * Math.PI) / 180);
   context.scale(transform.scaleX, transform.scaleY);
   context.drawImage(referenceImage, -w / 2, -h / 2, w, h);
