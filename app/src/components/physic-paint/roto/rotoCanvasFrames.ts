@@ -14,12 +14,17 @@ export type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<Physi
 const ROTO_PNG_DATA_URL_HEADER = 'data:image/png;base64';
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 
+// G-52-7: 40 base64 chars decode to 30 bytes — enough for the 8-byte PNG
+// signature even with stray whitespace. Reveal-baked photo keys carry multi-MB
+// bodies; atob over the full payload here was O(payload) per validation call.
+const ROTO_PNG_SIGNATURE_PROBE_CHARS = 40;
+
 export function isRotoPngDataUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const commaIndex = value.indexOf(',');
   if (commaIndex < 0 || value.slice(0, commaIndex).toLowerCase() !== ROTO_PNG_DATA_URL_HEADER) return false;
   try {
-    const decoded = atob(value.slice(commaIndex + 1).replace(/\s/g, ''));
+    const decoded = atob(value.slice(commaIndex + 1, commaIndex + 1 + ROTO_PNG_SIGNATURE_PROBE_CHARS).replace(/\s/g, ''));
     return decoded.length >= PNG_SIGNATURE.length
       && PNG_SIGNATURE.every((byte, index) => decoded.charCodeAt(index) === byte);
   } catch {
@@ -37,15 +42,9 @@ export async function registerRotoAlphaCanvasFrameFromDataUrl(
   }
   if (hasRotoAlphaCanvasFrame(dataUrl, expectedSize)) return;
 
-  const image = new Image();
+  const decoded = await decodeRotoPngOffMainThread(dataUrl);
   try {
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error('Canonical Roto PNG could not be decoded.'));
-      image.src = dataUrl;
-    });
-    const width = image.naturalWidth;
-    const height = image.naturalHeight;
+    const { width, height } = decoded;
     if (width <= 0 || height <= 0) throw new Error('Canonical Roto PNG decoded with invalid dimensions.');
     if (expectedSize && (width !== expectedSize.width || height !== expectedSize.height)) {
       throw new Error('Canonical Roto PNG dimensions do not match its physical payload.');
@@ -55,12 +54,67 @@ export async function registerRotoAlphaCanvasFrameFromDataUrl(
     canvas.height = expectedSize?.height ?? height;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Canonical Roto PNG canvas is unavailable.');
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
     registerRotoAlphaCanvasFrame(dataUrl, canvas);
   } finally {
+    decoded.release();
+  }
+}
+
+interface DecodedRotoPng {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
+}
+
+// G-52-7: in WebKit an Image's onload for a data: URL fires BEFORE the PNG is
+// decoded — the decode then happens synchronously on the main thread at the
+// first drawImage, so the Promise.allSettled fan-out in
+// prepareRotoPhysicalRealKeyPngs parallelized only the waits while 15+
+// photo-weight decodes serialized (~10s at launch hydration). createImageBitmap
+// decodes off the main thread, making the existing fan-out truly parallel. The
+// Image fallback forces the same async decode via img.decode() before any draw.
+async function decodeRotoPngOffMainThread(dataUrl: string): Promise<DecodedRotoPng> {
+  const blob = rotoPngDataUrlToBlob(dataUrl);
+  if (blob && typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() };
+    } catch {
+      // Fall through to the forced-decode Image path.
+    }
+  }
+  const image = new Image();
+  const release = (): void => {
     image.onload = null;
     image.onerror = null;
     image.src = '';
+  };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Canonical Roto PNG could not be decoded.'));
+      image.src = dataUrl;
+    });
+    await image.decode();
+    return { source: image, width: image.naturalWidth, height: image.naturalHeight, release };
+  } catch {
+    release();
+    throw new Error('Canonical Roto PNG could not be decoded.');
+  }
+}
+
+function rotoPngDataUrlToBlob(dataUrl: string): Blob | null {
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex < 0) return null;
+  try {
+    const binary = atob(dataUrl.slice(commaIndex + 1).replace(/\s/g, ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: 'image/png' });
+  } catch {
+    return null;
   }
 }
 

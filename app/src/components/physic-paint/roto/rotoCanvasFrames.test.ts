@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
-import { addOccupiedRotoFrame, buildBlankRotoFrame, drawCanvasAtSize, encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
+import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
+import { addOccupiedRotoFrame, buildBlankRotoFrame, drawCanvasAtSize, encodeRotoFrameFromCanvas, isRotoPngDataUrl, registerRotoAlphaCanvasFrameFromDataUrl } from './rotoCanvasFrames';
 
 vi.mock('../../../stores/physicPaintStore', () => ({
+  hasRotoAlphaCanvasFrame: vi.fn(() => false),
   registerRotoAlphaCanvasFrame: vi.fn(),
 }));
 
@@ -108,5 +109,132 @@ describe('rotoCanvasFrames', () => {
       height: 180,
     });
     expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(frame.dataUrl, canvas);
+  });
+});
+
+// G-52-7: launch hydration must decode canonical PNGs OFF the main thread —
+// in WebKit, Image.onload for a data: URL fires before decode, so the decode
+// serialized at the first drawImage (~10s for 15 photo-weight reveal keys).
+const PNG_1X1_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+describe('registerRotoAlphaCanvasFrameFromDataUrl (G-52-7)', () => {
+  const originalDocument = globalThis.document;
+  let createdCanvases: TestCanvas[];
+
+  beforeEach(() => {
+    createdCanvases = [];
+    vi.stubGlobal('document', {
+      createElement: (tagName: string) => {
+        if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
+        const canvas = new TestCanvas();
+        createdCanvases.push(canvas);
+        return canvas as unknown as HTMLElement;
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.stubGlobal('document', originalDocument);
+  });
+
+  it('decodes via createImageBitmap, draws the bitmap, and closes it', async () => {
+    const bitmap = { width: 4, height: 2, close: vi.fn() };
+    const createImageBitmapSpy = vi.fn().mockResolvedValue(bitmap);
+    vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
+    vi.stubGlobal('Image', class {
+      constructor() { throw new Error('Image must not be constructed when createImageBitmap succeeds.'); }
+    });
+
+    await registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL, { width: 4, height: 2 });
+
+    expect(createImageBitmapSpy).toHaveBeenCalledTimes(1);
+    expect(createImageBitmapSpy.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
+    const canvas = createdCanvases[0];
+    expect(canvas.width).toBe(4);
+    expect(canvas.height).toBe(2);
+    expect(canvas.drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 4, 2);
+    expect(bitmap.close).toHaveBeenCalledTimes(1);
+    expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(PNG_1X1_DATA_URL, canvas);
+  });
+
+  it('falls back to a forced Image decode and never draws an undecoded image', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('bitmap unsupported')));
+    let resolveDecode!: () => void;
+    const constructed: TestImage[] = [];
+    class TestImage {
+      naturalWidth = 4;
+      naturalHeight = 2;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      decode = vi.fn(() => new Promise<void>((resolve) => { resolveDecode = resolve; }));
+      #src = '';
+      constructor() { constructed.push(this); }
+      get src(): string { return this.#src; }
+      set src(value: string) {
+        this.#src = value;
+        if (value) queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal('Image', TestImage);
+
+    const pending = registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL, { width: 4, height: 2 });
+    await vi.waitFor(() => expect(constructed[0]?.decode).toHaveBeenCalled());
+    // decode() still pending: the canvas must not exist, nothing drawn.
+    expect(createdCanvases).toHaveLength(0);
+    resolveDecode();
+    await pending;
+
+    const canvas = createdCanvases[0];
+    expect(canvas.drawImage).toHaveBeenCalledTimes(1);
+    expect(constructed[0]?.decode.mock.invocationCallOrder[0]).toBeLessThan(canvas.drawImage.mock.invocationCallOrder[0]);
+    expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(PNG_1X1_DATA_URL, canvas);
+  });
+
+  it('throws the canonical decode error when both decode paths fail', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('bitmap unsupported')));
+    class BrokenImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      decode = vi.fn().mockResolvedValue(undefined);
+      #src = '';
+      get src(): string { return this.#src; }
+      set src(value: string) {
+        this.#src = value;
+        if (value) queueMicrotask(() => this.onerror?.());
+      }
+    }
+    vi.stubGlobal('Image', BrokenImage);
+
+    await expect(registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL)).rejects.toThrow('Canonical Roto PNG could not be decoded.');
+    expect(registerRotoAlphaCanvasFrame).not.toHaveBeenCalled();
+  });
+
+  it('skips decoding entirely when the alpha canvas is already registered', async () => {
+    vi.mocked(hasRotoAlphaCanvasFrame).mockReturnValueOnce(true);
+    const createImageBitmapSpy = vi.fn();
+    vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
+
+    await registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL, { width: 4, height: 2 });
+
+    expect(createImageBitmapSpy).not.toHaveBeenCalled();
+    expect(registerRotoAlphaCanvasFrame).not.toHaveBeenCalled();
+  });
+});
+
+describe('isRotoPngDataUrl signature probe (G-52-7)', () => {
+  it('checks the PNG signature without decoding the full base64 body', () => {
+    // A body with invalid base64 beyond the 40-char probe window would throw
+    // under the old full-body atob; the probe must never touch it.
+    const probed = 'data:image/png;base64,iVBORw0KGgo' + 'QUJD'.repeat(20) + '####';
+    expect(isRotoPngDataUrl(probed)).toBe(true);
+  });
+
+  it('still rejects a non-PNG signature and invalid base64 inside the probe window', () => {
+    expect(isRotoPngDataUrl('data:image/png;base64,QUJDREVGR0hJS0tM' + 'iVBORw0KGgo'.repeat(8))).toBe(false);
+    expect(isRotoPngDataUrl('data:image/png;base64,####')).toBe(false);
+    expect(isRotoPngDataUrl('data:image/jpeg;base64,iVBORw0KGgo')).toBe(false);
+    expect(isRotoPngDataUrl('not-a-data-url')).toBe(false);
   });
 });
