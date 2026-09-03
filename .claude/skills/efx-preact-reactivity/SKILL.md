@@ -1,6 +1,6 @@
 ---
 name: efx-preact-reactivity
-description: Mandatory reactivity and rendering discipline for ALL Preact code in EFX Motion Editor (components, hooks, effects, stores, @preact/signals). Use whenever writing or reviewing Preact code — useState, useEffect, useMemo, useCallback, custom hooks, signal(), computed(), effect(), store setters, version/revision signals — and whenever diagnosing re-render storms, idle CPU/memory growth, WKWebView OOM kills, black windows, or performance regressions. Prevents effect/signal feedback loops like the one that OOM-killed the Physic Paint window.
+description: Mandatory reactivity and rendering discipline for ALL Preact code in EFX Motion Editor (components, hooks, effects, stores, @preact/signals). Use whenever writing or reviewing Preact code — useState, useEffect, useMemo, useCallback, custom hooks, signal(), computed(), effect(), store setters, version/revision signals — and whenever diagnosing re-render storms, idle CPU/memory growth, WKWebView OOM kills, black windows, image decode storms (new Image / createImageBitmap per draw or per effect), or performance regressions. Prevents effect/signal feedback loops like the one that OOM-killed the Physic Paint window.
 ---
 
 # EFX Preact Reactivity Discipline
@@ -48,7 +48,13 @@ Writes belong to event handlers, effects, or store methods. The only sanctioned 
 
 Any self-rescheduling path (rAF, `setInterval`, self-`setTimeout`, signal `effect` that writes what it reads) must state its stop condition. The engine's `shouldKeepRendering()` idle gate is the model. Note: @preact/signals flushes effects via requestAnimationFrame — an effect loop IS a rAF loop, with full compositing cost on top.
 
-## 8. Preserve existing conventions
+## 8. Never decode images per draw — decode-once, cache by content key
+
+`new Image()` + `img.src = dataUrl` (or `createImageBitmap`) inside a draw path, effect, or frame callback re-decodes the FULL source on every invocation. On a version-clock bump, frame navigation, or scrub, that is one multi-MB main-thread decode per trigger per site — a decode storm that makes every interaction sluggish (timeline, copy, delete, move, paint) without any render loop. **Decode once, cache the decoded image keyed by content identity (dataUrl / source ref + verdict token), and redraw from the cache.** The engine's `previewBaseImageCache` is the reference pattern. Gate decode effects behind the visibility/lock conditions of the surface they serve — never decode for a surface that renders nothing (e.g. hidden or locked overlays). When several surfaces need the same source (ghost + handles + bake), share ONE cache, not one decode site per consumer.
+
+**Why this is a hard rule:** this regression class has shipped twice — each time the symptom was "the whole app is slow" in any project with a placed raster source, and each time the cause was per-draw/per-effect decodes with no cache (Phase 50/52: the reference ghost and the transform-handles size probe each decoded the reference photo on every frame change AND every version bump, the handles even while locked/invisible). Test question for any new image-consuming surface: "scrub 100 frames / bump the version clock 100× — how many decodes?" The only acceptable answer is 0 after the first.
+
+## 9. Preserve existing conventions
 
 Before changing an implementation: inspect nearby components, identify how state is currently managed, reuse existing utilities, don't mix state-management approaches without a clear reason, keep changes proportional. Do not refactor unrelated code just to replace hooks with Signals; when a React-style hook is retained, it needs a clear lifecycle or locality reason.
 
