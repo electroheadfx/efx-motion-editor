@@ -3,7 +3,7 @@ status: testing
 phase: 52-shared-mask-compositor-and-reveal
 source: [52-VERIFICATION.md]
 started: 2026-09-02T19:10:00Z
-updated: 2026-09-04T14:30:00Z
+updated: 2026-09-04T15:30:00Z
 ---
 
 ## Current Test
@@ -29,8 +29,9 @@ expected: Create a reveal rail from the track rail-creation flow (Create rail �
 result: passed
 
 ### 4. Native UAT: reveal rail visual look (RVL-04)
-expected: The reveal rail shows the green-family color (emerald motion / teal static), the 20x4px status dot, and the tooltip freshness line.
+expected: AMENDED (AM-1/AM-2): the reveal rail shows the blue #69BBC8 line (hover #8FCFD9, one color for motion and static), NO in-line lifecycle status dot on any rail (the tooltip "Status:" line and its swatch stay), and the tooltip freshness line.
 result: passed
+note: Passed pre-amendment (green family + status dot); the amended look (blue + no dot) awaits the native re-run of this row.
 
 ### 5. Reference guard — reveal creation without a placed reference (D-12)
 expected: With NO photo reference placed, entering the Reveal Photo Rail tab (or clicking Create Rail there) opens the Photo Reference modal directly so a source can be imported; the Create Rail dialog stays open behind it; after importing, the reveal tab's guard notice is gone and Create Rail bakes.
@@ -150,6 +151,26 @@ blocked: 0
   artifacts: []
   missing: []
   fix_applied: "2026-09-04 — ROOT CAUSE (rides existing machinery): the registry OWNS any canvas registered into it (session-lifetime, exactly like hydration-registered canvases after a reopen — that is precisely what FIX 3 consumes). Removed releaseCanvas(masked) and releaseCanvas(merged) for canvases that were registered; scriptAlpha is still released (never registered). Ownership law documented at registerRotoAlphaCanvasFrame. BELT-AND-BRACES (fail-soft, house style): _preResolveTrackContent's registry-first branch only accepts an entry when its dimensions are non-zero, otherwise falls through to _compositorDecode; hasRotoAlphaCanvasFrame applies the same check so a poisoned entry never blocks a fresh registration via the early-return (rotoCanvasFrames.ts:43). OWNERSHIP AUDIT (every registerRotoAlphaCanvasFrame call site — once registered, no caller may release/resize/mutate): hydration path (rotoCanvasFrames.ts:58) registers a fresh canvas and releases only the decoded bitmap; buildRotoFrameFromCanvas callers (buildBlankRotoFrame, buildRotoOutputFrame — no live callers, useRotoFrameEditingController.ts:87) never mutate after; mergeCachedRotoAlphaFrame and the live-pixel capture path (useRotoFramePersistenceCoordinator.ts:464, a copyLiveAlphaCanvas copy) never mutate after; restoreLayer re-registers snapshot-owned canvases. SECONDARY HARDENING: confirmReveal now wraps await ports.createReveal in try/catch (mirroring confirmGeneration's guarded structure) — a rejection lands in phase 'failed' with the error message (a closeable state), instead of leaving phase stuck at 'rendering' while closeConfirmation refuses to close during a busy phase (an unclosable-by-design dialog). Regression coverage (+5 tests, full suite 3406 passed + tsc clean): physicsPaintRotoRegistryOwnership.test.ts (NEW — real encodeRotoFrameFromCanvas into the REAL registry, only engine/schedules mocked) pins the lifecycle: after renderRotoRevealFrames AND renderRotoPlayScriptFrames complete, every baked dataUrl's registry canvas is alive at full size (a register-then-release fails this at any guard state), and scriptAlpha is still released; physicPaintStore.test.ts — the registry-first branch skips a zero-size entry and falls back to _compositorDecode (the composite draws the decoded image, never the poisoned canvas), and hasRotoAlphaCanvasFrame treats a zero-size entry as absent so a fresh registration can overwrite it; physicsPaintRotoPlayScriptRenderer.test.ts cleanup assertions re-pinned to the ownership law (scriptAlpha released on all failure paths, merged never released); physicsPaintRotoRevealBake.test.ts re-pinned (coverage canvas released, registry-owned mask canvas alive at 10x10). NATIVE UAT (user, ALL IN THE SAME SESSION — no reopen, that is the poisoned state): (1) create a reveal rail → the dialog closes automatically, the rail is on the timeline; (2) immediately scrub the new rail in the Studio monitor + main-editor stage → fluid, zero console errors; (3) create a paint PlayScript rail → dialog closes, scrub it too; (4) then reopen the project and re-scrub (hydration path) → still clean; (5) resume the pending T1-T6 rows afterwards. NATIVE UAT PASSED 2026-09-04 (user-verified live): all five same-session steps — the dialog closes automatically after reveal creation, same-session scrub is fluid in the Studio monitor + main-editor stage with zero console errors, paint PlayScript rail creation + scrub clean, and the reopen (hydration) path clean."
+
+## Amendments
+
+In-phase UAT amendments requested 2026-09-04 after the full pass (sessions A/B/C) — implemented in commit deb6d3e5, full suite 3414 passed + tsc clean. Each awaits its native re-run before the secure/validate/close chain.
+
+- amendment_id: AM-1
+  truth: "The reveal rail line color is blue #69BBC8 (hover #8FCFD9), one color for motion and static — superseding the D-22 green-family note. The per-rail 43-06 overrideColor mechanism is unchanged."
+  status: implemented
+  scope: "physicsPaintLoopClipPresentation.ts (REVEAL_MOTION_COLOR / REVEAL_STATIC_COLOR / REVEAL_MOTION_HOVER_COLOR / REVEAL_STATIC_HOVER_COLOR + D-22 comments), physicsPaintStudio.css reveal fallbacks + comment, physicsPaintLoopClipPresentation.test.ts re-pinned."
+  awaiting: "T4 native re-run (amended look)."
+- amendment_id: AM-2
+  truth: "No rail renders the in-line lifecycle status dot — the info already lives in the tooltip's 'Status:' line. The lifecycle resolution, the tooltip (including the in-tooltip status swatch), and all rail-kind colors stay."
+  status: implemented
+  scope: "Deleted the dot render in PhysicsPaintLoopClipRail.tsx and PhysicsPaintTrackRow.tsx (plus the now-dead row lifecycle helper/field/imports), the .physics-paint-loop-clip-lifecycle-dot CSS block + 4 variants, and re-pinned the structural tests to the dot's absence (tooltip status-line coverage intact)."
+  awaiting: "T4 native re-run (amended look)."
+- amendment_id: AM-3
+  truth: "The strip's '+ Rail' (Create rail) flow never dead-ends: with NO Action selected in the SCRIPTS library, a floating movable script-picker dialog (Photo Reference family — no backdrop, Studio stays interactive) lists the library Actions (thumbnail + name + natural duration, the Scripts panel row data); a pick sets the library selection and opens the existing Create Rail dialog on the menu-chosen tab/kind (Reveal → Reveal Photo Rail tab); cancelling closes ONLY the picker. With an Action selected the behavior is unchanged. An empty library shows an explanatory empty state (record an Action first), never a dead dialog. The reveal reference guard downstream is untouched."
+  status: implemented
+  scope: "NEW PhysicsPaintScriptPickerDialog.tsx (+ CSS block + 9 contract tests via the .test.tsx.test.ts launcher convention); PhysicsPaintStudio.tsx — scriptPickerIntent signal, selection gate in onCreatePlayScriptRail/onCreateRevealRail, picker props memo (select → open on the menu-chosen tab/kind); PhysicsPaintStudioView.tsx — mount; PhysicsPaintStudio.test.ts — 3 wiring pins + the PropsMemo count 8→9."
+  awaiting: "T2/T3 native re-run (creation flows including the picker: no-selection → picker → pick → dialog on the chosen tab; cancel closes only the picker; empty library → empty state; selection present → unchanged)."
 
 ## Close-out notes
 
