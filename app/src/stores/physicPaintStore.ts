@@ -331,6 +331,9 @@ export interface EfxPaintRuntimeProjection {
 
 const _rotoAlphaCanvasRegistry = new Map<string, HTMLCanvasElement>();
 
+// G-52-10 ownership law: registration ADOPTS the canvas for the session — the
+// compositor's FIX 3 branch draws from it directly, so once registered a caller
+// must never release, resize, or mutate it (same lifetime as hydration entries).
 export function registerRotoAlphaCanvasFrame(dataUrl: string, canvas: HTMLCanvasElement): void {
   if (!dataUrl.startsWith('data:image/png') || canvas.width <= 0 || canvas.height <= 0) return;
   _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
@@ -341,7 +344,9 @@ export function hasRotoAlphaCanvasFrame(
   expectedSize?: { width: number; height: number },
 ): boolean {
   const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
-  if (!canvas) return false;
+  // G-52-10: a zero-size entry (a registered canvas a caller later released or
+  // resized) is treated as absent so a fresh registration can overwrite it.
+  if (!canvas || canvas.width <= 0 || canvas.height <= 0) return false;
   return !expectedSize
     || (canvas.width === expectedSize.width && canvas.height === expectedSize.height);
 }
@@ -1208,7 +1213,12 @@ function _preResolveTrackContent(
     // drawImage of the _compositorDecode Image). The registry canvas is a
     // read-only drawImage source here, same dimensions as the decoded image.
     const registeredCanvas = _rotoAlphaCanvasRegistry.get(dataUrl);
-    if (registeredCanvas) return { kind: 'content', raster: registeredCanvas };
+    // G-52-10: fail-soft — a zero-size entry (a registered canvas a caller
+    // later released) would throw InvalidStateError at drawImage; fall through
+    // to _compositorDecode instead.
+    if (registeredCanvas && registeredCanvas.width > 0 && registeredCanvas.height > 0) {
+      return { kind: 'content', raster: registeredCanvas };
+    }
     const image = _compositorDecode(dataUrl);
     if (!image) return null;
     return { kind: 'content', raster: image };

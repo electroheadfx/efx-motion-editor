@@ -1198,34 +1198,50 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const bakeSignal = abortController.signal;
     ports.stopPlayback();
     phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Baking 0 / ${count}`; error.value = null;
-    const result = await ports.createReveal({
-      layerId: context.layerId,
-      trackId: ports.getActiveTrackId(context.layerId),
-      scriptId: selectedId,
-      variant: mode.peek(),
-      startFrame: start,
-      frameCount: count,
-      repeat: repeatDraft,
-      motion: { ...dialogMotion.peek() },
-      signal: bakeSignal,
-      onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
-    });
-    if (disposed || generation !== acceptedGeneration || bakeSignal.aborted) {
-      if (!disposed) { phase.value = 'cancelled'; progress.value = null; status.value = 'Reveal bake cancelled'; error.value = null; ports.log(status.value); }
+    // G-52-10: a createReveal REJECTION must land in 'failed' (a closeable
+    // state) — propagating it would leave phase stuck at 'rendering' while
+    // closeConfirmation refuses to close during a busy phase.
+    try {
+      const result = await ports.createReveal({
+        layerId: context.layerId,
+        trackId: ports.getActiveTrackId(context.layerId),
+        scriptId: selectedId,
+        variant: mode.peek(),
+        startFrame: start,
+        frameCount: count,
+        repeat: repeatDraft,
+        motion: { ...dialogMotion.peek() },
+        signal: bakeSignal,
+        onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
+      });
+      if (disposed || generation !== acceptedGeneration || bakeSignal.aborted) {
+        if (!disposed) { phase.value = 'cancelled'; progress.value = null; status.value = 'Reveal bake cancelled'; error.value = null; ports.log(status.value); }
+        return false;
+      }
+      abortController = null;
+      if (!result.ok) {
+        phase.value = 'failed'; progress.value = null; status.value = 'Reveal Rail failed'; error.value = result.reason; ports.log(result.reason, true);
+        return false;
+      }
+      const bakedMotion = { ...dialogMotion.peek() };
+      hasSuccessfulGeneration = true;
+      appliedSummaryLine1.value = `${mode.peek() === 'static' ? 'Reveal Static' : 'Reveal Motion'} · Motion ${bakedMotion.deformation}/${bakedMotion.position}`;
+      appliedSummaryLine2.value = `F${start} · Reveal rail baked · Cycle ${count}f × ${repeatDraft === 'infinity' ? '∞' : repeatDraft}`;
+      phase.value = 'complete'; progress.value = { completed: count, total: count };
+      status.value = `Reveal Rail complete · ${count} frames`;
+      confirmationOpen.value = false; ports.log(status.value); return true;
+    } catch (cause) {
+      if (disposed) return false;
+      if (isAbort(cause) || bakeSignal.aborted) {
+        if (generation === acceptedGeneration) { phase.value = 'cancelled'; progress.value = null; status.value = 'Reveal bake cancelled'; error.value = null; ports.log(status.value); }
+        return false;
+      }
+      if (generation === acceptedGeneration) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        phase.value = 'failed'; progress.value = null; status.value = 'Reveal Rail failed'; error.value = message; ports.log(message, true);
+      }
       return false;
-    }
-    abortController = null;
-    if (!result.ok) {
-      phase.value = 'failed'; progress.value = null; status.value = 'Reveal Rail failed'; error.value = result.reason; ports.log(result.reason, true);
-      return false;
-    }
-    const bakedMotion = { ...dialogMotion.peek() };
-    hasSuccessfulGeneration = true;
-    appliedSummaryLine1.value = `${mode.peek() === 'static' ? 'Reveal Static' : 'Reveal Motion'} · Motion ${bakedMotion.deformation}/${bakedMotion.position}`;
-    appliedSummaryLine2.value = `F${start} · Reveal rail baked · Cycle ${count}f × ${repeatDraft === 'infinity' ? '∞' : repeatDraft}`;
-    phase.value = 'complete'; progress.value = { completed: count, total: count };
-    status.value = `Reveal Rail complete · ${count} frames`;
-    confirmationOpen.value = false; ports.log(status.value); return true;
+    } finally { if (generation === acceptedGeneration) abortController = null; }
   }
 
   async function confirmGeneration(): Promise<boolean> {

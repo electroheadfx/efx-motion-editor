@@ -35,6 +35,7 @@ const harness = vi.hoisted(() => ({
   transform: vi.fn(),
   maskOps: [] as MaskOp[],
   referenceImage: null as HTMLImageElement | null,
+  canvases: [] as Array<{ width: number; height: number }>,
 }));
 
 vi.mock('@efxlab/efx-physic-paint', () => ({
@@ -161,8 +162,16 @@ function enableScheduleFlow(): void {
 
 function setupDom(): void {
   harness.maskOps.length = 0;
+  harness.canvases.length = 0;
   vi.stubGlobal('document', {
-    createElement: (tag: string) => (tag === 'canvas' ? new RecordingCanvas(harness.maskOps) : { replaceChildren: vi.fn() }),
+    createElement: (tag: string) => {
+      if (tag === 'canvas') {
+        const created = new RecordingCanvas(harness.maskOps);
+        harness.canvases.push(created);
+        return created;
+      }
+      return { replaceChildren: vi.fn() };
+    },
   });
   vi.stubGlobal('Image', FakeImage);
   vi.stubGlobal('HTMLImageElement', FakeImage);
@@ -248,10 +257,17 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
     expect(second.map((frame) => frame.appFrame)).toEqual(first.map((frame) => frame.appFrame));
   });
 
-  it('releases the temporary coverage and mask canvases after the bake', async () => {
+  it('releases the temporary coverage canvas but keeps the registry-owned mask canvas alive (G-52-10)', async () => {
     await renderRotoRevealFrames(input());
     expect(harness.scriptAlpha?.width).toBe(0);
     expect(harness.scriptAlpha?.height).toBe(0);
+    // The mask canvas is adopted by the alpha-canvas registry inside
+    // encodeRotoFrameFromCanvas — releasing it zeroed the compositor's
+    // drawImage source (the stuck-dialog bug).
+    expect(harness.canvases.length).toBeGreaterThan(0);
+    for (const created of harness.canvases) {
+      expect([created.width, created.height]).toEqual([10, 10]);
+    }
   });
 });
 

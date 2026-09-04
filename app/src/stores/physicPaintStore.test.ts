@@ -5,7 +5,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage, hydrateBackgroundSourceImages } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage, hydrateBackgroundSourceImages } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -1443,6 +1443,21 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [8]).map(frame => frame.appFrame)).toEqual([8]);
   });
 
+  it('G-52-10: hasRotoAlphaCanvasFrame treats a zero-size entry as absent so a fresh registration can overwrite it', () => {
+    const dataUrl = 'data:image/png;base64,cG9pc29uZWQ=';
+    const canvas = { width: 4, height: 3 } as HTMLCanvasElement;
+    registerRotoAlphaCanvasFrame(dataUrl, canvas);
+    expect(hasRotoAlphaCanvasFrame(dataUrl)).toBe(true);
+    expect(hasRotoAlphaCanvasFrame(dataUrl, { width: 4, height: 3 })).toBe(true);
+    // The poison: a caller zeroed the canvas AFTER registration (the G-52-10
+    // bug). The entry must read as absent — otherwise the early-return in
+    // registerRotoAlphaCanvasFrameFromDataUrl would keep the poisoned canvas.
+    canvas.width = 0;
+    canvas.height = 0;
+    expect(hasRotoAlphaCanvasFrame(dataUrl)).toBe(false);
+    expect(hasRotoAlphaCanvasFrame(dataUrl, { width: 4, height: 3 })).toBe(false);
+  });
+
   describe('canonical physical-operation lease registry', () => {
     const physicalDocument = (dataUrl = 'data:image/png;base64,AAAA') => {
       const realKeyRecords = [{
@@ -1840,6 +1855,29 @@ describe('physicPaintStore', () => {
       const composite = record!.raster as unknown as FlatTestCanvas;
       expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
       expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: frameDataUrl }));
+    });
+
+    it('G-52-10: a zero-size registry entry is skipped — the compositor falls back to decoding the dataUrl', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      // The G-52-10 poison shape: a live canvas registered at bake time, zeroed
+      // afterwards by a caller that still thought it owned the canvas. Handing
+      // it to drawImage would throw InvalidStateError — the registry-first
+      // branch must fall through to _compositorDecode instead.
+      const poisoned = new FlatTestCanvas([]);
+      poisoned.width = 4;
+      poisoned.height = 3;
+      registerRotoAlphaCanvasFrame(frameDataUrl, poisoned as unknown as HTMLCanvasElement);
+      poisoned.width = 0;
+      poisoned.height = 0;
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+
+      expect(record).not.toBeNull();
+      const composite = record!.raster as unknown as FlatTestCanvas;
+      expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: frameDataUrl }));
+      expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     });
 
     it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', () => {

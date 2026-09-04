@@ -125,8 +125,10 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
         staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
         input.onProgress?.(frameIndex + 1, input.frameCount);
       } finally {
+        // G-52-10: only scriptAlpha is released — `masked` is adopted by the
+        // alpha-canvas registry inside encodeRotoFrameFromCanvas (same-size
+        // path) and must stay alive as the compositor's drawImage source.
         if (scriptAlpha) releaseCanvas(scriptAlpha);
-        if (masked) releaseCanvas(masked);
       }
       await yieldToBrowser(input.signal);
     }
@@ -256,8 +258,10 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
         staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
         input.onProgress?.(frameIndex + 1, input.frameCount);
       } finally {
+        // G-52-10: only scriptAlpha is released — `merged` is adopted by the
+        // alpha-canvas registry inside encodeRotoFrameFromCanvas (same-size
+        // path) and must stay alive as the compositor's drawImage source.
         if (scriptAlpha) releaseCanvas(scriptAlpha);
-        if (merged) releaseCanvas(merged);
       }
       await yieldToBrowser(input.signal);
     }
