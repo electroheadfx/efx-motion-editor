@@ -1577,6 +1577,51 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
+  // GSD-52: the Loop Clip rail records its focused button through onRailFocus
+  // (mirroring PhysicsPaintKeyRail) so a commit that removes it can restore
+  // focus to the stable timeline container instead of orphaning it to body.
+  it('records the focused rail button through onRailFocus (GSD-52)', () => {
+    const rawLoopId = 'gsd-52-focus-record';
+    const sourceKeyIds = ['source-0', 'source-1'];
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: rawLoopId,
+      placementStart: 0,
+      sourceKeyIds,
+      repeat: 1,
+      mode: 'progressive',
+      scriptId: 'script-walk',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const loopContext = derivePhysicPaintRotoLoopRanges({
+      identities: sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
+      loopClips: [clip],
+      capacity: 12,
+      interpolationEnabled: false,
+    });
+    const presentation = projectPhysicsPaintLoopClipPresentation(loopContext.ranges[0], clip, 'Walk');
+    const presentations = new Map([[rawLoopId, presentation]]);
+    const onRailFocus = vi.fn();
+
+    hooks.reset();
+    const railTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: loopContext.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+      onRailFocus,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    const focused = { closest: () => null };
+    (target.props.onfocusin as (event: { currentTarget: unknown }) => void)({ currentTarget: focused });
+    expect(onRailFocus).toHaveBeenCalledOnce();
+    expect(onRailFocus).toHaveBeenCalledWith(focused);
+  });
+
   it('uses a cyan Static Group Rail theme with visible cuts at both Group endpoints', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'hold-loop',
