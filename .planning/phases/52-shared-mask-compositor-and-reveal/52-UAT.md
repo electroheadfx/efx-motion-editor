@@ -1,18 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 52-shared-mask-compositor-and-reveal
 source: [52-VERIFICATION.md]
 started: 2026-09-02T19:10:00Z
-updated: 2026-09-04T15:30:00Z
+updated: 2026-09-04T19:46:49Z
 ---
 
 ## Current Test
 
-number: 2/4
-name: Amendment re-verification (AM-1 blue rail, AM-2 no in-line status dot, AM-3 Create Rail script picker)
-expected: |
-  T4 with the amended look (blue #69BBC8 reveal rail, no in-line lifecycle status dot — the tooltip Status line stays) and the T2/T3 creation flows including the new script-picker modal when the strip's "+ Rail" is used with no Action selected.
-awaiting: implementation + native re-run
+[testing complete]
 
 ## Tests
 
@@ -41,10 +37,14 @@ result: passed
 expected: On a baked reveal rail: paint and +Key/rail creation work on frames after the rail; a baked key copies and pastes elsewhere; key spacing applies to the rail; the rail drags by its line; the rail deletes. The reveal rail behaves exactly like a motion/static rail.
 result: passed
 
+### 7. Amendment re-verification (AM-1 blue rail, AM-2 no in-line status dot, AM-3 Create Rail script picker)
+expected: T4 with the amended look (blue #69BBC8 reveal rail, no in-line lifecycle status dot — the tooltip Status line stays) and the T2/T3 creation flows including the new script-picker modal when the strip's "+ Rail" is used with no Action selected.
+result: pass
+
 ## Summary
 
-total: 6
-passed: 6
+total: 7
+passed: 7
 issues: 0
 pending: 0
 skipped: 0
@@ -158,19 +158,19 @@ In-phase UAT amendments requested 2026-09-04 after the full pass (sessions A/B/C
 
 - amendment_id: AM-1
   truth: "The reveal rail line color is blue #69BBC8 (hover #8FCFD9), one color for motion and static — superseding the D-22 green-family note. The per-rail 43-06 overrideColor mechanism is unchanged."
-  status: implemented
+  status: passed
   scope: "physicsPaintLoopClipPresentation.ts (REVEAL_MOTION_COLOR / REVEAL_STATIC_COLOR / REVEAL_MOTION_HOVER_COLOR / REVEAL_STATIC_HOVER_COLOR + D-22 comments), physicsPaintStudio.css reveal fallbacks + comment, physicsPaintLoopClipPresentation.test.ts re-pinned."
-  awaiting: "T4 native re-run (amended look)."
+  awaiting: "NATIVE UAT PASSED 2026-09-04 (Test 7 re-run): the reveal rail shows the blue #69BBC8 line (hover #8FCFD9) for both motion and static."
 - amendment_id: AM-2
   truth: "No rail renders the in-line lifecycle status dot — the info already lives in the tooltip's 'Status:' line. The lifecycle resolution, the tooltip (including the in-tooltip status swatch), and all rail-kind colors stay."
-  status: implemented
+  status: passed
   scope: "Deleted the dot render in PhysicsPaintLoopClipRail.tsx and PhysicsPaintTrackRow.tsx (plus the now-dead row lifecycle helper/field/imports), the .physics-paint-loop-clip-lifecycle-dot CSS block + 4 variants, and re-pinned the structural tests to the dot's absence (tooltip status-line coverage intact)."
-  awaiting: "T4 native re-run (amended look)."
+  awaiting: "NATIVE UAT PASSED 2026-09-04 (Test 7 re-run): no in-line lifecycle status dot on any rail; the tooltip Status line and its swatch stay."
 - amendment_id: AM-3
   truth: "The strip's '+ Rail' (Create rail) flow never dead-ends and is ALWAYS visible: clicking a rail kind ALWAYS opens the floating movable script-picker dialog (Photo Reference family — no backdrop, Studio stays interactive), listing the library Actions (thumbnail + name + natural duration, the Scripts panel row data) with the current selection highlighted; a pick sets the library selection and opens the existing Create Rail dialog on the menu-chosen tab/kind (Reveal → Reveal Photo Rail tab); cancelling closes ONLY the picker. When the PlayScript controller is blocked (cursor on a generated frame, unsaved project, busy), the picker STAYS open and shows the reason live (rows disabled) — moving the cursor to a real frame unblocks it in place. An empty library shows an explanatory empty state (record an Action first), never a dead dialog. The reveal reference guard downstream is untouched."
-  status: implemented
+  status: passed
   scope: "NEW PhysicsPaintScriptPickerDialog.tsx (+ CSS block + 13 contract tests via the .test.tsx.test.ts launcher convention); PhysicsPaintStudio.tsx — scriptPickerIntent signal, menu handlers ALWAYS set the intent (no selection gate, revised 2809724b per user instruction), picker props memo (rows + selectedId + blockedReason live from disabledReason minus the no-selection string; onPick keeps the picker open when blocked); PhysicsPaintStudioView.tsx — mount; PhysicsPaintStudio.test.ts — 3 wiring pins + the PropsMemo count 8→9; PhysicsPaintWorkflowStripRailCreate.test.tsx — end-to-end menu interaction pin (button → menu → kind → handler)."
-  awaiting: "T2/T3 native re-run (the full flow: + Rail → kind → picker (selection highlighted) → pick → dialog on the chosen tab; blocked cursor → picker shows the live reason; cancel closes only the picker; empty library → empty state)."
+  awaiting: "NATIVE UAT PASSED 2026-09-04 (Test 7 re-run): the + Rail → kind → script-picker flow opens the dialog on the chosen tab; blocked cursor shows the live reason; cancel closes only the picker."
 
 ## Close-out notes
 
