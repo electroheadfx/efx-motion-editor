@@ -366,6 +366,86 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(1);
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(2);
   });
+
+  it('registers the baked first key as a leading incoming-interpolation break — no generated cells bridge the gap from a prior rail (AM-4)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    // A prior rail's last real key sits BEFORE the new rail's span.
+    const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, TEST_TRACK_ID);
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      layerId,
+      TEST_TRACK_ID,
+      [{ kind: 'real-key', keyId: 'prior-last', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: PNG_1X1, width: 4, height: 3 } }],
+      { enabled: true, mode: 'duplicate' },
+      capacity,
+    );
+    expect(seeded.ok).toBe(true);
+
+    await createRail(layerId, 10, 2);
+    const records = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
+    const bakedFirst = records.find((record) => record.appFrame === 10)!;
+    expect(bakedFirst).toBeDefined();
+    // The baked cycle's FIRST key owns the leading break.
+    const breaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID);
+    expect(breaks).toEqual([bakedFirst.keyId]);
+    // Interpolation is contained within a rail: the strict interior [6..9]
+    // between the prior key (frame 5) and the rail's first key (frame 10)
+    // emits NO generated cells.
+    const projection = physicPaintStore.getRotoPhysicalProjection(layerId, TEST_TRACK_ID)!;
+    expect(projection.generatedCells).toHaveLength(0);
+    expect(projection.cells.filter((cell) => cell.kind === 'generated' && cell.appFrame >= 6 && cell.appFrame <= 9)).toHaveLength(0);
+    // The document projection carries the leading break for undo/redo and persistence.
+    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.incomingInterpolationBreakKeyIds).toEqual([bakedFirst.keyId]);
+  });
+
+  it('re-bakes over the SAME span: the replaced leading break is pruned and exactly one lands on the fresh first key (AM-4)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    const createDescriptor = await createRail(layerId, 10, 2);
+    const loopId = createDescriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
+    const firstBakedId = createDescriptor.after.tracks[0].rotoPhysical!.realKeyRecords
+      .find((record) => record.appFrame === 10)!.keyId;
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual([firstBakedId]);
+
+    // Replay re-bakes the same span with FRESH key identities: without the
+    // prune the replaced leading break would orphan against the new records
+    // and the acknowledged revision check fails closed.
+    const replayResult = await replayRevealRail(layerId, loopId);
+    expect(replayResult.ok).toBe(true);
+    const rebakedFirst = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
+      .find((record) => record.appFrame === 10)!.keyId;
+    expect(rebakedFirst).not.toBe(firstBakedId);
+    const breaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID);
+    expect(breaks).toEqual([rebakedFirst]);
+    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.incomingInterpolationBreakKeyIds).toEqual([rebakedFirst]);
+  });
+
+  it('undo/redo of a reveal rail creation restores the incoming-break collection exactly (AM-4)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    const descriptor = await createRail(layerId, 10, 2);
+    const afterBreaks = descriptor.after.tracks[0].rotoPhysical!.incomingInterpolationBreakKeyIds;
+    expect(afterBreaks).toHaveLength(1);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual(afterBreaks);
+
+    // Undo mirrors the real path (RVL-06 + CR-01): resync the runtime from the
+    // `before` document (no rail, no baked keys, no breaks), then restore it.
+    expect(resyncRuntimeForBackgroundEdit(descriptor, 'undo')).toBe(true);
+    registerDocument(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual([]);
+    expect(getDocument(layerId)!.tracks[0].rotoPhysical).toBeNull();
+
+    // Redo re-applies the created rail: the leading break returns exactly.
+    expect(resyncRuntimeForBackgroundEdit(descriptor, 'redo')).toBe(true);
+    registerDocument(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual(afterBreaks);
+  });
 });
 
 describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06)', () => {

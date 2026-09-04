@@ -33,6 +33,7 @@ import {
 } from './physicsPaintRotoPhysicalModel';
 import {
   derivePhysicPaintRotoLoopRanges,
+  projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoPhysicalEditProposal,
@@ -262,6 +263,36 @@ describe('createRotoPlayScriptController', () => {
     expect(publication.selectedKeyId).toBe(publication.records[1].keyId);
     expect(test.stopPlayback).toHaveBeenCalledTimes(3);
     expect(test.controller.phase.value).toBe('complete');
+  });
+
+  it('registers the new-cycle first key as a leading incoming-interpolation break — no generated cells bridge the gap from a prior rail (AM-4)', async () => {
+    // The default authority already carries a prior real key at frame 1, so a
+    // new Apply at frame 4 is exactly the "rail created after another rail"
+    // scenario. The new cycle's first committed key must own the leading break,
+    // and the resolver must emit NO generated cells between the prior key and it.
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
+    const firstCycleKey = publication.records.find((record) => record.appFrame === 4)!;
+    expect(publication.incomingInterpolationBreakKeyIds).toEqual([firstCycleKey.keyId]);
+
+    const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
+      identities: publication.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      capacity: 600,
+      interpolationEnabled: publication.interpolationEnabled,
+      incomingInterpolationBreakKeyIds: publication.incomingInterpolationBreakKeyIds,
+    });
+    expect(projectionResult.ok).toBe(true);
+    if (projectionResult.ok) {
+      // The strict interior [2..3] between the prior rail's last key (frame 1)
+      // and the new rail's first key (frame 4) must stay EMPTY.
+      expect(
+        projectionResult.projection.generatedCells
+          .filter((cell) => cell.appFrame >= 2 && cell.appFrame <= 3),
+      ).toHaveLength(0);
+    }
   });
 
   it('revalidates authority and selection before commit without partial publication', async () => {
