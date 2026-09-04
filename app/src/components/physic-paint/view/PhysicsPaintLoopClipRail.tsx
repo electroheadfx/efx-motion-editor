@@ -93,6 +93,10 @@ export interface PhysicsPaintLoopClipRailProps {
   /** 47 close-out UAT round 3: true while a cross-track drag session is
    *  crossing rows — the rail pill never pops mid-drag. */
   readonly suppressTooltip?: boolean;
+  /** 52 UAT (GSD-52): records the focused Loop Clip rail button so a commit
+   *  that removes it (Delete/Undo/Redo) can restore focus to the stable
+   *  timeline container — mirrors PhysicsPaintKeyRail's onRailFocus. */
+  readonly onRailFocus?: (element: HTMLElement) => void;
 }
 
 interface RailMouseEvent {
@@ -155,6 +159,9 @@ interface RailTargetProps {
   /** 47 close-out UAT round 3: true while a cross-track drag session is
    *  crossing rows — the rail pill never pops mid-drag. */
   readonly suppressTooltip?: boolean;
+  /** 52 UAT (GSD-52): records the focused rail button for orphan-focus
+   *  restore — mirrors PhysicsPaintKeyRail's onRailFocus. */
+  readonly onRailFocus?: (element: HTMLElement) => void;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
@@ -352,6 +359,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
           const current = event?.currentTarget as HTMLElement | null;
           const lane = current?.closest ? current.closest(RAIL_LANE_SELECTOR) : null;
           if (current && lane) roveRailTargetFocus(lane, current);
+          props.onRailFocus?.(event?.currentTarget as HTMLElement);
         }}
         onBlur={tooltip.onBlur}
       >
@@ -483,6 +491,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
           suppressTooltip={props.suppressTooltip}
           registerClickSequenceCanceller={props.registerClickSequenceCanceller}
+          onRailFocus={props.onRailFocus}
         />
       ))}
       {/* 47 UAT: the filmstrip capsule overlay is REMOVED — the Motion/

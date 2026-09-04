@@ -1288,7 +1288,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 43.4 defect 6: the last focused Key Rail button and its timeline container,
   // so a Delete/Undo/Redo commit that removes the button can restore focus to
   // the stable container instead of leaving it orphaned on body.
-  const lastFocusedKeyRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
+  const lastFocusedRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   // 52-04 (D-19): the track rail-creation menu open state — the "Create rail"
@@ -1558,18 +1558,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       .map((member) => member.loopId),
     [railSetMoveMembers],
   );
-  // 43.4 defect 6: record the focused Key Rail button so a commit that removes
-  // it (Delete/Undo/Redo) can restore focus to the stable timeline container.
-  const handleKeyRailFocus = useCallback((element: HTMLElement) => {
-    lastFocusedKeyRailRef.current = { element, container: timelineScrollRef.current };
+  // 43.4 defect 6 (GSD-52): record the focused rail button — Key Rail AND
+  // Loop Clip (Motion/Static/Reveal) rail — so a commit that removes it
+  // (Delete/Undo/Redo) can restore focus to the stable timeline container.
+  // The restore effect fires on BOTH rail-family derivations: a key-rail
+  // removal changes keyRailSegments, a loop-rail removal changes
+  // loopResolutionContext (rail-set deletes can change either).
+  const handleRailFocus = useCallback((element: HTMLElement) => {
+    lastFocusedRailRef.current = { element, container: timelineScrollRef.current };
   }, []);
   useEffect(() => {
-    const lastFocused = lastFocusedKeyRailRef.current;
+    const lastFocused = lastFocusedRailRef.current;
     if (lastFocused && shouldRestoreOrphanedKeyRailFocus(lastFocused.element, document.activeElement)) {
       lastFocused.container?.focus();
-      lastFocusedKeyRailRef.current = null;
+      lastFocusedRailRef.current = null;
     }
-  }, [keyRailSegments]);
+  }, [keyRailSegments, loopResolutionContext]);
   const visibleFrameResolutions = useMemo(
     () => loopResolutionContext === null
       ? null
@@ -3585,7 +3589,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       : undefined}
                     deleteUnavailableReason={deleteRotoKeyDisabledReason}
                     busy={keyUtilitiesDisabledByBusyState}
-                    onRailFocus={handleKeyRailFocus}
+                    onRailFocus={handleRailFocus}
                     onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
                     onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
                     suppressTooltip={crossTrackDrag.isCrossing.value}
@@ -3623,6 +3627,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         railClickSequenceCancellersRef.current.delete(canceller);
                       };
                     }}
+                    onRailFocus={handleRailFocus}
                   />
                 ) : null}
                 <div
