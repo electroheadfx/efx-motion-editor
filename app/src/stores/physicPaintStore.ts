@@ -1355,11 +1355,45 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   const outsideSpan = existingRecords.filter((record) => record.appFrame < spanStart || record.appFrame >= spanEnd);
   const merged = [...outsideSpan, ...bakedRecords];
 
+  // 52 UAT (AM-4): a new rail never receives incoming interpolation. The baked
+  // cycle's FIRST key registers the leading break so a previous rail's last real
+  // key cannot interpolate forward across the gap (exactly like the Phase 46
+  // paste/duplicate boundary law and the Scissor's next-key break). The
+  // acknowledged-transaction shape forces the break writes to SPLIT around the
+  // records replacement: the prune must validate against the CURRENT records
+  // (parsePhysicPaintRotoIncomingInterpolationBreakKeyIds throws on orphans, and
+  // replaced break-owning span keys would make the records port's revision check
+  // throw), while the leading break's fresh keyId only exists AFTER the records
+  // replacement.
+  const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(input.layerId, input.trackId);
+  const spanRecordKeyIds = new Set(existingRecords
+    .filter((record) => record.appFrame >= spanStart && record.appFrame < spanEnd)
+    .map((record) => record.keyId));
+  const prunedBreaks = currentBreaks.filter((keyId) => !spanRecordKeyIds.has(keyId));
+  // The prune port only runs when something is ACTUALLY pruned. A fresh track
+  // has no mounted record/break maps (the port would fail closed), and any
+  // break left after the prune references an outside-span record that the bake
+  // preserves — so when nothing was pruned the records replacement cannot orphan
+  // the current collection and the pre-records prune write is unnecessary.
+  if (prunedBreaks.length !== currentBreaks.length) {
+    const pruneResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(input.layerId, input.trackId, prunedBreaks);
+    if (!pruneResult.ok) return { ok: false, error: pruneResult.error };
+  }
+
   // The acknowledged physical-edit transaction: validates the complete record set
   // and revalidates the canonical revision before any write (T-52-02).
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(input.layerId, input.trackId);
   const commitResult = physicPaintStore.replaceRotoPhysicalRecords(input.layerId, input.trackId, merged, interpolation, capacity);
   if (!commitResult.ok) return { ok: false, error: commitResult.error };
+
+  const leadingBakedKeyId = bakedRecords.find((record) => record.appFrame === spanStart)?.keyId ?? null;
+  if (leadingBakedKeyId !== null) {
+    const leadingBreaks = prunedBreaks.includes(leadingBakedKeyId)
+      ? prunedBreaks
+      : [...prunedBreaks, leadingBakedKeyId];
+    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(input.layerId, input.trackId, leadingBreaks);
+    if (!breaksResult.ok) return { ok: false, error: breaksResult.error };
+  }
 
   return { ok: true, records: bakedRecords };
 }

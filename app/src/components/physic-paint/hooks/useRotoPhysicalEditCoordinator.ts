@@ -291,6 +291,10 @@ export interface RotoPlayScriptExecuteInput extends RotoGeneratedPublicationExec
   readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** 52 UAT (AM-4): staged incoming breaks for a NEW-cycle Apply — the fresh
+   *  cycle's first key owns the leading break. Absent passes the document's
+   *  breaks through untouched. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicationExecuteInputBase {
@@ -298,6 +302,10 @@ export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicatio
   readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** Never populated on the regenerate path — present only so the generated
+   *  publication union stages the field uniformly. Regenerate retargets
+   *  EXISTING keys, so the document's breaks pass through untouched. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface RotoGroupFramePaintExecuteInput {
@@ -2050,6 +2058,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             ?? groupLifecycleDeleteProposal?.incomingInterpolationBreakKeyIds
             ?? groupFramePaintProposal?.incomingInterpolationBreakKeyIds
             ?? proposal?.nextIncomingInterpolationBreakKeyIds
+            ?? generatedPublicationInput?.incomingInterpolationBreakKeyIds
             ?? currentIncomingInterpolationBreakKeyIds;
         const moveGroupOverrideRecords = input.operationKind === 'move-group'
           && intent?.kind === 'move-group'

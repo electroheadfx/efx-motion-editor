@@ -1517,6 +1517,15 @@ export function deleteRevealRail(layerId: string, loopId: string): RevealRailMut
   const keyIdSet = new Set(rail.clip.sourceKeyIds);
   const records = physicPaintStore.getRotoRealKeyRecords(layerId, rail.trackId);
   const remaining = records.filter((record) => !keyIdSet.has(record.keyId));
+  // 52 UAT (AM-4): the deleted rail's FIRST key owns the leading incoming break.
+  // Prune the deleted keys' breaks BEFORE the records replacement — the shared
+  // projection fails closed on a break that references a removed key.
+  const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId);
+  const prunedBreaks = currentBreaks.filter((keyId) => !keyIdSet.has(keyId));
+  if (prunedBreaks.length !== currentBreaks.length) {
+    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId, prunedBreaks);
+    if (!breaksResult.ok) return { ok: false, reason: 'bake-failed' };
+  }
   const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, rail.trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
   const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);
@@ -1564,6 +1573,17 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
     if (!keyIdSet.has(record.keyId)) return true;
     return record.appFrame < newEndExclusive;
   });
+  // 52 UAT (AM-4): a removed baked key may own an incoming break (a scissor
+  // split inside a reveal rail, or the leading break when the span shrinks to
+  // the empty boundary). Prune the removed keys' breaks BEFORE the records
+  // replacement — the shared projection fails closed on a removed break owner.
+  const survivingKeyIdSet = new Set(remaining.map((record) => record.keyId));
+  const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId);
+  const prunedBreaks = currentBreaks.filter((keyId) => survivingKeyIdSet.has(keyId));
+  if (prunedBreaks.length !== currentBreaks.length) {
+    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId, prunedBreaks);
+    if (!breaksResult.ok) return { ok: false, reason: 'bake-failed' };
+  }
   const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, rail.trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
   const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);

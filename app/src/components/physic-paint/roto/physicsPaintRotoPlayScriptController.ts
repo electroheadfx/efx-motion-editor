@@ -133,6 +133,12 @@ interface RotoGeneratedPhysicalPublicationBase {
 export interface RotoPlayScriptPhysicalPublication extends RotoGeneratedPhysicalPublicationBase {
   readonly semanticDelta: RotoPlayScriptSemanticDelta;
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** 52 UAT (AM-4): the full staged incoming-break collection. Present ONLY on
+   *  a genuinely new-cycle Play Script Apply (rail creation) — the fresh
+   *  cycle's first key registers the leading break so no prior rail can
+   *  interpolate into it. Absent on repair/regenerate/source-edit and the
+   *  S4 link path, which pass the document's breaks through untouched. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface RotoRegenerateGroupPhysicalPublication extends RotoGeneratedPhysicalPublicationBase {
@@ -1429,6 +1435,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         return record.keyId;
       });
       let loopClips: readonly PhysicPaintRotoLoopClip[] | undefined;
+      /** 52 UAT (AM-4): staged breaks for a NEW-cycle Apply — absent otherwise. */
+      let publicationIncomingInterpolationBreakKeyIds: readonly string[] | undefined;
       let regeneratedRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
       let regeneratedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
       let regenerateSemanticDelta: RotoRegenerateGroupSemanticDelta | null = null;
@@ -1509,6 +1517,20 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           overrideColor: renderOverrideColor,
         };
         loopClips = Object.freeze([...currentLoopClips(), newLoop]);
+        // 52 UAT (AM-4): a new rail never receives incoming interpolation —
+        // the cycle's FIRST committed key owns the leading break so a previous
+        // rail's last real key cannot interpolate forward into it. Any break
+        // owner whose record the new cycle's span replaced is pruned (the
+        // parent's parsePhysicPaintRotoIncomingInterpolationBreakKeyIds rejects
+        // orphans fail-closed); a re-Apply over the SAME span keeps exactly one
+        // leading break on the preserved first key identity.
+        const survivingKeyIds = new Set(basePublication.records.map((record) => record.keyId));
+        const currentBreakOwners = ports.getPhysicalDocument?.()?.incomingInterpolationBreakKeyIds ?? [];
+        const prunedBreaks = currentBreakOwners.filter((keyId) => survivingKeyIds.has(keyId));
+        const leadingKeyId = cycleKeyIds[0];
+        publicationIncomingInterpolationBreakKeyIds = prunedBreaks.includes(leadingKeyId)
+          ? prunedBreaks
+          : Object.freeze([...prunedBreaks, leadingKeyId]);
       }
       const publicationRecords = regeneratedRecords ?? basePublication.records;
       const publication: RotoGeneratedPhysicalPublication = regenerateSemanticDelta
@@ -1532,7 +1554,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
               ...resolvePublicationSelection(commitAuthority),
               ...(loopClips ? { loopClips } : {}),
             }
-          : { ...basePublication, ...(loopClips ? { loopClips } : {}) };
+          : {
+              ...basePublication,
+              ...(loopClips ? { loopClips } : {}),
+              ...(publicationIncomingInterpolationBreakKeyIds
+                ? { incomingInterpolationBreakKeyIds: publicationIncomingInterpolationBreakKeyIds }
+                : {}),
+            };
       phase.value = 'committing';
       status.value = preparedRegenerate ? 'Committing Rail Regenerate…' : 'Committing Play Script…';
       abortController = null;

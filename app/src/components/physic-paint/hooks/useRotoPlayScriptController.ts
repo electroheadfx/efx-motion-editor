@@ -118,6 +118,9 @@ export function useRotoPlayScriptController<EngineState = unknown>(
               rotoBackground: playScriptPublication!.rotoBackground,
               semanticDelta: playScriptPublication!.semanticDelta,
               ...(playScriptPublication!.loopClips ? { loopClips: playScriptPublication!.loopClips } : {}),
+              ...(playScriptPublication!.incomingInterpolationBreakKeyIds
+                ? { incomingInterpolationBreakKeyIds: playScriptPublication!.incomingInterpolationBreakKeyIds }
+                : {}),
             };
         const settlement = await dispatchAndWaitForPlayScriptSettlement(
           portsRef.current.pendingOperationId,
