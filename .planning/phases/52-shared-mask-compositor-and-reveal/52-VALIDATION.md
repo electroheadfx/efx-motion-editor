@@ -59,6 +59,8 @@ created: "2026-09-02"
 ## Wave 0 Requirements
 
 - [ ] `app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts` — covers RVL-01/RVL-02/RVL-03 (bake mask + variant semantics)
+- [x] `app/src/components/physic-paint/roto/physicsPaintRotoRevealBake.test.ts` — adds the D-11 abort-mid-bake invariant: an aborted bake rejects with AbortError (throwIfAborted, abort-before and interrupt-mid-bake-after-frame-0) and never resolves partial staged keys (nyquist audit, 2 tests)
+- [x] `app/src/stores/efxPaintStore.reveal.test.ts` — adds the D-11 fail-closed commit: an aborted bake (renderer rejects AbortError) commits no keys, writes no rail, no incoming break, and does not bump the document revision (nyquist audit, 1 test)
 - [ ] `app/src/stores/efxPaintStore.reveal.test.ts` — covers RVL-06 (create/replay/delete/span undo by reference)
 - [ ] `app/src/efx-paint/document/efxPaintDocumentParsers.reveal.test.ts` — covers the reveal rail parse round-trip
 - [ ] `app/src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts` — covers RVL-05 (token allow-list over the four raster surfaces)

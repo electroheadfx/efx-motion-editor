@@ -143,6 +143,43 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     expect(after.documentRevision).toBe(preCreate.documentRevision + 1);
   });
 
+  it('an aborted bake commits no keys, writes no rail, and does not bump the document revision (D-11 abort-mid-bake)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    const preCreate = getDocument(layerId)!;
+    const revisionBefore = preCreate.documentRevision;
+
+    // The renderer's throwIfAborted loop rejects with AbortError mid-bake;
+    // `commitRevealBake` catches the bake error BEFORE any record write
+    // (replaceRotoPhysicalRecords is never reached), so `createRevealRail`
+    // must fail closed with zero side effects.
+    const controller = new AbortController();
+    controller.abort();
+    harness.renderReveal.mockRejectedValue(new DOMException('Play Script generation cancelled.', 'AbortError'));
+    const result = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      signal: controller.signal,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('bake-failed');
+    // No keys staged → no records committed into the runtime.
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(0);
+    // No rail clip written and no incoming-interpolation break registered.
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(0);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toHaveLength(0);
+    // The acknowledged transaction was never even attempted: the document keeps
+    // its exact object identity and its revision is unchanged.
+    expect(getDocument(layerId)).toBe(preCreate);
+    expect(getDocument(layerId)!.documentRevision).toBe(revisionBefore);
+  });
+
   it('fail-closes when the photo reference is absent (D-12 creation guard)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));

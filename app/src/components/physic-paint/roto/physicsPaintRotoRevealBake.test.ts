@@ -350,3 +350,42 @@ describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', 
     expect(rendered.map((entry) => entry.color)).toEqual(['#123456', null, '#654321']);
   });
 });
+
+describe('renderRotoRevealFrames abort (52-01 D-11 — an interrupted bake stages no keys)', () => {
+  beforeEach(() => {
+    setupDom();
+    setupHarness();
+  });
+
+  it('rejects with AbortError when the bake is aborted before it starts — nothing renders (throwIfAborted)', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(renderRotoRevealFrames(input({ signal: controller.signal }))).rejects.toMatchObject({ name: 'AbortError' });
+    // Zero frames rendered, zero encodes — the bake never produces output to stage.
+    expect(harness.renderedFrames).toHaveLength(0);
+    expect(harness.encode).not.toHaveBeenCalled();
+  });
+
+  it('rejects with AbortError when aborted mid-bake after the first frame — never resolves the already-staged frame (D-11)', async () => {
+    const controller = new AbortController();
+    let encodeCalls = 0;
+    harness.encode.mockImplementation(async (_canvas: HTMLCanvasElement, destination: number) => {
+      encodeCalls += 1;
+      // Interrupt on the second frame, AFTER frame index 0 was fully staged —
+      // the harshest seam: a partial staged key already exists inside the loop.
+      if (encodeCalls === 2) controller.abort();
+      return {
+        frameIndex: 0,
+        appFrame: destination,
+        dataUrl: `data:image/png;base64,encoded-${destination}`,
+        width: 10,
+        height: 10,
+      };
+    });
+    await expect(renderRotoRevealFrames(input({ frameCount: 3, signal: controller.signal }))).rejects.toMatchObject({ name: 'AbortError' });
+    // The remaining frame never renders — the loop stopped at the second frame
+    // (two encodes, not three), and the promise rejected instead of resolving
+    // the partial [frame 0] output.
+    expect(encodeCalls).toBe(2);
+  });
+});
