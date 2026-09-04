@@ -359,9 +359,6 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         {props.isSetAnchor ? (
           <span class="physics-paint-rail-anchor-tick" aria-hidden="true" />
         ) : null}
-        {presentation.synchronizationDot ? (
-          <span class={`physics-paint-loop-clip-lifecycle-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
-        ) : null}
       </button>
       {ghost.active ? (
         <span

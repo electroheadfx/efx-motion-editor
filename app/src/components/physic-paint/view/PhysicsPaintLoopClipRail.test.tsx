@@ -458,9 +458,9 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(textOf(tree)).not.toContain('Fragment');
     expect(textOf(tree)).not.toContain('Range F');
 
-    const dot = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
-    expect(hasClass(dot, 'modified')).toBe(true);
-    expect(dot.props['aria-hidden']).toBe('true');
+    // AM-2: the in-line lifecycle status dot is removed from every rail — the
+    // status lives only in the tooltip's "Status:" line (swatch kept below).
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'))).toHaveLength(0);
 
     const space = { key: ' ', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof space) => void)(space);
@@ -681,21 +681,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     }
   });
 
-  it.each([
-    ['synchronized', '#a6d334'],
-    ['modified', '#fbbf24'],
-    ['detached', '#bbc0c8'],
-    ['unavailable', '#ff2e56'],
-  ] as const)('pins the passive %s lifecycle dot geometry and color', (lifecycle, color) => {
-    const dotRule = cssRule(`.physics-paint-loop-clip-lifecycle-dot.${lifecycle} {`);
-    expect(dotRule).toContain(`background: ${color}`);
-    const baseRule = cssRule('.physics-paint-loop-clip-lifecycle-dot {');
-    expect(baseRule).toContain('width: 20px');
-    expect(baseRule).toContain('height: 4px');
-    expect(baseRule).toContain('border-radius: 0');
-    expect(baseRule).toContain('pointer-events: none');
-  });
-
   it('pins the tooltip status swatch to the lifecycle palette', () => {
     for (const [lifecycle, color] of [
       ['synchronized', '#a6d334'],
@@ -709,7 +694,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(cssRule('.physics-paint-loop-clip-tooltip-status {')).toContain('display: inline-flex');
   });
 
-  it('omits the dot for unresolved fragments and gives unresolved copy precedence', () => {
+  it('gives unresolved copy precedence over lifecycle copy', () => {
     const unresolvedRange = explicitGroupRange(10, 12, {
       unresolved: { missingSourceKeyIds: ['private-key-id'] },
     });
@@ -730,7 +715,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       onOpenLoopEdit: vi.fn(async () => {}),
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
 
-    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'))).toHaveLength(0);
     const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(hasClass(target, 'unresolved')).toBe(true);
     expect(target.props['aria-label']).toContain('Source missing');

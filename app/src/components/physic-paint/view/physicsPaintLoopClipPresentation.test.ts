@@ -340,18 +340,18 @@ describe('reveal rail presentation (52-03 D-22/D-23/D-24)', () => {
     };
   }
 
-  it('defaults the reveal rail line color to the variant color (D-22)', () => {
+  it('defaults the reveal rail line color to the variant color (D-22, amended AM-1: one blue)', () => {
     const motion = projectPhysicsPaintLoopClipPresentation(range(), revealClip(), 'Reveal Script');
     expect(motion).toMatchObject({
       railKind: 'reveal',
-      overrideColor: '#10b981',
+      overrideColor: '#69BBC8',
     });
     const staticRail = projectPhysicsPaintLoopClipPresentation(
       range(),
       revealClip({ mode: 'static' }),
       'Reveal Script',
     );
-    expect(staticRail.overrideColor).toBe('#14b8a6');
+    expect(staticRail.overrideColor).toBe('#69BBC8');
   });
 
   it('honors a per-rail overrideColor over the variant default (D-22)', () => {

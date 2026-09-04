@@ -371,6 +371,12 @@ export function PhysicsPaintStudio() {
   // dialog stays open behind the full-area reference picker so an Import/
   // Replace confirm updates it in place.
   const referenceDialogOpen = useSignal(false);
+  // AM-3 (52 UAT): the Create Rail script picker — when the strip's "+ Rail"
+  // flow launches with NO Action selected in the SCRIPTS library, this
+  // interposed picker lists the library Actions instead of opening a dead
+  // disabled Create Rail dialog. Picking sets the library selection and opens
+  // the dialog on the menu-chosen tab/kind; cancelling closes only the picker.
+  const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -526,6 +532,7 @@ export function PhysicsPaintStudio() {
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
   const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
   const referenceDialogPropsMemo = useRef(createIdentityMemo()).current;
+  const scriptPickerDialogPropsMemo = useRef(createIdentityMemo()).current;
   const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
@@ -3845,6 +3852,30 @@ export function PhysicsPaintStudio() {
       onImportSource: () => referencePicker.openPicker(),
     }),
   );
+  // AM-3 (52 UAT): the Create Rail script picker props — rows ride the library
+  // controller's live row signal; a pick sets the library selection and opens
+  // the Create Rail dialog on the menu-chosen tab/kind (Reveal → Reveal Photo
+  // Rail tab); cancel closes ONLY the picker (the intent is dropped).
+  const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(
+    [scriptPickerIntent.value, rotoScriptLibrary.rows.value],
+    () => ({
+      open: scriptPickerIntent.value !== null,
+      intent: scriptPickerIntent.value,
+      rows: rotoScriptLibrary.rows.value,
+      onPick: (id: string) => {
+        const intent = scriptPickerIntent.peek();
+        rotoScriptLibrary.select(id);
+        scriptPickerIntent.value = null;
+        if (intent?.kind === 'paint') {
+          rotoPlayScript.mode.value = intent.mode;
+          void rotoPlayScript.openConfirmation();
+        } else if (intent?.kind === 'reveal') {
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+        }
+      },
+      onClose: () => { scriptPickerIntent.value = null; },
+    }),
+  );
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -3853,6 +3884,7 @@ export function PhysicsPaintStudio() {
     rightPanel,
     playScriptDialog,
     referenceDialog,
+    scriptPickerDialog,
     workflow: {
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,
@@ -3869,10 +3901,20 @@ export function PhysicsPaintStudio() {
         // create-reveal-rail mutation). The reference guard lives INSIDE the
         // dialog (proactive Photo Reference modal open — never a disabled menu).
         onCreatePlayScriptRail: (mode) => {
+          // AM-3: no Action selected → interpose the script picker (never a
+          // dead disabled dialog); an Action selected → unchanged behavior.
+          if (!rotoScriptLibrary.selectedId.peek()) {
+            scriptPickerIntent.value = { kind: 'paint', mode };
+            return;
+          }
           rotoPlayScript.mode.value = mode;
           void rotoPlayScript.openConfirmation();
         },
         onCreateRevealRail: () => {
+          if (!rotoScriptLibrary.selectedId.peek()) {
+            scriptPickerIntent.value = { kind: 'reveal' };
+            return;
+          }
           void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
         },
         onSelectTrack: multiTrackRowBundle.onSelectTrack,

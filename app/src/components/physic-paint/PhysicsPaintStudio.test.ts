@@ -1223,8 +1223,9 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(studioView, 'memo(')).toBe(1);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
-    // canvasMount, referenceDialog (50-UAT modal redesign).
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(8);
+    // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
+    // (AM-3 Create Rail script picker).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -1849,5 +1850,53 @@ describe('Physics Paint photo reference end-to-end integration contract (50-06, 
     for (const token of referenceTokens) {
       expect(rasterSurface).not.toContain(token);
     }
+  });
+});
+
+describe('Physics Paint Create Rail script picker (AM-3)', () => {
+  it('gates the "+ Rail" flow on the library selection — no Action interposes the picker, an Action keeps the current behavior', () => {
+    // The intent signal owns the picker's open state (null = closed).
+    expect(studio).toContain("const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);");
+    // Both menu handlers check the library selection FIRST: none → the picker;
+    // selected → the exact pre-AM-3 behavior (mode + openConfirmation / reveal tab).
+    expect(studio).toContain(`onCreatePlayScriptRail: (mode) => {
+          // AM-3: no Action selected → interpose the script picker (never a
+          // dead disabled dialog); an Action selected → unchanged behavior.
+          if (!rotoScriptLibrary.selectedId.peek()) {
+            scriptPickerIntent.value = { kind: 'paint', mode };
+            return;
+          }
+          rotoPlayScript.mode.value = mode;
+          void rotoPlayScript.openConfirmation();
+        },`);
+    expect(studio).toContain(`onCreateRevealRail: () => {
+          if (!rotoScriptLibrary.selectedId.peek()) {
+            scriptPickerIntent.value = { kind: 'reveal' };
+            return;
+          }
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+        },`);
+  });
+
+  it('a pick sets the library selection and opens the Create Rail dialog on the menu-chosen tab/kind; cancel closes only the picker', () => {
+    expect(studio).toContain(`onPick: (id: string) => {
+        const intent = scriptPickerIntent.peek();
+        rotoScriptLibrary.select(id);
+        scriptPickerIntent.value = null;
+        if (intent?.kind === 'paint') {
+          rotoPlayScript.mode.value = intent.mode;
+          void rotoPlayScript.openConfirmation();
+        } else if (intent?.kind === 'reveal') {
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+        }
+      },`);
+    expect(studio).toContain('onClose: () => { scriptPickerIntent.value = null; },');
+    // The picker rows ride the library controller's live row signal.
+    expect(studio).toContain('rows: rotoScriptLibrary.rows.value,');
+  });
+
+  it('mounts the picker dialog in the Studio view next to the Photo Reference dialog', () => {
+    expect(studio).toContain('const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(');
+    expect(studioView).toContain('<PhysicsPaintScriptPickerDialog {...scriptPickerDialog} />');
   });
 });

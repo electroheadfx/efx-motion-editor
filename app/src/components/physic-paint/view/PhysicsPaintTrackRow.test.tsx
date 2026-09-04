@@ -239,7 +239,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(staticLine[0].props.class)).toContain('mode-static');
   });
 
-  it('renders the lifecycle status dot on non-active rows (show always)', () => {
+  it('renders no in-line lifecycle status dot on non-active rows (AM-2: the status lives in the tooltip)', () => {
     physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [
       makeRecord('k0', 0, 'a@0'),
       makeRecord('k1', 2, 'a@2'),
@@ -255,8 +255,7 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     const line = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(line).toHaveLength(1);
     const dot = findAll(line[0], (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
-    expect(dot).toHaveLength(1);
-    expect(String(dot[0].props.class)).toContain('unavailable');
+    expect(dot).toHaveLength(0);
   });
 
   it('49-06 UAT round 4: the Bg cells carry vertical separators, the rail line is the move handle, and the markers signal ew-resize', () => {

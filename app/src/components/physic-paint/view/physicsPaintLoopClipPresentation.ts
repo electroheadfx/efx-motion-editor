@@ -27,15 +27,15 @@ export interface PhysicsPaintLoopClipPresentationOptions {
   readonly scriptExists?: boolean;
 }
 
-// 52-03 (D-22): the reveal rail's green-family line colors. The variant color
-// is the DEFAULT overrideColor — a reveal rail with `overrideColor: null`
-// renders emerald (motion) / teal (static), overridable per rail via the
-// existing 43-06 mechanism. Hover shades mirror the Loop Clip convention
-// (500 base → 300 hover) per the UI-SPEC.
-export const REVEAL_MOTION_COLOR = '#10b981';
-export const REVEAL_STATIC_COLOR = '#14b8a6';
-export const REVEAL_MOTION_HOVER_COLOR = '#6ee7b7';
-export const REVEAL_STATIC_HOVER_COLOR = '#5eead4';
+// 52-03 (D-22, amended AM-1): the reveal rail's blue line color. The variant
+// color is the DEFAULT overrideColor — a reveal rail with `overrideColor: null`
+// renders the same blue for motion and static, overridable per rail via the
+// existing 43-06 mechanism. The hover shade mirrors the Loop Clip convention
+// (base → lighter hover) per the UI-SPEC.
+export const REVEAL_MOTION_COLOR = '#69BBC8';
+export const REVEAL_STATIC_COLOR = '#69BBC8';
+export const REVEAL_MOTION_HOVER_COLOR = '#8FCFD9';
+export const REVEAL_STATIC_HOVER_COLOR = '#8FCFD9';
 
 // 52-03 (D-23): the reveal rail's tooltip freshness line — the one line the
 // Loop Clip tooltip does not have. Fresh when the bake matches the current
@@ -134,7 +134,7 @@ export function projectPhysicsPaintLoopClipPresentation(
   const synchronizationDot = lifecycle === 'unresolved' ? null : lifecycle;
   const regenerateDisabledReason = regenerateDisabledReasonFor(lifecycle);
   // 52-03 (D-22/D-23/D-24): the reveal rail surface. The variant color is the
-  // DEFAULT overrideColor (emerald motion / teal static), overridable per rail
+  // DEFAULT overrideColor (blue, AM-1), overridable per rail
   // via the existing 43-06 mechanism. The freshness line honestly reflects
   // whether the script or reference changed since the bake (D-23 prohibition:
   // a stale bake is never presented as fresh). The Replay disabled reason
