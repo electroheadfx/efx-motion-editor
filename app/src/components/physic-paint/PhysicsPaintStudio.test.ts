@@ -817,18 +817,22 @@ function countOccurrences(source: string, literal: string): number {
 }
 
 // Phase 43 Plan 09 Task 3 (D-28, audit finding 6) re-sourced by Phase 48-05
-// (CMP-01): Studio playback availability now derives from the FLATTENED path —
-// getFlattenedFrame returns a record whenever the document resolves the frame,
-// so a placeholder frame plays transparent (the 48-03 D-09 missing-source
-// report carries the reason) instead of being excluded from availability. The
-// frame is still never offered as real key content (key identity derives from
-// the projection cell only).
+// (CMP-01), then made STRUCTURAL by G-52-8 (FIX 2): Studio playback
+// availability is document-presence over the structural playback frame list —
+// a placeholder frame plays transparent (the 48-03 D-09 missing-source report
+// carries the reason) instead of being excluded from availability, exactly as
+// under the flattened law, but answering the question never flattens (each
+// flatten composites a photo-weight raster — 15 storms per Studio mount on a
+// reveal rail). The frame is still never offered as real key content (key
+// identity derives from the projection cell only).
 describe('Physics Paint Studio loop placeholder contract (D-28, flattened-sourced)', () => {
-  it('sources the playback availability memo from the flattened path so Studio playback and the program monitor never diverge from the main editor', () => {
-    expect(studio).toContain('physicPaintStore.getFlattenedFrame(rotoPlaybackLayerId, appFrame)');
-    // The flattened path has no render-source switch: a record is available,
-    // null (pending decode) is not — never a per-track active-track probe.
-    expect(studio).toContain("return [{ appFrame, frame: record.renderedFrame }];");
+  it('sources the playback availability memo structurally so Studio playback and the program monitor never diverge from the main editor (G-52-8)', () => {
+    // Document-presence over the structural frame list — never a flatten, and
+    // never a per-track render-source probe (a blend-mode probe would ENCODE
+    // an interpolated raster per generated frame).
+    expect(studio).toContain('getEfxPaintDocument(rotoPlaybackLayerId)');
+    expect(studio).toContain('return rotoPlaybackFrameNumbers.map((appFrame) => ({ appFrame, frame: true }));');
+    expect(studio).not.toContain('physicPaintStore.getFlattenedFrame(rotoPlaybackLayerId');
     expect(studio).not.toContain('getRotoPhysicalRenderSource(rotoPlaybackLayerId');
     expect(studio).not.toContain('Unhandled Roto physical render-source kind');
   });

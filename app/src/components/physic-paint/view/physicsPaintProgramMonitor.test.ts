@@ -7,6 +7,7 @@ import {
   physicPaintStore,
   physicPaintVersion,
   registerBackgroundSourceImage,
+  registerRotoAlphaCanvasFrame,
   _setPhysicPaintCompositorSizeProvider,
   type EfxPaintFlattenedFrameRecord,
 } from '../../../stores/physicPaintStore';
@@ -160,8 +161,9 @@ class DeferredFlatTestImage {
 /** The monitor's own <canvas>: records clear/draw ops per effect run. */
 class MonitorTestContext {
   readonly ops: string[] = [];
+  readonly sources: unknown[] = [];
   clearRect(): void { this.ops.push('clear'); }
-  drawImage(): void { this.ops.push('draw'); }
+  drawImage(source?: unknown): void { this.ops.push('draw'); this.sources.push(source); }
 }
 
 class MonitorTestCanvas {
@@ -298,6 +300,10 @@ beforeEach(() => {
 
 afterEach(() => {
   runtime.reset();
+  // Full store reset: the flattened memo and the alpha-canvas registry are
+  // module-level and would otherwise leak across tests (a registry hit changes
+  // the composite draw path — G-52-8 FIX 3).
+  physicPaintStore.reset();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -386,13 +392,17 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(drawCount(canvas)).toBe(1);
 
     // Introduce a registered-but-not-yet-decoded background source with a
-    // deferred decode: this tick the store returns null.
+    // deferred decode: the clip covers frame 5 (infinite repeat), so the
+    // store-side background gate returns null for the whole flattened call
+    // this tick. (G-52-8: the monitor's own Image decode no longer exists —
+    // the raster draws synchronously — so the pending/null law is pinned at
+    // its remaining source: the store returning null.)
     vi.stubGlobal('Image', DeferredFlatTestImage);
     vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
     registerBackgroundSourceImage('bg-ref-pending', makeFrame(2, 0).dataUrl);
     registerDocument(flatDocument([flatTrack('track-a')], {
       visible: true,
-      clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-pending'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-pending'], repeat: { mode: 'infinite' }, sourceKind: 'imported-background', revision: 1 }],
     }));
 
     // registerDocument bumps efxPaintVersion → the effect re-runs → null →
@@ -433,6 +443,41 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(record.renderedFrame.dataUrl).not.toContain(frameA);
     expect(record.renderedFrame.dataUrl).toContain(frameB);
     expect(drawCount(canvas)).toBe(1);
+  });
+
+  it('(f) G-52-8 (FIX 4): draws the record raster directly — no Image construction anywhere on the frame path', () => {
+    const frameDataUrl = makeFrame(0, 5).dataUrl;
+    registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+    // Hydration twin: with the payload already in the alpha registry (FIX 3),
+    // the whole frame path — composite AND monitor draw — must construct zero
+    // Images. A deferred Image proves it: any decode would never load.
+    const hydratedCanvas = new FlatTestCanvas([]);
+    hydratedCanvas.width = 4;
+    hydratedCanvas.height = 3;
+    registerRotoAlphaCanvasFrame(frameDataUrl, hydratedCanvas as unknown as HTMLCanvasElement);
+    vi.stubGlobal('Image', DeferredFlatTestImage);
+    vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+    const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
+
+    const canvas = renderMonitor(baseProps({ isPlaying: true }));
+
+    const record = getFlattenedFrame.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
+    expect(record).not.toBeNull();
+    expect(DeferredFlatTestImage.instances).toHaveLength(0);
+    expect(drawCount(canvas)).toBe(1);
+    // The drawn source IS the record's raster — no encode→decode round-trip.
+    expect(canvas.context.sources[0]).toBe(record.raster);
+  });
+
+  it('(g) G-52-8 (FIX 2): playback availability is structural — the Studio memo never flattens to answer it', () => {
+    const availabilityMemo = resolveBlock(
+      studio,
+      'const rotoCachedPlaybackAvailableFrames = useMemo(() => {',
+      'const missingConditions =',
+    );
+    expect(availabilityMemo).not.toContain('getFlattenedFrame');
+    expect(availabilityMemo).toContain('getEfxPaintDocument');
   });
 
   describe('Task 2 (D-06/D-09): onion pinning + missing-source capsule publication', () => {

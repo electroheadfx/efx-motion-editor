@@ -104,7 +104,7 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
 
 type RecordedCanvasOp =
   | { type: 'fillRect'; fillStyle: string; args: number[] }
-  | { type: 'drawImage'; source: string; args: number[] }
+  | { type: 'drawImage'; source: string; sourceRef?: unknown; args: number[] }
   | { type: 'fillText'; text: string; args: number[] }
   | { type: 'clearRect' }
   | { type: 'save' }
@@ -132,6 +132,9 @@ class RecordingCanvasContext {
     this.operations.push({
       type: 'drawImage',
       source: source instanceof TestImage ? source.src : source instanceof TestCanvas ? 'canvas' : 'unknown',
+      // G-52-8: the flattened record's raster is drawn directly (no decoded
+      // Image), so raster-identity parity needs the raw source object.
+      sourceRef: source,
       args,
     });
   }
@@ -472,7 +475,8 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     exportKeyByFrame: Map<number, string>;
     exportNullFrames: Set<number>;
     previewByFrame: Map<number, { cacheKey: string; dataUrl: string } | null>;
-    drawnSources: Set<string>;
+    previewRasterByFrame: Map<number, HTMLCanvasElement | undefined>;
+    drawnSources: Set<unknown>;
   }
 
   /**
@@ -535,16 +539,18 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     }
 
     const previewByFrame: ParityResult['previewByFrame'] = new Map();
+    const previewRasterByFrame: ParityResult['previewRasterByFrame'] = new Map();
     for (const frame of frames) {
       const sources = renderer.collectPhysicPaintFrameSources(layers, frame);
       const source = sources.find((candidate) => candidate.layerId === LAYER) ?? null;
       previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', dataUrl: source.renderedFrame.dataUrl } : null);
+      previewRasterByFrame.set(frame, source?.raster);
     }
 
     const drawnSources = new Set(
-      ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage').map((op) => op.source),
+      ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage').map((op) => op.sourceRef),
     );
-    return { exportByFrame, exportKeyByFrame, exportNullFrames, previewByFrame, drawnSources };
+    return { exportByFrame, exportKeyByFrame, exportNullFrames, previewByFrame, previewRasterByFrame, drawnSources };
   }
 
   function expectParity(
@@ -578,11 +584,12 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     const result = await resolveBothSurfaces(25);
 
     expectParity(result, 25, (frame) => keys[frame % 5]);
-    // Pixel-level parity: the export render path painted exactly the flattened
-    // raster set the preview path resolved — no other source, no missing frame.
+    // Pixel-level parity (G-52-8: raster identity): the export render path
+    // painted exactly the flattened rasters the preview path resolved — the
+    // SAME memoized canvas objects, no other source, no missing frame.
     const previewRasters = new Set(
-      Array.from({ length: 25 }, (_, frame) => result.previewByFrame.get(frame)?.dataUrl)
-        .filter((url): url is string => url !== undefined && url !== null),
+      Array.from({ length: 25 }, (_, frame) => result.previewRasterByFrame.get(frame))
+        .filter((raster): raster is HTMLCanvasElement => raster !== undefined && raster !== null),
     );
     expect(result.drawnSources).toEqual(previewRasters);
   });

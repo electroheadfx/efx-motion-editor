@@ -142,6 +142,9 @@ describe('registerRotoAlphaCanvasFrameFromDataUrl (G-52-7)', () => {
   it('decodes via createImageBitmap, draws the bitmap, and closes it', async () => {
     const bitmap = { width: 4, height: 2, close: vi.fn() };
     const createImageBitmapSpy = vi.fn().mockResolvedValue(bitmap);
+    const blob = new Blob(['png-bytes'], { type: 'image/png' });
+    const fetchSpy = vi.fn().mockResolvedValue({ blob: () => Promise.resolve(blob) });
+    vi.stubGlobal('fetch', fetchSpy);
     vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
     vi.stubGlobal('Image', class {
       constructor() { throw new Error('Image must not be constructed when createImageBitmap succeeds.'); }
@@ -149,8 +152,10 @@ describe('registerRotoAlphaCanvasFrameFromDataUrl (G-52-7)', () => {
 
     await registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL, { width: 4, height: 2 });
 
+    // G-52-8: the Blob comes from the native fetch(data:) pipeline.
+    expect(fetchSpy).toHaveBeenCalledWith(PNG_1X1_DATA_URL);
     expect(createImageBitmapSpy).toHaveBeenCalledTimes(1);
-    expect(createImageBitmapSpy.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
+    expect(createImageBitmapSpy.mock.calls[0]?.[0]).toBe(blob);
     const canvas = createdCanvases[0];
     expect(canvas.width).toBe(4);
     expect(canvas.height).toBe(2);
@@ -159,7 +164,51 @@ describe('registerRotoAlphaCanvasFrameFromDataUrl (G-52-7)', () => {
     expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(PNG_1X1_DATA_URL, canvas);
   });
 
+  it('decodes a photo-weight payload without any full-body base64 decode (G-52-8)', async () => {
+    // A multi-hundred-KB body: the manual path would atob ALL of it; the native
+    // path may only run the 40-char signature probe.
+    const photoWeightDataUrl = 'data:image/png;base64,iVBORw0KGgo' + 'QUJD'.repeat(50000);
+    const blob = new Blob(['png-bytes'], { type: 'image/png' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: () => Promise.resolve(blob) }));
+    const bitmap = { width: 4, height: 2, close: vi.fn() };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue(bitmap));
+    vi.stubGlobal('Image', class {
+      constructor() { throw new Error('Image must not be constructed on the native decode path.'); }
+    });
+    const atobSpy = vi.spyOn(globalThis, 'atob');
+
+    await registerRotoAlphaCanvasFrameFromDataUrl(photoWeightDataUrl, { width: 4, height: 2 });
+
+    expect(atobSpy).toHaveBeenCalled();
+    for (const call of atobSpy.mock.calls) {
+      expect(String(call[0]).length).toBeLessThanOrEqual(40);
+    }
+    expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(photoWeightDataUrl, createdCanvases[0]);
+  });
+
+  it('keeps createImageBitmap reachable through the manual byte copy when fetch is blocked (G-52-8 packaged CSP)', async () => {
+    // The packaged CSP connect-src grants no data: source, so fetch(data:)
+    // rejects there; the manual copy must still hand createImageBitmap its
+    // Blob rather than regressing to the Image path.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('CSP: connect-src has no data: grant')));
+    const bitmap = { width: 4, height: 2, close: vi.fn() };
+    const createImageBitmapSpy = vi.fn().mockResolvedValue(bitmap);
+    vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
+    vi.stubGlobal('Image', class {
+      constructor() { throw new Error('Image must not be constructed when the manual blob path succeeds.'); }
+    });
+
+    await registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL, { width: 4, height: 2 });
+
+    expect(createImageBitmapSpy).toHaveBeenCalledTimes(1);
+    expect(createImageBitmapSpy.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
+    const canvas = createdCanvases[0];
+    expect(canvas.drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 4, 2);
+    expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(PNG_1X1_DATA_URL, canvas);
+  });
+
   it('falls back to a forced Image decode and never draws an undecoded image', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: () => Promise.resolve(new Blob(['x'], { type: 'image/png' })) }));
     vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('bitmap unsupported')));
     let resolveDecode!: () => void;
     const constructed: TestImage[] = [];
@@ -193,6 +242,7 @@ describe('registerRotoAlphaCanvasFrameFromDataUrl (G-52-7)', () => {
   });
 
   it('throws the canonical decode error when both decode paths fail', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: () => Promise.resolve(new Blob(['x'], { type: 'image/png' })) }));
     vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('bitmap unsupported')));
     class BrokenImage {
       onload: (() => void) | null = null;
@@ -213,11 +263,14 @@ describe('registerRotoAlphaCanvasFrameFromDataUrl (G-52-7)', () => {
 
   it('skips decoding entirely when the alpha canvas is already registered', async () => {
     vi.mocked(hasRotoAlphaCanvasFrame).mockReturnValueOnce(true);
+    const fetchSpy = vi.fn();
     const createImageBitmapSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
     vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
 
     await registerRotoAlphaCanvasFrameFromDataUrl(PNG_1X1_DATA_URL, { width: 4, height: 2 });
 
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(createImageBitmapSpy).not.toHaveBeenCalled();
     expect(registerRotoAlphaCanvasFrame).not.toHaveBeenCalled();
   });

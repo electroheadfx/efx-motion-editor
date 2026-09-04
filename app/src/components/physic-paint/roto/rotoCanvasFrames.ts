@@ -76,7 +76,7 @@ interface DecodedRotoPng {
 // decodes off the main thread, making the existing fan-out truly parallel. The
 // Image fallback forces the same async decode via img.decode() before any draw.
 async function decodeRotoPngOffMainThread(dataUrl: string): Promise<DecodedRotoPng> {
-  const blob = rotoPngDataUrlToBlob(dataUrl);
+  const blob = await rotoPngDataUrlToBlob(dataUrl);
   if (blob && typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(blob);
@@ -105,7 +105,25 @@ async function decodeRotoPngOffMainThread(dataUrl: string): Promise<DecodedRotoP
   }
 }
 
-function rotoPngDataUrlToBlob(dataUrl: string): Blob | null {
+// G-52-8 (FIX 1): native base64 decode — the platform's fetch/blob pipeline
+// converts the data URL in native code instead of a per-byte JS loop (~3-4M
+// iterations per photo-weight key × 15 keys, synchronously on the main thread,
+// before createImageBitmap could even start).
+//
+// CSP note: fetch(data:) is governed by connect-src, and the packaged CSP
+// (tauri.conf.json) grants no data: connect source — so in packaged builds the
+// fetch rejects and we fall back to the manual byte copy, which still hands
+// createImageBitmap its Blob (the G-52-7 behavior, no regression). Granting
+// connect-src data: would unlock the native path in packaged builds too.
+async function rotoPngDataUrlToBlob(dataUrl: string): Promise<Blob | null> {
+  try {
+    return await (await fetch(dataUrl)).blob();
+  } catch {
+    return rotoPngDataUrlToBlobManual(dataUrl);
+  }
+}
+
+function rotoPngDataUrlToBlobManual(dataUrl: string): Blob | null {
   const commaIndex = dataUrl.indexOf(',');
   if (commaIndex < 0) return null;
   try {

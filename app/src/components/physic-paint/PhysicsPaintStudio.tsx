@@ -2127,13 +2127,14 @@ export function PhysicsPaintStudio() {
   // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
   // no launch -> false; empty list -> false; all-missing -> false; mixed ->
   // true iff any frame resolves.
-  // 48-05 (CMP-01): the source is the FLATTENED path — a frame is available
-  // when getFlattenedFrame(layerId, appFrame) returns a record. The flattened
-  // raster always exists when the document does, so availability becomes
-  // document-presence per frame in the playback range, and the program monitor
-  // and playback transport can never diverge from the frames the main editor
-  // would paint (the 48-03 D-09 seam: a placeholder frame now plays transparent
-  // rather than being excluded — the missing-source report carries the reason).
+  // G-52-8 (FIX 2): availability is STRUCTURAL, not pixel-level. The 48-05
+  // version flattened EVERY playback frame to answer it — each flatten
+  // composites (and, pre-FIX-4, PNG-encoded) a photo-weight raster — 15
+  // photo-weight encode storms at every Studio mount and every frame-list
+  // change. The flattened raster always exists when the layer document does,
+  // so document-presence over the structural frame list answers the same
+  // question with zero compositing; the per-tick playback draw still flattens
+  // the one frame it shows (program monitor), so no surface loses anything.
   // The memo's return shape and the selectRotoPlaybackAvailable consumer
   // contract are unchanged; recomputes only when the structural frame list or
   // launch identity changes, never on a pure Studio render.
@@ -2141,11 +2142,8 @@ export function PhysicsPaintStudio() {
   const rotoPlaybackLayerId = launchContext?.layerId ?? null;
   const rotoCachedPlaybackAvailableFrames = useMemo(() => {
     if (rotoPlaybackLayerId === null) return [];
-    return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
-      const record = physicPaintStore.getFlattenedFrame(rotoPlaybackLayerId, appFrame);
-      if (!record) return [];
-      return [{ appFrame, frame: record.renderedFrame }];
-    });
+    if (!getEfxPaintDocument(rotoPlaybackLayerId)) return [];
+    return rotoPlaybackFrameNumbers.map((appFrame) => ({ appFrame, frame: true }));
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({
     engineReady: Boolean(engine),

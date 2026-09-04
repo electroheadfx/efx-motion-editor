@@ -288,7 +288,9 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
     expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    // G-52-8: the flattened draw is the record's raster canvas itself — no
+    // PNG encode→decode round-trip through a decoded Image.
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     expect(physicPaintStore.getFlattenedFrame('roto-layer', 2)?.missing).toEqual([
       { trackId: TEST_TRACK_ID, frame: 2, missingRefs: [] },
     ]);
@@ -308,10 +310,11 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     // composited into the flattened raster (paperCanvas deliberately null).
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
-    // Renderer-side: ONE flattened draw — never a separate paper canvas + frame.
+    // Renderer-side: ONE flattened draw — the record's raster canvas itself
+    // (G-52-8: no PNG round-trip), never a separate paper canvas + frame.
     const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
     expect(flattenedDraws.length).toBeGreaterThanOrEqual(1);
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
   });
 
@@ -331,10 +334,11 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
     expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
     expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
-    // Renderer-side: ONE flattened draw — no separate paper/content draws.
+    // Renderer-side: ONE flattened draw — the record's raster canvas itself
+    // (G-52-8: no PNG round-trip) — no separate paper/content draws.
     const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
     expect(flattenedDraws.length).toBeGreaterThanOrEqual(1);
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
   });
 
@@ -443,7 +447,9 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=' }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+    // G-52-8: the flattened draw is the record's raster canvas itself — no
+    // PNG encode→decode round-trip through a decoded Image.
+    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=' }));
   });
 

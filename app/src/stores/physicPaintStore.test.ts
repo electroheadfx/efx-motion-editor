@@ -1815,6 +1815,62 @@ describe('physicPaintStore', () => {
       expect(record!.renderedFrame.dataUrl).toBe(reference.toDataURL());
     });
 
+    it('G-52-8 (FIX 3): a hydrated payload composites from the alpha registry canvas — zero compositor Image decodes', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      // Launch-hydration twin: the exact payload is already decoded off the
+      // main thread in the alpha registry, so _preResolveTrackContent must
+      // reuse that canvas instead of re-decoding the dataUrl (WebKit decodes
+      // lazily at the first drawImage — the G-52-8 per-frame scrub cost).
+      const hydratedCanvas = new FlatTestCanvas([]);
+      hydratedCanvas.width = 4;
+      hydratedCanvas.height = 3;
+      registerRotoAlphaCanvasFrame(frameDataUrl, hydratedCanvas as unknown as HTMLCanvasElement);
+      // A deferred Image proves the decode path: if the compositor re-decoded,
+      // the image would never load and the flatten would return null.
+      vi.stubGlobal('Image', DeferredFlatTestImage);
+      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+
+      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+
+      expect(record).not.toBeNull();
+      expect(DeferredFlatTestImage.instances).toHaveLength(0);
+      // The composite drew the registry canvas itself, not a decoded Image.
+      const composite = record!.raster as unknown as FlatTestCanvas;
+      expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
+      expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: frameDataUrl }));
+    });
+
+    it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', () => {
+      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      const encodeSpy = vi.spyOn(FlatTestCanvas.prototype, 'toDataURL');
+      try {
+        const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+
+        expect(record).not.toBeNull();
+        // The flatten itself encodes NOTHING — draw surfaces consume the
+        // raster; the PNG encode is no longer on the draw path.
+        expect(encodeSpy).not.toHaveBeenCalled();
+        expect(record!.raster).toBeDefined();
+
+        const firstRead = record!.renderedFrame.dataUrl;
+        expect(encodeSpy).toHaveBeenCalledTimes(1);
+        expect(record!.renderedFrame.dataUrl).toBe(firstRead);
+        expect(encodeSpy).toHaveBeenCalledTimes(1);
+
+        // A memo hit returns the same record; the memoized encode survives.
+        const again = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+        expect(again).toBe(record);
+        expect(again.renderedFrame.dataUrl).toBe(firstRead);
+        expect(encodeSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        encodeSpy.mockRestore();
+      }
+    });
+
     it('RED 3 multi-track: draws both visible tracks bottom-to-top and cacheKey equals deriveEfxPaintFlattenedCacheKey', () => {
       const frameA = makeFrame(0, 5).dataUrl;
       const frameB = makeFrame(0, 5).dataUrl;

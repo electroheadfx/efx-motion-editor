@@ -107,6 +107,13 @@ export interface PreviewPhysicPaintFrameSource {
   frame: number;
   /** Production physical sources always provide a revision-aware cache key. */
   cacheKey?: string;
+  /**
+   * G-52-8: flattened delivery records carry their composite raster — draw it
+   * directly instead of round-tripping through renderedFrame.dataUrl (encode +
+   * main-thread decode). Absent on hand-built sources; the dataUrl path below
+   * remains the fallback.
+   */
+  raster?: HTMLCanvasElement;
   renderedFrame: PhysicPaintRenderedFrame;
 }
 
@@ -211,6 +218,9 @@ export class PreviewRenderer {
   }
 
   isPhysicPaintFrameResolved(frame: PreviewPhysicPaintFrameSource): boolean {
+    // G-52-8: a raster-carrying record is resolved by construction — the
+    // export readiness gate must not wait for an Image decode that never runs.
+    if (frame.raster) return true;
     const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
     return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
   }
@@ -609,7 +619,11 @@ export class PreviewRenderer {
     }
   }
 
-  private getPhysicPaintImageSource(frame: PreviewPhysicPaintFrameSource): HTMLImageElement | null {
+  private getPhysicPaintImageSource(frame: PreviewPhysicPaintFrameSource): CanvasImageSource | null {
+    // G-52-8 (FIX 4): a record carrying its raster is draw-ready this pass —
+    // no cache entry, no Image construction, no decode (the flattened memo
+    // owns the raster's lifetime and identity per cacheKey).
+    if (frame.raster) return frame.raster;
     const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
     const cached = this.imageCache.get(cacheKey);
     if (cached) return cached;

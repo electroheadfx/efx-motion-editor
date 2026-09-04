@@ -146,12 +146,21 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     if (!record) return;
     const drawnKey = `${record.cacheKey}@${canvas.width}x${canvas.height}`;
     if (drawnKeyRef.current === drawnKey) return;
-    // The flattened dataUrl is complete when the record exists (every track
-    // decode finished store-side); only the browser image decode may still be
-    // pending. Mark the drawn key BEFORE the load so a stale onload can never
-    // overwrite a newer frame, and a synchronous decode (test stubs / hot
-    // decodes) draws in the same tick.
+    // Mark the drawn key BEFORE the draw so a re-run can never double-draw,
+    // and a stale async completion (fallback path) can never overwrite a newer
+    // frame.
     drawnKeyRef.current = drawnKey;
+    // G-52-8 (FIX 4): the flattened record carries its composite raster — draw
+    // it directly (canvas → drawImage, no Image construction, no PNG
+    // encode→decode round-trip on the scrub/playback path).
+    if (record.raster) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(record.raster, 0, 0, canvas.width, canvas.height);
+      return;
+    }
+    // Fallback for raster-less records (hand-built sources): decode the dataUrl
+    // and draw on load. A synchronous decode (test stubs / hot decodes) draws
+    // in the same tick.
     const image = new Image();
     image.onload = () => {
       if (drawnKeyRef.current !== drawnKey) return;

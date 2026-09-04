@@ -739,6 +739,13 @@ export interface EfxPaintFlattenedFrameRecord {
   readonly layerId: string;
   readonly frame: number;
   readonly cacheKey: string;
+  /**
+   * G-52-8: the composite raster itself. Same-window draw surfaces (program
+   * monitor, preview renderer) consume it directly — the PNG encode→decode
+   * round-trip through `renderedFrame.dataUrl` only runs for
+   * transport/serialization readers (lazy getter, encoded on first read).
+   */
+  readonly raster?: HTMLCanvasElement;
   readonly renderedFrame: PhysicPaintRenderedFrame;
   readonly missing: readonly EfxPaintMissingSourceEntry[];
 }
@@ -1193,7 +1200,16 @@ function _preResolveTrackContent(
     if (source.kind === 'loop-placeholder') {
       return { kind: 'missing', missingRefs: source.missingSourceKeyIds ?? source.sourceKeyIds ?? [] };
     }
-    const image = _compositorDecode(source.renderedFrame.dataUrl);
+    const dataUrl = source.renderedFrame.dataUrl;
+    // G-52-8 (FIX 3): decode-once across the whole app — launch hydration
+    // already decoded this exact payload off the main thread into the alpha
+    // canvas registry, so the compositor reuses that canvas instead of paying
+    // a second main-thread decode (WebKit decodes lazily at the first
+    // drawImage of the _compositorDecode Image). The registry canvas is a
+    // read-only drawImage source here, same dimensions as the decoded image.
+    const registeredCanvas = _rotoAlphaCanvasRegistry.get(dataUrl);
+    if (registeredCanvas) return { kind: 'content', raster: registeredCanvas };
+    const image = _compositorDecode(dataUrl);
     if (!image) return null;
     return { kind: 'content', raster: image };
   }
@@ -1956,15 +1972,25 @@ function _resolveFlattenedFrame(
     fondCtx.drawImage(result.raster, 0, 0);
     raster = fondCanvas;
   }
-  const dataUrl = raster.toDataURL();
+  // G-52-8 (FIX 4): the record carries the raster and encodes the PNG LAZILY —
+  // at photo weight a synchronous raster.toDataURL() costs ~40-80ms on the main
+  // thread, and both draw surfaces then decoded that fresh dataUrl again (WebKit
+  // lazy decode at first drawImage). Draw surfaces consume `raster` directly;
+  // only transport/serialization readers (bridge, export, tests) pay the
+  // encode, memoized on first read. The getter survives Object.freeze.
+  let encodedDataUrl: string | null = null;
   const record: EfxPaintFlattenedFrameRecord = Object.freeze({
     layerId,
     frame,
     cacheKey: flattenedKey,
+    raster,
     renderedFrame: Object.freeze({
       frameIndex: frame,
       appFrame: frame,
-      dataUrl,
+      get dataUrl(): string {
+        if (encodedDataUrl === null) encodedDataUrl = raster.toDataURL();
+        return encodedDataUrl;
+      },
       width: size.width,
       height: size.height,
     }),
