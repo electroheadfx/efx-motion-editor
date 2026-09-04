@@ -4256,10 +4256,8 @@ button.destructive {
 }
 
 .physics-paint-rail-create-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 30;
+  position: fixed;
+  z-index: 60;
   display: flex;
   flex-direction: column;
   gap: 2px;

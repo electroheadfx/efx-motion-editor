@@ -915,6 +915,61 @@ function PhysicsPaintToolboxPopover(props: {
   return panel;
 }
 
+/**
+ * 52 UAT (AM-3): the rail-kind menu — a Studio-local, non-modal menu portaled
+ * to document.body so the workflow strip's overflow-y: hidden can never clip it
+ * (the strip's bottom edge is the window's bottom area, so an in-strip menu
+ * opening below the button rendered entirely inside the clipped band and was
+ * never painted). Renders entirely ABOVE the anchor button with its bottom edge
+ * 4px above the anchor's top, left-aligned to the anchor's left edge and clamped
+ * 8px inside the strip's horizontal bounds. The owning chrome passes its own
+ * panel ref so dismissal classification can prove interior hits through the
+ * portal (toolbox popover pattern, 43.5-02 smoke fix 1). No focus trap, no
+ * backdrop; dismissal is handled by the owning chrome (outside pointerdown /
+ * Escape window capture listeners). Must stay transform/filter-free so
+ * position:fixed keeps the viewport as its containing block.
+ */
+function PhysicsPaintRailCreateMenu(props: {
+  anchorRef: RefObject<HTMLSpanElement>;
+  panelRef: RefObject<HTMLDivElement>;
+  open: boolean;
+  children: ComponentChildren;
+}) {
+  useLayoutEffect(() => {
+    const panel = props.panelRef.current;
+    const anchor = props.anchorRef.current;
+    if (!props.open || !panel || !anchor) return;
+    const panelSize = { width: panel.offsetWidth, height: panel.offsetHeight };
+    const anchorRect = anchor.getBoundingClientRect();
+    const strip = anchor.closest('.physics-paint-workflow-strip');
+    const stripRect = strip ? strip.getBoundingClientRect() : anchorRect;
+    const margin = 8;
+    const gap = 4;
+    const minLeft = Math.max(margin, stripRect.left + margin);
+    const maxLeft = Math.max(minLeft, stripRect.right - margin - panelSize.width);
+    const left = Math.max(minLeft, Math.min(anchorRect.left, maxLeft));
+    const top = Math.max(margin, anchorRect.top - gap - panelSize.height);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.visibility = 'visible';
+  });
+
+  if (!props.open) return null;
+  const panel = (
+    <div
+      ref={props.panelRef}
+      class="physics-paint-rail-create-menu"
+      role="group"
+      aria-label="Rail kind"
+      style={{ visibility: 'hidden' }}
+    >
+      {props.children}
+    </div>
+  );
+  if (typeof document !== 'undefined') return createPortal(panel, document.body);
+  return panel;
+}
+
 function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticChromeProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const closeTooltip = useStyledTooltip();
@@ -1239,6 +1294,36 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 52-04 (D-19): the track rail-creation menu open state — the "Create rail"
   // button in the action row offers the rail kinds (motion/static/reveal).
   const railCreateMenuOpen = useSignal(false);
+  // 52 UAT (AM-3): the rail-kind menu is portaled to document.body (the strip's
+  // overflow-y: hidden clips an in-strip menu that opens below the button at the
+  // strip's bottom edge). The owning chrome keeps the anchor + panel refs so the
+  // outside-pointerdown classifier can prove interior hits through the portal
+  // (toolbox popover pattern, 43.5-02 smoke fix 1).
+  const railCreateAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const railCreateMenuPanelRef = useRef<HTMLDivElement>(null);
+  const closeRailCreateMenu = useCallback(() => {
+    railCreateMenuOpen.value = false;
+  }, []);
+  useEffect(() => {
+    if (!railCreateMenuOpen.value) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (shouldDismissToolboxPopover(
+        event.target,
+        [railCreateAnchorRef.current, railCreateMenuPanelRef.current],
+      )) closeRailCreateMenu();
+    };
+    const onEscapeKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopImmediatePropagation();
+      closeRailCreateMenu();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onEscapeKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onEscapeKeyDown, true);
+    };
+  }, [railCreateMenuOpen.value]);
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
   // 47-01 mockup redesign: edit-in-place rename state. The header column is
@@ -4363,7 +4448,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   the Reveal Photo Rail tab (the SAME create-reveal-rail
                   mutation — one model, two entry points). */}
               <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
+                <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button"
@@ -4382,37 +4467,35 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
                     Create a Motion, Static, or Reveal rail on the current track.
                   </PhysicsPaintStyledTooltip>
-                  {railCreateMenuOpen.value ? (
-                    <div class="physics-paint-rail-create-menu" role="group" aria-label="Rail kind">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreatePlayScriptRail?.('progressive');
-                        }}
-                      >
-                        Motion
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreatePlayScriptRail?.('static');
-                        }}
-                      >
-                        Static
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreateRevealRail?.();
-                        }}
-                      >
-                        Reveal
-                      </button>
-                    </div>
-                  ) : null}
+                  <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        railCreateMenuOpen.value = false;
+                        props.onCreatePlayScriptRail?.('progressive');
+                      }}
+                    >
+                      Motion
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        railCreateMenuOpen.value = false;
+                        props.onCreatePlayScriptRail?.('static');
+                      }}
+                    >
+                      Static
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        railCreateMenuOpen.value = false;
+                        props.onCreateRevealRail?.();
+                      }}
+                    >
+                      Reveal
+                    </button>
+                  </PhysicsPaintRailCreateMenu>
                 </span>
               </div>
             </div>
