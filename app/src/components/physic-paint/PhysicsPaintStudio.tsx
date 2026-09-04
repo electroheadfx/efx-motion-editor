@@ -371,11 +371,12 @@ export function PhysicsPaintStudio() {
   // dialog stays open behind the full-area reference picker so an Import/
   // Replace confirm updates it in place.
   const referenceDialogOpen = useSignal(false);
-  // AM-3 (52 UAT): the Create Rail script picker — when the strip's "+ Rail"
-  // flow launches with NO Action selected in the SCRIPTS library, this
-  // interposed picker lists the library Actions instead of opening a dead
-  // disabled Create Rail dialog. Picking sets the library selection and opens
-  // the dialog on the menu-chosen tab/kind; cancelling closes only the picker.
+  // AM-3 (52 UAT, revised): the Create Rail script picker — the strip's
+  // "+ Rail" flow ALWAYS opens this picker (one uniform, always-visible flow),
+  // listing the library Actions with the current selection highlighted. Picking
+  // sets the library selection and opens the Create Rail dialog on the
+  // menu-chosen tab/kind; cancelling closes only the picker. When the
+  // PlayScript controller is blocked the picker shows the reason live.
   const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
@@ -3852,19 +3853,31 @@ export function PhysicsPaintStudio() {
       onImportSource: () => referencePicker.openPicker(),
     }),
   );
-  // AM-3 (52 UAT): the Create Rail script picker props — rows ride the library
-  // controller's live row signal; a pick sets the library selection and opens
-  // the Create Rail dialog on the menu-chosen tab/kind (Reveal → Reveal Photo
-  // Rail tab); cancel closes ONLY the picker (the intent is dropped).
+  // AM-3 (revised): the Create Rail script picker props — rows and the current
+  // selection ride the library controller's live signals. A pick sets the
+  // library selection and opens the Create Rail dialog on the menu-chosen
+  // tab/kind (Reveal → Reveal Photo Rail tab); cancel closes ONLY the picker.
+  // When the PlayScript controller is blocked (generated frame, unsaved
+  // project, busy), the picker stays open and shows the reason live — no click
+  // path in the flow can silently no-op.
   const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(
-    [scriptPickerIntent.value, rotoScriptLibrary.rows.value],
+    [scriptPickerIntent.value, rotoScriptLibrary.rows.value, rotoScriptLibrary.selectedId.value, rotoPlayScript.disabledReason.value],
     () => ({
       open: scriptPickerIntent.value !== null,
       intent: scriptPickerIntent.value,
       rows: rotoScriptLibrary.rows.value,
+      selectedId: rotoScriptLibrary.selectedId.value,
+      blockedReason: (() => {
+        const reason = rotoPlayScript.disabledReason.value;
+        // The no-selection reason is not a block: the pick SETS the selection.
+        return reason === 'Select a project script first.' ? null : reason;
+      })(),
       onPick: (id: string) => {
         const intent = scriptPickerIntent.peek();
         rotoScriptLibrary.select(id);
+        // Blocked (generated frame, unsaved project, busy): keep the picker
+        // open — the blockedReason notice updates live from disabledReason.
+        if (rotoPlayScript.disabledReason.peek()) return;
         scriptPickerIntent.value = null;
         if (intent?.kind === 'paint') {
           rotoPlayScript.mode.value = intent.mode;
@@ -3901,21 +3914,12 @@ export function PhysicsPaintStudio() {
         // create-reveal-rail mutation). The reference guard lives INSIDE the
         // dialog (proactive Photo Reference modal open — never a disabled menu).
         onCreatePlayScriptRail: (mode) => {
-          // AM-3: no Action selected → interpose the script picker (never a
-          // dead disabled dialog); an Action selected → unchanged behavior.
-          if (!rotoScriptLibrary.selectedId.peek()) {
-            scriptPickerIntent.value = { kind: 'paint', mode };
-            return;
-          }
-          rotoPlayScript.mode.value = mode;
-          void rotoPlayScript.openConfirmation();
+          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
+          // always-visible flow regardless of the library selection.
+          scriptPickerIntent.value = { kind: 'paint', mode };
         },
         onCreateRevealRail: () => {
-          if (!rotoScriptLibrary.selectedId.peek()) {
-            scriptPickerIntent.value = { kind: 'reveal' };
-            return;
-          }
-          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+          scriptPickerIntent.value = { kind: 'reveal' };
         },
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,

@@ -3,18 +3,21 @@ import { Layers, X } from 'lucide-preact';
 import type { RotoScriptLibraryRow } from '../roto/physicsPaintRotoScriptSchema';
 
 /**
- * AM-3 (52 UAT): the Create Rail script picker — a floating MOVABLE dialog
- * (Play Script / Photo Reference pattern: no backdrop, no focus trap — the
- * Studio palette stays interactive while the dialog floats above it).
+ * AM-3 (52 UAT, revised): the Create Rail script picker — a floating MOVABLE
+ * dialog (Play Script / Photo Reference pattern: no backdrop, no focus trap —
+ * the Studio palette stays interactive while the dialog floats above it).
  *
- * The strip's "+ Rail" (Create rail) flow needs a selected library Action to
- * bake from; with none selected the Create Rail dialog would open fully
- * disabled (a dead end). Instead the Studio interposes THIS picker: it lists
+ * The strip's "+ Rail" (Create rail) flow ALWAYS opens this picker — one
+ * uniform, always-visible flow regardless of the library selection. It lists
  * the library Actions (thumbnail + name + natural duration — the Scripts panel
- * row data), picking one sets the library selection and opens the Create Rail
- * dialog on the tab/kind chosen in the menu (Reveal → Reveal Photo Rail tab),
- * and cancelling closes ONLY the picker. An empty library shows an explanatory
- * empty state — never a dead dialog.
+ * row data) with the current selection highlighted; picking one sets the
+ * library selection and opens the Create Rail dialog on the tab/kind chosen in
+ * the menu (Reveal → Reveal Photo Rail tab); cancelling closes ONLY the picker.
+ * An empty library shows an explanatory empty state — never a dead dialog.
+ * When the PlayScript controller is blocked (generated frame, unsaved project,
+ * busy), the picker shows the reason LIVE (the Studio stays interactive, so
+ * moving the cursor to a real frame unblocks it in place) and the rows are
+ * disabled — no click path in the flow can silently no-op.
  *
  * Signals-only state (efx-preact-reactivity): no useState, no render-body
  * signal writes — the drag offset is local pointer-drag state kept in refs.
@@ -31,6 +34,11 @@ export interface PhysicsPaintScriptPickerDialogProps {
   intent: PhysicsPaintScriptPickerIntent | null;
   /** Library Actions (the Scripts panel row data). */
   rows: readonly RotoScriptLibraryRow[];
+  /** The current library selection (highlighted row), null when none. */
+  selectedId: string | null;
+  /** Live PlayScript blocked reason (generated frame, unsaved project, busy) —
+   *  shown as a notice with the rows disabled; null when the flow can proceed. */
+  blockedReason: string | null;
   /** Pick intent — the Studio sets the library selection and opens Create Rail. */
   onPick: (id: string) => void;
   /** Close intent (Escape, header X, Cancel) — closes ONLY the picker. */
@@ -50,6 +58,8 @@ export function PhysicsPaintScriptPickerDialog({
   open,
   intent,
   rows,
+  selectedId,
+  blockedReason,
   onPick,
   onClose,
 }: PhysicsPaintScriptPickerDialogProps) {
@@ -158,15 +168,19 @@ export function PhysicsPaintScriptPickerDialog({
           {rows.length > 0 ? (
             <>
               <p class="physics-paint-script-picker-hint">Pick the Action to bake from.</p>
+              {blockedReason ? (
+                <p class="physics-paint-script-picker-notice" role="status">{blockedReason}</p>
+              ) : null}
               <div class="physics-paint-script-picker-list" role="listbox" aria-label="Saved Roto Actions">
                 {rows.map((row) => (
                   <button
                     key={row.id}
                     type="button"
                     role="option"
-                    aria-selected="false"
-                    class="physics-paint-script-row"
+                    aria-selected={selectedId === row.id ? 'true' : 'false'}
+                    class={`physics-paint-script-row${selectedId === row.id ? ' selected' : ''}`}
                     aria-label={`Use ${row.name}`}
+                    disabled={blockedReason !== null}
                     onClick={() => onPick(row.id)}
                   >
                     <img class="physics-paint-script-thumbnail" src={row.thumbnail.dataUrl} width={row.thumbnail.width} height={row.thumbnail.height} alt="" />

@@ -6507,3 +6507,26 @@ button.destructive {
   outline: 2px solid #5a87ff;
   outline-offset: 1px;
 }
+
+/* AM-3 revised: the live blocked notice (generated frame, unsaved project,
+   busy) — the flow never dead-ends silently; the disabled rows read as such. */
+.physics-paint-script-picker-notice {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #7a5a20;
+  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  font-size: 10.5px;
+  line-height: 14px;
+}
+
+.physics-paint-script-picker-list .physics-paint-script-row:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.physics-paint-script-picker-list .physics-paint-script-row:disabled:hover {
+  border-color: #565b61;
+  background: #3b3d3f;
+}

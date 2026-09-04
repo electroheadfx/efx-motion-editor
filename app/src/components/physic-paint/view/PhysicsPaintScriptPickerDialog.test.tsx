@@ -113,6 +113,8 @@ function renderDialog(props: Partial<PhysicsPaintScriptPickerDialogProps> = {}):
     open: true,
     intent: { kind: 'paint', mode: 'progressive' },
     rows: [makeRow('a', 'Walk Cycle', 4), makeRow('b', 'Jump', 1)],
+    selectedId: null,
+    blockedReason: null,
     onPick: () => {},
     onClose: () => {},
     ...props,
@@ -160,6 +162,32 @@ describe('PhysicsPaintScriptPickerDialog (AM-3)', () => {
     fireClick(findByLabel(tree, 'Use Jump'));
     expect(onPick).toHaveBeenCalledTimes(1);
     expect(onPick).toHaveBeenCalledWith('b');
+  });
+
+  it('highlights the current library selection (AM-3 revised: the picker always opens, selection or not)', () => {
+    const tree = renderDialog({ selectedId: 'a' });
+    const selected = findByLabel(tree, 'Use Walk Cycle');
+    expect(selected.props['aria-selected']).toBe('true');
+    expect(String(selected.props.class)).toContain('selected');
+    const other = findByLabel(tree, 'Use Jump');
+    expect(other.props['aria-selected']).toBe('false');
+    expect(String(other.props.class)).not.toContain('selected');
+  });
+
+  it('shows the live blocked reason and disables the rows — the flow never dead-ends silently', () => {
+    const onPick = vi.fn();
+    const tree = renderDialog({ blockedReason: 'Generated frame 7 is render-only. Select an empty frame or a real Roto key to generate a Play Script.', onPick });
+    const notice = childrenOf(tree).find((node) => hasClass(node, 'physics-paint-script-picker-notice')) as AnyVNode | undefined;
+    expect(notice, 'Missing blocked notice').toBeDefined();
+    expect(textContent(notice)).toContain('render-only');
+    expect(notice!.props['role']).toBe('status');
+    const rows = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-script-row'));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect((row as AnyVNode).props.disabled).toBe(true);
+    }
+    // The list stays visible so the user sees what they will pick once unblocked.
+    expect(onPick).not.toHaveBeenCalled();
   });
 
   it('routes the header X, the Cancel button, and Escape to onClose (closes ONLY the picker)', () => {
