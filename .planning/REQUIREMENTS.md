@@ -76,12 +76,12 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### RVL — Reveal (Phase 8)
 
-- [ ] **RVL-01**: One offscreen source-plus-mask compositor shared by Studio and flattened output reveals the photo source through internal Paint/PlayScript coverage
-- [ ] **RVL-02**: Empty mask reveals nothing; full mask reveals the entire source; partial alpha produces soft edges; eraser removes coverage
-- [ ] **RVL-03**: Progressive PlayScript reveals progressively; static/hold PlayScript preserves the completed reveal
-- [ ] **RVL-04**: Reveal result is written to or represented by an internal Paint/result track and included in flattened output
-- [ ] **RVL-05**: Photo reference visibility alone never leaks into output; hide/solo/opacity/blend around Reveal behave predictably
-- [ ] **RVL-06**: Undo/redo by reference, not raster-byte snapshots; save/reopen and export preserve the result
+- [x] **RVL-01**: One offscreen source-plus-mask compositor shared by Studio and flattened output reveals the photo source through internal Paint/PlayScript coverage
+- [x] **RVL-02**: Empty mask reveals nothing; full mask reveals the entire source; partial alpha produces soft edges; eraser removes coverage
+- [x] **RVL-03**: Progressive PlayScript reveals progressively; static/hold PlayScript preserves the completed reveal
+- [x] **RVL-04**: Reveal result is written to or represented by an internal Paint/result track and included in flattened output
+- [x] **RVL-05**: Photo reference visibility alone never leaks into output; hide/solo/opacity/blend around Reveal behave predictably
+- [x] **RVL-06**: Undo/redo by reference, not raster-byte snapshots; save/reopen and export preserve the result
 
 ### ACC — Integrated Acceptance (Phase 9)
 
@@ -174,12 +174,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUD-02 | Phase 51 | Pending |
 | AUD-03 | Phase 51 | Pending |
 | AUD-04 | Phase 51 | Pending |
-| RVL-01 | Phase 52 | Pending |
-| RVL-02 | Phase 52 | Pending |
-| RVL-03 | Phase 52 | Pending |
-| RVL-04 | Phase 52 | Pending |
-| RVL-05 | Phase 52 | Pending |
-| RVL-06 | Phase 52 | Pending |
+| RVL-01 | Phase 52 | Complete |
+| RVL-02 | Phase 52 | Complete |
+| RVL-03 | Phase 52 | Complete |
+| RVL-04 | Phase 52 | Complete |
+| RVL-05 | Phase 52 | Complete |
+| RVL-06 | Phase 52 | Complete |
 | ACC-01 | Phase 53 | Pending |
 | ACC-02 | Phase 53 | Pending |
 | ACC-03 | Phase 53 | Pending |

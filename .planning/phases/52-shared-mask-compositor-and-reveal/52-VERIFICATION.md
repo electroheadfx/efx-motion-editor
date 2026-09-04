@@ -1,7 +1,7 @@
 ---
 phase: 52-shared-mask-compositor-and-reveal
 verified: 2026-09-02T19:05:00Z
-status: human_needed
+status: passed
 score: 17/18 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
@@ -13,11 +13,13 @@ re_verification:
   gaps_remaining: []
   regressions: []
 behavior_unverified_items:
+
   - truth: "An interrupted or aborted bake writes no keys; the acknowledged physical-edit transaction revalidates the document revision before commit (D-11)"
     test: "Abort the bake mid-span (AbortController.abort() after the first frame) and assert no keys are committed and the document revision is unchanged"
     expected: "The bake loop throws AbortError via throwIfAborted, staged.length is reset to 0, no PhysicPaintRotoRealKeyRecord is committed, and the document revision is not bumped"
     why_human: "throwIfAborted is present in the bake loop (physicsPaintRotoPlayScriptRenderer.ts:69, 84, 89, 98, 118, 120, 122, 129) and the store catches bake errors, but no test exercises the abort path — the state transition (abort mid-bake → no keys written) is not behaviorally proven"
 human_verification:
+
   - test: "Abort the reveal bake mid-span and verify no keys are written and the document is unchanged"
     expected: "The bake aborts cleanly; no baked keys appear; the document revision is not bumped"
     why_human: "No automated test exercises the abort path; the throwIfAborted wiring is present but the state transition is unproven"

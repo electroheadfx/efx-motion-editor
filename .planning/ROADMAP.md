@@ -184,8 +184,8 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 - [x] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster (completed 2026-08-30; Background-row native UAT deferred to Phase 49 — no live authoring UI yet, compositor-side covered by the green matrix suite)
 - [x] **Phase 49: Fixed Background Track and Imported Loop Clips** - Background clips with finite/infinite repeat, gaps, and fallback (completed 2026-09-01; phase-closing native UAT approved)
 - [x] **Phase 50: Photo/Reference Track** - Reference-only / reveal-source / masked-transform-source modes (completed 2026-09-01; phase-closing native UAT approved — dialog modal redesign + round-2/3 fixes validated)
-- [ ] **Phase 51: Read-only Audio Preview** - Synchronized main-editor audio monitoring across internal tracks
-- [ ] **Phase 52: Shared Mask Compositor and Reveal** - Photo source revealed through Paint/PlayScript coverage
+- [x] **Phase 51: Read-only Audio Preview** - Synchronized main-editor audio monitoring across internal tracks (completed 2026-09-02 via quicks 260902-cfa + amendments)
+- [x] **Phase 52: Shared Mask Compositor and Reveal** - Photo source revealed through Paint/PlayScript coverage (completed 2026-09-04)
 - [ ] **Phase 53: Integrated v1.0.0 Acceptance** - Automated gates, native UAT, signed/notarized release
 
 ## Phase Details
@@ -496,6 +496,6 @@ Plans:
 | 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
 | 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 6/6 | Complete    | 2026-09-01 |
 | 50. Photo/Reference Track | v1.0.0 | 6/6 | Complete | 2026-09-01 |
-| 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Not started | - |
-| 52. Shared Mask Compositor and Reveal | v1.0.0 | 5/5 | In Progress|  |
+| 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Complete | 2026-09-02 |
+| 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |

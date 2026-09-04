@@ -126,19 +126,19 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0 Phase 43 (Validated in Phase 43: Hold Loop Clips + Integrated Loop Rail)
 - ✓ Timeline toolbox + directional Push tool: ToolCase popover relocating Interpolation + Key Spacing (zero behavior change), and a mode-toggle Push tool (anchor resolved from the rail under the pointer, moved set = anchor + everything at/after its start, one rigid atomic transaction with one Undo/Redo, nearest-boundary/capacity clamp, straddle guard, persistent 43.1 gap breaks, full drag preview); native UAT approved — v0.9.0 Phase 43.5 (Validated in Phase 43.5: Timeline Toolbox + Directional Push Tools)
 - ✓ Multi-rail selection + batch operations: explicit session-only rail-set selection (plain/toggle/range/union gestures across Key/Motion/Static rails, canonical ordering, fail-closed reconcile), batch Move Rails (rigid clamped translation), direct no-modal Delete Rails, Key Spacing on set with per-rail fixed anchors, and Solo playback presentation filter — every batch op is one atomic history command with exact pre-op selection restore on Undo/Redo (G-43.6-2 undo/recovery-lease defects closed); native UAT approved — v0.9.0 Phase 43.6 (Validated in Phase 43.6: Multi-Rail Selection and Batch Operations)
+- ✓ New versioned v1.0 EFX Paint document owned by one parent layer ID, with stable internal track IDs, document revision, and active track ID — v1.0.0 Phase 45
+- ✓ Clean-break creation of one fresh default Paint track and one fixed Background track for every new v1.0 EFX Paint document; pre-v1.0 Paint data rejected explicitly — v1.0.0 Phase 45
+- ✓ Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, caches, revision, and dirty state — v1.0.0 Phase 46
+- ✓ Internal multi-track timeline inside EFX Paint Studio: add/rename/duplicate/delete/reorder, active selection, hide/solo, opacity, blend mode — v1.0.0 Phase 47
+- ✓ Deterministic internal compositor resolving all Paint tracks into one flattened parent-layer raster per frame — v1.0.0 Phase 48
+- ✓ Fixed Background track with imported still/sequence Loop Clips, finite/infinite repeat, gaps, and solid/transparent fallback — v1.0.0 Phase 49
+- ✓ Photo/reference track (reference-only / reveal-source / masked-transform-source), excluded from ordinary flattened output — v1.0.0 Phase 50
+- ✓ Read-only main-editor audio preview synchronized to the shared application-frame cursor during internal track playback — v1.0.0 Phase 51 (delivered via quicks 260902-cfa + amendments)
+- ✓ Shared mask compositor and Reveal using photo source plus internal Paint/PlayScript coverage — v1.0.0 Phase 52
 
 ### Active
 
-- [ ] New versioned v1.0 EFX Paint document owned by one parent layer ID, with stable internal track IDs, document revision, and active track ID — v1.0.0
-- [ ] Clean-break creation of one fresh default Paint track and one fixed Background track for every new v1.0 EFX Paint document; pre-v1.0 Paint data rejected explicitly — v1.0.0
-- [ ] Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, caches, revision, and dirty state — v1.0.0
-- [ ] Internal multi-track timeline inside EFX Paint Studio: add/rename/duplicate/delete/reorder, active selection, hide/solo, opacity, blend mode — v1.0.0
-- [ ] Deterministic internal compositor resolving all Paint tracks into one flattened parent-layer raster per frame — v1.0.0
-- [ ] Fixed Background track with imported still/sequence Loop Clips, finite/infinite repeat, gaps, and solid/transparent fallback — v1.0.0
-- [ ] Photo/reference track (reference-only / reveal-source / masked-transform-source), excluded from ordinary flattened output — v1.0.0
-- [ ] Read-only main-editor audio preview synchronized to the shared application-frame cursor during internal track playback — v1.0.0
-- [ ] Shared mask compositor and Reveal using photo source plus internal Paint/PlayScript coverage — v1.0.0
-- [ ] Save/reopen, undo/redo, clean-break legacy rejection, preview/export parity, and native UAT — v1.0.0
+- [ ] Save/reopen, undo/redo, clean-break legacy rejection, preview/export parity, and native UAT — v1.0.0 Phase 53
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
@@ -311,4 +311,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-23 after v1.0.0 milestone start — v1.0.0 EFX Paint Multi-Track Frames and Reveal initialized from `SPECS/milestone-v1.0.0-plan.md` (locked ownership boundaries; clean format break; multi-track = internal Paint frame tracks inside one opened EFX Paint document). Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*
+*Last updated: 2026-09-04 after Phase 52 — Shared Mask Compositor and Reveal complete; Phases 45-52 requirements moved to Validated. Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*

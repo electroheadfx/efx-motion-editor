@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 52
-current_phase_name: Shared Mask Compositor and Reveal
-status: executing
-stopped_at: Phase 52 UI-SPEC approved
-last_updated: "2026-09-02T11:42:24.516Z"
-last_activity: 2026-09-02
-last_activity_desc: Phase 52 execution started
-state_head: 1f36ab2df194daf8ec446204c3f22059cfb7c6de
+current_phase: 53
+current_phase_name: Integrated v1.0.0 Acceptance
+status: planning
+stopped_at: Phase 52 complete, ready to plan Phase 53
+last_updated: "2026-09-04T19:48:46.276Z"
+last_activity: 2026-09-04
+last_activity_desc: Phase 52 complete, transitioned to Phase 53
+state_head: 732c504c2b5d0dbe25b5d599806ab442d57a4017
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 5
   total_plans: 42
-  completed_plans: 37
-  percent: 33
+  completed_plans: 42
+  percent: 56
 ---
 
 # Project State
@@ -25,22 +25,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52 — Shared Mask Compositor and Reveal
+**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
 
 ## Current Position
 
-Phase: 52 (Shared Mask Compositor and Reveal) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 52
-Last activity: 2026-09-02 — Phase 52 execution started
+Phase: 53 — Integrated v1.0.0 Acceptance
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-04 — Phase 52 complete, transitioned to Phase 53
 
-Progress: [██████░░░░] 67%
+Progress: [████████████████████] 42/42 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 39 for v0.9.0 (12 phases, shipped 2026-08-21)
+- Total plans completed: 45 for v0.9.0 (12 phases, shipped 2026-08-21)
 - Average duration: N/A
 - Total execution time: N/A
 
@@ -59,6 +59,7 @@ Progress: [██████░░░░] 67%
 | 53. Integrated v1.0.0 Acceptance | 0 | TBD | - |
 | 45 | 8 | - | - |
 | 49 | 6 | - | - |
+| 52 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -234,6 +235,11 @@ Recent decisions affecting current work:
 - [Phase 50]: The persistence round-trip asserts on parsed.photoReference deep-equal to the pre-save track — the photoReference field rides the ...document spread in serializeRuntimeIntoDocument, so the round-trip is structural and the only genuinely new persistence work was already proven in Plan 50-02.
 - [Phase 50]: The D-06 non-regression is a token allow-list scan over the four raster surfaces (compositor, flattenedCache, previewRenderer, exportRenderer) — fourteen reference-input tokens must not appear in any of them.
 - [Phase 50]: The end-to-end contract consolidates the per-plan wiring assertions (50-03 picker, 50-04 ghost, 50-05 section/transform/Escape) into one integration proof, plus the save/reopen seam (hydrateReferenceSourceImagesFromLibrary).
+- [Phase 52]: Reveal bake rides the shared compositor at the WORKING canvas size (getPhysicsPaintWorkingSize), not project size — script strokes live in working coordinates; compositeRevealMask reproduces the ghost draw math (image*zoom, center + transform*zoom) so baked keys overlay the reference ghost pixel-perfectly (G-52-2a).
+- [Phase 52]: Reveal creation lives in the Create Rail dialog's Reveal Photo Rail tab (Paint Rail / Reveal Photo Rail tab strip, apply mode only) — the Photo Reference modal is a pure reference control surface; the reveal tab routes through the same commitRevealBake mutation (creation IS the first bake) and rides the dialog's phase/abort machinery so Cancel generation aborts mid-span with no keys written (G-52-3).
+- [Phase 52]: The alpha-canvas registry OWNS any canvas registered into it (session-lifetime) — no caller may release/resize/mutate a registered canvas; the compositor's registry-first branch only accepts non-zero-size entries (fail-soft) so a poisoned 0x0 canvas can never throw InvalidStateError on drawImage (G-52-10).
+- [Phase 52]: The canonical content fingerprint uses a content TOKEN (length + head-64 + tail-64, O(1)) instead of the full payload dataUrl — head+tail is change-safe for same-encoder PNG output because deflate streams have no resync points; the Rust boundary mirrors the token and the parity pin holds (G-52-6).
+- [Phase 52]: Photo-weight baked keys decode OFF the main thread (dataUrl → Blob → createImageBitmap, with Image + await img.decode() fallback) and the flattened record carries the composite raster with a LAZY dataUrl getter — the draw path never pays a PNG encode/decode round-trip (G-52-7/G-52-8).
 
 ### Pending Todos
 
@@ -241,7 +247,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Research flags for planning: exact `.mce` v1.0 schema field-level design (Phase 45), opacity/blend application order + full pixel acceptance matrix enumeration (Phase 48), Reveal result track semantics (Phase 52), track-aware `paintVersion` reactivity model (Phase 46).
+- Research flags for planning: exact `.mce` v1.0 schema field-level design (Phase 45), opacity/blend application order + full pixel acceptance matrix enumeration (Phase 48), track-aware `paintVersion` reactivity model (Phase 46).
 - v0.9.0 audit-accepted tech debt and deferred items carried forward (see Deferred Items below).
 
 ### Quick Tasks Completed
@@ -271,8 +277,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-**Resume file:** /Users/lmarques/Dev/efx-motion-editor/.planning/phases/52-shared-mask-compositor-and-reveal/52-UI-SPEC.md
-
-Last session: 2026-09-02T10:24:21.471Z
-Stopped at: Phase 52 UI-SPEC approved
-Resume: Phase 48 (Internal Compositor and Flattened Parent Result) — run /gsd-discuss-phase 48 to start planning
+Last session: 2026-09-04
+Stopped at: Phase 52 complete, ready to plan Phase 53
+Resume file: None
