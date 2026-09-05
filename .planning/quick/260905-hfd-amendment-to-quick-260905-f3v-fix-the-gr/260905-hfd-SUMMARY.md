@@ -177,3 +177,6 @@ None - no external service configuration required.
 ## Self-Check: PASSED
 - SUMMARY.md exists at `.planning/quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/260905-hfd-SUMMARY.md`
 - Commits verified: eab594f5 (Task 1), 6fbf36a9 (Task 2), 9ae24727 (Task 3), d75a7305 (auto-fix)
+
+## UAT Follow-up (2026-09-05, approved)
+- Native UAT passed. One design change from user feedback: the inspector top row's Edit Rail / Previous Rail / Next Rail buttons now show visible text labels (`.physics-paint-loop-clip-nav-compact-button.labeled` grows the button to fit); Close stays icon-only and the list-view chevrons stay icon-only. Commit `ddb4ebde`. Suite still green (3459 pass), `tsc` clean.

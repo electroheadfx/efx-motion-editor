@@ -261,7 +261,7 @@ None yet.
 | 260905-dso | Move the Actions tab "Apply" / "Clear" buffer buttons into the Tools popover under a new "Actions" section | 2026-09-05 | 4cf8ddaf | [260905-dso-move-the-actions-tab-apply-clear-buffer-](./quick/260905-dso-move-the-actions-tab-apply-clear-buffer-/) |
 | 260905-epb | Right panel: keep tab bars and the Actions toolbar pinned; only the tab content / scripts list scrolls | 2026-09-05 | 3be8a3e1 | [260905-epb-right-panel-keep-tab-bars-and-the-action](./quick/260905-epb-right-panel-keep-tab-bars-and-the-action/) |
 | 260905-f3v | Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default | 2026-09-05 | cc113daa | [260905-f3v-actions-tab-polish-styled-guarded-toolti](./quick/260905-f3v-actions-tab-polish-styled-guarded-toolti/) |
-| 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | d75a7305 | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
+| 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | ddb4ebde | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
 
 ### Roadmap Evolution
 
