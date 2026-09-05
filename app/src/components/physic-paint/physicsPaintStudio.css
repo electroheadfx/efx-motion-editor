@@ -2296,10 +2296,17 @@ button.destructive {
   line-height: 1;
 }
 
-.physics-paint-roto-loop-toggle.active {
+.physics-paint-roto-loop-toggle.active,
+.physics-paint-roto-solo-toggle.active {
   border: 1px solid var(--color-accent, #2d5be3);
   background: color-mix(in srgb, var(--color-accent, #2d5be3) 44%, transparent);
   color: #fff;
+}
+
+/* 260905-d1w: the relocated Solo nav-button dims in its aria-disabled guarded
+   state exactly like the pill siblings' native-disabled treatment. */
+.physics-paint-roto-solo-toggle[aria-disabled="true"] {
+  opacity: 0.35;
 }
 
 .physics-paint-roto-fps-control input {

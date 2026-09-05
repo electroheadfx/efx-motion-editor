@@ -760,6 +760,13 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   /** 41-04 (D-12/D-13): session-local Audio Preview toggle state + intent. */
   audioPreviewEnabled?: boolean;
   onAudioPreviewToggle?: () => void;
+  /** 260905-d1w: relocated Solo toggle state — the pill nav-button reads the
+   *  session solo arm + availability; the armed visual is the pill .active
+   *  treatment (soloArmedClass carries the conditional ' active' suffix). */
+  soloArmed: boolean;
+  soloArmedClass: string;
+  soloToolDisabled: boolean;
+  soloToolDisabledReason: string | null;
   onInterpolationEnabledChange?: (enabled: boolean) => void;
   onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   onGoToFirstFrame: () => void;
@@ -975,6 +982,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   const closeTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
   const audioPreviewTooltip = useStyledTooltip();
+  // 260905-d1w: the relocated Solo nav-button owns its tooltip here, beside
+  // the other playback-pill tooltips.
+  const soloTooltip = useStyledTooltip();
   const toolboxTooltip = useStyledTooltip();
   // 43.5-02 Task 2: the relocated Key Spacing form owns its tooltip here,
   // beside the other popover-internal tooltips.
@@ -1044,6 +1054,48 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       </div>
       <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
         <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.playbackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={props.playbackLoop} disabled={!props.ready || !props.onPlaybackLoopChange} onClick={() => props.onPlaybackLoopChange?.(!props.playbackLoop)}><RotateCcw size={15} /></button>
+        <span
+          class="physics-paint-roto-solo-toggle-anchor"
+          onPointerEnter={soloTooltip.onPointerEnter}
+          onPointerLeave={soloTooltip.onPointerLeave}
+        >
+          {/* 260905-d1w: Solo relocated from the action row into the playback
+              pill as an icon-only nav-button beside the Loop toggle. The
+              onClick disarms an armed Push tool FIRST, unconditionally (D-20
+              preserved explicitly — the action-row capture guard no longer
+              covers this button). */}
+          <button
+            type="button"
+            class={`physics-paint-nav-button physics-paint-roto-solo-toggle${props.soloArmedClass}`}
+            aria-label="Solo selected Rails"
+            aria-pressed={props.soloArmed ? 'true' : 'false'}
+            aria-disabled={props.soloToolDisabled ? 'true' : undefined}
+            aria-describedby={props.soloToolDisabled ? 'roto-key-action-reason-solo' : undefined}
+            onFocus={soloTooltip.onFocus}
+            onBlur={soloTooltip.onBlur}
+            onClick={() => {
+              disarmPushTool();
+              soloTooltip.hide();
+              if (props.soloToolDisabled) return;
+              // Mode toggle: arming never starts or stops transport
+              // (D-16); re-click disarms.
+              toggleSolo();
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && props.soloToolDisabled) event.preventDefault();
+            }}
+          >
+            <Focus size={15} aria-hidden="true" />
+          </button>
+          {props.soloToolDisabled ? (
+            <span id="roto-key-action-reason-solo" class="physics-paint-sr-only">{props.soloToolDisabledReason}</span>
+          ) : null}
+          <PhysicsPaintStyledTooltip visible={soloTooltip.visible} region="bottom">
+            {props.soloArmed
+              ? 'Exit solo playback.'
+              : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', props.soloToolDisabledReason)}
+          </PhysicsPaintStyledTooltip>
+        </span>
         {props.onAudioPreviewToggle ? (
           <span
             class="physics-paint-audio-preview-toggle-anchor"
@@ -1802,7 +1854,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // isn't mutation-locked. Armed state lives in the sibling session-only
   // module; the .value read subscribes this render to arm/disarm changes.
   const soloArmed = isSoloArmed();
-  const soloArmedClass = soloArmed ? ' physics-paint-push-tool-armed' : '';
+  // 260905-d1w: Solo is now a playback-pill nav-button, so the armed visual is
+  // the pill .active treatment (the physics-paint-push-tool-armed class is a
+  // compound selector requiring the physics-paint-push-tool-button base class,
+  // which a nav-button does not carry) — one armed visual, no new color
+  // literals.
+  const soloArmedClass = soloArmed ? ' active' : '';
   const hasAnyRailSelection = (props.railSetMemberLoopIds?.length ?? 0)
     + (props.railSetMemberKeyRailIds?.length ?? 0)
     + (props.selectedRotoLoopClipIds?.length ?? 0)
@@ -1813,7 +1870,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? 'Select a Rail to solo.'
       : ROTO_KEY_BUSY_STATUS_TEMPLATE
     : null;
-  const soloTooltip = useStyledTooltip();
   // 52-04 (D-19): the "Create rail" button tooltip.
   const railCreateTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
@@ -3937,6 +3993,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onPlaybackFpsChange={props.onRotoPlaybackFpsChange}
         audioPreviewEnabled={props.audioPreviewEnabled}
         onAudioPreviewToggle={props.onAudioPreviewToggle}
+        soloArmed={soloArmed}
+        soloArmedClass={soloArmedClass}
+        soloToolDisabled={soloToolDisabled}
+        soloToolDisabledReason={soloToolDisabledReason}
         onInterpolationEnabledChange={props.onRotoInterpolationEnabledChange}
         onInterpolationModeChange={props.onRotoInterpolationModeChange}
         onGoToFirstFrame={props.onGoToFirstFrame}
@@ -4469,48 +4529,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-              </div>
-              {/* 43.6-06 Solo arm (UI-SPEC M2): ONE compact icon button in its
-                  own group immediately after the Push group — a mode toggle
-                  enabled whenever ANY rail selection exists (single rail = set
-                  of one, D-15). Armed paint reuses the 43.5 armed-tool classes
-                  byte-for-byte (no new color literal); aria-pressed reflects
-                  armed state; the guarded tooltip idiom matches the sibling
-                  key tools. */}
-              <div class="physics-paint-solo-tool-group" role="group" aria-label="Solo playback">
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={soloTooltip.onPointerEnter} onPointerLeave={soloTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${soloArmedClass}`}
-                    aria-label="Solo selected Rails"
-                    aria-pressed={soloArmed ? 'true' : 'false'}
-                    aria-disabled={soloToolDisabled ? 'true' : undefined}
-                    aria-describedby={soloToolDisabled ? 'roto-key-action-reason-solo' : undefined}
-                    onFocus={soloTooltip.onFocus}
-                    onBlur={soloTooltip.onBlur}
-                    onClick={() => {
-                      soloTooltip.hide();
-                      if (soloToolDisabled) return;
-                      // Mode toggle: arming never starts or stops transport
-                      // (D-16); re-click disarms.
-                      toggleSolo();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && soloToolDisabled) event.preventDefault();
-                    }}
-                  >
-                    <Focus size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Solo</span>
-                  </button>
-                  {soloToolDisabled ? (
-                    <span id="roto-key-action-reason-solo" class="physics-paint-sr-only">{soloToolDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={soloTooltip.visible} region="bottom">
-                    {soloArmed
-                      ? 'Exit solo playback.'
-                      : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', soloToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
