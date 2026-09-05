@@ -97,7 +97,10 @@ function createPhysicalCells(capacity: number): readonly RotoPhysicalTimelineCel
  * eligible (the + Key availability law gates it); a caller can pass a bundle
  * with `canAddEmptyKey: signal(false)` to exercise the disabled path.
  */
-function createPhysicalActions(): RotoPhysicalTimelineActionBundle {
+function createPhysicalActions(options: {
+  canAddEmptyKey?: boolean;
+  addEmptyKeyDisabledReason?: string | null;
+} = {}): RotoPhysicalTimelineActionBundle {
   const bool = (value = false) => signal(value);
   return {
     canInsertFrame: bool(),
@@ -112,8 +115,8 @@ function createPhysicalActions(): RotoPhysicalTimelineActionBundle {
     canApplyForceSpacing: bool(),
     forceSpacingDisabledReason: signal<string | null>(null),
     canDragKey: bool(),
-    canAddEmptyKey: signal(true),
-    addEmptyKeyDisabledReason: signal<string | null>(null),
+    canAddEmptyKey: signal(options.canAddEmptyKey ?? true),
+    addEmptyKeyDisabledReason: signal<string | null>(options.addEmptyKeyDisabledReason ?? null),
     scissorTooltipDescription: signal('Split the Key Rail before this key.'),
     canSelectAllKeys: bool(),
     selectAllKeysDisabledReason: signal<string | null>(null),
@@ -235,5 +238,29 @@ describe("the strip's + Rail create-rail menu (AM-3 live report)", () => {
     (thirdKinds[2].props.onClick as () => void)();
     expect(reveal).toHaveBeenCalledTimes(1);
     expect(paint).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not open the rail-kind menu while + Rail is aria-disabled (260905-d1w)', () => {
+    const paint = vi.fn();
+    const reveal = vi.fn();
+    // + Rail mirrors + Key's availability law: on a frame where canAddEmptyKey
+    // is false, the button is aria-disabled and the onClick guard must keep the
+    // Motion/Static/Reveal menu closed.
+    const disabledActions = createPhysicalActions({
+      canAddEmptyKey: false,
+      addEmptyKeyDisabledReason: 'The current frame already has a real Roto key.',
+    });
+    const tree = renderStrip({ paint, reveal }, disabledActions);
+    const button = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(button.props['aria-disabled']).toBe('true');
+    expect(button.props['aria-expanded']).toBe('false');
+
+    (button.props.onClick as () => void)();
+
+    hooks.rewind();
+    const reTree = renderStrip({ paint, reveal }, disabledActions);
+    const reButton = findOne(reTree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(reButton.props['aria-expanded']).toBe('false');
+    expect(findAll(reTree, (vnode) => vnode.props['aria-label'] === 'Rail kind')).toHaveLength(0);
   });
 });

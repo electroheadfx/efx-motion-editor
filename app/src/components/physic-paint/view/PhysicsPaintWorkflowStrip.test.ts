@@ -2111,6 +2111,79 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
   });
 });
 
+describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
+  it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Cut, Scissor, Paste, All, Trash (260905-d1w)', () => {
+    const row = getActionRowBlock(source());
+    const tokens = [
+      'aria-label="Add key"',
+      'aria-label="Create rail"',
+      'aria-label="Push"',
+      getActionAriaLabelToken('Insert key before'),
+      'aria-label="Duplicate key"',
+      'aria-label="Copy key"',
+      'aria-label="Cut key"',
+      getActionAriaLabelToken('Split Key Rail'),
+      'aria-label="Paste key"',
+      getActionAriaLabelToken('Delete Frame'),
+    ];
+    const indices = tokens.map((token) => row.indexOf(token));
+    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
+    for (let i = 1; i < indices.length; i += 1) {
+      expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
+    // The Solo group is gone from the action row (relocated to the pill).
+    expect(row).not.toContain('physics-paint-solo-tool-group');
+  });
+
+  it('gates + Rail with the same availability law as + Key (260905-d1w)', () => {
+    const row = getActionRowBlock(source());
+    // The group div AND the button both carry aria-label="Create rail"; the
+    // button's is the LAST occurrence, so lastIndexOf targets the button block.
+    const labelIndex = row.lastIndexOf('aria-label="Create rail"');
+    expect(labelIndex).toBeGreaterThan(-1);
+    const start = row.lastIndexOf('<button', labelIndex);
+    const end = row.indexOf('</button>', labelIndex) + '</button>'.length;
+    const block = row.slice(start, end);
+    expect(block).toContain("aria-disabled={!canAddRotoKey ? 'true' : undefined}");
+    expect(block).toContain("aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}");
+    expect(block).toContain("aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}");
+    const guardIndex = block.indexOf('if (!canAddRotoKey) return;');
+    const toggleIndex = block.indexOf('railCreateMenuOpen.value = !railCreateMenuOpen.value;');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(toggleIndex).toBeGreaterThan(guardIndex);
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canAddRotoKey");
+    expect(block).toContain('roto-key-action-reason-rail-create');
+    // The guarded tooltip copy lives in the wrapper span (a sibling of the
+    // button), so it is asserted on the row.
+    expect(row).toContain("buildGuardedActionTooltipCopy('Create rail', addRotoKeyDisabledReason)");
+  });
+
+  it('relocates Solo into the playback pill as an icon-only nav-button (260905-d1w)', () => {
+    const code = source();
+    const header = getHeaderBlock(code);
+    const loopIndex = header.indexOf('physics-paint-roto-loop-toggle');
+    const soloIndex = header.indexOf('aria-label="Solo selected Rails"');
+    const audioIndex = header.indexOf('physics-paint-audio-preview-toggle-anchor');
+    expect(loopIndex).toBeGreaterThanOrEqual(0);
+    expect(soloIndex).toBeGreaterThan(loopIndex);
+    expect(audioIndex).toBeGreaterThan(soloIndex);
+    const buttonStart = header.lastIndexOf('<button', soloIndex);
+    const buttonEnd = header.indexOf('</button>', soloIndex) + '</button>'.length;
+    const button = header.slice(buttonStart, buttonEnd);
+    expect(button).toContain('physics-paint-nav-button');
+    expect(button).toContain('physics-paint-roto-solo-toggle');
+    expect(button).toContain('${props.soloArmedClass}');
+    expect(button).toContain('aria-pressed');
+    expect(button).toContain('aria-disabled={props.soloToolDisabled');
+    expect(button).toContain('toggleSolo()');
+    expect(button).toContain('disarmPushTool()');
+    expect(button).not.toContain('physics-paint-roto-key-icon-button');
+    expect(button).not.toContain('>Solo</span>');
+    expect(css()).toContain('.physics-paint-roto-solo-toggle.active');
+    expect(code).toContain("const soloArmedClass = soloArmed ? ' active' : '';");
+  });
+});
+
 describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
   const dialogPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintDeleteTrackDialog.tsx');
   const dialogSource = () => readFileSync(dialogPath, 'utf8');
