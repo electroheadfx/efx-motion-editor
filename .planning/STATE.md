@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-05 - Completed quick task 260905-epb: Right panel: keep tab bars and the Actions toolbar pinned; only the tab content / scripts list scrolls
+Last activity: 2026-09-05 - Completed quick task 260905-f3v: Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default
 
 Progress: [████████████████████] 42/42 plans (100%)
 
@@ -260,6 +260,7 @@ None yet.
 | 260905-d1w | Workflow strip action-row layout: + Rail beside + Key with the same gating, Push after + Rail, Solo relocated icon-only beside Loop (+ amendment: Paste after Copy, + Rail extended gating) | 2026-09-05 | 3cc6a108 | [260905-d1w-workflow-strip-action-row-layout-rail-be](./quick/260905-d1w-workflow-strip-action-row-layout-rail-be/) |
 | 260905-dso | Move the Actions tab "Apply" / "Clear" buffer buttons into the Tools popover under a new "Actions" section | 2026-09-05 | 4cf8ddaf | [260905-dso-move-the-actions-tab-apply-clear-buffer-](./quick/260905-dso-move-the-actions-tab-apply-clear-buffer-/) |
 | 260905-epb | Right panel: keep tab bars and the Actions toolbar pinned; only the tab content / scripts list scrolls | 2026-09-05 | 3be8a3e1 | [260905-epb-right-panel-keep-tab-bars-and-the-action](./quick/260905-epb-right-panel-keep-tab-bars-and-the-action/) |
+| 260905-f3v | Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default | 2026-09-05 | cc113daa | [260905-f3v-actions-tab-polish-styled-guarded-toolti](./quick/260905-f3v-actions-tab-polish-styled-guarded-toolti/) |
 
 ### Roadmap Evolution
 
