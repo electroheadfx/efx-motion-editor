@@ -72,6 +72,15 @@ function getScriptsToolbarBlock(code: string): string {
   return code.slice(toolbarStart, toolbarEnd === -1 ? code.length : toolbarEnd);
 }
 
+function expectInOrder(source: string, tokens: readonly string[]) {
+  let cursor = -1;
+  for (const token of tokens) {
+    const next = source.indexOf(token, cursor + 1);
+    expect(next, `Expected ${token} after source offset ${cursor}`).toBeGreaterThan(cursor);
+    cursor = next;
+  }
+}
+
 describe('Physics Paint SCRIPTS panel contract', () => {
   it('keeps the lower Scripts/Onion/Motion tab group, adds the tool pane\'s Paint/Track option tabs (47 UAT), and exposes scans on Scripts entry', () => {
     for (const tab of ['Actions', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
@@ -752,5 +761,46 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
     const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Rail…');
     expect(playButton.props.title).toBe('Create Rail… — Create a Motion or Static Rail from the selected Action');
     expect(String(playButton.props.title)).not.toContain('Progressive');
+  });
+});
+
+describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
+  it('keeps the toolbar and Linked Rails nav pinned above the scripts list scroll area in the normal view', () => {
+    const normalViewStart = panel.indexOf('aria-label="Project Actions"');
+    expect(normalViewStart).toBeGreaterThanOrEqual(0);
+    const normalView = panel.slice(normalViewStart);
+    const scrollAreaOpen = normalView.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
+    expectInOrder(normalView.slice(0, scrollAreaOpen), ['physics-paint-scripts-toolbar', 'physics-paint-loop-clip-linked-navigation']);
+  });
+
+  it('wraps only the scripts list in the scroll area and keeps the confirmation dialog outside it', () => {
+    const normalViewStart = panel.indexOf('aria-label="Project Actions"');
+    expect(normalViewStart).toBeGreaterThanOrEqual(0);
+    const normalView = panel.slice(normalViewStart);
+    const scrollAreaOpen = normalView.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
+    const scrollAreaClose = normalView.indexOf('</SidebarScrollArea>', scrollAreaOpen);
+    expect(scrollAreaClose).toBeGreaterThan(scrollAreaOpen);
+    const inside = normalView.slice(scrollAreaOpen, scrollAreaClose);
+    expect(inside).toContain('physics-paint-scripts-list');
+    const after = normalView.slice(scrollAreaClose);
+    expect(after).toContain('physics-paint-script-confirmation');
+  });
+
+  it('wraps the inspector view content in a scroll area', () => {
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    expect(inspectorEnd).toBeGreaterThan(inspectorStart);
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    const scrollAreaOpen = inspector.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
+    const scrollAreaClose = inspector.indexOf('</SidebarScrollArea>', scrollAreaOpen);
+    expect(scrollAreaClose).toBeGreaterThan(scrollAreaOpen);
+    const inside = inspector.slice(scrollAreaOpen, scrollAreaClose);
+    expect(inside).toContain('physics-paint-loop-clip-inspector');
+    expect(inside).toContain('physics-paint-loop-clip-linked-navigation');
+    expect(inside).toContain('physics-paint-loop-clip-inspector-actions');
   });
 });

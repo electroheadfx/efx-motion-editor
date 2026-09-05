@@ -91,7 +91,9 @@ vi.mock('preact/hooks', () => ({
 
 vi.mock('../../../lib/paintPreferences', () => mocks);
 vi.mock('../../sidebar/SidebarScrollArea', () => ({
-  SidebarScrollArea: ({ children }: { children: ComponentChildren }) => children,
+  // 260905-epb: a marker div exposes the scroll-region boundary in the vnode
+  // tree so the hierarchy tests can assert what is pinned vs. what scrolls.
+  SidebarScrollArea: ({ children }: { children: ComponentChildren }) => ({ type: 'div', props: { class: 'sidebar-scroll-area-mock', children } }),
 }));
 vi.mock('./PhysicsPaintScriptsPanel', () => ({
   PhysicsPaintScriptsPanel: () => null,
@@ -197,6 +199,19 @@ function findByClass(tree: AnyVNode, className: string): AnyVNode {
   }) as AnyVNode | undefined;
   expect(match, `Missing element with class ${className}`).toBeDefined();
   return match!;
+}
+
+/** True when a host element vnode carries the given class (260905-epb). */
+function hasClass(node: unknown, className: string): boolean {
+  const vnode = node as AnyVNode;
+  return typeof vnode?.type !== 'function' && String(vnode?.props?.class ?? '').split(/\s+/).includes(className);
+}
+
+/** The raw children of a host element vnode — no function-vnode expansion. */
+function directChildrenOf(node: AnyVNode): unknown[] {
+  const children = node.props?.children;
+  if (children === null || children === undefined || typeof children === 'boolean') return [];
+  return Array.isArray(children) ? children : [children];
 }
 
 /** Click a tool-pane tab and re-render so the harness picks up the state. */
@@ -472,5 +487,59 @@ describe('Physics Paint right panel session controls', () => {
     expect(firstResize).not.toHaveBeenCalled();
     expect(secondResize).toHaveBeenCalledOnce();
     expect(secondResize).toHaveBeenCalledWith(77);
+  });
+});
+
+describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
+  it('pins the tools pane tablist as a sibling of the scroll area with the tab panel inside it', () => {
+    const tree = renderPanel(baseProps());
+    const toolsPane = findByClass(tree, 'physics-paint-right-pane-tools');
+    const direct = directChildrenOf(toolsPane);
+    // The tablist is a direct child of the pane — a sibling of the scroll area,
+    // never a descendant of it.
+    const tablist = direct.find((child) => hasClass(child, 'physics-paint-options-tabs-tool'));
+    expect(tablist).toBeDefined();
+    const scrollAreaVnode = direct.find((child) => {
+      const vnode = child as AnyVNode;
+      return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
+    });
+    expect(scrollAreaVnode).toBeDefined();
+    // The tab panel content IS inside the scroll area.
+    const section = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-options-tabs-section'));
+    expect(section).toBeDefined();
+  });
+
+  it('pins the secondary pane tablist as a sibling of the scroll area with the tab panel inside it', () => {
+    const tree = renderPanel(baseProps());
+    // Open the Onion tab so the pane-level scroll area wraps the tab panel
+    // (the scripts tab renders the ScriptsPanel directly, no pane scroll area).
+    const onionTab = findByClass(tree, 'physics-paint-tab-onion');
+    (onionTab.props.onClick as () => void)();
+    const onionTree = renderPanel(baseProps());
+    const secondaryPane = findByClass(onionTree, 'physics-paint-right-pane-secondary');
+    const direct = directChildrenOf(secondaryPane);
+    const tablist = direct.find((child) => hasClass(child, 'physics-paint-options-tabs-navigation'));
+    expect(tablist).toBeDefined();
+    const scrollAreaVnode = direct.find((child) => {
+      const vnode = child as AnyVNode;
+      return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
+    });
+    expect(scrollAreaVnode).toBeDefined();
+    const section = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-options-tabs-section'));
+    expect(section).toBeDefined();
+  });
+
+  it('keeps the primary pane chrome-less: no tablist, content inside the scroll area', () => {
+    const tree = renderPanel(baseProps());
+    const primaryPane = findByClass(tree, 'physics-paint-right-pane-primary');
+    const direct = directChildrenOf(primaryPane);
+    expect(direct.some((child) => hasClass(child, 'physics-paint-options-tabs'))).toBe(false);
+    const scrollAreaVnode = direct.find((child) => {
+      const vnode = child as AnyVNode;
+      return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
+    });
+    expect(scrollAreaVnode).toBeDefined();
+    const content = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-right-pane-content'));
+    expect(content).toBeDefined();
   });
 });
