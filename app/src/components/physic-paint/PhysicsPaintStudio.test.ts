@@ -1858,15 +1858,17 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
     // The intent signal owns the picker's open state (null = closed).
     expect(studio).toContain("const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);");
     // Both menu handlers set the intent UNCONDITIONALLY — no selection gate, so
-    // no click path can silently no-op.
-    expect(studio).toContain(`onCreatePlayScriptRail: (mode) => {
-          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
-          // always-visible flow regardless of the library selection.
-          scriptPickerIntent.value = { kind: 'paint', mode };
-        },`);
-    expect(studio).toContain(`onCreateRevealRail: () => {
-          scriptPickerIntent.value = { kind: 'reveal' };
-        },`);
+    // no click path can silently no-op. 260905-ibd (G-52-9): the handlers are
+    // identity-stable useCallbacks (they only write the stable intent signal) so
+    // the memo-wrapped action-row keeps them as stable props during scrub.
+    expect(studio).toContain(`const onCreatePlayScriptRail = useCallback((mode: 'progressive' | 'static') => {
+    // AM-3 (revised): the script picker ALWAYS opens — one uniform,
+    // always-visible flow regardless of the library selection.
+    scriptPickerIntent.value = { kind: 'paint', mode };
+  }, []);`);
+    expect(studio).toContain(`const onCreateRevealRail = useCallback(() => {
+    scriptPickerIntent.value = { kind: 'reveal' };
+  }, []);`);
   });
 
   it('a pick sets the library selection and opens the Create Rail dialog on the menu-chosen tab/kind — unless the controller is blocked, which keeps the picker open with a live reason', () => {

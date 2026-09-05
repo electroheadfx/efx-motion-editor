@@ -1785,6 +1785,46 @@ export function PhysicsPaintStudio() {
     }
     rotoKeyUtilities.pasteKey();
   }, [rotoSession, rotoPhysicalActions, rotoKeyUtilities]);
+  // 260905-ibd (G-52-9): the five frame-dependent action-row handlers depend on
+  // rotoKeyUtilities (UNSTABLE — useRotoKeyUtilities' input is a fresh object
+  // each render, so addKey/duplicateKey/copyKey/cutKey/pasteKey re-create every
+  // render). The deferred-ref pattern (groupLifecycleDeleteExecuteRef precedent)
+  // keeps the workflow props identity-stable so the memo-wrapped action-row
+  // skips re-renders during scrub: the ref is re-pointed each render and the
+  // stable useCallbacks read the current implementation at call time.
+  const actionRowHandlersRef = useRef({
+    onAddRotoKey: addRotoKey,
+    onDuplicateRotoKey: duplicateRotoKey,
+    onCopyRotoFrame: copyRotoFrame,
+    onCutRotoFrame: cutRotoFrame,
+    onPasteRotoFrame: pasteRotoFrame,
+    onSelectAllRotoKeys: selectAllRotoKeys,
+  });
+  actionRowHandlersRef.current = {
+    onAddRotoKey: addRotoKey,
+    onDuplicateRotoKey: duplicateRotoKey,
+    onCopyRotoFrame: copyRotoFrame,
+    onCutRotoFrame: cutRotoFrame,
+    onPasteRotoFrame: pasteRotoFrame,
+    onSelectAllRotoKeys: selectAllRotoKeys,
+  };
+  const stableOnAddRotoKey = useCallback(() => { actionRowHandlersRef.current.onAddRotoKey(); }, []);
+  const stableOnDuplicateRotoKey = useCallback(() => { actionRowHandlersRef.current.onDuplicateRotoKey(); }, []);
+  const stableOnCopyRotoFrame = useCallback(() => { actionRowHandlersRef.current.onCopyRotoFrame(); }, []);
+  const stableOnCutRotoFrame = useCallback(() => { actionRowHandlersRef.current.onCutRotoFrame(); }, []);
+  const stableOnPasteRotoFrame = useCallback(() => { actionRowHandlersRef.current.onPasteRotoFrame(); }, []);
+  const stableOnSelectAllRotoKeys = useCallback(() => { actionRowHandlersRef.current.onSelectAllRotoKeys(); }, []);
+  // 260905-ibd (G-52-9): the rail-creation entry points only write to the
+  // stable scriptPickerIntent signal, so they are identity-stable useCallbacks
+  // (the workflow props literal must not rebuild them per render).
+  const onCreatePlayScriptRail = useCallback((mode: 'progressive' | 'static') => {
+    // AM-3 (revised): the script picker ALWAYS opens — one uniform,
+    // always-visible flow regardless of the library selection.
+    scriptPickerIntent.value = { kind: 'paint', mode };
+  }, []);
+  const onCreateRevealRail = useCallback(() => {
+    scriptPickerIntent.value = { kind: 'reveal' };
+  }, []);
   const rotoCachedPlayback = rotoNavigation.playback;
   const rotoPlaybackSettingsController = useRotoPlaybackSettingsController({
     initialContext: launchContext ? { context: launchContext, settings: initialRotoPlaybackSettings } : null,
@@ -3991,14 +4031,8 @@ export function PhysicsPaintStudio() {
         // the Reveal Photo Rail tab (one model, two entry points, the SAME
         // create-reveal-rail mutation). The reference guard lives INSIDE the
         // dialog (proactive Photo Reference modal open — never a disabled menu).
-        onCreatePlayScriptRail: (mode) => {
-          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
-          // always-visible flow regardless of the library selection.
-          scriptPickerIntent.value = { kind: 'paint', mode };
-        },
-        onCreateRevealRail: () => {
-          scriptPickerIntent.value = { kind: 'reveal' };
-        },
+        onCreatePlayScriptRail,
+        onCreateRevealRail,
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
@@ -4041,7 +4075,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
+        onDuplicateRotoKey: stableOnDuplicateRotoKey, onAddRotoKey: stableOnAddRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: stableOnCopyRotoFrame, onCutRotoFrame: stableOnCutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: stableOnPasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
@@ -4062,7 +4096,7 @@ export function PhysicsPaintStudio() {
         // Anchor fallback: a null anchor resolves to the current editing key.
         // The clicked key becomes current (flagged for 37-05 native UAT).
         onExtendRotoKeySelection: handleExtendRotoKeySelection,
-        onSelectAllRotoKeys: selectAllRotoKeys,
+        onSelectAllRotoKeys: stableOnSelectAllRotoKeys,
         // Release-time group-drag reject publication (37-04; D-26): concise
         // UI-SPEC copy to the capsule (36.15 D-15 single-owner arbitration),
         // full resolver detail to the surviving diagnostic channel, mirroring
