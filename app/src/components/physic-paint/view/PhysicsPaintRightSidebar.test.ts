@@ -158,7 +158,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
-    expect(scriptsPanel).toContain('aria-label={`Edit Rail — ${selectedLoopClip.displayName}`}');
+    expect(scriptsPanel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
     expect(scriptsPanel).toContain("label=\"Create Rail…\" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action')}`}");
     expect(scriptsPanel).toMatch(/label="Create Rail…"[^>]*onClick=/);
     expect(scriptsPanel).not.toContain('label="Rename Action"');
