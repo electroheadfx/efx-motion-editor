@@ -6,6 +6,7 @@ import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScript
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
+import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
@@ -104,6 +105,7 @@ export function PhysicsPaintScriptsPanel({
   if (selectedLoopClip) {
     return (
       <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}>
+        <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
           <div><dt>Source Action</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
@@ -169,6 +171,7 @@ export function PhysicsPaintScriptsPanel({
             <span>Close</span>
           </button>
         </div>
+        </SidebarScrollArea>
       </div>
     );
   }
@@ -225,6 +228,7 @@ export function PhysicsPaintScriptsPanel({
           </div>
         </section>
       ) : null}
+      <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
       <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto Actions">
         {rows.map((row) => (
           <div
@@ -292,6 +296,7 @@ export function PhysicsPaintScriptsPanel({
           </div>
         ) : null}
       </div>
+      </SidebarScrollArea>
       {confirmation ? (
         <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
           onKeyDown={(event) => {

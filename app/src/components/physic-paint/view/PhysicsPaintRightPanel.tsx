@@ -754,12 +754,13 @@ export function PhysicsPaintRightPanel({
             Motion
           </button>
       </div>
+          {optionsTab === 'scripts' ? (
+            <PhysicsPaintScriptsPanel {...scripts} />
+          ) : (
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
-        {optionsTab === 'scripts' ? (
-          <PhysicsPaintScriptsPanel {...scripts} />
-        ) : optionsTab === 'onion' ? (
+        {optionsTab === 'onion' ? (
           <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
             <label class="physics-paint-onion-toggle-row">
               <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
@@ -789,6 +790,7 @@ export function PhysicsPaintRightPanel({
           </section>
             </div>
           </SidebarScrollArea>
+          )}
         </div>
       </div>
     </aside>

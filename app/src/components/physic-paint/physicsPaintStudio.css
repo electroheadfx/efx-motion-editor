@@ -756,6 +756,10 @@ button.destructive {
   width: 100%;
 }
 
+.physics-paint-scripts-list-scroll-area {
+  width: 100%;
+}
+
 .physics-paint-right-pane-content {
   min-width: 0;
   min-height: 100%;
@@ -1100,7 +1104,8 @@ button.destructive {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  min-height: 180px;
+  min-height: 0;
+  flex: 1 1 auto;
   padding: 12px 4px 4px;
   overflow: hidden;
 }
@@ -1180,13 +1185,12 @@ button.destructive {
 
 .physics-paint-scripts-list {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
-  min-height: 0;
+  min-height: 100%;
+  padding-right: 6px;
   overflow-x: hidden;
-  overflow-y: auto;
 }
 
 .physics-paint-script-row {

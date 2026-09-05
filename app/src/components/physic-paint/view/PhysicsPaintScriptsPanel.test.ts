@@ -176,7 +176,22 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(css).toMatch(/\.physics-paint-options-tabs[\s\S]*?white-space:\s*nowrap/);
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toMatch(/\.physics-paint-scripts-panel[\s\S]*?min-width:\s*0/);
-    expect(css).toMatch(/\.physics-paint-scripts-list[\s\S]*?overflow-x:\s*hidden[\s\S]*?overflow-y:\s*auto/);
+    // 260905-epb: the list no longer owns vertical scrolling — it fills its own
+    // SidebarScrollArea (min-height: 100%, padding-right: 6px) and keeps only
+    // overflow-x: hidden; the new scroll-area rule pins width: 100%.
+    const listRuleStart = css.indexOf('.physics-paint-scripts-list {');
+    expect(listRuleStart).toBeGreaterThanOrEqual(0);
+    const listRuleEnd = css.indexOf('}', listRuleStart);
+    const listRule = css.slice(listRuleStart, listRuleEnd === -1 ? css.length : listRuleEnd + 1);
+    expect(listRule).toMatch(/overflow-x:\s*hidden/);
+    expect(listRule).toMatch(/min-height:\s*100%/);
+    expect(listRule).toMatch(/padding-right:\s*6px/);
+    expect(listRule).not.toMatch(/overflow-y:\s*auto/);
+    const scrollAreaRuleStart = css.indexOf('.physics-paint-scripts-list-scroll-area {');
+    expect(scrollAreaRuleStart).toBeGreaterThanOrEqual(0);
+    const scrollAreaRuleEnd = css.indexOf('}', scrollAreaRuleStart);
+    const scrollAreaRule = css.slice(scrollAreaRuleStart, scrollAreaRuleEnd === -1 ? css.length : scrollAreaRuleEnd + 1);
+    expect(scrollAreaRule).toMatch(/width:\s*100%/);
     expect(css).toMatch(/\.physics-paint-script-thumbnail[\s\S]*?(?:width|height):\s*48px/);
     expect(css).toMatch(/text-overflow:\s*ellipsis/);
     expect(css).toMatch(/@media[\s\S]*?max-width:\s*860px[\s\S]*?grid-template-columns:\s*1fr/);
@@ -724,10 +739,12 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
     const topLevel = childrenOf(tree).filter(
       (child): child is TestVNode => typeof child === 'object' && child !== null && !Array.isArray(child),
     );
+    // 260905-epb: the toolbar stays pinned as the first direct child; the list
+    // now lives inside its own SidebarScrollArea, which is the next direct child.
     const toolbarIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'));
-    const listIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-list'));
+    const scrollAreaIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-list-scroll-area'));
     expect(toolbarIndex).toBeGreaterThanOrEqual(0);
-    expect(listIndex).toBe(toolbarIndex + 1);
+    expect(scrollAreaIndex).toBe(toolbarIndex + 1);
   });
 
   it('keeps the Create Rail… tooltip fallback covering both modes', () => {
