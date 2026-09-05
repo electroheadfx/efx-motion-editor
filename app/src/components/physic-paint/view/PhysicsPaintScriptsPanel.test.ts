@@ -924,3 +924,30 @@ describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
     expect(inside).toContain('physics-paint-loop-clip-inspector-actions');
   });
 });
+
+describe('Physics Paint Scripts panel readable rows contract (260905-f3v)', () => {
+  it('renders script rows readable by default with a distinct selected state', () => {
+    const rowRuleStart = css.indexOf('.physics-paint-script-row {');
+    expect(rowRuleStart).toBeGreaterThanOrEqual(0);
+    const rowRuleEnd = css.indexOf('}', rowRuleStart);
+    const rowRule = css.slice(rowRuleStart, rowRuleEnd === -1 ? css.length : rowRuleEnd + 1);
+    expect(rowRule).toContain('background: transparent');
+    expect(rowRule).not.toContain('#3b3d3f');
+    expect(rowRule).toContain('color: #eef1f4');
+
+    const subRuleStart = css.indexOf('.physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-empty');
+    expect(subRuleStart).toBeGreaterThanOrEqual(0);
+    const subRuleEnd = css.indexOf('}', subRuleStart);
+    const subRule = css.slice(subRuleStart, subRuleEnd === -1 ? css.length : subRuleEnd + 1);
+    expect(subRule).toContain('color: #eef1f4');
+
+    const selectedRuleStart = css.indexOf('.physics-paint-script-row.selected {');
+    expect(selectedRuleStart).toBeGreaterThanOrEqual(0);
+    const selectedRuleEnd = css.indexOf('}', selectedRuleStart);
+    const selectedRule = css.slice(selectedRuleStart, selectedRuleEnd === -1 ? css.length : selectedRuleEnd + 1);
+    expect(selectedRule).toContain('border-color: #7e9cff');
+
+    expect(css).toContain('.physics-paint-script-row:hover');
+    expect(css).toContain('.physics-paint-script-row:focus-visible');
+  });
+});
