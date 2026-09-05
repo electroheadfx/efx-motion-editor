@@ -105,6 +105,7 @@ import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchI
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
+import type { RotoKeyUtilityActionState } from './roto/physicsPaintRotoKeyController';
 import {
   buildRotoRailSetOperationResult,
   type RotoRailSetCopyPayload,
@@ -1695,6 +1696,31 @@ export function PhysicsPaintStudio() {
   });
   const rotoKeyUtilities = rotoNavigation.keyUtilities;
   const rotoSession = rotoKeyUtilities.session;
+  // 260905-ibd (G-52-9): identity-stable mirrors of the session availability and
+  // clipboard presence. The session re-creates its signals every render, so the
+  // action-row cannot subscribe to them directly — these mirrors echo the values
+  // with a field-wise guard so the mirror's value reference stays stable between
+  // key boundaries (the memo-wrapped action-row then re-renders only at key
+  // boundaries, never per scrub frame).
+  const sessionAvailabilitySignal = useSignal<RotoKeyUtilityActionState>(rotoSession.actionAvailability.value);
+  const sessionAvailabilityValue = rotoSession.actionAvailability.value;
+  const currentAvailability = sessionAvailabilitySignal.peek();
+  if (
+    currentAvailability.canInsert !== sessionAvailabilityValue.canInsert
+    || currentAvailability.canDuplicate !== sessionAvailabilityValue.canDuplicate
+    || currentAvailability.canCopy !== sessionAvailabilityValue.canCopy
+    || currentAvailability.canPaste !== sessionAvailabilityValue.canPaste
+    || currentAvailability.canDelete !== sessionAvailabilityValue.canDelete
+    || currentAvailability.busy !== sessionAvailabilityValue.busy
+    || currentAvailability.disabledReason !== sessionAvailabilityValue.disabledReason
+    || currentAvailability.pasteDisabledReason !== sessionAvailabilityValue.pasteDisabledReason
+    || currentAvailability.currentIsGenerated !== sessionAvailabilityValue.currentIsGenerated
+  ) {
+    sessionAvailabilitySignal.value = sessionAvailabilityValue;
+  }
+  const hasCopiedRotoKeySignal = useSignal(rotoSession.copiedKey.value !== null);
+  const hasCopiedRotoKeyValue = rotoSession.copiedKey.value !== null;
+  if (hasCopiedRotoKeySignal.peek() !== hasCopiedRotoKeyValue) hasCopiedRotoKeySignal.value = hasCopiedRotoKeyValue;
   const addRotoKey = rotoKeyUtilities.addKey;
   // 43.6-08 (quick 260820-bjw): the rail-set clipboard slot lives in the
   // session clipboard union (one-slot contract). Wire the timeline-actions
@@ -4003,7 +4029,7 @@ export function PhysicsPaintStudio() {
         onSelectTrackFrame: multiTrackRowBundle.onSelectTrackFrame,
         onSelectTrackRail: multiTrackRowBundle.onSelectTrackRail,
         workflowLabel: launchContext?.workflowLabel,
-        currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
+        currentFrame, currentFrameSignal, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
         // 38.1-D-01: the per-tick playback signal passes through as a signal
         // reference (never .value-read here); only the nav-pill current-frame
@@ -4019,7 +4045,7 @@ export function PhysicsPaintStudio() {
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: hasCopiedRotoKeySignal, sessionAvailability: sessionAvailabilitySignal, hasEffectiveRailSetScope, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

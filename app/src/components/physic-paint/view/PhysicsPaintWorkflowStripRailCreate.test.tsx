@@ -18,12 +18,23 @@ const hooks = vi.hoisted(() => ({
   refs: new Map<number, { current: unknown }>(),
   states: new Map<number, unknown>(),
   signals: new Map<number, unknown>(),
+  // 260905-ibd (G-52-9): the action-row is now a memo-wrapped child component
+  // (PhysicsPaintRotoActionRow) whose + Rail button owns its menu-open signal.
+  // The walk below invokes function components to reach DOM vnodes; without a
+  // per-vnode render cache, every findOne/findAll walk re-invokes those
+  // components and advances the cursor-persistent hook slots, so a child-owned
+  // signal (railCreateMenuOpen) is re-created at a fresh slot on the second
+  // walk and the menu never appears open. Caching the rendered result per vnode
+  // makes the walk idempotent within a render — the same behavior real Preact
+  // has (a component renders once per pass).
+  renderedCache: new WeakMap<object, unknown>(),
   cursor: 0,
   idCursor: 0,
   reset() {
     this.refs = new Map();
     this.states = new Map();
     this.signals = new Map();
+    this.renderedCache = new WeakMap();
     this.cursor = 0;
     this.idCursor = 0;
   },
@@ -181,7 +192,11 @@ function childrenOf(node: unknown): unknown[] {
   if (!node || typeof node !== 'object') return [];
   const vnode = node as AnyVNode;
   if (typeof vnode.type === 'function') {
-    const rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
+    let rendered = hooks.renderedCache.get(vnode);
+    if (rendered === undefined) {
+      rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
+      hooks.renderedCache.set(vnode, rendered);
+    }
     return [vnode, ...childrenOf(rendered)];
   }
   return [vnode, ...childrenOf(vnode.props?.children)];

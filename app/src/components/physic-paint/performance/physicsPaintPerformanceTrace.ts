@@ -44,6 +44,7 @@ export const PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES = [
   'render.workflowStrip',
   'render.workflowStaticChrome',
   'render.rotoTimelineCellButton',
+  'render.rotoActionRow',
   'observer.canvasStack.resize.install',
   'observer.canvasStack.resize.cleanup',
   'observer.canvasStack.mutation.install',

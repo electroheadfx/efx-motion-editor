@@ -37,10 +37,13 @@ function getStaticChromePropsInterface(code: string): string {
   return code.slice(code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'), code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl'));
 }
 function getActionRowBlock(code: string): string {
-  // Anchored at the action-row band (not the tools group) so the block spans
-  // all three Gap F groups: identity → tools → key spacing (36.15-10).
-  const rowStart = code.indexOf('class="physics-paint-roto-action-row"');
-  const rowEnd = code.indexOf('physics-paint-timeline-scrollbar', rowStart);
+  // 260905-ibd (G-52-9): the action-row is extracted into the memo-wrapped
+  // PhysicsPaintRotoActionRow component (with its narrow-subscriber children
+  // PhysicsPaintRotoKeyIdentity and PhysicsPaintRailCreateButton), defined
+  // before the strip body. The block spans the whole component section so the
+  // identity + rail-create content stays inside the asserted row.
+  const rowStart = code.indexOf('interface PhysicsPaintRotoActionRowProps');
+  const rowEnd = code.indexOf('const PhysicsPaintRotoActionRow = memo(PhysicsPaintRotoActionRowImpl);', rowStart);
   return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
 }
 function getActionAriaLabelToken(ariaLabel: string): string {
@@ -664,7 +667,11 @@ describe('localized render instrumentation', () => {
 function getHeaderBlock(code: string): string {
   const headerStart = code.indexOf('<div class="physics-paint-workflow-header">');
   if (headerStart === -1) return '';
-  const headerEnd = code.indexOf('<div class="physics-paint-timeline"', headerStart);
+  // 260905-ibd (G-52-9): the header lives in the memoized static-chrome
+  // component; the action-row component section follows it in the file, so the
+  // block ends at the static-chrome memo boundary (not the timeline div, which
+  // now sits after the action-row section in the strip body).
+  const headerEnd = code.indexOf('const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeImpl);', headerStart);
   return code.slice(headerStart, headerEnd === -1 ? code.length : headerEnd);
 }
 
@@ -989,16 +996,21 @@ describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2
     // `renderActiveLane()` helper, mounted inside the rows-region here — so the
     // mount point, not the lane class string, is the scroll-containment anchor.
     const laneMountIndex = code.indexOf('renderActiveLane()', scrollIndex);
-    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneMountIndex);
+    // 260905-ibd (G-52-9): the action-row is extracted into the memo-wrapped
+    // PhysicsPaintRotoActionRow component, defined BEFORE the strip body — so
+    // the scroll container (in the strip body) can never contain it.
+    const actionRowComponentIndex = code.indexOf('function PhysicsPaintRotoActionRowImpl');
+    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', actionRowComponentIndex);
     const utilitiesIndex = code.indexOf('physics-paint-roto-key-utilities', actionRowIndex);
-    const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', utilitiesIndex);
-    for (const index of [scrollIndex, scrollEnd, laneMountIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
+    const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', scrollIndex);
+    for (const index of [scrollIndex, scrollEnd, laneMountIndex, actionRowComponentIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(laneMountIndex).toBeLessThan(scrollEnd);
-    expect(actionRowIndex).toBeGreaterThan(scrollEnd);
+    expect(actionRowComponentIndex).toBeLessThan(scrollIndex);
+    expect(actionRowIndex).toBeGreaterThan(actionRowComponentIndex);
     expect(utilitiesIndex).toBeGreaterThan(actionRowIndex);
-    expect(scrollbarIndex).toBeGreaterThan(utilitiesIndex);
+    expect(scrollbarIndex).toBeGreaterThan(scrollEnd);
     expect(code.slice(scrollIndex, scrollEnd)).not.toContain('physics-paint-roto-action-row');
     expect(code.slice(scrollIndex, scrollEnd)).toContain('renderActiveLane()');
   });
@@ -2118,20 +2130,24 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 
 describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
   it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)', () => {
-    const row = getActionRowBlock(source());
-    const tokens = [
-      'aria-label="Add key"',
-      'aria-label="Create rail"',
-      'aria-label="Push"',
-      getActionAriaLabelToken('Insert key before'),
-      'aria-label="Duplicate key"',
-      'aria-label="Copy key"',
-      'aria-label="Paste key"',
-      'aria-label="Cut key"',
-      getActionAriaLabelToken('Split Key Rail'),
-      getActionAriaLabelToken('Delete Frame'),
-    ];
-    const indices = tokens.map((token) => row.indexOf(token));
+    const code = source();
+    // 260905-ibd (G-52-9): the rendered order lives in the action-row div inside
+    // PhysicsPaintRotoActionRowImpl; the + Rail button is a component reference
+    // there (its aria-label lives in the PhysicsPaintRailCreateButton child).
+    const rowStart = code.indexOf('class="physics-paint-roto-action-row"');
+    const rowEnd = code.indexOf('const PhysicsPaintRotoActionRow = memo(PhysicsPaintRotoActionRowImpl);', rowStart);
+    const row = code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
+    const addKeyIndex = row.indexOf('aria-label="Add key"');
+    const createRailIndex = row.indexOf('<PhysicsPaintRailCreateButton');
+    const pushIndex = row.indexOf('aria-label="Push"');
+    const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
+    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
+    const copyIndex = row.indexOf('aria-label="Copy key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
+    const cutIndex = row.indexOf('aria-label="Cut key"');
+    const scissorIndex = row.indexOf(getActionAriaLabelToken('Split Key Rail'));
+    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
+    const indices = [addKeyIndex, createRailIndex, pushIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, cutIndex, scissorIndex, deleteIndex];
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
@@ -2165,6 +2181,9 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
 
   it('derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)', () => {
     const code = source();
+    // 260905-ibd (G-52-9): the derivation moved into the memo-wrapped
+    // PhysicsPaintRailCreateButton narrow subscriber, reading the current frame
+    // from the currentFrameSignal prop (frame = props.currentFrameSignal.value).
     const derivationStart = code.indexOf('const currentFrameResolution = ');
     expect(derivationStart).toBeGreaterThan(-1);
     const derivationEnd = code.indexOf('const copyRotoKeyDisabledReason', derivationStart);
@@ -2172,10 +2191,10 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
     // Base law: canAddRotoKey must still gate (busy/ready/real-key).
     expect(derivation).toContain('canAddRotoKey &&');
     // Generated in-between exclusion reads the current frame's semantic cell.
-    expect(derivation).toContain("physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated'");
+    expect(derivation).toContain("props.physicalCellByAppFrame.get(frame)?.kind === 'generated'");
     // Linked repeat exclusion reads the current frame's loop resolution.
     expect(derivation).toContain('isLinkedRepeatFrameResolution(currentFrameResolution)');
-    expect(derivation).toContain('visibleFrameResolutions?.get(props.currentFrame) ?? null');
+    expect(derivation).toContain('props.visibleFrameResolutions?.get(frame) ?? null');
     // Reason priority: base addEmptyKeyDisabledReason first, then repeat, then generated.
     expect(derivation).toContain('addRotoKeyDisabledReason');
     expect(derivation).toContain('isCurrentFrameLinkedRepeat');
