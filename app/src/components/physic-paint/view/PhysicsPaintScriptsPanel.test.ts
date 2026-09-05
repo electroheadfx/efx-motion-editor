@@ -72,6 +72,22 @@ function getScriptsToolbarBlock(code: string): string {
   return code.slice(toolbarStart, toolbarEnd === -1 ? code.length : toolbarEnd);
 }
 
+function getIconButtonBlock(code: string, label: string): string {
+  const labelIndex = code.indexOf(`label="${label}"`);
+  if (labelIndex === -1) return '';
+  const start = code.lastIndexOf('<IconButton', labelIndex);
+  if (start === -1) return '';
+  const end = code.indexOf('</IconButton>', labelIndex) + '</IconButton>'.length;
+  return code.slice(start, end);
+}
+
+function getIconButtonHelperBlock(code: string): string {
+  const start = code.indexOf('function IconButton(');
+  if (start === -1) return '';
+  const end = code.indexOf('function formatFrameRange', start);
+  return code.slice(start, end === -1 ? code.length : end);
+}
+
 function expectInOrder(source: string, tokens: readonly string[]) {
   let cursor = -1;
   for (const token of tokens) {
@@ -381,6 +397,55 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     const ruleEnd = css.indexOf('}', ruleStart);
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toMatch(/row-gap:\s*([4-9]|\d{2,})px/);
+  });
+});
+
+describe('Physics Paint Scripts panel guarded toolbar contract (260905-f3v)', () => {
+  const toolbarButtonLabels = ['Save Action', 'Load + Apply to Frame', 'Create Rail…', 'Delete Action', 'Refresh Actions'];
+
+  it('routes every toolbar button through the guarded IconButton idiom with no native title', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    for (const label of toolbarButtonLabels) {
+      const block = getIconButtonBlock(toolbar, label);
+      expect(block, `IconButton block for ${label}`).not.toBe('');
+      expect(block).toContain('disabledReason=');
+    }
+    // The shared helper renders the guarded button element: aria-disabled,
+    // aria-describedby when a reason is present, the styled tooltip, and NO
+    // native title attribute on the button element.
+    const helper = getIconButtonHelperBlock(panel);
+    expect(helper).toContain('aria-disabled={isDisabled ? \'true\' : undefined}');
+    expect(helper).toContain('aria-describedby={isDisabled && reason ? props.descriptionId : undefined}');
+    expect(helper).toContain('PhysicsPaintStyledTooltip');
+    const buttonStart = helper.indexOf('<button');
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    const buttonEnd = helper.indexOf('</button>', buttonStart) + '</button>'.length;
+    const buttonElement = helper.slice(buttonStart, buttonEnd);
+    expect(buttonElement).not.toContain('title=');
+  });
+
+  it('uses the de-prefixed tooltip grammar and keeps the Delete button ref for the cancel focus flow', () => {
+    const helper = getIconButtonHelperBlock(panel);
+    expect(helper).toContain('unavailable: ${reason}');
+    expect(helper).not.toContain(' — unavailable: ');
+    const deleteBlock = getIconButtonBlock(getScriptsToolbarBlock(panel), 'Delete Action');
+    expect(deleteBlock).toContain('buttonRef={deleteButtonRef}');
+    expect(panel).toContain('deleteButtonRef.current?.focus()');
+  });
+
+  it('keeps the five toolbar labels ordered with Copy as the last guarded control', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    let cursor = -1;
+    for (const label of toolbarButtonLabels) {
+      const next = toolbar.indexOf(`label="${label}"`, cursor + 1);
+      expect(next, `Expected ${label} after offset ${cursor}`).toBeGreaterThan(cursor);
+      cursor = next;
+    }
+    const copyIndex = toolbar.indexOf('aria-label="Copy Action"');
+    expect(copyIndex).toBeGreaterThan(cursor);
+    const copyBlock = getGuardedToolbarBlock(panel, 'Copy Action');
+    expect(copyBlock).toContain('aria-disabled');
+    expect(copyBlock).toContain('PhysicsPaintStyledTooltip');
   });
 });
 
