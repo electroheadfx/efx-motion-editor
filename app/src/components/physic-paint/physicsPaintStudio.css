@@ -1232,6 +1232,23 @@ button.destructive {
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
 .physics-paint-loop-clip-inspector-action:disabled { border-color: #4d5156; background: #34373a; color: #777e86; cursor: not-allowed; }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
+/* 260905-f3v: guarded Linked Rails nav buttons — the IconButton wrapper is the
+   grid cell, the button fills it, and the aria-disabled grey-out mirrors the
+   native :disabled colors pinned on hover/focus-visible so an unavailable nav
+   button never looks interactive. */
+.physics-paint-loop-clip-inspector-actions .physics-paint-roto-key-icon-action { display: flex; min-width: 0; }
+.physics-paint-loop-clip-inspector-actions .physics-paint-loop-clip-inspector-action { flex: 1 1 auto; width: 100%; gap: 4px; padding: 0 6px; }
+.physics-paint-loop-clip-inspector-actions .physics-paint-loop-clip-inspector-action svg { flex: 0 0 auto; }
+.physics-paint-loop-clip-inspector-actions .physics-paint-loop-clip-inspector-action .physics-paint-roto-key-icon-label { white-space: nowrap; }
+.physics-paint-loop-clip-inspector-actions .physics-paint-loop-clip-inspector-action[aria-disabled="true"],
+.physics-paint-loop-clip-inspector-actions .physics-paint-loop-clip-inspector-action[aria-disabled="true"]:hover,
+.physics-paint-loop-clip-inspector-actions .physics-paint-loop-clip-inspector-action[aria-disabled="true"]:focus-visible {
+  border-color: #4d5156;
+  background: #34373a;
+  color: #777e86;
+  cursor: not-allowed;
+}
+.physics-paint-loop-clip-inspector-actions .physics-paint-roto-key-icon-action.physics-paint-loop-clip-edit-current { grid-column: 1 / -1; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; min-width: min(420px, calc(100% - 8px)); max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
 .physics-paint-action-delete-groups { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .physics-paint-action-delete-groups > p { margin: 0; color: #eef1f4; font-size: 12px; line-height: 1.5; }

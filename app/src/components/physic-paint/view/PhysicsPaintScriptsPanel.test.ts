@@ -291,7 +291,11 @@ describe('Physics Paint Scripts panel Copy toolbar contract (36.15-08, UAT Gap C
   });
 
   it('lays the toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
-    const toolbar = getScriptsToolbarBlock(panel);
+    // Scope to the toolbar div only — the Linked Rails nav section (with its
+    // own guarded Edit Rail wrapper) sits between the toolbar and the list.
+    const toolbarStart = panel.indexOf('physics-paint-scripts-toolbar');
+    const toolbarDivEnd = panel.indexOf('</div>', toolbarStart);
+    const toolbar = panel.slice(toolbarStart, toolbarDivEnd);
     const guardedCount = (toolbar.match(/physics-paint-roto-key-icon-action/g) ?? []).length;
     // One guarded clipboard action (Copy) forms the second row; the first-row
     // buttons get the same guarded idiom via the shared IconButton helper
@@ -784,19 +788,70 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Previous' || textOf(vnode) === 'Next')).toHaveLength(0);
   });
 
-  it('shows non-wrapping Previous and Next controls disabled at their ends', () => {
+  it('shows non-wrapping Previous and Next controls guarded at their ends', () => {
     const onNext = vi.fn();
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: { currentIndex: 0, total: 3, onPrevious: vi.fn(), onNext, onGoToGroup: vi.fn() },
     });
     expect(textOf(tree)).toContain('Linked Rails — 1 of 3');
-    const previous = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Previous');
-    const next = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Next');
+    // The nav buttons route through the guarded IconButton helper (a function
+    // component the harness does not expand), so the vnode exposes the guarded
+    // `disabled` prop; the source-code assertions above verify the rendered
+    // button uses aria-disabled instead of native disabled.
+    const previous = findOne(tree, (vnode) => vnode.props?.label === 'Previous Rail');
+    const next = findOne(tree, (vnode) => vnode.props?.label === 'Next Rail');
     expect(previous.props.disabled).toBe(true);
     expect(next.props.disabled).toBe(false);
     (next.props.onClick as () => void)();
     expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the contextual Edit Rail in the list view only when the cursor is on the current linked rail', () => {
+    const onEditCurrent = vi.fn();
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      linkedGroupNavigation: { currentIndex: 1, total: 3, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup: vi.fn(), cursorOnCurrentRail: true, onEditCurrent },
+    });
+    const edit = findOne(tree, (vnode) => vnode.props?.label === 'Edit Rail');
+    (edit.props.onClick as () => void)();
+    expect(onEditCurrent).toHaveBeenCalledTimes(1);
+
+    const tree2 = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      linkedGroupNavigation: { currentIndex: 1, total: 3, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup: vi.fn(), cursorOnCurrentRail: false, onEditCurrent },
+    });
+    expect(findAll(tree2, (vnode) => vnode.props?.label === 'Edit Rail')).toHaveLength(0);
+  });
+
+  it('uses guarded IconButton Previous/Next with Chevron icons and boundary reasons in both renderings', () => {
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    const list = panel.slice(inspectorEnd);
+    for (const section of [inspector, list]) {
+      expect(section).toContain('<IconButton label="Previous Rail"');
+      expect(section).toContain('<IconButton label="Next Rail"');
+      expect(section).toContain('ChevronLeft size={16}');
+      expect(section).toContain('ChevronRight size={16}');
+    }
+    expect(panel).toContain("disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined}");
+    expect(panel).toContain("disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined}");
+    // No native disabled= on the nav buttons — they route through IconButton,
+    // whose rendered button element uses aria-disabled instead.
+    const helper = getIconButtonHelperBlock(panel);
+    const buttonStart = helper.indexOf('<button');
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    const buttonEnd = helper.indexOf('</button>', buttonStart) + '</button>'.length;
+    const buttonElement = helper.slice(buttonStart, buttonEnd);
+    expect(buttonElement.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+  });
+
+  it('wires cursorOnCurrentRail and onEditCurrent through the Studio memo', () => {
+    expect(studio).toContain('cursorOnCurrentRail: cursorOnCurrentLinkedRail');
+    expect(studio).toContain('onEditCurrent: handleEditCurrentLinkedGroup');
+    expect(studio).toContain('const handleEditCurrentLinkedGroup = useCallback(() => {');
+    expect(studio).toContain('handleOpenRotoLoopEdit(effectiveLinkedGroup.loopId)');
+    expect(studio).toContain('cursorOnCurrentLinkedRail, handleEditCurrentLinkedGroup');
   });
 });
 

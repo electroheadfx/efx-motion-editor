@@ -1,4 +1,4 @@
-import { Clipboard, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, Clipboard, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -20,6 +20,8 @@ export interface PhysicsPaintScriptsPanelProps {
     onPrevious: () => void;
     onNext: () => void;
     onGoToGroup: () => void;
+    cursorOnCurrentRail: boolean;
+    onEditCurrent: () => void;
   } | null;
   onOpenLoopEdit: (loopId: string) => Promise<unknown>;
   onCloseLoopClip: () => void;
@@ -70,6 +72,8 @@ export function PhysicsPaintScriptsPanel({
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
   const copyScriptReasonId = useId();
+  const previousRailReasonId = useId();
+  const nextRailReasonId = useId();
   const copyScriptTooltip = useStyledTooltip();
   const canCopyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canCopy;
   const copyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason);
@@ -129,22 +133,8 @@ export function PhysicsPaintScriptsPanel({
                 </button>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    class="physics-paint-loop-clip-inspector-action"
-                    disabled={linkedGroupNavigation.currentIndex === 0}
-                    onClick={linkedGroupNavigation.onPrevious}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    class="physics-paint-loop-clip-inspector-action"
-                    disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1}
-                    onClick={linkedGroupNavigation.onNext}
-                  >
-                    Next
-                  </button>
+                  <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-inspector-action"><ChevronLeft size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Previous Rail</span></IconButton>
+                  <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-inspector-action"><ChevronRight size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Next Rail</span></IconButton>
                 </>
               )}
             </div>
@@ -221,8 +211,11 @@ export function PhysicsPaintScriptsPanel({
               <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
             ) : (
               <>
-                <button type="button" class="physics-paint-loop-clip-inspector-action" disabled={linkedGroupNavigation.currentIndex === 0} onClick={linkedGroupNavigation.onPrevious}>Previous</button>
-                <button type="button" class="physics-paint-loop-clip-inspector-action" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} onClick={linkedGroupNavigation.onNext}>Next</button>
+                <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-inspector-action"><ChevronLeft size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Previous Rail</span></IconButton>
+                <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-inspector-action"><ChevronRight size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Next Rail</span></IconButton>
+                {linkedGroupNavigation.cursorOnCurrentRail ? (
+                  <IconButton label="Edit Rail" title="Edit Rail" onClick={linkedGroupNavigation.onEditCurrent} className="physics-paint-loop-clip-inspector-action" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-edit-current"><Pencil size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Edit Rail</span></IconButton>
+                ) : null}
               </>
             )}
           </div>
@@ -410,16 +403,18 @@ function formatFrameRange(start: number, endExclusive: number): string {
   return `F${start}–F${endExclusive - 1}`;
 }
 
-function IconButton(props: { buttonRef?: Ref<HTMLButtonElement>; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () => void; children: ComponentChildren }) {
+function IconButton(props: { buttonRef?: Ref<HTMLButtonElement>; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () => void; className?: string; wrapperClassName?: string; children: ComponentChildren }) {
   const tooltip = useStyledTooltip();
   const isDisabled = props.disabled ?? false;
   const reason = props.disabledReason ?? null;
+  const buttonClass = props.className ?? 'physics-paint-script-icon-button';
+  const wrapperClass = props.wrapperClassName ?? 'physics-paint-roto-key-icon-action';
   return (
-    <span class="physics-paint-roto-key-icon-action" onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}>
+    <span class={wrapperClass} onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}>
       <button
         ref={props.buttonRef}
         type="button"
-        class="physics-paint-script-icon-button"
+        class={buttonClass}
         aria-label={props.label}
         aria-disabled={isDisabled ? 'true' : undefined}
         aria-describedby={isDisabled && reason ? props.descriptionId : undefined}

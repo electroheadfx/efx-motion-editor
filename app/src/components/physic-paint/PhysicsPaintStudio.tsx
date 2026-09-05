@@ -2061,6 +2061,22 @@ export function PhysicsPaintStudio() {
   const effectiveLinkedGroupIndex = effectiveLinkedGroup
     ? linkedRotoGroups.findIndex((group) => group.loopId === effectiveLinkedGroup.loopId)
     : -1;
+  // 260905-f3v: the contextual Edit Rail appears exactly when the playhead is
+  // on the current linked rail — reuse effectiveLinkedGroup's own range so the
+  // derivation and the nav selection can never disagree.
+  const cursorOnCurrentLinkedRail = effectiveLinkedGroup !== null
+    && effectiveLinkedGroup !== undefined
+    && currentFrame >= effectiveLinkedGroup.placementStart
+    && (effectiveLinkedGroup.repeat === 'infinity'
+      ? true
+      : currentFrame < effectiveLinkedGroup.placementStart + effectiveLinkedGroup.sourceKeyIds.length * effectiveLinkedGroup.repeat);
+  // 260905-f3v: the list-view contextual Edit Rail edits the current linked
+  // rail — the same rail the nav selection resolves.
+  const handleEditCurrentLinkedGroup = useCallback(() => {
+    if (effectiveLinkedGroup) {
+      void handleOpenRotoLoopEdit(effectiveLinkedGroup.loopId);
+    }
+  }, [effectiveLinkedGroup, handleOpenRotoLoopEdit]);
   const selectedLoopClip = selectedLoopClipId.value === null
     ? null
     : loopPresentations.get(selectedLoopClipId.value) ?? null;
@@ -3059,7 +3075,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, cursorOnCurrentLinkedRail, handleEditCurrentLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3126,6 +3142,8 @@ export function PhysicsPaintStudio() {
           onPrevious: handlePreviousLinkedGroup,
           onNext: handleNextLinkedGroup,
           onGoToGroup: handleGoToLinkedGroup,
+          cursorOnCurrentRail: cursorOnCurrentLinkedRail,
+          onEditCurrent: handleEditCurrentLinkedGroup,
         },
       onOpenLoopEdit: handleOpenRotoLoopEdit,
       onCloseLoopClip: handleCloseRotoLoopClip,
