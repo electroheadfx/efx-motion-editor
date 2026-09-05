@@ -451,6 +451,15 @@ describe('Physics Paint Scripts panel guarded toolbar contract (260905-f3v)', ()
     expect(copyBlock).toContain('aria-disabled');
     expect(copyBlock).toContain('PhysicsPaintStyledTooltip');
   });
+
+  it('wires descriptionId on every toolbar IconButton so sr-only disabled reasons are announced (260905-hfd)', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    for (const label of toolbarButtonLabels) {
+      const block = getIconButtonBlock(toolbar, label);
+      expect(block, `IconButton block for ${label}`).not.toBe('');
+      expect(block).toContain('descriptionId=');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
