@@ -388,6 +388,12 @@ export function PhysicsPaintStudio() {
   // setCurrentAppFrame, setLaunchContextStartFrame) — never inside the
   // setLaunchContextState updater (Rule 6 render-phase write risk).
   const currentFrameSignal = useSignal(launchContext?.startFrame ?? 0);
+  // D-02 amendment (audible scrub): true while the ruler scrub gesture is armed
+  // (past the 4px threshold). navigateToSyncedPhysicalFrame routes the audio
+  // funnel to scrub (audible snippet) vs seek (silent re-anchor) by this flag.
+  // Declared before setLaunchContext so the reseed branch can gate on it
+  // (260905-ibd follow-up: the selection stays put while scrubbing).
+  const scrubActiveRef = useRef(false);
   // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
   // Studio on every paint event; a trailing 150ms throttle collapses a stroke
   // burst into one flush so the chrome freezes while painting (the user's
@@ -496,7 +502,12 @@ export function PhysicsPaintStudio() {
         selectedRotoKeyRail.value = null;
         loopSelectionAnchorId.value = null;
         activeLinkedLoopClipId.value = null;
-      } else if (next && next.startFrame !== current?.startFrame) {
+      } else if (next && next.startFrame !== current?.startFrame && !scrubActiveRef.current) {
+        // 260905-ibd follow-up (G-52-9): the reseed is gated during a ruler
+        // scrub so the selection stays put while scrubbing — the selection
+        // props stop churning per frame and the strip memoizes cleanly. The
+        // reseed still runs on click/launch change (scrubActiveRef false),
+        // preserving the R-2click fix below.
         // 48-06 (R-2click): reseed against the LIVE document's active track —
         // the launch snapshot's activeTrackId still points at the track that
         // was active at the last launch replacement, so after a track switch
@@ -816,10 +827,6 @@ export function PhysicsPaintStudio() {
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const pendingRotoKeyActionMessageRef = useRef<string | null>(null);
   const pendingFrameSyncRef = useRef<number | null>(null);
-  // D-02 amendment (audible scrub): true while the ruler scrub gesture is armed
-  // (past the 4px threshold). navigateToSyncedPhysicalFrame routes the audio
-  // funnel to scrub (audible snippet) vs seek (silent re-anchor) by this flag.
-  const scrubActiveRef = useRef(false);
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
@@ -3444,7 +3451,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -3475,20 +3482,12 @@ export function PhysicsPaintStudio() {
       ? physicPaintStore.getDocumentFondInstruction(programMonitorLayerId)
       : null;
     const fondBackground = fondInstruction ? fondInstructionToFondMetadata(fondInstruction) : null;
-    // 49-03 (D-12): the transparency checkerboard shows ONLY when the effective
-    // fond is fully transparent for the current frame — transparent fallback
-    // (no fond instruction) AND the engine-side active background mode is
-    // transparent (settings.background — the fond=fallback mapping is not fully
-    // wired yet, so a paper/solid engine mode must suppress the checkerboard
-    // even while the document fallback is still transparent) AND no clip
-    // covering the frame (the gap verdict, consumed from the store's
-    // already-resolved background-frame plumbing, not a re-resolution). With a
-    // solid or paper fallback active the fond shows as today and the
-    // checkerboard layer is absent.
-    const showTransparencyCheckerboard = programMonitorLayerId !== null
-      && fondInstruction === null
-      && settings.background === 'transparent'
-      && physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap';
+    // 260905-ibd follow-up (G-52-9): the transparency checkerboard verdict is
+    // frame-dependent and now computed in the CanvasStack leaf (a narrow
+    // currentFrameSignal subscriber) so the canvasStack memo no longer
+    // re-resolves per scrub frame. The fond-instruction null check is
+    // frame-independent and stays here.
+    const fondInstructionIsNull = fondInstruction === null;
     return {
       cachedRotoReferenceUrl,
       cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
@@ -3502,10 +3501,12 @@ export function PhysicsPaintStudio() {
       mount: canvasMount,
       engineSurfaceHidden,
       fondBackground,
-      showTransparencyCheckerboard,
+      fondInstructionIsNull,
+      currentFrameSignal,
+      background: settings.background,
       programMonitor: programMonitorLayerId ? {
         layerId: programMonitorLayerId,
-        currentFrame,
+        currentFrameSignal,
         isPlaying,
         activeTrackId: programMonitorActiveTrackId,
         width: canvasWidth,
@@ -3521,7 +3522,7 @@ export function PhysicsPaintStudio() {
       // image (project resolution) fits the working canvas.
       referenceGhost: programMonitorLayerId ? {
         layerId: programMonitorLayerId,
-        currentFrame,
+        currentFrameSignal,
         isPlaying,
         width: canvasWidth,
         height: canvasHeight,
@@ -3536,7 +3537,7 @@ export function PhysicsPaintStudio() {
       // the handles overlay the ghost exactly (D-13).
       referenceTransformHandles: programMonitorLayerId ? {
         layerId: programMonitorLayerId,
-        currentFrame,
+        currentFrameSignal,
         isPlaying,
         width: canvasWidth,
         height: canvasHeight,

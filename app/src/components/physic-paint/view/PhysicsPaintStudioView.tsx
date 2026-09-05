@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { Signal } from '@preact/signals';
+import type { ReadonlySignal, Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
@@ -22,6 +22,7 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -38,6 +39,12 @@ interface PhysicsPaintCanvasStackViewProps {
   inputDisabledMessage?: string;
   onionOverlay: ComponentChildren;
   onInputIntent?: () => void;
+  // 260905-ibd follow-up (G-52-9): the frame signal + fond/background facts the
+  // transparency checkerboard verdict needs — computed in this leaf so the
+  // canvasStack memo no longer re-resolves per scrub frame.
+  currentFrameSignal?: ReadonlySignal<number>;
+  background?: string;
+  fondInstructionIsNull?: boolean;
   /**
    * Phase 48-05 (D-05): the program monitor config. Present when the Studio
    * has a launch layer. The monitor is mounted BELOW the engine canvas (the
@@ -123,6 +130,16 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   recordPhysicsPaintPerformanceCounter('render.canvasStack');
   const stackRef = useRef<HTMLDivElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  // 260905-ibd follow-up (G-52-9): the transparency checkerboard verdict is
+  // frame-dependent — computed here (a narrow currentFrameSignal subscriber)
+  // so the canvasStack memo no longer re-resolves per scrub frame. The
+  // fond-instruction null check and engine background mode are frame-independent
+  // facts passed from the memo.
+  const showTransparencyCheckerboard = props.currentFrameSignal && props.programMonitor?.layerId
+    ? props.fondInstructionIsNull === true
+      && props.background === 'transparent'
+      && physicPaintStore.getBackgroundFrameVerdict(props.programMonitor.layerId, props.currentFrameSignal.value) === 'gap'
+    : Boolean(props.showTransparencyCheckerboard);
 
   useEffect(() => {
     const stack = stackRef.current;
@@ -191,7 +208,7 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           two-gray repeating-conic-gradient treatment is paint-only on this
           monitor layer — never a document state, never in the flattened
           raster, main preview, or export. */}
-      {canvasBounds && props.programMonitor && props.showTransparencyCheckerboard ? (
+      {canvasBounds && props.programMonitor && showTransparencyCheckerboard ? (
         <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
       ) : null}
       <div class="physics-paint-tracks-group">

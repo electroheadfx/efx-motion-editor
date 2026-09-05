@@ -47,16 +47,34 @@ function getActionRowBlock(code: string): string {
   return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
 }
 function getActionAriaLabelToken(ariaLabel: string): string {
-  if (ariaLabel === 'Insert key before') return 'aria-label={insertRotoKeyDescription}';
-  if (ariaLabel === 'Delete Frame') return 'aria-label={deleteRotoScopeLabel}';
-  return `aria-label="${ariaLabel}"`;
+  if (ariaLabel === 'Insert key before') return 'label={insertRotoKeyDescription}';
+  if (ariaLabel === 'Delete Frame') return 'label={deleteRotoScopeLabel}';
+  if (ariaLabel === 'Apply Action to Frame' || ariaLabel === 'Clear Action Buffer') return `aria-label="${ariaLabel}"`;
+  return `label="${ariaLabel}"`;
 }
 function getButtonBlock(code: string, ariaLabel: string): string {
-  const labelIndex = code.indexOf(getActionAriaLabelToken(ariaLabel));
+  const token = getActionAriaLabelToken(ariaLabel);
+  const labelIndex = code.indexOf(token);
   if (labelIndex === -1) return '';
-  const start = code.lastIndexOf('<button', labelIndex);
-  const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
-  return code.slice(start, end);
+  if (token.startsWith('aria-label=')) {
+    // Regular button (toolbox popover): find the <button> element.
+    const start = code.lastIndexOf('<button', labelIndex);
+    const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
+    return code.slice(start, end);
+  }
+  // 260905-ibd follow-up (G-52-9): each action-row button is a thin wrapper
+  // component (function PhysicsPaintRoto*Button) that computes its own
+  // availability and renders the shared PhysicsPaintRotoActionButton shell.
+  const start = code.lastIndexOf('function PhysicsPaintRoto', labelIndex);
+  const end = code.indexOf('\n}\n', start);
+  return code.slice(start, end === -1 ? code.length : end);
+}
+function getActionButtonShell(code: string): string {
+  // 260905-ibd follow-up (G-52-9): the shared guarded-icon button shell owns
+  // the aria-disabled / no-native-disabled / guarded click+keydown structure.
+  const start = code.indexOf('function PhysicsPaintRotoActionButton');
+  const end = code.indexOf('\n}\n', start);
+  return code.slice(start, end === -1 ? code.length : end);
 }
 function getMatchingDivEnd(code: string, start: number): number {
   const tag = /<div\b|<\/div>/g;
@@ -173,9 +191,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Delete Frame');
 
-    expect(code).toContain("const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';");
-    expect(block).toContain('aria-label={deleteRotoScopeLabel}');
-    expect(code).toContain('buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)');
+    expect(code).toContain("const deleteRotoScopeLabel = props.rotoPhysicalActions?.deleteScopeLabel.value ?? 'Delete Frame';");
+    expect(block).toContain('label={deleteRotoScopeLabel}');
+    expect(block).toContain('tooltipCopy={deleteRotoScopeLabel}');
     // 43.5-05 smoke UX5: the Delete button is icon-only — the dynamic scope
     // copy lives in tooltip/aria/status, never a visible text label.
     expect(block).not.toContain('<span class="physics-paint-roto-key-icon-label">Delete</span>');
@@ -206,21 +224,20 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('guards the Paste key icon action with aria-disabled and a styled tooltip', () => {
     const code = source();
-    expect(code).toContain('aria-label="Paste key"');
-    expect(code).toContain('ClipboardPaste');
-    const labelIndex = code.indexOf('aria-label="Paste key"');
-    const buttonStart = code.lastIndexOf('<button', labelIndex);
-    const buttonEnd = code.indexOf('</button>', labelIndex) + '</button>'.length;
-    const pasteBlock = code.slice(buttonStart, buttonEnd);
-    expect(pasteBlock).toContain('aria-disabled');
-    expect(pasteBlock).toContain('aria-describedby');
-    expect(pasteBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(pasteBlock).not.toContain('title=');
-    const guardIndex = pasteBlock.indexOf('if (!canPasteRotoKey) return;');
-    const handlerIndex = pasteBlock.indexOf('props.onPasteRotoFrame?.()');
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(code).toContain("buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)");
+    const row = getActionRowBlock(code);
+    const pasteBlock = getButtonBlock(row, 'Paste key');
+    expect(pasteBlock).toContain('label="Paste key"');
+    expect(pasteBlock).toContain('ClipboardPaste');
+    expect(pasteBlock).toContain('canPasteRotoKey');
+    expect(pasteBlock).toContain('props.onPasteRotoFrame?.()');
+    // The guarded structure lives in the shared shell.
+    const shell = getActionButtonShell(code);
+    expect(shell).toContain('aria-disabled');
+    expect(shell).toContain('aria-describedby');
+    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(shell).not.toContain('title=');
+    expect(shell).toContain('if (props.disabled) return;');
+    expect(shell).toContain('buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)');
   });
 
   it('renders the Key {n} chip before any action button in the row (D-13)', () => {
@@ -287,17 +304,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {
     const code = source();
     const row = getActionRowBlock(code);
-    expect(row.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(row).not.toContain('title=');
+    // The guarded structure lives in the shared shell: aria-disabled only,
+    // never the native disabled attribute, guarded click + keydown.
+    const shell = getActionButtonShell(code);
+    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(shell).not.toContain('title=');
+    expect(shell).toContain('if (props.disabled) return;');
+    expect(shell).toContain(`(event.key === 'Enter' || event.key === ' ') && props.disabled`);
     for (const { label, guard, handler } of ROW_ICON_ACTIONS) {
       const block = getButtonBlock(row, label);
-      expect(block).toContain('aria-disabled');
-      expect(block).toContain('aria-describedby');
-      const guardIndex = block.indexOf(`if (!${guard}) return;`);
-      const handlerIndex = block.indexOf(handler);
-      expect(guardIndex).toBeGreaterThanOrEqual(0);
-      expect(handlerIndex).toBeGreaterThan(guardIndex);
-      expect(block).toContain(`(event.key === 'Enter' || event.key === ' ') && !${guard}`);
+      expect(block).toContain(guard);
+      expect(block).toContain(handler);
     }
   });
 
@@ -308,9 +325,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(row).not.toContain(' — unavailable: ');
     expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
     expect(code).toContain('return disabledReason ? `unavailable: ${disabledReason}` : description;');
-    const builderCalls = (row.match(/buildGuardedActionTooltipCopy\(/g) ?? []).length;
-    // Eight guarded icon actions plus the Set Key Space form.
-    expect(builderCalls).toBeGreaterThanOrEqual(9);
+    // Every action-row button renders the shared shell, which routes its copy
+    // through the guarded-action copy builder.
+    const shell = getActionButtonShell(code);
+    expect(shell).toContain('buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)');
     // Script copy/apply availability reasons now surface in the Scripts
     // sidebar toolbar, not the strip (Gap C); 260905-dso: the buffer
     // Apply/Clear availability reads now live in the Tools popover Actions
@@ -320,7 +338,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('renders a short visible label after each enlarged bottom-row icon (Gap D)', () => {
-    const row = getActionRowBlock(source());
+    const code = source();
+    const row = getActionRowBlock(code);
     const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
       { action: 'Add key', icon: 'Plus', label: 'Key' },
       { action: 'Duplicate key', icon: 'CopyPlus', label: 'Duplicate' },
@@ -334,9 +353,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       const block = getButtonBlock(row, action);
       const iconIndex = block.indexOf(`<${icon} size={18}`);
       expect(iconIndex).toBeGreaterThanOrEqual(0);
-      const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-      expect(labelIndex).toBeGreaterThan(iconIndex);
+      expect(block).toContain(`textLabel="${label}"`);
     }
+    // The shared shell renders the visible label after the icon.
+    const shell = getActionButtonShell(code);
+    expect(shell).toContain('<span class="physics-paint-roto-key-icon-label">{props.textLabel}</span>');
     expect(row).not.toContain('size={16}');
     // 43.5-02 Task 2: the Set Key Space form relocated from the bottom row
     // into the toolbox popover (header block), carrying its own short label
@@ -462,10 +483,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const code = source();
     const row = getActionRowBlock(code);
     const actions = timelineActionsSource();
+    const insertBlock = getButtonBlock(row, 'Insert key before');
 
-    expect(countOccurrences(row, '<span class="physics-paint-roto-key-icon-label">Insert</span>')).toBe(1);
-    expect(code).toContain("physicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
-    expect(code).toContain('buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)');
+    expect(insertBlock).toContain('textLabel="Insert"');
+    expect(insertBlock).toContain("props.rotoPhysicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
+    expect(insertBlock).toContain('label={insertRotoKeyDescription}');
     expect(actions).toContain("? 'Insert an empty key connected to the previous segment.'");
     expect(actions).toContain(": 'Insert key before'");
   });
@@ -474,10 +496,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
   it('renders the clipboard row in locked Copy, Paste, Cut, Scissor, Delete order', () => {
     const row = getActionRowBlock(source());
-    const copyIndex = row.indexOf('aria-label="Copy key"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
-    const cutIndex = row.indexOf('aria-label="Cut key"');
-    const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
+    const copyIndex = row.indexOf('label="Copy key"');
+    const pasteIndex = row.indexOf('label="Paste key"');
+    const cutIndex = row.indexOf('label="Cut key"');
+    const scissorIndex = row.indexOf('label="Split Key Rail"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     expect(copyIndex).toBeGreaterThanOrEqual(0);
     expect(pasteIndex).toBeGreaterThan(copyIndex);
@@ -496,22 +518,22 @@ describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => 
     const code = source();
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Cut key');
-    expect(block).toContain('aria-label="Cut key"');
-    expect(block).toContain('aria-disabled={!canCutRotoKey');
-    expect(block).toContain("aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}");
-    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(block).not.toContain('title=');
-    const guardIndex = block.indexOf('if (!canCutRotoKey) return;');
-    const handlerIndex = block.indexOf('props.onCutRotoFrame?.()');
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCutRotoKey");
+    expect(block).toContain('label="Cut key"');
+    expect(block).toContain('canCutRotoKey');
+    expect(block).toContain('props.onCutRotoFrame?.()');
     expect(block).toContain('<Scissors size={18} aria-hidden="true" />');
-    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Cut</span>');
+    expect(block).toContain('textLabel="Cut"');
+    expect(block).toContain('reasonId="roto-key-action-reason-cut"');
     // Cut sits with the clipboard actions; Delete keeps the trailing destructive position.
     expect(block).not.toContain('destructive');
-    expect(code).toContain('id="roto-key-action-reason-cut"');
-    expect(code).toContain("buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)");
+    // The guarded structure lives in the shared shell.
+    const shell = getActionButtonShell(code);
+    expect(shell).toContain('aria-disabled');
+    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(shell).not.toContain('title=');
+    expect(shell).toContain('if (props.disabled) return;');
+    expect(shell).toContain("(event.key === 'Enter' || event.key === ' ') && props.disabled");
+    expect(shell).toContain('buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)');
     expect(getWorkflowStripPropsInterface(code)).toContain('onCutRotoFrame?: () => void;');
   });
 });
@@ -522,19 +544,21 @@ describe('PhysicsPaintWorkflowStrip Scissor key-rail contract (43.4-01)', () => 
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Split Key Rail');
 
-    expect(block).toContain('aria-label="Split Key Rail"');
-    expect(block).toContain('aria-disabled={!canScissorRotoKey');
-    expect(block).toContain("aria-describedby={!canScissorRotoKey && scissorRotoKeyDisabledReason ? 'roto-key-action-reason-scissor' : undefined}");
-    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(block).not.toContain('title=');
-    expect(block.indexOf('if (!canScissorRotoKey) return;')).toBeGreaterThanOrEqual(0);
-    expect(block.indexOf('props.onScissorKeyRail?.()')).toBeGreaterThan(block.indexOf('if (!canScissorRotoKey) return;'));
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canScissorRotoKey");
+    expect(block).toContain('label="Split Key Rail"');
+    expect(block).toContain('canScissorRotoKey');
+    expect(block).toContain('props.onScissorKeyRail?.()');
     expect(block).toContain('<SquareSplitHorizontal size={18} aria-hidden="true" />');
     expect(block).not.toContain('<Scissors');
-    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Scissor</span>');
-    expect(code).toContain('id="roto-key-action-reason-scissor"');
-    expect(code).toContain("buildGuardedActionTooltipCopy(physicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.', scissorRotoKeyDisabledReason)");
+    expect(block).toContain('textLabel="Scissor"');
+    expect(block).toContain('reasonId="roto-key-action-reason-scissor"');
+    expect(block).toContain("props.rotoPhysicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.'");
+    // The guarded structure lives in the shared shell.
+    const shell = getActionButtonShell(code);
+    expect(shell).toContain('aria-disabled');
+    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(shell).not.toContain('title=');
+    expect(shell).toContain('if (props.disabled) return;');
+    expect(shell).toContain("(event.key === 'Enter' || event.key === ' ') && props.disabled");
     expect(getWorkflowStripPropsInterface(code)).toContain('onScissorKeyRail?: () => void;');
   });
 });
@@ -1104,11 +1128,11 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
-    const addIndex = row.indexOf('aria-label="Add key"');
+    const addIndex = row.indexOf('label="Add key"');
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
-    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
-    const copyIndex = row.indexOf('aria-label="Copy key"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
+    const duplicateIndex = row.indexOf('label="Duplicate key"');
+    const copyIndex = row.indexOf('label="Copy key"');
+    const pasteIndex = row.indexOf('label="Paste key"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
@@ -1311,7 +1335,7 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     // smoke UX5) so it carries no visible label here.
     const row = getActionRowBlock(source());
     for (const label of ['Key', 'Duplicate', 'Insert', 'Copy', 'Paste']) {
-      expect(row).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+      expect(row).toContain(`textLabel="${label}"`);
     }
   });
 
@@ -1964,15 +1988,15 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     expect(code).not.toContain('>Push Right</span>');
     expect(code).not.toContain('>Delete</span>');
     // ONE Push button, not two.
-    expect(code).toContain('aria-label="Push"');
-    expect(code).not.toContain('aria-label="Push Left"');
-    expect(code).not.toContain('aria-label="Push Right"');
+    expect(code).toContain('label="Push"');
+    expect(code).not.toContain('label="Push Left"');
+    expect(code).not.toContain('label="Push Right"');
   });
 
   it('A8: Delete renders AFTER the All button in the action row', () => {
     const code = source();
-    const allIndex = code.indexOf('aria-label="Select all keys"');
-    const deleteIndex = code.indexOf('aria-label={deleteRotoScopeLabel}');
+    const allIndex = code.indexOf('label="Select all keys"');
+    const deleteIndex = code.indexOf('label={deleteRotoScopeLabel}');
     expect(allIndex).toBeGreaterThan(-1);
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(deleteIndex).toBeGreaterThan(allIndex);
@@ -2131,23 +2155,24 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
   it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)', () => {
     const code = source();
-    // 260905-ibd (G-52-9): the rendered order lives in the action-row div inside
-    // PhysicsPaintRotoActionRowImpl; the + Rail button is a component reference
-    // there (its aria-label lives in the PhysicsPaintRailCreateButton child).
+    // 260905-ibd follow-up (G-52-9): the rendered order lives in the action-row
+    // div inside PhysicsPaintRotoActionRowImpl as the button-wrapper component
+    // references; each wrapper's aria-label lives in its own component.
     const rowStart = code.indexOf('class="physics-paint-roto-action-row"');
     const rowEnd = code.indexOf('const PhysicsPaintRotoActionRow = memo(PhysicsPaintRotoActionRowImpl);', rowStart);
     const row = code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
-    const addKeyIndex = row.indexOf('aria-label="Add key"');
+    const addKeyIndex = row.indexOf('<PhysicsPaintRotoAddKeyButton');
     const createRailIndex = row.indexOf('<PhysicsPaintRailCreateButton');
-    const pushIndex = row.indexOf('aria-label="Push"');
-    const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
-    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
-    const copyIndex = row.indexOf('aria-label="Copy key"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
-    const cutIndex = row.indexOf('aria-label="Cut key"');
-    const scissorIndex = row.indexOf(getActionAriaLabelToken('Split Key Rail'));
-    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
-    const indices = [addKeyIndex, createRailIndex, pushIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, cutIndex, scissorIndex, deleteIndex];
+    const pushIndex = row.indexOf('<PhysicsPaintRotoPushButton');
+    const insertIndex = row.indexOf('<PhysicsPaintRotoInsertButton');
+    const duplicateIndex = row.indexOf('<PhysicsPaintRotoDuplicateButton');
+    const copyIndex = row.indexOf('<PhysicsPaintRotoCopyButton');
+    const pasteIndex = row.indexOf('<PhysicsPaintRotoPasteButton');
+    const cutIndex = row.indexOf('<PhysicsPaintRotoCutButton');
+    const scissorIndex = row.indexOf('<PhysicsPaintRotoScissorButton');
+    const selectAllIndex = row.indexOf('<PhysicsPaintRotoSelectAllButton');
+    const deleteIndex = row.indexOf('<PhysicsPaintRotoDeleteButton');
+    const indices = [addKeyIndex, createRailIndex, pushIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, cutIndex, scissorIndex, selectAllIndex, deleteIndex];
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);

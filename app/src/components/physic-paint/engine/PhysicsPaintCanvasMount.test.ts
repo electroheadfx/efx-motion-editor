@@ -91,14 +91,17 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
       // re-resolves on navigation / playback / document changes so the leaf
       // draws the current composite, while the engine canvas stays memoized
       // behind the stable canvasMount identity + canvasKey.
+      // 260905-ibd follow-up (G-52-9): currentFrame is NOT a dep — the frame
+      // signal is passed to the children (program monitor / reference ghost /
+      // transform handles) so the canvasStack memo no longer re-resolves per
+      // scrub frame.
       'launchContext?.layerId',
-      'currentFrame',
       'isPlaying',
       'efxPaintVersion.value',
       'canvasWidth',
       'canvasHeight',
     ]) expect(deps).toContain(dependency);
-    for (const invalidator of ['startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
+    for (const invalidator of ['startFrame', 'rotoNavigationGeneration', 'currentFrame']) expect(deps).not.toContain(invalidator);
   });
 
   it('updates parent callback refs during render and exposes stable Efx forwarders', () => {

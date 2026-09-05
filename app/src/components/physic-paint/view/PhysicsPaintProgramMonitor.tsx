@@ -46,7 +46,7 @@
  * rail) is absence, not a missing source, and never raises the capsule.
  */
 import { useEffect, useRef } from 'preact/hooks';
-import type { Signal } from '@preact/signals';
+import type { ReadonlySignal, Signal } from '@preact/signals';
 import { efxPaintVersion } from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
@@ -70,7 +70,7 @@ export interface EfxPaintProgramMonitorMissingSummary {
 
 export interface PhysicsPaintProgramMonitorProps {
   readonly layerId: string | null;
-  readonly currentFrame: number;
+  readonly currentFrameSignal: ReadonlySignal<number>;
   readonly isPlaying: boolean;
   readonly activeTrackId: string | null;
   readonly width: number;
@@ -120,7 +120,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
   // THIS leaf's render body (subscribes only this narrow canvas, never the
   // Studio), falling back to currentFrame when idle or no tick has fired yet.
   const playbackAppFrame = props.playbackTick?.value?.appFrame ?? null;
-  const resolvedFrame = props.isPlaying && playbackAppFrame !== null ? playbackAppFrame : props.currentFrame;
+  const resolvedFrame = props.isPlaying && playbackAppFrame !== null ? playbackAppFrame : props.currentFrameSignal.value;
 
   useEffect(() => {
     const canvas = canvasRef.current;
