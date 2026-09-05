@@ -27,7 +27,9 @@ const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../Ph
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 
 function getRotoMapBlock(code: string): string {
-  const mapStart = code.indexOf('{frameCells.map(frame =>');
+  // 260905-ibd follow-up (G-52-9): the cell loop lives in the narrow
+  // PhysicsPaintRotoCells subscriber, so the map reads the component's props.
+  const mapStart = code.indexOf('{props.frameCells.map(frame =>');
   return code.slice(mapStart, code.indexOf('physics-paint-roto-key-utilities', mapStart));
 }
 function getWorkflowStripPropsInterface(code: string): string {
@@ -219,7 +221,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);');
     expect(code).toContain('disabled={props.interpolationControlsDisabled}');
     expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
-    expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
+    expect(code).toContain('if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;');
   });
 
   it('guards the Paste key icon action with aria-disabled and a styled tooltip', () => {
@@ -364,9 +366,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // after the icon (renamed 'Space' → 'Key spacing' in 36.15-09, UAT Gap
     // E-2) with the same 18px icon and label ordering.
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
-    const header = getHeaderBlock(source());
-    const spacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
-    const form = header.slice(spacingIndex, header.indexOf('</form>', spacingIndex));
+    const spacingFormBlock = getForceSpacingFormBlock(source());
+    const spacingIndex = spacingFormBlock.indexOf('physics-paint-pill--apply-spacing');
+    const form = spacingFormBlock.slice(spacingIndex, spacingFormBlock.indexOf('</form>', spacingIndex));
     const spacingIconIndex = form.indexOf('<AlignHorizontalSpaceAround size={18}');
     expect(spacingIconIndex).toBeGreaterThanOrEqual(0);
     expect(form.indexOf('<span class="physics-paint-roto-key-icon-label">Key spacing</span>')).toBeGreaterThan(spacingIconIndex);
@@ -392,7 +394,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
     // physical real key always resolves 'real') and hard-excludes virtual
     // linked occurrences when a loop resolution context is present.
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 
   it('keeps source interpolation blue and restores a lighter mirrored-key rhythm inside dark repeats', () => {
@@ -405,12 +407,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)");
     expect(map).toContain("? 'roto-linked-source-generated'");
     expect(map).toContain("${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''}");
-    expect(map).toContain('const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;');
+    expect(map).toContain('const lifecycleTarget = props.lifecycleTargetByAppFrame.get(frame)!;');
     expect(map).toContain('const fillClass = getRotoAcceptedCellFillClass({');
     expect(map).toContain('lifecycleTargetKind: lifecycleTarget.kind');
     expect(map).toContain("resolutionKind: frameResolution?.kind ?? 'empty'");
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
-    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, props.loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
     const styles = css();
@@ -610,8 +612,8 @@ describe('localized render contract', () => {
     expect(map).toContain('key={frame}');
     expect(map).toContain('vm={vm}');
     expect(map).toContain('dragEligible={dragEligible}');
-    expect(map).toContain('onCellPointerDown={handleRotoTimelineCellPointerDown}');
-    expect(map).toContain('onCellClick={handleRotoTimelineCellClick}');
+    expect(map).toContain('onCellPointerDown={props.onCellPointerDown}');
+    expect(map).toContain('onCellClick={props.onCellClick}');
     expect(map).not.toContain('onCellPointerDown={dragEligible && cellKeyId ? (event) =>');
     expect(map).not.toContain('onCellClick={(event) =>');
   });
@@ -640,7 +642,11 @@ describe('localized static and live Workflow regions', () => {
 
   it('keeps the public strip and StudioView mount compatible', () => {
     const code = source();
-    expect(code).toContain('export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)');
+    // 260905-ibd follow-up (G-52-9): the strip body is memoized — the impl is
+    // a plain function and the public export is the memo wrapper.
+    expect(code).toContain('function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps)');
+    expect(code).toContain('const PhysicsPaintWorkflowStrip = memo(PhysicsPaintWorkflowStripImpl);');
+    expect(code).toContain('export { PhysicsPaintWorkflowStrip };');
     expect(code).toContain('<PhysicsPaintWorkflowStaticChrome');
     expect(code).not.toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');\n  const [scrollbar");
   });
@@ -649,7 +655,7 @@ describe('localized static and live Workflow regions', () => {
 describe('localized render instrumentation', () => {
   it('counts the live strip and extracted static chrome at their implementation owners', () => {
     const code = source();
-    const stripStart = code.indexOf('export function PhysicsPaintWorkflowStrip');
+    const stripStart = code.indexOf('function PhysicsPaintWorkflowStripImpl');
     const stripBody = code.slice(stripStart, code.indexOf('const [scrollbar', stripStart));
     const staticStart = code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl');
     const staticBody = code.slice(staticStart, code.indexOf('const closeTooltip', staticStart));
@@ -697,6 +703,17 @@ function getHeaderBlock(code: string): string {
   // now sits after the action-row section in the strip body).
   const headerEnd = code.indexOf('const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeImpl);', headerStart);
   return code.slice(headerStart, headerEnd === -1 ? code.length : headerEnd);
+}
+
+// 260905-ibd follow-up (G-52-9): the Key Spacing form moved into its own
+// narrow signal subscriber (PhysicsPaintForceSpacingForm, directly before the
+// static chrome) — a force-spacing availability flip re-renders the form leaf,
+// not the strip body. Its source block is scanned separately from the header.
+function getForceSpacingFormBlock(code: string): string {
+  const start = code.indexOf('function PhysicsPaintForceSpacingForm(props: PhysicsPaintForceSpacingFormProps)');
+  if (start === -1) return '';
+  const end = code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl(', start);
+  return code.slice(start, end === -1 ? code.length : end);
 }
 
 function getCssRuleBlock(styles: string, selector: string): string {
@@ -769,7 +786,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
 
   it('keeps the force-spacing and interpolation mutation-lock guards verbatim', () => {
     const code = source();
-    expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
+    expect(code).toContain('if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;');
     expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
   });
 
@@ -847,11 +864,11 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(cellButton).not.toContain('title=');
     expect(map).not.toContain('dragTitle');
     // Drag machinery untouched: identity attributes and handlers stay.
-    expect(map).toContain('handleRotoTimelineCellPointerDown');
+    expect(map).toContain('props.onCellPointerDown');
     // Each cell owns one styled-tooltip controller via the child component.
     const cellComponentIndex = code.indexOf('function RotoTimelineCellButton');
     expect(cellComponentIndex).toBeGreaterThanOrEqual(0);
-    const cellComponent = code.slice(cellComponentIndex, code.indexOf('export function PhysicsPaintWorkflowStrip'));
+    const cellComponent = code.slice(cellComponentIndex, code.indexOf('function PhysicsPaintWorkflowStripImpl'));
     expect(cellComponent).toContain('useStyledTooltip');
     expect(cellComponent).toContain('PhysicsPaintStyledTooltip');
     expect(cellComponent).not.toContain('title=');
@@ -919,7 +936,7 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     const rulerTagEnd = code.indexOf('aria-hidden="true"', rulerIndex);
     const rulerTag = code.slice(rulerIndex, rulerTagEnd === -1 ? code.length : rulerTagEnd);
     expect(rulerTag).toContain('rotoLaneWidthPx');
-    expect(code).toContain('style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}');
+    expect(code).toContain('style={{ gridTemplateColumns: `repeat(${props.frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}');
   });
 
   it('locks the dynamically sized cells grid to 18px abutting columns with zero gap', () => {
@@ -927,7 +944,7 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     const cells = getCssRuleBlock(styles, '.physics-paint-roto-cells {');
     expect(cells).not.toContain('grid-template-columns');
     expect(cells).toContain('gap: 0');
-    expect(source()).toContain('repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)');
+    expect(source()).toContain('repeat(${props.frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)');
   });
 
   it('keeps extent out of CSS while preserving fixed-pitch 54px ruler ticks', () => {
@@ -1090,9 +1107,9 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(closeIndex).toBeGreaterThan(interpolationIndex);
     // 43.5-02: the ToolCase button (dynamic aria-label carrying live
     // interpolation state) and the relocated Key Spacing form now live in the
-    // header block inside the toolbox popover, so the apply-spacing pill is
-    // expected present there — no legacy Tools dropdown machinery remains.
-    expect(header).toContain('physics-paint-pill--apply-spacing');
+    // header block inside the toolbox popover; the form's own narrow
+    // subscriber component carries the apply-spacing pill (260905-ibd).
+    expect(getForceSpacingFormBlock(source())).toContain('physics-paint-pill--apply-spacing');
     expect(header).toContain('physics-paint-toolbox-section-heading');
     for (const removed of ['aria-label="Tools"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Add key"', 'aria-label="Duplicate key"', 'physics-paint-mode-label']) {
       expect(header).not.toContain(removed);
@@ -1147,7 +1164,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     // 43.5-02 Task 2: the Set Key Space form moved into the toolbox popover,
     // so it no longer terminates the bottom action row.
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
-    expect(getHeaderBlock(source())).toContain('physics-paint-pill--apply-spacing');
+    expect(getForceSpacingFormBlock(source())).toContain('physics-paint-pill--apply-spacing');
   });
 
   it('guards the relocated Add key and Duplicate actions with the empty-key/duplicate ports', () => {
@@ -1160,21 +1177,22 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
   });
 
   it('converts the relocated Set Key Space form to the guarded pattern with a styled tooltip and no native disabled/title', () => {
-    const header = getHeaderBlock(source());
-    const spacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
+    const form2 = getForceSpacingFormBlock(source());
+    const spacingIndex = form2.indexOf('physics-paint-pill--apply-spacing');
     expect(spacingIndex).toBeGreaterThanOrEqual(0);
-    const formEnd = header.indexOf('</form>', spacingIndex);
-    const form = header.slice(spacingIndex, formEnd === -1 ? header.length : formEnd);
+    const formEnd = form2.indexOf('</form>', spacingIndex);
+    const form = form2.slice(spacingIndex, formEnd === -1 ? form2.length : formEnd);
     expect(form.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(form).not.toContain('title=');
-    expect(form).toContain('aria-disabled={!props.canApplyForceSpacing');
+    expect(form).toContain('aria-disabled={!canApplyForceSpacingAction');
     expect(form).toContain('aria-label="Empty frames between real keys"');
     expect(form).toContain('aria-label="Apply force spacing"');
     expect(form).toContain('>Apply</button>');
-    expect(header).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
-    expect(header).toContain('PhysicsPaintStyledTooltip');
-    // The submit handler keeps its verbatim mutation-lock guard.
-    expect(source()).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
+    expect(form2).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
+    expect(form2).toContain('PhysicsPaintStyledTooltip');
+    // The submit handler keeps its verbatim mutation-lock guard (call-time
+    // peek — the memoized strip closes over no render-scoped availability).
+    expect(source()).toContain('if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;');
   });
 
   it('renders one Key Spacing scope line under the heading only when a rail set is active (43.6-05 M5, D-26)', () => {
@@ -1186,7 +1204,9 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     // relocated controls — one Body-role line, no panel or divider.
     const scopeLineIndex = header.indexOf('physics-paint-toolbox-scope-line', headingIndex);
     expect(scopeLineIndex).toBeGreaterThan(headingIndex);
-    const controlsIndex = header.indexOf('physics-paint-pill--apply-spacing', headingIndex);
+    // 260905-ibd follow-up (G-52-9): the controls render through the form's
+    // own narrow subscriber component, mounted directly after the scope line.
+    const controlsIndex = header.indexOf('<PhysicsPaintForceSpacingForm', headingIndex);
     expect(controlsIndex).toBeGreaterThan(scopeLineIndex);
     // The line is the D-27 set copy verbatim — the same string the capsule
     // shows, fed through the static-chrome prop (one mapper authority).
@@ -1232,9 +1252,9 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
 
 describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E)', () => {
   it('renames the Set Key Space label to Key spacing in the relocated popover form', () => {
-    const header = getHeaderBlock(source());
-    expect(header).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
-    expect(header).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
+    const form = getForceSpacingFormBlock(source());
+    expect(form).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
+    expect(form).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
   });
 
   it('removes the doubled ring artifact from the Apply submit by dropping its 999px pill radius', () => {
@@ -1302,9 +1322,10 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     expect(identityCloseIndex).toBeLessThan(utilitiesIndex);
     // 43.5-02 Task 2: the Key Spacing form moved into the toolbox popover,
     // so the bottom row holds exactly the identity and tools groups; the
-    // form lives in the header block behind the ToolCase button.
+    // form lives in the header block behind the ToolCase button — inside its
+    // own narrow subscriber component since 260905-ibd (G-52-9).
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
-    expect(getHeaderBlock(source())).toContain('physics-paint-pill--apply-spacing');
+    expect(getForceSpacingFormBlock(source())).toContain('physics-paint-pill--apply-spacing');
     // The identity group carries the layer name and the Key chip.
     const identity = row.slice(identityIndex, identityCloseIndex);
     expect(identity).toContain('physics-paint-roto-key-layer');
@@ -1340,9 +1361,9 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
   });
 
   it("renders the Key spacing submit as 'Apply' (not 'APPLY')", () => {
-    const header = getHeaderBlock(source());
-    expect(header).toContain('>Apply</button>');
-    expect(header).not.toContain('>APPLY</button>');
+    const form = getForceSpacingFormBlock(source());
+    expect(form).toContain('>Apply</button>');
+    expect(form).not.toContain('>APPLY</button>');
     const styles = css();
     const apply = getCssRuleBlock(styles, '.physics-paint-roto-force-spacing-apply {');
     expect(apply).toContain('text-transform: none');
@@ -1540,7 +1561,9 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const laneFnIndex = code.indexOf('const renderActiveLane');
     const physicalLaneIndex = code.indexOf('class={`physics-paint-lane', laneFnIndex);
     const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail', physicalLaneIndex);
-    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"', loopRailIndex);
+    // 260905-ibd follow-up (G-52-9): the cells are a narrow subscriber
+    // component mounted in the lane after the loop rail.
+    const cellsIndex = code.indexOf('<PhysicsPaintRotoCells', loopRailIndex);
 
     expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipIds?: readonly string[];');
     expect(getWorkflowStripPropsInterface(code)).not.toContain('selectedRotoLoopSourceKeyIds');
@@ -1676,7 +1699,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyKeyClearIndex).toBeGreaterThan(proxyNavigateIndex);
     expect(ordinaryClearIndex).toBeGreaterThan(emptyKeyClearIndex);
     expect(ordinaryToggleIndex).toBeGreaterThan(ordinaryClearIndex);
-    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
+    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked');
   });
 
   it('keeps an empty frame current until replacement-style Select All owns the selection', () => {
@@ -1691,7 +1714,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyBranchStart).toBeGreaterThanOrEqual(0);
     expect(emptyBranch).toContain('current.onNavigateToSyncedFrame(frame);');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
-    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
+    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && props.rotoSelectedKeyIdSet.size >= 2;');
     expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
   });
@@ -1746,10 +1769,10 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(props).not.toContain('selectedRotoLoopSourceKeyIds');
     expect(props).toContain('rotoPrimarySelectedKeyId?: string | null;');
     expect(code).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
-    expect(map).toContain('const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;');
+    expect(map).toContain('const spacingProxy = props.visibleSpacingProxies?.get(frame) ?? null;');
     expect(map).toContain('const isSpacingProxySelected = spacingProxy !== null');
     expect(map).toContain('props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId');
-    expect(map).toContain('rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId)');
+    expect(map).toContain('props.rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId)');
     expect(map).not.toContain('selectedRotoLoopSourceKeyIdSet');
     expect(map).toContain("${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''}");
     expect(map).not.toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
@@ -1762,7 +1785,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('const isSecondarySelected = !isSpacingProxySelected');
     expect(map).toContain('&& !isPrimarySelected;');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
-    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
+    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && props.rotoSelectedKeyIdSet.size >= 2;');
     expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
@@ -1806,7 +1829,7 @@ describe('PhysicsPaintWorkflowStrip Group-drag gap preview contract (43.3-03, UI
   it('paints gap-preview frames as ordinary roto-fill-empty cells with no new DOM nodes', () => {
     const code = source();
     const map = getRotoMapBlock(code);
-    expect(map).toContain('const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);');
+    expect(map).toContain('const isRotoGroupDragGapPreview = props.rotoGroupDragGapPreviewAppFrames.has(frame);');
     expect(map).toContain('const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview');
     expect(map).toContain("? 'roto-fill-empty' : fillClass;");
     expect(map).toContain('physics-paint-roto-cell ${effectiveFillClass}');
@@ -1831,7 +1854,9 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(keyRailGate).not.toContain('onSelectRotoLoopClip');
     expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class={`physics-paint-lane'));
-    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
+    // 260905-ibd follow-up (G-52-9): the cells are a narrow subscriber
+    // component mounted in the lane after the key rail.
+    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('<PhysicsPaintRotoCells', keyRailStart));
   });
 
   it('derives ordinary segments by excluding all Motion and Static Group-owned identities', () => {
@@ -1863,7 +1888,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(code).toContain('if (!rotoKeyRailDragPreview) return new Set<number>();');
     expect(code).toContain('rotoKeyRailDragPreview.publication.vacatedInterval');
     expect(code).toContain('rotoKeyRailDragPreview.publication.destinationFirstKeyAppFrame');
-    expect(map).toContain('const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);');
+    expect(map).toContain('const isRotoKeyRailDragGapPreview = props.rotoKeyRailDragGapPreviewAppFrames.has(frame);');
     expect(map).toContain('isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview');
     expect(map).toContain("? 'roto-fill-empty' : fillClass");
     expect(code).toContain('onPreviewChange={setRotoKeyRailDragPreview}');

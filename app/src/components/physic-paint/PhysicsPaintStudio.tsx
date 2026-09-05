@@ -131,6 +131,49 @@ import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
+// 260905-ibd follow-up (G-52-9): stable empty projection for onion-skin-off —
+// keeps the canvas-stack identity memo from busting on a per-frame rebuild.
+const EMPTY_ONION_PREVIEW_FRAMES: ReturnType<typeof projectRotoOnionPreviewFrames> = [];
+// 260905-ibd follow-up (G-52-9): dep-name tables for the identity-memo
+// diagnostics — positionally aligned with the resolve() deps arrays below.
+// When efx.physicsPaint.profile=1 and a memo re-resolves, the console names
+// exactly which dep's identity changed, so a per-frame bust (a fresh object
+// among the deps) is a console line instead of a silent whole-strip re-render.
+const CANVAS_STACK_DEP_NAMES = [
+  'cachedRotoReferenceUrl', 'playbackTick', 'playbackIsActive', 'cachedPlaybackComposition',
+  'rotoInputDisabled', 'rotoInputDisabledMessage', 'beginRotoFrameEdit', 'onionOverlay',
+  'canvasKey', 'canvasMount', 'layerId', 'background', 'isPlaying', 'efxPaintVersion',
+  'canvasWidth', 'canvasHeight', 'paperTextureScale',
+] as const;
+const WORKFLOW_PROPS_DEP_NAMES = [
+  'layerId', 'tracks', 'activeTrackId', 'background', 'photoReference', 'referenceDialogOpen',
+  'onCreatePlayScriptRail', 'onCreateRevealRail', 'onSelectTrack', 'onAddTrack',
+  'onToggleTrackVisible', 'onToggleSolo', 'onToggleBlend', 'onRenameTrack', 'onDuplicateTrack',
+  'onDeleteTrack', 'onReorderTrack', 'onSelectBackgroundClip', 'onSelectBackgroundFrame',
+  'selectedBackgroundClipId', 'backgroundPlacementFrame', 'onSelectTrackFrame', 'onSelectTrackRail',
+  'workflowLabel', 'currentFrameSignal', 'isPlaying', 'readyToApply', 'occupiedRotoFrames',
+  'savedRotoFrames', 'cachedRotoFrames', 'keyActionInFlight', 'rotoScriptNavigationLocked',
+  'mutationLocked', 'rotoCachedPlaybackAvailable', 'playbackStatus', 'playbackLoop', 'playbackFps',
+  'previewFps', 'playbackIsActive', 'playbackTick', 'playbackToggle', 'setRotoPlaybackLoop',
+  'setRotoPlaybackFps', 'interpolationEnabled', 'interpolationMode', 'pendingOperation',
+  'audioPreviewEnabled', 'handleAudioPreviewToggle', 'handleInterpolationEnabledChange',
+  'handleInterpolationModeChange', 'stableOnDuplicateRotoKey', 'stableOnAddRotoKey',
+  'insertRotoFrame', 'deleteRotoFrame', 'rotoPhysicalActions', 'stableOnCopyRotoFrame',
+  'stableOnCutRotoFrame', 'scissorKeyRail', 'stableOnPasteRotoFrame', 'rotoKeyRecords',
+  'rotoLoopClips', 'incomingBreakKeyIds', 'physicalCells', 'loopResolutionContext',
+  'loopPresentations', 'selectedLoopClipIds', 'railSetMembers', 'selectedRotoKeyRail',
+  'linkedRotoGroups', 'selectedActionName', 'handleSelectRotoLoopClip', 'handleSelectRotoKeyRail',
+  'handleOpenRotoLoopEdit', 'handleRotoKeyRailDragRejected', 'rotoParentEndExclusive',
+  'rotoDragContextKey', 'hasCopiedRotoKey', 'sessionAvailability', 'hasEffectiveRailSetScope',
+  'selectedKeyIds', 'selectedKeyId', 'rotoSpacingSelection', 'handleSelectRotoSpacingProxy',
+  'handleClearRotoSpacingSelection', 'handleClearRotoKeySelection', 'handleToggleRotoKeySelection',
+  'handleCollapseRotoSelectionToKey', 'handleExtendRotoKeySelection', 'stableOnSelectAllRotoKeys',
+  'handleRotoGroupDragRejected', 'handleRotoPushDragRejected', 'handleRotoRailSetMoveRejected',
+  'railSetMoveMembers', 'rotoScript', 'handleApplyScript', 'handleDiscardScript',
+  'scriptMutationDisabledReason', 'applyStatus', 'applyMessage', 'operationResult', 'onion',
+  'handleNavigateToSyncedFrame', 'handleGoToFirstFrame', 'handleGoToPreviousFrame',
+  'handleGoToNextFrame', 'handleGoToLastFrame', 'setOnion', 'handleWorkflowClose', 'scrubEnd',
+] as const;
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
   operationKind: 'delete-group-frame' | 'delete-group';
@@ -552,8 +595,15 @@ export function PhysicsPaintStudio() {
   const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
   const referenceDialogPropsMemo = useRef(createIdentityMemo()).current;
   const scriptPickerDialogPropsMemo = useRef(createIdentityMemo()).current;
-  const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
+  const canvasStackPropsMemo = useRef(createIdentityMemo({ label: 'canvasStackProps' })).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
+  // 260905-ibd follow-up (G-52-9): the workflow strip is the last unmemoized
+  // heavy subtree. Its props literal is rebuilt inline per render, so the
+  // strip's memo wall needs the same identity-memo treatment as the other
+  // subtrees. `currentFrame` is NOT a dep — the strip reads the Studio-owned
+  // currentFrameSignal instead, so a scrub-only Studio render feeds
+  // Object.is-identical deps and the memo returns the cached props object.
+  const workflowPropsMemo = useRef(createIdentityMemo({ label: 'workflowProps' })).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
       if (currentFrameSignal.peek() !== frame) currentFrameSignal.value = frame;
@@ -698,11 +748,18 @@ export function PhysicsPaintStudio() {
     return selection?.selectedLoopClipIds ?? [];
   });
   const effectiveSelectedLoopClipIds = effectiveSelectedLoopClipIdsSignal.value;
-  const effectiveRotoSpacingSelection = reconcilePhysicsPaintRotoSpacingSelection(
-    rotoSpacingSelection.value,
-    rotoLoopClips
-      .filter((loopClip) => loopClip.sourceKeyIds.every((keyId) => rotoKeyRecords.some((record) => record.keyId === keyId)))
-      .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
+  // 260905-ibd follow-up (G-52-9): the reconcile runs inside useMemo so the
+  // result identity is stable across scrub-only Studio renders — a fresh object
+  // per render here busts the workflow strip identity memo every frame.
+  const effectiveRotoSpacingSelection = useMemo(
+    () => reconcilePhysicsPaintRotoSpacingSelection(
+      rotoSpacingSelection.value,
+      rotoLoopClips
+        .filter((loopClip) => loopClip.sourceKeyIds.every((keyId) => rotoKeyRecords.some((record) => record.keyId === keyId)))
+        .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rotoSpacingSelection.value, rotoLoopClips, rotoKeyRecords],
   );
   // 38.1 D-07: the legacy interpolation settings read MUST be memoized on the
   // same structural inputs (physicPaintVersion + layerId) as the records
@@ -2158,7 +2215,7 @@ export function PhysicsPaintStudio() {
         }),
       ] as const;
     }));
-  }, [loopResolutionContext, loopScriptRows, rotoLoopClips, launchContext, efxPaintVersion.value]);
+  }, [loopResolutionContext, loopScriptRows, rotoLoopClips, launchContext?.layerId, efxPaintVersion.value]);
   const selectedActionId = rotoScriptLibrary.selectedId.value;
   const selectedAction = selectedActionId === null
     ? null
@@ -2870,15 +2927,24 @@ export function PhysicsPaintStudio() {
   // re-running on unrelated Studio renders. What it computes is unchanged.
   const rotoOnionPreviewFrames = rotoPreviewFramesRef.current;
   const rotoOnionDirtyFrames = dirtyRotoFramesRef.current;
-  const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({
-    currentFrame,
-    isPlaying,
-    onion,
-    realKeyRecords: rotoKeyRecords,
-    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,
-    previewFrames: rotoOnionPreviewFrames,
-    dirtyFrames: rotoOnionDirtyFrames,
-  }), [currentFrame, isPlaying, onion, rotoKeyRecords, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
+  // 260905-ibd follow-up (G-52-9): onion skin OFF (the default) returns the
+  // shared EMPTY array so the canvas-stack identity memo holds during scrub;
+  // the per-frame projection only rebuilds when onion skin is actually on —
+  // in that mode the ghosts genuinely follow the cursor (frame-dependent data,
+  // same contract as the program monitor's current-frame draw).
+  const onionPreviewFrames = useMemo(() => {
+    if (!onion.enabled) return EMPTY_ONION_PREVIEW_FRAMES;
+    return projectRotoOnionPreviewFrames({
+      currentFrame,
+      isPlaying,
+      onion,
+      realKeyRecords: rotoKeyRecords,
+      getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,
+      previewFrames: rotoOnionPreviewFrames,
+      dirtyFrames: rotoOnionDirtyFrames,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onion.enabled, currentFrame, isPlaying, onion, rotoKeyRecords, launchContext?.layerId, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
   const rotoCachedPlaybackAvailable = selectRotoPlaybackAvailable({
     workflowMode,
     hasLaunchContext: Boolean(launchContext),
@@ -3544,28 +3610,12 @@ export function PhysicsPaintStudio() {
         zoom: paperTextureScale,
       } : null,
     };
-  });
-  // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active
-  // rail set the strip's Copy/Duplicate/Paste buttons reflect SET scope —
-  // Copy and Duplicate enable on the EFFECTIVE rail-set scope (a single rail is
-  // a set of one, 43.6 Solo; Duplicate builds its payload fresh at click time and
-  // is never clipboard-gated), Paste enables on the rail-set clipboard — so the
-  // buttons/tooltips stop describing single-key scope. Without a set the overlay
-  // is the exact session availability (byte-identical single-key path).
-  const sessionKeyAvailability = rotoSession.actionAvailability.value;
-  const effectiveRotoKeyState = hasEffectiveRailSetScope
-    ? {
-        actionAvailability: {
-          ...sessionKeyAvailability,
-          canCopy: rotoPhysicalActions.canCopyRailSet.value,
-          canDuplicate: rotoPhysicalActions.canDuplicateRailSet.value,
-          canPaste: rotoPhysicalActions.canPasteRailSet.value,
-          pasteDisabledReason: rotoPhysicalActions.pasteRailSetDisabledReason.value
-            ?? sessionKeyAvailability.pasteDisabledReason,
-        },
-        hasCopiedRotoKey: rotoSession.copiedKey.value !== null,
-      }
-    : { actionAvailability: sessionKeyAvailability, hasCopiedRotoKey: rotoSession.copiedKey.value !== null };
+  }, CANVAS_STACK_DEP_NAMES);
+  // 43.6-08 (quick 260820-bjw): the set-aware availability overlay lives in the
+  // strip's narrow per-button subscribers (they read the rail-set signals
+  // directly). 260905-ibd follow-up (G-52-9): the effectiveRotoKeyState object
+  // literal was deleted — a fresh object per Studio render busted the workflow
+  // strip identity memo every scrub frame.
   // 47-01 mockup redesign: track CRUD + visibility intents (the add/duplicate
   // handlers moved up to the keyboard wiring — the pointer paths and the
   // guarded shortcuts share them). Each routes through its store op
@@ -4008,6 +4058,15 @@ export function PhysicsPaintStudio() {
       onClose: () => { scriptPickerIntent.value = null; },
     }),
   );
+  // 260905-ibd follow-up (G-52-9): the workflow memo deps must ALL be
+  // identity-stable across a scrub-only Studio render — one fresh object per
+  // frame busts the memo and re-renders the whole strip per frame (the exact
+  // regression this quick exists to kill). launchContext (rebuilt by
+  // setLaunchContext every scrub frame) is therefore NEVER a dep; the two
+  // launchContext-derived values the literal needs are these scrub-stable
+  // primitives.
+  const rotoParentEndExclusive = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0;
+  const rotoDragContextKey = launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none';
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -4017,7 +4076,117 @@ export function PhysicsPaintStudio() {
     playScriptDialog,
     referenceDialog,
     scriptPickerDialog,
-    workflow: {
+    workflow: workflowPropsMemo.resolve([
+      multiTrackRowBundle.layerId,
+      multiTrackRowBundle.tracks,
+      multiTrackRowBundle.activeTrackId,
+      multiTrackRowBundle.background,
+      multiTrackRowBundle.photoReference,
+      referenceDialogOpen,
+      onCreatePlayScriptRail,
+      onCreateRevealRail,
+      multiTrackRowBundle.onSelectTrack,
+      multiTrackRowBundle.onAddTrack,
+      multiTrackRowBundle.onToggleTrackVisible,
+      multiTrackRowBundle.onToggleSolo,
+      multiTrackRowBundle.onToggleBlend,
+      multiTrackRowBundle.onRenameTrack,
+      multiTrackRowBundle.onDuplicateTrack,
+      multiTrackRowBundle.onDeleteTrack,
+      multiTrackRowBundle.onReorderTrack,
+      multiTrackRowBundle.onSelectBackgroundClip,
+      multiTrackRowBundle.onSelectBackgroundFrame,
+      multiTrackRowBundle.selectedBackgroundClipId,
+      multiTrackRowBundle.backgroundPlacementFrame,
+      multiTrackRowBundle.onSelectTrackFrame,
+      multiTrackRowBundle.onSelectTrackRail,
+      launchContext?.workflowLabel,
+      currentFrameSignal,
+      isPlaying,
+      readyToApply,
+      timelineOccupiedRotoFrames,
+      timelineSavedRotoFrames,
+      timelineCachedRotoFrames,
+      rotoKeyUtilities.keyActionInFlight,
+      rotoScriptNavigationLocked,
+      mutationLocked,
+      rotoCachedPlaybackAvailable,
+      rotoCachedPlayback.status,
+      rotoCachedPlayback.loop,
+      rotoCachedPlayback.fps,
+      previewFps,
+      rotoCachedPlayback.isActive,
+      rotoCachedPlayback.playbackTick,
+      rotoCachedPlayback.toggle,
+      setRotoPlaybackLoop,
+      setRotoPlaybackFps,
+      rotoInterpolationState.enabled,
+      rotoInterpolationState.mode,
+      physicalEditCoordinator.pendingOperationId.value !== null,
+      audioPreviewEnabled.value,
+      handleAudioPreviewToggle,
+      handleRotoInterpolationEnabledChange,
+      handleRotoInterpolationModeChange,
+      stableOnDuplicateRotoKey,
+      stableOnAddRotoKey,
+      rotoPhysicalActions.insertRotoFrame,
+      rotoPhysicalActions.deleteRotoFrame,
+      rotoPhysicalActions,
+      stableOnCopyRotoFrame,
+      stableOnCutRotoFrame,
+      rotoPhysicalActions.scissorKeyRail,
+      stableOnPasteRotoFrame,
+      rotoKeyRecords,
+      rotoLoopClips,
+      rotoIncomingInterpolationBreakKeyIds,
+      rotoTimelineModel.physicalCells.value,
+      loopResolutionContext,
+      loopPresentations,
+      effectiveSelectedLoopClipIds,
+      effectiveRailSetMembers,
+      effectiveSelectedRotoKeyRail,
+      linkedRotoGroups,
+      selectedAction?.name,
+      handleSelectRotoLoopClip,
+      handleSelectRotoKeyRail,
+      handleOpenRotoLoopEdit,
+      handleRotoKeyRailDragRejected,
+      rotoParentEndExclusive,
+      rotoDragContextKey,
+      hasCopiedRotoKeySignal,
+      sessionAvailabilitySignal,
+      hasEffectiveRailSetScope,
+      selectedKeyIds.value,
+      selectedKeyId.value,
+      effectiveRotoSpacingSelection,
+      handleSelectRotoSpacingProxy,
+      handleClearRotoSpacingSelection,
+      handleClearRotoKeySelection,
+      handleToggleRotoKeySelection,
+      handleCollapseRotoSelectionToKey,
+      handleExtendRotoKeySelection,
+      stableOnSelectAllRotoKeys,
+      handleRotoGroupDragRejected,
+      handleRotoPushDragRejected,
+      handleRotoRailSetMoveRejected,
+      railSetMoveMembers,
+      rotoScript,
+      handleApplyScript,
+      handleDiscardScript,
+      rotoScriptLibrary.actionMutationDisabledReason,
+      applyStatus,
+      applyMessage,
+      operationResult,
+      onion,
+      handleNavigateToSyncedFrame,
+      handleGoToFirstFrame,
+      handleGoToPreviousFrame,
+      handleGoToNextFrame,
+      handleGoToLastFrame,
+      setOnion,
+      handleWorkflowClose,
+      rotoCachedPlayback.scrubEnd,
+    ], () => ({
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,
         activeTrackId: multiTrackRowBundle.activeTrackId,
@@ -4045,7 +4214,7 @@ export function PhysicsPaintStudio() {
         onReorderTrack: multiTrackRowBundle.onReorderTrack,
         // 49-05 (Task 1, S1): the locked Bg row's Import control opens the
         // 49-04 picker swap — the engine canvas stays mounted underneath.
-        onImportBackground: () => backgroundPicker.openPicker(),
+        onImportBackground: () => { void backgroundPickerOpenHookRef.current?.(); },
         // 49-05 (Task 2, S4): a click on a Bg clip rail routes clip selection
         // to the right-panel `Background Clip` section (consumed by 49-06).
         onSelectBackgroundClip: multiTrackRowBundle.onSelectBackgroundClip,
@@ -4064,7 +4233,7 @@ export function PhysicsPaintStudio() {
         onSelectTrackFrame: multiTrackRowBundle.onSelectTrackFrame,
         onSelectTrackRail: multiTrackRowBundle.onSelectTrackRail,
         workflowLabel: launchContext?.workflowLabel,
-        currentFrame, currentFrameSignal, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
+        currentFrameSignal, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
         // 38.1-D-01: the per-tick playback signal passes through as a signal
         // reference (never .value-read here); only the nav-pill current-frame
@@ -4080,7 +4249,7 @@ export function PhysicsPaintStudio() {
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: hasCopiedRotoKeySignal, sessionAvailability: sessionAvailabilitySignal, hasEffectiveRailSetScope, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive, rotoDragContextKey, hasCopiedRotoKey: hasCopiedRotoKeySignal, sessionAvailability: sessionAvailabilitySignal, hasEffectiveRailSetScope,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
@@ -4118,14 +4287,14 @@ export function PhysicsPaintStudio() {
         onApplyScript: handleApplyScript,
         onDiscardScript: handleDiscardScript,
         rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,
-        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
+        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), onion, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
         // routes the navigation audio funnel to scrub; release stops the
         // snippet and re-anchors at the final frame.
         onScrubStart: () => { scrubActiveRef.current = true; },
         onScrubEnd: (frame) => { scrubActiveRef.current = false; rotoCachedPlayback.scrubEnd(frame); },
-      },
+      }), WORKFLOW_PROPS_DEP_NAMES),
     status: { shortcutsVisible },
     backgroundPicker: {
       open: backgroundPicker.open.value,

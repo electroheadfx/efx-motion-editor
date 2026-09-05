@@ -67,6 +67,25 @@ function* walk(node: unknown): Generator<TestVNode> {
   for (const child of childrenOf(vnode)) yield* walk(child);
 }
 
+function materializeNamedComponents(node: unknown, names: ReadonlySet<string>): unknown {
+  if (node === null || node === undefined || typeof node === 'boolean') return node;
+  if (Array.isArray(node)) return node.map((child) => materializeNamedComponents(child, names));
+  if (typeof node !== 'object') return node;
+  const vnode = node as TestVNode;
+  if (typeof vnode.type === 'function' && names.has(vnode.type.name)) {
+    return materializeNamedComponents(vnode.type(vnode.props), names);
+  }
+  const children = childrenOf(vnode);
+  if (children.length === 0) return vnode;
+  return {
+    ...vnode,
+    props: {
+      ...vnode.props,
+      children: children.map((child) => materializeNamedComponents(child, names)),
+    },
+  } as TestVNode;
+}
+
 function findAll(root: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode[] {
   return [...walk(root)].filter(predicate);
 }
@@ -180,7 +199,10 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     const runtime = runtimeHolder.current;
     if (!runtime) throw new Error('Expected the Preact hook runtime mock.');
     runtime.beginRender();
-    tree = PhysicsPaintWorkflowStrip({
+    // 260905-ibd follow-up (G-52-9): the physical-cell grid is a narrow
+    // PhysicsPaintRotoCells subscriber — materialize it so the walk-based cell
+    // finders see the RotoTimelineCellButton vnodes it renders.
+    tree = materializeNamedComponents(PhysicsPaintWorkflowStrip({
       currentFrame,
       isPlaying: false,
       ready: true,
@@ -206,7 +228,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       layerId: options.layerId ?? '',
       background: options.background,
       onSelectTrack: options.onSelectTrack,
-    });
+    }), new Set(['PhysicsPaintRotoCells']));
 
     const scrollerNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
     const contentNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-lane'));

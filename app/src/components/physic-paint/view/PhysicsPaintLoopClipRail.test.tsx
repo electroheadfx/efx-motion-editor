@@ -271,7 +271,10 @@ function renderWorkflowStrip(
   cellProps: Partial<Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection' | 'rotoKeyRecords' | 'rotoLoopClips'>> = {},
 ): unknown {
   hooks.reset();
-  return PhysicsPaintWorkflowStrip({
+  // 260905-ibd follow-up (G-52-9): the physical-cell grid is a narrow
+  // PhysicsPaintRotoCells subscriber — materialize it so the walk-based cell
+  // finders see the RotoTimelineCellButton vnodes it renders.
+  return materializeNamedComponents(PhysicsPaintWorkflowStrip({
     currentFrame: 0,
     isPlaying: false,
     ready: true,
@@ -289,7 +292,7 @@ function renderWorkflowStrip(
     onGoToLastFrame: () => {},
     onOnionChange: () => {},
     ...cellProps,
-  });
+  }), new Set(['PhysicsPaintRotoCells']));
 }
 
 function createGeneratedPresentationDocument(

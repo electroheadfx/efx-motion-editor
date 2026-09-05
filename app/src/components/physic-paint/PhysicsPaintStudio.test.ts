@@ -130,7 +130,7 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId());');
     expect(studio).toContain('layerEndExclusive,');
     expect(studio).toContain('remainingCapacity: Math.max(0, layerEndExclusive - placementStart)');
-    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0,');
+    expect(studio).toContain('const rotoParentEndExclusive = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0;');
     expect(studio).not.toContain('rotoParentEndExclusive: rotoPhysicalCapacity');
     expect(studio).not.toContain('layerEndExclusive: physicalCapacity');
     expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
@@ -576,7 +576,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
-    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
+    expect(studio).toContain('const rotoParentEndExclusive = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
     expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
     expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`");
   });
@@ -1028,7 +1028,7 @@ describe('Physics Paint navigation render localization', () => {
 
 describe('Canvas navigation render localization', () => {
   it('assembles stable CanvasStack and CanvasMount props with named callback boundaries', () => {
-    expect(studio).toContain('const canvasStackPropsMemo = useRef(createIdentityMemo()).current;');
+    expect(studio).toContain("const canvasStackPropsMemo = useRef(createIdentityMemo({ label: 'canvasStackProps' })).current;");
     expect(studio).toContain('const canvasMountPropsMemo = useRef(createIdentityMemo()).current;');
     expect(studio).toContain('const handleCanvasEngineReady = useCallback(');
     expect(studio).toContain('const handleCanvasCompletedMutation = useCallback(');
@@ -1070,7 +1070,10 @@ describe('Workflow navigation render localization', () => {
     ]) {
       expect(studio).toContain(`const ${handler} = useCallback(`);
     }
-    const workflowStart = studio.indexOf('workflow: {');
+    // 260905-ibd follow-up (G-52-9): the workflow props literal is wrapped in
+    // the identity memo (workflowPropsMemo.resolve) so the strip's memo wall
+    // holds during scrub.
+    const workflowStart = studio.indexOf('workflow: workflowPropsMemo.resolve([');
     const workflowEnd = studio.indexOf('status: { shortcutsVisible }', workflowStart);
     const workflowBlock = studio.slice(workflowStart, workflowEnd);
     expect(workflowStart).toBeGreaterThanOrEqual(0);
@@ -1224,8 +1227,8 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
     // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
-    // (AM-3 Create Rail script picker).
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
+    // (AM-3 Create Rail script picker), workflow (260905-ibd follow-up G-52-9).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(10);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -1387,7 +1390,7 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     expect(headerColumn).toContain('onImportBackground?: () => void;');
     expect(headerColumn).toContain('onImportBackground={onImportBackground}');
     // The Studio routes the intent to the 49-04 picker swap (engine untouched).
-    expect(studio).toContain('onImportBackground: () => backgroundPicker.openPicker(),');
+    expect(studio).toContain('onImportBackground: () => { void backgroundPickerOpenHookRef.current?.(); },');
   });
 
   it('Confirm calls addBackgroundClip exactly once with the placement frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)', () => {

@@ -588,7 +588,7 @@ describe('PhysicsPaintProgramMonitor', () => {
       // re-sourced through the flattened path.
       const onionProjection = resolveBlock(
         studio,
-        'const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({',
+        'const onionPreviewFrames = useMemo(() => {',
         'const rotoCachedPlaybackAvailable =',
       );
       expect(onionProjection).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
