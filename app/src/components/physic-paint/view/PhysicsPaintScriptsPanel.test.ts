@@ -260,6 +260,16 @@ describe('Physics Paint Scripts panel Copy toolbar contract (36.15-08, UAT Gap C
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');
   });
+
+  it('greys out the guarded toolbar buttons when unavailable (aria-disabled visual)', () => {
+    const ruleStart = css.indexOf('.physics-paint-script-icon-button[aria-disabled="true"]');
+    expect(ruleStart).toBeGreaterThanOrEqual(0);
+    const ruleEnd = css.indexOf('}', ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
+    expect(rule).toContain('background: #2a3036');
+    expect(rule).toContain('color: #7d8791');
+    expect(rule).toContain('cursor: default');
+  });
 });
 
 describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1; 260905-dso Copy-only)', () => {

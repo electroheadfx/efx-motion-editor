@@ -1146,6 +1146,21 @@ button.destructive {
   text-transform: none;
 }
 
+/* Guarded toolbar buttons stay focusable while unavailable (aria-disabled,
+   never the native disabled attribute) so the styled tooltip can explain the
+   reason — the grey-out below mirrors the roto-key-icon-button disabled
+   language and also pins the hover/focus colors so an unavailable button
+   never looks interactive (260905-dso). */
+.physics-paint-script-icon-button[aria-disabled="true"],
+.physics-paint-script-icon-button[aria-disabled="true"]:hover,
+.physics-paint-script-icon-button[aria-disabled="true"]:focus-visible {
+  border-color: #3f4851;
+  background: #2a3036;
+  color: #7d8791;
+  cursor: default;
+  opacity: 1;
+}
+
 /* The labeled second-row buttons keep their Lucide icons pinned at the full
    first-row 16px size — the svg never flex-shrinks (36.15-10, UAT Gap F-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {
