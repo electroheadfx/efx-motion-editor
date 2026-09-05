@@ -145,7 +145,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Rail…"'));
     expect(panel.indexOf('label="Create Rail…"')).toBeLessThan(panel.indexOf('label="Delete Action"'));
     expect(panel.indexOf('label="Delete Action"')).toBeLessThan(panel.indexOf('label="Refresh Actions"'));
-    expect(panel).toContain('aria-label={`Edit Rail — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
     expect(panel).toContain('label="Create Rail…"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
@@ -807,21 +807,6 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the contextual Edit Rail in the list view only when the cursor is on the current linked rail', () => {
-    const onEditCurrent = vi.fn();
-    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
-      linkedGroupNavigation: { currentIndex: 1, total: 3, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup: vi.fn(), cursorOnCurrentRail: true, onEditCurrent },
-    });
-    const edit = findOne(tree, (vnode) => vnode.props?.label === 'Edit Rail');
-    (edit.props.onClick as () => void)();
-    expect(onEditCurrent).toHaveBeenCalledTimes(1);
-
-    const tree2 = renderPanel(createFakePlayScript(), createFakeLibrary(), {
-      linkedGroupNavigation: { currentIndex: 1, total: 3, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup: vi.fn(), cursorOnCurrentRail: false, onEditCurrent },
-    });
-    expect(findAll(tree2, (vnode) => vnode.props?.label === 'Edit Rail')).toHaveLength(0);
-  });
-
   it('uses guarded IconButton Previous/Next with Chevron icons and boundary reasons in both renderings', () => {
     const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
     expect(inspectorStart).toBeGreaterThanOrEqual(0);
@@ -846,12 +831,22 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     expect(buttonElement.replace(/aria-disabled/g, '')).not.toContain('disabled=');
   });
 
-  it('wires cursorOnCurrentRail and onEditCurrent through the Studio memo', () => {
-    expect(studio).toContain('cursorOnCurrentRail: cursorOnCurrentLinkedRail');
-    expect(studio).toContain('onEditCurrent: handleEditCurrentLinkedGroup');
-    expect(studio).toContain('const handleEditCurrentLinkedGroup = useCallback(() => {');
-    expect(studio).toContain('handleOpenRotoLoopEdit(effectiveLinkedGroup.loopId)');
-    expect(studio).toContain('cursorOnCurrentLinkedRail, handleEditCurrentLinkedGroup');
+  it('no longer derives cursorOnCurrentLinkedRail or wires onEditCurrent through the Studio memo (260905-hfd)', () => {
+    expect(studio).not.toContain('cursorOnCurrentLinkedRail');
+    expect(studio).not.toContain('handleEditCurrentLinkedGroup');
+    expect(studio).not.toContain('cursorOnCurrentRail');
+    expect(studio).not.toContain('onEditCurrent');
+  });
+
+  it('renders only Edit Rail and Close in the inspector top row when linked navigation is null', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedLoopClip: selectedGroup,
+      linkedGroupNavigation: null,
+    });
+    expect(findOne(tree, (vnode) => vnode.props?.label === `Edit Rail — ${selectedGroup.displayName}`)).toBeTruthy();
+    expect(findOne(tree, (vnode) => vnode.props?.label === `Close Rail inspector — ${selectedGroup.displayName}`)).toBeTruthy();
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Previous Rail')).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Next Rail')).toHaveLength(0);
   });
 });
 
@@ -921,7 +916,58 @@ describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
     const inside = inspector.slice(scrollAreaOpen, scrollAreaClose);
     expect(inside).toContain('physics-paint-loop-clip-inspector');
     expect(inside).toContain('physics-paint-loop-clip-linked-navigation');
-    expect(inside).toContain('physics-paint-loop-clip-inspector-actions');
+    expect(inside).not.toContain('physics-paint-loop-clip-inspector-actions');
+    // 260905-hfd: the top action row is pinned chrome — it sits BEFORE the
+    // SidebarScrollArea open tag, outside the scroll area.
+    const topRowStart = inspector.indexOf('physics-paint-loop-clip-inspector-top-actions');
+    expect(topRowStart).toBeGreaterThanOrEqual(0);
+    expect(topRowStart).toBeLessThan(scrollAreaOpen);
+  });
+
+  it('compacts the list-view Linked Rails nav to one row with two icon-only chevron buttons (260905-hfd)', () => {
+    const listStart = panel.indexOf('aria-label="Project Actions"');
+    expect(listStart).toBeGreaterThanOrEqual(0);
+    const list = panel.slice(listStart);
+    const navStart = list.indexOf('physics-paint-loop-clip-linked-navigation');
+    expect(navStart).toBeGreaterThanOrEqual(0);
+    const navEnd = list.indexOf('physics-paint-scripts-list', navStart);
+    const nav = list.slice(navStart, navEnd === -1 ? list.length : navEnd);
+    expect(nav).toContain('physics-paint-loop-clip-nav-compact');
+    expect(nav).toContain('<strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>');
+    expect(nav).toContain('physics-paint-loop-clip-nav-compact-actions');
+    expect(nav.match(/<IconButton label="Previous Rail"/g)).toHaveLength(1);
+    expect(nav.match(/<IconButton label="Next Rail"/g)).toHaveLength(1);
+    expect(nav).not.toContain('physics-paint-roto-key-icon-label');
+    expect(nav).not.toContain('Edit Rail');
+    expect(nav).not.toContain('physics-paint-loop-clip-inspector-actions');
+    // Go to Group stays for total === 1.
+    expect(panel).toContain('Go to Group');
+  });
+
+  it('renders a single 4-button top action row above the inspector scroll area (260905-hfd)', () => {
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    expect(inspectorEnd).toBeGreaterThan(inspectorStart);
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    const topRowStart = inspector.indexOf('physics-paint-loop-clip-inspector-top-actions');
+    expect(topRowStart).toBeGreaterThanOrEqual(0);
+    const scrollAreaOpen = inspector.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThan(topRowStart);
+    const topRow = inspector.slice(topRowStart, scrollAreaOpen);
+    expectInOrder(topRow, [
+      'label={`Edit Rail — ${selectedLoopClip.displayName}`}',
+      'label="Previous Rail"',
+      'label="Next Rail"',
+      'label={`Close Rail inspector — ${selectedLoopClip.displayName}`}',
+    ]);
+    expect(topRow).toContain('linkedGroupNavigation && linkedGroupNavigation.total > 1');
+    expect(topRow).toContain('descriptionId={previousRailReasonId}');
+    expect(topRow).toContain('descriptionId={nextRailReasonId}');
+    // The old bottom actions row and the nav buttons container are gone.
+    expect(inspector).not.toContain('physics-paint-loop-clip-inspector-actions');
+    expect(inspector).not.toContain('<span>Edit Rail</span>');
+    expect(inspector).not.toContain('<span>Close</span>');
   });
 });
 

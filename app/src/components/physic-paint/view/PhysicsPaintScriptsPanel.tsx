@@ -20,8 +20,6 @@ export interface PhysicsPaintScriptsPanelProps {
     onPrevious: () => void;
     onNext: () => void;
     onGoToGroup: () => void;
-    cursorOnCurrentRail: boolean;
-    onEditCurrent: () => void;
   } | null;
   onOpenLoopEdit: (loopId: string) => Promise<unknown>;
   onCloseLoopClip: () => void;
@@ -109,6 +107,16 @@ export function PhysicsPaintScriptsPanel({
   if (selectedLoopClip) {
     return (
       <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}>
+        <div class="physics-paint-loop-clip-inspector-top-actions">
+          <IconButton buttonRef={playButtonRef} label={`Edit Rail — ${selectedLoopClip.displayName}`} title={`Edit Rail — ${selectedLoopClip.displayName}`} onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }} className="physics-paint-loop-clip-nav-compact-button primary" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><Pencil size={16} aria-hidden="true" /></IconButton>
+          {linkedGroupNavigation && linkedGroupNavigation.total > 1 ? (
+            <>
+              <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /></IconButton>
+              <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronRight size={16} aria-hidden="true" /></IconButton>
+            </>
+          ) : null}
+          <IconButton label={`Close Rail inspector — ${selectedLoopClip.displayName}`} title={`Close Rail inspector — ${selectedLoopClip.displayName}`} onClick={onCloseLoopClip} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
+        </div>
         <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
@@ -122,45 +130,17 @@ export function PhysicsPaintScriptsPanel({
         {linkedGroupNavigation ? (
           <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Rail navigation">
             <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
-            <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
-              {linkedGroupNavigation.total === 1 ? (
-                <button
-                  type="button"
-                  class="physics-paint-loop-clip-inspector-action"
-                  onClick={linkedGroupNavigation.onGoToGroup}
-                >
-                  Go to Rail
-                </button>
-              ) : (
-                <>
-                  <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-inspector-action"><ChevronLeft size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Previous Rail</span></IconButton>
-                  <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-inspector-action"><ChevronRight size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Next Rail</span></IconButton>
-                </>
-              )}
-            </div>
+            {linkedGroupNavigation.total === 1 ? (
+              <button
+                type="button"
+                class="physics-paint-loop-clip-inspector-action"
+                onClick={linkedGroupNavigation.onGoToGroup}
+              >
+                Go to Rail
+              </button>
+            ) : null}
           </section>
         ) : null}
-        <div class="physics-paint-loop-clip-inspector-actions">
-          <button
-            ref={playButtonRef}
-            type="button"
-            class="physics-paint-loop-clip-inspector-action primary"
-            aria-label={`Edit Rail — ${selectedLoopClip.displayName}`}
-            onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }}
-          >
-            <Pencil size={16} aria-hidden="true" />
-            <span>Edit Rail</span>
-          </button>
-          <button
-            type="button"
-            class="physics-paint-loop-clip-inspector-action"
-            aria-label={`Close Rail inspector — ${selectedLoopClip.displayName}`}
-            onClick={onCloseLoopClip}
-          >
-            <X size={16} aria-hidden="true" />
-            <span>Close</span>
-          </button>
-        </div>
         </SidebarScrollArea>
       </div>
     );
@@ -204,21 +184,16 @@ export function PhysicsPaintScriptsPanel({
         </span>
       </div>
       {linkedGroupNavigation ? (
-        <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Rail navigation">
+        <section class="physics-paint-loop-clip-linked-navigation physics-paint-loop-clip-nav-compact" aria-label="Linked Rail navigation">
           <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
-          <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
-            {linkedGroupNavigation.total === 1 ? (
-              <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
-            ) : (
-              <>
-                <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-inspector-action"><ChevronLeft size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Previous Rail</span></IconButton>
-                <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-inspector-action"><ChevronRight size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Next Rail</span></IconButton>
-                {linkedGroupNavigation.cursorOnCurrentRail ? (
-                  <IconButton label="Edit Rail" title="Edit Rail" onClick={linkedGroupNavigation.onEditCurrent} className="physics-paint-loop-clip-inspector-action" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-edit-current"><Pencil size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Edit Rail</span></IconButton>
-                ) : null}
-              </>
-            )}
-          </div>
+          {linkedGroupNavigation.total === 1 ? (
+            <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
+          ) : (
+            <div class="physics-paint-loop-clip-nav-compact-actions">
+              <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /></IconButton>
+              <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronRight size={16} aria-hidden="true" /></IconButton>
+            </div>
+          )}
         </section>
       ) : null}
       <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
