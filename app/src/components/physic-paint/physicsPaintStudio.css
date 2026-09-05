@@ -747,6 +747,11 @@ button.destructive {
   overflow: hidden;
 }
 
+.physics-paint-right-pane-tools,
+.physics-paint-right-pane-secondary {
+  flex-direction: column;
+}
+
 .physics-paint-right-pane-scroll-area {
   width: 100%;
 }
@@ -1003,6 +1008,7 @@ button.destructive {
   align-items: stretch;
   gap: 0;
   min-width: 0;
+  flex: 0 0 auto;
   height: 35px;
   padding: 0 4px;
   border-bottom: 1px solid #696d72;

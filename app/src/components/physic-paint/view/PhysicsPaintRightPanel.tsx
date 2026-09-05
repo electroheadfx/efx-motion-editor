@@ -620,8 +620,6 @@ export function PhysicsPaintRightPanel({
         </div>
 
         <div class="physics-paint-right-pane physics-paint-right-pane-tools">
-          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
-            <div class="physics-paint-right-pane-content">
           <div class="physics-paint-options-tabs physics-paint-options-tabs-tool" role="tablist" aria-label="Physics Paint tool option panels">
           <button
             type="button"
@@ -657,6 +655,8 @@ export function PhysicsPaintRightPanel({
             </button>
           ) : null}
       </div>
+          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
+            <div class="physics-paint-right-pane-content">
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
@@ -725,8 +725,6 @@ export function PhysicsPaintRightPanel({
         </div>
 
         <div class="physics-paint-right-pane physics-paint-right-pane-secondary">
-          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
-            <div class="physics-paint-right-pane-content">
           <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
           <button
             type="button"
@@ -756,7 +754,8 @@ export function PhysicsPaintRightPanel({
             Motion
           </button>
       </div>
-
+          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
+            <div class="physics-paint-right-pane-content">
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {optionsTab === 'scripts' ? (
           <PhysicsPaintScriptsPanel {...scripts} />
