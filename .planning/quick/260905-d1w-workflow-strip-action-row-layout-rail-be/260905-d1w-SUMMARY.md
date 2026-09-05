@@ -7,8 +7,9 @@ tags: [preact, signals, physics-paint, workflow-strip, action-row, rail-create, 
 # Dependency graph
 requires: []
 provides:
-  - Reordered + gated Physics Paint workflow-strip action row (+ Key, + Rail, Push, Insert, Duplicate, Copy, Cut, Scissor, Paste, All, Trash)
+  - Reordered + gated Physics Paint workflow-strip action row (+ Key, + Rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash)
   - + Rail gated by the SAME availability law as + Key (canAddRotoKey + ready + busy-state guard)
+  - + Rail extended gating: greys on a generated in-between or a linked Rail repeat (canCreateRail/railCreateDisabledReason)
   - Solo relocated into the playback pill as an icon-only nav-button with the pill .active armed treatment
 affects: [Phase 53 Integrated v1.0.0 Acceptance, native UAT of the workflow strip]
 
@@ -16,7 +17,7 @@ affects: [Phase 53 Integrated v1.0.0 Acceptance, native UAT of the workflow stri
 actuals:
   tokens: 8817    # chars/4 over the realized diff (35269 chars)
   tasks: 3
-  commits: 3
+  commits: 5    # 3 original + 2 amendment (8cd7bdfe feat, 3cc6a108 test)
 
 # Tech tracking
 tech-stack:
@@ -45,11 +46,14 @@ requirements-completed: [ACC-01]
 
 coverage:
   - id: D1
-    description: "Action row reordered as + Key, + Rail (gated), Push, Insert, Duplicate, Copy, Cut, Scissor, Paste, All, Trash; the Solo group is gone from the row"
+    description: "Action row reordered as + Key, + Rail (gated), Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash; the Solo group is gone from the row"
     requirement: ACC-01
     verification:
       - kind: unit
-        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Cut, Scissor, Paste, All, Trash (260905-d1w)"
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#renders the clipboard row in locked Copy, Paste, Cut, Scissor, Delete order"
         status: pass
     human_judgment: false
   - id: D2
@@ -57,10 +61,33 @@ coverage:
     requirement: ACC-01
     verification:
       - kind: unit
-        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#gates + Rail with the same availability law as + Key (260905-d1w)"
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#gates + Rail with the extended canCreateRail law (260905-d1w)"
         status: pass
       - kind: unit
         ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStripRailCreate.test.tsx#does not open the rail-kind menu while + Rail is aria-disabled (260905-d1w)"
+        status: pass
+    human_judgment: false
+  - id: D4
+    description: "+ Rail extended gating (amendment): greys on a generated in-between (with + Key still enabled there) and on a linked Rail repeat (repeatInstance > 0 or linked-unresolved), with the specific reason; stays enabled on an empty frame; greys via the base reason when busy/not-ready; the menu never opens while greyed"
+    requirement: ACC-01
+    verification:
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStripRailCreate.test.tsx#greys + Rail on a generated in-between frame while + Key stays enabled (260905-d1w)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStripRailCreate.test.tsx#keeps + Rail enabled on a genuinely empty frame (260905-d1w)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStripRailCreate.test.tsx#greys + Rail on a linked Rail repeat frame with the repeat reason (260905-d1w)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStripRailCreate.test.tsx#greys + Rail via the base busy/not-ready reason (260905-d1w)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStripRailCreate.test.tsx#does not open the rail-kind menu while + Rail is greyed on a generated frame (260905-d1w)"
         status: pass
     human_judgment: false
   - id: D3
@@ -158,8 +185,23 @@ Each task was committed atomically:
 ## User Setup Required
 None - no external service configuration required.
 
+## Amendment (2026-09-05): Paste after Copy + + Rail extended gating
+
+Native UAT passed everywhere except two adjustments requested by the user:
+
+1. **Paste placement** — Paste now renders immediately after Copy (Copy, Paste, Cut, Scissor, All, Trash) as a pure block move; Paste behavior, gating (`canPasteRotoKey`), tooltip, and aria wiring are byte-identical.
+2. **+ Rail extended gating** — + Rail keeps the d1w + Key base law and adds two current-frame exclusions via a dedicated `canCreateRail`/`railCreateDisabledReason` pair: a generated in-between (`physicalCellByAppFrame.get(currentFrame)?.kind === 'generated'`) and a linked Rail repeat (`isLinkedRepeatFrameResolution` — `linked-unresolved` or a linked/linked-generated/linked-gap cell with `repeatInstance > 0`). Reason priority: base `addEmptyKeyDisabledReason` first (busy/ready/real-key), then repeat, then generated. `canAddRotoKey` itself is untouched — + Key stays enabled on interpolated frames (locked 260820-hq9 behavior).
+
+### Amendment commits
+1. **feat** - `8cd7bdfe` - move Paste after Copy; extend + Rail gating to generated/repeat frames
+2. **test** - `3cc6a108` - update order tests for Copy→Paste adjacency; add + Rail gating matrix
+
+### Amendment decisions
+- The `isLinkedRepeatFrameResolution` helper mirrors the in-map `isLinkedRepeat` predicate verbatim; the cell-classification map logic is untouched (scope lock).
+- Reason priority is deterministic: base reason → repeat → generated (a frame that is both generated and repeat shows the repeat reason).
+
 ## Next Phase Readiness
-- The workflow strip action row is reordered and + Rail is gated; Solo is in the playback pill. Ready for native UAT (user drives): + Rail sits immediately right of + Key and Push immediately right of + Rail; on a frame where + Key is greyed, + Rail is greyed too with an explanatory tooltip and the menu does not open; Solo appears icon-only beside Loop and arms/disarms exactly as before; Push drags and disarms exactly as before and clicking Solo still leaves push mode; Undo/redo, arrows, Space, and Delete shortcuts still work.
+- The workflow strip action row is reordered and + Rail is gated; Solo is in the playback pill. Ready for native UAT (user drives): Paste sits immediately right of Copy with Cut/Scissor following; on a generated in-between frame + Rail is greyed with the explanatory tooltip while + Key stays enabled; on a linked Rail repeat frame + Rail is greyed with the repeat tooltip; on a real-key frame + Rail is greyed as before and on a genuinely empty frame it is enabled with the Motion/Static/Reveal menu (incl. the AM-3 script-picker interpose); Copy → Paste on a target frame still pastes exactly as before; Undo/redo, arrows, Space, and Delete shortcuts still work after using the moved Paste.
 
 ---
 *Phase: quick-260905-d1w*
@@ -167,4 +209,4 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 - SUMMARY.md exists at `.planning/quick/260905-d1w-workflow-strip-action-row-layout-rail-be/260905-d1w-SUMMARY.md`
-- Commits verified: b607dcbd (Task 1), 00bdf2c9 (Task 2), 2141bc40 (Task 3)
+- Commits verified: b607dcbd (Task 1), 00bdf2c9 (Task 2), 2141bc40 (Task 3), 8cd7bdfe (amendment feat), 3cc6a108 (amendment test)
