@@ -4,6 +4,13 @@ import { audioEngine } from '../../../lib/audioEngine';
 import { applyRevisionedEfxPaintAudioPreview, resolveTrackPlayback } from './efxPaintAudioPreviewContext';
 import { audioPreviewEnabled, configureAudioPreviewToggleEffect, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
 import { efxPaintAudioOwnership } from './efxPaintAudioOwnership';
+import { isPhysicsPaintProfilingEnabled } from '../performance/physicsPaintPerformanceTrace';
+
+/** Profile-gated scrub diagnostics (G-52-9): names the exact gate that silenced
+ * a scrub snippet so a silent-scrub report carries its cause in the console. */
+function logAudioScrubDiagnostic(...args: unknown[]): void {
+  if (isPhysicsPaintProfilingEnabled()) console.warn('[efx-paint-audio]', ...args);
+}
 
 /**
  * EFX Paint child-window audio monitor (41-02 tracer).
@@ -122,11 +129,13 @@ export const efxPaintAudioMonitor = {
       return;
     }
     if (!efxPaintAudioOwnership.canStartAudio()) {
+      logAudioScrubDiagnostic('playAtCursor suppressed: main window holds audio');
       efxPaintAudioOwnership.noteSuppressed();
       return;
     }
     const ctx = audioEngine.ensureContext();
     if (state === 'playing') audioEngine.stopAll();
+    let dispatched = 0;
     for (const track of current.tracks) {
       if (track.muted || !preparedTrackIds.has(track.id)) continue;
       const resolution = resolveTrackPlayback(track, cursorAppFrame, playbackRangeEnd, current.fps);
@@ -140,7 +149,9 @@ export const efxPaintAudioMonitor = {
       } else {
         audioEngine.playDelayed(track.id, resolution.delaySec, resolution.sourceOffsetSec, trackLike, current.fps, resolution.maxPlaySec);
       }
+      dispatched += 1;
     }
+    logAudioScrubDiagnostic('playAtCursor:', cursorAppFrame, '| dispatched', dispatched, 'tracks | AudioContext', ctx.state);
     anchorAppFrame = cursorAppFrame;
     anchorCtx = ctx;
     anchorCtxTime = ctx.currentTime;
@@ -195,12 +206,14 @@ export const efxPaintAudioMonitor = {
    */
   scrubAt(cursorAppFrame: number): void {
     if (!context || !audioPreviewEnabled.peek()) {
+      logAudioScrubDiagnostic('scrubAt gated:', !context ? 'no-context (prepare never ran)' : 'toggle-off', 'frame', cursorAppFrame);
       this.positionedAt(cursorAppFrame);
       return;
     }
     const now = performance.now();
     if (now - lastScrubAt < EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS) return;
     lastScrubAt = now;
+    logAudioScrubDiagnostic('scrubAt dispatch:', cursorAppFrame, '| prepared', preparedTrackIds.size, '/', context.tracks.length, 'tracks | canStart', efxPaintAudioOwnership.canStartAudio());
     this.playAtCursor(cursorAppFrame, cursorAppFrame + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES);
   },
 
