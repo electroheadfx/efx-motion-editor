@@ -183,133 +183,91 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   });
 });
 
-describe('Physics Paint Scripts panel Clear Action Buffer contract (36.15-07, renamed 36.15-08 Gap C)', () => {
-  it('renders a guarded Clear Action Buffer clipboard-x control without native disabled or title', () => {
-    expect(panel).toContain('ClipboardX');
-    expect(panel).toContain('aria-label="Clear Action Buffer"');
-    expect(panel).not.toContain('Discard Script');
-    const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
-    expect(block).toContain('aria-disabled');
-    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(block).not.toContain('title=');
+describe('Physics Paint Scripts panel Clear Action Buffer relocation contract (260905-dso)', () => {
+  it('removes the Clear Action Buffer control from the panel toolbar', () => {
+    expect(panel).not.toContain('ClipboardX');
+    expect(panel).not.toContain('aria-label="Clear Action Buffer"');
+    expect(panel).not.toContain('Clear Action from buffer');
+    expect(panel).not.toContain('onDiscardScript');
   });
 
-  it('uses the user wording clear script from buffer with de-prefixed tooltip grammar and guards activation before the handler', () => {
-    const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
-    expect(block).toContain('Clear Action from buffer');
-    expect(block).toContain('unavailable: ${clearScriptBufferDisabledReason}');
-    expect(block).not.toContain(' — unavailable: ');
-    expect(block).toContain('aria-describedby');
-    expect(block).toContain('PhysicsPaintStyledTooltip');
-    const guardIndex = block.indexOf('if (!canClearScriptBuffer) return;');
-    const handlerIndex = block.indexOf('onDiscardScript()');
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canClearScriptBuffer");
-  });
-
-  it('declares rotoScript and onDiscardScript props and renders Clear Action Buffer inside the toolbar', () => {
-    const propsInterface = getScriptsPanelPropsInterface(panel);
-    expect(propsInterface).toContain('rotoScript: RotoScriptClipboardController');
-    expect(propsInterface).toContain('onDiscardScript: () => void');
-    const toolbar = getScriptsToolbarBlock(panel);
-    expect(toolbar).toContain('aria-label="Clear Action Buffer"');
-    expect(toolbar.indexOf('aria-label="Clear Action Buffer"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Actions"'));
-  });
-
-  it('removes onDiscardRotoScript from the strip and Studio workflow props while scripts props invoke discardScript', () => {
-    expect(strip).not.toContain('onDiscardRotoScript');
-    expect(studio).not.toContain('onDiscardRotoScript');
-    expect(studio).toContain('onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); }');
+  it('moves the discard handler to the Studio as a stable useCallback wired into the workflow memo', () => {
+    expect(studio).not.toContain('onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); }');
+    expect(studio).toContain('const handleDiscardScript = useCallback(() => {');
+    expect(studio).toContain('rotoScript.discardScript();');
+    expect(studio).toContain('setLastError(null);');
+    expect(studio).toContain('onDiscardScript: handleDiscardScript,');
   });
 });
 
-describe('Physics Paint Scripts panel Copy/Apply to Frame toolbar contract (36.15-08, UAT Gap C)', () => {
-  it('renders guarded Copy Action and Apply to Frame controls before Clear Action Buffer without native disabled or title', () => {
+describe('Physics Paint Scripts panel Copy toolbar contract (36.15-08, UAT Gap C; 260905-dso Copy-only)', () => {
+  it('renders the guarded Copy Action control without native disabled or title', () => {
     expect(panel).toContain('Clipboard,');
-    expect(panel).toContain('ClipboardPen');
+    expect(panel).not.toContain('ClipboardPen');
+    expect(panel).not.toContain('ClipboardX');
     const toolbar = getScriptsToolbarBlock(panel);
     const refreshIndex = toolbar.indexOf('label="Refresh Actions"');
     const copyIndex = toolbar.indexOf('aria-label="Copy Action"');
-    const applyIndex = toolbar.indexOf('aria-label="Apply to Frame"');
-    const clearIndex = toolbar.indexOf('aria-label="Clear Action Buffer"');
-    for (const index of [refreshIndex, copyIndex, applyIndex, clearIndex]) {
-      expect(index).toBeGreaterThanOrEqual(0);
-    }
+    expect(refreshIndex).toBeGreaterThanOrEqual(0);
     expect(copyIndex).toBeGreaterThan(refreshIndex);
-    expect(applyIndex).toBeGreaterThan(copyIndex);
-    expect(clearIndex).toBeGreaterThan(applyIndex);
-    for (const label of ['Copy Action', 'Apply to Frame']) {
-      const block = getGuardedToolbarBlock(panel, label);
-      expect(block).toContain('aria-disabled');
-      expect(block).toContain('aria-describedby');
-      expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-      expect(block).not.toContain('title=');
-      expect(block).toContain('PhysicsPaintStyledTooltip');
-    }
+    const block = getGuardedToolbarBlock(panel, 'Copy Action');
+    expect(block).toContain('aria-disabled');
+    expect(block).toContain('aria-describedby');
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    expect(block).toContain('PhysicsPaintStyledTooltip');
   });
 
-  it('reads availability from the rotoScript controller ports and guards activation before the handlers', () => {
+  it('reads availability from the rotoScript controller ports and guards activation before the handler', () => {
     expect(panel).toContain('rotoScript.availability.value.canCopy');
-    expect(panel).toContain('rotoScript.availability.value.canApply');
     expect(panel).toContain('copyDisabledReason');
-    expect(panel).toContain('applyDisabledReason');
     const copyBlock = getGuardedToolbarBlock(panel, 'Copy Action');
-    const applyBlock = getGuardedToolbarBlock(panel, 'Apply to Frame');
     const copyGuard = copyBlock.indexOf('if (!canCopyRotoScript) return;');
     expect(copyGuard).toBeGreaterThanOrEqual(0);
     expect(copyBlock.indexOf('onCopyScript()')).toBeGreaterThan(copyGuard);
     expect(copyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript");
-    const applyGuard = applyBlock.indexOf('if (!canApplyRotoScript) return;');
-    expect(applyGuard).toBeGreaterThanOrEqual(0);
-    expect(applyBlock.indexOf('onApplyScript()')).toBeGreaterThan(applyGuard);
-    expect(applyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript");
     // De-prefixed tooltip grammar (Gap D): description or 'unavailable: {reason}'.
     expect(copyBlock).toContain('unavailable: ${copyRotoScriptDisabledReason}');
-    expect(applyBlock).toContain('unavailable: ${applyRotoScriptDisabledReason}');
     expect(copyBlock).not.toContain(' — unavailable: ');
-    expect(applyBlock).not.toContain(' — unavailable: ');
   });
 
-  it('declares onCopyScript/onApplyScript props, wires them in Studio scripts props, and removes the strip script actions', () => {
+  it('declares only onCopyScript on the panel and wires the relocated Apply/Clear handlers to the workflow memo', () => {
     const propsInterface = getScriptsPanelPropsInterface(panel);
     expect(propsInterface).toContain('onCopyScript: () => void');
-    expect(propsInterface).toContain('onApplyScript: () => void');
+    expect(propsInterface).not.toContain('onApplyScript');
+    expect(propsInterface).not.toContain('onDiscardScript');
     expect(studio).toContain('onCopyScript: () => { void rotoScript.copyScript()');
-    expect(studio).toContain('onApplyScript: () => { void rotoScript.applyScript()');
+    expect(studio).toContain('const handleApplyScript = useCallback(() => {');
+    expect(studio).toContain('const handleDiscardScript = useCallback(() => {');
+    expect(studio).toContain('onApplyScript: handleApplyScript,');
+    expect(studio).toContain('onDiscardScript: handleDiscardScript,');
     expect(studio).not.toContain('onCopyRotoScript');
     expect(studio).not.toContain('onApplyRotoScript');
     expect(strip).not.toContain('onCopyRotoScript');
     expect(strip).not.toContain('onApplyRotoScript');
     expect(strip).not.toContain('aria-label="Copy Action"');
-    expect(strip).not.toContain('aria-label="Apply to Frame"');
+    expect(strip).toContain('aria-label="Apply Action to Frame"');
+    expect(strip).toContain('aria-label="Clear Action Buffer"');
   });
 
-  it('lays the nine toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
+  it('lays the toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
     const toolbar = getScriptsToolbarBlock(panel);
     const guardedCount = (toolbar.match(/physics-paint-roto-key-icon-action/g) ?? []).length;
-    // Three guarded clipboard actions (Copy, Apply, Clear) form the second row.
-    expect(guardedCount).toBeGreaterThanOrEqual(3);
+    // One guarded clipboard action (Copy) forms the second row.
+    expect(guardedCount).toBe(1);
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');
   });
 });
 
-describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1)', () => {
-  it('renders a short visible label after each guarded second-row icon like the bottom action row', () => {
-    const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
-      { action: 'Copy Action', icon: '<Clipboard size={16}', label: 'Copy' },
-      { action: 'Apply to Frame', icon: '<ClipboardPen size={16}', label: 'Apply' },
-      { action: 'Clear Action Buffer', icon: '<ClipboardX size={16}', label: 'Clear' },
-    ];
-    for (const { action, icon, label } of labeledActions) {
-      const block = getGuardedToolbarBlock(panel, action);
-      expect(block).not.toBe('');
-      const iconIndex = block.indexOf(icon);
-      expect(iconIndex).toBeGreaterThanOrEqual(0);
-      const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-      expect(labelIndex).toBeGreaterThan(iconIndex);
-    }
+describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1; 260905-dso Copy-only)', () => {
+  it('renders a short visible label after the guarded second-row icon like the bottom action row', () => {
+    const block = getGuardedToolbarBlock(panel, 'Copy Action');
+    expect(block).not.toBe('');
+    const iconIndex = block.indexOf('<Clipboard size={16}');
+    expect(iconIndex).toBeGreaterThanOrEqual(0);
+    const labelIndex = block.indexOf('<span class="physics-paint-roto-key-icon-label">Copy</span>');
+    expect(labelIndex).toBeGreaterThan(iconIndex);
   });
 
   it('lays the labeled toolbar buttons out with an icon-label gap and side padding', () => {
@@ -322,10 +280,10 @@ describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT G
   });
 });
 
-describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT Gap F-1)', () => {
-  it('renders the second-row labels lowercase by opting the script icon buttons out of the global uppercase button rule', () => {
+describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT Gap F-1; 260905-dso Copy-only)', () => {
+  it('renders the second-row label lowercase by opting the script icon buttons out of the global uppercase button rule', () => {
     // The global `button { text-transform: uppercase }` rule rendered the
-    // Copy / Apply / Clear labels as CAPS; the script icon buttons opt out.
+    // Copy label as CAPS; the script icon buttons opt out.
     // Anchored at a line start so compound selectors (e.g. the toolbar
     // width rule) do not match first.
     const ruleStart = css.indexOf('\n.physics-paint-script-icon-button {');
@@ -333,15 +291,15 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
     const ruleEnd = css.indexOf('}', ruleStart);
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toContain('text-transform: none');
-    // Source labels stay lowercase single words.
-    for (const label of ['Copy', 'Apply', 'Clear']) {
-      expect(panel).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-    }
+    // Source label stays a lowercase single word.
+    expect(panel).toContain('<span class="physics-paint-roto-key-icon-label">Copy</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Apply</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Clear</span>');
   });
 
   it('keeps the second-row icons at the first-row size by preventing flex shrink in the grid cells', () => {
-    // Both rows use size={16} Lucide icons; the labeled second-row buttons
-    // overflow their narrow grid cells, so the icon shrank below 16px
+    // Both rows use size={16} Lucide icons; the labeled second-row button
+    // overflows its narrow grid cell, so the icon shrank below 16px
     // ("ridiculous small"). flex: 0 0 auto keeps the icon at full size.
     const ruleStart = css.indexOf('.physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {');
     expect(ruleStart).toBeGreaterThanOrEqual(0);
@@ -349,9 +307,9 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toMatch(/flex:\s*0\s+0\s+auto|flex-shrink:\s*0/);
     const toolbar = getScriptsToolbarBlock(panel);
-    for (const icon of ['<Clipboard size={16}', '<ClipboardPen size={16}', '<ClipboardX size={16}']) {
-      expect(toolbar).toContain(icon);
-    }
+    expect(toolbar).toContain('<Clipboard size={16}');
+    expect(toolbar).not.toContain('<ClipboardPen size={16}');
+    expect(toolbar).not.toContain('<ClipboardX size={16}');
     // First-row icons stay size={16} too — true size parity.
     for (const icon of ['<Save size={16}', '<Paintbrush size={16}', '<Play size={16}']) {
       expect(toolbar).toContain(icon);
@@ -359,10 +317,10 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
   });
 });
 
-describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5)', () => {
-  it('sizes the toolbar cells to content so the Copy / Apply / Clear labels render in full (no truncation)', () => {
+describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5; 260905-dso Copy-only)', () => {
+  it('sizes the toolbar cells to content so the Copy label renders in full (no truncation)', () => {
     // Content-sized columns replace the fixed-fraction cells that ellipsized
-    // the second-row labels down to 'C…' / 'A…' / 'Cl…' (UAT Gap G-1).
+    // the second-row labels down to 'C…' (UAT Gap G-1).
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).not.toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
     // The second-row label rule keeps the full short label visible.
@@ -375,10 +333,10 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     expect(labelRule).not.toContain('overflow: hidden');
     // Buttons no longer stretch to fill fixed-fraction cells.
     expect(css).not.toContain('.physics-paint-script-icon-button { width: 100% }');
-    // Source labels stay the full short words.
-    for (const label of ['Copy', 'Apply', 'Clear']) {
-      expect(panel).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-    }
+    // Source label stays the full short word.
+    expect(panel).toContain('<span class="physics-paint-roto-key-icon-label">Copy</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Apply</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Clear</span>');
   });
 
   it('separates the two toolbar icon rows with a visible row gap (UAT Gap G-5)', () => {
@@ -486,9 +444,7 @@ function renderPanel(
     onSave: () => {},
     onActivateRow: () => {},
     onLoadAndApply: () => {},
-    onDiscardScript: () => {},
     onCopyScript: () => {},
-    onApplyScript: () => {},
     onRefresh: () => {},
     ...overrides,
   }) as unknown as TestVNode;
@@ -652,7 +608,7 @@ describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
     for (const label of ['Save Action', 'Load + Apply to Frame', 'Create Rail…', 'Delete Action', 'Refresh Actions']) {
       expect(findOne(tree, (vnode) => vnode.props.label === label).props.disabled).toBe(true);
     }
-    for (const label of ['Copy Action', 'Apply to Frame', 'Clear Action Buffer', 'Keep Rails', 'Delete Action and Rails']) {
+    for (const label of ['Copy Action', 'Keep Rails', 'Delete Action and Rails']) {
       expect(findOne(tree, (vnode) => vnode.props['aria-label'] === label).props['aria-disabled']).toBe('true');
     }
   });

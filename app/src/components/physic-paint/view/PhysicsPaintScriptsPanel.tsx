@@ -1,4 +1,4 @@
-import { Clipboard, ClipboardPen, ClipboardX, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
+import { Clipboard, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -25,9 +25,7 @@ export interface PhysicsPaintScriptsPanelProps {
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
-  onDiscardScript: () => void;
   onCopyScript: () => void;
-  onApplyScript: () => void;
   onRefresh: () => void;
 }
 
@@ -43,9 +41,7 @@ export function PhysicsPaintScriptsPanel({
   onSave,
   onActivateRow,
   onLoadAndApply,
-  onDiscardScript,
   onCopyScript,
-  onApplyScript,
   onRefresh,
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
@@ -73,17 +69,9 @@ export function PhysicsPaintScriptsPanel({
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
   const copyScriptReasonId = useId();
-  const applyScriptReasonId = useId();
-  const clearScriptBufferReasonId = useId();
   const copyScriptTooltip = useStyledTooltip();
-  const applyScriptTooltip = useStyledTooltip();
-  const clearScriptBufferTooltip = useStyledTooltip();
   const canCopyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canCopy;
-  const canApplyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canApply;
   const copyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason);
-  const applyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canApplyRotoScript ? null : rotoScript.availability.value.applyDisabledReason);
-  const canClearScriptBuffer = actionMutationDisabledReason === null && rotoScript.availability.value.canDiscard;
-  const clearScriptBufferDisabledReason = actionMutationDisabledReason ?? (canClearScriptBuffer ? null : rotoScript.availability.value.discardDisabledReason);
   useEffect(() => {
     const previous = previousConfirmation.current;
     previousConfirmation.current = confirmation;
@@ -219,62 +207,6 @@ export function PhysicsPaintScriptsPanel({
           ) : null}
           <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
             {!canCopyRotoScript && copyRotoScriptDisabledReason ? `unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Action'}
-          </PhysicsPaintStyledTooltip>
-        </span>
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-script-icon-button"
-            aria-label="Apply to Frame"
-            aria-disabled={!canApplyRotoScript ? 'true' : undefined}
-            aria-describedby={!canApplyRotoScript && applyRotoScriptDisabledReason ? applyScriptReasonId : undefined}
-            onFocus={applyScriptTooltip.onFocus}
-            onBlur={applyScriptTooltip.onBlur}
-            onClick={() => {
-              applyScriptTooltip.hide();
-              if (!canApplyRotoScript) return;
-              onApplyScript();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript) event.preventDefault();
-            }}
-          >
-            <ClipboardPen size={16} aria-hidden="true" />
-            <span class="physics-paint-roto-key-icon-label">Apply</span>
-          </button>
-          {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
-            <span id={applyScriptReasonId} class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canApplyRotoScript && applyRotoScriptDisabledReason ? `unavailable: ${applyRotoScriptDisabledReason}` : 'Apply to Frame'}
-          </PhysicsPaintStyledTooltip>
-        </span>
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-script-icon-button"
-            aria-label="Clear Action Buffer"
-            aria-disabled={!canClearScriptBuffer ? 'true' : undefined}
-            aria-describedby={!canClearScriptBuffer && clearScriptBufferDisabledReason ? clearScriptBufferReasonId : undefined}
-            onFocus={clearScriptBufferTooltip.onFocus}
-            onBlur={clearScriptBufferTooltip.onBlur}
-            onClick={() => {
-              clearScriptBufferTooltip.hide();
-              if (!canClearScriptBuffer) return;
-              onDiscardScript();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canClearScriptBuffer) event.preventDefault();
-            }}
-          >
-            <ClipboardX size={16} aria-hidden="true" />
-            <span class="physics-paint-roto-key-icon-label">Clear</span>
-          </button>
-          {!canClearScriptBuffer && clearScriptBufferDisabledReason ? (
-            <span id={clearScriptBufferReasonId} class="physics-paint-sr-only">{clearScriptBufferDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canClearScriptBuffer && clearScriptBufferDisabledReason ? `unavailable: ${clearScriptBufferDisabledReason}` : 'Clear Action from buffer'}
           </PhysicsPaintStyledTooltip>
         </span>
       </div>

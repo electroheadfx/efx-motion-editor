@@ -3132,9 +3132,7 @@ export function PhysicsPaintStudio() {
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
-      onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); },
       onCopyScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
-      onApplyScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
     };
