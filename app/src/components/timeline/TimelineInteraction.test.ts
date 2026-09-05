@@ -51,3 +51,17 @@ describe('Motion Editor passive Loop Clip marker interaction contract', () => {
     expect(interaction).toContain('sequenceStore.reorderFxSequences(fromIndex, toIndex);');
   });
 });
+
+describe('Motion Editor playhead scrub audio contract (TIME-03)', () => {
+  it('routes drag-scrub through the audible scrub port and stops the snippet on release', () => {
+    // The drag-move branch carries the throttled snippet; click seeks keep the
+    // plain silent seekToFrame port.
+    expect(interaction).toContain('playbackEngine.scrubToFrame(frame);');
+    // Pointer-up stops the snippet before the final silent re-anchor.
+    expect(interaction).toContain('playbackEngine.scrubAudioEnd();');
+    const releaseIndex = interaction.indexOf('playbackEngine.scrubAudioEnd();');
+    const finalSyncIndex = interaction.indexOf('playbackEngine.seekToFrame(timelineStore.currentFrame.peek());');
+    expect(releaseIndex).toBeGreaterThanOrEqual(0);
+    expect(finalSyncIndex).toBeGreaterThan(releaseIndex);
+  });
+});

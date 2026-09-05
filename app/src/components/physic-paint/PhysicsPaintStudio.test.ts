@@ -1147,10 +1147,38 @@ describe('Workflow navigation render localization', () => {
     expect(navigation).toContain('if (scrubActiveRef.current) {');
     expect(navigation).toContain('rotoCachedPlayback.scrub(frame);');
     expect(navigation).toContain('rotoCachedPlayback.seek(frame);');
-    // The strip props carry the scrub lifecycle: armed sets the flag, release
-    // clears it and stops the snippet at the final frame.
-    expect(studio).toContain('onScrubStart: () => { scrubActiveRef.current = true; }');
-    expect(studio).toContain('onScrubEnd: (frame) => { scrubActiveRef.current = false; rotoCachedPlayback.scrubEnd(frame); }');
+    // The strip props carry the scrub lifecycle: armed sets the flag and clears
+    // any stale playhead feed; release clears the flag, stops the snippet, and
+    // runs the ONE settle navigation at the final frame.
+    expect(studio).toContain('onScrubStart: () => { scrubActiveRef.current = true; rotoScrubFrameSignal.value = null; }');
+    const scrubEndStart = studio.indexOf('onScrubEnd: (frame) => {');
+    expect(scrubEndStart).toBeGreaterThanOrEqual(0);
+    const scrubEnd = studio.slice(scrubEndStart, studio.indexOf('},', scrubEndStart));
+    expect(scrubEnd).toContain('scrubActiveRef.current = false;');
+    expect(scrubEnd).toContain('rotoCachedPlayback.scrubEnd(frame);');
+    expect(scrubEnd).toContain('void requestRotoFrameNavigationRef.current(frame);');
+  });
+
+  it('gates mid-drag seeks to the playhead feed + audio snippet only (G-52-9 drag-gate)', () => {
+    const handlerStart = studio.indexOf('const handleNavigateToSyncedFrame = useCallback(');
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    const handlerEnd = studio.indexOf('}, [', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    // The scrub-armed branch runs FIRST and returns before the full navigation:
+    // playhead feed write + audible snippet, nothing else.
+    const gateIndex = handler.indexOf('if (scrubActiveRef.current) {');
+    expect(gateIndex).toBeGreaterThanOrEqual(0);
+    const gate = handler.slice(gateIndex);
+    expect(gate).toContain('rotoScrubFrameSignal.value = frame;');
+    expect(gate).toContain('rotoCachedScrub(frame);');
+    expect(gate).toContain('return;');
+    // The full navigation (publishOperationResult + requestRotoFrameNavigation)
+    // is only reachable BELOW the gate's early return.
+    expect(handler.indexOf('publishOperationResult(null);')).toBeGreaterThan(gateIndex);
+    // The strip receives the scrub playhead feed as a signal reference.
+    expect(studio).toContain('rotoScrubFrame: rotoScrubFrameSignal,');
+    // The sticky feed clears once the settle propagation catches up.
+    expect(studio).toContain('if (scrubFrame !== null && launchContext?.startFrame === scrubFrame) {');
   });
 });
 

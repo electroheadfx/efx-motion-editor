@@ -153,3 +153,100 @@ describe('playbackEngine ownership guard (41-04 Task 1: D-05 symmetric, AUDIO-06
     expect(mockedAudio.stopAll).toHaveBeenCalled();
   });
 });
+
+describe('playbackEngine audible scrub (TIME-03)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedClaimed.mockReturnValue(false);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    // Singleton scrub state reset (throttle timestamp + snippet flag).
+    playbackEngine.scrubAudioEnd();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    playbackEngine.stop();
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('dispatches a 4-frame-capped snippet at the dragged frame while idle', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudio.play).toHaveBeenCalledWith(
+      'audio-1',
+      48 / 24,
+      expect.objectContaining({id: 'audio-1'}),
+      24,
+      4 / 24,
+    );
+  });
+
+  it('throttles snippet re-dispatch to the 120ms scrub window', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    playbackEngine.scrubToFrame(10);
+    nowSpy.mockReturnValue(1050); // 50ms inside the throttle window
+    playbackEngine.scrubToFrame(11);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    nowSpy.mockReturnValue(1130); // 130ms past the window
+    playbackEngine.scrubToFrame(12);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
+  it('stays silent while the child audio claim is held (D-05 symmetric guard)', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    mockedClaimed.mockReturnValue(true);
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('seek-restarts full audio while playing instead of the snippet', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    timelineStore.setPlaying(true);
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).toHaveBeenCalledWith(
+      'audio-1',
+      48 / 24,
+      expect.objectContaining({id: 'audio-1'}),
+      24,
+      (240 - 48) / 24,
+    );
+    timelineStore.setPlaying(false);
+  });
+
+  it('scrubAudioEnd stops the snippet and un-throttles the next scrub', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(2000);
+    playbackEngine.scrubToFrame(10);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    playbackEngine.scrubAudioEnd();
+    expect(mockedAudio.stopAll).toHaveBeenCalledTimes(2);
+    nowSpy.mockReturnValue(2010); // inside the OLD throttle window
+    playbackEngine.scrubToFrame(20);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
+  it('scrubAudioEnd is a silent no-op when no snippet is sounding', () => {
+    playbackEngine.scrubAudioEnd();
+    expect(mockedAudio.stopAll).not.toHaveBeenCalled();
+  });
+
+  it('keeps muted tracks silent during scrub', () => {
+    audioStore.tracks.value = [makeMainAudioTrack({muted: true})];
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+  });
+});

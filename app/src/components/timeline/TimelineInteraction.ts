@@ -915,12 +915,13 @@ export class TimelineInteraction {
       return;
     }
 
-    // Playhead scrubbing: seekToFrame updates both currentFrame and displayFrame
-    // (via syncDisplayFrame), giving realtime canvas preview during drag.
+    // Playhead scrubbing: scrubToFrame updates both currentFrame and displayFrame
+    // (via syncDisplayFrame), giving realtime canvas preview during drag, plus the
+    // throttled audible snippet while idle (seek-restart while playing).
     // Magnetic snap to beat markers when snap is enabled.
     if (this.isDragging) {
       const frame = this.snapFrame(this.getFrame(e.clientX));
-      playbackEngine.seekToFrame(frame);
+      playbackEngine.scrubToFrame(frame);
       return;
     }
 
@@ -1189,6 +1190,8 @@ export class TimelineInteraction {
     if (this.isDragging) {
       this.isDragging = false;
       timelineStore.setTimelineDragging(false);
+      // Stop the audible scrub snippet before the final silent re-anchor.
+      playbackEngine.scrubAudioEnd();
       // Final sync: seekToFrame calls syncDisplayFrame which triggers Preview render
       // now that timelineDragging is false
       playbackEngine.seekToFrame(timelineStore.currentFrame.peek());

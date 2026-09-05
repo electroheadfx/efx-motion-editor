@@ -2450,3 +2450,26 @@ describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () =>
     expect(studio).toContain('rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip scrub playhead feed contract (G-52-9 drag-gate)', () => {
+  it('declares the optional rotoScrubFrame signal prop on the strip interface', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('rotoScrubFrame?: ReadonlySignal<number | null>;');
+  });
+
+  it('feeds the playhead bar the scrub signal and lets the armed feed win inside the bar leaf', () => {
+    const code = source();
+    // The call site passes the signal REFERENCE (the strip body never reads
+    // .value, so the strip never subscribes to per-drag-frame updates).
+    const barStart = code.indexOf('function PhysicsPaintPlayheadBar(');
+    expect(barStart).toBeGreaterThanOrEqual(0);
+    const barEnd = code.indexOf('function PhysicsPaintWorkflowLiveStatus(', barStart);
+    const bar = code.slice(barStart, barEnd);
+    expect(bar).toContain('scrubFrame?: ReadonlySignal<number | null>;');
+    expect(bar).toContain('props.scrubFrame?.value ?? props.currentFrame.value');
+    const callStart = code.indexOf('<PhysicsPaintPlayheadBar');
+    expect(callStart).toBeGreaterThanOrEqual(0);
+    const call = code.slice(callStart, code.indexOf('/>', callStart));
+    expect(call).toContain('scrubFrame={props.rotoScrubFrame}');
+  });
+});

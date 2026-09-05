@@ -12,6 +12,11 @@ import {isPhysicPaintChildAudioClaimed, publishPhysicPaintAudioPlaybackState} fr
 
 export const isFullSpeed = signal(false);
 
+/** Audible scrub (TIME-03): snippet re-dispatch throttle and window, mirroring
+ * the EFX Paint monitor's D-02 scrub constants (120ms / 4 frames). */
+const TIMELINE_SCRUB_AUDIO_THROTTLE_MS = 120;
+const TIMELINE_SCRUB_AUDIO_SNIPPET_FRAMES = 4;
+
 /**
  * PlaybackEngine: rAF-based frame-rate-limited playback tick loop.
  *
@@ -109,6 +114,57 @@ export class PlaybackEngine {
     if (timelineStore.isPlaying.peek()) {
       audioEngine.stopAll();
       this.startAudioPlayback();
+    }
+  }
+
+  private lastScrubAudioAt = -TIMELINE_SCRUB_AUDIO_THROTTLE_MS;
+  private scrubSnippetActive = false;
+
+  /**
+   * Playhead drag-scrub (TIME-03): the visual seek runs exactly as a click
+   * seek; while IDLE an audible snippet is re-dispatched at the dragged frame,
+   * throttled so a fast drag never spams stopAll/re-prepare (mirrors the EFX
+   * Paint monitor's D-02 scrubAt). While playing, seekToFrame's seek-restart
+   * already owns audio. The snippet stays silent while the EFX Paint child
+   * holds the audio claim (41-04 D-05 symmetric guard).
+   */
+  scrubToFrame(frame: number) {
+    this.seekToFrame(frame);
+    if (timelineStore.isPlaying.peek()) return;
+    if (isPhysicPaintChildAudioClaimed()) return;
+    const now = performance.now();
+    if (now - this.lastScrubAudioAt < TIMELINE_SCRUB_AUDIO_THROTTLE_MS) return;
+    this.lastScrubAudioAt = now;
+    this.scrubSnippetActive = true;
+    audioEngine.stopAll();
+    this.startAudioSnippet(frame);
+  }
+
+  /** Drag release: stop the snippet and reset the throttle so the next scrub
+   * starts unthrottled. A no-op when no snippet is sounding. */
+  scrubAudioEnd() {
+    this.lastScrubAudioAt = -TIMELINE_SCRUB_AUDIO_THROTTLE_MS;
+    if (!this.scrubSnippetActive) return;
+    this.scrubSnippetActive = false;
+    audioEngine.stopAll();
+  }
+
+  /** All unmuted tracks audible at `frame`, each capped to the snippet window. */
+  private startAudioSnippet(frame: number): void {
+    const fps = projectStore.fps.peek();
+    const maxFrames = totalFrames.peek();
+    for (const track of audioStore.tracks.peek()) {
+      if (track.muted) continue;
+      const trackStartOnTimeline = track.offsetFrame;
+      const trimDuration = track.outFrame - track.inFrame;
+      const trackEndOnTimeline = trackStartOnTimeline + trimDuration;
+      const effectiveEnd = Math.min(trackEndOnTimeline, maxFrames);
+      if (frame >= trackStartOnTimeline && frame < effectiveEnd) {
+        const framesIntoTrack = frame - trackStartOnTimeline;
+        const sourceOffset = (track.inFrame + track.slipOffset + framesIntoTrack) / fps;
+        const maxPlayFrames = Math.min(effectiveEnd - frame, TIMELINE_SCRUB_AUDIO_SNIPPET_FRAMES);
+        audioEngine.play(track.id, sourceOffset, track, fps, maxPlayFrames / fps);
+      }
     }
   }
 

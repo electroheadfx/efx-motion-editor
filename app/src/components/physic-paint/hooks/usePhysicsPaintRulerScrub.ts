@@ -137,13 +137,23 @@ export function usePhysicsPaintRulerScrub(
         cancelAnimationFrame(session.rafId);
         session.rafId = null;
       }
+      // Release exactness: a queued-but-unflushed drag frame is emitted
+      // synchronously so the playhead and the release settle land on the exact
+      // pointer frame, not one rAF behind it.
+      const pendingFrame = session.pendingFrame;
       session.pendingFrame = null;
       if (session.rulerElement.hasPointerCapture(session.pointerId)) {
         session.rulerElement.releasePointerCapture(session.pointerId);
       }
       // D-02 amendment: report the final position ONLY when scrub mode had
       // armed — a plain click never fires onScrubEnd.
-      if (session.scrubbing) options.onScrubEnd?.(session.lastEmittedFrame);
+      if (session.scrubbing) {
+        if (pendingFrame !== null && pendingFrame !== session.lastEmittedFrame) {
+          session.lastEmittedFrame = pendingFrame;
+          options.onSeek(pendingFrame);
+        }
+        options.onScrubEnd?.(session.lastEmittedFrame);
+      }
       if (sessionRef.current === session) sessionRef.current = null;
     };
 

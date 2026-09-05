@@ -239,7 +239,7 @@ describe('usePhysicsPaintRulerScrub', () => {
     expect(harness.onSeek).toHaveBeenCalledTimes(1);
   });
 
-  it('pointerup releases capture, cancels a pending rAF, and removes every window listener idempotently', () => {
+  it('pointerup releases capture, cancels a pending rAF, flushes the queued frame synchronously, and removes every window listener idempotently', () => {
     const raf = stubAnimationFrame();
     const harness = createHarness();
     const api = harness.render();
@@ -252,13 +252,39 @@ describe('usePhysicsPaintRulerScrub', () => {
     expect(harness.ruler.released).toEqual([7]);
     expect(raf.cancelled.length).toBe(1);
     expect(harness.windowLike.listenerCount()).toBe(0);
-    // The cancelled animation frame never seeks after release.
+    // Release exactness: the queued drag frame is emitted AT release (down-seek
+    // frame 0, release flush frame 4), and the cancelled rAF never seeks after.
+    expect(harness.onSeek).toHaveBeenCalledTimes(2);
+    expect(harness.onSeek).toHaveBeenLastCalledWith(4);
     raf.flushAll();
-    expect(harness.onSeek).toHaveBeenCalledTimes(1);
+    expect(harness.onSeek).toHaveBeenCalledTimes(2);
 
     // A second up for the same pointer is a no-op (idempotent cleanup).
     harness.windowLike.emit('pointerup', pointerEvent(harness.ruler));
     expect(raf.cancelled.length).toBe(1);
+  });
+
+  it('reports the flushed final frame to onScrubEnd, not the last rAF-emitted one', () => {
+    const raf = stubAnimationFrame();
+    const onScrubStart = vi.fn();
+    const onScrubEnd = vi.fn();
+    const harness = createHarness({ onScrubStart, onScrubEnd });
+    const api = harness.render();
+    const origin = harness.ruler.rectLeft;
+    api.onPointerDown(pointerEvent(harness.ruler, { clientX: origin }));
+
+    harness.windowLike.emit('pointermove', pointerEvent(harness.ruler, { clientX: origin + 18 * 2 }));
+    raf.flushAll();
+    expect(harness.onSeek).toHaveBeenLastCalledWith(2);
+    expect(onScrubStart).toHaveBeenCalledTimes(1);
+
+    // The last move queues a frame that never gets a rAF flush before release.
+    harness.windowLike.emit('pointermove', pointerEvent(harness.ruler, { clientX: origin + 18 * 6 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.ruler, { clientX: origin + 18 * 6 }));
+
+    expect(harness.onSeek).toHaveBeenLastCalledWith(6);
+    expect(onScrubEnd).toHaveBeenCalledTimes(1);
+    expect(onScrubEnd).toHaveBeenCalledWith(6);
   });
 
   it('pointercancel releases the session the same way pointerup does', () => {

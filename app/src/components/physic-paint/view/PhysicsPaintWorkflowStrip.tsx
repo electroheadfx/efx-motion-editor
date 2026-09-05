@@ -208,6 +208,13 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
 export interface PhysicsPaintWorkflowStripProps {
   workflowLabel?: string;
   currentFrame: number;
+  /**
+   * G-52-9 drag-gate: non-null ONLY while the ruler scrub gesture is armed —
+   * the dragged playhead position. The strip body NEVER reads it; it is passed
+   * as a reference to the playhead bar leaf, the single per-drag-frame
+   * subscriber, so a ruler scrub moves only the vertical line.
+   */
+  rotoScrubFrame?: ReadonlySignal<number | null>;
   isPlaying: boolean;
   ready?: boolean;
   occupiedRotoFrames?: number[];
@@ -733,8 +740,14 @@ function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; p
  * position source, so the bar follows seeks, cell navigation, playback ticks,
  * and undo/redo restores for free. CSS enforces pointer-events: none (T-s52-03).
  */
-function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
-  const frame = props.playbackActive ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value) : props.currentFrame.value;
+function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFrame?: ReadonlySignal<number | null>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
+  // G-52-9 drag-gate: while the ruler scrub gesture is armed the scrub feed
+  // wins — this leaf is the ONLY strip UI that follows the drag (the Studio
+  // runs no startFrame propagation mid-drag, so props.currentFrame holds the
+  // gesture's origin frame until the release settle).
+  const frame = props.playbackActive
+    ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value)
+    : (props.scrubFrame?.value ?? props.currentFrame.value);
   const clampedFrame = Math.max(0, Math.min(frame, Math.max(0, props.frameCount - 1)));
   // 4 = the timeline-scroll padding-left (the ruler/cell origin); +8 = half a
   // cell (18/2 = 9) minus half the 2px line → the bar centers on the frame.
@@ -4291,6 +4304,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 none keeps every cell/rail/capsule/ruler gesture untouched. */}
             <PhysicsPaintPlayheadBar
               currentFrame={currentFrameSignal}
+              scrubFrame={props.rotoScrubFrame}
               playbackActive={props.isPlaying}
               playbackTick={props.rotoCachedPlaybackTick}
               frameCount={frameCells.length}

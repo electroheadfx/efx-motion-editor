@@ -794,6 +794,23 @@ export function PhysicsPaintStudio() {
   // (past the 4px threshold). navigateToSyncedPhysicalFrame routes the audio
   // funnel to scrub (audible snippet) vs seek (silent re-anchor) by this flag.
   const scrubActiveRef = useRef(false);
+  // G-52-9 drag-gate: non-null ONLY while the ruler scrub gesture is armed.
+  // The strip's playhead bar subscribes to this feed as a narrow leaf — during
+  // a drag it is the ONLY UI that moves. No startFrame propagation, no flush,
+  // no canvas repaint, no selection reseed, and no main-window frame sync run
+  // mid-drag; the full settle navigation fires once on release (onScrubEnd).
+  const rotoScrubFrameSignal = useSignal<number | null>(null);
+  // Release settle catch-up: the scrub feed stays sticky at the final dragged
+  // frame so the playhead never jumps back to the drag origin while the
+  // release navigation's startFrame propagation is in flight. Once the
+  // propagated startFrame matches the feed they render identically, and the
+  // feed clears here with zero visual change.
+  useEffect(() => {
+    const scrubFrame = rotoScrubFrameSignal.peek();
+    if (scrubFrame !== null && launchContext?.startFrame === scrubFrame) {
+      rotoScrubFrameSignal.value = null;
+    }
+  }, [launchContext?.startFrame, rotoScrubFrameSignal]);
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
@@ -2880,10 +2897,25 @@ export function PhysicsPaintStudio() {
     setApplyMessage(message);
     console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
   }, []);
+  const rotoCachedScrub = rotoCachedPlayback.scrub;
   const handleNavigateToSyncedFrame = useCallback((frame: number) => {
+    // G-52-9 scrub drag-gate: while the ruler scrub gesture is armed, a seek
+    // moves ONLY the playhead feed (the strip's playhead bar leaf) plus the
+    // audible scrub snippet. The flush, canvas repaint, startFrame propagation
+    // (the full-Studio render), selection reseed, and the main-window frame
+    // sync all wait for the release settle in onScrubEnd — a mid-drag seek
+    // never re-renders the Studio/strip and never touches the main timeline.
+    if (scrubActiveRef.current) {
+      rotoScrubFrameSignal.value = frame;
+      rotoCachedScrub(frame);
+      return;
+    }
+    // Non-scrub navigation clears any settled scrub feed left sticky while the
+    // release-settle propagation caught up (see the startFrame effect below).
+    if (rotoScrubFrameSignal.peek() !== null) rotoScrubFrameSignal.value = null;
     publishOperationResult(null);
     void requestRotoFrameNavigationRef.current(frame);
-  }, [publishOperationResult]);
+  }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal]);
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target
   // in the SAME click. The selection is applied SYNCHRONOUSLY in the click
@@ -4023,9 +4055,20 @@ export function PhysicsPaintStudio() {
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
         // routes the navigation audio funnel to scrub; release stops the
-        // snippet and re-anchors at the final frame.
-        onScrubStart: () => { scrubActiveRef.current = true; },
-        onScrubEnd: (frame) => { scrubActiveRef.current = false; rotoCachedPlayback.scrubEnd(frame); },
+        // snippet and re-anchors at the final frame. G-52-9 drag-gate: the
+        // release ALSO runs the single settle navigation (flush, canvas
+        // repaint, startFrame propagation, selection, one main-window frame
+        // sync) that mid-drag seeks deliberately skip. The scrub feed stays
+        // sticky at the final frame (no playhead jump-back) until the
+        // startFrame catch-up effect below clears it.
+        onScrubStart: () => { scrubActiveRef.current = true; rotoScrubFrameSignal.value = null; },
+        onScrubEnd: (frame) => {
+          scrubActiveRef.current = false;
+          rotoCachedPlayback.scrubEnd(frame);
+          publishOperationResult(null);
+          void requestRotoFrameNavigationRef.current(frame);
+        },
+        rotoScrubFrame: rotoScrubFrameSignal,
       },
     status: { shortcutsVisible },
     backgroundPicker: {
