@@ -973,10 +973,26 @@ describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
     expect(topRow).toContain('linkedGroupNavigation && linkedGroupNavigation.total > 1');
     expect(topRow).toContain('descriptionId={previousRailReasonId}');
     expect(topRow).toContain('descriptionId={nextRailReasonId}');
+    // 260905-hfd (UAT): Edit/Previous/Next keep visible labels; Close stays icon-only.
+    expect(topRow).toContain('<span class="physics-paint-roto-key-icon-label">Edit Rail</span>');
+    expect(topRow).toContain('<span class="physics-paint-roto-key-icon-label">Previous Rail</span>');
+    expect(topRow).toContain('<span class="physics-paint-roto-key-icon-label">Next Rail</span>');
+    expect(topRow).toContain('className="physics-paint-loop-clip-nav-compact-button primary labeled"');
+    expect(topRow).toContain('className="physics-paint-loop-clip-nav-compact-button labeled"');
+    expect(topRow).not.toContain('Close Rail inspector — ${selectedLoopClip.displayName}"><X size={16} aria-hidden="true" /><span');
     // The old bottom actions row and the nav buttons container are gone.
     expect(inspector).not.toContain('physics-paint-loop-clip-inspector-actions');
     expect(inspector).not.toContain('<span>Edit Rail</span>');
     expect(inspector).not.toContain('<span>Close</span>');
+    // The labeled modifier lets the top-row buttons grow to fit text while the
+    // list-view chevrons and Close stay 24px icon-only.
+    const labeledStart = css.indexOf('.physics-paint-loop-clip-nav-compact-button.labeled {');
+    expect(labeledStart).toBeGreaterThanOrEqual(0);
+    const labeledEnd = css.indexOf('}', labeledStart);
+    const labeledRule = css.slice(labeledStart, labeledEnd === -1 ? css.length : labeledEnd + 1);
+    expect(labeledRule).toContain('width: auto');
+    expect(labeledRule).toContain('padding: 0 8px');
+    expect(labeledRule).toContain('gap: 4px');
   });
 });
 

@@ -1243,6 +1243,11 @@ button.destructive {
 .physics-paint-loop-clip-nav-compact-action { display: flex; flex: 0 0 auto; }
 .physics-paint-loop-clip-nav-compact-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; min-width: 24px; padding: 0; border: 1px solid #62676d; border-radius: 5px; background: #4b4e51; color: #f3f5f7; text-transform: none; }
 .physics-paint-loop-clip-nav-compact-button.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
+/* 260905-hfd (UAT): the inspector top row's Edit/Previous/Next keep visible
+   labels — the labeled modifier lets the button grow to fit the text while
+   the list-view chevrons and Close stay 24px icon-only. */
+.physics-paint-loop-clip-nav-compact-button.labeled { width: auto; min-width: 0; padding: 0 8px; gap: 4px; }
+.physics-paint-loop-clip-nav-compact-button svg { flex: 0 0 auto; }
 .physics-paint-loop-clip-nav-compact-button[aria-disabled="true"],
 .physics-paint-loop-clip-nav-compact-button[aria-disabled="true"]:hover,
 .physics-paint-loop-clip-nav-compact-button[aria-disabled="true"]:focus-visible {
