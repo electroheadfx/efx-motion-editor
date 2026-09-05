@@ -2381,3 +2381,70 @@ describe('PhysicsPaintWorkflowStrip Bg rail click-to-select pass-through (49-06 
     expect(bgRow).toContain('selectedBackgroundClipId={props.selectedBackgroundClipId}');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () => {
+  it('renders the Actions section with guarded Apply and Clear buffer buttons in the toolbox popover', () => {
+    const header = getHeaderBlock(source());
+    const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Actions</div>');
+    expect(headingIndex).toBeGreaterThanOrEqual(0);
+    const applyIndex = header.indexOf('aria-label="Apply Action to Frame"', headingIndex);
+    const clearIndex = header.indexOf('aria-label="Clear Action Buffer"', headingIndex);
+    expect(applyIndex).toBeGreaterThan(headingIndex);
+    expect(clearIndex).toBeGreaterThan(applyIndex);
+    const applyBlock = getButtonBlock(header, 'Apply Action to Frame');
+    expect(applyBlock).toContain('aria-disabled');
+    expect(applyBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(applyBlock).toContain('aria-describedby');
+    expect(applyBlock).not.toContain('title=');
+    expect(applyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction");
+    // Both buttons use the guarded styled-tooltip idiom with region bottom.
+    expect(header).toContain("buildGuardedActionTooltipCopy('Apply Action to Frame'");
+    expect(header).toContain("buildGuardedActionTooltipCopy('Clear Action from buffer'");
+    expect(header).toContain('region="bottom"');
+  });
+
+  it('guards activation before the handler and reads availability reactively from the controller ports', () => {
+    const code = source();
+    expect(code).toContain('props.rotoScript?.availability.value');
+    expect(code).toContain('scriptAvailability?.canApply');
+    expect(code).toContain('scriptAvailability?.canDiscard');
+    expect(code).toContain('props.rotoScriptActionMutationDisabledReason?.value');
+    const applyGuard = code.indexOf('if (!props.canApplyScriptAction) return;');
+    expect(applyGuard).toBeGreaterThanOrEqual(0);
+    expect(code.indexOf('props.onApplyScript?.()')).toBeGreaterThan(applyGuard);
+    const clearGuard = code.indexOf('if (!props.canClearScriptBuffer) return;');
+    expect(clearGuard).toBeGreaterThanOrEqual(0);
+    expect(code.indexOf('props.onDiscardScript?.()')).toBeGreaterThan(clearGuard);
+  });
+
+  it('opens the popover when the Actions section is present without interpolation and never claims an interpolation-only popover', () => {
+    const code = source();
+    expect(code).toContain('props.onInterpolationEnabledChange || props.onApplyScript || props.onDiscardScript');
+    const labelStart = code.indexOf('aria-label={props.onInterpolationEnabledChange');
+    expect(labelStart).toBeGreaterThanOrEqual(0);
+    const labelEnd = code.indexOf('aria-haspopup="dialog"', labelStart);
+    const labelExpr = code.slice(labelStart, labelEnd === -1 ? code.length : labelEnd);
+    expect(labelExpr).toContain("'Timeline tools, interpolation on'");
+    expect(labelExpr).toContain("'Timeline tools, interpolation off'");
+    expect(labelExpr).toContain("'Timeline tools'");
+  });
+
+  it('declares the Actions ports on the strip and static chrome props and wires them from the Studio workflow memo', () => {
+    const code = source();
+    const propsInterface = getWorkflowStripPropsInterface(code);
+    expect(propsInterface).toContain('onApplyScript?: () => void;');
+    expect(propsInterface).toContain('onDiscardScript?: () => void;');
+    expect(propsInterface).toContain('rotoScriptActionMutationDisabledReason?: ReadonlySignal<string | null>;');
+    const staticChrome = getStaticChromePropsInterface(code);
+    expect(staticChrome).toContain('onApplyScript?: () => void;');
+    expect(staticChrome).toContain('onDiscardScript?: () => void;');
+    expect(staticChrome).toContain('canApplyScriptAction: boolean;');
+    expect(staticChrome).toContain('applyScriptActionDisabledReason: string | null;');
+    expect(staticChrome).toContain('canClearScriptBuffer: boolean;');
+    expect(staticChrome).toContain('clearScriptBufferDisabledReason: string | null;');
+    const studio = studioSource();
+    expect(studio).toContain('onApplyScript: handleApplyScript,');
+    expect(studio).toContain('onDiscardScript: handleDiscardScript,');
+    expect(studio).toContain('rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,');
+  });
+});
