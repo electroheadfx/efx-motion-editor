@@ -950,4 +950,23 @@ describe('Physics Paint Scripts panel readable rows contract (260905-f3v)', () =
     expect(css).toContain('.physics-paint-script-row:hover');
     expect(css).toContain('.physics-paint-script-row:focus-visible');
   });
+
+  it('neutralizes the disabled script-title grey-out with a scoped override (260905-hfd)', () => {
+    const overrideStart = css.indexOf('.physics-paint-script-name:disabled {');
+    expect(overrideStart).toBeGreaterThanOrEqual(0);
+    const overrideEnd = css.indexOf('}', overrideStart);
+    const override = css.slice(overrideStart, overrideEnd === -1 ? css.length : overrideEnd + 1);
+    expect(override).toContain('color: inherit');
+    expect(override).toContain('opacity: 1');
+    expect(override).toContain('background: transparent');
+    expect(override).toContain('cursor: default');
+
+    // The global button:disabled rule must be untouched so the override is provably scoped.
+    const globalStart = css.indexOf('button:disabled,');
+    expect(globalStart).toBeGreaterThanOrEqual(0);
+    const globalEnd = css.indexOf('}', globalStart);
+    const globalRule = css.slice(globalStart, globalEnd === -1 ? css.length : globalEnd + 1);
+    expect(globalRule).toContain('opacity: 0.5');
+    expect(globalRule).toContain('color: #6b7280');
+  });
 });
