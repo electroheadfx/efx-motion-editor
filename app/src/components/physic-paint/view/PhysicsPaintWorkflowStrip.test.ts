@@ -255,11 +255,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(source()).toContain('Scissors');
     expect(source()).toContain('ClipboardPaste');
     expect(source()).toContain('Trash2');
-    // Copy Script / Apply Script moved to the Scripts sidebar toolbar (Gap C).
+    // Copy Script / Apply Script moved to the Scripts sidebar toolbar (Gap C);
+    // 260905-dso: the buffer Apply/Clear icons now live in the Tools popover
+    // Actions section, not the bottom action row.
     expect(row).not.toContain('aria-label="Copy Script"');
     expect(row).not.toContain('aria-label="Apply Script"');
     expect(source()).not.toMatch(/[^a-zA-Z]Clipboard[^a-zA-Z]/);
-    expect(source()).not.toContain('ClipboardPen');
+    expect(row).not.toContain('ClipboardPen');
+    expect(getHeaderBlock(source())).toContain('ClipboardPen');
   });
 
   it('removes the seven text buttons, the Discard Script button, and the script action props from the row (D-11, Gap C)', () => {
@@ -306,9 +309,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // Eight guarded icon actions plus the Set Key Space form.
     expect(builderCalls).toBeGreaterThanOrEqual(9);
     // Script copy/apply availability reasons now surface in the Scripts
-    // sidebar toolbar, not the strip (Gap C).
-    expect(code).not.toContain('copyDisabledReason');
-    expect(code).not.toContain('applyDisabledReason');
+    // sidebar toolbar, not the strip (Gap C); 260905-dso: the buffer
+    // Apply/Clear availability reads now live in the Tools popover Actions
+    // section, not the bottom action row.
+    expect(row).not.toContain('copyDisabledReason');
+    expect(row).not.toContain('applyDisabledReason');
   });
 
   it('renders a short visible label after each enlarged bottom-row icon (Gap D)', () => {

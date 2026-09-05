@@ -1,9 +1,9 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useSignal, type Signal } from '@preact/signals';
+import { useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
@@ -355,6 +355,16 @@ export interface PhysicsPaintWorkflowStripProps {
   mutationLocked?: boolean;
   rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
+  /** 260905-dso: relocated buffer Apply intent — the Tools popover Actions
+   *  section routes through the Studio's identity-stable handleApplyScript. */
+  onApplyScript?: () => void;
+  /** 260905-dso: relocated buffer Clear intent — the Tools popover Actions
+   *  section routes through the Studio's identity-stable handleDiscardScript. */
+  onDiscardScript?: () => void;
+  /** 260905-dso: the library's transaction-phase mutation lock, passed as a
+   *  signal reference so the workflow memo stays cacheable (the strip reads
+   *  `.value` in render like the sibling physicalActions signal reads). */
+  rotoScriptActionMutationDisabledReason?: ReadonlySignal<string | null>;
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
@@ -805,6 +815,17 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   forceSpacingScopeLine: string | null;
   onForceSpacingInput?: (event: Event) => void;
   onForceSpacingSubmit?: (event: Event) => void;
+  /** 260905-dso: relocated buffer Apply/Clear ports + derived availability for
+   *  the toolbox popover's third "Actions" section. The handlers are the
+   *  Studio's identity-stable useCallbacks; the four plain values are derived
+   *  in the strip body from the rotoScript availability + library mutation
+   *  lock (same sources the ScriptsPanel read). */
+  onApplyScript?: () => void;
+  onDiscardScript?: () => void;
+  canApplyScriptAction: boolean;
+  applyScriptActionDisabledReason: string | null;
+  canClearScriptBuffer: boolean;
+  clearScriptBufferDisabledReason: string | null;
 }
 
 /**
@@ -1004,6 +1025,10 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   // 43.5-02 Task 2: the relocated Key Spacing form owns its tooltip here,
   // beside the other popover-internal tooltips.
   const forceSpacingTooltip = useStyledTooltip();
+  // 260905-dso: the relocated buffer Apply/Clear buttons own their tooltips
+  // here, beside the other popover-internal tooltips.
+  const applyScriptTooltip = useStyledTooltip();
+  const clearScriptBufferTooltip = useStyledTooltip();
   // 43.5-02 (D-01/D-02): toolbox popover toggle + self-contained dismissal.
   // Outside pointerdown and Escape dismiss it via window capture-phase listeners
   // registered ONLY while open; no focus trap, no backdrop, no automatic focus
@@ -1146,7 +1171,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <button
           type="button"
           class={`physics-paint-roto-key-icon-button physics-paint-toolbox-toggle${toolboxOpen ? ' physics-paint-toolbox-toggle-open' : ''}`}
-          aria-label={props.interpolationEnabled ? 'Timeline tools, interpolation on' : 'Timeline tools, interpolation off'}
+          aria-label={props.onInterpolationEnabledChange ? (props.interpolationEnabled ? 'Timeline tools, interpolation on' : 'Timeline tools, interpolation off') : 'Timeline tools'}
           aria-haspopup="dialog"
           aria-expanded={toolboxOpen}
           aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
@@ -1164,7 +1189,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation and Key Spacing.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
-      {props.onInterpolationEnabledChange ? (
+      {(props.onInterpolationEnabledChange || props.onApplyScript || props.onDiscardScript) ? (
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Interpolation</div>
@@ -1221,6 +1246,66 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 </PhysicsPaintStyledTooltip>
               </span>
             ) : null}
+          </div>
+          <div class="physics-paint-toolbox-divider" />
+          <div class="physics-paint-toolbox-section">
+            <div class="physics-paint-toolbox-section-heading">Actions</div>
+            <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
+              <button
+                type="button"
+                class="physics-paint-roto-key-icon-button"
+                aria-label="Apply Action to Frame"
+                aria-disabled={!props.canApplyScriptAction ? 'true' : undefined}
+                aria-describedby={!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? 'roto-key-action-reason-apply' : undefined}
+                onFocus={applyScriptTooltip.onFocus}
+                onBlur={applyScriptTooltip.onBlur}
+                onClick={() => {
+                  applyScriptTooltip.hide();
+                  if (!props.canApplyScriptAction) return;
+                  props.onApplyScript?.();
+                }}
+                onKeyDown={(event) => {
+                  if ((event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction) event.preventDefault();
+                }}
+              >
+                <ClipboardPen size={15} aria-hidden="true" />
+                <span class="physics-paint-roto-key-icon-label">Apply</span>
+              </button>
+              {!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? (
+                <span id="roto-key-action-reason-apply" class="physics-paint-sr-only">{props.applyScriptActionDisabledReason}</span>
+              ) : null}
+              <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="bottom">
+                {buildGuardedActionTooltipCopy('Apply Action to Frame', props.applyScriptActionDisabledReason)}
+              </PhysicsPaintStyledTooltip>
+            </span>
+            <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
+              <button
+                type="button"
+                class="physics-paint-roto-key-icon-button"
+                aria-label="Clear Action Buffer"
+                aria-disabled={!props.canClearScriptBuffer ? 'true' : undefined}
+                aria-describedby={!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? 'roto-key-action-reason-clear' : undefined}
+                onFocus={clearScriptBufferTooltip.onFocus}
+                onBlur={clearScriptBufferTooltip.onBlur}
+                onClick={() => {
+                  clearScriptBufferTooltip.hide();
+                  if (!props.canClearScriptBuffer) return;
+                  props.onDiscardScript?.();
+                }}
+                onKeyDown={(event) => {
+                  if ((event.key === 'Enter' || event.key === ' ') && !props.canClearScriptBuffer) event.preventDefault();
+                }}
+              >
+                <ClipboardX size={15} aria-hidden="true" />
+                <span class="physics-paint-roto-key-icon-label">Clear</span>
+              </button>
+              {!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? (
+                <span id="roto-key-action-reason-clear" class="physics-paint-sr-only">{props.clearScriptBufferDisabledReason}</span>
+              ) : null}
+              <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="bottom">
+                {buildGuardedActionTooltipCopy('Clear Action from buffer', props.clearScriptBufferDisabledReason)}
+              </PhysicsPaintStyledTooltip>
+            </span>
           </div>
         </PhysicsPaintToolboxPopover>
       ) : null}
@@ -1758,6 +1843,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     ? null
     : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
   const scriptStatus = props.rotoScript?.status.value ?? null;
+  // 260905-dso: the relocated buffer Apply/Clear availability — mirrors the
+  // ScriptsPanel derivation exactly, reading the signals in render the same
+  // way the strip already reads physicalActions?.canInsertFrame.value.
+  const scriptActionMutationDisabledReason = props.rotoScriptActionMutationDisabledReason?.value ?? null;
+  const scriptAvailability = props.rotoScript?.availability.value;
+  const canApplyScriptAction = scriptActionMutationDisabledReason === null && (scriptAvailability?.canApply ?? false);
+  const applyScriptActionDisabledReason = scriptActionMutationDisabledReason ?? (canApplyScriptAction ? null : (scriptAvailability?.applyDisabledReason ?? null));
+  const canClearScriptBuffer = scriptActionMutationDisabledReason === null && (scriptAvailability?.canDiscard ?? false);
+  const clearScriptBufferDisabledReason = scriptActionMutationDisabledReason ?? (canClearScriptBuffer ? null : (scriptAvailability?.discardDisabledReason ?? null));
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
@@ -4043,6 +4137,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         forceSpacingScopeLine={railSetCopy}
         onForceSpacingInput={handleForceSpacingInput}
         onForceSpacingSubmit={handleForceSpacingSubmit}
+        onApplyScript={props.onApplyScript}
+        onDiscardScript={props.onDiscardScript}
+        canApplyScriptAction={canApplyScriptAction}
+        applyScriptActionDisabledReason={applyScriptActionDisabledReason}
+        canClearScriptBuffer={canClearScriptBuffer}
+        clearScriptBufferDisabledReason={clearScriptBufferDisabledReason}
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">

@@ -1072,6 +1072,22 @@ export function PhysicsPaintStudio() {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
   }, [rotoScript, rotoScriptLibrary]);
+  // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
+  // useCallbacks wired into the workflow memo (the Tools popover Actions
+  // section). Bodies moved verbatim from the rightPanel scripts props.
+  const handleApplyScript = useCallback(() => {
+    void rotoScript.applyScript().then((success) => {
+      if (success) setLastError(null);
+      else {
+        const message = rotoScript.error.peek()?.message;
+        if (message) setLastError(message);
+      }
+    });
+  }, [rotoScript, setLastError]);
+  const handleDiscardScript = useCallback(() => {
+    rotoScript.discardScript();
+    setLastError(null);
+  }, [rotoScript, setLastError]);
   const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
   const {
     selectTool,
@@ -3999,6 +4015,12 @@ export function PhysicsPaintStudio() {
         onRotoRailSetMoveRejected: handleRotoRailSetMoveRejected,
         railSetMoveMembers,
         rotoScript,
+        // 260905-dso: the relocated buffer Apply/Clear ports — identity-stable
+        // useCallbacks plus the library mutation-lock signal reference (the
+        // strip reads .value in render, so the memo stays cacheable).
+        onApplyScript: handleApplyScript,
+        onDiscardScript: handleDiscardScript,
+        rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
