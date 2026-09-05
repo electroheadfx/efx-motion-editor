@@ -166,13 +166,13 @@ describe('Physics Paint Play Script integration contract', () => {
     // interpolation breaks) feed the first-paint key promotion — the launch
     // track's breaks/clips fail validation against the new track's empty key
     // set, so every port must resolve the live active track.
-    expect(studio).toContain('getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,');
-    expect(studio).toContain('getParentEndExclusive: () => launchContext\n      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())\n      : 0,');
-    expect(studio).toContain('getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],');
-    expect(studio).toContain('getIncomingInterpolationBreakKeyIds: () => launchContext\n      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())\n      : [],');
-    expect(studio).toContain('getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: \'duplicate\', deform: 0, position: 0 },');
-    expect(studio).toContain('getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, studioActiveTrackId()) : [],');
-    expect(studio).toContain('getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, studioActiveTrackId()) : null,');
+    expect(studio).toContain('getCapacity: () => launchContextRef.current ? physicPaintStore.getRotoPhysicalCapacity(launchContextRef.current.layerId, studioActiveTrackId()) : 1,');
+    expect(studio).toContain('getParentEndExclusive: () => launchContextRef.current\n      ? physicPaintStore.getRotoPhysicalCapacity(launchContextRef.current.layerId, studioActiveTrackId())\n      : 0,');
+    expect(studio).toContain('getRotoLoopClips: () => launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, studioActiveTrackId()) : [],');
+    expect(studio).toContain('getIncomingInterpolationBreakKeyIds: () => launchContextRef.current\n      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContextRef.current.layerId, studioActiveTrackId())\n      : [],');
+    expect(studio).toContain('getCurrentSettings: () => launchContextRef.current ? physicPaintStore.getRotoInterpolationSettings(launchContextRef.current.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: \'duplicate\', deform: 0, position: 0 },');
+    expect(studio).toContain('getStoreRotoFrames: () => launchContextRef.current ? physicPaintStore.getRotoCacheFrames(launchContextRef.current.layerId, studioActiveTrackId()) : [],');
+    expect(studio).toContain('getFailureStatus: () => launchContextRef.current ? physicPaintStore.getRotoInterpolationFailureStatus(launchContextRef.current.layerId, studioActiveTrackId()) : null,');
     // History identity and adjacent-key navigation must also follow the active track.
     expect(studio).toContain('trackId: studioActiveTrackId(),');
     expect(studio).toContain('const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);');
@@ -369,7 +369,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(studio).toContain('const selectedLoopClipIds = useSignal<readonly string[]>([]);');
     expect(studio).toContain('const loopSelectionAnchorId = useSignal<string | null>(null);');
     expect(studio).toContain('getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(');
-    expect(studio).toContain('getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? []');
+    expect(studio).toContain('getSelectedLoopClipIds: () => effectiveSelectedLoopClipIdsSignal.value');
     expect(studio).toContain('selectedRotoLoopClipIds: effectiveSelectedLoopClipIds');
     expect(studio).toContain('rotoSpacingSelection: effectiveRotoSpacingSelection');
     expect(studio).not.toContain('selectedRotoLoopSourceKeyIds');
@@ -552,7 +552,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('const keyRailSegments = useMemo(() => deriveKeyRailSegments({');
     expect(studio).toContain('incomingInterpolationBreakKeyIds: new Set(rotoIncomingInterpolationBreakKeyIds),');
     expect(studio).toContain('groupOwnedKeyIds: keyRailGroupOwnedKeyIds,');
-    expect(studio).toContain('const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(');
+    expect(studio).toContain('const effectiveSelectedRotoKeyRailSignal = useComputed(() => reconcileRotoKeyRailSelection(');
     expect(studio).toContain('selection.firstKeyId === segment.firstKeyId');
     expect(studio).toContain('selection.keyIds.length === segment.keyIds.length');
     expect(studio).toContain('selection.keyIds.every((keyId, index) => keyId === segment.keyIds[index])');
@@ -561,7 +561,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
   });
 
   it('clears Key Rail selection when any physical key is selected (43.4 defect 3)', () => {
-    const reconcileStart = studio.indexOf('const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(');
+    const reconcileStart = studio.indexOf('const effectiveSelectedRotoKeyRailSignal = useComputed(() => reconcileRotoKeyRailSelection(');
     const reconcileEnd = studio.indexOf('const orderedRotoLoopClipIds', reconcileStart);
     const reconcile = studio.slice(reconcileStart, reconcileEnd);
     expect(reconcileStart).toBeGreaterThanOrEqual(0);
@@ -572,7 +572,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
   });
 
   it('feeds classifier and strip paint from the reconciled selection with mode-resolved Rail deletion copy', () => {
-    expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,');
+    expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRailSignal.value');
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
@@ -608,12 +608,12 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 
   it('reconciles the set against fresh ordering on every render and clears invalid sets (Pitfall 2)', () => {
-    const reconcileStart = studio.indexOf('const effectiveRailSetSelection = reconcileRailSetSelection(');
+    const reconcileStart = studio.indexOf('const effectiveRailSetSelectionSignal = useComputed(() => reconcileRailSetSelection(');
     const reconcileEnd = studio.indexOf('const timelineOccupiedRotoFrames', reconcileStart);
     const reconcile = studio.slice(reconcileStart, reconcileEnd);
     expect(reconcileStart).toBeGreaterThanOrEqual(0);
     expect(reconcile).toContain('railSetSelection.value,');
-    expect(reconcile).toContain('orderedRailSetIdentities,');
+    expect(reconcile).toContain('orderedRailSetIdentitiesSignal.value,');
     expect(reconcile).toContain('railSetSelection.peek() !== null && effectiveRailSetSelection === null');
     expect(reconcile).toContain('railSetSelection.value = null;');
   });

@@ -21,6 +21,11 @@ vi.mock('preact/hooks', () => ({
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
+vi.mock('@preact/signals', async () => {
+  const signals = await vi.importActual<typeof import('@preact/signals')>('@preact/signals');
+  return { ...signals, useComputed: signals.computed };
+});
+
 import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
@@ -2072,7 +2077,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
             source: 'real-key',
           }),
           pendingOperationId: signal<string | null>(null),
-        } as RotoTimelineActionsInput);
+        } as RotoTimelineActionsInput, signal(10));
 
         const preparation = actions.physicalActions.prepareRotoGroupDrag('L1', destinationPlacementStart);
         expect(preparation.ok).toBe(true);

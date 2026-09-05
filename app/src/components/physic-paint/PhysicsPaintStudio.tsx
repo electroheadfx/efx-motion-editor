@@ -76,7 +76,7 @@ import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
 import { deriveSoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
-import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
+import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection, type RotoTimelineActionsInput } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
@@ -381,6 +381,12 @@ export function PhysicsPaintStudio() {
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
+  // 260905-ibd (G-52-9): the Studio-owned current-frame signal — the single
+  // signal-tracked frame authority for the availability computeds. Written via
+  // guarded echo in the three startFrame callers (scheduleRotoStartFramePropagation,
+  // setCurrentAppFrame, setLaunchContextStartFrame) — never inside the
+  // setLaunchContextState updater (Rule 6 render-phase write risk).
+  const currentFrameSignal = useSignal(launchContext?.startFrame ?? 0);
   // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
   // Studio on every paint event; a trailing 150ms throttle collapses a stroke
   // burst into one flush so the chrome freezes while painting (the user's
@@ -538,9 +544,10 @@ export function PhysicsPaintStudio() {
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
+      if (currentFrameSignal.peek() !== frame) currentFrameSignal.value = frame;
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
     });
-  }, [rotoUiFlushScheduler, setLaunchContext]);
+  }, [rotoUiFlushScheduler, setLaunchContext, currentFrameSignal]);
   const handleRequestSoleOccurrenceDeleteWarning = useCallback((target: SoleOccurrenceDeleteTarget) => {
     soleOccurrenceDeleteReturnFocusRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -624,6 +631,16 @@ export function PhysicsPaintStudio() {
   );
   const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
   const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
+  // 260905-ibd (G-52-9): guarded-echo signal mirrors of the throttled structural
+  // useMemos — the availability computeds track these instead of the render-scoped
+  // consts, so a scrub-only Studio render (startFrame change) does not re-create
+  // the computed graph. Reference comparison is correct for useMemo outputs.
+  const rotoKeyRecordsSignal = useSignal(rotoKeyRecords);
+  if (rotoKeyRecordsSignal.peek() !== rotoKeyRecords) rotoKeyRecordsSignal.value = rotoKeyRecords;
+  const rotoInterpolationStateSignal = useSignal(rotoInterpolationState);
+  if (rotoInterpolationStateSignal.peek() !== rotoInterpolationState) rotoInterpolationStateSignal.value = rotoInterpolationState;
+  const rotoLoopClipsSignal = useSignal(rotoLoopClips);
+  if (rotoLoopClipsSignal.peek() !== rotoLoopClips) rotoLoopClipsSignal.value = rotoLoopClips;
   const keyRailGroupOwnedKeyIds = useMemo(() => {
     const owned = new Set<string>();
     for (const clip of rotoLoopClips) {
@@ -639,10 +656,13 @@ export function PhysicsPaintStudio() {
     incomingInterpolationBreakKeyIds: new Set(rotoIncomingInterpolationBreakKeyIds),
     groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
   }), [keyRailGroupOwnedKeyIds, rotoIncomingInterpolationBreakKeyIds, rotoKeyRecords]);
-  const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(
+  const keyRailSegmentsSignal = useSignal(keyRailSegments);
+  if (keyRailSegmentsSignal.peek() !== keyRailSegments) keyRailSegmentsSignal.value = keyRailSegments;
+  const effectiveSelectedRotoKeyRailSignal = useComputed(() => reconcileRotoKeyRailSelection(
     selectedRotoKeyRail.value,
-    keyRailSegments,
-  );
+    keyRailSegmentsSignal.value,
+  ));
+  const effectiveSelectedRotoKeyRail = effectiveSelectedRotoKeyRailSignal.value;
   if (selectedRotoKeyRail.peek() !== null
     && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {
     selectedRotoKeyRail.value = null;
@@ -650,17 +670,22 @@ export function PhysicsPaintStudio() {
   const orderedRotoLoopClipIds = useMemo(() => [...rotoLoopClips]
     .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))
     .map((loopClip) => loopClip.loopId), [rotoLoopClips]);
-  const effectiveRotoLoopClipSelection = reconcilePhysicsPaintRotoLoopClipSelection(
-    selectedLoopClipIds.value.length > 0 && loopSelectionAnchorId.value !== null && selectedLoopClipId.value !== null
-      ? {
-        selectedLoopClipIds: selectedLoopClipIds.value,
-        anchorLoopClipId: loopSelectionAnchorId.value,
-        primaryLoopClipId: selectedLoopClipId.value,
-      }
-      : null,
-    orderedRotoLoopClipIds,
-  );
-  const effectiveSelectedLoopClipIds = effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [];
+  const orderedRotoLoopClipIdsSignal = useSignal(orderedRotoLoopClipIds);
+  if (orderedRotoLoopClipIdsSignal.peek() !== orderedRotoLoopClipIds) orderedRotoLoopClipIdsSignal.value = orderedRotoLoopClipIds;
+  const effectiveSelectedLoopClipIdsSignal = useComputed(() => {
+    const selection = reconcilePhysicsPaintRotoLoopClipSelection(
+      selectedLoopClipIds.value.length > 0 && loopSelectionAnchorId.value !== null && selectedLoopClipId.value !== null
+        ? {
+          selectedLoopClipIds: selectedLoopClipIds.value,
+          anchorLoopClipId: loopSelectionAnchorId.value,
+          primaryLoopClipId: selectedLoopClipId.value,
+        }
+        : null,
+      orderedRotoLoopClipIdsSignal.value,
+    );
+    return selection?.selectedLoopClipIds ?? [];
+  });
+  const effectiveSelectedLoopClipIds = effectiveSelectedLoopClipIdsSignal.value;
   const effectiveRotoSpacingSelection = reconcilePhysicsPaintRotoSpacingSelection(
     rotoSpacingSelection.value,
     rotoLoopClips
@@ -887,15 +912,18 @@ export function PhysicsPaintStudio() {
     }),
     [keyRailSegments, loopResolutionContext],
   );
+  const orderedRailSetIdentitiesSignal = useSignal(orderedRailSetIdentities);
+  if (orderedRailSetIdentitiesSignal.peek() !== orderedRailSetIdentities) orderedRailSetIdentitiesSignal.value = orderedRailSetIdentities;
   // 43.6 D-01 Pitfall 2: the set reconciles against the fresh canonical
   // ordering on every render — an accepted physical revision, the
   // Interpolation Off/On toggle, or any external edit that deletes/retimes a
   // member clears the invalid set instead of inventing a fallback scope
   // (UI-SPEC M1 error). Same render-phase pattern as effectiveSelectedRotoKeyRail.
-  const effectiveRailSetSelection = reconcileRailSetSelection(
+  const effectiveRailSetSelectionSignal = useComputed(() => reconcileRailSetSelection(
     railSetSelection.value,
-    orderedRailSetIdentities,
-  );
+    orderedRailSetIdentitiesSignal.value,
+  ));
+  const effectiveRailSetSelection = effectiveRailSetSelectionSignal.value;
   if (railSetSelection.peek() !== null && effectiveRailSetSelection === null) {
     railSetSelection.value = null;
   }
@@ -903,14 +931,12 @@ export function PhysicsPaintStudio() {
   // A single rail selected via plain click is a set of one (43.6 Solo
   // precedent); the active multi-rail set wins. Copy/Duplicate/Paste routing,
   // availability, and the strip overlay all consume this same authority.
-  const effectiveRailSetMembers = useMemo(
-    () => deriveEffectiveRailSetMembers(
-      effectiveRailSetSelection,
-      effectiveSelectedRotoKeyRail?.firstKeyId ?? null,
-      effectiveSelectedLoopClipIds,
-    ),
-    [effectiveRailSetSelection, effectiveSelectedRotoKeyRail, effectiveSelectedLoopClipIds],
-  );
+  const effectiveRailSetMembersSignal = useComputed(() => deriveEffectiveRailSetMembers(
+    effectiveRailSetSelectionSignal.value,
+    effectiveSelectedRotoKeyRailSignal.value?.firstKeyId ?? null,
+    effectiveSelectedLoopClipIdsSignal.value,
+  ));
+  const effectiveRailSetMembers = effectiveRailSetMembersSignal.value;
   const hasEffectiveRailSetScope = effectiveRailSetMembers.length > 0;
   // 43.6-03: the explicit set members in Plan 01 canonical order, resolved to
   // the exact segment keyIds the resolver validates (D-17 — membership is
@@ -1293,6 +1319,7 @@ export function PhysicsPaintStudio() {
       setCurrentAppFrame: (frame) => {
         const launch = launchContextRef.current;
         if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
+        if (currentFrameSignal.peek() !== frame) currentFrameSignal.value = frame;
         setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
       },
     },
@@ -1353,7 +1380,10 @@ export function PhysicsPaintStudio() {
     launch: {
       getLaunchContext: () => launchContextRef.current,
       getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
-      setLaunchContextStartFrame: (frame) => { setLaunchContext((current) => current ? { ...current, startFrame: frame } : current); },
+      setLaunchContextStartFrame: (frame) => {
+        if (currentFrameSignal.peek() !== frame) currentFrameSignal.value = frame;
+        setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+      },
       setLaunchContextCachedFrames: (_frames, options) => {
         rotoPersistence.syncCurrentPhysicalDocument(options);
       },
@@ -1467,37 +1497,45 @@ export function PhysicsPaintStudio() {
     return accepted !== null;
   };
 
-  const rotoTimelineActions = useRotoTimelineActions({
+  // 260905-ibd (G-52-9): the hook input is memoized on stable deps so
+  // rotoPhysicalActions is identity-stable across scrub renders. Ports that
+  // close over the render-scoped launchContext read launchContextRef.current at
+  // call time (deferred ref read); classifier ports read the signal mirrors so
+  // the availability computeds stay live. studioActiveTrackId is intentionally
+  // NOT a dep — it is a stateless arrow that resolves launchContextRef.current
+  // at call time.
+  const rotoTimelineActionsInput = useMemo<RotoTimelineActionsInput>(() => ({
     getModel: () => rotoTimelineModel.view.value.model,
-    getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
-    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    getStoreRealKeyFrames: () => launchContextRef.current ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
+    getCurrentSettings: () => launchContextRef.current ? physicPaintStore.getRotoInterpolationSettings(launchContextRef.current.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
     setInterpolationSettings: (settings) => {
-      if (!launchContext) return settings;
-      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId(), settings);
-      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId());
+      const launch = launchContextRef.current;
+      if (!launch) return settings;
+      physicPaintStore.setRotoInterpolationSettings(launch.layerId, studioActiveTrackId(), settings);
+      return physicPaintStore.getRotoInterpolationSettings(launch.layerId, studioActiveTrackId());
     },
-    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, studioActiveTrackId()) : [],
-    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, studioActiveTrackId()) : null,
-    getRotoKeyRecords: () => rotoKeyRecords,
-    getRotoInterpolationState: () => rotoInterpolationState,
-    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],
+    getStoreRotoFrames: () => launchContextRef.current ? physicPaintStore.getRotoCacheFrames(launchContextRef.current.layerId, studioActiveTrackId()) : [],
+    getFailureStatus: () => launchContextRef.current ? physicPaintStore.getRotoInterpolationFailureStatus(launchContextRef.current.layerId, studioActiveTrackId()) : null,
+    getRotoKeyRecords: () => rotoKeyRecordsSignal.value,
+    getRotoInterpolationState: () => rotoInterpolationStateSignal.value,
+    getRotoLoopClips: () => launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, studioActiveTrackId()) : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
-    getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,
-    getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [],
-    getRailSetMembers: () => effectiveRailSetMembers,
+    getSelectedKeyRail: () => effectiveSelectedRotoKeyRailSignal.value,
+    getSelectedLoopClipIds: () => effectiveSelectedLoopClipIdsSignal.value,
+    getRailSetMembers: () => effectiveRailSetMembersSignal.value,
     getSelectedLoopRailDisplayName: (loopId) => {
       const range = rotoTimelineModel.loopResolutionContext.value?.ranges.find((candidate) => candidate.loopId === loopId);
-      const clip = rotoLoopClips.find((candidate) => candidate.loopId === loopId);
+      const clip = rotoLoopClipsSignal.value.find((candidate) => candidate.loopId === loopId);
       if (!range || !clip) return null;
       const sourceScriptName = clip.scriptId
-        ? loopScriptRows.find((row) => row.id === clip.scriptId)?.name ?? null
+        ? rotoScriptLibrary.rows.value.find((row) => row.id === clip.scriptId)?.name ?? null
         : null;
       return projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName).displayName;
     },
     getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
-      rotoSpacingSelection.peek(),
+      rotoSpacingSelection.value,
       (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, studioActiveTrackId()) : [])
         .filter((loopClip) => {
           const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId, studioActiveTrackId()).map((record) => record.keyId) : []);
@@ -1505,14 +1543,13 @@ export function PhysicsPaintStudio() {
         })
         .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
     ),
-    getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
-    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,
-    getParentEndExclusive: () => launchContext
-      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())
+    getCapacity: () => launchContextRef.current ? physicPaintStore.getRotoPhysicalCapacity(launchContextRef.current.layerId, studioActiveTrackId()) : 1,
+    getParentEndExclusive: () => launchContextRef.current
+      ? physicPaintStore.getRotoPhysicalCapacity(launchContextRef.current.layerId, studioActiveTrackId())
       : 0,
-    getIncomingInterpolationBreakKeyIds: () => launchContext
-      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())
+    getIncomingInterpolationBreakKeyIds: () => launchContextRef.current
+      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContextRef.current.layerId, studioActiveTrackId())
       : [],
     buildBlankRotoFrame: (frame) => ({
       ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
@@ -1529,7 +1566,8 @@ export function PhysicsPaintStudio() {
     publishStatus: (message) => { setApplyMessage(message); },
     setApplyStatus,
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
-  });
+  }), [rotoTimelineModel, launchContextRef, physicPaintStore, latestRotoFramesRef, selectedKeyId, selectedKeyIds, rotoKeyRecordsSignal, rotoInterpolationStateSignal, rotoLoopClipsSignal, effectiveSelectedRotoKeyRailSignal, effectiveSelectedLoopClipIdsSignal, effectiveRailSetSelectionSignal, effectiveRailSetMembersSignal, rotoSpacingSelection, rotoScriptLibrary, physicalEditCoordinator.executePhysicalEdit, physicalEditCoordinator.pendingOperationId, groupLifecycleDeleteExecuteRef, railSetDeleteExecuteRef, railSetClipboardReadRef, railSetClipboardWriteRef, railSetPasteExecuteRef, handleRequestSoleOccurrenceDeleteWarning, setApplyMessage, setApplyStatus, canvasWidth, canvasHeight]);
+  const rotoTimelineActions = useRotoTimelineActions(rotoTimelineActionsInput, currentFrameSignal);
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;
   prepareRotoScriptTargetRef.current = async (source) => {
     const launch = launchContextRef.current;

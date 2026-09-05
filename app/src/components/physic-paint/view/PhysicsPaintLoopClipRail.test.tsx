@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { signal } from '@preact/signals';
 import { vi } from 'vitest';
 
 const hooks = vi.hoisted(() => ({
@@ -52,7 +53,11 @@ vi.mock('preact/compat', async () => {
 
 vi.mock('@preact/signals', async () => {
   const actual = await vi.importActual<typeof import('@preact/signals')>('@preact/signals');
-  return { ...actual, useSignal: <Value,>(initial: Value) => actual.signal(initial) };
+  return {
+    ...actual,
+    useSignal: <Value,>(initial: Value) => actual.signal(initial),
+    useComputed: <Value,>(compute: () => Value) => actual.computed(compute),
+  };
 });
 
 import { describe, expect, it } from 'vitest';
@@ -2272,7 +2277,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         getLaunchContext: () => ({ operationId: 'op-detached', layerId: 'layer-detached' }) as PhysicPaintLaunchContext,
         getIncomingInterpolationBreakKeyIds: () => [],
         executePhysicalEdit: executePhysicalEdit as never,
-      } as RotoTimelineActionsInput);
+      } as RotoTimelineActionsInput, signal(0));
       const context = derivePhysicPaintRotoLoopRanges({
         identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         loopClips: [clip],

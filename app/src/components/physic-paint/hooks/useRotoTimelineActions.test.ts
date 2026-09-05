@@ -1,10 +1,22 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import { signal } from '@preact/signals';
+import { signal, type Signal } from '@preact/signals';
 
 vi.mock('preact/hooks', () => ({
   useCallback: <Value>(callback: Value) => callback,
   useMemo: <Value>(factory: () => Value) => factory(),
 }));
+
+vi.mock('@preact/signals', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@preact/signals')>();
+  return {
+    ...actual,
+    useSignal: <Value>(value: Value) => actual.signal(value),
+    useComputed: <Value>(compute: () => Value) => actual.computed(compute),
+  };
+});
 
 import type { PhysicPaintLaunchContext, RailSetDeleteMember } from '../../../types/physicPaint';
 import type {
@@ -89,7 +101,7 @@ interface HarnessOptions {
   physicalCells?: readonly PhysicPaintRotoPhysicalCell[];
   frameResolution?: PhysicPaintRotoFrameResolution;
   currentAppFrame?: number;
-  getCurrentAppFrame?: () => number;
+  currentFrameSignal?: Signal<number>;
   launch?: PhysicPaintLaunchContext | null;
   pendingOperationId?: string | null;
   selectedKeyId?: string | null;
@@ -149,7 +161,6 @@ function createHarness(options: HarnessOptions = {}) {
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
     getSelectedLoopRailDisplayName: () => options.selectedLoopRailDisplayName ?? null,
     getRailSetMembers: () => options.railSetMembers ?? [],
-    getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
     getIncomingInterpolationBreakKeyIds: options.getIncomingInterpolationBreakKeyIds
       ?? (() => options.incomingInterpolationBreakKeyIds ?? []),
@@ -175,8 +186,9 @@ function createHarness(options: HarnessOptions = {}) {
     executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
     requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
   };
-  const actions = useRotoTimelineActions(input);
-  return { actions, executePhysicalEdit, publishStatus, publishDiagnostic, pendingOperationId };
+  const currentFrameSignal = options.currentFrameSignal ?? signal(options.currentAppFrame ?? 3);
+  const actions = useRotoTimelineActions(input, currentFrameSignal);
+  return { actions, executePhysicalEdit, publishStatus, publishDiagnostic, pendingOperationId, currentFrameSignal };
 }
 
 function spacingSelection(selectedSourceKeyIds: readonly string[]): PhysicsPaintRotoSpacingSelection {
@@ -398,22 +410,20 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
   });
 
   it('dispatches Delete Frame directly for an individual Group-owned physical frame without opening a choice modal', async () => {
-    let currentAppFrame = 10;
-    const getCurrentAppFrame = vi.fn(() => currentAppFrame);
+    const currentFrameSignal = signal(10);
     const executeGroupLifecycleDelete = vi.fn(async () => true);
     const requestGroupDeleteChoice = vi.fn();
     const harness = createHarness({
       records,
       loopClips: [lifecycleGroup()],
       capacity: 30,
-      getCurrentAppFrame,
+      currentFrameSignal,
       executeGroupLifecycleDelete,
       requestGroupDeleteChoice,
     });
 
-    currentAppFrame = 11;
+    currentFrameSignal.value = 11;
     expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
-    expect(getCurrentAppFrame).toHaveBeenCalledTimes(1);
     expect(executeGroupLifecycleDelete).toHaveBeenCalledWith({
       operationKind: 'delete-group-frame',
       groupId: 'group-1',
@@ -959,6 +969,16 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     const pending = createHarness({ pendingOperationId: 'op-busy' });
     expect(pending.actions.physicalActions.canAddEmptyKey.value).toBe(false);
     expect(pending.actions.physicalActions.addEmptyKeyDisabledReason.value).toBe('A Roto physical edit is already in flight.');
+  });
+
+  it('re-evaluates a frame-dependent computed when currentFrameSignal flips (availability stays live)', () => {
+    const currentFrameSignal = signal(5);
+    const { actions } = createHarness({ records: [realKeyRecord('key-a', 5)], currentFrameSignal });
+    expect(actions.physicalActions.canAddEmptyKey.value).toBe(false);
+    expect(actions.physicalActions.addEmptyKeyDisabledReason.value).toBe('The current frame already has a real Roto key.');
+    currentFrameSignal.value = 6;
+    expect(actions.physicalActions.canAddEmptyKey.value).toBe(true);
+    expect(actions.physicalActions.addEmptyKeyDisabledReason.value).toBeNull();
   });
 
   it('creates a real key at the destination frame with the supplied empty payload', async () => {
@@ -3706,5 +3726,17 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     expect(await harness.actions.physicalActions.pasteRailSet()).toBe(false);
     expect(executeRailSetPaste).toHaveBeenCalledTimes(1);
     expect(harness.publishStatus).toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions availability identity contract (source scan)', () => {
+  const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoTimelineActions.ts');
+  const source = () => readFileSync(sourcePath, 'utf8');
+
+  it('stabilizes the availability computeds with useComputed and signal-backs the classifier input surface', () => {
+    const code = source();
+    expect(code).toContain('useComputed(');
+    expect(code).toContain('const effectiveInput = useMemo(() => ({ ...input, getCurrentAppFrame: () => currentFrameSignal.value }), [input, currentFrameSignal]);');
+    expect(code).toContain('export function useRotoTimelineActions(input: RotoTimelineActionsInput, currentFrameSignal: ReadonlySignal<number>) {');
   });
 });
