@@ -115,9 +115,9 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
+  { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Split Key Rail', guard: 'canScissorRotoKey', handler: 'props.onScissorKeyRail?.()' },
-  { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
 ];
 
@@ -464,18 +464,18 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
-  it('renders the clipboard row in locked Copy, Cut, Scissor, Paste, Delete order', () => {
+  it('renders the clipboard row in locked Copy, Paste, Cut, Scissor, Delete order', () => {
     const row = getActionRowBlock(source());
     const copyIndex = row.indexOf('aria-label="Copy key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
     const cutIndex = row.indexOf('aria-label="Cut key"');
     const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     expect(copyIndex).toBeGreaterThanOrEqual(0);
-    expect(cutIndex).toBeGreaterThan(copyIndex);
+    expect(pasteIndex).toBeGreaterThan(copyIndex);
+    expect(cutIndex).toBeGreaterThan(pasteIndex);
     expect(scissorIndex).toBeGreaterThan(cutIndex);
-    expect(pasteIndex).toBeGreaterThan(scissorIndex);
-    expect(deleteIndex).toBeGreaterThan(pasteIndex);
+    expect(deleteIndex).toBeGreaterThan(scissorIndex);
   });
 
   it('enables Cut only when BOTH copy and delete availability hold, chaining the verbatim controller reasons', () => {
@@ -2112,7 +2112,7 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 });
 
 describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Cut, Scissor, Paste, All, Trash (260905-d1w)', () => {
+  it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
@@ -2121,9 +2121,9 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
       getActionAriaLabelToken('Insert key before'),
       'aria-label="Duplicate key"',
       'aria-label="Copy key"',
+      'aria-label="Paste key"',
       'aria-label="Cut key"',
       getActionAriaLabelToken('Split Key Rail'),
-      'aria-label="Paste key"',
       getActionAriaLabelToken('Delete Frame'),
     ];
     const indices = tokens.map((token) => row.indexOf(token));
@@ -2135,7 +2135,7 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
     expect(row).not.toContain('physics-paint-solo-tool-group');
   });
 
-  it('gates + Rail with the same availability law as + Key (260905-d1w)', () => {
+  it('gates + Rail with the extended canCreateRail law (260905-d1w)', () => {
     const row = getActionRowBlock(source());
     // The group div AND the button both carry aria-label="Create rail"; the
     // button's is the LAST occurrence, so lastIndexOf targets the button block.
@@ -2144,18 +2144,45 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
     const start = row.lastIndexOf('<button', labelIndex);
     const end = row.indexOf('</button>', labelIndex) + '</button>'.length;
     const block = row.slice(start, end);
-    expect(block).toContain("aria-disabled={!canAddRotoKey ? 'true' : undefined}");
-    expect(block).toContain("aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}");
+    expect(block).toContain("aria-disabled={!canCreateRail ? 'true' : undefined}");
+    expect(block).toContain("aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}");
     expect(block).toContain("aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}");
-    const guardIndex = block.indexOf('if (!canAddRotoKey) return;');
+    const guardIndex = block.indexOf('if (!canCreateRail) return;');
     const toggleIndex = block.indexOf('railCreateMenuOpen.value = !railCreateMenuOpen.value;');
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(toggleIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canAddRotoKey");
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCreateRail");
     expect(block).toContain('roto-key-action-reason-rail-create');
     // The guarded tooltip copy lives in the wrapper span (a sibling of the
     // button), so it is asserted on the row.
-    expect(row).toContain("buildGuardedActionTooltipCopy('Create rail', addRotoKeyDisabledReason)");
+    expect(row).toContain("buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)");
+  });
+
+  it('derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)', () => {
+    const code = source();
+    const derivationStart = code.indexOf('const currentFrameResolution = ');
+    expect(derivationStart).toBeGreaterThan(-1);
+    const derivationEnd = code.indexOf('const copyRotoKeyDisabledReason', derivationStart);
+    const derivation = code.slice(derivationStart, derivationEnd);
+    // Base law: canAddRotoKey must still gate (busy/ready/real-key).
+    expect(derivation).toContain('canAddRotoKey &&');
+    // Generated in-between exclusion reads the current frame's semantic cell.
+    expect(derivation).toContain("physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated'");
+    // Linked repeat exclusion reads the current frame's loop resolution.
+    expect(derivation).toContain('isLinkedRepeatFrameResolution(currentFrameResolution)');
+    expect(derivation).toContain('visibleFrameResolutions?.get(props.currentFrame) ?? null');
+    // Reason priority: base addEmptyKeyDisabledReason first, then repeat, then generated.
+    expect(derivation).toContain('addRotoKeyDisabledReason');
+    expect(derivation).toContain('isCurrentFrameLinkedRepeat');
+    expect(derivation).toContain('isCurrentFrameGenerated');
+    expect(derivation).toContain('The current frame is a linked Rail repeat — move to an empty frame to create a Rail.');
+    expect(derivation).toContain('The current frame is a generated in-between — move to an empty frame to create a Rail.');
+    // The helper treats linked-unresolved and repeatInstance > 0 as repeats.
+    const helperStart = code.indexOf('function isLinkedRepeatFrameResolution');
+    expect(helperStart).toBeGreaterThan(-1);
+    const helper = code.slice(helperStart, code.indexOf('\n}\n', helperStart) + 3);
+    expect(helper).toContain("resolution?.kind === 'linked-unresolved'");
+    expect(helper).toContain('resolution.repeatInstance > 0');
   });
 
   it('relocates Solo into the playback pill as an icon-only nav-button (260905-d1w)', () => {

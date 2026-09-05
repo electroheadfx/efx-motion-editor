@@ -78,6 +78,8 @@ vi.mock('@preact/signals', async () => {
 
 import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
+import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
+import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -85,8 +87,11 @@ beforeEach(() => {
   hooks.reset();
 });
 
-function createPhysicalCells(capacity: number): readonly RotoPhysicalTimelineCell[] {
-  return Array.from({ length: capacity }, (_, appFrame) => ({ kind: 'empty', appFrame }));
+function createPhysicalCells(capacity: number, overrides: readonly RotoPhysicalTimelineCell[] = []): readonly RotoPhysicalTimelineCell[] {
+  const byFrame = new Map(overrides.map((cell) => [cell.appFrame, cell]));
+  return Array.from({ length: capacity }, (_, appFrame) => (
+    byFrame.get(appFrame) ?? { kind: 'empty', appFrame }
+  ));
 }
 
 /**
@@ -133,15 +138,28 @@ function createPhysicalActions(options: {
 
 function renderStrip(
   spies: { paint: ReturnType<typeof vi.fn>; reveal: ReturnType<typeof vi.fn> },
-  rotoPhysicalActions: RotoPhysicalTimelineActionBundle = createPhysicalActions(),
+  options: {
+    rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
+    currentFrame?: number;
+    ready?: boolean;
+    rotoPhysicalCells?: readonly RotoPhysicalTimelineCell[];
+    rotoLoopResolutionContext?: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null;
+  } = {},
 ): unknown {
+  const {
+    rotoPhysicalActions = createPhysicalActions(),
+    currentFrame = 0,
+    ready = true,
+    rotoPhysicalCells = createPhysicalCells(120),
+    rotoLoopResolutionContext = null,
+  } = options;
   return PhysicsPaintWorkflowStrip({
-    currentFrame: 0,
+    currentFrame,
     isPlaying: false,
-    ready: true,
+    ready,
     onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
-    rotoPhysicalCells: createPhysicalCells(120),
-    rotoLoopResolutionContext: null,
+    rotoPhysicalCells,
+    rotoLoopResolutionContext,
     rotoLoopPresentations: new Map(),
     selectedRotoLoopClipIds: [],
     onSelectRotoLoopClip: () => {},
@@ -250,7 +268,7 @@ describe("the strip's + Rail create-rail menu (AM-3 live report)", () => {
       canAddEmptyKey: false,
       addEmptyKeyDisabledReason: 'The current frame already has a real Roto key.',
     });
-    const tree = renderStrip({ paint, reveal }, disabledActions);
+    const tree = renderStrip({ paint, reveal }, { rotoPhysicalActions: disabledActions });
     const button = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
     expect(button.props['aria-disabled']).toBe('true');
     expect(button.props['aria-expanded']).toBe('false');
@@ -258,7 +276,91 @@ describe("the strip's + Rail create-rail menu (AM-3 live report)", () => {
     (button.props.onClick as () => void)();
 
     hooks.rewind();
-    const reTree = renderStrip({ paint, reveal }, disabledActions);
+    const reTree = renderStrip({ paint, reveal }, { rotoPhysicalActions: disabledActions });
+    const reButton = findOne(reTree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(reButton.props['aria-expanded']).toBe('false');
+    expect(findAll(reTree, (vnode) => vnode.props['aria-label'] === 'Rail kind')).toHaveLength(0);
+  });
+
+  it('greys + Rail on a generated in-between frame while + Key stays enabled (260905-d1w)', () => {
+    const paint = vi.fn();
+    const reveal = vi.fn();
+    const cells = createPhysicalCells(120, [
+      { kind: 'real', appFrame: 0, keyId: 'A' },
+      { kind: 'generated', appFrame: 1, leftKeyId: 'A', rightKeyId: 'B' },
+      { kind: 'real', appFrame: 2, keyId: 'B' },
+    ]);
+    const tree = renderStrip({ paint, reveal }, { currentFrame: 1, rotoPhysicalCells: cells });
+    const railButton = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(railButton.props['aria-disabled']).toBe('true');
+    // + Key keeps the locked interpolated-frame behavior (quick 260820-hq9):
+    // still enabled on the generated in-between.
+    const addKeyButton = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Add key');
+    expect(addKeyButton.props['aria-disabled']).toBeUndefined();
+    const reason = findOne(tree, (vnode) => vnode.props?.id === 'roto-key-action-reason-rail-create');
+    expect(textOf(reason)).toContain('generated in-between');
+  });
+
+  it('keeps + Rail enabled on a genuinely empty frame (260905-d1w)', () => {
+    const paint = vi.fn();
+    const reveal = vi.fn();
+    const tree = renderStrip({ paint, reveal }, { currentFrame: 0 });
+    const railButton = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(railButton.props['aria-disabled']).toBeUndefined();
+    expect(railButton.props['aria-expanded']).toBe('false');
+  });
+
+  it('greys + Rail on a linked Rail repeat frame with the repeat reason (260905-d1w)', () => {
+    const paint = vi.fn();
+    const reveal = vi.fn();
+    const loopClips: readonly PhysicPaintRotoLoopClip[] = [
+      { loopId: 'motion', placementStart: 10, sourceKeyIds: ['M1', 'M2'], repeat: 2, mode: 'progressive' },
+    ];
+    const loopResolutionContext = derivePhysicPaintRotoLoopRanges({
+      identities: [{ keyId: 'M1', appFrame: 10 }, { keyId: 'M2', appFrame: 11 }],
+      loopClips,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const cells = createPhysicalCells(120, [
+      { kind: 'real', appFrame: 10, keyId: 'M1' },
+      { kind: 'real', appFrame: 11, keyId: 'M2' },
+    ]);
+    // Frame 12 is the first repeat of the 2-frame source cycle (repeatInstance 1).
+    const tree = renderStrip({ paint, reveal }, { currentFrame: 12, rotoPhysicalCells: cells, rotoLoopResolutionContext: loopResolutionContext });
+    const railButton = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(railButton.props['aria-disabled']).toBe('true');
+    const reason = findOne(tree, (vnode) => vnode.props?.id === 'roto-key-action-reason-rail-create');
+    expect(textOf(reason)).toContain('linked Rail repeat');
+  });
+
+  it('greys + Rail via the base busy/not-ready reason (260905-d1w)', () => {
+    const paint = vi.fn();
+    const reveal = vi.fn();
+    const tree = renderStrip({ paint, reveal }, { ready: false });
+    const railButton = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(railButton.props['aria-disabled']).toBe('true');
+    const reason = findOne(tree, (vnode) => vnode.props?.id === 'roto-key-action-reason-rail-create');
+    expect(textOf(reason)).toContain('Finish the current key action before using key tools.');
+  });
+
+  it('does not open the rail-kind menu while + Rail is greyed on a generated frame (260905-d1w)', () => {
+    const paint = vi.fn();
+    const reveal = vi.fn();
+    const cells = createPhysicalCells(120, [
+      { kind: 'real', appFrame: 0, keyId: 'A' },
+      { kind: 'generated', appFrame: 1, leftKeyId: 'A', rightKeyId: 'B' },
+      { kind: 'real', appFrame: 2, keyId: 'B' },
+    ]);
+    const tree = renderStrip({ paint, reveal }, { currentFrame: 1, rotoPhysicalCells: cells });
+    const button = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
+    expect(button.props['aria-disabled']).toBe('true');
+    expect(button.props['aria-expanded']).toBe('false');
+
+    (button.props.onClick as () => void)();
+
+    hooks.rewind();
+    const reTree = renderStrip({ paint, reveal }, { currentFrame: 1, rotoPhysicalCells: cells });
     const reButton = findOne(reTree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
     expect(reButton.props['aria-expanded']).toBe('false');
     expect(findAll(reTree, (vnode) => vnode.props['aria-label'] === 'Rail kind')).toHaveLength(0);
