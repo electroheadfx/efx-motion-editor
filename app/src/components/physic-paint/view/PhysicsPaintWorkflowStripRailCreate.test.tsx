@@ -1,5 +1,7 @@
 import { vi, describe, expect, it, beforeEach } from 'vitest';
 import type { VNode } from 'preact';
+import { signal } from '@preact/signals';
+import type { RotoPhysicalTimelineActionBundle } from '../hooks/useRotoTimelineActions';
 
 /**
  * AM-3 live-report pin: the strip's "+ Rail" button must open the
@@ -87,7 +89,49 @@ function createPhysicalCells(capacity: number): readonly RotoPhysicalTimelineCel
   return Array.from({ length: capacity }, (_, appFrame) => ({ kind: 'empty', appFrame }));
 }
 
-function renderStrip(spies: { paint: ReturnType<typeof vi.fn>; reveal: ReturnType<typeof vi.fn> }): unknown {
+/**
+ * A complete `rotoPhysicalActions` surface for the strip harness: every `.value`
+ * member the strip reads during render is backed by a real signal (the
+ * disabled/computed ones start disabled-false), and the interaction functions
+ * are inert spies. `canAddEmptyKey` defaults to true so the + Rail button is
+ * eligible (the + Key availability law gates it); a caller can pass a bundle
+ * with `canAddEmptyKey: signal(false)` to exercise the disabled path.
+ */
+function createPhysicalActions(): RotoPhysicalTimelineActionBundle {
+  const bool = (value = false) => signal(value);
+  return {
+    canInsertFrame: bool(),
+    canDeleteFrame: bool(),
+    canScissor: bool(),
+    insertDisabledReason: signal<string | null>(null),
+    insertTooltipDescription: signal('Insert key before'),
+    deleteDisabledReason: signal<string | null>(null),
+    deleteScopeLabel: signal('Delete Frame'),
+    scissorDisabledReason: signal<string | null>(null),
+    forceSpacingInput: signal('1'),
+    canApplyForceSpacing: bool(),
+    forceSpacingDisabledReason: signal<string | null>(null),
+    canDragKey: bool(),
+    canAddEmptyKey: signal(true),
+    addEmptyKeyDisabledReason: signal<string | null>(null),
+    scissorTooltipDescription: signal('Split the Key Rail before this key.'),
+    canSelectAllKeys: bool(),
+    selectAllKeysDisabledReason: signal<string | null>(null),
+    dragDisabledReason: signal<string | null>(null),
+    publishStatus: vi.fn(),
+    prepareRotoPush: vi.fn(),
+    commitRotoPush: vi.fn(async () => false),
+    prepareRailSetMove: vi.fn(),
+    commitRailSetMove: vi.fn(async () => false),
+    setForceSpacingInput: vi.fn(),
+    applyForceSpacing: vi.fn(),
+  } as unknown as RotoPhysicalTimelineActionBundle;
+}
+
+function renderStrip(
+  spies: { paint: ReturnType<typeof vi.fn>; reveal: ReturnType<typeof vi.fn> },
+  rotoPhysicalActions: RotoPhysicalTimelineActionBundle = createPhysicalActions(),
+): unknown {
   return PhysicsPaintWorkflowStrip({
     currentFrame: 0,
     isPlaying: false,
@@ -107,6 +151,7 @@ function renderStrip(spies: { paint: ReturnType<typeof vi.fn>; reveal: ReturnTyp
     onOnionChange: () => {},
     onCreatePlayScriptRail: spies.paint,
     onCreateRevealRail: spies.reveal,
+    rotoPhysicalActions,
   });
 }
 

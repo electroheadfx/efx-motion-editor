@@ -4149,6 +4149,105 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
+                    button offering the rail kinds. Motion/Static open the Create
+                    Rail dialog on the Paint tab; Reveal opens the SAME dialog on
+                    the Reveal Photo Rail tab (the SAME create-reveal-rail
+                    mutation — one model, two entry points). 260905-d1w: + Rail
+                    now sits immediately after + Key and is gated by the SAME
+                    availability law (canAddRotoKey + ready + busy-state guard). */}
+                <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
+                  <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class="physics-paint-roto-key-icon-button"
+                      aria-label="Create rail"
+                      aria-disabled={!canAddRotoKey ? 'true' : undefined}
+                      aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}
+                      aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
+                      onFocus={railCreateTooltip.onFocus}
+                      onBlur={railCreateTooltip.onBlur}
+                      onClick={() => {
+                        railCreateTooltip.hide();
+                        if (!canAddRotoKey) return;
+                        railCreateMenuOpen.value = !railCreateMenuOpen.value;
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && !canAddRotoKey) event.preventDefault();
+                      }}
+                    >
+                      <Plus size={18} aria-hidden="true" />
+                      <span class="physics-paint-roto-key-icon-label">Rail</span>
+                    </button>
+                    {!canAddRotoKey && addRotoKeyDisabledReason ? (
+                      <span id="roto-key-action-reason-rail-create" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Create rail', addRotoKeyDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                    <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('progressive');
+                        }}
+                      >
+                        Motion
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('static');
+                        }}
+                      >
+                        Static
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreateRevealRail?.();
+                        }}
+                      >
+                        Reveal
+                      </button>
+                    </PhysicsPaintRailCreateMenu>
+                  </span>
+                </div>
+                <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
+                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
+                      aria-label="Push"
+                      aria-pressed={pushArmed ? 'true' : 'false'}
+                      aria-disabled={pushToolDisabled ? 'true' : undefined}
+                      aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
+                      onFocus={pushTooltip.onFocus}
+                      onBlur={pushTooltip.onBlur}
+                      onClick={() => {
+                        pushTooltip.hide();
+                        if (pushToolDisabled) return;
+                        // Mode toggle: the anchor is resolved from the rail under
+                        // the pointer on drag — no selection is required to arm.
+                        togglePushTool();
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
+                      }}
+                    >
+                      <MoveHorizontal size={18} aria-hidden="true" />
+                    </button>
+                    {pushToolDisabled ? (
+                      <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                  </span>
+                </div>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -4373,38 +4472,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
-              <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
-                    aria-label="Push"
-                    aria-pressed={pushArmed ? 'true' : 'false'}
-                    aria-disabled={pushToolDisabled ? 'true' : undefined}
-                    aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
-                    onFocus={pushTooltip.onFocus}
-                    onBlur={pushTooltip.onBlur}
-                    onClick={() => {
-                      pushTooltip.hide();
-                      if (pushToolDisabled) return;
-                      // Mode toggle: the anchor is resolved from the rail under
-                      // the pointer on drag — no selection is required to arm.
-                      togglePushTool();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
-                    }}
-                  >
-                    <MoveHorizontal size={18} aria-hidden="true" />
-                  </button>
-                  {pushToolDisabled ? (
-                    <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-              </div>
               {/* 43.6-06 Solo arm (UI-SPEC M2): ONE compact icon button in its
                   own group immediately after the Push group — a mode toggle
                   enabled whenever ANY rail selection exists (single rail = set
@@ -4445,62 +4512,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       ? 'Exit solo playback.'
                       : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', soloToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
-                </span>
-              </div>
-              {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
-                  button offering the rail kinds. Motion/Static open the Create
-                  Rail dialog on the Paint tab; Reveal opens the SAME dialog on
-                  the Reveal Photo Rail tab (the SAME create-reveal-rail
-                  mutation — one model, two entry points). */}
-              <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
-                <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button"
-                    aria-label="Create rail"
-                    aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
-                    onFocus={railCreateTooltip.onFocus}
-                    onBlur={railCreateTooltip.onBlur}
-                    onClick={() => {
-                      railCreateTooltip.hide();
-                      railCreateMenuOpen.value = !railCreateMenuOpen.value;
-                    }}
-                  >
-                    <Plus size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Rail</span>
-                  </button>
-                  <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
-                    Create a Motion, Static, or Reveal rail on the current track.
-                  </PhysicsPaintStyledTooltip>
-                  <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        railCreateMenuOpen.value = false;
-                        props.onCreatePlayScriptRail?.('progressive');
-                      }}
-                    >
-                      Motion
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        railCreateMenuOpen.value = false;
-                        props.onCreatePlayScriptRail?.('static');
-                      }}
-                    >
-                      Static
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        railCreateMenuOpen.value = false;
-                        props.onCreateRevealRail?.();
-                      }}
-                    >
-                      Reveal
-                    </button>
-                  </PhysicsPaintRailCreateMenu>
                 </span>
               </div>
             </div>
