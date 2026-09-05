@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-05 - Completed quick task 260905-hfd: Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector
+Last activity: 2026-09-05 - Completed quick task 260905-ibd: Perf: stop per-frame WorkflowStrip action-row re-renders during scrub (G-52-9)
 
 Progress: [████████████████████] 42/42 plans (100%)
 
@@ -252,16 +252,17 @@ None yet.
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260827-s52 | NLE ruler seek + playhead bar (Physics Paint Studio timeline) | 2026-08-27 | bbb1908a | [260827-s52-nle-ruler-seek-playhead-bar-physics-pain](./quick/260827-s52-nle-ruler-seek-playhead-bar-physics-pain/) |
-| 260902-cfa | Wire the ruler seek to the audio monitoring path (Phase 51 scope) | 2026-09-02 | 7af5382f | [260902-cfa-wire-the-ruler-seek-to-the-audio-monitor](./quick/260902-cfa-wire-the-ruler-seek-to-the-audio-monitor/) |
-| 260902-cfa-amendments | D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope) | 2026-09-02 | 982a343e | [260902-cfa-amendments](./quick/260902-cfa-amendments/) |
-| 260905-d1w | Workflow strip action-row layout: + Rail beside + Key with the same gating, Push after + Rail, Solo relocated icon-only beside Loop (+ amendment: Paste after Copy, + Rail extended gating) | 2026-09-05 | 3cc6a108 | [260905-d1w-workflow-strip-action-row-layout-rail-be](./quick/260905-d1w-workflow-strip-action-row-layout-rail-be/) |
-| 260905-dso | Move the Actions tab "Apply" / "Clear" buffer buttons into the Tools popover under a new "Actions" section | 2026-09-05 | 4cf8ddaf | [260905-dso-move-the-actions-tab-apply-clear-buffer-](./quick/260905-dso-move-the-actions-tab-apply-clear-buffer-/) |
-| 260905-epb | Right panel: keep tab bars and the Actions toolbar pinned; only the tab content / scripts list scrolls | 2026-09-05 | 3be8a3e1 | [260905-epb-right-panel-keep-tab-bars-and-the-action](./quick/260905-epb-right-panel-keep-tab-bars-and-the-action/) |
-| 260905-f3v | Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default | 2026-09-05 | cc113daa | [260905-f3v-actions-tab-polish-styled-guarded-toolti](./quick/260905-f3v-actions-tab-polish-styled-guarded-toolti/) |
-| 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | ddb4ebde | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260827-s52 | NLE ruler seek + playhead bar (Physics Paint Studio timeline) | 2026-08-27 | bbb1908a |  | [260827-s52-nle-ruler-seek-playhead-bar-physics-pain](./quick/260827-s52-nle-ruler-seek-playhead-bar-physics-pain/) |
+| 260902-cfa | Wire the ruler seek to the audio monitoring path (Phase 51 scope) | 2026-09-02 | 7af5382f |  | [260902-cfa-wire-the-ruler-seek-to-the-audio-monitor](./quick/260902-cfa-wire-the-ruler-seek-to-the-audio-monitor/) |
+| 260902-cfa-amendments | D-01 Play cursor re-anchor + D-02 audible scrub + loop-wrap-at-scrub (Phase 51 scope) | 2026-09-02 | 982a343e |  | [260902-cfa-amendments](./quick/260902-cfa-amendments/) |
+| 260905-d1w | Workflow strip action-row layout: + Rail beside + Key with the same gating, Push after + Rail, Solo relocated icon-only beside Loop (+ amendment: Paste after Copy, + Rail extended gating) | 2026-09-05 | 3cc6a108 |  | [260905-d1w-workflow-strip-action-row-layout-rail-be](./quick/260905-d1w-workflow-strip-action-row-layout-rail-be/) |
+| 260905-dso | Move the Actions tab "Apply" / "Clear" buffer buttons into the Tools popover under a new "Actions" section | 2026-09-05 | 4cf8ddaf |  | [260905-dso-move-the-actions-tab-apply-clear-buffer-](./quick/260905-dso-move-the-actions-tab-apply-clear-buffer-/) |
+| 260905-epb | Right panel: keep tab bars and the Actions toolbar pinned; only the tab content / scripts list scrolls | 2026-09-05 | 3be8a3e1 |  | [260905-epb-right-panel-keep-tab-bars-and-the-action](./quick/260905-epb-right-panel-keep-tab-bars-and-the-action/) |
+| 260905-f3v | Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default | 2026-09-05 | cc113daa |  | [260905-f3v-actions-tab-polish-styled-guarded-toolti](./quick/260905-f3v-actions-tab-polish-styled-guarded-toolti/) |
+| 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | ddb4ebde |  | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
+| 260905-ibd | Perf: stop per-frame WorkflowStrip action-row re-renders during scrub (G-52-9) | 2026-09-05 | b9a39a99 | Needs Review | [260905-ibd-perf-stop-per-frame-workflowstrip-action](./quick/260905-ibd-perf-stop-per-frame-workflowstrip-action/) |
 
 ### Roadmap Evolution
 
