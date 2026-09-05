@@ -3,7 +3,7 @@ import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { computed, useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
+import { useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
@@ -140,12 +140,6 @@ const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is rend
 const INTERPOLATION_ENABLED_STATUS = 'Generated in-betweens on — render-only frames refresh from real keys.';
 const INTERPOLATION_DISABLED_STATUS = 'Generated in-betweens off — real Roto keys only.';
 const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish the current key action before using key tools.';
-function getGeneratedRotoTitle(frame: number): string {
-  return GENERATED_ROTO_TITLE_TEMPLATE.replace('{frame}', String(frame));
-}
-function getRotoKeyBusyStatus(frame: number): string {
-  return ROTO_KEY_BUSY_STATUS_TEMPLATE.replace('{frame}', String(frame));
-}
 /**
  * Internal zero-delta drop sentinel (43.5-05, D-15): a release that returned
  * to the origin publishes NOTHING — the onRejected port filters it silently.
@@ -179,6 +173,10 @@ const PUSH_GHOST_INACTIVE: PushDragGhostState = Object.freeze({
 /** Empty gap-preview set shared by every non-drag render. */
 const EMPTY_PUSH_GAP_PREVIEW_FRAMES: ReadonlySet<number> = new Set<number>();
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
+export interface PhysicsPaintWorkflowRotoKeyState {
+  actionAvailability: RotoKeyUtilityActionState;
+  hasCopiedRotoKey: boolean;
+}
 
 export type PhysicsPaintWorkflowRotoScriptState = Pick<RotoScriptClipboardController,
   | 'availability'
@@ -209,17 +207,7 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
 
 export interface PhysicsPaintWorkflowStripProps {
   workflowLabel?: string;
-  /** 260905-ibd follow-up (G-52-9): the raw frame number is retired from the
-   *  props — the Studio passes the identity-stable currentFrameSignal instead,
-   *  so a scrub-only Studio render feeds Object.is-identical props and the
-   *  strip's memo wall holds. The number remains for direct-render test
-   *  harnesses (a fallback mirror keeps them working). */
-  currentFrame?: number;
-  /** 260905-ibd (G-52-9): the Studio-owned current-frame signal — identity-stable
-   *  across scrub renders. The action-row's narrow subscribers read it; the strip
-   *  never mirrors it. Absent only in direct-render test harnesses (a fallback
-   *  mirror keeps them working). */
-  currentFrameSignal?: ReadonlySignal<number>;
+  currentFrame: number;
   isPlaying: boolean;
   ready?: boolean;
   occupiedRotoFrames?: number[];
@@ -362,20 +350,10 @@ export interface PhysicsPaintWorkflowStripProps {
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
   onOpenRotoLoopEdit?: (loopId: string) => Promise<unknown>;
   rotoDragContextKey?: string;
-  /** 260905-ibd (G-52-9): the session clipboard presence as a ReadonlySignal —
-   *  the action-row reads `.value` in its narrow subscriber (identity-stable
-   *  mirror, never the raw session signal which re-creates every render). */
-  hasCopiedRotoKey?: ReadonlySignal<boolean>;
+  hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
   mutationLocked?: boolean;
-  /** 260905-ibd (G-52-9): the session key-utility availability as a
-   *  ReadonlySignal — the action-row re-derives its effective availability from
-   *  this plus the rail-set overlay. Identity-stable mirror, never the raw
-   *  session signal (the session re-creates every render). */
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  /** 260905-ibd (G-52-9): an active rail-set scope overlays Copy/Duplicate/Paste
-   *  availability onto the session availability inside the action-row. */
-  hasEffectiveRailSetScope?: boolean;
+  rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
   /** 260905-dso: relocated buffer Apply intent — the Tools popover Actions
    *  section routes through the Studio's identity-stable handleApplyScript. */
@@ -739,7 +717,7 @@ function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | nul
  * exactly as before. The signal is never read when playback is inactive, so an
  * idle strip holds zero per-tick subscriptions.
  */
-function RotoPlaybackCurrentFrameOutput(props: { currentFrame: ReadonlySignal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined }) {
+function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined }) {
   const playbackAppFrame = props.playbackActive ? props.playbackTick?.value?.appFrame ?? null : null;
   return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>;
 }
@@ -755,7 +733,7 @@ function RotoPlaybackCurrentFrameOutput(props: { currentFrame: ReadonlySignal<nu
  * position source, so the bar follows seeks, cell navigation, playback ticks,
  * and undo/redo restores for free. CSS enforces pointer-events: none (T-s52-03).
  */
-function PhysicsPaintPlayheadBar(props: { currentFrame: ReadonlySignal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
+function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
   const frame = props.playbackActive ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value) : props.currentFrame.value;
   const clampedFrame = Math.max(0, Math.min(frame, Math.max(0, props.frameCount - 1)));
   // 4 = the timeline-scroll padding-left (the ruler/cell origin); +8 = half a
@@ -825,12 +803,11 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   /** 43.5-02 Task 2: relocated Key Spacing form ports (bottom-row verbatim).
    *  The form renders inside the toolbox popover's second section with the
    *  exact guards/pending/disabled idioms; state authority stays in the
-   *  timeline — the static chrome never mirrors interpolation or spacing.
-   *  260905-ibd follow-up (G-52-9): the availability signals pass through as
-   *  the stable bundle reference — PhysicsPaintForceSpacingForm reads .value
-   *  in its own narrow subscriber render. */
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
+   *  timeline — the static chrome never mirrors interpolation or spacing. */
+  forceSpacingInput: string;
   forceSpacingControlsPresent: boolean;
+  canApplyForceSpacing: boolean;
+  forceSpacingActionDisabledReason: string | null;
   /** 43.6-05 D-26/D-27: the D-27 set copy rendered as ONE Body-role scope line
    *  under the Key Spacing heading when a rail set is active; null renders
    *  nothing (popover byte-identical to 43.5). The popover never creates or
@@ -1036,76 +1013,6 @@ function PhysicsPaintRailCreateMenu(props: {
   return panel;
 }
 
-interface PhysicsPaintForceSpacingFormProps {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  forceSpacingControlsPresent: boolean;
-  ready: boolean;
-  mutationLocked: boolean;
-  onForceSpacingInput?: (event: Event) => void;
-  onForceSpacingSubmit?: (event: Event) => void;
-}
-
-// 260905-ibd follow-up (G-52-9): the Key Spacing form reads the force-spacing
-// availability signals in its OWN render body — a genuine availability flip
-// re-renders this leaf only, never the strip body (the memoized strip no
-// longer subscribes to per-frame availability for this form).
-function PhysicsPaintForceSpacingForm(props: PhysicsPaintForceSpacingFormProps) {
-  const forceSpacingTooltip = useStyledTooltip();
-  const physicalActions = props.rotoPhysicalActions;
-  const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
-  const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
-  const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
-  // Set Key Space guarded action (36.15-08): the relocated bottom-row form uses
-  // the same guarded-icon contract as the other row actions — no native
-  // disabled/title; the submit handler keeps its verbatim mutation-lock guard.
-  const canApplyForceSpacingAction = forceSpacingAvailable && props.ready !== false && !props.mutationLocked;
-  const forceSpacingActionDisabledReason = canApplyForceSpacingAction
-    ? null
-    : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
-  if (!props.forceSpacingControlsPresent) return null;
-  return (
-    <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
-      <form
-        class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls"
-        aria-label="Set Key Space"
-        onSubmit={props.onForceSpacingSubmit}
-      >
-        <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
-        <span class="physics-paint-roto-key-icon-label">Key spacing</span>
-        <input
-          type="number"
-          min="0"
-          step="1"
-          value={forceSpacingInput}
-          aria-label="Empty frames between real keys"
-          aria-disabled={!canApplyForceSpacingAction ? 'true' : undefined}
-          aria-describedby={!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
-          onFocus={forceSpacingTooltip.onFocus}
-          onBlur={forceSpacingTooltip.onBlur}
-          onInput={(event) => {
-            if (!canApplyForceSpacingAction) return;
-            props.onForceSpacingInput?.(event);
-          }}
-        />
-        <button
-          type="submit"
-          class="physics-paint-roto-force-spacing-apply"
-          aria-label="Apply force spacing"
-          aria-disabled={!canApplyForceSpacingAction ? 'true' : undefined}
-          onFocus={forceSpacingTooltip.onFocus}
-          onBlur={forceSpacingTooltip.onBlur}
-        >Apply</button>
-      </form>
-      {!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? (
-        <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{forceSpacingActionDisabledReason}</span>
-      ) : null}
-      <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible} region="bottom">
-        {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', forceSpacingActionDisabledReason)}
-      </PhysicsPaintStyledTooltip>
-    </span>
-  );
-}
-
 function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticChromeProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const closeTooltip = useStyledTooltip();
@@ -1115,6 +1022,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   // the other playback-pill tooltips.
   const soloTooltip = useStyledTooltip();
   const toolboxTooltip = useStyledTooltip();
+  // 43.5-02 Task 2: the relocated Key Spacing form owns its tooltip here,
+  // beside the other popover-internal tooltips.
+  const forceSpacingTooltip = useStyledTooltip();
   // 260905-dso: the relocated buffer Apply/Clear buttons own their tooltips
   // here, beside the other popover-internal tooltips.
   const applyScriptTooltip = useStyledTooltip();
@@ -1295,14 +1205,47 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             {props.forceSpacingScopeLine ? (
               <div class="physics-paint-toolbox-scope-line">{props.forceSpacingScopeLine}</div>
             ) : null}
-            <PhysicsPaintForceSpacingForm
-              rotoPhysicalActions={props.rotoPhysicalActions}
-              forceSpacingControlsPresent={props.forceSpacingControlsPresent}
-              ready={props.ready}
-              mutationLocked={props.mutationLocked}
-              onForceSpacingInput={props.onForceSpacingInput}
-              onForceSpacingSubmit={props.onForceSpacingSubmit}
-            />
+            {props.forceSpacingControlsPresent ? (
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
+                <form
+                  class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls"
+                  aria-label="Set Key Space"
+                  onSubmit={props.onForceSpacingSubmit}
+                >
+                  <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Key spacing</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={props.forceSpacingInput}
+                    aria-label="Empty frames between real keys"
+                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
+                    aria-describedby={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
+                    onFocus={forceSpacingTooltip.onFocus}
+                    onBlur={forceSpacingTooltip.onBlur}
+                    onInput={(event) => {
+                      if (!props.canApplyForceSpacing) return;
+                      props.onForceSpacingInput?.(event);
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    class="physics-paint-roto-force-spacing-apply"
+                    aria-label="Apply force spacing"
+                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
+                    onFocus={forceSpacingTooltip.onFocus}
+                    onBlur={forceSpacingTooltip.onBlur}
+                  >Apply</button>
+                </form>
+                {!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? (
+                  <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{props.forceSpacingActionDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', props.forceSpacingActionDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+            ) : null}
           </div>
           <div class="physics-paint-toolbox-divider" />
           <div class="physics-paint-toolbox-section">
@@ -1466,81 +1409,42 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
 
 const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);
 
-/* 260905-ibd (G-52-9): the action-row is extracted into a memo-wrapped
- * component fed by ReadonlySignal props. The body reads ONLY availability
- * signals (sessionAvailability, rotoPhysicalActions.*) that change at key
- * boundaries — never currentFrameSignal.value — so scrub re-renders stop at
- * the strip. Frame-dependent parts are narrow subscribers: the key-identity
- * block and the + Rail button re-render per frame on their own. */
-interface PhysicsPaintRotoActionRowProps {
-  workflowLabel?: string;
-  currentFrameSignal: ReadonlySignal<number>;
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  hasEffectiveRailSetScope?: boolean;
-  hasCopiedRotoKey?: ReadonlySignal<boolean>;
-  isCurrentRealRotoKeySignal: ReadonlySignal<boolean>;
-  ready?: boolean;
-  keyUtilitiesDisabledByBusyState: boolean;
-  visibleFrameResolutions?: ReadonlyMap<number, PhysicPaintRotoFrameResolution> | null;
-  physicalCellByAppFrame: ReadonlyMap<number, RotoPhysicalTimelineCell>;
-  pushToolDisabled: boolean;
-  pushToolDisabledReason: string | null;
-  pushArmed: boolean;
-  pushArmedClass: string;
-  onAddRotoKey?: () => void;
-  onDuplicateRotoKey?: () => void;
-  onInsertRotoFrame?: () => void;
-  onDeleteRotoFrame?: () => void;
-  onSelectAllRotoKeys?: () => void;
-  onCopyRotoFrame?: () => void;
-  onCutRotoFrame?: () => void;
-  onScissorKeyRail?: () => void;
-  onPasteRotoFrame?: () => void;
-  onCreatePlayScriptRail?: (mode: 'progressive' | 'static') => void;
-  onCreateRevealRail?: () => void;
-}
-
-/** 260905-ibd (G-52-9): the key-identity block is a narrow subscriber — it
- *  reads currentFrameSignal.value so only it re-renders per frame during scrub,
- *  never the whole action-row. */
-function PhysicsPaintRotoKeyIdentity(props: {
-  workflowLabel?: string;
-  currentFrameSignal: ReadonlySignal<number>;
-}) {
-  const frame = props.currentFrameSignal.value;
-  return (
-    <div class="physics-paint-roto-key-identity" role="group" aria-label={`Roto layer ${props.workflowLabel ?? 'PPaint'} key ${frame}`}>
-      <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
-      <span class="physics-paint-roto-key-context" aria-hidden="true">Key {frame}</span>
-    </div>
-  );
-}
-
-/** 260905-ibd (G-52-9): the + Rail button is a narrow subscriber — its
- *  availability depends on the current frame (generated in-between / linked
- *  Rail repeat exclusions), so it reads currentFrameSignal.value and re-renders
- *  per frame on its own. It owns the rail-kind menu state (52-04 D-19). */
-function PhysicsPaintRailCreateButton(props: {
-  currentFrameSignal: ReadonlySignal<number>;
-  physicalCellByAppFrame: ReadonlyMap<number, RotoPhysicalTimelineCell>;
-  visibleFrameResolutions?: ReadonlyMap<number, PhysicPaintRotoFrameResolution> | null;
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  ready?: boolean;
-  keyUtilitiesDisabledByBusyState: boolean;
-  onCreatePlayScriptRail?: (mode: 'progressive' | 'static') => void;
-  onCreateRevealRail?: () => void;
-}) {
-  const railCreateTooltip = useStyledTooltip();
-  // 260905-ibd follow-up (G-52-9): + Rail is gated by the SAME availability
-  // law as + Key (canAddEmptyKey + ready + busy-state guard). The button reads
-  // the signals itself so it re-renders only when its own availability flips.
-  const canAddRotoKey = Boolean(props.rotoPhysicalActions) && props.rotoPhysicalActions!.canAddEmptyKey.value && props.ready !== false && !props.keyUtilitiesDisabledByBusyState;
-  const addRotoKeyDisabledReason = canAddRotoKey
-    ? null
-    : props.keyUtilitiesDisabledByBusyState || props.ready === false
-      ? 'Finish the current key action before using key tools.'
-      : props.rotoPhysicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
+export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
+  recordPhysicsPaintPerformanceCounter('render.workflowStrip');
+  const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
+  // 47-01 UAT round 4: custom vertical scrollbar state (thumb top/height),
+  // mirroring the horizontal pill design for the rows-region.
+  const [verticalScrollbar, setVerticalScrollbar] = useState({ top: 0, height: 0, visible: false });
+  const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
+  // Group Rail drag preview (plan 03): session-only publication surfaced by the
+  // rail's session hook, consumed for the gap preview paint only (Pitfall 5).
+  const [rotoGroupDragPreview, setRotoGroupDragPreview] = useState<GroupRailDragPreviewState | null>(null);
+  const [rotoKeyRailDragPreview, setRotoKeyRailDragPreview] = useState<
+    KeyRailDragPreviewState<RotoKeyRailDragPublication> | null
+  >(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const timelineContentRef = useRef<HTMLDivElement>(null);
+  // 47-01 header column: the pinned header-rows container and the rows-region
+  // share the same vertical scroll position (D-05). The sync is a no-op while
+  // the track count fits the band; it keeps header cells aligned with their
+  // rows once the region overflows.
+  const headerRowsRef = useRef<HTMLDivElement>(null);
+  // 47-02 Task 3: the pinned header-column element itself never scrolls (D-01)
+  // — the band INSIDE it carries the vertical scroll position. The strip owns
+  // the ref so the pinned contract is observable (scrollTop stays 0 while the
+  // rows region scrolls).
+  const headerColumnRef = useRef<HTMLDivElement>(null);
+  const rowsRegionRef = useRef<HTMLDivElement>(null);
+  const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
+  const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
+  const suppressNextRotoClickRef = useRef(false);
+  const mountedRef = useRef(true);
+  // 43.4 defect 6: the last focused Key Rail button and its timeline container,
+  // so a Delete/Undo/Redo commit that removes the button can restore focus to
+  // the stable container instead of leaving it orphaned on body.
+  const lastFocusedRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
+  const currentFrameSignal = useSignal(props.currentFrame);
+  if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   // 52-04 (D-19): the track rail-creation menu open state — the "Create rail"
   // button in the action row offers the rail kinds (motion/static/reveal).
   const railCreateMenuOpen = useSignal(false);
@@ -1574,1006 +1478,6 @@ function PhysicsPaintRailCreateButton(props: {
       window.removeEventListener('keydown', onEscapeKeyDown, true);
     };
   }, [railCreateMenuOpen.value]);
-  const frame = props.currentFrameSignal.value;
-  const currentFrameResolution = props.visibleFrameResolutions?.get(frame) ?? null;
-  const isCurrentFrameGenerated = props.physicalCellByAppFrame.get(frame)?.kind === 'generated';
-  const isCurrentFrameLinkedRepeat = isLinkedRepeatFrameResolution(currentFrameResolution);
-  const canCreateRail = canAddRotoKey && !isCurrentFrameGenerated && !isCurrentFrameLinkedRepeat;
-  const railCreateDisabledReason = canCreateRail
-    ? null
-    : addRotoKeyDisabledReason
-      ?? (isCurrentFrameLinkedRepeat
-        ? 'The current frame is a linked Rail repeat — move to an empty frame to create a Rail.'
-        : isCurrentFrameGenerated
-          ? 'The current frame is a generated in-between — move to an empty frame to create a Rail.'
-          : 'Creating a Rail is unavailable.');
-  return (
-    <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
-      <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
-        <button
-          type="button"
-          class="physics-paint-roto-key-icon-button"
-          aria-label="Create rail"
-          aria-disabled={!canCreateRail ? 'true' : undefined}
-          aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}
-          aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
-          onFocus={railCreateTooltip.onFocus}
-          onBlur={railCreateTooltip.onBlur}
-          onClick={() => {
-            railCreateTooltip.hide();
-            if (!canCreateRail) return;
-            railCreateMenuOpen.value = !railCreateMenuOpen.value;
-          }}
-          onKeyDown={(event) => {
-            if ((event.key === 'Enter' || event.key === ' ') && !canCreateRail) event.preventDefault();
-          }}
-        >
-          <Plus size={18} aria-hidden="true" />
-          <span class="physics-paint-roto-key-icon-label">Rail</span>
-        </button>
-        {!canCreateRail && railCreateDisabledReason ? (
-          <span id="roto-key-action-reason-rail-create" class="physics-paint-sr-only">{railCreateDisabledReason}</span>
-        ) : null}
-        <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)}
-        </PhysicsPaintStyledTooltip>
-        <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
-          <button
-            type="button"
-            onClick={() => {
-              railCreateMenuOpen.value = false;
-              props.onCreatePlayScriptRail?.('progressive');
-            }}
-          >
-            Motion
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              railCreateMenuOpen.value = false;
-              props.onCreatePlayScriptRail?.('static');
-            }}
-          >
-            Static
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              railCreateMenuOpen.value = false;
-              props.onCreateRevealRail?.();
-            }}
-          >
-            Reveal
-          </button>
-        </PhysicsPaintRailCreateMenu>
-      </span>
-    </div>
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): shared availability derivation for the
- *  action-row buttons. An active rail-set scope overlays Copy/Duplicate/Paste
- *  availability onto the session availability (the rail-set ports are the
- *  authority while a set is active — D-17 membership is never re-derived). */
-function deriveEffectiveAvailability(
-  sessionAvailability: RotoKeyUtilityActionState | undefined,
-  physicalActions: RotoPhysicalTimelineActionBundle | undefined,
-  hasEffectiveRailSetScope: boolean | undefined,
-): RotoKeyUtilityActionState | undefined {
-  if (hasEffectiveRailSetScope && physicalActions && sessionAvailability) {
-    return {
-      ...sessionAvailability,
-      canCopy: physicalActions.canCopyRailSet.value,
-      canDuplicate: physicalActions.canDuplicateRailSet.value,
-      canPaste: physicalActions.canPasteRailSet.value,
-      pasteDisabledReason: physicalActions.pasteRailSetDisabledReason.value ?? sessionAvailability.pasteDisabledReason ?? null,
-    };
-  }
-  return sessionAvailability;
-}
-
-/** 260905-ibd follow-up (G-52-9): guarded-icon-action availability reasons
- *  (D-12) — verbatim controller ports via the physicalActions / session
- *  availability reasons. The view never shortens, re-derives, or infers these
- *  reasons. Reads currentFrameSignal.peek() (no subscription) for the
- *  generated-frame message. */
-function getRotoKeyUtilityDisabledMessage(
-  action: RotoKeyUtilityAction,
-  args: {
-    physicalActions?: RotoPhysicalTimelineActionBundle;
-    effectiveAvailability?: RotoKeyUtilityActionState;
-    keyUtilitiesDisabledByBusyState: boolean;
-    currentFrameSignal: ReadonlySignal<number>;
-  },
-): string {
-  const { physicalActions, effectiveAvailability, keyUtilitiesDisabledByBusyState, currentFrameSignal } = args;
-  if (action === 'insert' && physicalActions) return physicalActions.insertDisabledReason.value ?? 'Insert is unavailable.';
-  if (action === 'delete' && physicalActions) return physicalActions.deleteDisabledReason.value ?? 'Delete is unavailable.';
-  if (effectiveAvailability?.busy) return effectiveAvailability.disabledReason ?? 'Finish the current key action before using key tools.';
-  if (keyUtilitiesDisabledByBusyState) return 'Finish the current key action before using key tools.';
-  if (effectiveAvailability?.currentIsGenerated) return GENERATED_ROTO_DISABLED_STATUS_TEMPLATE.replace('{frame}', String(currentFrameSignal.peek()));
-  if (action === 'paste') return effectiveAvailability?.pasteDisabledReason ?? 'Copy a real Roto key before pasting.';
-  if (action === 'insert') return 'Select a real Roto key to insert.';
-  if (action === 'duplicate') return 'Select a real Roto key to duplicate.';
-  if (action === 'copy') return 'Select a real Roto key to copy.';
-  return 'Select a real Roto key to delete.';
-}
-
-/** 260905-ibd follow-up (G-52-9): the shared guarded-icon action button
- *  structure — wrapper span, aria-disabled button, sr-only reason, and the
- *  styled tooltip. Each action-row button is a thin wrapper that computes its
- *  own availability (reading only its own signals) and renders this shell, so
- *  a single availability flip re-renders only that button. */
-function PhysicsPaintRotoActionButton(props: {
-  label: string;
-  icon: ComponentChildren;
-  textLabel?: string;
-  disabled: boolean;
-  disabledReason: string | null;
-  reasonId: string;
-  tooltipCopy: string;
-  onClick: () => void;
-  extraClass?: string;
-  ariaPressed?: boolean;
-}) {
-  const tooltip = useStyledTooltip();
-  return (
-    <span class="physics-paint-roto-key-icon-action" onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}>
-      <button
-        type="button"
-        class={`physics-paint-roto-key-icon-button${props.extraClass ?? ''}`}
-        aria-label={props.label}
-        aria-disabled={props.disabled ? 'true' : undefined}
-        aria-describedby={props.disabled && props.disabledReason ? props.reasonId : undefined}
-        aria-pressed={props.ariaPressed === undefined ? undefined : props.ariaPressed ? 'true' : 'false'}
-        onFocus={tooltip.onFocus}
-        onBlur={tooltip.onBlur}
-        onClick={() => {
-          tooltip.hide();
-          if (props.disabled) return;
-          props.onClick();
-        }}
-        onKeyDown={(event) => {
-          if ((event.key === 'Enter' || event.key === ' ') && props.disabled) event.preventDefault();
-        }}
-      >
-        {props.icon}
-        {props.textLabel ? <span class="physics-paint-roto-key-icon-label">{props.textLabel}</span> : null}
-      </button>
-      {props.disabled && props.disabledReason ? (
-        <span id={props.reasonId} class="physics-paint-sr-only">{props.disabledReason}</span>
-      ) : null}
-      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">
-        {buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)}
-      </PhysicsPaintStyledTooltip>
-    </span>
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): + Key narrow subscriber — reads only
- *  canAddEmptyKey / addEmptyKeyDisabledReason. */
-function PhysicsPaintRotoAddKeyButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  ready?: boolean;
-  keyUtilitiesDisabledByBusyState: boolean;
-  onAddRotoKey?: () => void;
-}) {
-  const canAddRotoKey = Boolean(props.rotoPhysicalActions) && props.rotoPhysicalActions!.canAddEmptyKey.value && props.ready !== false && !props.keyUtilitiesDisabledByBusyState;
-  const addRotoKeyDisabledReason = canAddRotoKey
-    ? null
-    : props.keyUtilitiesDisabledByBusyState || props.ready === false
-      ? 'Finish the current key action before using key tools.'
-      : props.rotoPhysicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Add key"
-      icon={<Plus size={18} aria-hidden="true" />}
-      textLabel="Key"
-      disabled={!canAddRotoKey}
-      disabledReason={addRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-add"
-      tooltipCopy="Add key"
-      onClick={() => props.onAddRotoKey?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Insert narrow subscriber — reads
- *  canInsertFrame / insertDisabledReason / insertTooltipDescription plus the
- *  session canInsert fallback. */
-function PhysicsPaintRotoInsertButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  ready?: boolean;
-  isCurrentRealRotoKeySignal: ReadonlySignal<boolean>;
-  keyUtilitiesDisabledByBusyState: boolean;
-  currentFrameSignal: ReadonlySignal<number>;
-  onInsertRotoFrame?: () => void;
-}) {
-  const sessionAvailability = props.sessionAvailability?.value;
-  const physicalInsertAvailable = props.rotoPhysicalActions?.canInsertFrame.value ?? false;
-  const insertRotoKeyDescription = props.rotoPhysicalActions?.insertTooltipDescription.value ?? 'Insert key before';
-  const canUseSourceRotoKey = props.isCurrentRealRotoKeySignal.value && !props.keyUtilitiesDisabledByBusyState;
-  const canInsertRotoKey = props.rotoPhysicalActions
-    ? physicalInsertAvailable && props.ready !== false
-    : (sessionAvailability ? (sessionAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
-  const insertRotoKeyDisabledReason = canInsertRotoKey ? null : getRotoKeyUtilityDisabledMessage('insert', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability: sessionAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  return (
-    <PhysicsPaintRotoActionButton
-      label={insertRotoKeyDescription}
-      icon={<BetweenVerticalStart size={18} aria-hidden="true" />}
-      textLabel="Insert"
-      disabled={!canInsertRotoKey}
-      disabledReason={insertRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-insert"
-      tooltipCopy={insertRotoKeyDescription}
-      onClick={() => props.onInsertRotoFrame?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Duplicate narrow subscriber — reads the
- *  session canDuplicate (or the rail-set canDuplicateRailSet overlay). */
-function PhysicsPaintRotoDuplicateButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  ready?: boolean;
-  isCurrentRealRotoKeySignal: ReadonlySignal<boolean>;
-  keyUtilitiesDisabledByBusyState: boolean;
-  hasEffectiveRailSetScope?: boolean;
-  currentFrameSignal: ReadonlySignal<number>;
-  onDuplicateRotoKey?: () => void;
-}) {
-  const sessionAvailability = props.sessionAvailability?.value;
-  const effectiveAvailability = deriveEffectiveAvailability(sessionAvailability, props.rotoPhysicalActions, props.hasEffectiveRailSetScope);
-  const canUseSourceRotoKey = props.isCurrentRealRotoKeySignal.value && !props.keyUtilitiesDisabledByBusyState;
-  const canDuplicateRotoKey = effectiveAvailability ? (effectiveAvailability.canDuplicate || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const duplicateRotoKeyDisabledReason = canDuplicateRotoKey ? null : getRotoKeyUtilityDisabledMessage('duplicate', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Duplicate key"
-      icon={<CopyPlus size={18} aria-hidden="true" />}
-      textLabel="Duplicate"
-      disabled={!canDuplicateRotoKey}
-      disabledReason={duplicateRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-duplicate"
-      tooltipCopy="Duplicate key"
-      onClick={() => props.onDuplicateRotoKey?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Copy narrow subscriber — reads the session
- *  canCopy (or the rail-set canCopyRailSet overlay). */
-function PhysicsPaintRotoCopyButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  ready?: boolean;
-  isCurrentRealRotoKeySignal: ReadonlySignal<boolean>;
-  keyUtilitiesDisabledByBusyState: boolean;
-  hasEffectiveRailSetScope?: boolean;
-  currentFrameSignal: ReadonlySignal<number>;
-  onCopyRotoFrame?: () => void;
-}) {
-  const sessionAvailability = props.sessionAvailability?.value;
-  const effectiveAvailability = deriveEffectiveAvailability(sessionAvailability, props.rotoPhysicalActions, props.hasEffectiveRailSetScope);
-  const canUseSourceRotoKey = props.isCurrentRealRotoKeySignal.value && !props.keyUtilitiesDisabledByBusyState;
-  const canCopyRotoKey = effectiveAvailability ? (effectiveAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Copy key"
-      icon={<ClipboardCopy size={18} aria-hidden="true" />}
-      textLabel="Copy"
-      disabled={!canCopyRotoKey}
-      disabledReason={copyRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-copy"
-      tooltipCopy="Copy key"
-      onClick={() => props.onCopyRotoFrame?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Paste narrow subscriber — reads the session
- *  canPaste (or the rail-set canPasteRailSet overlay) plus hasCopiedRotoKey
- *  (the only button that reads the clipboard signal). */
-function PhysicsPaintRotoPasteButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  hasCopiedRotoKey?: ReadonlySignal<boolean>;
-  ready?: boolean;
-  keyUtilitiesDisabledByBusyState: boolean;
-  hasEffectiveRailSetScope?: boolean;
-  currentFrameSignal: ReadonlySignal<number>;
-  onPasteRotoFrame?: () => void;
-}) {
-  const sessionAvailability = props.sessionAvailability?.value;
-  const effectiveAvailability = deriveEffectiveAvailability(sessionAvailability, props.rotoPhysicalActions, props.hasEffectiveRailSetScope);
-  const canPasteRotoKey = effectiveAvailability
-    ? effectiveAvailability.canPaste && props.ready !== false
-    : Boolean(props.hasCopiedRotoKey?.value) && !props.keyUtilitiesDisabledByBusyState;
-  const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Paste key"
-      icon={<ClipboardPaste size={18} aria-hidden="true" />}
-      textLabel="Paste"
-      disabled={!canPasteRotoKey}
-      disabledReason={pasteRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-paste"
-      tooltipCopy="Paste key"
-      onClick={() => props.onPasteRotoFrame?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Cut narrow subscriber — enabled only when
- *  BOTH copy and delete availability hold (quick 260731-9l0); the disabled
- *  tooltip shows the underlying copy or delete controller reason verbatim. */
-function PhysicsPaintRotoCutButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  ready?: boolean;
-  isCurrentRealRotoKeySignal: ReadonlySignal<boolean>;
-  keyUtilitiesDisabledByBusyState: boolean;
-  hasEffectiveRailSetScope?: boolean;
-  currentFrameSignal: ReadonlySignal<number>;
-  onCutRotoFrame?: () => void;
-}) {
-  const sessionAvailability = props.sessionAvailability?.value;
-  const effectiveAvailability = deriveEffectiveAvailability(sessionAvailability, props.rotoPhysicalActions, props.hasEffectiveRailSetScope);
-  const canUseSourceRotoKey = props.isCurrentRealRotoKeySignal.value && !props.keyUtilitiesDisabledByBusyState;
-  const canCopyRotoKey = effectiveAvailability ? (effectiveAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const canDeleteRotoKey = props.rotoPhysicalActions
-    ? (props.rotoPhysicalActions.canDeleteFrame.value) && props.ready !== false
-    : (effectiveAvailability ? (effectiveAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
-  const canCutRotoKey = canCopyRotoKey && canDeleteRotoKey;
-  const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  const cutRotoKeyDisabledReason = canCutRotoKey ? null : (copyRotoKeyDisabledReason ?? deleteRotoKeyDisabledReason);
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Cut key"
-      icon={<Scissors size={18} aria-hidden="true" />}
-      textLabel="Cut"
-      disabled={!canCutRotoKey}
-      disabledReason={cutRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-cut"
-      tooltipCopy="Cut key"
-      onClick={() => props.onCutRotoFrame?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Scissor narrow subscriber — reads
- *  canScissor / scissorDisabledReason / scissorTooltipDescription. */
-function PhysicsPaintRotoScissorButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  ready?: boolean;
-  keyUtilitiesDisabledByBusyState: boolean;
-  onScissorKeyRail?: () => void;
-}) {
-  const physicalScissorAvailable = props.rotoPhysicalActions?.canScissor.value ?? false;
-  const physicalScissorDisabledReason = props.rotoPhysicalActions?.scissorDisabledReason.value ?? null;
-  const canScissorRotoKey = Boolean(props.rotoPhysicalActions)
-    && physicalScissorAvailable
-    && props.ready !== false
-    && !props.keyUtilitiesDisabledByBusyState;
-  const scissorRotoKeyDisabledReason = canScissorRotoKey
-    ? null
-    : physicalScissorDisabledReason ?? 'Scissor is unavailable.';
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Split Key Rail"
-      icon={<SquareSplitHorizontal size={18} aria-hidden="true" />}
-      textLabel="Scissor"
-      disabled={!canScissorRotoKey}
-      disabledReason={scissorRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-scissor"
-      tooltipCopy={props.rotoPhysicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.'}
-      onClick={() => props.onScissorKeyRail?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Select All narrow subscriber — reads
- *  canSelectAllKeys / selectAllKeysDisabledReason. */
-function PhysicsPaintRotoSelectAllButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  ready?: boolean;
-  keyUtilitiesDisabledByBusyState: boolean;
-  onSelectAllRotoKeys?: () => void;
-}) {
-  const canSelectAllRotoKeys = (props.rotoPhysicalActions?.canSelectAllKeys.value ?? false) && props.ready !== false && !props.keyUtilitiesDisabledByBusyState;
-  const selectAllDisabledReason = canSelectAllRotoKeys
-    ? null
-    : props.keyUtilitiesDisabledByBusyState && props.rotoPhysicalActions?.canSelectAllKeys.value
-      ? ROTO_KEY_BUSY_STATUS_TEMPLATE
-      : props.rotoPhysicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
-  return (
-    <PhysicsPaintRotoActionButton
-      label="Select all keys"
-      icon={<ListChecks size={18} aria-hidden="true" />}
-      textLabel="All"
-      disabled={!canSelectAllRotoKeys}
-      disabledReason={selectAllDisabledReason}
-      reasonId="roto-key-action-reason-select-all"
-      tooltipCopy="Select all keys"
-      onClick={() => props.onSelectAllRotoKeys?.()}
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Delete narrow subscriber — reads
- *  canDeleteFrame / deleteDisabledReason / deleteScopeLabel plus the session
- *  canDelete fallback. */
-function PhysicsPaintRotoDeleteButton(props: {
-  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
-  sessionAvailability?: ReadonlySignal<RotoKeyUtilityActionState>;
-  ready?: boolean;
-  isCurrentRealRotoKeySignal: ReadonlySignal<boolean>;
-  keyUtilitiesDisabledByBusyState: boolean;
-  currentFrameSignal: ReadonlySignal<number>;
-  onDeleteRotoFrame?: () => void;
-}) {
-  const sessionAvailability = props.sessionAvailability?.value;
-  const physicalDeleteAvailable = props.rotoPhysicalActions?.canDeleteFrame.value ?? false;
-  const deleteRotoScopeLabel = props.rotoPhysicalActions?.deleteScopeLabel.value ?? 'Delete Frame';
-  const canUseSourceRotoKey = props.isCurrentRealRotoKeySignal.value && !props.keyUtilitiesDisabledByBusyState;
-  const canDeleteRotoKey = props.rotoPhysicalActions
-    ? physicalDeleteAvailable && props.ready !== false
-    : (sessionAvailability ? (sessionAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
-  const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete', {
-    physicalActions: props.rotoPhysicalActions,
-    effectiveAvailability: sessionAvailability,
-    keyUtilitiesDisabledByBusyState: props.keyUtilitiesDisabledByBusyState,
-    currentFrameSignal: props.currentFrameSignal,
-  });
-  return (
-    <PhysicsPaintRotoActionButton
-      label={deleteRotoScopeLabel}
-      icon={<Trash2 size={18} aria-hidden="true" />}
-      disabled={!canDeleteRotoKey}
-      disabledReason={deleteRotoKeyDisabledReason}
-      reasonId="roto-key-action-reason-delete"
-      tooltipCopy={deleteRotoScopeLabel}
-      onClick={() => props.onDeleteRotoFrame?.()}
-      extraClass=" destructive"
-    />
-  );
-}
-
-/** 260905-ibd follow-up (G-52-9): Push narrow subscriber — plain props only
- *  (no availability signals); the armed state is read by the strip parent via
- *  isPushToolArmed(). */
-function PhysicsPaintRotoPushButton(props: {
-  pushArmed: boolean;
-  pushArmedClass: string;
-  pushToolDisabled: boolean;
-  pushToolDisabledReason: string | null;
-}) {
-  return (
-    <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
-      <PhysicsPaintRotoActionButton
-        label="Push"
-        icon={<MoveHorizontal size={18} aria-hidden="true" />}
-        disabled={props.pushToolDisabled}
-        disabledReason={props.pushToolDisabledReason}
-        reasonId="roto-key-action-reason-push"
-        tooltipCopy="Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode."
-        onClick={() => togglePushTool()}
-        extraClass={` physics-paint-push-tool-button${props.pushArmedClass}`}
-        ariaPressed={props.pushArmed}
-      />
-    </div>
-  );
-}
-
-function PhysicsPaintRotoActionRowImpl(props: PhysicsPaintRotoActionRowProps) {
-  recordPhysicsPaintPerformanceCounter('render.rotoActionRow');
-  return (
-    <div
-      class="physics-paint-roto-action-row"
-      onClickCapture={(event) => {
-        // D-06/D-20: ANY other toolbar action disarms an armed Push tool —
-        // except the Push buttons themselves, which own the arm/disarm
-        // toggle. The Push pill lives in this row, so the guard is scoped
-        // to the push-button class only.
-        if (event.target instanceof Element && !event.target.closest('.physics-paint-push-tool-button')) {
-          disarmPushTool();
-        }
-      }}
-    >
-      <PhysicsPaintRotoKeyIdentity workflowLabel={props.workflowLabel} currentFrameSignal={props.currentFrameSignal} />
-      <div class="physics-paint-roto-key-utilities" role="group" aria-label="Roto key tools">
-                <PhysicsPaintRotoAddKeyButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          ready={props.ready}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          onAddRotoKey={props.onAddRotoKey}
-        />
-        {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
-            button offering the rail kinds. Motion/Static open the Create Rail
-            dialog on the Paint tab; Reveal opens the SAME dialog on the Reveal
-            Photo Rail tab (the SAME create-reveal-rail mutation — one model,
-            two entry points). 260905-d1w: + Rail now sits immediately after
-            + Key and is gated by the SAME availability law (canAddRotoKey +
-            ready + busy-state guard). 260905-d1w amendment: + Rail additionally
-            greys on a generated in-between or a linked Rail repeat
-            (canCreateRail). */}
-        <PhysicsPaintRailCreateButton
-          currentFrameSignal={props.currentFrameSignal}
-          physicalCellByAppFrame={props.physicalCellByAppFrame}
-          visibleFrameResolutions={props.visibleFrameResolutions}
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          ready={props.ready}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          onCreatePlayScriptRail={props.onCreatePlayScriptRail}
-          onCreateRevealRail={props.onCreateRevealRail}
-        />
-        <PhysicsPaintRotoPushButton
-          pushArmed={props.pushArmed}
-          pushArmedClass={props.pushArmedClass}
-          pushToolDisabled={props.pushToolDisabled}
-          pushToolDisabledReason={props.pushToolDisabledReason}
-        />
-        <PhysicsPaintRotoInsertButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          sessionAvailability={props.sessionAvailability}
-          ready={props.ready}
-          isCurrentRealRotoKeySignal={props.isCurrentRealRotoKeySignal}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          currentFrameSignal={props.currentFrameSignal}
-          onInsertRotoFrame={props.onInsertRotoFrame}
-        />
-        <PhysicsPaintRotoDuplicateButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          sessionAvailability={props.sessionAvailability}
-          ready={props.ready}
-          isCurrentRealRotoKeySignal={props.isCurrentRealRotoKeySignal}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          hasEffectiveRailSetScope={props.hasEffectiveRailSetScope}
-          currentFrameSignal={props.currentFrameSignal}
-          onDuplicateRotoKey={props.onDuplicateRotoKey}
-        />
-        <PhysicsPaintRotoCopyButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          sessionAvailability={props.sessionAvailability}
-          ready={props.ready}
-          isCurrentRealRotoKeySignal={props.isCurrentRealRotoKeySignal}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          hasEffectiveRailSetScope={props.hasEffectiveRailSetScope}
-          currentFrameSignal={props.currentFrameSignal}
-          onCopyRotoFrame={props.onCopyRotoFrame}
-        />
-        <PhysicsPaintRotoPasteButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          sessionAvailability={props.sessionAvailability}
-          hasCopiedRotoKey={props.hasCopiedRotoKey}
-          ready={props.ready}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          hasEffectiveRailSetScope={props.hasEffectiveRailSetScope}
-          currentFrameSignal={props.currentFrameSignal}
-          onPasteRotoFrame={props.onPasteRotoFrame}
-        />
-        <PhysicsPaintRotoCutButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          sessionAvailability={props.sessionAvailability}
-          ready={props.ready}
-          isCurrentRealRotoKeySignal={props.isCurrentRealRotoKeySignal}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          hasEffectiveRailSetScope={props.hasEffectiveRailSetScope}
-          currentFrameSignal={props.currentFrameSignal}
-          onCutRotoFrame={props.onCutRotoFrame}
-        />
-        <PhysicsPaintRotoScissorButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          ready={props.ready}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          onScissorKeyRail={props.onScissorKeyRail}
-        />
-        <PhysicsPaintRotoSelectAllButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          ready={props.ready}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          onSelectAllRotoKeys={props.onSelectAllRotoKeys}
-        />
-        <PhysicsPaintRotoDeleteButton
-          rotoPhysicalActions={props.rotoPhysicalActions}
-          sessionAvailability={props.sessionAvailability}
-          ready={props.ready}
-          isCurrentRealRotoKeySignal={props.isCurrentRealRotoKeySignal}
-          keyUtilitiesDisabledByBusyState={props.keyUtilitiesDisabledByBusyState}
-          currentFrameSignal={props.currentFrameSignal}
-          onDeleteRotoFrame={props.onDeleteRotoFrame}
-        />
-      </div>
-    </div>
-  );
-}
-
-const PhysicsPaintRotoActionRow = memo(PhysicsPaintRotoActionRowImpl);
-
-interface PhysicsPaintRotoCellsProps {
-  currentFrameSignal: ReadonlySignal<number>;
-  frameCells: readonly number[];
-  physicalCellByAppFrame: ReadonlyMap<number, RotoPhysicalTimelineCell>;
-  cachedFrameByAppFrame: ReadonlyMap<number, PhysicPaintRotoCacheFrame>;
-  realCachedFrameSet: ReadonlySet<number>;
-  visibleFrameResolutions: ReadonlyMap<number, PhysicPaintRotoFrameResolution> | null;
-  visibleSpacingProxies: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> | null;
-  rotoSpacingSelection: PhysicsPaintRotoSpacingSelection | null | undefined;
-  rotoSpacingSelectedSourceKeyIdSet: ReadonlySet<string>;
-  loopBoundaryFrames: { starts: ReadonlySet<number>; ends: ReadonlySet<number> };
-  lifecycleTargetByAppFrame: ReadonlyMap<number, PhysicPaintRotoGroupFrameTarget>;
-  keyIdByAppFrame: ReadonlyMap<number, string>;
-  rotoDragLocked: boolean;
-  rotoDragPreviewViewModel: RotoDragPreviewViewModel | null;
-  rotoDragPreview: RotoDragPreviewState | null;
-  rotoDragVacatedAppFrames: ReadonlySet<number>;
-  rotoDragFeedback: string | null;
-  loopSourceFrameCountById: ReadonlyMap<string, number>;
-  rotoPrimarySelectedKeyId: string | null;
-  rotoSelectedKeyIdSet: ReadonlySet<string>;
-  realKeyOrderById: ReadonlyMap<string, number>;
-  incomingInterpolationBreakKeyIdSet: ReadonlySet<string>;
-  rotoGroupDragGapPreviewAppFrames: ReadonlySet<number>;
-  rotoKeyRailDragGapPreviewAppFrames: ReadonlySet<number>;
-  pushGapPreviewAppFrames: ReadonlySet<number>;
-  railSetGapPreviewAppFrames: ReadonlySet<number>;
-  savedRotoFrames: PhysicsPaintWorkflowStripFrameMarker[] | undefined;
-  onCellPointerDown: (event: PointerEvent, frame: number, keyId: string) => void;
-  onCellClick: (frame: number, vm: RotoCellViewModel, event: MouseEvent) => void;
-}
-
-/**
- * 260905-ibd follow-up (G-52-9): the physical-cell grid is a narrow
- * currentFrameSignal subscriber. The strip body is memoized, so the cells must
- * re-render per scrub frame on their own — the ONLY frame-dependent facts are
- * the `current` overlay (getRotoCellViewModel) and the `current` class it feeds.
- * Everything else (selection, drag preview, loop resolution, saved markers) is
- * frame-independent and arrives as stable props from the memoized body.
- */
-function PhysicsPaintRotoCells(props: PhysicsPaintRotoCellsProps) {
-  recordPhysicsPaintPerformanceCounter('render.rotoCells');
-  const currentFrame = props.currentFrameSignal.value;
-  // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
-  // RESEARCH Pattern 3). Full invalidation on ANY structural identity change
-  // (the physical-cell Map or the cached-frame arrays — realCachedRotoFrames
-  // is memoized from cachedRotoFrames, so its identity tracks it). On a pure
-  // currentFrame change ONLY the previously-current and newly-current entries
-  // are dropped: `currentFrame` reaches `getRotoCellViewModel` solely through
-  // the `current` overlay (frame === currentFrame), so every other entry
-  // stays byte-valid. Drag preview, selection, and saved-marker state are
-  // read per-render in the cell loop below and are NOT cache inputs.
-  const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
-  const activeCellDerivationCache = rotoCellDerivationCacheRef.current;
-  if (
-    activeCellDerivationCache === null ||
-    activeCellDerivationCache.physicalCellByAppFrame !== props.physicalCellByAppFrame ||
-    activeCellDerivationCache.cachedFrameByAppFrame !== props.cachedFrameByAppFrame
-  ) {
-    rotoCellDerivationCacheRef.current = {
-      physicalCellByAppFrame: props.physicalCellByAppFrame,
-      cachedFrameByAppFrame: props.cachedFrameByAppFrame,
-      realCachedFrameSet: props.realCachedFrameSet,
-      currentFrame,
-      entries: new Map(),
-    };
-  } else if (activeCellDerivationCache.currentFrame !== currentFrame) {
-    activeCellDerivationCache.entries.delete(activeCellDerivationCache.currentFrame);
-    activeCellDerivationCache.entries.delete(currentFrame);
-    activeCellDerivationCache.currentFrame = currentFrame;
-  }
-  const getRotoCellDerivation = (frame: number): RotoCellDerivation => {
-    const cache = rotoCellDerivationCacheRef.current as RotoCellDerivationCache;
-    const cached = cache.entries.get(frame);
-    if (cached) return cached;
-    // Byte-identical to the pre-cache cell-loop derivation: same inputs, same
-    // pure helpers, same argument order — only WHEN it runs changed (D-09).
-    const cachedFramesForCell = cache.cachedFrameByAppFrame;
-    const vm = getRotoCellViewModel({
-      frame,
-      currentFrame,
-      cachedFrames: cachedFramesForCell,
-    });
-    const fill = getRotoCellFill(frame, cache.realCachedFrameSet);
-    const derivation: RotoCellDerivation = { vm, fill };
-    cache.entries.set(frame, derivation);
-    return derivation;
-  };
-  return (
-    <div
-      class="physics-paint-roto-cells"
-      role="row"
-      style={{ gridTemplateColumns: `repeat(${props.frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
-    >
-      {props.frameCells.map(frame => {
-        const semanticCell = props.physicalCellByAppFrame.get(frame) ?? null;
-        const isGenerated = semanticCell?.kind === 'generated';
-        // Phase 43: lazy per-frame resolution for this visible cell
-        // (null when no loop context is supplied). Exhaustive mappers
-        // gate every virtual linked occurrence out of selection/drag
-        // (D-11/D-23) while preserving the existing cell-state fill
-        // (D-18). The local badge/aria predicate intentionally groups
-        // the four linked variants as presentation-only occurrences.
-        const frameResolution = props.visibleFrameResolutions?.get(frame) ?? null;
-        const spacingProxy = props.visibleSpacingProxies?.get(frame) ?? null;
-        const isSpacingProxySelected = spacingProxy !== null
-          && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
-          && props.rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
-        const isLoopBoundaryStart = props.loopBoundaryFrames.starts.has(frame);
-        const isLoopBoundaryEnd = props.loopBoundaryFrames.ends.has(frame);
-        const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
-          || frameResolution?.kind === 'linked-generated'
-          || frameResolution?.kind === 'linked-gap'
-          || frameResolution?.kind === 'linked-unresolved';
-        const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
-          || ((frameResolution?.kind === 'linked'
-            || frameResolution?.kind === 'linked-generated'
-            || frameResolution?.kind === 'linked-gap')
-            && frameResolution.repeatInstance > 0);
-        const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
-          && frameResolution.repeatInstance > 0
-          && !isGenerated;
-        const linkedLoopClass = isLinkedRepeat
-          ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
-          : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
-            ? 'roto-linked-source-generated'
-            : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
-              : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
-                : '';
-        const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
-        // Cached per-cell derivation (38.1-04, Option A): recomputed
-        // for at most the previous+new current cells on a pure frame
-        // change; the value is byte-identical to the pre-cache
-        // inline derivation.
-        const { vm, fill } = getRotoCellDerivation(frame);
-        const isPhysicalRealKey = semanticCell?.kind === 'real';
-        const lifecycleTarget = props.lifecycleTargetByAppFrame.get(frame)!;
-        const fillClass = getRotoAcceptedCellFillClass({
-          lifecycleTargetKind: lifecycleTarget.kind,
-          resolutionKind: frameResolution?.kind ?? 'empty',
-          isPhysicalRealKey,
-          fill,
-          viewModelFillClass: vm.fillClass,
-        });
-        const isOccupiedRealKey = isPhysicalRealKey;
-        const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
-        const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
-        const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : props.keyIdByAppFrame.get(frame) ?? null;
-        const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked && frameInteraction?.dragEligible !== false;
-        // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
-        const previewCell = props.rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
-        const isDragSource = props.rotoDragPreview?.sourceAppFrame === frame && props.rotoDragPreview?.movedKeyId === cellKeyId;
-        const isDragMoved = previewCell?.role === 'moved';
-        const isDragShifted = previewCell?.role === 'shifted';
-        const isDragTarget = previewCell?.role === 'target';
-        const isDragGenerated = previewCell?.role === 'generated';
-        const isDragVacated = props.rotoDragVacatedAppFrames.has(frame);
-        const isDragCommitting = Boolean(props.rotoDragPreview?.pending && props.rotoDragPreviewViewModel);
-        const hasTargetFeedback = Boolean(props.rotoDragFeedback && (isDragMoved || isDragShifted || isDragTarget || isDragGenerated || isDragVacated || isDragSource));
-        const dragLabel = hasTargetFeedback
-          ? (previewCell?.ariaLabel ?? props.rotoDragFeedback ?? vm.ariaLabel)
-          : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
-        const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
-          ? 'real-key'
-          : isGenerated
-            ? 'generated'
-            : vm.baseMeaning === 'cached'
-              ? 'cached'
-              : vm.baseMeaning === 'background-only'
-                ? 'background-only'
-                : 'empty';
-        // D-18: linked cells keep their existing cell-state fill,
-        // while tooltip/aria copy comes from the typed resolution and
-        // the one compact loopId → source-frame-count index above.
-        const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
-          ? existingCellTooltipKind
-          : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
-        const baseCellTooltipCopy = frameResolution === null
-          ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
-          : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, props.loopSourceFrameCountById);
-        // Real keys use primary-versus-complete selection treatment;
-        // non-real cells keep the cursor unless Select All owns selection.
-        const isCurrentFrame = vm.overlays.includes('current');
-        const isPrimarySelected = !isSpacingProxySelected
-          && cellKeyId !== null
-          && props.rotoPrimarySelectedKeyId === cellKeyId;
-        const isSecondarySelected = !isSpacingProxySelected
-          && cellKeyId !== null
-          && props.rotoSelectedKeyIdSet.has(cellKeyId)
-          && props.rotoSelectedKeyIdSet.size >= 2
-          && !isPrimarySelected;
-        const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && props.rotoSelectedKeyIdSet.size >= 2;
-        // 47 close-out: the current-frame cell paints orange even
-        // when it is a real key — real keys previously painted ONLY
-        // via the primary-selection match, so a key at the playhead
-        // stayed dark when that match didn't land (the persistent
-        // "real keys never turn orange" bug). The selection match
-        // still applies for non-current selected keys.
-        const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;
-        const cellBaseTooltipCopy = isSpacingProxySelected
-          ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
-          : isSecondarySelected
-            ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
-            : baseCellTooltipCopy;
-        const cellBaseAriaLabel = isSpacingProxySelected
-          ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
-          : hasLinkedLoopBadge
-            ? `${baseCellTooltipCopy} · Frame ${frame}`
-            : isSecondarySelected
-              ? `${dragLabel} Selected.`
-              : dragLabel;
-        const cellPresentation = getRotoCellPresentationViewModel({
-          kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
-          keyId: cellKeyId,
-          orderedRealKeyIds: props.realKeyOrderById,
-          incomingInterpolationBreakKeyIds: props.incomingInterpolationBreakKeyIdSet,
-          baseCopy: cellBaseTooltipCopy,
-          ariaLabel: cellBaseAriaLabel,
-        });
-        const cellAriaLabel = cellPresentation.ariaLabel;
-        const cellTooltipCopy = cellPresentation.tooltipCopy;
-        // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
-        // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
-        // gap treatment (D-02). Class application only — no new DOM nodes.
-        const isRotoGroupDragGapPreview = props.rotoGroupDragGapPreviewAppFrames.has(frame);
-        const isRotoKeyRailDragGapPreview = props.rotoKeyRailDragGapPreviewAppFrames.has(frame);
-        // 43.5-05 Task 2 (T5): the push would-open gap previews as
-        // ordinary roto-fill-empty cells, byte-identical to the
-        // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
-        const isPushGapPreview = props.pushGapPreviewAppFrames.has(frame);
-        // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
-        // preview as ordinary roto-fill-empty cells, byte-identical
-        // to the 43.2-43.5 gap treatment (D-09).
-        const isRailSetGapPreview = props.railSetGapPreviewAppFrames.has(frame);
-        const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
-          ? 'roto-fill-empty' : fillClass;
-        const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${props.rotoDragPreview && !props.rotoDragPreview.candidateValid && props.rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${props.rotoDragPreview?.groupDrag && props.rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${props.rotoDragPreview?.groupDrag && !props.rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
-        return (
-          <RotoTimelineCellButton
-            key={frame}
-            frame={frame}
-            vm={vm}
-            cellClass={cellClass}
-            semanticKind={semanticKind}
-            cellKeyId={cellKeyId}
-            dragEligible={dragEligible}
-            startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
-            ariaLabel={cellAriaLabel}
-            ariaSelected={isSpacingProxySelected || isSecondarySelected}
-            tooltipCopy={cellTooltipCopy}
-            onCellPointerDown={props.onCellPointerDown}
-            onCellClick={props.onCellClick}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-interface PhysicsPaintWorkflowCapsuleSubscriberProps {
-  currentFrameSignal: ReadonlySignal<number>;
-  physicalCellByAppFrame: ReadonlyMap<number, RotoPhysicalTimelineCell>;
-  keyUtilitiesDisabledByBusyState: boolean;
-  pushDragFeedback: string | null;
-  railSetDragFeedback: string | null;
-  rotoDragFeedback: string | null;
-  statusMessage: string | null;
-  operationResult: string | null;
-  rotoCachedPlaybackStatus: string | null;
-  scriptStatus: string | null;
-  generatedGuardStatus: string | null;
-  soloCapsuleLine: string | null;
-  railSetCopy: string | null;
-  capsuleTextSignal: Signal<string>;
-}
-
-/**
- * 260905-ibd follow-up (G-52-9): the status capsule is a narrow
- * currentFrameSignal subscriber. The strip body is memoized, so the capsule
- * derivation must re-run per scrub frame on its own — the ONLY frame-dependent
- * facts are the busy-status line (getRotoKeyBusyStatus) and the idle-context
- * frame/cell-kind line. Everything else (drag feedback, playback status,
- * script status, solo/set copy) is frame-independent and arrives as stable
- * props from the memoized body. The subscriber writes the guarded echo to the
- * capsuleTextSignal the memoized static chrome reads.
- */
-function PhysicsPaintWorkflowCapsuleSubscriber(props: PhysicsPaintWorkflowCapsuleSubscriberProps) {
-  const currentFrame = props.currentFrameSignal.value;
-  const currentSemanticCell = props.physicalCellByAppFrame.get(currentFrame) ?? null;
-  const capsuleText = getRotoStatusCapsuleViewModel({
-    pendingOperation: props.pushDragFeedback ?? props.railSetDragFeedback ?? props.rotoDragFeedback ?? (props.keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(currentFrame) : null),
-    savingIndicator: props.statusMessage ?? null,
-    operationResult: props.operationResult ?? null,
-    feedback: [
-      { text: props.rotoCachedPlaybackStatus ?? null, recency: 2 },
-      { text: props.scriptStatus, recency: 1 },
-      { text: props.generatedGuardStatus, recency: 0 },
-    ],
-    soloLine: props.soloCapsuleLine,
-    setCopy: props.railSetCopy,
-    ambient: getRotoStatusCapsuleIdleContext({
-      cellKind: currentSemanticCell?.kind ?? null,
-      frame: currentFrame,
-    }),
-  });
-  if (props.capsuleTextSignal.peek() !== capsuleText) props.capsuleTextSignal.value = capsuleText;
-  return null;
-}
-
-function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
-  recordPhysicsPaintPerformanceCounter('render.workflowStrip');
-  const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
-  // 47-01 UAT round 4: custom vertical scrollbar state (thumb top/height),
-  // mirroring the horizontal pill design for the rows-region.
-  const [verticalScrollbar, setVerticalScrollbar] = useState({ top: 0, height: 0, visible: false });
-  const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
-  // Group Rail drag preview (plan 03): session-only publication surfaced by the
-  // rail's session hook, consumed for the gap preview paint only (Pitfall 5).
-  const [rotoGroupDragPreview, setRotoGroupDragPreview] = useState<GroupRailDragPreviewState | null>(null);
-  const [rotoKeyRailDragPreview, setRotoKeyRailDragPreview] = useState<
-    KeyRailDragPreviewState<RotoKeyRailDragPublication> | null
-  >(null);
-  const timelineScrollRef = useRef<HTMLDivElement>(null);
-  const timelineContentRef = useRef<HTMLDivElement>(null);
-  // 47-01 header column: the pinned header-rows container and the rows-region
-  // share the same vertical scroll position (D-05). The sync is a no-op while
-  // the track count fits the band; it keeps header cells aligned with their
-  // rows once the region overflows.
-  const headerRowsRef = useRef<HTMLDivElement>(null);
-  // 47-02 Task 3: the pinned header-column element itself never scrolls (D-01)
-  // — the band INSIDE it carries the vertical scroll position. The strip owns
-  // the ref so the pinned contract is observable (scrollTop stays 0 while the
-  // rows region scrolls).
-  const headerColumnRef = useRef<HTMLDivElement>(null);
-  const rowsRegionRef = useRef<HTMLDivElement>(null);
-  const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
-  const suppressNextRotoClickRef = useRef(false);
-  const mountedRef = useRef(true);
-  // 43.4 defect 6: the last focused Key Rail button and its timeline container,
-  // so a Delete/Undo/Redo commit that removes the button can restore focus to
-  // the stable container instead of leaving it orphaned on body.
-  const lastFocusedRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
-  // 260905-ibd (G-52-9): the Studio-owned current-frame signal. The strip uses
-  // the prop signal directly (identity-stable across scrub renders); a fallback
-  // mirror keeps direct-render test harnesses working without the prop.
-  const currentFrameSignal = props.currentFrameSignal ?? useSignal(props.currentFrame ?? 0);
-  if (!props.currentFrameSignal && currentFrameSignal.peek() !== (props.currentFrame ?? 0)) {
-    // The prop is absent here, so the fallback is the useSignal mirror (writable).
-    (currentFrameSignal as Signal<number>).value = props.currentFrame ?? 0;
-  }
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
   // 47-01 mockup redesign: edit-in-place rename state. The header column is
@@ -2867,48 +1771,79 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
     }
     return { starts, ends };
   }, [loopResolutionContext]);
+  // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
+  // RESEARCH Pattern 3). Full invalidation on ANY structural identity change
+  // (the physical-cell Map or the cached-frame arrays — realCachedRotoFrames
+  // is memoized from cachedRotoFrames, so its identity tracks it). On a pure
+  // currentFrame change ONLY the previously-current and newly-current entries
+  // are dropped: `currentFrame` reaches `getRotoCellViewModel` solely through
+  // the `current` overlay (frame === currentFrame), so every other entry
+  // stays byte-valid. Drag preview, selection, and saved-marker state are
+  // read per-render in the cell loop below and are NOT cache inputs.
+  const activeCellDerivationCache = rotoCellDerivationCacheRef.current;
+  if (
+    activeCellDerivationCache === null ||
+    activeCellDerivationCache.physicalCellByAppFrame !== physicalCellByAppFrame ||
+    activeCellDerivationCache.cachedFrameByAppFrame !== cachedFrameByAppFrame
+  ) {
+    rotoCellDerivationCacheRef.current = {
+      physicalCellByAppFrame,
+      cachedFrameByAppFrame,
+      realCachedFrameSet,
+      currentFrame: props.currentFrame,
+      entries: new Map(),
+    };
+  } else if (activeCellDerivationCache.currentFrame !== props.currentFrame) {
+    activeCellDerivationCache.entries.delete(activeCellDerivationCache.currentFrame);
+    activeCellDerivationCache.entries.delete(props.currentFrame);
+    activeCellDerivationCache.currentFrame = props.currentFrame;
+  }
+  const getRotoCellDerivation = (frame: number): RotoCellDerivation => {
+    const cache = rotoCellDerivationCacheRef.current as RotoCellDerivationCache;
+    const cached = cache.entries.get(frame);
+    if (cached) return cached;
+    // Byte-identical to the pre-cache cell-loop derivation: same inputs, same
+    // pure helpers, same argument order — only WHEN it runs changed (D-09).
+    const cachedFramesForCell = cache.cachedFrameByAppFrame;
+    const vm = getRotoCellViewModel({
+      frame,
+      currentFrame: props.currentFrame,
+      cachedFrames: cachedFramesForCell,
+    });
+    const fill = getRotoCellFill(frame, cache.realCachedFrameSet);
+    const derivation: RotoCellDerivation = { vm, fill };
+    cache.entries.set(frame, derivation);
+    return derivation;
+  };
   const hasGeneratedInBetweens = generatedRotoFrames.length > 0;
   const interpolationStatus = interpolationEnabled
     ? hasGeneratedInBetweens
       ? INTERPOLATION_ENABLED_STATUS
       : 'Generated in-betweens on — save at least two real Roto keys.'
     : INTERPOLATION_DISABLED_STATUS;
-  // 260905-ibd follow-up (G-52-9): the action-row receives the real-key verdict
-  // as a signal so the memoized row shell does not re-render when the frame
-  // crosses a key boundary — only the buttons that read it re-render. useMemo +
-  // computed (not useComputed) so a structural index change re-creates the
-  // computed against the fresh map instead of caching a stale closure.
-  const isCurrentRealRotoKeySignal = useMemo(
-    () => computed(() => {
-      const frame = currentFrameSignal.value;
-      return physicalCellByAppFrame.get(frame)?.kind === 'real';
-    }),
-    [physicalCellByAppFrame, currentFrameSignal],
-  );
-  // 260905-ibd follow-up (G-52-9): the strip body is memoized, so the
-  // frame-dependent reads below use peek() (no subscription) — they feed the
-  // key-rail drag delete-unavailable reason, which is only visible while a drag
-  // is live (the drag preview re-renders the body, so the value is fresh then).
-  // The capsule and cell loop read the LIVE signal in their own narrow
-  // subscribers. currentSemanticCell/currentRotoCell stay here for the drag
-  // surface; the capsule subscriber derives its own fresh copies.
-  const currentFramePeek = currentFrameSignal.peek();
-  const currentSemanticCell = physicalCellByAppFrame.get(currentFramePeek) ?? null;
-  const currentRotoCell = getRotoCellViewModel({ frame: currentFramePeek, currentFrame: currentFramePeek, cachedFrames: cachedFrameByAppFrame });
-  const isCurrentRealRotoKey = isCurrentRealRotoKeySignal.peek();
+  const currentSemanticCell = physicalCellByAppFrame.get(props.currentFrame) ?? null;
+  const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: cachedFrameByAppFrame });
+  const isCurrentRealRotoKey = currentSemanticCell?.kind === 'real';
+  const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const physicalActions = props.rotoPhysicalActions;
-  // 260905-ibd follow-up (G-52-9): the strip body subscribes to DERIVED
-  // primitives only — narrow computeds over the session availability signal —
-  // so an availability object rebuild re-renders the strip body only when one
-  // of these exact verdicts genuinely flips (never on an unrelated flag or a
-  // same-valued rebuild). The force-spacing availability reads live in the
-  // static chrome's own narrow subscriber (PhysicsPaintForceSpacingForm).
-  // useMemo + computed (not useComputed): the test harness mocks preact/hooks,
-  // and @preact/signals' useComputed bypasses that mock — same constraint as
-  // isCurrentRealRotoKeySignal above.
-  const sessionBusy = useMemo(() => computed(() => props.sessionAvailability?.value.busy ?? false), [props.sessionAvailability]);
-  const sessionCanDelete = useMemo(() => computed(() => props.sessionAvailability?.value.canDelete ?? false), [props.sessionAvailability]);
-  const sessionDisabledReason = useMemo(() => computed(() => props.sessionAvailability?.value.disabledReason ?? null), [props.sessionAvailability]);
+  const physicalInsertAvailable = physicalActions?.canInsertFrame.value ?? false;
+  const physicalDeleteAvailable = physicalActions?.canDeleteFrame.value ?? false;
+  const physicalScissorAvailable = physicalActions?.canScissor.value ?? false;
+  const physicalInsertDisabledReason = physicalActions?.insertDisabledReason.value ?? null;
+  const insertRotoKeyDescription = physicalActions?.insertTooltipDescription.value ?? 'Insert key before';
+  const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
+  const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';
+  const physicalScissorDisabledReason = physicalActions?.scissorDisabledReason.value ?? null;
+  const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
+  const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
+  const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
+  // Set Key Space guarded action (36.15-08): the relocated bottom-row form uses
+  // the same guarded-icon contract as the other row actions — no native
+  // disabled/title; the submit handler keeps its verbatim mutation-lock guard.
+  const canApplyForceSpacingAction = forceSpacingAvailable && props.ready !== false && !props.mutationLocked;
+  const forceSpacingActionDisabledReason = canApplyForceSpacingAction
+    ? null
+    : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
   const scriptStatus = props.rotoScript?.status.value ?? null;
   // 260905-dso: the relocated buffer Apply/Clear availability — mirrors the
   // ScriptsPanel derivation exactly, reading the signals in render the same
@@ -2919,27 +1854,72 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
   const applyScriptActionDisabledReason = scriptActionMutationDisabledReason ?? (canApplyScriptAction ? null : (scriptAvailability?.applyDisabledReason ?? null));
   const canClearScriptBuffer = scriptActionMutationDisabledReason === null && (scriptAvailability?.canDiscard ?? false);
   const clearScriptBufferDisabledReason = scriptActionMutationDisabledReason ?? (canClearScriptBuffer ? null : (scriptAvailability?.discardDisabledReason ?? null));
-  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || sessionBusy.value || Boolean(rotoDragPreview?.pending);
+  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
+  const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
+  const canInsertRotoKey = physicalActions ? physicalInsertAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
+  const canDuplicateRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDuplicate || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
+  const canDeleteRotoKey = physicalActions ? physicalDeleteAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
+  const canScissorRotoKey = Boolean(physicalActions)
+    && physicalScissorAvailable
+    && props.ready !== false
+    && !keyUtilitiesDisabledByBusyState;
+  const scissorRotoKeyDisabledReason = canScissorRotoKey
+    ? null
+    : physicalScissorDisabledReason ?? 'Scissor is unavailable.';
   const physicalDragAvailable = physicalActions?.canDragKey.value ?? false;
   const rotoDragLocked = keyUtilitiesDisabledByBusyState || !physicalActions || !physicalDragAvailable;
-  // 260905-ibd (G-52-9): the key-rail drag delete-unavailable reason stays in
-  // the strip (the drag surface consumes it); the action-row re-derives its own
-  // copy from the same controller ports.
-  const canDeleteRotoKey = physicalActions
-    ? physicalActions.canDeleteFrame.value && props.ready !== false
-    : (props.sessionAvailability ? (sessionCanDelete.value || (isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState)) && props.ready !== false : isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState);
-  const deleteRotoKeyDisabledReason = canDeleteRotoKey
+  // Guarded-icon-action availability reasons (D-12): verbatim controller ports
+  // via getRotoKeyUtilityDisabledMessage (which defers to physicalActions /
+  // sessionKeyAvailability reasons) and scriptAvailability reason ports. The
+  // view never shortens, re-derives, or infers these reasons.
+  const insertRotoKeyDisabledReason = canInsertRotoKey ? null : getRotoKeyUtilityDisabledMessage('insert');
+  const duplicateRotoKeyDisabledReason = canDuplicateRotoKey ? null : getRotoKeyUtilityDisabledMessage('duplicate');
+  // + Key availability flows from the physical action bundle's reactive port
+  // (launch, pending, current-frame occupancy) plus the shared busy lock; the
+  // disabled reason stays verbatim from the controller port (D-12).
+  const canAddRotoKey = Boolean(physicalActions) && physicalActions!.canAddEmptyKey.value && props.ready !== false && !keyUtilitiesDisabledByBusyState;
+  const addRotoKeyDisabledReason = canAddRotoKey
     ? null
-    : physicalActions
-      ? (physicalActions.deleteDisabledReason.value ?? 'Delete is unavailable.')
-      : sessionBusy.value
-        ? (sessionDisabledReason.value ?? 'Finish the current key action before using key tools.')
-        : keyUtilitiesDisabledByBusyState
-          ? 'Finish the current key action before using key tools.'
-          : (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false)
-            ? GENERATED_ROTO_DISABLED_STATUS_TEMPLATE.replace('{frame}', String(currentRotoCell.frame))
-            : 'Select a real Roto key to delete.';
+    : keyUtilitiesDisabledByBusyState || props.ready === false
+      ? 'Finish the current key action before using key tools.'
+      : physicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
+  // 260905-d1w amendment: + Rail extends the + Key base law with two
+  // current-frame exclusions — a generated in-between and a linked Rail
+  // repeat. Reason priority: the base addEmptyKeyDisabledReason first
+  // (busy/ready/real-key), then repeat, then generated.
+  const currentFrameResolution = visibleFrameResolutions?.get(props.currentFrame) ?? null;
+  const isCurrentFrameGenerated = physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated';
+  const isCurrentFrameLinkedRepeat = isLinkedRepeatFrameResolution(currentFrameResolution);
+  const canCreateRail = canAddRotoKey && !isCurrentFrameGenerated && !isCurrentFrameLinkedRepeat;
+  const railCreateDisabledReason = canCreateRail
+    ? null
+    : addRotoKeyDisabledReason
+      ?? (isCurrentFrameLinkedRepeat
+        ? 'The current frame is a linked Rail repeat — move to an empty frame to create a Rail.'
+        : isCurrentFrameGenerated
+          ? 'The current frame is a generated in-between — move to an empty frame to create a Rail.'
+          : 'Creating a Rail is unavailable.');
+  const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
+  const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
+  const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
+  // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
+  // availability hold; the disabled tooltip shows the underlying copy or
+  // delete controller reason verbatim.
+  const canCutRotoKey = canCopyRotoKey && canDeleteRotoKey;
+  const cutRotoKeyDisabledReason = canCutRotoKey ? null : (copyRotoKeyDisabledReason ?? deleteRotoKeyDisabledReason);
+  // Select All guarded icon (37-04; D-03): availability flows from the 37-03
+  // canSelectAllKeys / selectAllKeysDisabledReason computeds plus the shared
+  // busy lock; the disabled reason stays verbatim from the controller port
+  // (36.15 D-28 — aria-disabled only, never the native disabled attribute).
+  const canSelectAllRotoKeys = (physicalActions?.canSelectAllKeys.value ?? false) && props.ready !== false && !keyUtilitiesDisabledByBusyState;
+  const selectAllDisabledReason = canSelectAllRotoKeys
+    ? null
+    : keyUtilitiesDisabledByBusyState && physicalActions?.canSelectAllKeys.value
+      ? ROTO_KEY_BUSY_STATUS_TEMPLATE
+      : physicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
   // Directional Push tool (43.5-05): ONE Push tool as a mode toggle — no
   // selection requirement. The anchor is resolved from the rail under the
   // pointer on drag (which selects it and moves its set); the button is enabled
@@ -2986,6 +1966,16 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
     }
     if (!isPushToolArmed()) togglePushTool();
   }, [pushArmedNow, keyRailSegments]);
+  const insertKeyTooltip = useStyledTooltip();
+  const addKeyTooltip = useStyledTooltip();
+  const duplicateKeyTooltip = useStyledTooltip();
+  const copyKeyTooltip = useStyledTooltip();
+  const cutKeyTooltip = useStyledTooltip();
+  const scissorKeyTooltip = useStyledTooltip();
+  const pasteKeyTooltip = useStyledTooltip();
+  const deleteKeyTooltip = useStyledTooltip();
+  const selectAllTooltip = useStyledTooltip();
+  const pushTooltip = useStyledTooltip();
   // 43.6-06 Solo arm (D-14/D-15/D-20): a mode toggle enabled whenever ANY rail
   // selection exists (a single selected Rail is a set of one) and editing
   // isn't mutation-locked. Armed state lives in the sibling session-only
@@ -3007,6 +1997,8 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
       ? 'Select a Rail to solo.'
       : ROTO_KEY_BUSY_STATUS_TEMPLATE
     : null;
+  // 52-04 (D-19): the "Create rail" button tooltip.
+  const railCreateTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -3988,12 +2980,8 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
     return buildRailSetSoloCopy(members);
   }, [soloArmed, keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips, props.selectedRotoKeyRail, props.selectedRotoLoopClipIds]);
   const railSetSize = (props.railSetMemberLoopIds?.length ?? 0) + (props.railSetMemberKeyRailIds?.length ?? 0);
-  // 260905-ibd follow-up (G-52-9): the capsule derivation moved into the
-  // PhysicsPaintWorkflowCapsuleSubscriber narrow subscriber (it re-runs per
-  // scrub frame). The signal keeps a peek-based initial value so the first
-  // render shows the right text before the subscriber's guarded echo lands.
-  const capsuleTextSignal = useSignal(getRotoStatusCapsuleViewModel({
-    pendingOperation: pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(currentFramePeek) : null),
+  const capsuleText = getRotoStatusCapsuleViewModel({
+    pendingOperation: pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
     savingIndicator: props.statusMessage ?? null,
     operationResult: props.operationResult ?? null,
     feedback: [
@@ -4005,9 +2993,11 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
     setCopy: railSetCopy,
     ambient: getRotoStatusCapsuleIdleContext({
       cellKind: currentSemanticCell?.kind ?? null,
-      frame: currentFramePeek,
+      frame: props.currentFrame,
     }),
-  }));
+  });
+  const capsuleTextSignal = useSignal(capsuleText);
+  if (capsuleTextSignal.peek() !== capsuleText) capsuleTextSignal.value = capsuleText;
   // 43.5-02 Task 2: the relocated Key Spacing form lives inside the memoized
   // static chrome, so the handlers it wires must keep stable identity (same
   // guard bodies as the bottom-row version — byte-identical behavior).
@@ -4017,11 +3007,9 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
 
   const handleForceSpacingSubmit = useCallback((event: Event) => {
     event.preventDefault();
-    // 260905-ibd follow-up (G-52-9): call-time read (peek) — the memoized strip
-    // must not close over a render-scoped availability value.
-    if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;
+    if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;
     void physicalActions?.applyForceSpacing();
-  }, [physicalActions, props.ready, props.mutationLocked]);
+  }, [physicalActions, forceSpacingAvailable, props.ready, props.mutationLocked]);
 
   const rotoCellClickStateRef = useRef({
     keyIdByAppFrame,
@@ -4106,8 +3094,29 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
     current.onNavigateToSyncedFrame(frame);
   }, []);
 
+  function getGeneratedRotoTitle(frame: number): string {
+    return GENERATED_ROTO_TITLE_TEMPLATE.replace('{frame}', String(frame));
+  }
+
   function getGeneratedRotoDisabledStatus(frame: number): string {
     return GENERATED_ROTO_DISABLED_STATUS_TEMPLATE.replace('{frame}', String(frame));
+  }
+
+  function getRotoKeyBusyStatus(frame: number): string {
+    return ROTO_KEY_BUSY_STATUS_TEMPLATE.replace('{frame}', String(frame));
+  }
+
+  function getRotoKeyUtilityDisabledMessage(action: RotoKeyUtilityAction): string {
+    if (action === 'insert' && physicalActions) return physicalInsertDisabledReason ?? 'Insert is unavailable.';
+    if (action === 'delete' && physicalActions) return physicalDeleteDisabledReason ?? 'Delete is unavailable.';
+    if (sessionKeyAvailability?.busy) return sessionKeyAvailability.disabledReason ?? 'Finish the current key action before using key tools.'.replace('{frame}', String(props.currentFrame));
+    if (keyUtilitiesDisabledByBusyState) return 'Finish the current key action before using key tools.'.replace('{frame}', String(props.currentFrame));
+    if (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) return 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.'.replace('{frame}', String(currentRotoCell.frame));
+    if (action === 'paste') return sessionKeyAvailability?.pasteDisabledReason ?? 'Copy a real Roto key before pasting.';
+    if (action === 'insert') return 'Select a real Roto key to insert.';
+    if (action === 'duplicate') return 'Select a real Roto key to duplicate.';
+    if (action === 'copy') return 'Select a real Roto key to copy.';
+    return 'Select a real Roto key to delete.';
   }
 
   const updateScrollbar = useCallback(() => {
@@ -4804,37 +3813,173 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
                     onRailFocus={handleRailFocus}
                   />
                 ) : null}
-                                <PhysicsPaintRotoCells
-                  currentFrameSignal={currentFrameSignal}
-                  frameCells={frameCells}
-                  physicalCellByAppFrame={physicalCellByAppFrame}
-                  cachedFrameByAppFrame={cachedFrameByAppFrame}
-                  realCachedFrameSet={realCachedFrameSet}
-                  visibleFrameResolutions={visibleFrameResolutions}
-                  visibleSpacingProxies={visibleSpacingProxies}
-                  rotoSpacingSelection={props.rotoSpacingSelection}
-                  rotoSpacingSelectedSourceKeyIdSet={rotoSpacingSelectedSourceKeyIdSet}
-                  loopBoundaryFrames={loopBoundaryFrames}
-                  lifecycleTargetByAppFrame={lifecycleTargetByAppFrame}
-                  keyIdByAppFrame={keyIdByAppFrame}
-                  rotoDragLocked={rotoDragLocked}
-                  rotoDragPreviewViewModel={rotoDragPreviewViewModel}
-                  rotoDragPreview={rotoDragPreview}
-                  rotoDragVacatedAppFrames={rotoDragVacatedAppFrames}
-                  rotoDragFeedback={rotoDragFeedback}
-                  loopSourceFrameCountById={loopSourceFrameCountById}
-                  rotoPrimarySelectedKeyId={props.rotoPrimarySelectedKeyId ?? null}
-                  rotoSelectedKeyIdSet={rotoSelectedKeyIdSet}
-                  realKeyOrderById={realKeyOrderById}
-                  incomingInterpolationBreakKeyIdSet={incomingInterpolationBreakKeyIdSet}
-                  rotoGroupDragGapPreviewAppFrames={rotoGroupDragGapPreviewAppFrames}
-                  rotoKeyRailDragGapPreviewAppFrames={rotoKeyRailDragGapPreviewAppFrames}
-                  pushGapPreviewAppFrames={pushGapPreviewAppFrames}
-                  railSetGapPreviewAppFrames={railSetGapPreviewAppFrames}
-                  savedRotoFrames={props.savedRotoFrames}
-                  onCellPointerDown={handleRotoTimelineCellPointerDown}
-                  onCellClick={handleRotoTimelineCellClick}
-                />
+                <div
+                  class="physics-paint-roto-cells"
+                  role="row"
+                  style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
+                >
+                  {frameCells.map(frame => {
+                    const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
+                    const isGenerated = semanticCell?.kind === 'generated';
+                    // Phase 43: lazy per-frame resolution for this visible cell
+                    // (null when no loop context is supplied). Exhaustive mappers
+                    // gate every virtual linked occurrence out of selection/drag
+                    // (D-11/D-23) while preserving the existing cell-state fill
+                    // (D-18). The local badge/aria predicate intentionally groups
+                    // the four linked variants as presentation-only occurrences.
+                    const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
+                    const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;
+                    const isSpacingProxySelected = spacingProxy !== null
+                      && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
+                      && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
+                    const isLoopBoundaryStart = loopBoundaryFrames.starts.has(frame);
+                    const isLoopBoundaryEnd = loopBoundaryFrames.ends.has(frame);
+                    const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
+                      || frameResolution?.kind === 'linked-generated'
+                      || frameResolution?.kind === 'linked-gap'
+                      || frameResolution?.kind === 'linked-unresolved';
+                    const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
+                      || ((frameResolution?.kind === 'linked'
+                        || frameResolution?.kind === 'linked-generated'
+                        || frameResolution?.kind === 'linked-gap')
+                        && frameResolution.repeatInstance > 0);
+                    const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
+                      && frameResolution.repeatInstance > 0
+                      && !isGenerated;
+                    const linkedLoopClass = isLinkedRepeat
+                      ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
+                      : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
+                        ? 'roto-linked-source-generated'
+                        : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
+                          : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
+                            : '';
+                    const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
+                    // Cached per-cell derivation (38.1-04, Option A): recomputed
+                    // for at most the previous+new current cells on a pure frame
+                    // change; the value is byte-identical to the pre-cache
+                    // inline derivation.
+                    const { vm, fill } = getRotoCellDerivation(frame);
+                    const isPhysicalRealKey = semanticCell?.kind === 'real';
+                    const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
+                    const fillClass = getRotoAcceptedCellFillClass({
+                      lifecycleTargetKind: lifecycleTarget.kind,
+                      resolutionKind: frameResolution?.kind ?? 'empty',
+                      isPhysicalRealKey,
+                      fill,
+                      viewModelFillClass: vm.fillClass,
+                    });
+                    const isOccupiedRealKey = isPhysicalRealKey;
+                    const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
+                    const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
+                    const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
+                    const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
+                    // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
+                    const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
+                    const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
+                    const isDragMoved = previewCell?.role === 'moved';
+                    const isDragShifted = previewCell?.role === 'shifted';
+                    const isDragTarget = previewCell?.role === 'target';
+                    const isDragGenerated = previewCell?.role === 'generated';
+                    const isDragVacated = rotoDragVacatedAppFrames.has(frame);
+                    const isDragCommitting = Boolean(rotoDragPreview?.pending && rotoDragPreviewViewModel);
+                    const hasTargetFeedback = Boolean(rotoDragFeedback && (isDragMoved || isDragShifted || isDragTarget || isDragGenerated || isDragVacated || isDragSource));
+                    const dragLabel = hasTargetFeedback
+                      ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
+                      : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
+                    const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
+                      ? 'real-key'
+                      : isGenerated
+                        ? 'generated'
+                        : vm.baseMeaning === 'cached'
+                          ? 'cached'
+                          : vm.baseMeaning === 'background-only'
+                            ? 'background-only'
+                            : 'empty';
+                    // D-18: linked cells keep their existing cell-state fill,
+                    // while tooltip/aria copy comes from the typed resolution and
+                    // the one compact loopId → source-frame-count index above.
+                    const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
+                      ? existingCellTooltipKind
+                      : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
+                    const baseCellTooltipCopy = frameResolution === null
+                      ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
+                      : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
+                    // Real keys use primary-versus-complete selection treatment;
+                    // non-real cells keep the cursor unless Select All owns selection.
+                    const isCurrentFrame = vm.overlays.includes('current');
+                    const isPrimarySelected = !isSpacingProxySelected
+                      && cellKeyId !== null
+                      && props.rotoPrimarySelectedKeyId === cellKeyId;
+                    const isSecondarySelected = !isSpacingProxySelected
+                      && cellKeyId !== null
+                      && rotoSelectedKeyIdSet.has(cellKeyId)
+                      && rotoSelectedKeyIdSet.size >= 2
+                      && !isPrimarySelected;
+                    const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
+                    // 47 close-out: the current-frame cell paints orange even
+                    // when it is a real key — real keys previously painted ONLY
+                    // via the primary-selection match, so a key at the playhead
+                    // stayed dark when that match didn't land (the persistent
+                    // "real keys never turn orange" bug). The selection match
+                    // still applies for non-current selected keys.
+                    const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;
+                    const cellBaseTooltipCopy = isSpacingProxySelected
+                      ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
+                      : isSecondarySelected
+                        ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
+                        : baseCellTooltipCopy;
+                    const cellBaseAriaLabel = isSpacingProxySelected
+                      ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
+                      : hasLinkedLoopBadge
+                        ? `${baseCellTooltipCopy} · Frame ${frame}`
+                        : isSecondarySelected
+                          ? `${dragLabel} Selected.`
+                          : dragLabel;
+                    const cellPresentation = getRotoCellPresentationViewModel({
+                      kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
+                      keyId: cellKeyId,
+                      orderedRealKeyIds: realKeyOrderById,
+                      incomingInterpolationBreakKeyIds: incomingInterpolationBreakKeyIdSet,
+                      baseCopy: cellBaseTooltipCopy,
+                      ariaLabel: cellBaseAriaLabel,
+                    });
+                    const cellAriaLabel = cellPresentation.ariaLabel;
+                    const cellTooltipCopy = cellPresentation.tooltipCopy;
+                    // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
+                    // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
+                    // gap treatment (D-02). Class application only — no new DOM nodes.
+                    const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
+                    const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);
+                    // 43.5-05 Task 2 (T5): the push would-open gap previews as
+                    // ordinary roto-fill-empty cells, byte-identical to the
+                    // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
+                    const isPushGapPreview = pushGapPreviewAppFrames.has(frame);
+                    // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
+                    // preview as ordinary roto-fill-empty cells, byte-identical
+                    // to the 43.2-43.5 gap treatment (D-09).
+                    const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
+                    const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
+                      ? 'roto-fill-empty' : fillClass;
+                    const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                    return (
+                      <RotoTimelineCellButton
+                        key={frame}
+                        frame={frame}
+                        vm={vm}
+                        cellClass={cellClass}
+                        semanticKind={semanticKind}
+                        cellKeyId={cellKeyId}
+                        dragEligible={dragEligible}
+                        startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
+                        ariaLabel={cellAriaLabel}
+                        ariaSelected={isSpacingProxySelected || isSecondarySelected}
+                        tooltipCopy={cellTooltipCopy}
+                        onCellPointerDown={handleRotoTimelineCellPointerDown}
+                        onCellClick={handleRotoTimelineCellClick}
+                      />
+                    );
+                  })}
+                </div>
                 {/* 43.5-05 design revision: armed anchor pre-highlight — the
                     selected Rail shows the prospective-set treatment as soon as
                     armed (the direction is chosen by the drag, so no pivot tick
@@ -4954,22 +4099,6 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
         onPointerUp={handleStripResizePointerEnd}
         onPointerCancel={handleStripResizePointerEnd}
       />
-      <PhysicsPaintWorkflowCapsuleSubscriber
-        currentFrameSignal={currentFrameSignal}
-        physicalCellByAppFrame={physicalCellByAppFrame}
-        keyUtilitiesDisabledByBusyState={keyUtilitiesDisabledByBusyState}
-        pushDragFeedback={pushDragFeedback}
-        railSetDragFeedback={railSetDragFeedback}
-        rotoDragFeedback={rotoDragFeedback}
-        statusMessage={props.statusMessage ?? null}
-        operationResult={props.operationResult ?? null}
-        rotoCachedPlaybackStatus={props.rotoCachedPlaybackStatus ?? null}
-        scriptStatus={scriptStatus}
-        generatedGuardStatus={generatedGuardStatus}
-        soloCapsuleLine={soloCapsuleLine}
-        railSetCopy={railSetCopy}
-        capsuleTextSignal={capsuleTextSignal}
-      />
       <PhysicsPaintWorkflowStaticChrome
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
@@ -5003,8 +4132,10 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
         onGoToLastFrame={props.onGoToLastFrame}
         onClose={props.onClose}
         mutationLocked={Boolean(props.mutationLocked)}
-        rotoPhysicalActions={physicalActions}
+        forceSpacingInput={forceSpacingInput}
         forceSpacingControlsPresent={Boolean(physicalActions)}
+        canApplyForceSpacing={canApplyForceSpacingAction}
+        forceSpacingActionDisabledReason={forceSpacingActionDisabledReason}
         forceSpacingScopeLine={railSetCopy}
         onForceSpacingInput={handleForceSpacingInput}
         onForceSpacingSubmit={handleForceSpacingSubmit}
@@ -5166,34 +4297,377 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
             />
           </div>
         </div>
-        <PhysicsPaintRotoActionRow
-          workflowLabel={props.workflowLabel}
-          currentFrameSignal={currentFrameSignal}
-          rotoPhysicalActions={physicalActions}
-          sessionAvailability={props.sessionAvailability}
-          hasEffectiveRailSetScope={props.hasEffectiveRailSetScope}
-          hasCopiedRotoKey={props.hasCopiedRotoKey}
-          isCurrentRealRotoKeySignal={isCurrentRealRotoKeySignal}
-          ready={props.ready}
-          keyUtilitiesDisabledByBusyState={keyUtilitiesDisabledByBusyState}
-          visibleFrameResolutions={visibleFrameResolutions}
-          physicalCellByAppFrame={physicalCellByAppFrame}
-          pushToolDisabled={pushToolDisabled}
-          pushToolDisabledReason={pushToolDisabledReason}
-          pushArmed={pushArmed}
-          pushArmedClass={pushArmedClass}
-          onAddRotoKey={props.onAddRotoKey}
-          onDuplicateRotoKey={props.onDuplicateRotoKey}
-          onInsertRotoFrame={props.onInsertRotoFrame}
-          onDeleteRotoFrame={props.onDeleteRotoFrame}
-          onSelectAllRotoKeys={props.onSelectAllRotoKeys}
-          onCopyRotoFrame={props.onCopyRotoFrame}
-          onCutRotoFrame={props.onCutRotoFrame}
-          onScissorKeyRail={props.onScissorKeyRail}
-          onPasteRotoFrame={props.onPasteRotoFrame}
-          onCreatePlayScriptRail={props.onCreatePlayScriptRail}
-          onCreateRevealRail={props.onCreateRevealRail}
-        />
+        <div
+          class="physics-paint-roto-action-row"
+          onClickCapture={(event) => {
+            // D-06/D-20: ANY other toolbar action disarms an armed Push tool —
+            // except the Push buttons themselves, which own the arm/disarm
+            // toggle. The Push pill lives in this row, so the guard is scoped
+            // to the push-button class only.
+            if (event.target instanceof Element && !event.target.closest('.physics-paint-push-tool-button')) {
+              disarmPushTool();
+            }
+          }}
+        >
+              <div class="physics-paint-roto-key-identity" role="group" aria-label={`Roto layer ${props.workflowLabel ?? 'PPaint'} key ${props.currentFrame}`}>
+                <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
+                <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
+              </div>
+              <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Add key"
+                    aria-disabled={!canAddRotoKey ? 'true' : undefined}
+                    aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-add' : undefined}
+                    onFocus={addKeyTooltip.onFocus}
+                    onBlur={addKeyTooltip.onBlur}
+                    onClick={() => {
+                      addKeyTooltip.hide();
+                      if (!canAddRotoKey) return;
+                      props.onAddRotoKey?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canAddRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Plus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Key</span>
+                  </button>
+                  {!canAddRotoKey && addRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-add" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
+                    button offering the rail kinds. Motion/Static open the Create
+                    Rail dialog on the Paint tab; Reveal opens the SAME dialog on
+                    the Reveal Photo Rail tab (the SAME create-reveal-rail
+                    mutation — one model, two entry points). 260905-d1w: + Rail
+                    now sits immediately after + Key and is gated by the SAME
+                    availability law (canAddRotoKey + ready + busy-state guard).
+                    260905-d1w amendment: + Rail additionally greys on a generated
+                    in-between or a linked Rail repeat (canCreateRail). */}
+                <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
+                  <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class="physics-paint-roto-key-icon-button"
+                      aria-label="Create rail"
+                      aria-disabled={!canCreateRail ? 'true' : undefined}
+                      aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}
+                      aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
+                      onFocus={railCreateTooltip.onFocus}
+                      onBlur={railCreateTooltip.onBlur}
+                      onClick={() => {
+                        railCreateTooltip.hide();
+                        if (!canCreateRail) return;
+                        railCreateMenuOpen.value = !railCreateMenuOpen.value;
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && !canCreateRail) event.preventDefault();
+                      }}
+                    >
+                      <Plus size={18} aria-hidden="true" />
+                      <span class="physics-paint-roto-key-icon-label">Rail</span>
+                    </button>
+                    {!canCreateRail && railCreateDisabledReason ? (
+                      <span id="roto-key-action-reason-rail-create" class="physics-paint-sr-only">{railCreateDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                    <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('progressive');
+                        }}
+                      >
+                        Motion
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('static');
+                        }}
+                      >
+                        Static
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreateRevealRail?.();
+                        }}
+                      >
+                        Reveal
+                      </button>
+                    </PhysicsPaintRailCreateMenu>
+                  </span>
+                </div>
+                <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
+                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
+                      aria-label="Push"
+                      aria-pressed={pushArmed ? 'true' : 'false'}
+                      aria-disabled={pushToolDisabled ? 'true' : undefined}
+                      aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
+                      onFocus={pushTooltip.onFocus}
+                      onBlur={pushTooltip.onBlur}
+                      onClick={() => {
+                        pushTooltip.hide();
+                        if (pushToolDisabled) return;
+                        // Mode toggle: the anchor is resolved from the rail under
+                        // the pointer on drag — no selection is required to arm.
+                        togglePushTool();
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
+                      }}
+                    >
+                      <MoveHorizontal size={18} aria-hidden="true" />
+                    </button>
+                    {pushToolDisabled ? (
+                      <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                  </span>
+                </div>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label={insertRotoKeyDescription}
+                    aria-disabled={!canInsertRotoKey ? 'true' : undefined}
+                    aria-describedby={!canInsertRotoKey && insertRotoKeyDisabledReason ? 'roto-key-action-reason-insert' : undefined}
+                    onFocus={insertKeyTooltip.onFocus}
+                    onBlur={insertKeyTooltip.onBlur}
+                    onClick={() => {
+                      insertKeyTooltip.hide();
+                      if (!canInsertRotoKey) return;
+                      props.onInsertRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canInsertRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <BetweenVerticalStart size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Insert</span>
+                  </button>
+                  {!canInsertRotoKey && insertRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-insert" class="physics-paint-sr-only">{insertRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Duplicate key"
+                    aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
+                    onFocus={duplicateKeyTooltip.onFocus}
+                    onBlur={duplicateKeyTooltip.onBlur}
+                    onClick={() => {
+                      duplicateKeyTooltip.hide();
+                      if (!canDuplicateRotoKey) return;
+                      props.onDuplicateRotoKey?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <CopyPlus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Duplicate</span>
+                  </button>
+                  {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Duplicate key', duplicateRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Copy key"
+                    aria-disabled={!canCopyRotoKey ? 'true' : undefined}
+                    aria-describedby={!canCopyRotoKey && copyRotoKeyDisabledReason ? 'roto-key-action-reason-copy' : undefined}
+                    onFocus={copyKeyTooltip.onFocus}
+                    onBlur={copyKeyTooltip.onBlur}
+                    onClick={() => {
+                      copyKeyTooltip.hide();
+                      if (!canCopyRotoKey) return;
+                      props.onCopyRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardCopy size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Copy</span>
+                  </button>
+                  {!canCopyRotoKey && copyRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Copy key', copyRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Paste key"
+                    aria-disabled={!canPasteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canPasteRotoKey && pasteRotoKeyDisabledReason ? 'roto-key-action-reason-paste' : undefined}
+                    onFocus={pasteKeyTooltip.onFocus}
+                    onBlur={pasteKeyTooltip.onBlur}
+                    onClick={() => {
+                      pasteKeyTooltip.hide();
+                      if (!canPasteRotoKey) return;
+                      props.onPasteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardPaste size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Paste</span>
+                  </button>
+                  {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={cutKeyTooltip.onPointerEnter} onPointerLeave={cutKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Cut key"
+                    aria-disabled={!canCutRotoKey ? 'true' : undefined}
+                    aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}
+                    onFocus={cutKeyTooltip.onFocus}
+                    onBlur={cutKeyTooltip.onBlur}
+                    onClick={() => {
+                      cutKeyTooltip.hide();
+                      if (!canCutRotoKey) return;
+                      props.onCutRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCutRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Scissors size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Cut</span>
+                  </button>
+                  {!canCutRotoKey && cutRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-cut" class="physics-paint-sr-only">{cutRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={cutKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={scissorKeyTooltip.onPointerEnter} onPointerLeave={scissorKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Split Key Rail"
+                    aria-disabled={!canScissorRotoKey ? 'true' : undefined}
+                    aria-describedby={!canScissorRotoKey && scissorRotoKeyDisabledReason ? 'roto-key-action-reason-scissor' : undefined}
+                    onFocus={scissorKeyTooltip.onFocus}
+                    onBlur={scissorKeyTooltip.onBlur}
+                    onClick={() => {
+                      scissorKeyTooltip.hide();
+                      if (!canScissorRotoKey) return;
+                      props.onScissorKeyRail?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canScissorRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <SquareSplitHorizontal size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Scissor</span>
+                  </button>
+                  {!canScissorRotoKey && scissorRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-scissor" class="physics-paint-sr-only">{scissorRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={scissorKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy(physicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.', scissorRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={selectAllTooltip.onPointerEnter} onPointerLeave={selectAllTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Select all keys"
+                    aria-disabled={!canSelectAllRotoKeys ? 'true' : undefined}
+                    aria-describedby={!canSelectAllRotoKeys && selectAllDisabledReason ? 'roto-key-action-reason-select-all' : undefined}
+                    onFocus={selectAllTooltip.onFocus}
+                    onBlur={selectAllTooltip.onBlur}
+                    onClick={() => {
+                      selectAllTooltip.hide();
+                      if (!canSelectAllRotoKeys) return;
+                      props.onSelectAllRotoKeys?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canSelectAllRotoKeys) event.preventDefault();
+                    }}
+                  >
+                    <ListChecks size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">All</span>
+                  </button>
+                  {!canSelectAllRotoKeys && selectAllDisabledReason ? (
+                    <span id="roto-key-action-reason-select-all" class="physics-paint-sr-only">{selectAllDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button destructive"
+                    aria-label={deleteRotoScopeLabel}
+                    aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
+                    onFocus={deleteKeyTooltip.onFocus}
+                    onBlur={deleteKeyTooltip.onBlur}
+                    onClick={() => {
+                      deleteKeyTooltip.hide();
+                      if (!canDeleteRotoKey) return;
+                      props.onDeleteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Trash2 size={18} aria-hidden="true" />
+                  </button>
+                  {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+              </div>
+            </div>
         <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
           {scrollbar.visible ? (
             <span
@@ -5241,9 +4715,3 @@ function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps) {
    </section>
   );
 }
-
-// 260905-ibd follow-up (G-52-9): the strip body is memoized so a scrub-only
-// Studio render (Object.is-identical workflow props) does not re-render it —
-// the frame-dependent leaves (cells, capsule, playhead) are narrow subscribers.
-const PhysicsPaintWorkflowStrip = memo(PhysicsPaintWorkflowStripImpl);
-export { PhysicsPaintWorkflowStrip };

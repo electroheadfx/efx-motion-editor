@@ -130,7 +130,7 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId());');
     expect(studio).toContain('layerEndExclusive,');
     expect(studio).toContain('remainingCapacity: Math.max(0, layerEndExclusive - placementStart)');
-    expect(studio).toContain('const rotoParentEndExclusive = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0;');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0,');
     expect(studio).not.toContain('rotoParentEndExclusive: rotoPhysicalCapacity');
     expect(studio).not.toContain('layerEndExclusive: physicalCapacity');
     expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
@@ -166,13 +166,13 @@ describe('Physics Paint Play Script integration contract', () => {
     // interpolation breaks) feed the first-paint key promotion — the launch
     // track's breaks/clips fail validation against the new track's empty key
     // set, so every port must resolve the live active track.
-    expect(studio).toContain('getCapacity: () => launchContextRef.current ? physicPaintStore.getRotoPhysicalCapacity(launchContextRef.current.layerId, studioActiveTrackId()) : 1,');
-    expect(studio).toContain('getParentEndExclusive: () => launchContextRef.current\n      ? physicPaintStore.getRotoPhysicalCapacity(launchContextRef.current.layerId, studioActiveTrackId())\n      : 0,');
-    expect(studio).toContain('getRotoLoopClips: () => launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, studioActiveTrackId()) : [],');
-    expect(studio).toContain('getIncomingInterpolationBreakKeyIds: () => launchContextRef.current\n      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContextRef.current.layerId, studioActiveTrackId())\n      : [],');
-    expect(studio).toContain('getCurrentSettings: () => launchContextRef.current ? physicPaintStore.getRotoInterpolationSettings(launchContextRef.current.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: \'duplicate\', deform: 0, position: 0 },');
-    expect(studio).toContain('getStoreRotoFrames: () => launchContextRef.current ? physicPaintStore.getRotoCacheFrames(launchContextRef.current.layerId, studioActiveTrackId()) : [],');
-    expect(studio).toContain('getFailureStatus: () => launchContextRef.current ? physicPaintStore.getRotoInterpolationFailureStatus(launchContextRef.current.layerId, studioActiveTrackId()) : null,');
+    expect(studio).toContain('getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,');
+    expect(studio).toContain('getParentEndExclusive: () => launchContext\n      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())\n      : 0,');
+    expect(studio).toContain('getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],');
+    expect(studio).toContain('getIncomingInterpolationBreakKeyIds: () => launchContext\n      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())\n      : [],');
+    expect(studio).toContain('getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: \'duplicate\', deform: 0, position: 0 },');
+    expect(studio).toContain('getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, studioActiveTrackId()) : [],');
+    expect(studio).toContain('getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, studioActiveTrackId()) : null,');
     // History identity and adjacent-key navigation must also follow the active track.
     expect(studio).toContain('trackId: studioActiveTrackId(),');
     expect(studio).toContain('const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);');
@@ -369,7 +369,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(studio).toContain('const selectedLoopClipIds = useSignal<readonly string[]>([]);');
     expect(studio).toContain('const loopSelectionAnchorId = useSignal<string | null>(null);');
     expect(studio).toContain('getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(');
-    expect(studio).toContain('getSelectedLoopClipIds: () => effectiveSelectedLoopClipIdsSignal.value');
+    expect(studio).toContain('getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? []');
     expect(studio).toContain('selectedRotoLoopClipIds: effectiveSelectedLoopClipIds');
     expect(studio).toContain('rotoSpacingSelection: effectiveRotoSpacingSelection');
     expect(studio).not.toContain('selectedRotoLoopSourceKeyIds');
@@ -552,7 +552,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('const keyRailSegments = useMemo(() => deriveKeyRailSegments({');
     expect(studio).toContain('incomingInterpolationBreakKeyIds: new Set(rotoIncomingInterpolationBreakKeyIds),');
     expect(studio).toContain('groupOwnedKeyIds: keyRailGroupOwnedKeyIds,');
-    expect(studio).toContain('const effectiveSelectedRotoKeyRailSignal = useComputed(() => reconcileRotoKeyRailSelection(');
+    expect(studio).toContain('const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(');
     expect(studio).toContain('selection.firstKeyId === segment.firstKeyId');
     expect(studio).toContain('selection.keyIds.length === segment.keyIds.length');
     expect(studio).toContain('selection.keyIds.every((keyId, index) => keyId === segment.keyIds[index])');
@@ -561,7 +561,7 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
   });
 
   it('clears Key Rail selection when any physical key is selected (43.4 defect 3)', () => {
-    const reconcileStart = studio.indexOf('const effectiveSelectedRotoKeyRailSignal = useComputed(() => reconcileRotoKeyRailSelection(');
+    const reconcileStart = studio.indexOf('const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(');
     const reconcileEnd = studio.indexOf('const orderedRotoLoopClipIds', reconcileStart);
     const reconcile = studio.slice(reconcileStart, reconcileEnd);
     expect(reconcileStart).toBeGreaterThanOrEqual(0);
@@ -572,11 +572,11 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
   });
 
   it('feeds classifier and strip paint from the reconciled selection with mode-resolved Rail deletion copy', () => {
-    expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRailSignal.value');
+    expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,');
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
-    expect(studio).toContain('const rotoParentEndExclusive = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
     expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
     expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`");
   });
@@ -608,12 +608,12 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 
   it('reconciles the set against fresh ordering on every render and clears invalid sets (Pitfall 2)', () => {
-    const reconcileStart = studio.indexOf('const effectiveRailSetSelectionSignal = useComputed(() => reconcileRailSetSelection(');
+    const reconcileStart = studio.indexOf('const effectiveRailSetSelection = reconcileRailSetSelection(');
     const reconcileEnd = studio.indexOf('const timelineOccupiedRotoFrames', reconcileStart);
     const reconcile = studio.slice(reconcileStart, reconcileEnd);
     expect(reconcileStart).toBeGreaterThanOrEqual(0);
     expect(reconcile).toContain('railSetSelection.value,');
-    expect(reconcile).toContain('orderedRailSetIdentitiesSignal.value,');
+    expect(reconcile).toContain('orderedRailSetIdentities,');
     expect(reconcile).toContain('railSetSelection.peek() !== null && effectiveRailSetSelection === null');
     expect(reconcile).toContain('railSetSelection.value = null;');
   });
@@ -1028,7 +1028,7 @@ describe('Physics Paint navigation render localization', () => {
 
 describe('Canvas navigation render localization', () => {
   it('assembles stable CanvasStack and CanvasMount props with named callback boundaries', () => {
-    expect(studio).toContain("const canvasStackPropsMemo = useRef(createIdentityMemo({ label: 'canvasStackProps' })).current;");
+    expect(studio).toContain('const canvasStackPropsMemo = useRef(createIdentityMemo()).current;');
     expect(studio).toContain('const canvasMountPropsMemo = useRef(createIdentityMemo()).current;');
     expect(studio).toContain('const handleCanvasEngineReady = useCallback(');
     expect(studio).toContain('const handleCanvasCompletedMutation = useCallback(');
@@ -1070,10 +1070,7 @@ describe('Workflow navigation render localization', () => {
     ]) {
       expect(studio).toContain(`const ${handler} = useCallback(`);
     }
-    // 260905-ibd follow-up (G-52-9): the workflow props literal is wrapped in
-    // the identity memo (workflowPropsMemo.resolve) so the strip's memo wall
-    // holds during scrub.
-    const workflowStart = studio.indexOf('workflow: workflowPropsMemo.resolve([');
+    const workflowStart = studio.indexOf('workflow: {');
     const workflowEnd = studio.indexOf('status: { shortcutsVisible }', workflowStart);
     const workflowBlock = studio.slice(workflowStart, workflowEnd);
     expect(workflowStart).toBeGreaterThanOrEqual(0);
@@ -1227,8 +1224,8 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
     // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
-    // (AM-3 Create Rail script picker), workflow (260905-ibd follow-up G-52-9).
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(10);
+    // (AM-3 Create Rail script picker).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -1249,24 +1246,24 @@ describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-
   });
 
   it('shows the checkerboard only in the no-fond case and keeps the fond layer as today', () => {
-    // 260905-ibd follow-up (G-52-9): the checkerboard verdict is frame-dependent
-    // and now computed in the CanvasStack leaf (a narrow currentFrameSignal
-    // subscriber) so the canvasStack memo no longer re-resolves per scrub
-    // frame. The flag is true ONLY when the effective fond is fully transparent
-    // for the current frame: transparent fallback (no fond instruction) AND the
-    // engine-side active background mode is transparent (settings.background)
-    // AND no clip covering the frame (the gap verdict).
-    expect(studio).toContain('const fondInstructionIsNull = fondInstruction === null;');
-    expect(studio).toContain('fondInstructionIsNull,');
-    expect(studioView).toContain('const showTransparencyCheckerboard = props.currentFrameSignal && props.programMonitor?.layerId');
-    expect(studioView).toContain('props.fondInstructionIsNull === true');
-    expect(studioView).toContain("props.background === 'transparent'");
-    expect(studioView).toContain("physicPaintStore.getBackgroundFrameVerdict(props.programMonitor.layerId, props.currentFrameSignal.value) === 'gap'");
+    // The checkerboard flag is true ONLY when the effective fond is fully
+    // transparent for the current frame: transparent fallback (no fond
+    // instruction) AND the engine-side active background mode is transparent
+    // (settings.background — the fond=fallback mapping is not fully wired yet,
+    // so a paper/solid engine mode suppresses the checkerboard even while the
+    // document fallback is still transparent) AND no clip covering the frame
+    // (the gap verdict, consumed from the store's already-resolved
+    // background-frame plumbing).
+    expect(studio).toContain('const showTransparencyCheckerboard = programMonitorLayerId !== null');
+    expect(studio).toContain('&& fondInstruction === null');
+    expect(studio).toContain("&& settings.background === 'transparent'");
+    expect(studio).toContain("&& physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap'");
+    expect(studio).toContain('showTransparencyCheckerboard,');
     // The view renders the checkerboard layer beneath the monitor content,
     // conditioned on the flag; the fond layer keeps its own fondBackground
     // condition (one branch, tested both ways).
     expect(studioView).toContain('showTransparencyCheckerboard?: boolean;');
-    expect(studioView).toContain('showTransparencyCheckerboard ? (');
+    expect(studioView).toContain('props.showTransparencyCheckerboard ? (');
     expect(studioView).toContain('class="physics-paint-transparency-checkerboard"');
     expect(studioView).toContain('props.fondBackground ? (');
     expect(studioView).toContain('class="physics-paint-fond-layer"');
@@ -1390,7 +1387,7 @@ describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S
     expect(headerColumn).toContain('onImportBackground?: () => void;');
     expect(headerColumn).toContain('onImportBackground={onImportBackground}');
     // The Studio routes the intent to the 49-04 picker swap (engine untouched).
-    expect(studio).toContain('onImportBackground: () => { void backgroundPickerOpenHookRef.current?.(); },');
+    expect(studio).toContain('onImportBackground: () => backgroundPicker.openPicker(),');
   });
 
   it('Confirm calls addBackgroundClip exactly once with the placement frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)', () => {
@@ -1861,17 +1858,15 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
     // The intent signal owns the picker's open state (null = closed).
     expect(studio).toContain("const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);");
     // Both menu handlers set the intent UNCONDITIONALLY — no selection gate, so
-    // no click path can silently no-op. 260905-ibd (G-52-9): the handlers are
-    // identity-stable useCallbacks (they only write the stable intent signal) so
-    // the memo-wrapped action-row keeps them as stable props during scrub.
-    expect(studio).toContain(`const onCreatePlayScriptRail = useCallback((mode: 'progressive' | 'static') => {
-    // AM-3 (revised): the script picker ALWAYS opens — one uniform,
-    // always-visible flow regardless of the library selection.
-    scriptPickerIntent.value = { kind: 'paint', mode };
-  }, []);`);
-    expect(studio).toContain(`const onCreateRevealRail = useCallback(() => {
-    scriptPickerIntent.value = { kind: 'reveal' };
-  }, []);`);
+    // no click path can silently no-op.
+    expect(studio).toContain(`onCreatePlayScriptRail: (mode) => {
+          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
+          // always-visible flow regardless of the library selection.
+          scriptPickerIntent.value = { kind: 'paint', mode };
+        },`);
+    expect(studio).toContain(`onCreateRevealRail: () => {
+          scriptPickerIntent.value = { kind: 'reveal' };
+        },`);
   });
 
   it('a pick sets the library selection and opens the Create Rail dialog on the menu-chosen tab/kind — unless the controller is blocked, which keeps the picker open with a live reason', () => {

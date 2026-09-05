@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { useSignal, type ReadonlySignal } from '@preact/signals';
+import { useSignal } from '@preact/signals';
 import type { PhotoReferenceTransform } from '../../../efx-paint/document/efxPaintDocument';
 import { efxPaintVersion, getDocument, setPhotoReferenceTransform } from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
@@ -42,7 +42,7 @@ import type { HandleType, LayerBounds } from '../../canvas/transformHandles';
 
 export interface PhysicsPaintReferenceTransformHandlesProps {
   readonly layerId: string | null;
-  readonly currentFrameSignal: ReadonlySignal<number>;
+  readonly currentFrame: number;
   readonly isPlaying: boolean;
   readonly width: number;
   readonly height: number;
@@ -72,7 +72,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     startTransform: IDENTITY_TRANSFORM,
   });
 
-  const { layerId, currentFrameSignal, isPlaying, width, height, zoom } = props;
+  const { layerId, currentFrame, isPlaying, width, height, zoom } = props;
 
   // Resolve the source image's natural dimensions through the shared
   // decode-once cache (G-52-5 — never a per-effect `new Image()` decode; the
@@ -96,7 +96,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       imageSize.value = null;
       return;
     }
-    const verdict = physicPaintStore.getReferenceSourceFrameVerdict(layerId, currentFrameSignal.value);
+    const verdict = physicPaintStore.getReferenceSourceFrameVerdict(layerId, currentFrame);
     if (!verdict) {
       imageSize.value = null;
       return;
@@ -107,7 +107,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     // clocks are read inside the effect's dep array (narrow leaf subscription,
     // never the Studio root); a source/transform/lock change re-resolves the
     // size, and the cache's decode-complete bump re-fires for a pending decode.
-  }, [layerId, currentFrameSignal.value, isPlaying, efxPaintVersion.value, physicPaintVersion.value]);
+  }, [layerId, currentFrame, isPlaying, efxPaintVersion.value, physicPaintVersion.value]);
 
   // Read accepted display state (narrow reads, no render-body writes).
   const document = layerId ? getDocument(layerId) : null;

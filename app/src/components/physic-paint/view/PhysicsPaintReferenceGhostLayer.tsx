@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'preact/hooks';
-import type { ReadonlySignal } from '@preact/signals';
 import { efxPaintVersion, getDocument } from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
 import { drawReferenceGhost } from './PhysicsPaintReferenceGhost';
@@ -28,7 +27,7 @@ import { drawReferenceGhost } from './PhysicsPaintReferenceGhost';
  */
 export interface PhysicsPaintReferenceGhostLayerProps {
   readonly layerId: string | null;
-  readonly currentFrameSignal: ReadonlySignal<number>;
+  readonly currentFrame: number;
   readonly isPlaying: boolean;
   readonly width: number;
   readonly height: number;
@@ -50,12 +49,12 @@ export function PhysicsPaintReferenceGhostLayer(props: PhysicsPaintReferenceGhos
     const document = getDocument(layerId);
     if (!document) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawReferenceGhost(ctx, document, props.currentFrameSignal.value, props.zoom, props.isPlaying);
+    drawReferenceGhost(ctx, document, props.currentFrame, props.zoom, props.isPlaying);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
     // clocks are read inside the effect's dep array (narrow leaf subscription,
     // never the Studio root); a source/opacity/transform/visibility change
     // re-runs the draw.
-  }, [props.layerId, props.currentFrameSignal.value, props.isPlaying, props.zoom, props.width, props.height, efxPaintVersion.value, physicPaintVersion.value]);
+  }, [props.layerId, props.currentFrame, props.isPlaying, props.zoom, props.width, props.height, efxPaintVersion.value, physicPaintVersion.value]);
 
   useEffect(() => {
     if (props.isPlaying || !props.onMissingSourceChange) return;
@@ -64,14 +63,14 @@ export function PhysicsPaintReferenceGhostLayer(props: PhysicsPaintReferenceGhos
     const document = getDocument(layerId);
     if (!document) return;
     const track = document.photoReference;
-    const missing = track !== null && physicPaintStore.getReferenceSourceFrameVerdict(layerId, props.currentFrameSignal.value) === null;
+    const missing = track !== null && physicPaintStore.getReferenceSourceFrameVerdict(layerId, props.currentFrame) === null;
     if (publishedMissingRef.current === missing) return;
     publishedMissingRef.current = missing;
     props.onMissingSourceChange(missing);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
     // clocks are read inside the effect's dep array (narrow leaf subscription);
     // a source change re-evaluates the missing verdict.
-  }, [props.layerId, props.currentFrameSignal.value, props.isPlaying, props.onMissingSourceChange, efxPaintVersion.value, physicPaintVersion.value]);
+  }, [props.layerId, props.currentFrame, props.isPlaying, props.onMissingSourceChange, efxPaintVersion.value, physicPaintVersion.value]);
 
   return <canvas ref={canvasRef} class="physics-paint-reference-ghost" width={props.width} height={props.height} aria-hidden="true" />;
 }

@@ -15,7 +15,7 @@ vi.mock('preact/hooks', () => ({
 
 vi.mock('@preact/signals', async () => {
   const signals = await vi.importActual<typeof import('@preact/signals')>('@preact/signals');
-  return { ...signals, useSignal: signals.signal, useComputed: signals.computed };
+  return { ...signals, useSignal: signals.signal };
 });
 
 import type {
@@ -2101,7 +2101,7 @@ describe('Phase 43.4 Key Rail actions-hook → coordinator → history full path
       pendingOperationId: test.coordinator.pendingOperationId,
       publishStatus: () => {},
       publishDiagnostic: () => {},
-    }, signal(test.getCanonicalDocument().cursorAppFrame));
+    });
 
     expect(await actions.physicalActions.scissorKeyRail()).toBe(true);
     expect(test.accept()).toBe('accepted');

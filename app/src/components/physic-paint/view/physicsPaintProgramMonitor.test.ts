@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreactHookRuntime } from '../../../test/preactHookRuntime';
-import { signal } from '@preact/signals';
 import { PhysicsPaintProgramMonitor, type PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import {
   physicPaintStore,
@@ -274,7 +273,7 @@ function rerenderMonitor(props: PhysicsPaintProgramMonitorProps): void {
 
 const baseProps = (overrides: Partial<PhysicsPaintProgramMonitorProps> = {}): PhysicsPaintProgramMonitorProps => ({
   layerId: FLAT_LAYER,
-  currentFrameSignal: signal(5),
+  currentFrame: 5,
   isPlaying: false,
   activeTrackId: 'track-a',
   width: 4,
@@ -588,7 +587,7 @@ describe('PhysicsPaintProgramMonitor', () => {
       // re-sourced through the flattened path.
       const onionProjection = resolveBlock(
         studio,
-        'const onionPreviewFrames = useMemo(() => {',
+        'const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({',
         'const rotoCachedPlaybackAvailable =',
       );
       expect(onionProjection).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');

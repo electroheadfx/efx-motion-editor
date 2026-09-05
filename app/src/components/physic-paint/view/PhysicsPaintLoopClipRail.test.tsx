@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { signal } from '@preact/signals';
 import { vi } from 'vitest';
 
 const hooks = vi.hoisted(() => ({
@@ -53,11 +52,7 @@ vi.mock('preact/compat', async () => {
 
 vi.mock('@preact/signals', async () => {
   const actual = await vi.importActual<typeof import('@preact/signals')>('@preact/signals');
-  return {
-    ...actual,
-    useSignal: <Value,>(initial: Value) => actual.signal(initial),
-    useComputed: <Value,>(compute: () => Value) => actual.computed(compute),
-  };
+  return { ...actual, useSignal: <Value,>(initial: Value) => actual.signal(initial) };
 });
 
 import { describe, expect, it } from 'vitest';
@@ -271,10 +266,7 @@ function renderWorkflowStrip(
   cellProps: Partial<Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection' | 'rotoKeyRecords' | 'rotoLoopClips'>> = {},
 ): unknown {
   hooks.reset();
-  // 260905-ibd follow-up (G-52-9): the physical-cell grid is a narrow
-  // PhysicsPaintRotoCells subscriber — materialize it so the walk-based cell
-  // finders see the RotoTimelineCellButton vnodes it renders.
-  return materializeNamedComponents(PhysicsPaintWorkflowStrip({
+  return PhysicsPaintWorkflowStrip({
     currentFrame: 0,
     isPlaying: false,
     ready: true,
@@ -292,7 +284,7 @@ function renderWorkflowStrip(
     onGoToLastFrame: () => {},
     onOnionChange: () => {},
     ...cellProps,
-  }), new Set(['PhysicsPaintRotoCells']));
+  });
 }
 
 function createGeneratedPresentationDocument(
@@ -2280,7 +2272,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         getLaunchContext: () => ({ operationId: 'op-detached', layerId: 'layer-detached' }) as PhysicPaintLaunchContext,
         getIncomingInterpolationBreakKeyIds: () => [],
         executePhysicalEdit: executePhysicalEdit as never,
-      } as RotoTimelineActionsInput, signal(0));
+      } as RotoTimelineActionsInput);
       const context = derivePhysicPaintRotoLoopRanges({
         identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         loopClips: [clip],

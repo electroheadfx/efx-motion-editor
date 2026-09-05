@@ -27,9 +27,7 @@ const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../Ph
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 
 function getRotoMapBlock(code: string): string {
-  // 260905-ibd follow-up (G-52-9): the cell loop lives in the narrow
-  // PhysicsPaintRotoCells subscriber, so the map reads the component's props.
-  const mapStart = code.indexOf('{props.frameCells.map(frame =>');
+  const mapStart = code.indexOf('{frameCells.map(frame =>');
   return code.slice(mapStart, code.indexOf('physics-paint-roto-key-utilities', mapStart));
 }
 function getWorkflowStripPropsInterface(code: string): string {
@@ -39,44 +37,23 @@ function getStaticChromePropsInterface(code: string): string {
   return code.slice(code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'), code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl'));
 }
 function getActionRowBlock(code: string): string {
-  // 260905-ibd (G-52-9): the action-row is extracted into the memo-wrapped
-  // PhysicsPaintRotoActionRow component (with its narrow-subscriber children
-  // PhysicsPaintRotoKeyIdentity and PhysicsPaintRailCreateButton), defined
-  // before the strip body. The block spans the whole component section so the
-  // identity + rail-create content stays inside the asserted row.
-  const rowStart = code.indexOf('interface PhysicsPaintRotoActionRowProps');
-  const rowEnd = code.indexOf('const PhysicsPaintRotoActionRow = memo(PhysicsPaintRotoActionRowImpl);', rowStart);
+  // Anchored at the action-row band (not the tools group) so the block spans
+  // all three Gap F groups: identity → tools → key spacing (36.15-10).
+  const rowStart = code.indexOf('class="physics-paint-roto-action-row"');
+  const rowEnd = code.indexOf('physics-paint-timeline-scrollbar', rowStart);
   return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
 }
 function getActionAriaLabelToken(ariaLabel: string): string {
-  if (ariaLabel === 'Insert key before') return 'label={insertRotoKeyDescription}';
-  if (ariaLabel === 'Delete Frame') return 'label={deleteRotoScopeLabel}';
-  if (ariaLabel === 'Apply Action to Frame' || ariaLabel === 'Clear Action Buffer') return `aria-label="${ariaLabel}"`;
-  return `label="${ariaLabel}"`;
+  if (ariaLabel === 'Insert key before') return 'aria-label={insertRotoKeyDescription}';
+  if (ariaLabel === 'Delete Frame') return 'aria-label={deleteRotoScopeLabel}';
+  return `aria-label="${ariaLabel}"`;
 }
 function getButtonBlock(code: string, ariaLabel: string): string {
-  const token = getActionAriaLabelToken(ariaLabel);
-  const labelIndex = code.indexOf(token);
+  const labelIndex = code.indexOf(getActionAriaLabelToken(ariaLabel));
   if (labelIndex === -1) return '';
-  if (token.startsWith('aria-label=')) {
-    // Regular button (toolbox popover): find the <button> element.
-    const start = code.lastIndexOf('<button', labelIndex);
-    const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
-    return code.slice(start, end);
-  }
-  // 260905-ibd follow-up (G-52-9): each action-row button is a thin wrapper
-  // component (function PhysicsPaintRoto*Button) that computes its own
-  // availability and renders the shared PhysicsPaintRotoActionButton shell.
-  const start = code.lastIndexOf('function PhysicsPaintRoto', labelIndex);
-  const end = code.indexOf('\n}\n', start);
-  return code.slice(start, end === -1 ? code.length : end);
-}
-function getActionButtonShell(code: string): string {
-  // 260905-ibd follow-up (G-52-9): the shared guarded-icon button shell owns
-  // the aria-disabled / no-native-disabled / guarded click+keydown structure.
-  const start = code.indexOf('function PhysicsPaintRotoActionButton');
-  const end = code.indexOf('\n}\n', start);
-  return code.slice(start, end === -1 ? code.length : end);
+  const start = code.lastIndexOf('<button', labelIndex);
+  const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
+  return code.slice(start, end);
 }
 function getMatchingDivEnd(code: string, start: number): number {
   const tag = /<div\b|<\/div>/g;
@@ -193,9 +170,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Delete Frame');
 
-    expect(code).toContain("const deleteRotoScopeLabel = props.rotoPhysicalActions?.deleteScopeLabel.value ?? 'Delete Frame';");
-    expect(block).toContain('label={deleteRotoScopeLabel}');
-    expect(block).toContain('tooltipCopy={deleteRotoScopeLabel}');
+    expect(code).toContain("const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';");
+    expect(block).toContain('aria-label={deleteRotoScopeLabel}');
+    expect(code).toContain('buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)');
     // 43.5-05 smoke UX5: the Delete button is icon-only — the dynamic scope
     // copy lives in tooltip/aria/status, never a visible text label.
     expect(block).not.toContain('<span class="physics-paint-roto-key-icon-label">Delete</span>');
@@ -221,25 +198,26 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);');
     expect(code).toContain('disabled={props.interpolationControlsDisabled}');
     expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
-    expect(code).toContain('if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;');
+    expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
 
   it('guards the Paste key icon action with aria-disabled and a styled tooltip', () => {
     const code = source();
-    const row = getActionRowBlock(code);
-    const pasteBlock = getButtonBlock(row, 'Paste key');
-    expect(pasteBlock).toContain('label="Paste key"');
-    expect(pasteBlock).toContain('ClipboardPaste');
-    expect(pasteBlock).toContain('canPasteRotoKey');
-    expect(pasteBlock).toContain('props.onPasteRotoFrame?.()');
-    // The guarded structure lives in the shared shell.
-    const shell = getActionButtonShell(code);
-    expect(shell).toContain('aria-disabled');
-    expect(shell).toContain('aria-describedby');
-    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(shell).not.toContain('title=');
-    expect(shell).toContain('if (props.disabled) return;');
-    expect(shell).toContain('buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)');
+    expect(code).toContain('aria-label="Paste key"');
+    expect(code).toContain('ClipboardPaste');
+    const labelIndex = code.indexOf('aria-label="Paste key"');
+    const buttonStart = code.lastIndexOf('<button', labelIndex);
+    const buttonEnd = code.indexOf('</button>', labelIndex) + '</button>'.length;
+    const pasteBlock = code.slice(buttonStart, buttonEnd);
+    expect(pasteBlock).toContain('aria-disabled');
+    expect(pasteBlock).toContain('aria-describedby');
+    expect(pasteBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(pasteBlock).not.toContain('title=');
+    const guardIndex = pasteBlock.indexOf('if (!canPasteRotoKey) return;');
+    const handlerIndex = pasteBlock.indexOf('props.onPasteRotoFrame?.()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(handlerIndex).toBeGreaterThan(guardIndex);
+    expect(code).toContain("buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)");
   });
 
   it('renders the Key {n} chip before any action button in the row (D-13)', () => {
@@ -306,17 +284,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {
     const code = source();
     const row = getActionRowBlock(code);
-    // The guarded structure lives in the shared shell: aria-disabled only,
-    // never the native disabled attribute, guarded click + keydown.
-    const shell = getActionButtonShell(code);
-    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(shell).not.toContain('title=');
-    expect(shell).toContain('if (props.disabled) return;');
-    expect(shell).toContain(`(event.key === 'Enter' || event.key === ' ') && props.disabled`);
+    expect(row.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(row).not.toContain('title=');
     for (const { label, guard, handler } of ROW_ICON_ACTIONS) {
       const block = getButtonBlock(row, label);
-      expect(block).toContain(guard);
-      expect(block).toContain(handler);
+      expect(block).toContain('aria-disabled');
+      expect(block).toContain('aria-describedby');
+      const guardIndex = block.indexOf(`if (!${guard}) return;`);
+      const handlerIndex = block.indexOf(handler);
+      expect(guardIndex).toBeGreaterThanOrEqual(0);
+      expect(handlerIndex).toBeGreaterThan(guardIndex);
+      expect(block).toContain(`(event.key === 'Enter' || event.key === ' ') && !${guard}`);
     }
   });
 
@@ -327,10 +305,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(row).not.toContain(' — unavailable: ');
     expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
     expect(code).toContain('return disabledReason ? `unavailable: ${disabledReason}` : description;');
-    // Every action-row button renders the shared shell, which routes its copy
-    // through the guarded-action copy builder.
-    const shell = getActionButtonShell(code);
-    expect(shell).toContain('buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)');
+    const builderCalls = (row.match(/buildGuardedActionTooltipCopy\(/g) ?? []).length;
+    // Eight guarded icon actions plus the Set Key Space form.
+    expect(builderCalls).toBeGreaterThanOrEqual(9);
     // Script copy/apply availability reasons now surface in the Scripts
     // sidebar toolbar, not the strip (Gap C); 260905-dso: the buffer
     // Apply/Clear availability reads now live in the Tools popover Actions
@@ -340,8 +317,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('renders a short visible label after each enlarged bottom-row icon (Gap D)', () => {
-    const code = source();
-    const row = getActionRowBlock(code);
+    const row = getActionRowBlock(source());
     const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
       { action: 'Add key', icon: 'Plus', label: 'Key' },
       { action: 'Duplicate key', icon: 'CopyPlus', label: 'Duplicate' },
@@ -355,20 +331,18 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       const block = getButtonBlock(row, action);
       const iconIndex = block.indexOf(`<${icon} size={18}`);
       expect(iconIndex).toBeGreaterThanOrEqual(0);
-      expect(block).toContain(`textLabel="${label}"`);
+      const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+      expect(labelIndex).toBeGreaterThan(iconIndex);
     }
-    // The shared shell renders the visible label after the icon.
-    const shell = getActionButtonShell(code);
-    expect(shell).toContain('<span class="physics-paint-roto-key-icon-label">{props.textLabel}</span>');
     expect(row).not.toContain('size={16}');
     // 43.5-02 Task 2: the Set Key Space form relocated from the bottom row
     // into the toolbox popover (header block), carrying its own short label
     // after the icon (renamed 'Space' → 'Key spacing' in 36.15-09, UAT Gap
     // E-2) with the same 18px icon and label ordering.
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
-    const spacingFormBlock = getForceSpacingFormBlock(source());
-    const spacingIndex = spacingFormBlock.indexOf('physics-paint-pill--apply-spacing');
-    const form = spacingFormBlock.slice(spacingIndex, spacingFormBlock.indexOf('</form>', spacingIndex));
+    const header = getHeaderBlock(source());
+    const spacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
+    const form = header.slice(spacingIndex, header.indexOf('</form>', spacingIndex));
     const spacingIconIndex = form.indexOf('<AlignHorizontalSpaceAround size={18}');
     expect(spacingIconIndex).toBeGreaterThanOrEqual(0);
     expect(form.indexOf('<span class="physics-paint-roto-key-icon-label">Key spacing</span>')).toBeGreaterThan(spacingIconIndex);
@@ -394,7 +368,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
     // physical real key always resolves 'real') and hard-excludes virtual
     // linked occurrences when a loop resolution context is present.
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 
   it('keeps source interpolation blue and restores a lighter mirrored-key rhythm inside dark repeats', () => {
@@ -407,12 +381,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)");
     expect(map).toContain("? 'roto-linked-source-generated'");
     expect(map).toContain("${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''}");
-    expect(map).toContain('const lifecycleTarget = props.lifecycleTargetByAppFrame.get(frame)!;');
+    expect(map).toContain('const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;');
     expect(map).toContain('const fillClass = getRotoAcceptedCellFillClass({');
     expect(map).toContain('lifecycleTargetKind: lifecycleTarget.kind');
     expect(map).toContain("resolutionKind: frameResolution?.kind ?? 'empty'");
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked && frameInteraction?.dragEligible !== false;');
-    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, props.loopSourceFrameCountById)');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
     const styles = css();
@@ -485,11 +459,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const code = source();
     const row = getActionRowBlock(code);
     const actions = timelineActionsSource();
-    const insertBlock = getButtonBlock(row, 'Insert key before');
 
-    expect(insertBlock).toContain('textLabel="Insert"');
-    expect(insertBlock).toContain("props.rotoPhysicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
-    expect(insertBlock).toContain('label={insertRotoKeyDescription}');
+    expect(countOccurrences(row, '<span class="physics-paint-roto-key-icon-label">Insert</span>')).toBe(1);
+    expect(code).toContain("physicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
+    expect(code).toContain('buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)');
     expect(actions).toContain("? 'Insert an empty key connected to the previous segment.'");
     expect(actions).toContain(": 'Insert key before'");
   });
@@ -498,10 +471,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
   it('renders the clipboard row in locked Copy, Paste, Cut, Scissor, Delete order', () => {
     const row = getActionRowBlock(source());
-    const copyIndex = row.indexOf('label="Copy key"');
-    const pasteIndex = row.indexOf('label="Paste key"');
-    const cutIndex = row.indexOf('label="Cut key"');
-    const scissorIndex = row.indexOf('label="Split Key Rail"');
+    const copyIndex = row.indexOf('aria-label="Copy key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
+    const cutIndex = row.indexOf('aria-label="Cut key"');
+    const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     expect(copyIndex).toBeGreaterThanOrEqual(0);
     expect(pasteIndex).toBeGreaterThan(copyIndex);
@@ -520,22 +493,22 @@ describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => 
     const code = source();
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Cut key');
-    expect(block).toContain('label="Cut key"');
-    expect(block).toContain('canCutRotoKey');
-    expect(block).toContain('props.onCutRotoFrame?.()');
+    expect(block).toContain('aria-label="Cut key"');
+    expect(block).toContain('aria-disabled={!canCutRotoKey');
+    expect(block).toContain("aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}");
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    const guardIndex = block.indexOf('if (!canCutRotoKey) return;');
+    const handlerIndex = block.indexOf('props.onCutRotoFrame?.()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(handlerIndex).toBeGreaterThan(guardIndex);
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCutRotoKey");
     expect(block).toContain('<Scissors size={18} aria-hidden="true" />');
-    expect(block).toContain('textLabel="Cut"');
-    expect(block).toContain('reasonId="roto-key-action-reason-cut"');
+    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Cut</span>');
     // Cut sits with the clipboard actions; Delete keeps the trailing destructive position.
     expect(block).not.toContain('destructive');
-    // The guarded structure lives in the shared shell.
-    const shell = getActionButtonShell(code);
-    expect(shell).toContain('aria-disabled');
-    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(shell).not.toContain('title=');
-    expect(shell).toContain('if (props.disabled) return;');
-    expect(shell).toContain("(event.key === 'Enter' || event.key === ' ') && props.disabled");
-    expect(shell).toContain('buildGuardedActionTooltipCopy(props.tooltipCopy, props.disabledReason)');
+    expect(code).toContain('id="roto-key-action-reason-cut"');
+    expect(code).toContain("buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)");
     expect(getWorkflowStripPropsInterface(code)).toContain('onCutRotoFrame?: () => void;');
   });
 });
@@ -546,21 +519,19 @@ describe('PhysicsPaintWorkflowStrip Scissor key-rail contract (43.4-01)', () => 
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Split Key Rail');
 
-    expect(block).toContain('label="Split Key Rail"');
-    expect(block).toContain('canScissorRotoKey');
-    expect(block).toContain('props.onScissorKeyRail?.()');
+    expect(block).toContain('aria-label="Split Key Rail"');
+    expect(block).toContain('aria-disabled={!canScissorRotoKey');
+    expect(block).toContain("aria-describedby={!canScissorRotoKey && scissorRotoKeyDisabledReason ? 'roto-key-action-reason-scissor' : undefined}");
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    expect(block.indexOf('if (!canScissorRotoKey) return;')).toBeGreaterThanOrEqual(0);
+    expect(block.indexOf('props.onScissorKeyRail?.()')).toBeGreaterThan(block.indexOf('if (!canScissorRotoKey) return;'));
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canScissorRotoKey");
     expect(block).toContain('<SquareSplitHorizontal size={18} aria-hidden="true" />');
     expect(block).not.toContain('<Scissors');
-    expect(block).toContain('textLabel="Scissor"');
-    expect(block).toContain('reasonId="roto-key-action-reason-scissor"');
-    expect(block).toContain("props.rotoPhysicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.'");
-    // The guarded structure lives in the shared shell.
-    const shell = getActionButtonShell(code);
-    expect(shell).toContain('aria-disabled');
-    expect(shell.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(shell).not.toContain('title=');
-    expect(shell).toContain('if (props.disabled) return;');
-    expect(shell).toContain("(event.key === 'Enter' || event.key === ' ') && props.disabled");
+    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Scissor</span>');
+    expect(code).toContain('id="roto-key-action-reason-scissor"');
+    expect(code).toContain("buildGuardedActionTooltipCopy(physicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.', scissorRotoKeyDisabledReason)");
     expect(getWorkflowStripPropsInterface(code)).toContain('onScissorKeyRail?: () => void;');
   });
 });
@@ -612,8 +583,8 @@ describe('localized render contract', () => {
     expect(map).toContain('key={frame}');
     expect(map).toContain('vm={vm}');
     expect(map).toContain('dragEligible={dragEligible}');
-    expect(map).toContain('onCellPointerDown={props.onCellPointerDown}');
-    expect(map).toContain('onCellClick={props.onCellClick}');
+    expect(map).toContain('onCellPointerDown={handleRotoTimelineCellPointerDown}');
+    expect(map).toContain('onCellClick={handleRotoTimelineCellClick}');
     expect(map).not.toContain('onCellPointerDown={dragEligible && cellKeyId ? (event) =>');
     expect(map).not.toContain('onCellClick={(event) =>');
   });
@@ -642,11 +613,7 @@ describe('localized static and live Workflow regions', () => {
 
   it('keeps the public strip and StudioView mount compatible', () => {
     const code = source();
-    // 260905-ibd follow-up (G-52-9): the strip body is memoized — the impl is
-    // a plain function and the public export is the memo wrapper.
-    expect(code).toContain('function PhysicsPaintWorkflowStripImpl(props: PhysicsPaintWorkflowStripProps)');
-    expect(code).toContain('const PhysicsPaintWorkflowStrip = memo(PhysicsPaintWorkflowStripImpl);');
-    expect(code).toContain('export { PhysicsPaintWorkflowStrip };');
+    expect(code).toContain('export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)');
     expect(code).toContain('<PhysicsPaintWorkflowStaticChrome');
     expect(code).not.toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');\n  const [scrollbar");
   });
@@ -655,7 +622,7 @@ describe('localized static and live Workflow regions', () => {
 describe('localized render instrumentation', () => {
   it('counts the live strip and extracted static chrome at their implementation owners', () => {
     const code = source();
-    const stripStart = code.indexOf('function PhysicsPaintWorkflowStripImpl');
+    const stripStart = code.indexOf('export function PhysicsPaintWorkflowStrip');
     const stripBody = code.slice(stripStart, code.indexOf('const [scrollbar', stripStart));
     const staticStart = code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl');
     const staticBody = code.slice(staticStart, code.indexOf('const closeTooltip', staticStart));
@@ -697,23 +664,8 @@ describe('localized render instrumentation', () => {
 function getHeaderBlock(code: string): string {
   const headerStart = code.indexOf('<div class="physics-paint-workflow-header">');
   if (headerStart === -1) return '';
-  // 260905-ibd (G-52-9): the header lives in the memoized static-chrome
-  // component; the action-row component section follows it in the file, so the
-  // block ends at the static-chrome memo boundary (not the timeline div, which
-  // now sits after the action-row section in the strip body).
-  const headerEnd = code.indexOf('const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeImpl);', headerStart);
+  const headerEnd = code.indexOf('<div class="physics-paint-timeline"', headerStart);
   return code.slice(headerStart, headerEnd === -1 ? code.length : headerEnd);
-}
-
-// 260905-ibd follow-up (G-52-9): the Key Spacing form moved into its own
-// narrow signal subscriber (PhysicsPaintForceSpacingForm, directly before the
-// static chrome) — a force-spacing availability flip re-renders the form leaf,
-// not the strip body. Its source block is scanned separately from the header.
-function getForceSpacingFormBlock(code: string): string {
-  const start = code.indexOf('function PhysicsPaintForceSpacingForm(props: PhysicsPaintForceSpacingFormProps)');
-  if (start === -1) return '';
-  const end = code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl(', start);
-  return code.slice(start, end === -1 ? code.length : end);
 }
 
 function getCssRuleBlock(styles: string, selector: string): string {
@@ -786,7 +738,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
 
   it('keeps the force-spacing and interpolation mutation-lock guards verbatim', () => {
     const code = source();
-    expect(code).toContain('if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;');
+    expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
     expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
   });
 
@@ -864,11 +816,11 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(cellButton).not.toContain('title=');
     expect(map).not.toContain('dragTitle');
     // Drag machinery untouched: identity attributes and handlers stay.
-    expect(map).toContain('props.onCellPointerDown');
+    expect(map).toContain('handleRotoTimelineCellPointerDown');
     // Each cell owns one styled-tooltip controller via the child component.
     const cellComponentIndex = code.indexOf('function RotoTimelineCellButton');
     expect(cellComponentIndex).toBeGreaterThanOrEqual(0);
-    const cellComponent = code.slice(cellComponentIndex, code.indexOf('function PhysicsPaintWorkflowStripImpl'));
+    const cellComponent = code.slice(cellComponentIndex, code.indexOf('export function PhysicsPaintWorkflowStrip'));
     expect(cellComponent).toContain('useStyledTooltip');
     expect(cellComponent).toContain('PhysicsPaintStyledTooltip');
     expect(cellComponent).not.toContain('title=');
@@ -936,7 +888,7 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     const rulerTagEnd = code.indexOf('aria-hidden="true"', rulerIndex);
     const rulerTag = code.slice(rulerIndex, rulerTagEnd === -1 ? code.length : rulerTagEnd);
     expect(rulerTag).toContain('rotoLaneWidthPx');
-    expect(code).toContain('style={{ gridTemplateColumns: `repeat(${props.frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}');
+    expect(code).toContain('style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}');
   });
 
   it('locks the dynamically sized cells grid to 18px abutting columns with zero gap', () => {
@@ -944,7 +896,7 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     const cells = getCssRuleBlock(styles, '.physics-paint-roto-cells {');
     expect(cells).not.toContain('grid-template-columns');
     expect(cells).toContain('gap: 0');
-    expect(source()).toContain('repeat(${props.frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)');
+    expect(source()).toContain('repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)');
   });
 
   it('keeps extent out of CSS while preserving fixed-pitch 54px ruler ticks', () => {
@@ -1037,21 +989,16 @@ describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2
     // `renderActiveLane()` helper, mounted inside the rows-region here — so the
     // mount point, not the lane class string, is the scroll-containment anchor.
     const laneMountIndex = code.indexOf('renderActiveLane()', scrollIndex);
-    // 260905-ibd (G-52-9): the action-row is extracted into the memo-wrapped
-    // PhysicsPaintRotoActionRow component, defined BEFORE the strip body — so
-    // the scroll container (in the strip body) can never contain it.
-    const actionRowComponentIndex = code.indexOf('function PhysicsPaintRotoActionRowImpl');
-    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', actionRowComponentIndex);
+    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneMountIndex);
     const utilitiesIndex = code.indexOf('physics-paint-roto-key-utilities', actionRowIndex);
-    const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', scrollIndex);
-    for (const index of [scrollIndex, scrollEnd, laneMountIndex, actionRowComponentIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
+    const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', utilitiesIndex);
+    for (const index of [scrollIndex, scrollEnd, laneMountIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(laneMountIndex).toBeLessThan(scrollEnd);
-    expect(actionRowComponentIndex).toBeLessThan(scrollIndex);
-    expect(actionRowIndex).toBeGreaterThan(actionRowComponentIndex);
+    expect(actionRowIndex).toBeGreaterThan(scrollEnd);
     expect(utilitiesIndex).toBeGreaterThan(actionRowIndex);
-    expect(scrollbarIndex).toBeGreaterThan(scrollEnd);
+    expect(scrollbarIndex).toBeGreaterThan(utilitiesIndex);
     expect(code.slice(scrollIndex, scrollEnd)).not.toContain('physics-paint-roto-action-row');
     expect(code.slice(scrollIndex, scrollEnd)).toContain('renderActiveLane()');
   });
@@ -1107,9 +1054,9 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(closeIndex).toBeGreaterThan(interpolationIndex);
     // 43.5-02: the ToolCase button (dynamic aria-label carrying live
     // interpolation state) and the relocated Key Spacing form now live in the
-    // header block inside the toolbox popover; the form's own narrow
-    // subscriber component carries the apply-spacing pill (260905-ibd).
-    expect(getForceSpacingFormBlock(source())).toContain('physics-paint-pill--apply-spacing');
+    // header block inside the toolbox popover, so the apply-spacing pill is
+    // expected present there — no legacy Tools dropdown machinery remains.
+    expect(header).toContain('physics-paint-pill--apply-spacing');
     expect(header).toContain('physics-paint-toolbox-section-heading');
     for (const removed of ['aria-label="Tools"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Add key"', 'aria-label="Duplicate key"', 'physics-paint-mode-label']) {
       expect(header).not.toContain(removed);
@@ -1145,11 +1092,11 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
-    const addIndex = row.indexOf('label="Add key"');
+    const addIndex = row.indexOf('aria-label="Add key"');
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
-    const duplicateIndex = row.indexOf('label="Duplicate key"');
-    const copyIndex = row.indexOf('label="Copy key"');
-    const pasteIndex = row.indexOf('label="Paste key"');
+    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
+    const copyIndex = row.indexOf('aria-label="Copy key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
@@ -1164,7 +1111,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     // 43.5-02 Task 2: the Set Key Space form moved into the toolbox popover,
     // so it no longer terminates the bottom action row.
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
-    expect(getForceSpacingFormBlock(source())).toContain('physics-paint-pill--apply-spacing');
+    expect(getHeaderBlock(source())).toContain('physics-paint-pill--apply-spacing');
   });
 
   it('guards the relocated Add key and Duplicate actions with the empty-key/duplicate ports', () => {
@@ -1177,22 +1124,21 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
   });
 
   it('converts the relocated Set Key Space form to the guarded pattern with a styled tooltip and no native disabled/title', () => {
-    const form2 = getForceSpacingFormBlock(source());
-    const spacingIndex = form2.indexOf('physics-paint-pill--apply-spacing');
+    const header = getHeaderBlock(source());
+    const spacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
     expect(spacingIndex).toBeGreaterThanOrEqual(0);
-    const formEnd = form2.indexOf('</form>', spacingIndex);
-    const form = form2.slice(spacingIndex, formEnd === -1 ? form2.length : formEnd);
+    const formEnd = header.indexOf('</form>', spacingIndex);
+    const form = header.slice(spacingIndex, formEnd === -1 ? header.length : formEnd);
     expect(form.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(form).not.toContain('title=');
-    expect(form).toContain('aria-disabled={!canApplyForceSpacingAction');
+    expect(form).toContain('aria-disabled={!props.canApplyForceSpacing');
     expect(form).toContain('aria-label="Empty frames between real keys"');
     expect(form).toContain('aria-label="Apply force spacing"');
     expect(form).toContain('>Apply</button>');
-    expect(form2).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
-    expect(form2).toContain('PhysicsPaintStyledTooltip');
-    // The submit handler keeps its verbatim mutation-lock guard (call-time
-    // peek — the memoized strip closes over no render-scoped availability).
-    expect(source()).toContain('if (props.ready === false || props.mutationLocked || !(physicalActions?.canApplyForceSpacing.peek() ?? false)) return;');
+    expect(header).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
+    expect(header).toContain('PhysicsPaintStyledTooltip');
+    // The submit handler keeps its verbatim mutation-lock guard.
+    expect(source()).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
 
   it('renders one Key Spacing scope line under the heading only when a rail set is active (43.6-05 M5, D-26)', () => {
@@ -1204,9 +1150,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     // relocated controls — one Body-role line, no panel or divider.
     const scopeLineIndex = header.indexOf('physics-paint-toolbox-scope-line', headingIndex);
     expect(scopeLineIndex).toBeGreaterThan(headingIndex);
-    // 260905-ibd follow-up (G-52-9): the controls render through the form's
-    // own narrow subscriber component, mounted directly after the scope line.
-    const controlsIndex = header.indexOf('<PhysicsPaintForceSpacingForm', headingIndex);
+    const controlsIndex = header.indexOf('physics-paint-pill--apply-spacing', headingIndex);
     expect(controlsIndex).toBeGreaterThan(scopeLineIndex);
     // The line is the D-27 set copy verbatim — the same string the capsule
     // shows, fed through the static-chrome prop (one mapper authority).
@@ -1252,9 +1196,9 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
 
 describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E)', () => {
   it('renames the Set Key Space label to Key spacing in the relocated popover form', () => {
-    const form = getForceSpacingFormBlock(source());
-    expect(form).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
-    expect(form).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
+    const header = getHeaderBlock(source());
+    expect(header).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
+    expect(header).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
   });
 
   it('removes the doubled ring artifact from the Apply submit by dropping its 999px pill radius', () => {
@@ -1322,10 +1266,9 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     expect(identityCloseIndex).toBeLessThan(utilitiesIndex);
     // 43.5-02 Task 2: the Key Spacing form moved into the toolbox popover,
     // so the bottom row holds exactly the identity and tools groups; the
-    // form lives in the header block behind the ToolCase button — inside its
-    // own narrow subscriber component since 260905-ibd (G-52-9).
+    // form lives in the header block behind the ToolCase button.
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
-    expect(getForceSpacingFormBlock(source())).toContain('physics-paint-pill--apply-spacing');
+    expect(getHeaderBlock(source())).toContain('physics-paint-pill--apply-spacing');
     // The identity group carries the layer name and the Key chip.
     const identity = row.slice(identityIndex, identityCloseIndex);
     expect(identity).toContain('physics-paint-roto-key-layer');
@@ -1356,14 +1299,14 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     // smoke UX5) so it carries no visible label here.
     const row = getActionRowBlock(source());
     for (const label of ['Key', 'Duplicate', 'Insert', 'Copy', 'Paste']) {
-      expect(row).toContain(`textLabel="${label}"`);
+      expect(row).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
     }
   });
 
   it("renders the Key spacing submit as 'Apply' (not 'APPLY')", () => {
-    const form = getForceSpacingFormBlock(source());
-    expect(form).toContain('>Apply</button>');
-    expect(form).not.toContain('>APPLY</button>');
+    const header = getHeaderBlock(source());
+    expect(header).toContain('>Apply</button>');
+    expect(header).not.toContain('>APPLY</button>');
     const styles = css();
     const apply = getCssRuleBlock(styles, '.physics-paint-roto-force-spacing-apply {');
     expect(apply).toContain('text-transform: none');
@@ -1561,9 +1504,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const laneFnIndex = code.indexOf('const renderActiveLane');
     const physicalLaneIndex = code.indexOf('class={`physics-paint-lane', laneFnIndex);
     const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail', physicalLaneIndex);
-    // 260905-ibd follow-up (G-52-9): the cells are a narrow subscriber
-    // component mounted in the lane after the loop rail.
-    const cellsIndex = code.indexOf('<PhysicsPaintRotoCells', loopRailIndex);
+    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"', loopRailIndex);
 
     expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipIds?: readonly string[];');
     expect(getWorkflowStripPropsInterface(code)).not.toContain('selectedRotoLoopSourceKeyIds');
@@ -1699,7 +1640,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyKeyClearIndex).toBeGreaterThan(proxyNavigateIndex);
     expect(ordinaryClearIndex).toBeGreaterThan(emptyKeyClearIndex);
     expect(ordinaryToggleIndex).toBeGreaterThan(ordinaryClearIndex);
-    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !props.rotoDragLocked');
+    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
   });
 
   it('keeps an empty frame current until replacement-style Select All owns the selection', () => {
@@ -1714,7 +1655,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyBranchStart).toBeGreaterThanOrEqual(0);
     expect(emptyBranch).toContain('current.onNavigateToSyncedFrame(frame);');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
-    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && props.rotoSelectedKeyIdSet.size >= 2;');
+    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
     expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
   });
@@ -1769,10 +1710,10 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(props).not.toContain('selectedRotoLoopSourceKeyIds');
     expect(props).toContain('rotoPrimarySelectedKeyId?: string | null;');
     expect(code).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
-    expect(map).toContain('const spacingProxy = props.visibleSpacingProxies?.get(frame) ?? null;');
+    expect(map).toContain('const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;');
     expect(map).toContain('const isSpacingProxySelected = spacingProxy !== null');
     expect(map).toContain('props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId');
-    expect(map).toContain('props.rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId)');
+    expect(map).toContain('rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId)');
     expect(map).not.toContain('selectedRotoLoopSourceKeyIdSet');
     expect(map).toContain("${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''}");
     expect(map).not.toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
@@ -1785,7 +1726,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('const isSecondarySelected = !isSpacingProxySelected');
     expect(map).toContain('&& !isPrimarySelected;');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
-    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && props.rotoSelectedKeyIdSet.size >= 2;');
+    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
     expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
@@ -1829,7 +1770,7 @@ describe('PhysicsPaintWorkflowStrip Group-drag gap preview contract (43.3-03, UI
   it('paints gap-preview frames as ordinary roto-fill-empty cells with no new DOM nodes', () => {
     const code = source();
     const map = getRotoMapBlock(code);
-    expect(map).toContain('const isRotoGroupDragGapPreview = props.rotoGroupDragGapPreviewAppFrames.has(frame);');
+    expect(map).toContain('const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);');
     expect(map).toContain('const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview');
     expect(map).toContain("? 'roto-fill-empty' : fillClass;");
     expect(map).toContain('physics-paint-roto-cell ${effectiveFillClass}');
@@ -1854,9 +1795,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(keyRailGate).not.toContain('onSelectRotoLoopClip');
     expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class={`physics-paint-lane'));
-    // 260905-ibd follow-up (G-52-9): the cells are a narrow subscriber
-    // component mounted in the lane after the key rail.
-    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('<PhysicsPaintRotoCells', keyRailStart));
+    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
   });
 
   it('derives ordinary segments by excluding all Motion and Static Group-owned identities', () => {
@@ -1888,7 +1827,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(code).toContain('if (!rotoKeyRailDragPreview) return new Set<number>();');
     expect(code).toContain('rotoKeyRailDragPreview.publication.vacatedInterval');
     expect(code).toContain('rotoKeyRailDragPreview.publication.destinationFirstKeyAppFrame');
-    expect(map).toContain('const isRotoKeyRailDragGapPreview = props.rotoKeyRailDragGapPreviewAppFrames.has(frame);');
+    expect(map).toContain('const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);');
     expect(map).toContain('isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview');
     expect(map).toContain("? 'roto-fill-empty' : fillClass");
     expect(code).toContain('onPreviewChange={setRotoKeyRailDragPreview}');
@@ -2013,15 +1952,15 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     expect(code).not.toContain('>Push Right</span>');
     expect(code).not.toContain('>Delete</span>');
     // ONE Push button, not two.
-    expect(code).toContain('label="Push"');
-    expect(code).not.toContain('label="Push Left"');
-    expect(code).not.toContain('label="Push Right"');
+    expect(code).toContain('aria-label="Push"');
+    expect(code).not.toContain('aria-label="Push Left"');
+    expect(code).not.toContain('aria-label="Push Right"');
   });
 
   it('A8: Delete renders AFTER the All button in the action row', () => {
     const code = source();
-    const allIndex = code.indexOf('label="Select all keys"');
-    const deleteIndex = code.indexOf('label={deleteRotoScopeLabel}');
+    const allIndex = code.indexOf('aria-label="Select all keys"');
+    const deleteIndex = code.indexOf('aria-label={deleteRotoScopeLabel}');
     expect(allIndex).toBeGreaterThan(-1);
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(deleteIndex).toBeGreaterThan(allIndex);
@@ -2179,25 +2118,20 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 
 describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
   it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)', () => {
-    const code = source();
-    // 260905-ibd follow-up (G-52-9): the rendered order lives in the action-row
-    // div inside PhysicsPaintRotoActionRowImpl as the button-wrapper component
-    // references; each wrapper's aria-label lives in its own component.
-    const rowStart = code.indexOf('class="physics-paint-roto-action-row"');
-    const rowEnd = code.indexOf('const PhysicsPaintRotoActionRow = memo(PhysicsPaintRotoActionRowImpl);', rowStart);
-    const row = code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
-    const addKeyIndex = row.indexOf('<PhysicsPaintRotoAddKeyButton');
-    const createRailIndex = row.indexOf('<PhysicsPaintRailCreateButton');
-    const pushIndex = row.indexOf('<PhysicsPaintRotoPushButton');
-    const insertIndex = row.indexOf('<PhysicsPaintRotoInsertButton');
-    const duplicateIndex = row.indexOf('<PhysicsPaintRotoDuplicateButton');
-    const copyIndex = row.indexOf('<PhysicsPaintRotoCopyButton');
-    const pasteIndex = row.indexOf('<PhysicsPaintRotoPasteButton');
-    const cutIndex = row.indexOf('<PhysicsPaintRotoCutButton');
-    const scissorIndex = row.indexOf('<PhysicsPaintRotoScissorButton');
-    const selectAllIndex = row.indexOf('<PhysicsPaintRotoSelectAllButton');
-    const deleteIndex = row.indexOf('<PhysicsPaintRotoDeleteButton');
-    const indices = [addKeyIndex, createRailIndex, pushIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, cutIndex, scissorIndex, selectAllIndex, deleteIndex];
+    const row = getActionRowBlock(source());
+    const tokens = [
+      'aria-label="Add key"',
+      'aria-label="Create rail"',
+      'aria-label="Push"',
+      getActionAriaLabelToken('Insert key before'),
+      'aria-label="Duplicate key"',
+      'aria-label="Copy key"',
+      'aria-label="Paste key"',
+      'aria-label="Cut key"',
+      getActionAriaLabelToken('Split Key Rail'),
+      getActionAriaLabelToken('Delete Frame'),
+    ];
+    const indices = tokens.map((token) => row.indexOf(token));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
@@ -2231,9 +2165,6 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
 
   it('derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)', () => {
     const code = source();
-    // 260905-ibd (G-52-9): the derivation moved into the memo-wrapped
-    // PhysicsPaintRailCreateButton narrow subscriber, reading the current frame
-    // from the currentFrameSignal prop (frame = props.currentFrameSignal.value).
     const derivationStart = code.indexOf('const currentFrameResolution = ');
     expect(derivationStart).toBeGreaterThan(-1);
     const derivationEnd = code.indexOf('const copyRotoKeyDisabledReason', derivationStart);
@@ -2241,10 +2172,10 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
     // Base law: canAddRotoKey must still gate (busy/ready/real-key).
     expect(derivation).toContain('canAddRotoKey &&');
     // Generated in-between exclusion reads the current frame's semantic cell.
-    expect(derivation).toContain("props.physicalCellByAppFrame.get(frame)?.kind === 'generated'");
+    expect(derivation).toContain("physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated'");
     // Linked repeat exclusion reads the current frame's loop resolution.
     expect(derivation).toContain('isLinkedRepeatFrameResolution(currentFrameResolution)');
-    expect(derivation).toContain('props.visibleFrameResolutions?.get(frame) ?? null');
+    expect(derivation).toContain('visibleFrameResolutions?.get(props.currentFrame) ?? null');
     // Reason priority: base addEmptyKeyDisabledReason first, then repeat, then generated.
     expect(derivation).toContain('addRotoKeyDisabledReason');
     expect(derivation).toContain('isCurrentFrameLinkedRepeat');
