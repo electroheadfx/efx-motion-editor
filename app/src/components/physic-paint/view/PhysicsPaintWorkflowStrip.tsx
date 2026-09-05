@@ -1250,62 +1250,64 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <div class="physics-paint-toolbox-divider" />
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Actions</div>
-            <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
-              <button
-                type="button"
-                class="physics-paint-roto-key-icon-button"
-                aria-label="Apply Action to Frame"
-                aria-disabled={!props.canApplyScriptAction ? 'true' : undefined}
-                aria-describedby={!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? 'roto-key-action-reason-apply' : undefined}
-                onFocus={applyScriptTooltip.onFocus}
-                onBlur={applyScriptTooltip.onBlur}
-                onClick={() => {
-                  applyScriptTooltip.hide();
-                  if (!props.canApplyScriptAction) return;
-                  props.onApplyScript?.();
-                }}
-                onKeyDown={(event) => {
-                  if ((event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction) event.preventDefault();
-                }}
-              >
-                <ClipboardPen size={15} aria-hidden="true" />
-                <span class="physics-paint-roto-key-icon-label">Apply</span>
-              </button>
-              {!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? (
-                <span id="roto-key-action-reason-apply" class="physics-paint-sr-only">{props.applyScriptActionDisabledReason}</span>
-              ) : null}
-              <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="bottom">
-                {buildGuardedActionTooltipCopy('Apply Action to Frame', props.applyScriptActionDisabledReason)}
-              </PhysicsPaintStyledTooltip>
-            </span>
-            <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
-              <button
-                type="button"
-                class="physics-paint-roto-key-icon-button"
-                aria-label="Clear Action Buffer"
-                aria-disabled={!props.canClearScriptBuffer ? 'true' : undefined}
-                aria-describedby={!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? 'roto-key-action-reason-clear' : undefined}
-                onFocus={clearScriptBufferTooltip.onFocus}
-                onBlur={clearScriptBufferTooltip.onBlur}
-                onClick={() => {
-                  clearScriptBufferTooltip.hide();
-                  if (!props.canClearScriptBuffer) return;
-                  props.onDiscardScript?.();
-                }}
-                onKeyDown={(event) => {
-                  if ((event.key === 'Enter' || event.key === ' ') && !props.canClearScriptBuffer) event.preventDefault();
-                }}
-              >
-                <ClipboardX size={15} aria-hidden="true" />
-                <span class="physics-paint-roto-key-icon-label">Clear</span>
-              </button>
-              {!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? (
-                <span id="roto-key-action-reason-clear" class="physics-paint-sr-only">{props.clearScriptBufferDisabledReason}</span>
-              ) : null}
-              <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="bottom">
-                {buildGuardedActionTooltipCopy('Clear Action from buffer', props.clearScriptBufferDisabledReason)}
-              </PhysicsPaintStyledTooltip>
-            </span>
+            <div class="physics-paint-toolbox-actions-row">
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Apply Action to Frame"
+                  aria-disabled={!props.canApplyScriptAction ? 'true' : undefined}
+                  aria-describedby={!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? 'roto-key-action-reason-apply' : undefined}
+                  onFocus={applyScriptTooltip.onFocus}
+                  onBlur={applyScriptTooltip.onBlur}
+                  onClick={() => {
+                    applyScriptTooltip.hide();
+                    if (!props.canApplyScriptAction) return;
+                    props.onApplyScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction) event.preventDefault();
+                  }}
+                >
+                  <ClipboardPen size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Apply</span>
+                </button>
+                {!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? (
+                  <span id="roto-key-action-reason-apply" class="physics-paint-sr-only">{props.applyScriptActionDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Apply Action to Frame', props.applyScriptActionDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Clear Action Buffer"
+                  aria-disabled={!props.canClearScriptBuffer ? 'true' : undefined}
+                  aria-describedby={!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? 'roto-key-action-reason-clear' : undefined}
+                  onFocus={clearScriptBufferTooltip.onFocus}
+                  onBlur={clearScriptBufferTooltip.onBlur}
+                  onClick={() => {
+                    clearScriptBufferTooltip.hide();
+                    if (!props.canClearScriptBuffer) return;
+                    props.onDiscardScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canClearScriptBuffer) event.preventDefault();
+                  }}
+                >
+                  <ClipboardX size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Clear</span>
+                </button>
+                {!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? (
+                  <span id="roto-key-action-reason-clear" class="physics-paint-sr-only">{props.clearScriptBufferDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Clear Action from buffer', props.clearScriptBufferDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+            </div>
           </div>
         </PhysicsPaintToolboxPopover>
       ) : null}

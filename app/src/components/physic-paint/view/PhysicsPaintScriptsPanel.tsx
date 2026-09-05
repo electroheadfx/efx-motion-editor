@@ -406,7 +406,37 @@ function formatFrameRange(start: number, endExclusive: number): string {
 }
 
 function IconButton(props: { buttonRef?: Ref<HTMLButtonElement>; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () => void; children: ComponentChildren }) {
-  const button = <button ref={props.buttonRef} type="button" class="physics-paint-script-icon-button" aria-label={props.label} title={props.title} disabled={props.disabled} aria-describedby={props.disabledReason ? props.descriptionId : undefined} onClick={props.onClick}>{props.children}</button>;
-  if (!props.disabledReason || !props.descriptionId) return button;
-  return <span class="physics-paint-script-disabled-control" tabIndex={0} title={props.title} aria-describedby={props.descriptionId}>{button}<span id={props.descriptionId} class="physics-paint-sr-only">{props.disabledReason}</span></span>;
+  const tooltip = useStyledTooltip();
+  const isDisabled = props.disabled ?? false;
+  const reason = props.disabledReason ?? null;
+  return (
+    <span class="physics-paint-roto-key-icon-action" onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}>
+      <button
+        ref={props.buttonRef}
+        type="button"
+        class="physics-paint-script-icon-button"
+        aria-label={props.label}
+        aria-disabled={isDisabled ? 'true' : undefined}
+        aria-describedby={isDisabled && reason ? props.descriptionId : undefined}
+        onFocus={tooltip.onFocus}
+        onBlur={tooltip.onBlur}
+        onClick={() => {
+          tooltip.hide();
+          if (isDisabled) return;
+          props.onClick?.();
+        }}
+        onKeyDown={(event) => {
+          if ((event.key === 'Enter' || event.key === ' ') && isDisabled) event.preventDefault();
+        }}
+      >
+        {props.children}
+      </button>
+      {isDisabled && reason ? (
+        <span id={props.descriptionId} class="physics-paint-sr-only">{reason}</span>
+      ) : null}
+      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="right-edge" avoidRowOverlap>
+        {isDisabled && reason ? `unavailable: ${reason}` : props.title}
+      </PhysicsPaintStyledTooltip>
+    </span>
+  );
 }

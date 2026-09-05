@@ -2387,6 +2387,8 @@ describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () =>
     const header = getHeaderBlock(source());
     const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Actions</div>');
     expect(headingIndex).toBeGreaterThanOrEqual(0);
+    // The two buffer buttons sit side by side on one line (260905-dso).
+    expect(header).toContain('physics-paint-toolbox-actions-row');
     const applyIndex = header.indexOf('aria-label="Apply Action to Frame"', headingIndex);
     const clearIndex = header.indexOf('aria-label="Clear Action Buffer"', headingIndex);
     expect(applyIndex).toBeGreaterThan(headingIndex);

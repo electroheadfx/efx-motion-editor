@@ -124,7 +124,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('label="Create Rail…"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
-    expect(panel).toContain('title={props.title}');
+    expect(panel).toContain('PhysicsPaintStyledTooltip visible={tooltip.visible}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
     expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action'");
@@ -253,7 +253,9 @@ describe('Physics Paint Scripts panel Copy toolbar contract (36.15-08, UAT Gap C
   it('lays the toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
     const toolbar = getScriptsToolbarBlock(panel);
     const guardedCount = (toolbar.match(/physics-paint-roto-key-icon-action/g) ?? []).length;
-    // One guarded clipboard action (Copy) forms the second row.
+    // One guarded clipboard action (Copy) forms the second row; the first-row
+    // buttons get the same guarded idiom via the shared IconButton helper
+    // (260905-dso).
     expect(guardedCount).toBe(1);
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');

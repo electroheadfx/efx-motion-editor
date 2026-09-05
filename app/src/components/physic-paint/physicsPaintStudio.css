@@ -1113,14 +1113,8 @@ button.destructive {
   min-width: 0;
 }
 
-.physics-paint-script-disabled-control {
-  display: flex;
-  min-width: 0;
-}
-
-/* Guarded clipboard actions (Copy Script / Apply Script / Clear Script
-   Buffer) form the second toolbar row styled like the first (36.15-08, UAT
-   Gap C). */
+/* Guarded toolbar actions (Save / Load + Apply / Create Rail / Delete /
+   Refresh / Copy) all use the guarded styled-tooltip idiom (260905-dso). */
 .physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action {
   display: flex;
   min-width: 0;
@@ -6031,6 +6025,16 @@ button.destructive {
   width: 100%;
   height: 1px;
   background: #3f4851;
+}
+
+/* 260905-dso: the Actions section lays its two buffer buttons (Apply / Clear)
+   side by side on one line, mirroring the Key Spacing control row. */
+.physics-paint-toolbox-actions-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 /* Micro role (10px/600, 1.2), title case, letter-spacing 0.04em. */
