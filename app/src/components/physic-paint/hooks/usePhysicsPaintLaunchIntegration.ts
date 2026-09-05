@@ -8,8 +8,6 @@ import {
   hydrateReferenceSourceImagesFromLibrary,
 } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
-import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
-import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
 import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
@@ -187,10 +185,15 @@ export function usePhysicsPaintLaunchIntegration(input: {
       const fallback = launch.document?.background?.fallback;
       return fallback ? applyBackgroundFallbackToSettings(fallback) : null;
     });
-    // 41-02 (D-01): hydrate the audio preview store from the launch section
-    // through the strict newer-than revision funnel. Absent section = no audio.
+    // 41-02 (D-01): hydrate the audio preview from the launch section through
+    // the SAME single funnel the live push events use (G-52-9 silent-scrub
+    // fix): the strict revision guard AND the monitor's applyRevisionedContext
+    // — which runs prepare() (fetch+decode, sets the monitor context). The
+    // bare store guard left the monitor unprepared until the first Play, so
+    // scrubAt bailed on its !context gate and idle scrub was silent. Absent
+    // section = no audio.
     if (hydration.context.audioPreview) {
-      applyRevisionedEfxPaintAudioPreview(efxPaintAudioPreviewStore, hydration.context.audioPreview);
+      void handleEfxPaintAudioContextEvent(hydration.context.audioPreview);
     }
     const readyEngine = input.engineRef.current;
     if (readyEngine) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, readyEngine as PreviewBackgroundEngine);
