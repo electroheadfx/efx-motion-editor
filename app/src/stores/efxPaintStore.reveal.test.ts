@@ -289,11 +289,12 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
 
     await createRail(layerId);
     // Script strokes live in working coordinates: the bake must render at
-    // getPhysicsPaintWorkingSize(1920×1080) = 1000×563 — never the project
-    // size — and hand the mask composite the ghost zoom (1000/1920).
+    // getPhysicsPaintWorkingSize(1920×1080) = 1920×1080 (cap raised, no
+    // downscale) — never a downscaled size — and hand the mask composite the
+    // project→working zoom (1920/1920 = 1).
     expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
-      size: { width: 1000, height: 563 },
-      reference: expect.objectContaining({ zoom: 1000 / 1920 }),
+      size: { width: 1920, height: 1080 },
+      reference: expect.objectContaining({ zoom: 1920 / 1920 }),
     }));
   });
 

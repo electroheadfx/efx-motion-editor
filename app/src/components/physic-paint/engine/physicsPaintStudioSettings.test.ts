@@ -27,11 +27,17 @@ describe('Physics Paint Studio settings', () => {
 
   it('keeps the established painting defaults', () => {
     expect(makeInitialPhysicsPaintStudioSettings()).toMatchObject({
-      tool: 'paint', color: '#103c65', size: 6, opacity: 100,
+      tool: 'paint', color: '#103c65', size: 11, opacity: 100,
       background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45,
       edgeDetail: 4, pickup: 0, eraseStrength: 50, smoothing: 0, spread: 50,
       physicsMode: 'local', activePhysicsAction: null,
     });
+  });
+
+  it('52.1-06 (D-15): the brush size default is rescaled ~1.9x (6 → ~11-12) to preserve relative stroke width at 1920', () => {
+    const settings = makeInitialPhysicsPaintStudioSettings();
+    expect(settings.size).toBeGreaterThanOrEqual(11);
+    expect(settings.size).toBeLessThanOrEqual(12);
   });
 
   it('preserves Roto paper metadata and maps photo to transparent', () => {
