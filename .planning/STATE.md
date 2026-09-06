@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.1"
-current_phase_name: Modern frame runtime + native HD paint
-status: planning
+current_phase_name: modern-frame-runtime-native-hd-paint
+status: executing
 stopped_at: Phase 52.1 context gathered
-last_updated: "2026-09-06T07:26:34.961Z"
+last_updated: "2026-09-06T08:11:48.283Z"
 last_activity: 2026-09-05
 last_activity_desc: Phase 52 complete, transitioned to Phase 53
-state_head: 3facc7ade33b8a8bf69589cbcd5d54b7ac6c5b9a
+state_head: 186414f6d0edf8a566d29c86f42041e0575f169f
 progress:
   total_phases: 10
   completed_phases: 4
-  total_plans: 42
+  total_plans: 49
   completed_plans: 42
   percent: 40
 ---
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 52.1 — Modern frame runtime + native HD paint
+Phase: 52.1 (modern-frame-runtime-native-hd-paint) — READY TO EXECUTE
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-09-05 - Completed quick task 260905-hfd: Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector
 
 Progress: [████████████████████] 42/42 plans ([████░░░░░░] 40%)

@@ -472,13 +472,32 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 52.1-01-PLAN.md — Dependency bumps (Tauri 2.11.5 / Preact 10.29.8) + D-04 gates
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 52.1-02-PLAN.md — Tracer: Rust FrameCodec trait + WebPLosslessCodec + encode/decode commands + JS byte bridge
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 52.1-03-PLAN.md — Runtime frame identity retarget (bytes field, WebP probe, registries re-keyed, raw-byte apply path)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 52.1-04-PLAN.md — Byte-budgeted LRU + pinning + ImageBitmap handle + absorb decode-once caches
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 52.1-05-PLAN.md — Main-editor preview/export readers + compositor drawImage(bitmap)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 52.1-06-PLAN.md — Cap raise 1000→1920 + ~1.9x physics/brush rescale
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 52.1-07-PLAN.md — Clean-break contract + full gates + native roto UAT
 
 ### Phase 53: Integrated v1.0.0 Acceptance
