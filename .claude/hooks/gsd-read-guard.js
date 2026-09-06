@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.12.0
+// gsd-hook-version: 1.13.0
 // GSD Read Guard — PreToolUse hook
 // Injects advisory guidance when Write/Edit targets an existing file,
 // reminding the model to Read the file first.
@@ -195,6 +195,8 @@ process.stdin.on('end', () => {
           'If you have not already used the Read tool to read this file in the current session, ' +
           'you MUST Read it first before editing. The runtime will reject edits to files that ' +
           'have not been read. Use the Read tool on this file path, then retry your edit.',
+        code: 'READ_BEFORE_EDIT',
+        fileName,
       },
     };
 

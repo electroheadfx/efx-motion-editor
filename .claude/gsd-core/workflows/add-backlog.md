@@ -1,3 +1,5 @@
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/response-language-directive.md
+
 # Add Backlog Item Workflow
 
 Invoked by `/gsd-capture --backlog` (`commands/gsd/capture.md`).

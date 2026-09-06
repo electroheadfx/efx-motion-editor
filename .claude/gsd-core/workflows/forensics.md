@@ -1,3 +1,5 @@
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/response-language-directive.md
+
 # Forensics Workflow
 
 Post-mortem investigation for failed or stuck GSD workflows. Analyzes git history,

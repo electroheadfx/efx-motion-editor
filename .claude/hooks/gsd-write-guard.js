@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.12.0
+// gsd-hook-version: 1.13.0
 // GSD Write Guard — PreToolUse hook
 // Blocks a whole-file Write that catastrophically shrinks a curated .planning/
 // artifact (ROADMAP.md, milestone roadmaps, STATE.md).
