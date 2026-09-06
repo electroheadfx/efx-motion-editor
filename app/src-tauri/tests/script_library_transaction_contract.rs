@@ -59,8 +59,8 @@ fn physical_document(revision: &str) -> Value {
     json!({
         "capacity": 24,
         "realKeyRecords": [
-            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}},
-            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"dataUrl":"data:image/png;base64,BBBB"}}
+            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"bytes":"AAAA","width":2,"height":2}},
+            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"bytes":"BBBB"}}
         ],
         "groupOverrideRecords": [],
         "interpolation": {"enabled":false,"mode":"duplicate"},
@@ -156,7 +156,7 @@ fn canonical_physical_hash_matches_the_typescript_reference_vector() {
     let hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
             .unwrap();
-    assert_eq!(hash, "project-598-5cf0b794");
+    assert_eq!(hash, "project-332-485be9b8");
 }
 
 #[test]

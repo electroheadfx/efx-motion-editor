@@ -1244,10 +1244,11 @@ fn canonical_string(value: &str) -> String {
 /// head+tail+length token, never the full dataUrl (reveal-baked keys carry
 /// multi-MB PNGs; concatenating them cost ~10s per reveal rail at open).
 /// Validated payloads are ASCII base64, so char/byte slicing agree.
-/// 52.1 (D-05): the payload is raw WebP bytes (serde serializes Vec<u8> as a
-/// JSON number array). The token mirrors the JS `buildFrameBytesToken`:
-/// `d<len>:<head-64-hex>:<tail-64-hex>;` — O(1), change-safe for same-encoder
-/// WebP output.
+/// 52.1 (D-05): the canonical JSON form carries the payload bytes as a bare
+/// base64 string (a raw Uint8Array cannot survive JSON.stringify). The caller
+/// decodes base64 → raw bytes before hashing. The token mirrors the JS
+/// `buildFrameBytesToken`: `d<len>:<head-64-hex>:<tail-64-hex>;` — O(1),
+/// change-safe for same-encoder WebP output.
 fn canonical_bytes_payload(bytes: &[u8]) -> String {
     let head_len = bytes.len().min(64);
     let tail_start = bytes.len().saturating_sub(64);
@@ -1335,13 +1336,12 @@ fn canonical_records(records: &[Value]) -> Result<String, String> {
             .get("appFrame")
             .and_then(Value::as_f64)
             .ok_or("Target physical document payload appFrame is malformed")?;
-        let bytes: Vec<u8> = payload
+        let bytes_encoded = payload
             .get("bytes")
-            .and_then(Value::as_array)
-            .ok_or("Target physical document payload bytes is malformed")?
-            .iter()
-            .map(|value| value.as_u64().and_then(|byte| u8::try_from(byte).ok()).ok_or("Target physical document payload byte is malformed"))
-            .collect::<Result<Vec<u8>, String>>()?;
+            .and_then(Value::as_str)
+            .ok_or("Target physical document payload bytes is malformed")?;
+        let bytes = decode_base64(bytes_encoded)
+            .map_err(|_| "Target physical document payload bytes is malformed".to_string())?;
         let width = payload.get("width").and_then(Value::as_f64);
         let height = payload.get("height").and_then(Value::as_f64);
         encoded.push_str(&canonical_string(key_id));
@@ -2580,4 +2580,51 @@ pub(crate) fn validate_webp_payload(bytes: &[u8]) -> Result<(u64, u64), String> 
         .decode()
         .map_err(|error| format!("Thumbnail WebP could not be decoded: {error}"))?;
     Ok((u64::from(image.width()), u64::from(image.height())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn physical_document(bytes: Value) -> Value {
+        json!({
+            "realKeyRecords": [{
+                "keyId": "k1",
+                "appFrame": 0.0,
+                "payload": {
+                    "frameIndex": 0.0,
+                    "appFrame": 0.0,
+                    "bytes": bytes,
+                    "width": 2.0,
+                    "height": 2.0
+                }
+            }],
+            "interpolation": { "enabled": false, "mode": "none" },
+            "capacity": 1.0,
+            "scriptMotion": { "deformation": 0.0, "position": 0.0 },
+            "cursorAppFrame": 0.0
+        })
+    }
+
+    #[test]
+    fn canonical_physical_hash_accepts_base64_bytes() {
+        // 52.1 (D-05): the canonical JSON form carries `bytes` as a bare base64
+        // string (a raw Uint8Array cannot survive JSON.stringify). The Rust side
+        // decodes base64 → raw bytes before hashing, mirroring the TS
+        // buildFrameBytesToken over the raw Uint8Array — so both boundaries hash
+        // the same raw bytes and the token is identical.
+        let document = physical_document(json!("dGVzdA==")); // "test" = [0x74, 0x65, 0x73, 0x74]
+        let first = canonical_physical_hash(&document).expect("base64 bytes must parse");
+        let second = canonical_physical_hash(&document).expect("base64 bytes must parse");
+        assert_eq!(first, second, "hash must be deterministic");
+    }
+
+    #[test]
+    fn canonical_physical_hash_rejects_array_bytes() {
+        // The pre-fix array parse would fail closed on every Script Apply; the
+        // canonical form is base64, so a JSON number array must be rejected.
+        let document = physical_document(json!([116, 101, 115, 116]));
+        assert!(canonical_physical_hash(&document).is_err());
+    }
 }
