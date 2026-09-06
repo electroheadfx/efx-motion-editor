@@ -18,6 +18,7 @@ import {
   isPhysicPaintActionTransactionPrepareRequest,
   isPhysicPaintActionTransactionResult,
   isPhysicPaintActionTransactionTokenRequest,
+  isWebpBytes,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
   serializePhysicPaintRotoPhysicalEditIntent,
 } from './physicPaint';
@@ -923,5 +924,44 @@ describe('referenced Action transaction contracts', () => {
       generation: request.generation, operationId: request.operationId,
       leaseToken: request.leaseToken, direction: 'sideways', cleaned: true,
     })).toBe(false);
+  });
+});
+
+describe('isWebpBytes', () => {
+  const webpLosslessBytes = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, // "RIFF"
+    0x00, 0x00, 0x00, 0x00, // size (ignored by probe)
+    0x57, 0x45, 0x42, 0x50, // "WEBP" (offset 8)
+    0x56, 0x50, 0x38, 0x4c, // "VP8L" (offset 12, lossless)
+    0x00, 0x00, 0x00, 0x00, // padding to satisfy length >= 16
+  ]);
+
+  it('accepts WebP RIFF/WEBP/VP8L lossless bytes', () => {
+    expect(isWebpBytes(webpLosslessBytes)).toBe(true);
+  });
+
+  it('rejects a PNG signature', () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52]);
+    expect(isWebpBytes(png)).toBe(false);
+  });
+
+  it('rejects a lossy WebP (VP8, not VP8L)', () => {
+    const lossy = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
+      0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20, // "VP8 " (lossy)
+    ]);
+    expect(isWebpBytes(lossy)).toBe(false);
+  });
+
+  it('rejects non-array values', () => {
+    expect(isWebpBytes('data:image/webp;base64,AAAA')).toBe(false);
+    expect(isWebpBytes(null)).toBe(false);
+    expect(isWebpBytes(undefined)).toBe(false);
+    expect(isWebpBytes(1234)).toBe(false);
+  });
+
+  it('rejects arrays shorter than the WebP header', () => {
+    expect(isWebpBytes(new Uint8Array([0x52, 0x49, 0x46, 0x46]))).toBe(false);
+    expect(isWebpBytes(new Uint8Array(0))).toBe(false);
   });
 });
