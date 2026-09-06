@@ -150,6 +150,7 @@ class RecordingCanvasContext {
         source instanceof TestRaster ? source.id
         : source instanceof TestImage ? source.src
         : source instanceof TestCanvas ? 'canvas'
+        : source instanceof FlatTestBitmap ? bitmapLabelFor(source.label)
         : 'unknown',
       args,
       globalAlpha: this.globalAlpha,
@@ -209,6 +210,14 @@ class TestImage {
   get src(): string {
     return this.currentSrc;
   }
+}
+
+/** The decoded ImageBitmap the LRU hands back (no `src` — a real ImageBitmap). */
+class FlatTestBitmap {
+  width = 4;
+  height = 3;
+  close = vi.fn();
+  constructor(public label: string) {}
 }
 
 function makeHarness(options: {
@@ -838,6 +847,12 @@ vi.mock('../../stores/projectStore', () => ({
   },
 }));
 
+// 52.1-05 (D-13): the compositor decodes frame bytes through the shared LRU
+// (`decodeWebpFrame` → `createImageBitmap` → ImageBitmap). Mock the Rust decode
+// leaf so the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
 import type { Layer } from '../../types/layer';
 import { defaultTransform } from '../../types/layer';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../../stores/physicPaintStore';
@@ -919,6 +934,23 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
     vi.stubGlobal('Image', TestImage);
     vi.stubGlobal('HTMLImageElement', TestImage);
     vi.stubGlobal('HTMLCanvasElement', TestCanvas);
+    // 52.1-05 (D-13): the decode path is `decodeWebpFrame` → ImageData →
+    // createImageBitmap. Encode the seed into the returned rgba so the bitmap
+    // label is deterministic per source frame.
+    decodeWebpFrameMock.mockReset();
+    decodeWebpFrameMock.mockImplementation(async ({ bytes }: { bytes: Uint8Array }) => {
+      const seed = new TextDecoder().decode(bytes.slice(32));
+      const rgba = new Uint8Array(4 * 3 * 4);
+      for (let index = 0; index < seed.length && index < rgba.length; index += 1) rgba[index] = seed.charCodeAt(index) & 0xff;
+      return { width: 4, height: 3, rgba };
+    });
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+    vi.stubGlobal('createImageBitmap', async (imageData: { data: Uint8ClampedArray }, _options: unknown) => {
+      const seed = new TextDecoder().decode(imageData.data).replace(/\0+$/, '');
+      return new FlatTestBitmap(seed);
+    });
     vi.stubGlobal('Blob', class extends OriginalBlob {
       constructor(parts: BlobPart[], options?: BlobPropertyBag) {
         super(parts, options);
@@ -939,7 +971,7 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
     vi.unstubAllGlobals();
   });
 
-  it('matrix row 20 — parent 50% × internal 50% = 25% effective exactly once at the previewRenderer seam (CMP-03)', () => {
+  it('matrix row 20 — parent 50% × internal 50% = 25% effective exactly once at the previewRenderer seam (CMP-03)', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ]);
@@ -959,8 +991,9 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     // Load-then-draw: the first pass decodes the flattened raster, the second
-    // paints it from the image cache.
+    // paints it from the LRU bitmap.
     renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
+    await flushDecode();
     renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
 
     const parentDraw = ctx.operations.find(
@@ -998,5 +1031,11 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
 const blobContentByBlob = new WeakMap<Blob, Uint8Array>();
 const OriginalBlob = globalThis.Blob;
 const blobUrlFor = (seed: string): string => `blob:test:${seed}`;
-const FLAT_1 = blobUrlFor('FLAT_1');
+// 52.1-05 (D-13): the decoded frame is now an ImageBitmap (no `src`), so the
+// recorded drawImage source is a deterministic per-seed label instead of a Blob
+// URL. `flushDecode` drains the microtask queue so a kicked-off async decode
+// completes before the second (warm) render pass.
+const bitmapLabelFor = (seed: string): string => `bitmap:${seed}`;
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+const FLAT_1 = bitmapLabelFor('FLAT_1');
 let offscreenOperations: RecordedCanvasOp[] = [];

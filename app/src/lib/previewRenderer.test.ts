@@ -636,7 +636,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
 
 describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
   const FLAT_1 = bitmapLabelFor('FLAT_1');
-  const FLAT_2 = blobUrlFor('FLAT_2');
+  const FLAT_2 = bitmapLabelFor('FLAT_2');
 
   it('seam contract: resolves physic-paint content only through getFlattenedFrame, exactly once per render', () => {
     seedPhysicalRoto([
@@ -735,7 +735,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(renderer.isPhysicPaintFrameResolved(flattened)).toBe(true);
   });
 
-  it('a missing Hold frame renders transparent through the flattened raster — never the stripe placeholder (D-09)', () => {
+  it('a missing Hold frame renders transparent through the flattened raster — never the stripe placeholder (D-09)', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ]);
@@ -750,6 +750,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#1A1A2A' }));
