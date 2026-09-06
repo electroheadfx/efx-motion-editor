@@ -3,18 +3,18 @@ gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.1"
-current_phase_name: modern-frame-runtime-native-hd-paint
+current_phase_name: Modern frame runtime + native HD paint (INSERTED)
 status: executing
-stopped_at: Phase 52.1 context gathered
-last_updated: "2026-09-06T08:11:48.283Z"
-last_activity: 2026-09-05
-last_activity_desc: Phase 52 complete, transitioned to Phase 53
-state_head: 186414f6d0edf8a566d29c86f42041e0575f169f
+stopped_at: Completed 52.1-01-PLAN.md
+last_updated: "2026-09-06T08:29:59.006Z"
+last_activity: 2026-09-06
+last_activity_desc: Phase 52.1 execution started
+state_head: 7dd75fcddf6f6d7a63ec54c1546083ee566c616e
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 49
-  completed_plans: 42
+  completed_plans: 43
   percent: 40
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.1 — Modern frame runtime + native HD paint
+**Current focus:** Phase 52.1 — Modern frame runtime + native HD paint (INSERTED)
 
 ## Current Position
 
-Phase: 52.1 (modern-frame-runtime-native-hd-paint) — READY TO EXECUTE
-Plan: Not started
+Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-09-05 - Completed quick task 260905-hfd: Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector
+Last activity: 2026-09-06 — Phase 52.1 execution started
 
 Progress: [████████████████████] 42/42 plans ([████░░░░░░] 40%)
 
@@ -103,6 +103,7 @@ Progress: [████████████████████] 42/42 p
 | Phase 50 P04 | 15min | 2 tasks | 7 files |
 | Phase 50 P05 | 19 | 3 tasks | 11 files |
 | Phase 50 P06 | 10min | 2 tasks | 2 files |
+| Phase 52.1 P01 | 2 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -240,6 +241,8 @@ Recent decisions affecting current work:
 - [Phase 52]: The alpha-canvas registry OWNS any canvas registered into it (session-lifetime) — no caller may release/resize/mutate a registered canvas; the compositor's registry-first branch only accepts non-zero-size entries (fail-soft) so a poisoned 0x0 canvas can never throw InvalidStateError on drawImage (G-52-10).
 - [Phase 52]: The canonical content fingerprint uses a content TOKEN (length + head-64 + tail-64, O(1)) instead of the full payload dataUrl — head+tail is change-safe for same-encoder PNG output because deflate streams have no resync points; the Rust boundary mirrors the token and the parity pin holds (G-52-6).
 - [Phase 52]: Photo-weight baked keys decode OFF the main thread (dataUrl → Blob → createImageBitmap, with Image + await img.decode() fallback) and the flattened record carries the composite raster with a LAZY dataUrl getter — the draw path never pays a PNG encode/decode round-trip (G-52-7/G-52-8).
+- [Phase 52.1]: Corrected plan target versions to actual latest (api 2.11.1, cli 2.11.4, tauri-build 2.6.3, plugins independent latest; only Rust tauri crate has 2.11.5)
+- [Phase 52.1]: Raised root pnpm overrides (preact ^10.29.8, @preact/signals ^2.11.2) so the bump is not pinned back
 
 ### Pending Todos
 
@@ -283,6 +286,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-06T07:26:33.379Z
-Stopped at: Phase 52.1 context gathered
-Resume file: .planning/phases/52.1-modern-frame-runtime-native-hd-paint/52.1-CONTEXT.md
+Last session: 2026-09-06T08:29:57.573Z
+Stopped at: Completed 52.1-01-PLAN.md
+Resume file: None
