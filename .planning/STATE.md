@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.1"
 current_phase_name: Modern frame runtime + native HD paint (INSERTED)
 status: executing
-stopped_at: Completed 52.1-03-PLAN.md
-last_updated: "2026-09-06T11:46:06.000Z"
+stopped_at: Completed 52.1-04-PLAN.md
+last_updated: "2026-09-06T12:20:23.919Z"
 last_activity: 2026-09-06
-last_activity_desc: Phase 52.1 plan 03 complete (frame identity retarget to WebP bytes)
-state_head: b2e77b86d60d98126441dfa322ea6813c1cfe338
+last_activity_desc: Phase 52.1 execution started
+state_head: 863c8dbd0b96ae8185fb7ee3da0bf37d7ae0721d
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 49
-  completed_plans: 45
-  percent: 42
+  completed_plans: 46
+  percent: 40
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
-Last activity: 2026-09-06 — Phase 52.1 plan 03 complete (frame identity retarget to WebP bytes)
+Last activity: 2026-09-06 — Phase 52.1 execution started
 
 Progress: [████████████████████] 42/42 plans ([████░░░░░░] 40%)
 
@@ -105,6 +105,7 @@ Progress: [████████████████████] 42/42 p
 | Phase 50 P06 | 10min | 2 tasks | 2 files |
 | Phase 52.1 P01 | 2 min | 2 tasks | 5 files |
 | Phase 52.1-modern-frame-runtime-native-hd-paint P02 | 35 | 2 tasks | 6 files |
+| Phase 52.1 P04 | 19 | 4 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -247,6 +248,10 @@ Recent decisions affecting current work:
 - [Phase 52.1]: Encode via encode_advanced with exact=1 (config_exact), not encode_lossless() which does not set exact
 - [Phase 52.1]: Use direct invoke (not safeInvoke) so raw Uint8Array return is explicit and acceptance grep invoke( matches
 - [Phase 52.1]: Keep bytesToBase64/base64ToBytes — deletion is Plan 03's apply-path retarget
+- [Phase 52.1]: rotoAlphaCanvasRegistry stays (canvas registry for interpolation/reveal bake, not a decode cache); only _compositorImageCache absorbed into the LRU
+- [Phase 52.1]: decode_webp_frame takes bytes (not a path), so fetch-on-demand is deferred to Plan 05; Plan 04 decode path is invoke(decode_webp_frame, { bytes })
+- [Phase 52.1]: prefetchNeighborFrames wired via an optional prefetchNeighbors callback on useRotoNavigationCoordinator (layer-agnostic); the Studio closes over launchContext.layerId
+- [Phase 52.1]: ImageData exists only as the transient IPC-to-bitmap bridge, never stored
 
 ### Pending Todos
 
@@ -290,6 +295,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-06T11:46:06.000Z
-Stopped at: Completed 52.1-03-PLAN.md (frame identity retarget to WebP bytes)
+Last session: 2026-09-06T12:20:22.520Z
+Stopped at: Completed 52.1-04-PLAN.md
 Resume file: None
