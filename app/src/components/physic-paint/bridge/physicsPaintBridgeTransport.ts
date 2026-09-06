@@ -4,9 +4,37 @@ import { isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
+import { invoke } from '@tauri-apps/api/core';
 
 /** sessionStorage key for the crash-recovery document checkpoint (survives reload). */
 export const PHYSIC_PAINT_SESSION_DOCUMENT_KEY = 'efx-paint-session-document';
+
+/**
+ * Decoded WebP frame returned by the Rust `decode_webp_frame` command.
+ * `rgba` is a raw byte buffer (length `width * height * 4`), not base64 (D-07).
+ */
+export interface DecodedWebpFrame {
+  width: number;
+  height: number;
+  rgba: Uint8Array;
+}
+
+/**
+ * 52.1-02 (D-07): encode an RGBA buffer to WebP-lossless frame bytes via the
+ * Rust `encode_webp_frame` command. Raw `Uint8Array` crosses the Tauri boundary
+ * as bytes — never base64 (unlike `emitTo` JSON events).
+ */
+export function encodeWebpFrame(args: { rgba: Uint8Array; width: number; height: number }): Promise<Uint8Array> {
+  return invoke('encode_webp_frame', { rgba: args.rgba, width: args.width, height: args.height }) as Promise<Uint8Array>;
+}
+
+/**
+ * 52.1-02 (D-07): decode WebP frame bytes back to `{ width, height, rgba }` via
+ * the Rust `decode_webp_frame` command. Raw `Uint8Array` in, raw `Uint8Array` out.
+ */
+export function decodeWebpFrame(args: { bytes: Uint8Array }): Promise<DecodedWebpFrame> {
+  return invoke('decode_webp_frame', { bytes: args.bytes }) as Promise<DecodedWebpFrame>;
+}
 
 export async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
   const message = { type: 'physic-paint:seek-frame' as const, frame };
