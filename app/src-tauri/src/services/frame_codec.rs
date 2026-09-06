@@ -16,12 +16,44 @@ pub trait FrameCodec: Send + Sync {
 pub struct WebPLosslessCodec;
 
 impl FrameCodec for WebPLosslessCodec {
-    fn encode_rgba(&self, _rgba: &[u8], _width: u32, _height: u32) -> Result<Vec<u8>, String> {
-        Ok(Vec::new())
+    fn encode_rgba(&self, rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let mut config =
+            webp::WebPConfig::new().map_err(|_| "failed to init WebP config".to_string())?;
+        config.lossless = 1;
+        // config_exact: preserve RGB under fully-transparent pixels (D-01).
+        // `encode_lossless()` does NOT set `exact`, so we must use `encode_advanced`.
+        config.exact = 1;
+        config.alpha_compression = 0;
+        config.quality = 75.0;
+
+        let encoder = webp::Encoder::from_rgba(rgba, width, height);
+        let memory = encoder
+            .encode_advanced(&config)
+            .map_err(|e| format!("WebP encode failed: {e:?}"))?;
+        Ok(memory.to_vec())
     }
 
-    fn decode_rgba(&self, _bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
-        Ok((0, 0, Vec::new()))
+    fn decode_rgba(&self, bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+        let img = webp::Decoder::new(bytes)
+            .decode()
+            .ok_or_else(|| "WebP decode failed: invalid or unsupported image".to_string())?;
+
+        let width = img.width();
+        let height = img.height();
+
+        let rgba = if img.is_alpha() {
+            img.to_vec()
+        } else {
+            // Expand RGB -> RGBA (alpha = 255) so callers always get 4 bytes/pixel.
+            let rgb = img.to_vec();
+            let mut rgba = Vec::with_capacity(rgb.len() / 3 * 4);
+            for px in rgb.chunks_exact(3) {
+                rgba.extend_from_slice(&[px[0], px[1], px[2], 255]);
+            }
+            rgba
+        };
+
+        Ok((width, height, rgba))
     }
 }
 
