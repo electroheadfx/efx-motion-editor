@@ -435,7 +435,7 @@ export function renderFrameWithMotionBlur(
  * Failed images are logged but do not block the export — frames referencing
  * them will render without that image (blank/missing layer).
  */
-export function preloadExportImages(
+export async function preloadExportImages(
   renderer: PreviewRenderer,
   fm: FrameEntry[],
   signal?: AbortSignal,
@@ -443,6 +443,12 @@ export function preloadExportImages(
 ): Promise<void> {
   const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
   const paperTextures = renderer.collectRotoPaperTextures(sequences);
+  // 52.1-05 (D-13): trigger the decode for every physic-paint frame in the
+  // export range (getFlattenedFrame returns null on a cold miss but still kicks
+  // off the async decode), then await the in-flight decodes so the render loop's
+  // getFlattenedFrame returns the baked raster — never a silently missing layer.
+  collectExportPhysicPaintFrameSources(renderer, fm, sequences);
+  await renderer.awaitPhysicPaintDecodes();
   const physicPaintFrames = collectExportPhysicPaintFrameSources(renderer, fm, sequences);
   return new Promise<void>((resolve, reject) => {
     let settled = false;

@@ -13,7 +13,7 @@ import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
-import {physicPaintStore, physicPaintVersion, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
+import {physicPaintStore, physicPaintVersion, awaitPendingDecodes, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
 import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
 import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
@@ -221,8 +221,13 @@ export class PreviewRenderer {
     // G-52-8: a raster-carrying record is resolved by construction — the
     // export readiness gate must not wait for an Image decode that never runs.
     if (frame.raster) return true;
-    const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
-    return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
+    // 52.1-05 (D-13): the fallback resolves through the shared LRU bitmap.
+    return physicPaintStore.getDecodedImage(frame.renderedFrame.bytes) !== null;
+  }
+
+  /** 52.1-05 (D-13): await every in-flight physic-paint decode (export preload gate). */
+  awaitPhysicPaintDecodes(): Promise<void> {
+    return awaitPendingDecodes();
   }
 
   /**
@@ -624,37 +629,11 @@ export class PreviewRenderer {
     // no cache entry, no Image construction, no decode (the flattened memo
     // owns the raster's lifetime and identity per cacheKey).
     if (frame.raster) return frame.raster;
-    const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
-    const cached = this.imageCache.get(cacheKey);
-    if (cached) return cached;
-    if (this.loadingImages.has(cacheKey) || this.failedImages.has(cacheKey)) return null;
-
-    this.loadingImages.add(cacheKey);
-    const img = new Image();
-    img.onload = () => {
-      this.loadingImages.delete(cacheKey);
-      this.imageCache.set(cacheKey, img);
-      this.onImageLoaded?.();
-    };
-    img.onerror = () => {
-      this.loadingImages.delete(cacheKey);
-      this.failedImages.add(cacheKey);
-      console.warn(`[PreviewRenderer] Failed to load physics paint frame: ${frame.layerId}@${frame.frame}`);
-      this.onImageLoaded?.();
-    };
-    const blobUrl = URL.createObjectURL(new Blob([frame.renderedFrame.bytes.slice()], { type: 'image/webp' }));
-    const onLoad = img.onload;
-    img.onload = (event) => {
-      URL.revokeObjectURL(blobUrl);
-      onLoad?.call(img, event);
-    };
-    const onError = img.onerror;
-    img.onerror = (event) => {
-      URL.revokeObjectURL(blobUrl);
-      onError?.call(img, event);
-    };
-    img.src = blobUrl;
-    return null;
+    // 52.1-05 (D-13): the fallback resolves the shared LRU ImageBitmap — never
+    // a per-draw `new Image()` + Blob URL string round-trip. A cold miss kicks
+    // off the async decode and returns null this tick; the decode-complete
+    // physicPaintVersion bump re-fires the subscriber and re-draws.
+    return physicPaintStore.getDecodedImage(frame.renderedFrame.bytes);
   }
 
   getPaperTextureSource(paperGrain: string | undefined): HTMLImageElement | null {

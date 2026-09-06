@@ -418,6 +418,8 @@ const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrack
 
 /** In-flight decode guard (D-12): prevents duplicate decode kicks for the same bytes token. */
 const _compositorDecodeLoading = new Set<string>();
+/** In-flight decode promises (52.1-05 D-13): lets the export preload await completion. */
+const _compositorDecodePromises = new Map<string, Promise<ImageBitmap | null>>();
 
 /**
  * Background sourceRef → dataUrl registry (48-04 port wiring; Phase 49's import
@@ -1091,20 +1093,34 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   if (cached) return cached;
   if (_compositorDecodeLoading.has(token)) return null;
   _compositorDecodeLoading.add(token);
-  void (async () => {
+  const promise = (async (): Promise<ImageBitmap | null> => {
     try {
       const { width, height, rgba } = await decodeWebpFrame({ bytes });
       const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
       const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: 'none' });
       frameLru.put(token, bitmap, width, height);
+      return bitmap;
     } catch {
       // Decode failed — leave the token uncached so a later query retries.
+      return null;
     } finally {
       _compositorDecodeLoading.delete(token);
+      _compositorDecodePromises.delete(token);
       physicPaintVersion.value++;
     }
   })();
+  _compositorDecodePromises.set(token, promise);
   return null;
+}
+
+/**
+ * 52.1-05 (D-13): await every in-flight decode. The export preload calls this
+ * after triggering the per-frame decodes so the render loop's getFlattenedFrame
+ * returns the baked raster — a cold LRU miss must never render a frame with a
+ * silently missing layer.
+ */
+export function awaitPendingDecodes(): Promise<void> {
+  return Promise.all([..._compositorDecodePromises.values()]).then(() => undefined);
 }
 
 /**
@@ -2667,7 +2683,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -2699,6 +2715,7 @@ export const physicPaintStore = {
     _flattenedMemo.clear();
     _trackRasterMemo.clear();
     _compositorDecodeLoading.clear();
+    _compositorDecodePromises.clear();
     frameLru.clear();
     _backgroundSourceImages.clear();
     _referenceSourceImages.clear();
