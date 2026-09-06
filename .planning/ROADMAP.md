@@ -464,10 +464,27 @@ Plans:
 - [x] 52-04-PLAN.md — "Reveal with script…" modal entry
 - [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
+### Phase 52.1: Modern frame runtime + native HD paint (INSERTED)
+
+**Goal:** Replace the base64-dataUrl frame runtime with a bytes/ImageBitmap runtime, move PNG→WebP-lossless encode/decode into Rust, lazy-load sidecars behind a byte-budgeted LRU, and raise the working-resolution cap 1000→1920 — so HD projects paint at native resolution without main-thread jank or heap blowup.
+**Requirements**: TBD (D-01..D-19 locked decisions)
+**Depends on:** Phase 52
+**Plans:** 7 plans
+
+Plans:
+
+- [ ] 52.1-01-PLAN.md — Dependency bumps (Tauri 2.11.5 / Preact 10.29.8) + D-04 gates
+- [ ] 52.1-02-PLAN.md — Tracer: Rust FrameCodec trait + WebPLosslessCodec + encode/decode commands + JS byte bridge
+- [ ] 52.1-03-PLAN.md — Runtime frame identity retarget (bytes field, WebP probe, registries re-keyed, raw-byte apply path)
+- [ ] 52.1-04-PLAN.md — Byte-budgeted LRU + pinning + ImageBitmap handle + absorb decode-once caches
+- [ ] 52.1-05-PLAN.md — Main-editor preview/export readers + compositor drawImage(bitmap)
+- [ ] 52.1-06-PLAN.md — Cap raise 1000→1920 + ~1.9x physics/brush rescale
+- [ ] 52.1-07-PLAN.md — Clean-break contract + full gates + native roto UAT
+
 ### Phase 53: Integrated v1.0.0 Acceptance
 
 **Goal**: The enforcement backstop for all stop conditions — automated gates, native UAT, and signed/notarized release.
-**Depends on**: Phase 52
+**Depends on**: Phase 52.1
 **Requirements**: ACC-01, ACC-02, ACC-03
 **Success Criteria** (what must be TRUE):
 
