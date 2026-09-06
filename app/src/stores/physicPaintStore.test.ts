@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
+import { frameLru } from '../lib/frameLru';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage, hydrateBackgroundSourceImages } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -2474,6 +2475,69 @@ describe('physicPaintStore', () => {
       expect(record).not.toBeNull();
       expect(record!.missing).toEqual([]);
     });
+    });
+
+    // 52.1-04 (D-10): neighbor prewarm — decode the adjacent frames (N+1, N+2,
+    // N-1) through the existing decode path into the SAME 512 MB LRU. One
+    // budget, one eviction policy; the just-drawn frame is most-recently-used
+    // so prewarm only evicts the distant tail behind the playhead.
+    it('prefetchNeighborFrames decodes N+1, N+2, and N-1 into the LRU (D-10)', async () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [
+        { keyId: 'k4', appFrame: 4, bytes: makeFrame(4, 4).bytes },
+        { keyId: 'k5', appFrame: 5, bytes: makeFrame(5, 5).bytes },
+        { keyId: 'k6', appFrame: 6, bytes: makeFrame(6, 6).bytes },
+        { keyId: 'k7', appFrame: 7, bytes: makeFrame(7, 7).bytes },
+      ]);
+
+      prefetchNeighborFrames(FLAT_LAYER, 5);
+      await flushDecode();
+
+      expect(decodeWebpFrameMock).toHaveBeenCalledTimes(3);
+      expect(frameLru.has(buildFrameBytesToken(makeFrame(4, 4).bytes))).toBe(true);
+      expect(frameLru.has(buildFrameBytesToken(makeFrame(6, 6).bytes))).toBe(true);
+      expect(frameLru.has(buildFrameBytesToken(makeFrame(7, 7).bytes))).toBe(true);
+      expect(frameLru.has(buildFrameBytesToken(makeFrame(5, 5).bytes))).toBe(false);
+    });
+
+    it('prefetchNeighborFrames uses the existing decode path (decode_webp_frame → createImageBitmap → frameLru.put)', async () => {
+      const createImageBitmapSpy = vi.fn(async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
+      vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [
+        { keyId: 'k4', appFrame: 4, bytes: makeFrame(4, 4).bytes },
+        { keyId: 'k5', appFrame: 5, bytes: makeFrame(5, 5).bytes },
+        { keyId: 'k6', appFrame: 6, bytes: makeFrame(6, 6).bytes },
+        { keyId: 'k7', appFrame: 7, bytes: makeFrame(7, 7).bytes },
+      ]);
+
+      prefetchNeighborFrames(FLAT_LAYER, 5);
+      await flushDecode();
+
+      expect(decodeWebpFrameMock).toHaveBeenCalledTimes(3);
+      expect(createImageBitmapSpy).toHaveBeenCalledTimes(3);
+      expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'none' });
+    });
+
+    it('prefetchNeighborFrames never evicts the just-drawn frame (LRU ordering)', async () => {
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [
+        { keyId: 'k4', appFrame: 4, bytes: makeFrame(4, 4).bytes },
+        { keyId: 'k5', appFrame: 5, bytes: makeFrame(5, 5).bytes },
+        { keyId: 'k6', appFrame: 6, bytes: makeFrame(6, 6).bytes },
+        { keyId: 'k7', appFrame: 7, bytes: makeFrame(7, 7).bytes },
+      ]);
+
+      // Draw frame 5 first — it becomes most-recently-used in the LRU.
+      await flattenAfterDecode(FLAT_LAYER, 5);
+      const frame5Token = buildFrameBytesToken(makeFrame(5, 5).bytes);
+      expect(frameLru.has(frame5Token)).toBe(true);
+
+      // Prewarm the neighbors — the just-drawn frame must survive.
+      prefetchNeighborFrames(FLAT_LAYER, 5);
+      await flushDecode();
+
+      expect(frameLru.has(frame5Token)).toBe(true);
     });
   });
 });

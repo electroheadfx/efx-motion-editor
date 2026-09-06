@@ -1226,6 +1226,29 @@ function _resolveBackgroundSourceImage(sourceRef: string): ImageBitmap | null {
   return _compositorDecode(bytes);
 }
 
+/**
+ * 52.1-04 (D-10): neighbor prewarm — decode the adjacent frames (N+1, N+2, and
+ * N-1) through the existing decode path (decode_webp_frame → createImageBitmap
+ * → frameLru.put) into the SAME 512 MB LRU. One budget, one eviction policy:
+ * there is no second prewarm budget. The just-drawn frame is most-recently-used
+ * so prewarm only evicts the distant tail behind the playhead. Missing frames
+ * (past the sequence end, or a track with no source at that appFrame) resolve
+ * to `{ kind: 'missing' }` without a decode, so the helper is safe to call at
+ * any playhead position.
+ */
+export function prefetchNeighborFrames(layerId: string, appFrame: number): void {
+  const efxDocument = getEfxPaintDocument(layerId);
+  if (!efxDocument) return;
+  const participating = participatingPaintTracks(efxDocument);
+  for (const offset of [-1, 1, 2]) {
+    const targetFrame = appFrame + offset;
+    if (targetFrame < 0) continue;
+    for (const track of participating) {
+      _preResolveTrackContent(layerId, track.id, targetFrame);
+    }
+  }
+}
+
 /** 50-02 Task 2: the frame-aligned reference source verdict for the ghost draw path. */
 export interface ReferenceSourceFrameVerdict {
   readonly ref: string;

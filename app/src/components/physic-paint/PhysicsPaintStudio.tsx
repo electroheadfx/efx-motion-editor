@@ -5,7 +5,7 @@ import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopCli
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
   _setEfxPaintRevealScriptLoader,
   addBackgroundClip,
@@ -1603,6 +1603,11 @@ export function PhysicsPaintStudio() {
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
     afterNavigation: rotoScript.completeNavigation,
+    // 52.1-04 (D-10): neighbor prewarm on playhead advance — decode N+1, N+2,
+    // N-1 into the single 512 MB LRU so scrub cold-misses are covered (D-03).
+    prefetchNeighbors: (appFrame) => {
+      if (launchContext) prefetchNeighborFrames(launchContext.layerId, appFrame);
+    },
     keyUtilities: {
       currentFrame,
       currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
