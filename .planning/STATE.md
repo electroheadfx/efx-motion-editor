@@ -1,21 +1,21 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 53
-current_phase_name: Integrated v1.0.0 Acceptance
+current_phase: "52.1"
+current_phase_name: Modern frame runtime + native HD paint
 status: planning
-stopped_at: Phase 52 complete, ready to plan Phase 53
-last_updated: "2026-09-04T19:48:46.276Z"
-last_activity: 2026-09-04
+stopped_at: Phase 52.1 context gathered
+last_updated: "2026-09-06T07:26:34.961Z"
+last_activity: 2026-09-05
 last_activity_desc: Phase 52 complete, transitioned to Phase 53
-state_head: 732c504c2b5d0dbe25b5d599806ab442d57a4017
+state_head: 3facc7ade33b8a8bf69589cbcd5d54b7ac6c5b9a
 progress:
-  total_phases: 9
-  completed_phases: 5
+  total_phases: 10
+  completed_phases: 4
   total_plans: 42
   completed_plans: 42
-  percent: 56
+  percent: 40
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
+**Current focus:** Phase 52.1 — Modern frame runtime + native HD paint
 
 ## Current Position
 
-Phase: 53 — Integrated v1.0.0 Acceptance
+Phase: 52.1 — Modern frame runtime + native HD paint
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-09-05 - Completed quick task 260905-hfd: Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector
 
-Progress: [████████████████████] 42/42 plans (100%)
+Progress: [████████████████████] 42/42 plans ([████░░░░░░] 40%)
 
 ## Performance Metrics
 
@@ -266,6 +266,7 @@ None yet.
 ### Roadmap Evolution
 
 - Phase 51 edited: marked delivered via quicks 260902-cfa + 260902-cfa-amendments (no full phase cycle)
+- Phase 52.1 inserted after Phase 52: Modern frame runtime + native HD paint (URGENT)
 
 ## Deferred Items
 
@@ -282,6 +283,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-04
-Stopped at: Phase 52 complete, ready to plan Phase 53
-Resume file: None
+Last session: 2026-09-06T07:26:33.379Z
+Stopped at: Phase 52.1 context gathered
+Resume file: .planning/phases/52.1-modern-frame-runtime-native-hd-paint/52.1-CONTEXT.md
