@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { testWebpBytes } from '../../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -245,7 +246,7 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
       keyId,
       appFrame,
       kind: 'real-key' as const,
-      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,AAAA' },
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('AAAA') },
     };
   }
 

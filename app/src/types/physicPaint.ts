@@ -25,6 +25,9 @@ import {
 
 export type { PhysicPaintRotoInterpolationMode } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
+import { isWebpBytes, buildFrameBytesToken } from '../lib/webpBytes';
+export { isWebpBytes, buildFrameBytesToken };
+
 export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
 export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';
 export type PhysicPaintActionHistoryReleaseReason = 'eviction' | 'redo-branch-truncation' | 'session-history-clear';
@@ -685,10 +688,24 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
   return false;
 }
 
-function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+/**
+ * 52.1 (D-05): the canonical JSON form of a physical-edit payload. Raw bytes
+ * cannot survive JSON.stringify (a Uint8Array becomes an index object), so the
+ * canonical form carries the bytes as base64 — a stable string for the action
+ * transaction records and the Rust boundary hash. The validator accepts this
+ * canonical form alongside the live Uint8Array form.
+ */
+function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): Record<string, unknown> {
+  const bytes = typeof payload.bytes === 'string' ? payload.bytes : bytesToBase64(payload.bytes);
   return payload.width === undefined
-    ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, dataUrl: payload.dataUrl }
-    : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, dataUrl: payload.dataUrl, width: payload.width, height: payload.height };
+    ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes }
+    : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes, width: payload.width, height: payload.height };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
 }
 
 function canonicalPhysicalEditTarget(target: PhysicPaintRotoPhysicalEditTarget): PhysicPaintRotoPhysicalEditTarget {
@@ -1622,7 +1639,6 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   }
   return true;
 }
-const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 
 export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'replace-roto-physical-map' | 'update-roto-interpolation-settings' | 'update-roto-playback-settings';
@@ -1665,7 +1681,7 @@ export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   toSourceFrame?: number;
   interpolationT?: number;
   backgroundOnly?: boolean;
-  onionDataUrl?: string;
+  onionBytes?: Uint8Array;
 }
 
 export interface PhysicPaintProjectContext {
@@ -1758,7 +1774,7 @@ export interface PhysicPaintThumbnailEncodeRequest {
   width: number;
   height: number;
   quality: number;
-  rgbaBase64: string;
+  rgba: Uint8Array;
 }
 
 export interface PhysicPaintThumbnailEncodeResult {
@@ -1767,7 +1783,7 @@ export interface PhysicPaintThumbnailEncodeResult {
   width: number;
   height: number;
   mimeType: 'image/webp';
-  webpBase64?: string;
+  bytes?: Uint8Array;
   error?: string;
 }
 
@@ -1776,8 +1792,8 @@ export interface PhysicPaintRenderedFrame {
   frameIndex: number;
   /** Editor timeline frame that should receive this rendered output. */
   appFrame: number;
-  /** Rendered PNG output only. Editable stroke/engine state is never transported here. */
-  dataUrl: string;
+  /** Rendered WebP-lossless output only (compact bytes, D-05/D-18). Editable stroke/engine state is never transported here. */
+  bytes: Uint8Array;
   width?: number;
   height?: number;
   /** Roto cache provenance; generated frames are render-only and never editable. */
@@ -1797,7 +1813,7 @@ export interface PhysicPaintApplyCanvasPayload {
   renderedFrame: PhysicPaintRenderedFrame;
   editableState?: EfxPaintDocument;
   backgroundOnly?: boolean;
-  onionDataUrl?: string;
+  onionBytes?: Uint8Array;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
   closeWindowAfterApply?: boolean;
@@ -2086,7 +2102,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       optionalNonNegativeInteger(value.displayFrame) &&
       isPhysicPaintRenderedFrame(value.renderedFrame, sourceFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
-      (value.onionDataUrl === undefined || isRenderedPngDataUrl(value.onionDataUrl)) &&
+      (value.onionBytes === undefined || isWebpBytes(value.onionBytes)) &&
       optionalRotoBackgroundMetadata(value.rotoBackground) &&
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
@@ -2111,7 +2127,7 @@ export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPain
   if (!optionalNonNegativeInteger(value.fromSourceFrame)) return false;
   if (!optionalNonNegativeInteger(value.toSourceFrame)) return false;
   if (value.interpolationT !== undefined && (typeof value.interpolationT !== 'number' || !Number.isFinite(value.interpolationT) || value.interpolationT < 0 || value.interpolationT > 1)) return false;
-  if (value.onionDataUrl !== undefined && !isRenderedPngDataUrl(value.onionDataUrl)) return false;
+  if (value.onionBytes !== undefined && !isWebpBytes(value.onionBytes)) return false;
   return value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean';
 }
 
@@ -2236,21 +2252,21 @@ export function isPhysicPaintApplyResultMessage(value: unknown): value is Physic
 }
 
 export function isPhysicPaintThumbnailEncodeRequest(value: unknown): value is PhysicPaintThumbnailEncodeRequest {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'width', 'height', 'quality', 'rgbaBase64'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'width', 'height', 'quality', 'rgba'])) return false;
   if (!isBoundedOperationId(value.operationId) || !isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64)) return false;
   if (typeof value.quality !== 'number' || !Number.isFinite(value.quality) || value.quality < 0.75 || value.quality > 0.85) return false;
-  if (typeof value.rgbaBase64 !== 'string') return false;
+  if (!(value.rgba instanceof Uint8Array)) return false;
   const expectedBytes = value.width * value.height * 4;
-  return isCanonicalBase64ForByteLength(value.rgbaBase64, expectedBytes);
+  return value.rgba.length === expectedBytes;
 }
 
 export function isPhysicPaintThumbnailEncodeResult(value: unknown): value is PhysicPaintThumbnailEncodeResult {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'width', 'height', 'mimeType', 'webpBase64', 'error'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'width', 'height', 'mimeType', 'bytes', 'error'])) return false;
   if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
   if (!isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64) || value.mimeType !== 'image/webp') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
-  if (!value.ok) return value.webpBase64 === undefined && isNonEmptyString(value.error);
-  return typeof value.webpBase64 === 'string' && isCanonicalBase64WithinLimit(value.webpBase64, 512 * 1024) && value.error === undefined;
+  if (!value.ok) return value.bytes === undefined && isNonEmptyString(value.error);
+  return isWebpBytes(value.bytes) && value.error === undefined;
 }
 
 export function isPhysicPaintScriptLibraryRequest(value: unknown): value is PhysicPaintScriptLibraryRequest {
@@ -2357,8 +2373,13 @@ export function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: nu
   if (!isNonNegativeInteger(value.appFrame)) return false;
   if (expectedFrameIndex !== undefined && value.frameIndex !== expectedFrameIndex) return false;
   if (expectedAppFrame !== undefined && value.appFrame !== expectedAppFrame) return false;
-  if (!isRenderedPngDataUrl(value.dataUrl)) return false;
   if (value.source !== undefined && value.source !== 'real-key' && value.source !== 'generated-interpolation' && value.source !== 'background-only-support') return false;
+  if (value.source === 'background-only-support') {
+    // Distinct non-raster marker (Pitfall 4): never decoded, so empty bytes are valid.
+    if (!(value.bytes instanceof Uint8Array)) return false;
+  } else if (!isWebpBytes(value.bytes)) {
+    return false;
+  }
   return optionalNumber(value.width) && optionalNumber(value.height);
 }
 
@@ -2394,10 +2415,6 @@ function isEfxPaintDocumentEditableState(value: unknown): value is EfxPaintDocum
   }
 }
 
-function isRenderedPngDataUrl(value: unknown): value is string {
-  return typeof value === 'string' && value.startsWith(RENDERED_DATA_URL_PREFIX) && value.includes(',');
-}
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -2413,31 +2430,6 @@ function isBoundedOperationId(value: unknown): value is string {
 
 function isBoundedThumbnailDimension(value: unknown, max: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= max;
-}
-
-function isCanonicalBase64ForByteLength(value: string, byteLength: number): boolean {
-  const encodedLength = Math.ceil(byteLength / 3) * 4;
-  if (value.length !== encodedLength || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  if (value.slice(0, -padding || undefined).includes('=')) return false;
-  if (padding !== (3 - (byteLength % 3)) % 3) return false;
-  try {
-    const decoded = atob(value);
-    if (decoded.length !== byteLength) return false;
-    let binary = '';
-    for (let index = 0; index < decoded.length; index += 1) binary += decoded[index];
-    return btoa(binary) === value;
-  } catch {
-    return false;
-  }
-}
-
-function isCanonicalBase64WithinLimit(value: string, maxBytes: number): boolean {
-  if (value.length === 0 || value.length > Math.ceil(maxBytes / 3) * 4 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  if (value.slice(0, -padding || undefined).includes('=')) return false;
-  const byteLength = (value.length / 4) * 3 - padding;
-  return byteLength > 0 && byteLength <= maxBytes && isCanonicalBase64ForByteLength(value, byteLength);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

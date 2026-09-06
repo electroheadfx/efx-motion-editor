@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hookRuntime = vi.hoisted(() => ({
@@ -984,7 +985,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
       endExclusive: 40,
       includesFrame: (appFrame) => appFrame >= 12 && appFrame < 40,
     };
-    const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+    const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
     const physical = (appFrame: number) => ({
       kind: 'real' as const,
       layerId: 'layer-1',
@@ -992,7 +993,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
       keyId: `k${appFrame}`,
       contentRevision: 'rev-1',
       cacheRevision: `rev-1:real:k${appFrame}`,
-      renderedFrame: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(`k${appFrame}`) },
+      renderedFrame: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(`k${appFrame}`) },
     });
     const display = (appFrame: number) => findCachedRotoDisplayFrame(appFrame, {
       getPhysicalRenderSource: (frame) => physical(frame),

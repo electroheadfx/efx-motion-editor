@@ -61,6 +61,7 @@ vi.mock('@efxlab/efx-physic-paint/animation', () => ({
 vi.mock('./rotoCanvasFrames', () => ({ encodeRotoFrameFromCanvas: harness.encode }));
 
 import { renderRotoRevealFrames } from './physicsPaintRotoPlayScriptRenderer';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 class RecordingContext {
   readonly ops: MaskOp[];
@@ -122,7 +123,7 @@ function input(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}
     motion: { deformation: 0, position: 0 },
     mode: 'progressive',
     size: { width: 10, height: 10 },
-    reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    reference: { bytes: testWebpBytes('ref'), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
     signal: new AbortController().signal,
     ...extra,
   };
@@ -175,6 +176,10 @@ function setupDom(): void {
   });
   vi.stubGlobal('Image', FakeImage);
   vi.stubGlobal('HTMLImageElement', FakeImage);
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn(() => 'blob:reveal-ref'),
+    revokeObjectURL: vi.fn(),
+  });
   vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 1; }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
 }
@@ -184,7 +189,7 @@ function setupHarness(): void {
   harness.encode.mockReset().mockImplementation(async (_canvas: HTMLCanvasElement, destination: number) => ({
     frameIndex: 0,
     appFrame: destination,
-    dataUrl: `data:image/png;base64,encoded-${destination}`,
+    bytes: testWebpBytes(`encoded-${destination}`),
     width: 10,
     height: 10,
   }));
@@ -212,11 +217,11 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
 
   it('draws the reference AS PLACED at full opacity, then applies the coverage alpha as destination-in (D-14/D-17/D-18)', async () => {
     await renderRotoRevealFrames(input({
-      reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
+      reference: { bytes: testWebpBytes('ref'), transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
     }));
     const ops = harness.maskOps;
     // The reference draw: save → translate(center + x·zoom, center + y·zoom) → rotate → scale → drawImage(ref, full alpha) → restore
-    const referenceDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,ref');
+    const referenceDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref');
     expect(referenceDraw).toBeGreaterThan(-1);
     const draw = ops[referenceDraw] as Extract<MaskOp, { type: 'drawImage' }>;
     expect(draw.globalAlpha).toBe(1); // D-18: full source opacity, guide opacity ignored
@@ -239,12 +244,12 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
     // Working size 10×10 with zoom 0.5 (a 20×20 project): the reference image
     // (4×3) draws at 2×1.5 and the transform translation scales by zoom.
     await renderRotoRevealFrames(input({
-      reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 2, y: 3, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 0.5 },
+      reference: { bytes: testWebpBytes('ref'), transform: { x: 2, y: 3, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 0.5 },
     }));
     const ops = harness.maskOps;
     const translate = ops.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
     expect(translate).toEqual({ type: 'translate', x: 5 + 2 * 0.5, y: 5 + 3 * 0.5 });
-    const referenceDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,ref') as Extract<MaskOp, { type: 'drawImage' }>;
+    const referenceDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref') as Extract<MaskOp, { type: 'drawImage' }>;
     expect(referenceDraw.args).toEqual([-1, -0.75, 2, 1.5]);
   });
 
@@ -253,7 +258,7 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
     harness.renderedFrames.length = 0;
     harness.maskOps.length = 0;
     const second = await renderRotoRevealFrames(input({ frameCount: 2, script: scriptWithStrokes() }));
-    expect(second.map((frame) => frame.dataUrl)).toEqual(first.map((frame) => frame.dataUrl));
+    expect(second.map((frame) => frame.bytes)).toEqual(first.map((frame) => frame.bytes));
     expect(second.map((frame) => frame.appFrame)).toEqual(first.map((frame) => frame.appFrame));
   });
 
@@ -307,7 +312,7 @@ describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', 
   it('full coverage bakes the full reference: the reference draw precedes the destination-in mask on every frame (RVL-02 full)', async () => {
     await renderRotoRevealFrames(input({ frameCount: 2, script: scriptWithStrokes() }));
     // Two frames → two reference draws + two destination-in masks.
-    const referenceDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,ref');
+    const referenceDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref');
     const maskDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'canvas');
     expect(referenceDraws).toHaveLength(2);
     expect(maskDraws).toHaveLength(2);
@@ -321,7 +326,7 @@ describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', 
     // source-over at full alpha, and the mask only clips alpha. The encode
     // boundary is the existing straight-alpha `encodeRotoFrameFromCanvas`.
     await renderRotoRevealFrames(input({ script: scriptWithStrokes() }));
-    const referenceDraw = harness.maskOps.find((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,ref') as Extract<MaskOp, { type: 'drawImage' }>;
+    const referenceDraw = harness.maskOps.find((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref') as Extract<MaskOp, { type: 'drawImage' }>;
     expect(referenceDraw.globalAlpha).toBe(1);
     expect(referenceDraw.globalCompositeOperation).toBe('source-over');
     // No alpha-blend or multiply op is ever set on the mask canvas.

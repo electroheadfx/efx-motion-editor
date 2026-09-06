@@ -6,6 +6,7 @@ import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPai
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
+import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
@@ -97,8 +98,9 @@ interface PhysicsPaintCanvasStackViewProps {
  * previous url-driven slot (DOM byte-identical).
  */
 function PhysicsPaintRotoPlaybackImage(props: { tick: Signal<RotoCachedPlaybackTick<RenderedFramePayload> | null> | null | undefined }) {
-  const dataUrl = props.tick?.value?.frame?.dataUrl ?? null;
-  return dataUrl ? <img class="physics-paint-cached-roto-playback" src={dataUrl} alt="" /> : null;
+  const bytes = props.tick?.value?.frame?.bytes ?? null;
+  const src = bytes ? getFrameBlobUrl(bytes) : null;
+  return src ? <img class="physics-paint-cached-roto-playback" src={src} alt="" /> : null;
 }
 
 function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {  const canvasRef = useRef<HTMLCanvasElement>(null);

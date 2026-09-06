@@ -9,7 +9,7 @@ import {
   type PhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 import { projectPhysicPaintRotoPhysicalTimeline } from './physicsPaintRotoPhysicalResolver';
-import { prepareRotoPhysicalRealKeyPngs } from './rotoCanvasFrames';
+import { prepareRotoPhysicalRealKeyFrames } from './rotoCanvasFrames';
 
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
@@ -80,7 +80,7 @@ export async function hydrateRotoPhysicalLaunchContext(
   if (!prepared.ok) return prepared;
 
   try {
-    await prepareRotoPhysicalRealKeyPngs([
+    await prepareRotoPhysicalRealKeyFrames([
       ...prepared.document.realKeyRecords,
       ...(prepared.document.groupOverrideRecords ?? []),
     ]);

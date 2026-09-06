@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
@@ -134,7 +135,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`preflight:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`preflight:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };

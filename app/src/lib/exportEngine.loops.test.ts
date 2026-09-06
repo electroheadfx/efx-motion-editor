@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
@@ -207,7 +208,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-export:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-export:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };
@@ -471,10 +472,10 @@ describe('export loop preflight (failure path, D-28)', () => {
 
 describe('valid-loop preview/export parity (success path, D-27, audit finding 8)', () => {
   interface ParityResult {
-    exportByFrame: Map<number, { cacheKey: string; dataUrl: string } | null>;
+    exportByFrame: Map<number, { cacheKey: string; bytes: Uint8Array } | null>;
     exportKeyByFrame: Map<number, string>;
     exportNullFrames: Set<number>;
-    previewByFrame: Map<number, { cacheKey: string; dataUrl: string } | null>;
+    previewByFrame: Map<number, { cacheKey: string; bytes: Uint8Array } | null>;
     previewRasterByFrame: Map<number, HTMLCanvasElement | undefined>;
     drawnSources: Set<unknown>;
   }
@@ -525,7 +526,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
           exportNullFrames.add(appFrame);
           continue;
         }
-        exportByFrame.set(appFrame, { cacheKey: result.cacheKey, dataUrl: result.renderedFrame.dataUrl });
+        exportByFrame.set(appFrame, { cacheKey: result.cacheKey, bytes: result.renderedFrame.bytes });
       }
       for (let index = 0; index < keyCalls.length; index += 1) {
         const [layerId, , appFrame] = keyCalls[index] as [string, string, number];
@@ -543,7 +544,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     for (const frame of frames) {
       const sources = renderer.collectPhysicPaintFrameSources(layers, frame);
       const source = sources.find((candidate) => candidate.layerId === LAYER) ?? null;
-      previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', dataUrl: source.renderedFrame.dataUrl } : null);
+      previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', bytes: source.renderedFrame.bytes } : null);
       previewRasterByFrame.set(frame, source?.raster);
     }
 
@@ -572,7 +573,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
       // flattened raster.
       expect(previewSource!.cacheKey, `frame ${frame} flattened provenance`).toBe(exportSource!.cacheKey);
       // Deterministic raster equality BETWEEN the two paths (never fixed hashes).
-      expect(previewSource!.dataUrl, `frame ${frame} flattened raster parity`).toBe(exportSource!.dataUrl);
+      expect(previewSource!.bytes, `frame ${frame} flattened raster parity`).toBe(exportSource!.bytes);
     }
   }
 
@@ -679,7 +680,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
       // Flattened-seam parity (48-03): the cache-cold preview and the export
       // path consume the SAME flattened record.
       expect(previewSource!.cacheKey, `flattened provenance frame ${frame}`).toBe(exportSource!.cacheKey);
-      expect(previewSource!.dataUrl, `flattened raster parity frame ${frame}`).toBe(exportSource!.dataUrl);
+      expect(previewSource!.bytes, `flattened raster parity frame ${frame}`).toBe(exportSource!.bytes);
     }
     // D-09 (48-03): frame 2 is a fragmented gap — transparent flattened record
     // with no key resolution on both surfaces.
@@ -697,6 +698,6 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
 
     const synchronized = await resolveBothSurfaces(6);
     expect(synchronized.exportKeyByFrame.get(2)).toBe('A0');
-    expect(synchronized.previewByFrame.get(2)?.dataUrl).toBe(synchronized.exportByFrame.get(2)?.dataUrl);
+    expect(synchronized.previewByFrame.get(2)?.bytes).toBe(synchronized.exportByFrame.get(2)?.bytes);
   });
 });

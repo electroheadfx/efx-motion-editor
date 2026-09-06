@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import {
   physicPaintStore,
@@ -32,7 +33,7 @@ function payload(appFrame: number, tag: string): PhysicPaintRotoRealKeyPayload {
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`cache:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`cache:${appFrame}:${tag}`)),
     width: 4,
     height: 4,
   };
@@ -61,7 +62,7 @@ function seedTrack(
       LAYER,
       trackId,
       entry.appFrame,
-      { frameIndex: 0, appFrame: entry.appFrame, dataUrl: `data:image/png;base64,${btoa(`frame-${entry.keyId}`)}`, width: 1000, height: 650 },
+      { frameIndex: 0, appFrame: entry.appFrame, bytes: testWebpBytes(btoa(`frame-${entry.keyId}`)), width: 1000, height: 650 },
     );
   }
 }
@@ -107,7 +108,7 @@ describe('physicPaintStore linked Hold source laws (46-06 Task 2 — TRK-02, D-1
       expect(source!.kind).toBe('real');
       if (source!.kind === 'real') {
         expect(source!.keyId).toBe('kA-0');
-        expect(source!.renderedFrame.dataUrl).toBe(payload(5, 'painted').dataUrl);
+        expect(source!.renderedFrame.bytes).toEqual(payload(5, 'painted').bytes);
       }
     }
   });
@@ -140,7 +141,7 @@ describe('physicPaintStore linked Hold source laws (46-06 Task 2 — TRK-02, D-1
       expect(source).not.toBeNull();
       expect(source!.kind).toBe('real');
       if (source!.kind === 'real') {
-        expect(source!.renderedFrame.dataUrl).toBe(payload(5, 'painted').dataUrl);
+        expect(source!.renderedFrame.bytes).toEqual(payload(5, 'painted').bytes);
         expect(source!.cacheRevision).toBe(`${before}:real:kA-0`);
       }
     }

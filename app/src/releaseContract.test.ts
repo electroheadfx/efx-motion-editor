@@ -122,12 +122,12 @@ describe('Tauri CSP image data-url contract', () => {
     }
   });
 
-  it('rotoCanvasFrames.ts declares the canonical ROTO_PNG_DATA_URL_HEADER constant', () => {
+  it('physicsPaintRotoScriptThumbnail.ts declares the canonical WebP data URL header', () => {
     const source = readFileSync(
-      join(APP_DIR, 'src', 'components', 'physic-paint', 'roto', 'rotoCanvasFrames.ts'),
+      join(APP_DIR, 'src', 'components', 'physic-paint', 'roto', 'physicsPaintRotoScriptThumbnail.ts'),
       'utf8',
     );
-    expect(source).toContain("ROTO_PNG_DATA_URL_HEADER = 'data:image/png;base64'");
+    expect(source).toContain('data:image/webp;base64');
   });
 });
 

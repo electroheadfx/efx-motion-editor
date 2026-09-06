@@ -16,7 +16,7 @@ import {paintStore} from '../stores/paintStore';
 import {physicPaintStore, physicPaintVersion, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
 import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
-import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
+import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
 import {projectStore} from '../stores/projectStore';
 import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
@@ -109,7 +109,7 @@ export interface PreviewPhysicPaintFrameSource {
   cacheKey?: string;
   /**
    * G-52-8: flattened delivery records carry their composite raster — draw it
-   * directly instead of round-tripping through renderedFrame.dataUrl (encode +
+   * directly instead of round-tripping through renderedFrame.bytes (encode +
    * main-thread decode). Absent on hand-built sources; the dataUrl path below
    * remains the fallback.
    */
@@ -118,7 +118,7 @@ export interface PreviewPhysicPaintFrameSource {
 }
 
 export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFrameSource): string {
-  return source.cacheKey ?? `physic-paint:${source.layerId}:${source.frame}:${source.renderedFrame.dataUrl.slice(0, 96)}:${source.renderedFrame.dataUrl.length}`;
+  return source.cacheKey ?? `physic-paint:${source.layerId}:${source.frame}:${buildFrameBytesToken(source.renderedFrame.bytes)}`;
 }
 
 const PHYSIC_PAINT_PAPER_TEXTURE_URLS: Record<string, string> = {
@@ -642,7 +642,18 @@ export class PreviewRenderer {
       console.warn(`[PreviewRenderer] Failed to load physics paint frame: ${frame.layerId}@${frame.frame}`);
       this.onImageLoaded?.();
     };
-    img.src = frame.renderedFrame.dataUrl;
+    const blobUrl = URL.createObjectURL(new Blob([frame.renderedFrame.bytes.slice()], { type: 'image/webp' }));
+    const onLoad = img.onload;
+    img.onload = (event) => {
+      URL.revokeObjectURL(blobUrl);
+      onLoad?.call(img, event);
+    };
+    const onError = img.onerror;
+    img.onerror = (event) => {
+      URL.revokeObjectURL(blobUrl);
+      onError?.call(img, event);
+    };
+    img.src = blobUrl;
     return null;
   }
 

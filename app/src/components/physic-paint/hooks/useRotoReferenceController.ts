@@ -2,8 +2,24 @@ import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
-import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
+import { buildFrameBytesToken, isWebpBytes } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
+
+/**
+ * 52.1 (D-06): memoized bytes → Blob URL for the preview-base paint. The
+ * engine's preview-base API takes a URL; the same bytes always resolve to
+ * the SAME URL so the completion guard's URL comparison stays identity-stable.
+ * Absorbed by the LRU in Plan 04.
+ */
+const _frameBlobUrlCache = new Map<string, string>();
+export function getFrameBlobUrl(bytes: Uint8Array): string {
+  const token = buildFrameBytesToken(bytes);
+  const cached = _frameBlobUrlCache.get(token);
+  if (cached) return cached;
+  const url = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
+  _frameBlobUrlCache.set(token, url);
+  return url;
+}
 
 export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
   readonly keyId?: string;
@@ -14,7 +30,7 @@ export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
 export interface RotoReferenceEngine {
   setBgMode: (mode: BgMode) => void;
   clear: () => void;
-  setPreviewBaseImageUrl: (dataUrl: string, generation?: number, appFrame?: number) => void;
+  setPreviewBaseImageUrl: (bytes: string, generation?: number, appFrame?: number) => void;
   clearPreviewBaseImage: () => void;
   resetBackground: () => void;
   /** regression-refresh-multi-paint (3rd rejection): the applied preview base's
@@ -62,7 +78,7 @@ function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSo
   return expectedCacheRevision !== null
     && source.renderedFrame.appFrame === source.appFrame
     && source.cacheRevision === expectedCacheRevision
-    && isRotoPngDataUrl(source.renderedFrame.dataUrl);
+    && isWebpBytes(source.renderedFrame.bytes);
 }
 
 function findAcceptedRotoPhysicalFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
@@ -125,10 +141,10 @@ export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
    * later. This replaces the content-agnostic auto-assignment fallback for every
    * loader paint (navigation, frame-editing effect, pixel-cache retry). */
   resolveContentToken?: (contentRevision: string | null | undefined) => number;
-  /** Overrides the dataUrl painted by this load. Used by the completion guard's
+  /** Overrides the bytes painted by this load. Used by the completion guard's
    * repair so it re-applies ONLY the intended (newest) image — never whatever
    * the frame lookup happens to resolve to at repair time. */
-  explicitDataUrl?: string | null;
+  explicitBytes?: Uint8Array | null;
 }
 
 export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(input: RotoReferenceLoaderInput<Frame>) {
@@ -144,7 +160,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       return false;
     }
     const cachedFrame = input.getReferenceFrame(appFrame);
-    const paintDataUrl = input.explicitDataUrl ?? cachedFrame?.dataUrl ?? null;
+    const paintBytes = input.explicitBytes ?? cachedFrame?.bytes ?? null;
     // regression-refresh-multi-paint (3rd+4th rejection): a PLAIN effect-driven
     // reload — no explicit generation AND no explicitDataUrl, REGARDLESS of
     // replaceDirtyFrame — must never clobber a completion-settled preview base.
@@ -164,13 +180,13 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     const appliedDataUrl = engine.getAppliedPreviewBaseDataUrl?.() ?? null;
     const appliedAppFrame = engine.getAppliedPreviewBaseAppFrame?.() ?? null;
     const appliedExplicit = engine.getAppliedPreviewBaseExplicit?.() ?? false;
-    const isPlainRefresh = input.generation === undefined && input.explicitDataUrl === undefined;
+    const isPlainRefresh = input.generation === undefined && input.explicitBytes === undefined;
     if (
       isPlainRefresh
       && appliedExplicit
       && appliedAppFrame === appFrame
       && appliedDataUrl !== null
-      && paintDataUrl !== null
+      && paintBytes !== null
     ) {
       input.setReferenceUrl(null);
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
@@ -189,8 +205,8 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     input.setRepaintBaseFrame(cachedFrame);
     engine.setBgMode(input.getSettingsBackground());
     engine.clear();
-    if (paintDataUrl) {
-      engine.setPreviewBaseImageUrl(paintDataUrl, paintContentToken, appFrame);
+    if (paintBytes) {
+      engine.setPreviewBaseImageUrl(getFrameBlobUrl(paintBytes), paintContentToken, appFrame);
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();
@@ -199,7 +215,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       engine.clearPreviewBaseImage();
       engine.resetBackground();
     }
-    return Boolean(cachedFrame || paintDataUrl);
+    return Boolean(cachedFrame || paintBytes);
   };
 
   return { load };
@@ -235,7 +251,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getLookup()), []);
   const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getLookup()), []);
   const findAcceptedReferenceFrame = useCallback((appFrame: number) => findAcceptedRotoReferenceFrame(appFrame, getLookup()), []);
-  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null, replaceDirtyFrame = false, generation?: number, explicitDataUrl?: string | null) => {
+  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null, replaceDirtyFrame = false, generation?: number, explicitBytes?: Uint8Array | null) => {
     const currentInput = inputRef.current;
     if (refreshedFrame !== undefined) explicitRestorationRef.current = { appFrame, frame: refreshedFrame };
     else if (explicitRestorationRef.current?.appFrame !== appFrame) explicitRestorationRef.current = null;
@@ -257,7 +273,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
       replaceDirtyFrame,
       generation,
       resolveContentToken: currentInput.resolveContentToken,
-      explicitDataUrl,
+      explicitBytes,
     }).load(appFrame, engine);
   }, [findAcceptedReferenceFrame, findReferenceFrame]);
   const clearCachedRotoReferenceUrl = useCallback(() => setCachedRotoReferenceUrl(null), []);

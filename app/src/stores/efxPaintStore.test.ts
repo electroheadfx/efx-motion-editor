@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
@@ -66,18 +67,18 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(keyId), width: 10, height: 10 },
 });
 
 describe('efxPaintStore', () => {
@@ -191,7 +192,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     // 46-02: the hydrate carrier is per-track (trackId → appFrame → frame).
     hydrateRuntimeFromDocument(withPayload, new Map([[TEST_TRACK_ID, frames]]));
 
-    expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
+    expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).get(0)?.bytes).toEqual(makeFrame(0, 0).bytes);
     expect(physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID).map((record) => record.keyId)).toEqual(['key-1']);
   });
 
@@ -215,11 +216,11 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
 
     const restoredFrames = physicPaintStore.getFrames('layer-L', TEST_TRACK_ID);
     expect(Array.from(restoredFrames.keys()).sort()).toEqual([0, 3]);
-    expect(restoredFrames.get(0)?.dataUrl).toBe(originalFrames.get(0)?.dataUrl);
-    expect(restoredFrames.get(3)?.dataUrl).toBe(originalFrames.get(3)?.dataUrl);
+    expect(restoredFrames.get(0)?.bytes).toBe(originalFrames.get(0)?.bytes);
+    expect(restoredFrames.get(3)?.bytes).toBe(originalFrames.get(3)?.bytes);
     const restoredRoto = physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID);
     expect(restoredRoto.map((record) => record.keyId)).toEqual(originalRoto.map((record) => record.keyId));
-    expect(restoredRoto[0]?.payload.dataUrl).toBe(originalRoto[0]?.payload.dataUrl);
+    expect(restoredRoto[0]?.payload.bytes).toBe(originalRoto[0]?.payload.bytes);
   });
 
   it('projects an empty runtime into a schema-valid document with an empty default-track payload', () => {
@@ -243,9 +244,9 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     const projected = serializeRuntimeIntoDocument('layer-A');
 
     expect(Object.keys(projected.tracks[0].frames).map(Number)).toEqual([0]);
-    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
+    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
     hydrateRuntimeFromDocument(projected, new Map([[TEST_TRACK_ID, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID)]]));
-    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
+    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
   });
 });
 
@@ -413,10 +414,10 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     expect(copyKeyIds.some((keyId) => sourceKeyIds.includes(keyId))).toBe(false);
     // The copy's frame bytes are byte-identical to the source's real-key payloads.
     const sourceRecords = physicPaintStore.getRotoRealKeyRecords('layer-crud', TEST_TRACK_ID);
-    expect(physicPaintStore.getFrames('layer-crud', copyId).get(0)?.dataUrl)
-      .toBe(sourceRecords.find((record) => record.appFrame === 0)?.payload.dataUrl);
-    expect(physicPaintStore.getFrames('layer-crud', copyId).get(3)?.dataUrl)
-      .toBe(sourceRecords.find((record) => record.appFrame === 3)?.payload.dataUrl);
+    expect(physicPaintStore.getFrames('layer-crud', copyId).get(0)?.bytes)
+      .toBe(sourceRecords.find((record) => record.appFrame === 0)?.payload.bytes);
+    expect(physicPaintStore.getFrames('layer-crud', copyId).get(3)?.bytes)
+      .toBe(sourceRecords.find((record) => record.appFrame === 3)?.payload.bytes);
     // The copy is independently editable — mutating it leaves the source untouched.
     const sourceFrameCount = physicPaintStore.getFrames('layer-crud', TEST_TRACK_ID).size;
     physicPaintStore.setFrame('layer-crud', copyId, 9, makeFrame(2, 9));

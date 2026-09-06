@@ -110,7 +110,7 @@ export function scriptLibraryMigrateSavedProjects(sourceFilePath: string, destin
   return safeInvoke('script_library_migrate_saved_projects', { sourceFilePath, destinationFilePath });
 }
 
-export function scriptLibraryEncodeThumbnailWebp(request: PhysicPaintThumbnailEncodeRequest): Promise<Result<{ width: number; height: number; mimeType: 'image/webp'; webpBase64: string }>> {
+export function scriptLibraryEncodeThumbnailWebp(request: PhysicPaintThumbnailEncodeRequest): Promise<Result<{ width: number; height: number; mimeType: 'image/webp'; bytes: Uint8Array }>> {
   return safeInvoke('script_library_encode_thumbnail_webp', { request });
 }
 

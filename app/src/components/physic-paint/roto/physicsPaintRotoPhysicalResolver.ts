@@ -138,7 +138,7 @@ export function buildCanonicalMoveGroupOverrideRecords(input: {
       payload: {
         frameIndex: record.payload.frameIndex,
         appFrame: stagedAppFrame,
-        dataUrl: record.payload.dataUrl,
+        bytes: record.payload.bytes,
         ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
         ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
       },
@@ -485,7 +485,7 @@ function clonePayloadAtFrame(
   return Object.freeze({
     frameIndex: payload.frameIndex,
     appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
@@ -498,7 +498,7 @@ function payloadEqualsAtFrame(
 ): boolean {
   return actual.frameIndex === expected.frameIndex
     && actual.appFrame === appFrame
-    && actual.dataUrl === expected.dataUrl
+    && actual.bytes === expected.bytes
     && actual.width === expected.width
     && actual.height === expected.height;
 }

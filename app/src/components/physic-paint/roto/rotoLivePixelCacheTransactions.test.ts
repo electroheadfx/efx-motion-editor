@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 import { createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+
+const codec = vi.hoisted(() => ({ encode: vi.fn() }));
+vi.mock('../../../lib/webpFrameCodec', () => ({ encodeWebpFrame: codec.encode }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -8,18 +12,19 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-class DelayedBlobCanvas {
+class DelayedWebpCanvas {
   width = 320;
   height = 180;
-  private blobCallback: BlobCallback | null = null;
 
-  toBlob(callback: BlobCallback, type?: string): void {
-    expect(type).toBe('image/png');
-    this.blobCallback = callback;
-  }
-
-  finishEncoding(): void {
-    this.blobCallback?.(new Blob(['encoded-pixels'], { type: 'image/png' }));
+  getContext(kind: string): { getImageData: () => ImageData } | null {
+    if (kind !== '2d') return null;
+    return {
+      getImageData: () => ({
+        data: new Uint8ClampedArray(this.width * this.height * 4),
+        width: this.width,
+        height: this.height,
+      }) as ImageData,
+    };
   }
 }
 
@@ -31,22 +36,15 @@ afterEach(() => {
 describe('Roto live pixel cache transactions', () => {
   it('lets a second capture return while the first PNG encoding remains pending', async () => {
     vi.useFakeTimers();
-    const firstCanvas = new DelayedBlobCanvas();
-    const secondCanvas = new DelayedBlobCanvas();
+    const firstCanvas = new DelayedWebpCanvas();
+    const secondCanvas = new DelayedWebpCanvas();
+    const firstEncoding = deferred<Uint8Array>();
+    const secondEncoding = deferred<Uint8Array>();
+    codec.encode
+      .mockImplementationOnce(() => firstEncoding.promise)
+      .mockImplementationOnce(() => secondEncoding.promise);
     const events: string[] = [];
     const transactions = createRotoLivePixelCacheTransactions();
-    vi.stubGlobal('FileReader', class {
-      result: string | ArrayBuffer | null = null;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-
-      readAsDataURL(blob: Blob): void {
-        blob.arrayBuffer().then(() => {
-          this.result = 'data:image/png;base64,ZW5jb2RlZC1waXhlbHM=';
-          this.onload?.();
-        }).catch(() => this.onerror?.());
-      }
-    });
 
     const firstWork = transactions.capture({
       sourceFrame: 7,
@@ -65,9 +63,9 @@ describe('Roto live pixel cache transactions', () => {
     expect(events).toEqual(['second-caller-returned']);
 
     await vi.advanceTimersByTimeAsync(0);
-    secondCanvas.finishEncoding();
+    secondEncoding.resolve(testWebpBytes('second'));
     await expect(secondWork).resolves.toBe(true);
-    firstCanvas.finishEncoding();
+    firstEncoding.resolve(testWebpBytes('first'));
     await expect(firstWork).resolves.toBe(false);
     expect(events).toEqual(['second-caller-returned', 'second-committed']);
   });

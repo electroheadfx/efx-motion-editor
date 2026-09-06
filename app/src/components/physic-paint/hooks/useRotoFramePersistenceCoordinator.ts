@@ -380,7 +380,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       renderedPayload: {
         frameIndex: renderedFrame.frameIndex,
         appFrame: renderedFrame.appFrame,
-        dataUrl: renderedFrame.dataUrl,
+        bytes: renderedFrame.bytes,
         ...(renderedFrame.width !== undefined ? { width: renderedFrame.width } : {}),
         ...(renderedFrame.height !== undefined ? { height: renderedFrame.height } : {}),
       },

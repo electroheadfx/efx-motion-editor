@@ -80,6 +80,7 @@ import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoK
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
+import { getFrameBlobUrl } from './hooks/useRotoReferenceController';
 import { recordsAsRuntimeFrames, resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { getCarriedRotoPhysical } from './roto/rotoLaunchHydration';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
@@ -123,7 +124,7 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
-import { requestImageLibrary } from '../../lib/physicPaintBridge';
+import { encodeSourceBytesForDocumentSync, requestImageLibrary } from '../../lib/physicPaintBridge';
 import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
 import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
@@ -1346,18 +1347,20 @@ export function PhysicsPaintStudio() {
           true,
           generation,
         );
+        const intendedFrame = findAcceptedRotoReferenceFrame(appFrame);
         armRotoCompletionPaintGuard({
           engine: engineRef.current as PreviewBackgroundEngine | null,
           appFrame,
-          intendedDataUrl: findAcceptedRotoReferenceFrame(appFrame)?.dataUrl ?? null,
+          intendedDataUrl: intendedFrame ? getFrameBlobUrl(intendedFrame.bytes) : null,
+          intendedBytes: intendedFrame?.bytes ?? new Uint8Array(0),
           intendedGeneration: generation,
           getCurrentAppFrame: () => launchContextRef.current?.startFrame ?? 0,
-          reload: (frame, dataUrl, paintGeneration) => {
+          reload: (frame, bytes, paintGeneration) => {
             // Repair re-applies ONLY the intended (newest) image at its own
             // generation — never whatever the frame lookup resolves to later.
             // The engine generation gate turns this into a no-op if a newer
             // generation painted between arm and repair.
-            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true, paintGeneration, dataUrl);
+            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true, paintGeneration, bytes);
           },
           log: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
         });
@@ -1578,7 +1581,7 @@ export function PhysicsPaintStudio() {
         {
           frameIndex: blank.frameIndex,
           appFrame: source.appFrame,
-          dataUrl: blank.dataUrl,
+          bytes: blank.bytes,
           ...(blank.width !== undefined ? { width: blank.width } : {}),
           ...(blank.height !== undefined ? { height: blank.height } : {}),
         },
@@ -1618,7 +1621,7 @@ export function PhysicsPaintStudio() {
       buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
-      showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),
+      showCachedReference: (frame) => setCachedRotoReferenceUrl(getFrameBlobUrl(frame.bytes)),
       clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, studioActiveTrackId(), frame, 1); },
       clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, studioActiveTrackId(), frame); },
       setApplyMessage,
@@ -3297,9 +3300,23 @@ export function PhysicsPaintStudio() {
     height: projectCanvasHeight,
     background: buildRotoBackgroundMetadata(settings),
   } : null, [launchContext?.operationId, projectCanvasWidth, projectCanvasHeight, settings.background, settings.paperGrain, settings.grainStrength]);
-  const onionOverlay = useMemo(() => onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
-    <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={frame.dataUrl} style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }} alt="" />
-  )) : null, [onion.enabled, onion.opacity, onionPreviewFrames]);
+  const onionOverlayUrlsRef = useRef<string[]>([]);
+  const onionOverlay = useMemo(() => {
+    onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    onionOverlayUrlsRef.current = [];
+    if (!onion.enabled || onionPreviewFrames.length === 0) return null;
+    return onionPreviewFrames.map((frame) => {
+      const url = URL.createObjectURL(new Blob([frame.bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }));
+      onionOverlayUrlsRef.current.push(url);
+      return (
+        <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={url} style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }} alt="" />
+      );
+    });
+  }, [onion.enabled, onion.opacity, onionPreviewFrames]);
+  useEffect(() => () => {
+    onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    onionOverlayUrlsRef.current = [];
+  }, []);
   const rotoInputDisabledMessage = currentFrameIsGeneratedRoto
     ? `Generated frame ${currentFrame} is render-only.`
     : mutationLocked
@@ -3656,8 +3673,8 @@ export function PhysicsPaintStudio() {
     for (const clip of document.background.clips) {
       for (const ref of clip.sourceFrameRefs) {
         if (backgroundSources[ref]) continue;
-        const dataUrl = physicPaintStore.getBackgroundSourceImageDataUrl(ref);
-        if (dataUrl !== null) backgroundSources[ref] = dataUrl;
+        const bytes = physicPaintStore.getBackgroundSourceImageBytes(ref);
+        if (bytes !== null) backgroundSources[ref] = encodeSourceBytesForDocumentSync(bytes);
       }
     }
     // Crash-recovery checkpoint: the compositor-death watchdog reloads the

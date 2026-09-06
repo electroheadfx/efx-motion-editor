@@ -21,7 +21,7 @@ pub struct ThumbnailEncodeRequest {
     width: u32,
     height: u32,
     quality: f32,
-    rgba_base64: String,
+    rgba: Vec<u8>,
 }
 
 #[derive(Serialize)]
@@ -30,7 +30,7 @@ pub struct ThumbnailEncodeResponse {
     width: u32,
     height: u32,
     mime_type: &'static str,
-    webp_base64: String,
+    bytes: Vec<u8>,
 }
 
 #[command]
@@ -40,8 +40,8 @@ pub fn script_library_encode_thumbnail_webp(window: WebviewWindow, request: Thum
 }
 
 #[cfg(feature = "script-library-test-support")]
-pub(crate) fn encode_thumbnail_webp_for_test(operation_id: String, width: u32, height: u32, quality: f32, rgba_base64: String) -> Result<Value, String> {
-    serde_json::to_value(encode_thumbnail_webp(ThumbnailEncodeRequest { operation_id, width, height, quality, rgba_base64 })?)
+pub(crate) fn encode_thumbnail_webp_for_test(operation_id: String, width: u32, height: u32, quality: f32, rgba: Vec<u8>) -> Result<Value, String> {
+    serde_json::to_value(encode_thumbnail_webp(ThumbnailEncodeRequest { operation_id, width, height, quality, rgba })?)
         .map_err(|error| format!("Could not serialize encoded thumbnail: {error}"))
 }
 
@@ -53,11 +53,8 @@ fn encode_thumbnail_webp(request: ThumbnailEncodeRequest) -> Result<ThumbnailEnc
         .and_then(|width| usize::try_from(request.height).ok().and_then(|height| width.checked_mul(height)))
         .and_then(|pixels| pixels.checked_mul(4))
         .ok_or_else(|| "Invalid thumbnail RGBA dimensions".to_string())?;
-    let expected_base64 = expected.div_ceil(3).checked_mul(4).ok_or_else(|| "Invalid thumbnail Base64 length".to_string())?;
-    if request.rgba_base64.len() != expected_base64 { return Err("Thumbnail Base64 length does not match dimensions".to_string()); }
-    let rgba = script_library::decode_base64(&request.rgba_base64)?;
-    if rgba.len() != expected { return Err("Thumbnail RGBA length does not match dimensions".to_string()); }
-    let encoded = webp::Encoder::from_rgba(&rgba, request.width, request.height).encode(request.quality * 100.0);
+    if request.rgba.len() != expected { return Err("Thumbnail RGBA length does not match dimensions".to_string()); }
+    let encoded = webp::Encoder::from_rgba(&request.rgba, request.width, request.height).encode(request.quality * 100.0);
     let bytes: &[u8] = encoded.as_ref();
     if bytes.len() > 512 * 1024 { return Err("Encoded WebP exceeds the size limit".to_string()); }
     let (actual_width, actual_height) = script_library::validate_webp_payload(bytes)?;
@@ -66,23 +63,8 @@ fn encode_thumbnail_webp(request: ThumbnailEncodeRequest) -> Result<ThumbnailEnc
         width: request.width,
         height: request.height,
         mime_type: "image/webp",
-        webp_base64: encode_base64(bytes),
+        bytes: bytes.to_vec(),
     })
-}
-
-fn encode_base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let value = (u32::from(chunk[0]) << 16)
-            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
-        output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
-        output.push(if chunk.len() > 1 { ALPHABET[((value >> 6) & 63) as usize] as char } else { '=' });
-        output.push(if chunk.len() > 2 { ALPHABET[(value & 63) as usize] as char } else { '=' });
-    }
-    output
 }
 
 #[command]

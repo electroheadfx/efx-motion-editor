@@ -5,6 +5,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { testWebpBytes } from '../../testUtils/testWebpBytes';
 
 /**
  * 52-02 (D-15 / RVL-06): the mode-free PhotoReferenceTrack round-trip. The
@@ -51,14 +52,11 @@ describe('mode-free PhotoReferenceTrack round-trip (52-02, D-15 / RVL-06)', () =
 });
 
 describe('reveal rail record round-trip through the physical-level parser (52-02)', () => {
-  /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
-  const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
-
   const realKey = (keyId: string, appFrame: number) => ({
     kind: 'real-key' as const,
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
+    payload: { frameIndex: 0, appFrame, bytes: testWebpBytes(`payload-${keyId}`), width: 10, height: 10 },
   });
 
   const SOURCE_KEY_IDS = ['k1', 'k2', 'k3', 'k4', 'k5'];

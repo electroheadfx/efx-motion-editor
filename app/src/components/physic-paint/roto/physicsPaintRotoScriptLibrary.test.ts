@@ -4,6 +4,7 @@ import { buildRotoScriptDeleteReferenceImpact, createRotoScriptLibraryController
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
 const row = (id: string, name: string, createdAt = '2026-07-16T12:00:00Z') => ({ id, revision: `rev-${id}`, integritySha256: 'a'.repeat(64), name, createdAt, updatedAt: createdAt, source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 });
@@ -332,11 +333,11 @@ function durableLease(direction: ReferencedDeleteDirection, mode: ReferencedDele
 
 function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
   const realKeyRecords = [
-    { kind: 'real-key' as const, keyId: 'source-a', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AA==', width: 10, height: 10 } },
-    { kind: 'real-key' as const, keyId: 'source-b', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,BB==', width: 10, height: 10 } },
+    { kind: 'real-key' as const, keyId: 'source-a', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AA=='), width: 10, height: 10 } },
+    { kind: 'real-key' as const, keyId: 'source-b', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('BB=='), width: 10, height: 10 } },
   ];
   const groupOverrideRecords = [
-    { kind: 'real-key' as const, keyId: 'override-only', appFrame: 15, payload: { frameIndex: 0, appFrame: 15, dataUrl: 'data:image/png;base64,CC==', width: 10, height: 10 } },
+    { kind: 'real-key' as const, keyId: 'override-only', appFrame: 15, payload: { frameIndex: 0, appFrame: 15, bytes: testWebpBytes('CC=='), width: 10, height: 10 } },
   ];
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const loopClips = [

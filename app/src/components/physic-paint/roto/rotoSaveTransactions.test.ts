@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import {
@@ -47,7 +48,7 @@ const launchContext = {
   document: { activeTrackId: TEST_TRACK_ID },
 } as PhysicPaintLaunchContext;
 
-const renderedFrame = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,frame', width: 100, height: 80 };
+const renderedFrame = { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('frame'), width: 100, height: 80 };
 
 const interpolationSettings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const, deform: 0, position: 0 };
 
@@ -110,7 +111,7 @@ describe('rotoSaveTransactions', () => {
       startFrame: 8,
       sourceFrame: 3,
       renderedFrame,
-      onionDataUrl: renderedFrame.dataUrl,
+      onionBytes: renderedFrame.bytes,
       rotoInterpolationSettings: interpolationSettings,
     });
     expect(buildApplyCanvasPayload({

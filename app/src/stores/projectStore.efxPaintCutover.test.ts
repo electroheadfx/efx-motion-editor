@@ -13,6 +13,7 @@
  * stores run so hydration effects are observable.
  */
 
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -248,7 +249,7 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
@@ -408,7 +409,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
 
     expect(loadEfxPaintDocuments).toHaveBeenCalledTimes(1);
     expect(efxPaintStoreModule.getDocument('layer-1')).toBeDefined();
-    expect(physicPaintStore.getFrames('layer-1', TEST_TRACK_ID).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
+    expect(physicPaintStore.getFrames('layer-1', TEST_TRACK_ID).get(0)?.bytes).toEqual(makeFrame(0, 0).bytes);
   });
 
   it('closeProject resets efxPaintStore so no document leaks across projects', () => {
@@ -489,7 +490,7 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     addPhysicPaintLayer('layer-2t');
     efxPaintStoreModule.registerDocument(makeMultiTrackDocument('layer-2t'));
     const frameA = makeFrame(0, 1);
-    const frameB = { ...makeFrame(0, 1), dataUrl: `data:image/png;base64,${btoa('track-b-bytes')}` };
+    const frameB = { ...makeFrame(0, 1), bytes: testWebpBytes(btoa('track-b-bytes')) };
     physicPaintStore.setFrame('layer-2t', TRACK_A, 1, frameA);
     physicPaintStore.setFrame('layer-2t', TRACK_B, 1, frameB);
     projectStore.filePath.value = '/project/file.mce';
@@ -507,8 +508,8 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     // 46-02: the frame carrier is per-track (trackId → appFrame → frame);
     // both tracks own a frame at the same appFrame without collision.
     expect(input!.frames.size).toBe(2);
-    expect(input!.frames.get(TRACK_A)?.get(1)?.dataUrl).toBe(frameA.dataUrl);
-    expect(input!.frames.get(TRACK_B)?.get(1)?.dataUrl).toBe(frameB.dataUrl);
+    expect(input!.frames.get(TRACK_A)?.get(1)?.bytes).toBe(frameA.bytes);
+    expect(input!.frames.get(TRACK_B)?.get(1)?.bytes).toBe(frameB.bytes);
   });
 
   it('hydrates per-track frames into their own runtime maps on open', async () => {
@@ -528,8 +529,8 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
         },
       ],
     };
-    const frameA = { ...makeFrame(0, 5), dataUrl: `data:image/png;base64,${btoa('hydrate-a')}` };
-    const frameB = { ...makeFrame(0, 5), dataUrl: `data:image/png;base64,${btoa('hydrate-b')}` };
+    const frameA = { ...makeFrame(0, 5), bytes: testWebpBytes(btoa('hydrate-a')) };
+    const frameB = { ...makeFrame(0, 5), bytes: testWebpBytes(btoa('hydrate-b')) };
     loadEfxPaintDocuments.mockResolvedValue(new Map([['layer-h', {
       document: withFrames,
       frames: new Map([
@@ -545,8 +546,8 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     await projectStore.openProject('/project/multi.mce');
 
     expect(efxPaintStoreModule.getDocument('layer-h')).toBeDefined();
-    expect(physicPaintStore.getFrames('layer-h', TRACK_A).get(5)?.dataUrl).toBe(frameA.dataUrl);
-    expect(physicPaintStore.getFrames('layer-h', TRACK_B).get(5)?.dataUrl).toBe(frameB.dataUrl);
+    expect(physicPaintStore.getFrames('layer-h', TRACK_A).get(5)?.bytes).toBe(frameA.bytes);
+    expect(physicPaintStore.getFrames('layer-h', TRACK_B).get(5)?.bytes).toBe(frameB.bytes);
   });
 
   it('regression: a single-track document keys the save input frames under the single track id', async () => {
@@ -565,7 +566,7 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     const input = documents.get('layer-s');
     expect(input).toBeDefined();
     expect(input!.frames.size).toBe(1);
-    expect(input!.frames.get(TEST_TRACK_ID)?.get(3)?.dataUrl).toBe(makeFrame(1, 3).dataUrl);
+    expect(input!.frames.get(TEST_TRACK_ID)?.get(3)?.bytes).toEqual(makeFrame(1, 3).bytes);
   });
 });
 

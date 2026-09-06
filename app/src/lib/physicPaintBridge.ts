@@ -2,7 +2,7 @@ import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import {
@@ -10,7 +10,7 @@ import {
   resolvePhysicPaintRotoPhysicalEdit,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl, prepareRotoPhysicalRealKeyPngs } from '../components/physic-paint/roto/rotoCanvasFrames';
+import { prepareRotoPhysicalRealKeyFrames } from '../components/physic-paint/roto/rotoCanvasFrames';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
@@ -51,6 +51,7 @@ import { getDocument as getEfxPaintDocument, registerDocument as registerEfxPain
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
+  canvasToWebpBytes,
   physicPaintStore,
   registerBackgroundSourceImage,
   type PhysicPaintRotoPhysicalOperationLeaseToken,
@@ -266,6 +267,10 @@ function cloneAndDeepFreezePlainData<T>(value: T): T {
   const clone = structuredClone(value);
   const freeze = (candidate: unknown): void => {
     if (candidate === null || typeof candidate !== 'object' || Object.isFrozen(candidate)) return;
+    // 52.1 (D-05): frame bytes are a Uint8Array — array buffer views with
+    // elements cannot be frozen. They are already immutable-by-convention after
+    // structuredClone, so skip them rather than throwing.
+    if (candidate instanceof Uint8Array || candidate instanceof ArrayBuffer) return;
     for (const nested of Object.values(candidate as Record<string, unknown>)) freeze(nested);
     Object.freeze(candidate);
   };
@@ -491,11 +496,11 @@ async function applyPreparedPhysicPaintPayload(
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
 ): Promise<PhysicPaintApplyResult> {
   if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) return applyPhysicPaintPayload(payload);
-  const preparedDataUrls = new Set(payload.records.map((record) => record.payload.dataUrl));
+  const preparedTokens = new Set(payload.records.map((record) => buildFrameBytesToken(record.payload.bytes)));
   try {
-    await prepareRotoPhysicalRealKeyPngs(payload.records);
+    await prepareRotoPhysicalRealKeyFrames(payload.records);
   } catch (error) {
-    physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedDataUrls);
+    physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedTokens);
     return applyFailureResult(
       payload,
       error instanceof Error ? error.message : 'Canonical Roto PNG preparation failed.',
@@ -505,7 +510,7 @@ async function applyPreparedPhysicPaintPayload(
     payload,
     publicationLeaseToken,
   );
-  if (!result.ok) physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedDataUrls);
+  if (!result.ok) physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedTokens);
   return result;
 }
 
@@ -742,6 +747,9 @@ function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'object') return false;
+  // 52.1 (D-05): frame bytes are a Uint8Array — structured-cloneable, but not a
+  // plain record. Accept it so the bytes-token payload passes the clone guard.
+  if (value instanceof Uint8Array) return true;
   if (seen.has(value)) return false;
   seen.add(value);
   try {
@@ -771,7 +779,7 @@ function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][numbe
   return (left.sourceFrame ?? left.appFrame) === (right.sourceFrame ?? right.appFrame)
     && left.appFrame === right.appFrame
     && left.frameIndex === right.frameIndex
-    && left.dataUrl === right.dataUrl
+    && buildFrameBytesToken(left.bytes) === buildFrameBytesToken(right.bytes)
     && left.width === right.width
     && left.height === right.height
     && left.source === right.source
@@ -781,7 +789,7 @@ function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][numbe
     && left.toSourceFrame === right.toSourceFrame
     && left.interpolationT === right.interpolationT
     && left.backgroundOnly === right.backgroundOnly
-    && left.onionDataUrl === right.onionDataUrl;
+    && ((left as { onionBytes?: Uint8Array }).onionBytes === undefined) === ((right as { onionBytes?: Uint8Array }).onionBytes === undefined);
 }
 
 function samePhysicalRecord(
@@ -792,7 +800,7 @@ function samePhysicalRecord(
     && left.appFrame === right.appFrame
     && left.payload.frameIndex === right.payload.frameIndex
     && left.payload.appFrame === right.payload.appFrame
-    && left.payload.dataUrl === right.payload.dataUrl
+    && buildFrameBytesToken(left.payload.bytes) === buildFrameBytesToken(right.payload.bytes)
     && left.payload.width === right.payload.width
     && left.payload.height === right.payload.height;
 }
@@ -816,7 +824,7 @@ function sameApplyPayloadRecords(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.dataUrl === candidate.payload.dataUrl
+      && buildFrameBytesToken(record.payload.bytes) === buildFrameBytesToken(candidate.payload.bytes)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -932,7 +940,8 @@ function isCanonicalBlankRotoPayload(
     const canvas = document.createElement('canvas');
     canvas.width = payload.width as number;
     canvas.height = payload.height as number;
-    return payload.dataUrl === canvas.toDataURL('image/png');
+    const blankBytes = canvasToWebpBytes(canvas);
+    return blankBytes !== null && buildFrameBytesToken(payload.bytes) === buildFrameBytesToken(blankBytes);
   } catch {
     return false;
   }
@@ -1064,7 +1073,7 @@ function validatePlayScriptPhysicalDelta(input: {
   const expectedFreshKeyIds: string[] = [];
   for (let appFrame = delta.affectedStartAppFrame; appFrame <= delta.affectedEndAppFrame; appFrame += 1) {
     const proposed = proposedByFrame.get(appFrame);
-    if (!proposed || !isRotoPngDataUrl(proposed.payload.dataUrl)) return 'Play Script is missing a valid PNG destination record.';
+    if (!proposed || !isWebpBytes(proposed.payload.bytes)) return 'Play Script is missing a valid WebP destination record.';
     const current = currentByFrame.get(appFrame);
     if (current) {
       if (proposed.keyId !== current.keyId) return 'Play Script changed an occupied destination keyId.';
@@ -1232,7 +1241,7 @@ function recomputeCanonicalGroupRegenerate(input: {
   for (const sourceKeyId of sourceKeyIds) {
     const current = currentByKeyId.get(sourceKeyId);
     const proposed = proposedByKeyId.get(sourceKeyId);
-    if (!current || !proposed || proposed.appFrame !== current.appFrame || !isRotoPngDataUrl(proposed.payload.dataUrl)) {
+    if (!current || !proposed || proposed.appFrame !== current.appFrame || !isWebpBytes(proposed.payload.bytes)) {
       return 'Group Regenerate changed source identity or timing.';
     }
   }
@@ -2822,8 +2831,11 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
         ? payload as { document?: unknown; backgroundSources?: unknown }
         : {};
       if (incoming.backgroundSources && typeof incoming.backgroundSources === 'object') {
-        for (const [ref, dataUrl] of Object.entries(incoming.backgroundSources)) {
-          if (typeof dataUrl === 'string' && dataUrl.length > 0) registerBackgroundSourceImage(ref, dataUrl);
+        for (const [ref, encoded] of Object.entries(incoming.backgroundSources)) {
+          if (typeof encoded === 'string' && encoded.length > 0) {
+            const bytes = decodeSourceBytesForDocumentSync(encoded);
+            if (bytes) registerBackgroundSourceImage(ref, bytes);
+          }
         }
       }
       const document = parseEfxPaintDocument(incoming.document ?? payload);
@@ -3216,4 +3228,28 @@ function isTauriRuntime(): boolean {
 
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * 52.1 (D-06): document-sync boundary conversion. The child→main document
+ * sync is a JSON event carrying the hydrated Background source images; JSON
+ * cannot carry raw bytes compactly, so the sync payload holds base64 at this
+ * persistence boundary ONLY. The frame apply path never uses these — it
+ * transports raw bytes via invoke (D-07).
+ */
+export function encodeSourceBytesForDocumentSync(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+export function decodeSourceBytesForDocumentSync(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
 }

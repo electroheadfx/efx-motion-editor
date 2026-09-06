@@ -7,6 +7,7 @@ import {sequenceStore} from './sequenceStore';
 import {physicPaintStore} from './physicPaintStore';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -138,14 +139,14 @@ describe('projectStore audio persistence', () => {
       physicPaintStore.setFrame('active-cache', TEST_TRACK_ID, 1, {
         frameIndex: 0,
         appFrame: 1,
-        dataUrl: 'data:image/png;base64,AQID',
+        bytes: testWebpBytes('AQID'),
         width: 100,
         height: 50,
       });
       physicPaintStore.setFrame('deleted-cache', TEST_TRACK_ID, 1, {
         frameIndex: 0,
         appFrame: 1,
-        dataUrl: 'data:image/png;base64,BAUG',
+        bytes: testWebpBytes('BAUG'),
         width: 100,
         height: 50,
       });

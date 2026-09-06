@@ -40,6 +40,10 @@ import type {
   PhysicPaintRotoBackgroundMetadata,
 } from '../../../types/physicPaint';
 import {
+  buildFrameBytesToken,
+  isWebpBytes,
+} from '../../../lib/webpBytes';
+import {
   encodeCanonicalNumber,
   encodeCanonicalOptionalNumber,
   encodeCanonicalString,
@@ -84,8 +88,8 @@ export interface PhysicPaintRotoRealKeyPayload {
   readonly frameIndex: number;
   /** Direct editor timeline frame that receives this rendered output. */
   readonly appFrame: number;
-  /** Rendered PNG output only. Editable stroke/engine state is never transported here. */
-  readonly dataUrl: string;
+  /** Rendered WebP-lossless output only (compact bytes, D-05/D-18). Editable stroke/engine state is never transported here. */
+  readonly bytes: Uint8Array;
   readonly width?: number;
   readonly height?: number;
 }
@@ -379,11 +383,9 @@ export function createPhysicPaintRotoKeyId(): string {
 
 const PHYSIC_PAINT_ROTO_KEY_ID_MAX_LENGTH = 256;
 const PHYSIC_PAINT_ROTO_REVISION_MAX_LENGTH = 256;
-const PHYSIC_PAINT_ROTO_MAX_PNG_DATA_URL_LENGTH = 64 * 1024 * 1024;
-const RENDERED_DATA_URL_PREFIX = 'data:image/png;base64,';
 
 const PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS = new Set(['keyId', 'appFrame']);
-const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
+const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'bytes', 'width', 'height']);
 const PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'leftKeyId', 'rightKeyId']);
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
@@ -456,11 +458,25 @@ function isPercentInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
 }
 
-function isRenderedPngDataUrl(value: unknown): value is string {
-  if (typeof value !== 'string' || !value.startsWith(RENDERED_DATA_URL_PREFIX)) return false;
-  if (value.length <= RENDERED_DATA_URL_PREFIX.length || value.length > PHYSIC_PAINT_ROTO_MAX_PNG_DATA_URL_LENGTH) return false;
-  const encoded = value.slice(RENDERED_DATA_URL_PREFIX.length);
-  return encoded.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(encoded);
+function isRenderedWebpBytes(value: unknown): value is Uint8Array {
+  return isWebpBytes(value);
+}
+
+/**
+ * 52.1 (D-05): the canonical JSON form carries bytes as base64 (see
+ * `canonicalPhysicalEditPayload` in types/physicPaint.ts). The validator
+ * accepts the canonical base64 form alongside the live Uint8Array form.
+ */
+function isCanonicalBase64WebpBytes(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return isWebpBytes(bytes);
+  } catch {
+    return false;
+  }
 }
 
 function optionalDimension(value: unknown): boolean {
@@ -504,7 +520,7 @@ export function isPhysicPaintRotoRealKeyPayload(value: unknown): value is Physic
   if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS)) return false;
   if (!isNonNegativeInteger(value.frameIndex)) return false;
   if (!isNonNegativeInteger(value.appFrame)) return false;
-  if (!isRenderedPngDataUrl(value.dataUrl)) return false;
+  if (!isRenderedWebpBytes(value.bytes) && !isCanonicalBase64WebpBytes(value.bytes)) return false;
   if (!optionalDimension(value.width) || !optionalDimension(value.height)) return false;
   return (value.width === undefined) === (value.height === undefined);
 }
@@ -649,23 +665,6 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
       && !(typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor))) return false;
   }
   return hasValidPhysicPaintRotoGroupLifecycle(value);
-}
-
-function parseExactLegacyFiniteLoopClips(value: unknown): readonly PhysicPaintRotoLoopClip[] | null {
-  if (!Array.isArray(value) || value.length === 0) return null;
-  const clips: PhysicPaintRotoLoopClip[] = [];
-  const seenLoopIds = new Set<string>();
-  for (const entry of value) {
-    if (!isRecord(entry)
-      || Object.keys(entry).length !== PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS.size
-      || !hasOnlyAllowedKeys(entry, PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS)
-      || !isPhysicPaintRotoLoopClip(entry)
-      || entry.repeat === 'infinity'
-      || seenLoopIds.has(entry.loopId)) return null;
-    seenLoopIds.add(entry.loopId);
-    clips.push(entry);
-  }
-  return clips;
 }
 
 function buildDefaultPhysicPaintRotoGroupLifecycle(
@@ -900,7 +899,7 @@ function cloneAndFreezeRealKeyPayload(payload: PhysicPaintRotoRealKeyPayload): P
   return Object.freeze({
     frameIndex: payload.frameIndex,
     appFrame: payload.appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
@@ -1006,17 +1005,17 @@ export function encodePhysicPaintRotoPhysicalContent(
 
 /**
  * G-52-6: fingerprint a raster payload by a content TOKEN, never the full
- * dataUrl. Reveal-baked keys carry multi-MB PNG dataUrls and this fingerprint
+ * bytes. Reveal-baked keys carry multi-MB WebP payloads and this fingerprint
  * is recomputed at every parse, mutation commit, bridge payload sync + parent
  * canonical re-verification, and per undo/redo live-authority check —
  * concatenating the payload cost ~10s per reveal rail at open. Head+tail+length
- * is O(1) and change-safe for same-encoder PNG output: deflate streams have no
+ * is O(1) and change-safe for same-encoder WebP output: deflate streams have no
  * resync points, so any content change cascades to the tail (mirrors the
- * dataUrl-slice idiom of previewRenderer.ts:114 /
+ * bytes-token idiom of previewRenderer.ts:114 /
  * physicPaintStore._trackContentRevision).
  */
-function encodeCanonicalDataUrlPayload(dataUrl: string): string {
-  return `d${dataUrl.length}:${dataUrl.slice(0, 64)}..${dataUrl.slice(-64)};`;
+function encodeCanonicalBytesPayload(bytes: Uint8Array): string {
+  return `d${buildFrameBytesToken(bytes)};`;
 }
 
 function encodeValidatedPhysicPaintRotoPhysicalContent(
@@ -1025,7 +1024,7 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   incomingInterpolationBreakKeyIds: readonly string[],
   groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [],
-  encodePayloadDataUrl: (dataUrl: string) => string = encodeCanonicalDataUrlPayload,
+  encodePayloadBytes: (bytes: Uint8Array) => string = encodeCanonicalBytesPayload,
 ): string {
   const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) => {
     const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
@@ -1034,7 +1033,7 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
       encodeCanonicalNumber(record.appFrame),
       encodeCanonicalNumber(record.payload.frameIndex),
       encodeCanonicalNumber(record.payload.appFrame),
-      encodePayloadDataUrl(record.payload.dataUrl),
+      encodePayloadBytes(record.payload.bytes),
       encodeCanonicalOptionalNumber(record.payload.width),
       encodeCanonicalOptionalNumber(record.payload.height),
     ].join('')).join('');
@@ -1224,9 +1223,6 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   // loopClips is the first genuinely optional document member (D-29): absent
   // means the empty collection (v0.8.1-shaped documents load with no
   // migration); present means parsed fail-closed.
-  const exactLegacyFiniteLoopClips = value.loopClips === undefined
-    ? null
-    : parseExactLegacyFiniteLoopClips(value.loopClips);
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
@@ -1248,30 +1244,9 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     groupOverrideRecords,
   );
   if (value.revision !== revision) {
-    // Legacy acceptance (computed lazily on mismatch only): pre-G-52-6
-    // revisions fingerprinted the FULL payload dataUrl — the multi-MB
-    // concatenation the token cutover removed — so a mismatching document pays
-    // that cost once at open; the next save re-stamps the tokenized revision.
-    // Two pre-cutover shapes: the D-29 exact-legacy finite loop clip escape
-    // (no group overrides, mirroring the original escape) and the modern clip
-    // collection with full-dataUrl encoding (every 43–52-era save).
-    const legacyRevision = (
-      clips: readonly PhysicPaintRotoLoopClip[],
-      overrides: readonly PhysicPaintRotoRealKeyRecord[],
-    ) => `physical-${hashCanonicalPhysicalValue(encodeValidatedPhysicPaintRotoPhysicalContent(
-      state.realKeyRecords,
-      state.interpolation,
-      clips,
-      incomingInterpolationBreakKeyIds,
-      overrides,
-      encodeCanonicalString,
-    ))}`;
-    const accepted = (exactLegacyFiniteLoopClips !== null
-      && value.revision === legacyRevision(exactLegacyFiniteLoopClips, []))
-      || value.revision === legacyRevision(loopClips, groupOverrideRecords);
-    if (!accepted) {
-      throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
-    }
+    // 52.1 clean break (D-01/D-06 one-way): the pre-bytes dataUrl revision
+    // shapes are unsupported — no legacy acceptance, no migration.
+    throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
   }
   const background = value.background === null ? null : Object.freeze({ ...value.background }) as PhysicPaintRotoBackgroundMetadata;
   return Object.freeze({

@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import {
@@ -18,7 +19,7 @@ function buildCacheFrame(appFrame: number): PhysicPaintRotoCacheFrame {
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: 'data:image/png;base64,AAAA',
+    bytes: testWebpBytes('AAAA'),
     width: 2,
     height: 2,
     source: 'real-key',
@@ -28,12 +29,12 @@ function buildCacheFrame(appFrame: number): PhysicPaintRotoCacheFrame {
 function buildGroupEntries(): readonly RotoSessionCopiedGroupEntry[] {
   return [
     {
-      payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
       sourceAppFrame: 1,
       sourceKeyId: 'A',
     },
     {
-      payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
       sourceAppFrame: 5,
       sourceKeyId: 'C',
     },
@@ -193,7 +194,7 @@ describe('rail-set clipboard — copyRailSet variant (quick 260820-bjw)', () => 
         sourceKeyId: 'k0',
         sourceAppFrame: 0,
         ownsIncomingBreak: false,
-        payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+        payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
       }],
     }],
   });

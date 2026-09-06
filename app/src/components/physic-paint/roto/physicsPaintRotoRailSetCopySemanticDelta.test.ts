@@ -1,12 +1,12 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import { buildPhysicPaintRotoPhysicalRevision, parsePhysicPaintRotoPhysicalDocument, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
 import { buildRotoRailSetCopyPayload, proposeRails } from './physicsPaintRotoRailSetCopy';
 import { isPhysicPaintRotoPhysicalEditSemanticDelta } from '../../../types/physicPaint';
 
-const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
-  return Object.freeze({ kind: 'real-key', keyId, appFrame, payload: { frameIndex: 0, appFrame, dataUrl: PNG, width: 100, height: 80 } }) as PhysicPaintRotoRealKeyRecord;
+  return Object.freeze({ kind: 'real-key', keyId, appFrame, payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('iVBORw0KGgo='), width: 100, height: 80 } }) as PhysicPaintRotoRealKeyRecord;
 }
 
 function realDocument(): PhysicPaintRotoPhysicalDocument {

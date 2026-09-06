@@ -1244,17 +1244,16 @@ fn canonical_string(value: &str) -> String {
 /// head+tail+length token, never the full dataUrl (reveal-baked keys carry
 /// multi-MB PNGs; concatenating them cost ~10s per reveal rail at open).
 /// Validated payloads are ASCII base64, so char/byte slicing agree.
-fn canonical_data_url_payload(data_url: &str) -> String {
-    let head: String = data_url.chars().take(64).collect();
-    let tail: String = data_url
-        .chars()
-        .rev()
-        .take(64)
-        .collect::<Vec<char>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("d{}:{}..{};", data_url.len(), head, tail)
+/// 52.1 (D-05): the payload is raw WebP bytes (serde serializes Vec<u8> as a
+/// JSON number array). The token mirrors the JS `buildFrameBytesToken`:
+/// `d<len>:<head-64-hex>:<tail-64-hex>;` — O(1), change-safe for same-encoder
+/// WebP output.
+fn canonical_bytes_payload(bytes: &[u8]) -> String {
+    let head_len = bytes.len().min(64);
+    let tail_start = bytes.len().saturating_sub(64);
+    let head: String = bytes[..head_len].iter().map(|byte| format!("{byte:02x}")).collect();
+    let tail: String = bytes[tail_start..].iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("d{}:{}:{};", bytes.len(), head, tail)
 }
 
 fn canonical_number(value: f64) -> String {
@@ -1336,17 +1335,20 @@ fn canonical_records(records: &[Value]) -> Result<String, String> {
             .get("appFrame")
             .and_then(Value::as_f64)
             .ok_or("Target physical document payload appFrame is malformed")?;
-        let data_url = payload
-            .get("dataUrl")
-            .and_then(Value::as_str)
-            .ok_or("Target physical document payload dataUrl is malformed")?;
+        let bytes: Vec<u8> = payload
+            .get("bytes")
+            .and_then(Value::as_array)
+            .ok_or("Target physical document payload bytes is malformed")?
+            .iter()
+            .map(|value| value.as_u64().and_then(|byte| u8::try_from(byte).ok()).ok_or("Target physical document payload byte is malformed"))
+            .collect::<Result<Vec<u8>, String>>()?;
         let width = payload.get("width").and_then(Value::as_f64);
         let height = payload.get("height").and_then(Value::as_f64);
         encoded.push_str(&canonical_string(key_id));
         encoded.push_str(&canonical_number(app_frame));
         encoded.push_str(&canonical_number(frame_index));
         encoded.push_str(&canonical_number(payload_app_frame));
-        encoded.push_str(&canonical_data_url_payload(data_url));
+        encoded.push_str(&canonical_bytes_payload(&bytes));
         encoded.push_str(&canonical_optional_number(width));
         encoded.push_str(&canonical_optional_number(height));
     }

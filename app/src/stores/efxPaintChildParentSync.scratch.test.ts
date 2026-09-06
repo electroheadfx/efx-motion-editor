@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -74,18 +75,18 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(keyId), width: 10, height: 10 },
 });
 
 describe('SCRATCH: child document push + parent save preserves Track 1 keys', () => {

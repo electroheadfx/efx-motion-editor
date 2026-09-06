@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
@@ -77,7 +78,7 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      bytes: testWebpBytes('iVBORw0KGgo='),
     },
   };
 }
@@ -1891,12 +1892,12 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
   // (physicsPaintRotoGroupParity.test.ts): the delete-rails proposer validates
   // lifecycle facts through isLifecycleGroup, so Group members must carry all
   // six durable lifecycle fields.
-  const batchPngDataUrl = (label: string) => `data:image/png;base64,${btoa(`batch-${label}`)}`;
+  const batchPngDataUrl = (label: string) => testWebpBytes(`batch-${label}`);
   const batchRealKey = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
     kind: 'real-key',
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl: batchPngDataUrl(keyId), width: 10, height: 10 },
+    payload: { frameIndex: 0, appFrame, bytes: batchPngDataUrl(keyId), width: 10, height: 10 },
   });
   const batchLifecycleGroup = (
     loopId: string,
@@ -2491,7 +2492,7 @@ describe('useRotoPhysicalEditHistory track-tagged undo/redo (46-03 Task 3 — D-
       ...snapshot([record('k0', 0)], 'k0', 0),
       cachedReference: {
         url: '/cache/track-a/frame-0.png',
-        cachedRepaintBase: { dataUrl: raster } as never,
+        cachedRepaintBase: { bytes: raster } as never,
       },
     };
     const harness = createTrackHarness({ trackId: TRACK_A, current: after });
@@ -2522,7 +2523,7 @@ describe('useRotoPhysicalEditHistory track-tagged undo/redo (46-03 Task 3 — D-
 
 describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
   const REVEAL_TRACK_ID = 'track-1';
-  const REVEAL_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const REVEAL_PNG = testWebpBytes('reveal');
   const revealScript = {
     provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
     sourceFrame: 0,
@@ -2543,8 +2544,8 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
 
   async function createRevealDescriptor(layerId: string) {
     revealHarness.renderReveal.mockResolvedValue([
-      { frameIndex: 0, appFrame: 10, dataUrl: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
-      { frameIndex: 1, appFrame: 11, dataUrl: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
+      { frameIndex: 0, appFrame: 10, bytes: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
+      { frameIndex: 1, appFrame: 11, bytes: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
     ]);
     const result = await createRevealRail(layerId, {
       trackId: REVEAL_TRACK_ID,
@@ -2598,7 +2599,7 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
     const layerId = 'layer-reveal-undo';
     registerRevealTrackDocument(layerId);
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const descriptor = await createRevealDescriptor(layerId);
 
     const { history, availability } = createRevealHistory(layerId);
@@ -2624,7 +2625,7 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
     const layerId = 'layer-reveal-display';
     registerRevealTrackDocument(layerId);
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const descriptor = await createRevealDescriptor(layerId);
 
     const { history } = createRevealHistory(layerId);
@@ -2651,7 +2652,7 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
     const layerId = 'layer-reveal-content-guard';
     registerRevealTrackDocument(layerId);
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const descriptor = await createRevealDescriptor(layerId);
 
     const { history, availability } = createRevealHistory(layerId);
@@ -2680,7 +2681,7 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
     expect(setResult.ok).toBe(true);
     if (!setResult.ok || !setResult.descriptor) throw new Error('reference set must emit a descriptor');
     history.recordBackgroundEdit(setResult.descriptor);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
 
     const descriptor = await createRevealDescriptor(layerId);
     history.recordBackgroundEdit(descriptor);

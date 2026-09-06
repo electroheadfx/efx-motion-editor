@@ -22,13 +22,12 @@ import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-f
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
-import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
 
 export const EFX_PAINT_CACHE_DIR = 'cache/efx-paint';
 export const EFX_PAINT_CACHE_PARENT_DIR = 'cache';
 export const EFX_PAINT_STAGING_PREFIX = '.efx-paint-staging-';
-const DATA_URL_PREFIX = 'data:image/png;base64,';
 
 /**
  * One layer's save input: the document plus the runtime frame bytes to stage.
@@ -108,28 +107,6 @@ export function buildEfxPaintFrameCachePath(
   return `${EFX_PAINT_CACHE_DIR}/${stableSegment(layerId)}/${trackId}/${frameFileName(frame)}`;
 }
 
-function decodePngDataUrl(dataUrl: string): Uint8Array | null {
-  if (!dataUrl.startsWith(DATA_URL_PREFIX)) return null;
-  try {
-    const binary = atob(dataUrl.slice(DATA_URL_PREFIX.length));
-    if (binary.length === 0) return null;
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return bytes;
-  } catch {
-    return null;
-  }
-}
-
-function encodePngDataUrl(bytes: Uint8Array): string {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return DATA_URL_PREFIX + btoa(binary);
-}
-
 /**
  * Prefix-locked sidecar path guard (T-45-11, ASVS V12): the path must live
  * under `cache/efx-paint/`, contain no backslash, no absolute prefix, no NUL,
@@ -189,7 +166,7 @@ function buildEfxPaintSaveFingerprint(
       const trackFrames = input.frames.get(track.id);
       if (!trackFrames) continue;
       for (const [appFrame, frame] of trackFrames) {
-        terms.push(`${track.id}:${appFrame}:${frame.dataUrl.length}:${frame.dataUrl}`);
+        terms.push(`${track.id}:${appFrame}:${buildFrameBytesToken(frame.bytes)}`);
       }
     }
   }
@@ -247,9 +224,9 @@ async function prepareEfxPaintSave(
         if (!runtimeFrame) {
           throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
         }
-        const bytes = decodePngDataUrl(runtimeFrame.dataUrl);
-        if (!bytes) {
-          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} is not a canonical PNG data URL.`);
+        const bytes = runtimeFrame.bytes;
+        if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
         }
         pendingWrites.push({ path: ref.cachePath, bytes });
       }
@@ -393,7 +370,7 @@ export async function loadEfxPaintDocuments(
         trackFrames.set(appFrame, {
           frameIndex: 0,
           appFrame,
-          dataUrl: encodePngDataUrl(bytes),
+          bytes,
           width: ref.width,
           height: ref.height,
         });

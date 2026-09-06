@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
@@ -34,18 +35,18 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(keyId), width: 10, height: 10 },
 });
 
 describe('47-01: multi-track persistence round-trip (user scenario — added track + paint survive save/load)', () => {
@@ -100,7 +101,7 @@ describe('47-01: multi-track persistence round-trip (user scenario — added tra
         trackFrames.set(n, {
           frameIndex: 0,
           appFrame: n,
-          dataUrl: pngDataUrl(`${track.id}-${n}`),
+          bytes: pngDataUrl(`${track.id}-${n}`),
           width: ref.width,
           height: ref.height,
         });

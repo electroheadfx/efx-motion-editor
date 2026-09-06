@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
@@ -100,7 +101,7 @@ const INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 const makeFrame = (frameIndex: number, appFrame: number, tag: string) => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 1000,
   height: 650,
 });
@@ -109,7 +110,7 @@ const makeRecord = (keyId: string, appFrame: number, tag: string): PhysicPaintRo
   kind: 'real-key',
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: `data:image/png;base64,${btoa(tag)}`, width: 4, height: 4 },
+  payload: { frameIndex: 0, appFrame, bytes: testWebpBytes(btoa(tag)), width: 4, height: 4 },
 });
 
 /** A Hold (static-mode) Loop Clip whose source frames live on a track. */

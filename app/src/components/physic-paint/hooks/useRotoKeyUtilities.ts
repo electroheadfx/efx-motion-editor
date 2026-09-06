@@ -347,7 +347,7 @@ function toClipboardPayload(copiedKey: RotoSessionCopiedKey): PhysicPaintRotoRea
   return Object.freeze({
     frameIndex: frame.frameIndex,
     appFrame: copiedKey.frame,
-    dataUrl: frame.dataUrl,
+    bytes: frame.bytes,
     ...(frame.width !== undefined ? { width: frame.width } : {}),
     ...(frame.height !== undefined ? { height: frame.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
@@ -357,7 +357,7 @@ export function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationA
   return Object.freeze({
     frameIndex: blank.frameIndex,
     appFrame: destinationAppFrame,
-    dataUrl: blank.dataUrl,
+    bytes: blank.bytes,
     ...(blank.width !== undefined ? { width: blank.width } : {}),
     ...(blank.height !== undefined ? { height: blank.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;

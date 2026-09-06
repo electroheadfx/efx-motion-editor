@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import {
@@ -15,7 +16,7 @@ function frame(appFrame: number, sourceFrame = appFrame, source: PhysicPaintRoto
     sourceFrame,
     displayFrame: appFrame,
     source,
-    dataUrl: `${source}-${appFrame}`,
+    bytes: testWebpBytes(`${source}-${appFrame}`),
   };
 }
 
@@ -40,8 +41,8 @@ describe('rotoCacheTransactions', () => {
       appFrame: 9,
       sourceFrame: 1,
       displayFrame: 6,
-      dataUrl: 'replacement',
-    }, true, { dataUrl: 'onion' });
+      bytes: testWebpBytes('replacement'),
+    }, true, { bytes: testWebpBytes('onion') });
 
     expect(result).toEqual([
       frame(0),
@@ -51,9 +52,9 @@ describe('rotoCacheTransactions', () => {
         sourceFrame: 1,
         displayFrame: 6,
         source: 'real-key',
-        dataUrl: 'replacement',
+        bytes: testWebpBytes('replacement'),
         backgroundOnly: true,
-        onionDataUrl: 'onion',
+        onionBytes: testWebpBytes('onion'),
       }),
     ]);
     expect(existing).toHaveLength(3);
@@ -97,12 +98,12 @@ describe('rotoCacheTransactions', () => {
 
   it('merges missing launch real keys with store precedence and preserves generated store frames', () => {
     const launchFrames = [frame(0), frame(11, 4), frame(7, 2, 'generated-interpolation')];
-    const storeFrames = [frame(3, 1), { ...frame(8, 4), dataUrl: 'store-real' }, frame(5, 1, 'generated-interpolation')];
+    const storeFrames = [frame(3, 1), { ...frame(8, 4), bytes: testWebpBytes('store-real') }, frame(5, 1, 'generated-interpolation')];
 
     expect(mergeRotoCacheFramesPreservingLaunchRealKeys(launchFrames, storeFrames)).toEqual([
       expect.objectContaining({ appFrame: 0, sourceFrame: 0, source: 'real-key' }),
       expect.objectContaining({ appFrame: 1, sourceFrame: 1, source: 'real-key' }),
-      expect.objectContaining({ appFrame: 4, sourceFrame: 4, source: 'real-key', dataUrl: 'store-real' }),
+      expect.objectContaining({ appFrame: 4, sourceFrame: 4, source: 'real-key', bytes: testWebpBytes('store-real') }),
       expect.objectContaining({ appFrame: 5, sourceFrame: 1, source: 'generated-interpolation' }),
     ]);
   });

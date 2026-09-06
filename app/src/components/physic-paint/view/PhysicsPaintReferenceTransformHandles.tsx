@@ -101,7 +101,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       imageSize.value = null;
       return;
     }
-    const image = physicPaintStore.getDecodedImage(verdict.dataUrl);
+    const image = physicPaintStore.getDecodedImage(verdict.bytes);
     imageSize.value = image === null ? null : { w: image.width, h: image.height };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
     // clocks are read inside the effect's dep array (narrow leaf subscription,

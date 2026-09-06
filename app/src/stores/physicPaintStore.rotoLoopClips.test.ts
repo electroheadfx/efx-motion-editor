@@ -22,6 +22,7 @@ import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/r
 import type { PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { registerDocument, reset as resetEfxPaintStore } from './efxPaintStore';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -68,7 +69,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-store:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-store:${appFrame}:${tag}`)),
     width: 4,
     height: 4,
   };
@@ -212,7 +213,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     for (const frame of occurrences) {
       const source = expectRealSource(LAYER, frame);
       expect(source.cacheRevision, `occurrence ${frame} invalidated by the single source edit`).toBe(`${revisionAfter}:real:D`);
-      expect(source.renderedFrame.dataUrl).toBe(payload(3, 'repainted').dataUrl);
+      expect(source.renderedFrame.bytes).toEqual(payload(3, 'repainted').bytes);
     }
   });
 
@@ -257,7 +258,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
         cycleOffset: 1,
       });
       if (!source || source.kind !== 'generated') throw new Error('Expected linked generated duplicate source.');
-      expect(source.renderedFrame.dataUrl).toBe(spaced[0].payload.dataUrl);
+      expect(source.renderedFrame.bytes).toBe(spaced[0].payload.bytes);
     }
     expect(new Set(duplicateSources.map((source) => source && 'cacheRevision' in source ? source.cacheRevision : null)).size).toBe(1);
     const linkedCacheRevision = duplicateSources[0]?.kind === 'generated' ? duplicateSources[0].cacheRevision : null;
@@ -270,14 +271,14 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       width: 0,
       height: 0,
       getContext: () => ({ globalAlpha: 1, clearRect: vi.fn(), drawImage: vi.fn() }),
-      toDataURL: () => 'data:image/png;base64,linked-loop-blend',
+      toDataURL: () => `data:image/webp;base64,${btoa(String.fromCharCode(...testWebpBytes('linked-loop-blend')))}`,
     } as unknown as HTMLCanvasElement;
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
       value: { createElement: () => outputCanvas },
     });
-    registerRotoAlphaCanvasFrame(spaced[0].payload.dataUrl, { width: 4, height: 4 } as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(spaced[1].payload.dataUrl, { width: 4, height: 4 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(spaced[0].payload.bytes, { width: 4, height: 4 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(spaced[1].payload.bytes, { width: 4, height: 4 } as HTMLCanvasElement);
     try {
       installRecords(spaced, CAPACITY, { enabled: true, mode: 'blend' });
       installLoops([loopClip('loop-blend', 10, ['A', 'B', 'C'], 2, 10, 7)]);
@@ -288,7 +289,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
         leftKeyId: 'A',
         rightKeyId: 'B',
         interpolationMode: 'blend',
-        renderedFrame: { dataUrl: 'data:image/png;base64,linked-loop-blend' },
+        renderedFrame: { bytes: testWebpBytes('linked-loop-blend') },
       });
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });

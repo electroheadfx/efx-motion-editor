@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -42,7 +43,7 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
@@ -155,31 +156,31 @@ describe('photo reference registry + resolution (50-02 Task 2)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0', 'f1', 'f2']);
-    registerReferenceSourceImage('f0', 'data:f0');
-    registerReferenceSourceImage('f1', 'data:f1');
-    registerReferenceSourceImage('f2', 'data:f2');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
+    registerReferenceSourceImage('f1', testWebpBytes('data:f1'));
+    registerReferenceSourceImage('f2', testWebpBytes('data:f2'));
 
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'f0', dataUrl: 'data:f0', clamped: false });
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toEqual({ ref: 'f1', dataUrl: 'data:f1', clamped: false });
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 2)).toEqual({ ref: 'f2', dataUrl: 'data:f2', clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'f0', bytes: testWebpBytes('data:f0'), clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toEqual({ ref: 'f1', bytes: testWebpBytes('data:f1'), clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 2)).toEqual({ ref: 'f2', bytes: testWebpBytes('data:f2'), clamped: false });
     // frame 3 clamps to the last source frame (sequence end holds)
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 3)).toEqual({ ref: 'f2', dataUrl: 'data:f2', clamped: true });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 3)).toEqual({ ref: 'f2', bytes: testWebpBytes('data:f2'), clamped: true });
 
     // a single-image track is a cycle of length 1
     setPhotoReferenceSource(layerId, ['solo']);
-    registerReferenceSourceImage('solo', 'data:solo');
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'solo', dataUrl: 'data:solo', clamped: false });
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 5)).toEqual({ ref: 'solo', dataUrl: 'data:solo', clamped: true });
+    registerReferenceSourceImage('solo', testWebpBytes('data:solo'));
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'solo', bytes: testWebpBytes('data:solo'), clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 5)).toEqual({ ref: 'solo', bytes: testWebpBytes('data:solo'), clamped: true });
   });
 
   it('missing source resolves to null with a :missing revision suffix (D-04)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['present', 'absent']);
-    registerReferenceSourceImage('present', 'data:present');
+    registerReferenceSourceImage('present', testWebpBytes('data:present'));
 
     // present resolves
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'present', dataUrl: 'data:present', clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'present', bytes: testWebpBytes('data:present'), clamped: false });
     // absent resolves to null (never a placeholder, never silent transparency)
     expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toBeNull();
 
@@ -199,7 +200,7 @@ describe('photo reference registry + resolution (50-02 Task 2)', () => {
     const empty = _referenceSourceRevision(getDocument(layerId)!);
     expect(empty).toBe('a:missing');
 
-    registerReferenceSourceImage('a', 'data:aaa');
+    registerReferenceSourceImage('a', testWebpBytes('data:aaa'));
     const withBytes = _referenceSourceRevision(getDocument(layerId)!);
     expect(withBytes).not.toBe(empty);
     expect(withBytes).toContain('a:');
@@ -208,12 +209,12 @@ describe('photo reference registry + resolution (50-02 Task 2)', () => {
     expect(_referenceSourceRevision(getDocument(layerId)!)).toBe(withBytes);
 
     // changes when the dataUrl changes
-    registerReferenceSourceImage('a', 'data:bbb');
+    registerReferenceSourceImage('a', testWebpBytes('data:bbb'));
     expect(_referenceSourceRevision(getDocument(layerId)!)).not.toBe(withBytes);
 
     // changes when the source ref is replaced
     setPhotoReferenceSource(layerId, ['b']);
-    registerReferenceSourceImage('b', 'data:bbb');
+    registerReferenceSourceImage('b', testWebpBytes('data:bbb'));
     expect(_referenceSourceRevision(getDocument(layerId)!)).toContain('b:');
   });
 });
@@ -308,13 +309,13 @@ describe('photo reference exclusion + persistence (50-02 Task 3)', () => {
       expect(noReference).not.toBeNull();
 
       setPhotoReferenceSource(layerId, ['ref-a']);
-      registerReferenceSourceImage('ref-a', 'data:ref-a');
+      registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
       const withReference = physicPaintStore.getFlattenedFrame(layerId, 0)!;
-      expect(withReference.renderedFrame.dataUrl).toBe(noReference.renderedFrame.dataUrl);
+      expect(withReference.renderedFrame.bytes).toBe(noReference.renderedFrame.bytes);
 
       setPhotoReferenceVisible(layerId, false);
       const hiddenReference = physicPaintStore.getFlattenedFrame(layerId, 0)!;
-      expect(hiddenReference.renderedFrame.dataUrl).toBe(noReference.renderedFrame.dataUrl);
+      expect(hiddenReference.renderedFrame.bytes).toBe(noReference.renderedFrame.bytes);
     });
   });
 
@@ -347,13 +348,13 @@ describe('photo reference exclusion + persistence (50-02 Task 3)', () => {
 
     const result = await hydrateReferenceSourceImages(getDocument(layerId)!, {
       resolveAssetUrls: (ref) => [`asset://${ref}`],
-      decodeBytes: async (url) => `data:${url}`,
+      decodeBytes: async (url) => testWebpBytes(url),
       register: registerReferenceSourceImage,
     });
 
     expect(result.registered).toEqual(['f0', 'f1']);
     expect(result.missing).toEqual([]);
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'f0', dataUrl: 'data:asset://f0', clamped: false });
-    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toEqual({ ref: 'f1', dataUrl: 'data:asset://f1', clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 0)).toEqual({ ref: 'f0', bytes: testWebpBytes('asset://f0'), clamped: false });
+    expect(physicPaintStore.getReferenceSourceFrameVerdict(layerId, 1)).toEqual({ ref: 'f1', bytes: testWebpBytes('asset://f1'), clamped: false });
   });
 });

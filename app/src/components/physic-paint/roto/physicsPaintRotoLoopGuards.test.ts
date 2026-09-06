@@ -36,6 +36,7 @@ import type {
 import { useRotoPhysicalEditHistory } from '../hooks/useRotoPhysicalEditHistory';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 /**
  * Phase 43-05 RED spec — loop-aware operation guards (HOLD-05).
@@ -81,7 +82,7 @@ function record(keyId: string, appFrame: number, label: string): PhysicPaintRoto
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: `data:image/png;base64,${label}`,
+      bytes: testWebpBytes(label),
       width: 2,
       height: 2,
     },
@@ -720,7 +721,7 @@ describe('D-12/D-13 materialize local key at a linked frame', () => {
     const emptyPayload: PhysicPaintRotoRealKeyPayload = {
       frameIndex: 0,
       appFrame: 20,
-      dataUrl: 'data:image/png;base64,RU1QVFk=',
+      bytes: testWebpBytes('RU1QVFk='),
       width: 2,
       height: 2,
     };
@@ -752,7 +753,7 @@ describe('D-12/D-13 materialize local key at a linked frame', () => {
     const paintedPayload: PhysicPaintRotoRealKeyPayload = {
       frameIndex: base?.payload.frameIndex ?? 0,
       appFrame: 22,
-      dataUrl: 'data:image/png;base64,Q0NDQ1BMVVNTVFJPS0U=',
+      bytes: testWebpBytes('Q0NDQ1BMVVNTVFJPS0U='),
       width: base?.payload.width,
       height: base?.payload.height,
     };
@@ -765,7 +766,7 @@ describe('D-12/D-13 materialize local key at a linked frame', () => {
 
     const afterRecords = proposal.nextRecords ?? [];
     const materialized = afterRecords.find((entry) => entry.appFrame === 22);
-    expect(materialized?.payload.dataUrl).toBe('data:image/png;base64,Q0NDQ1BMVVNTVFJPS0U=');
+    expect(materialized?.payload.bytes).toEqual(testWebpBytes('Q0NDQ1BMVVNTVFJPS0U='));
     const after = derive(afterRecords, loopClips);
     expect(resolvePhysicPaintRotoLoopFrame(after, 22).kind).toBe('real');
     expect(after.ranges.find((entry) => entry.loopId === 'L1')?.effectiveEnd).toBe(22);

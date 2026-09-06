@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -31,7 +32,7 @@ const realSource: PhysicPaintRotoPhysicalRenderSource = {
   keyId: 'key-4',
   contentRevision: 'rev-1',
   cacheRevision: 'rev-1:real:key-4',
-  renderedFrame: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,cmVhbA==' },
+  renderedFrame: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('cmVhbA==') },
 };
 
 const generatedSource: PhysicPaintRotoPhysicalRenderSource = {
@@ -43,7 +44,7 @@ const generatedSource: PhysicPaintRotoPhysicalRenderSource = {
   interpolationMode: 'duplicate',
   contentRevision: 'rev-1',
   cacheRevision: 'rev-1:generated:duplicate:key-4:key-9:5',
-  renderedFrame: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVk' },
+  renderedFrame: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('Z2VuZXJhdGVk') },
 };
 
 const placeholderSource: PhysicPaintRotoPhysicalRenderSource = {
@@ -184,26 +185,26 @@ function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean }
       kind: 'real-key' as const,
       keyId: 'source-A',
       appFrame: 0,
-      payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,QQ==' },
+      payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('QQ==') },
     },
     {
       kind: 'real-key' as const,
       keyId: 'source-B',
       appFrame: 2,
-      payload: { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Qg==' },
+      payload: { frameIndex: 0, appFrame: 2, bytes: testWebpBytes('Qg==') },
     },
     {
       kind: 'real-key' as const,
       keyId: 'ordinary-8',
       appFrame: 8,
-      payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Tw==' },
+      payload: { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('Tw==') },
     },
   ];
   const groupOverrideRecords = [{
     kind: 'real-key' as const,
     keyId: 'override-5',
     appFrame: 2,
-    payload: { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Vg==' },
+    payload: { frameIndex: 0, appFrame: 2, bytes: testWebpBytes('Vg==') },
   }];
   const visibleRanges = options.gapFrame === undefined
     ? [{ start: 0, endExclusive: 6 }]
@@ -301,7 +302,7 @@ describe('Phase 43.2 production Paint target routing', () => {
   const renderedPayload = {
     frameIndex: 0,
     appFrame: 8,
-    dataUrl: 'data:image/png;base64,UEFJTlQ=',
+    bytes: testWebpBytes('UEFJTlQ='),
   };
 
   it('keeps an ordinary unique real key on the direct payload path', async () => {

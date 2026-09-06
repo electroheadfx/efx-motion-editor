@@ -3,7 +3,7 @@ import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../
 import { readRotoActiveTrack } from './rotoSaveTransactions';
 
 export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
-export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
+export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
 export interface RotoEditBuffer<State = RotoEditableState, Frame = RotoRenderedFrame> {
   dirtyFrames: Set<number>;

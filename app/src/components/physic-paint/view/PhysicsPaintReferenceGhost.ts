@@ -69,7 +69,7 @@ export function drawReferenceGhost(
   if (!decision.draw || decision.verdict === null) return;
   const track = document.photoReference;
   if (track === null) return;
-  const image = physicPaintStore.getDecodedImage(decision.verdict.dataUrl);
+  const image = physicPaintStore.getDecodedImage(decision.verdict.bytes);
   if (image === null) return;
   const canvas = ctx.canvas;
   const w = image.width * zoom;

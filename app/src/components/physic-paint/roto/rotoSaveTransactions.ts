@@ -9,7 +9,7 @@ import type {
 } from '../../../types/physicPaint';
 
 export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
-export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
+export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
 export interface RotoFlushOptions {
   force?: boolean;
@@ -110,7 +110,7 @@ export function buildApplyCanvasPayload(input: {
     rotoBackground: input.backgroundMetadata,
     rotoInterpolationSettings: input.interpolationSettings,
     ...(input.backgroundOnly ? { backgroundOnly: true } : {}),
-    ...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {}),
+    ...(input.onionFrame?.bytes ? { onionBytes: input.onionFrame.bytes } : {}),
   };
 }
 

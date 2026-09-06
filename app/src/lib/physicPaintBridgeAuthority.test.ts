@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
@@ -36,7 +37,7 @@ const TRACK_B = 'track-b';
 const makePayload = (appFrame: number, tag: string) => ({
   frameIndex: 0,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 4,
   height: 4,
 });
@@ -314,7 +315,7 @@ describe('three-dimensional commit gate (46-04 Task 2)', () => {
       expectedDocumentRevision: authority.documentRevision,
       frames: [
         authority.frames[0],
-        { frameIndex: 0, appFrame: 2, dataUrl: `data:image/png;base64,${btoa('a@2')}`, width: 4, height: 4, source: 'real-key' },
+        { frameIndex: 0, appFrame: 2, bytes: testWebpBytes(btoa('a@2')), width: 4, height: 4, source: 'real-key' },
       ],
       ...overrides,
     };

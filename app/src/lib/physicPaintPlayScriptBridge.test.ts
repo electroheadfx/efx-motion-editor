@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoCacheFrame } from '../types/physicPaint';
@@ -29,18 +30,18 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
   };
 }
 
-const frame = (sourceFrame: number, dataUrl = `data:image/png;base64,${sourceFrame}`) => ({ frameIndex: 0, appFrame: sourceFrame, sourceFrame, dataUrl, source: 'real-key' as const, width: 10, height: 10 });
+const frame = (sourceFrame: number, bytes = testWebpBytes(`data:image/png;base64,${sourceFrame}`)) => ({ frameIndex: 0, appFrame: sourceFrame, sourceFrame, bytes, source: 'real-key' as const, width: 10, height: 10 });
 const layer = (): Layer => ({ id: 'layer-1', name: 'Physics Paint', type: 'physic-paint', visible: true, opacity: 1, blendMode: 'normal', transform: defaultTransform(), source: { type: 'physic-paint', layerId: 'layer-1' } });
 
-const UNTOUCHED_DATA_URL = `data:image/png;base64,${btoa('untouched')}`;
+const UNTOUCHED_DATA_URL = testWebpBytes('untouched');
 
 /** Seed the canonical physical real-key document the parent authority reads. */
-function seedPhysicalRecords(keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>): void {
+function seedPhysicalRecords(keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>): void {
   const records = keys.map((key) => ({
     keyId: key.keyId,
     appFrame: key.appFrame,
     kind: 'real-key' as const,
-    payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl, width: 10, height: 10 },
+    payload: { frameIndex: 0, appFrame: key.appFrame, bytes: key.bytes, width: 10, height: 10 },
   }));
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const result = physicPaintStore.replaceRotoPhysicalDocument('layer-1', TEST_TRACK_ID, {
@@ -71,7 +72,7 @@ function batch(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'replace-roto-key-frames'as const, trackId: TEST_TRACK_ID, operationId: `commit-${crypto.randomUUID()}`, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', startFrame: 4,
     frameCount: 2, expectedLayerEndExclusive: 600, expectedRotoRevision: authority.rotoRevision,
-    frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5')],
+    frames: [authority.frames[0], frame(4, testWebpBytes('new-4')), frame(5, testWebpBytes('new-5'))],
     rotoBackground: { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 },
     rotoInterpolationSettings: { enabled: true, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 },
     ...overrides,
@@ -86,7 +87,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     sequenceStore.sequences.value = [];
     installProject();
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 1, frame(1, UNTOUCHED_DATA_URL));
-    seedPhysicalRecords([{ keyId: 'key-1', appFrame: 1, dataUrl: UNTOUCHED_DATA_URL }]);
+    seedPhysicalRecords([{ keyId: 'key-1', appFrame: 1, bytes: UNTOUCHED_DATA_URL }]);
   });
   afterEach(() => { vi.restoreAllMocks(); physicPaintStore.reset(); sequenceStore.sequences.value = []; resetEfxPaintStore(); vi.unstubAllGlobals(); });
 
@@ -149,20 +150,20 @@ describe('Play Script parent authority and complete-set bridge', () => {
 
   it('rejects omission, modification, and injection outside the affected destination range', () => {
     seedPhysicalRecords([
-      { keyId: 'key-1', appFrame: 1, dataUrl: UNTOUCHED_DATA_URL },
-      { keyId: 'key-20', appFrame: 20, dataUrl: `data:image/png;base64,${btoa('far-key')}` },
+      { keyId: 'key-1', appFrame: 1, bytes: UNTOUCHED_DATA_URL },
+      { keyId: 'key-20', appFrame: 20, bytes: testWebpBytes('far-key') },
     ]);
     const frameSource = (candidate: PhysicPaintRotoCacheFrame) => candidate.sourceFrame ?? candidate.appFrame;
     const authority = getPhysicPaintRotoAuthority({ operationId: 'complete-set', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4, trackId: TEST_TRACK_ID });
     const untouchedFarKey = authority.frames.find((candidate) => frameSource(candidate) === 20);
     if (!untouchedFarKey || !authority.frames[0]) throw new Error('authority must expose the seeded physical keys');
-    const base = { expectedRotoRevision: authority.rotoRevision, frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5'), untouchedFarKey] };
+    const base = { expectedRotoRevision: authority.rotoRevision, frames: [authority.frames[0], frame(4, testWebpBytes('new-4')), frame(5, testWebpBytes('new-5')), untouchedFarKey] };
 
     expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.filter((candidate) => frameSource(candidate) !== 20) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, dataUrl: 'data:image/png;base64,changed' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, onionDataUrl: 'data:image/png;base64,changed-onion' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, bytes: testWebpBytes('changed') } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, onionBytes: testWebpBytes('changed-onion') } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
     expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, sourceFrame: 21, appFrame: 21 } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: [...base.frames, frame(30, 'data:image/png;base64,injected')] }))).toMatchObject({ ok: false, error: 'Play Script batch contains an unexpected out-of-range real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: [...base.frames, frame(30, testWebpBytes('injected'))] }))).toMatchObject({ ok: false, error: 'Play Script batch contains an unexpected out-of-range real key.' });
     expect(applyPhysicPaintPayload(batch(base))).toMatchObject({ ok: true, appliedFrameCount: 4 });
   });
 
@@ -176,7 +177,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(first).toMatchObject({ ok: true, operationId, appliedFrameCount: 3 });
     expect(retry).toEqual(first);
     expect(replace).toHaveBeenCalledOnce();
-    expect(applyPhysicPaintPayload({ ...original, frames: original.frames.map((candidate) => candidate.sourceFrame === 4 ? { ...candidate, dataUrl: 'data:image/png;base64,collision' } : candidate) })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
+    expect(applyPhysicPaintPayload({ ...original, frames: original.frames.map((candidate) => candidate.sourceFrame === 4 ? { ...candidate, bytes: testWebpBytes('collision') } : candidate) })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
     expect(applyPhysicPaintPayload({ ...original, layerId: 'other-layer' })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
     expect(applyPhysicPaintPayload({ ...original, startFrame: 3 })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
     expect(applyPhysicPaintPayload({ kind: 'delete-roto-frame', trackId: TEST_TRACK_ID, operationId, layerId: 'layer-1', startFrame: 4 })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });

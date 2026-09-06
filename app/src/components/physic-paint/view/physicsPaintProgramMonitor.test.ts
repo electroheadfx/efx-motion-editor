@@ -1,3 +1,8 @@
+const decodeFlatLog = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+const frameSeed = (bytes: Uint8Array): string => new TextDecoder().decode(bytes.slice(32));
+const blobContentByBlob = new WeakMap<Blob, Uint8Array>();
+const OriginalBlob = globalThis.Blob;
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,7 +77,7 @@ const FLAT_LAYER = 'flat-layer';
 const makeFrame = (frameIndex: number, appFrame: number) => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 1000,
   height: 650,
 });
@@ -130,7 +135,7 @@ class FlatTestCanvas {
         case 'drawImage': return `draw(${op.source},${op.globalAlpha},${op.globalCompositeOperation})`;
       }
     }).join('|');
-    return `data:image/png;base64,${log}`;
+    return `data:image/png;base64,${btoa(log)}`;
   }
 }
 
@@ -203,14 +208,14 @@ function flatDocument(tracks: InternalPaintTrack[], background?: Partial<EfxPain
 
 function seedRoto(
   trackId: string,
-  keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>,
+  keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>,
   options: { loopClips?: PhysicPaintRotoLoopClip[] } = {},
 ): void {
   const records = keys.map((key) => ({
     keyId: key.keyId,
     appFrame: key.appFrame,
     kind: 'real-key' as const,
-    payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+    payload: { frameIndex: 0, appFrame: key.appFrame, bytes: key.bytes },
   }));
   const loopClips = options.loopClips ?? [];
   const interpolation = { enabled: false, mode: 'duplicate' as const };
@@ -295,6 +300,21 @@ beforeEach(() => {
   vi.stubGlobal('Image', FlatTestImage);
   vi.stubGlobal('HTMLImageElement', FlatTestImage);
   vi.stubGlobal('HTMLCanvasElement', FlatTestCanvas);
+  // 52.1: the compositor decodes frame bytes into a Blob URL; make the URL
+  // deterministic (derived from the frame seed) so draw-log assertions can
+  // distinguish one track's content from another.
+  vi.stubGlobal('Blob', class extends OriginalBlob {
+    constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+      super(parts, options);
+      const part = parts[0];
+      if (part instanceof Uint8Array) blobContentByBlob.set(this, part);
+    }
+  });
+  vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
+    const content = blobContentByBlob.get(blob as Blob);
+    return content ? `blob:test:${new TextDecoder().decode(content.slice(32))}` : 'blob:test:empty';
+  });
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   runtime = new PreactHookRuntime();
 });
 
@@ -314,14 +334,14 @@ function drawCount(canvas: MonitorTestCanvas): number {
 
 describe('PhysicsPaintProgramMonitor', () => {
   it('(a) playback mode draws the full flattened frame for the current frame', () => {
-    const frameA = makeFrame(0, 5).dataUrl;
-    const frameB = makeFrame(1, 5).dataUrl;
+    const frameA = makeFrame(0, 5).bytes;
+    const frameB = makeFrame(1, 5).bytes;
     registerDocument(flatDocument([
       flatTrack('track-a', { order: 0 }),
       flatTrack('track-b', { order: 1 }),
     ], { visible: false }));
-    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
-    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
     const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
     const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
 
@@ -335,20 +355,20 @@ describe('PhysicsPaintProgramMonitor', () => {
     const record = getFlattenedFrame.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
     expect(record).not.toBeNull();
     // Full composite: both tracks draw.
-    expect(record.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(2);
+    expect(decodeFlatLog(record.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(2);
     // The monitor drew the record's raster into its canvas exactly once.
     expect(drawCount(canvas)).toBe(1);
   });
 
   it('(b) editing mode draws the active-track-excluded composite', () => {
-    const frameA = makeFrame(0, 5).dataUrl;
-    const frameB = makeFrame(1, 5).dataUrl;
+    const frameA = makeFrame(0, 5).bytes;
+    const frameB = makeFrame(1, 5).bytes;
     registerDocument(flatDocument([
       flatTrack('track-a', { order: 0 }),
       flatTrack('track-b', { order: 1 }),
     ], { visible: false }));
-    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
-    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
     const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
     const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
 
@@ -363,15 +383,16 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(calledExclude.has('track-a')).toBe(true);
     const record = getFlattenedFrameExcluding.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
     // The active track's pixels never reach the base (T-48-16).
-    expect(record.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
-    expect(record.renderedFrame.dataUrl).not.toContain(frameA);
-    expect(record.renderedFrame.dataUrl).toContain(frameB);
+    const log = decodeFlatLog(record.renderedFrame.bytes);
+    expect(log.match(/draw\(/g)?.length).toBe(1);
+    expect(log).not.toContain(frameSeed(frameA));
+    expect(log).toContain(frameSeed(frameB));
     expect(drawCount(canvas)).toBe(1);
   });
 
   it('(c) drawing the same flattened cacheKey twice is a no-op', () => {
     registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
     const canvas = renderMonitor(baseProps());
     expect(drawCount(canvas)).toBe(1);
@@ -386,7 +407,7 @@ describe('PhysicsPaintProgramMonitor', () => {
 
   it('(d) a pending decode (null) keeps the last drawn frame', () => {
     registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
     const canvas = renderMonitor(baseProps());
     expect(drawCount(canvas)).toBe(1);
@@ -399,7 +420,7 @@ describe('PhysicsPaintProgramMonitor', () => {
     // its remaining source: the store returning null.)
     vi.stubGlobal('Image', DeferredFlatTestImage);
     vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
-    registerBackgroundSourceImage('bg-ref-pending', makeFrame(2, 0).dataUrl);
+    registerBackgroundSourceImage('bg-ref-pending', makeFrame(2, 0).bytes);
     registerDocument(flatDocument([flatTrack('track-a')], {
       visible: true,
       clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-pending'], repeat: { mode: 'infinite' }, sourceKind: 'imported-background', revision: 1 }],
@@ -420,14 +441,14 @@ describe('PhysicsPaintProgramMonitor', () => {
   });
 
   it('(e) a hidden active track is excluded from the editing base', () => {
-    const frameA = makeFrame(0, 5).dataUrl;
-    const frameB = makeFrame(1, 5).dataUrl;
+    const frameA = makeFrame(0, 5).bytes;
+    const frameB = makeFrame(1, 5).bytes;
     registerDocument(flatDocument([
       flatTrack('track-a', { order: 0, visible: false }),
       flatTrack('track-b', { order: 1 }),
     ], { visible: false }));
-    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
-    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
     const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
 
     const canvas = renderMonitor(baseProps({ activeTrackId: 'track-a' }));
@@ -439,16 +460,17 @@ describe('PhysicsPaintProgramMonitor', () => {
     const excludeSet = getFlattenedFrameExcluding.mock.calls[0][2];
     expect(excludeSet.has('track-a')).toBe(true);
     const record = getFlattenedFrameExcluding.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
-    expect(record.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
-    expect(record.renderedFrame.dataUrl).not.toContain(frameA);
-    expect(record.renderedFrame.dataUrl).toContain(frameB);
+    const log = decodeFlatLog(record.renderedFrame.bytes);
+    expect(log.match(/draw\(/g)?.length).toBe(1);
+    expect(log).not.toContain(frameSeed(frameA));
+    expect(log).toContain(frameSeed(frameB));
     expect(drawCount(canvas)).toBe(1);
   });
 
   it('(f) G-52-8 (FIX 4): draws the record raster directly — no Image construction anywhere on the frame path', () => {
-    const frameDataUrl = makeFrame(0, 5).dataUrl;
+    const frameDataUrl = makeFrame(0, 5).bytes;
     registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
     // Hydration twin: with the payload already in the alpha registry (FIX 3),
     // the whole frame path — composite AND monitor draw — must construct zero
     // Images. A deferred Image proves it: any decode would never load.
@@ -487,7 +509,7 @@ describe('PhysicsPaintProgramMonitor', () => {
       // [0, 6) with cycle ['ka', 'missing-1'] — frame 5 resolves the second
       // cycle slot whose source ref 'missing-1' does not exist: a GENUINE
       // dangling source with non-empty missingRefs (the capsule case).
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, bytes: makeFrame(0, 0).bytes }], {
         loopClips: [danglingLoopClip()],
       });
       const summaryMock = vi.fn();
@@ -518,7 +540,7 @@ describe('PhysicsPaintProgramMonitor', () => {
       // track-a has a real key at frame 0 only — frame 5 has NO content and NO
       // loop: the flattened record reports a missingRefs-EMPTY entry (the raw
       // D-09 accounting, UAT-E's false positive). The monitor seam filters it.
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, bytes: makeFrame(0, 0).bytes }]);
       const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
       const summaryMock = vi.fn();
 
@@ -537,7 +559,7 @@ describe('PhysicsPaintProgramMonitor', () => {
 
     it('(c) a repeated identical genuine-dangling report does not re-publish', () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, bytes: makeFrame(0, 0).bytes }], {
         loopClips: [danglingLoopClip()],
       });
       const summaryMock = vi.fn();
@@ -556,7 +578,7 @@ describe('PhysicsPaintProgramMonitor', () => {
 
     it('(d) a resolved genuine-dangling report restores the idle capsule exactly once', () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, bytes: makeFrame(0, 0).bytes }], {
         loopClips: [danglingLoopClip()],
       });
       const summaryMock = vi.fn();
@@ -566,7 +588,7 @@ describe('PhysicsPaintProgramMonitor', () => {
 
       // Resolve the dangling ref: replace track-a with a real key AT frame 5
       // (the Loop Clip is gone, so frame 5 now resolves to real content).
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
       physicPaintVersion.value++;
       rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
 

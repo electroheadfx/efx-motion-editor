@@ -156,7 +156,7 @@ fn canonical_physical_hash_matches_the_typescript_reference_vector() {
     let hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
             .unwrap();
-    assert_eq!(hash, "project-416-550fa14e");
+    assert_eq!(hash, "project-598-5cf0b794");
 }
 
 #[test]

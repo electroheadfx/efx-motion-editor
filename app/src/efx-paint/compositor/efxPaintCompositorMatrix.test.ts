@@ -845,6 +845,7 @@ import { registerDocument, reset as resetEfxPaintStore } from '../../stores/efxP
 import { clearProjectPaperRasterCache } from '../../lib/projectPaperRaster';
 import { buildPhysicPaintRotoPhysicalRevision } from '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { PreviewRenderer, blendModeToCompositeOp } from '../../lib/previewRenderer';
+import { testWebpBytes } from '../../testUtils/testWebpBytes';
 
 // 46-01: runtime state is per-track; the harness exercises the ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -884,12 +885,12 @@ function makeRotoLayer(): Layer {
   };
 }
 
-function seedPhysicalRoto(keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>): void {
+function seedPhysicalRoto(keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>): void {
   const records = keys.map((key) => ({
     keyId: key.keyId,
     appFrame: key.appFrame,
     kind: 'real-key' as const,
-    payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+    payload: { frameIndex: 0, appFrame: key.appFrame, bytes: key.bytes },
   }));
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const result = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', TEST_TRACK_ID, {
@@ -918,6 +919,18 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
     vi.stubGlobal('Image', TestImage);
     vi.stubGlobal('HTMLImageElement', TestImage);
     vi.stubGlobal('HTMLCanvasElement', TestCanvas);
+    vi.stubGlobal('Blob', class extends OriginalBlob {
+      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+        super(parts, options);
+        const part = parts[0];
+        if (part instanceof Uint8Array) blobContentByBlob.set(this, part);
+      }
+    });
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
+      const content = blobContentByBlob.get(blob as Blob);
+      return content ? blobUrlFor(new TextDecoder().decode(content.slice(32))) : 'blob:test:empty';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -928,7 +941,7 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
 
   it('matrix row 20 — parent 50% × internal 50% = 25% effective exactly once at the previewRenderer seam (CMP-03)', () => {
     seedPhysicalRoto([
-      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+      { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ]);
     // The internal track opacity (0.5) is baked into the flattened raster
     // store-side (straight alpha, D-02); the parent applies only ITS 50%.
@@ -937,7 +950,7 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
       layerId: 'roto-layer',
       frame: 1,
       cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
-      renderedFrame: { frameIndex: 0, appFrame: 1, dataUrl: FLAT_1 },
+      renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
       missing: [],
     };
     vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
@@ -979,5 +992,11 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
   });
 });
 
-const FLAT_1 = 'data:image/png;base64,ZmxhdC0x';
+// 52.1: the compositor decodes frame bytes through a Blob URL (never a data
+// URL). Stub Blob/URL so the recorded drawImage source is deterministic per
+// seed instead of an opaque `blob:nodedata:<uuid>`.
+const blobContentByBlob = new WeakMap<Blob, Uint8Array>();
+const OriginalBlob = globalThis.Blob;
+const blobUrlFor = (seed: string): string => `blob:test:${seed}`;
+const FLAT_1 = blobUrlFor('FLAT_1');
 let offscreenOperations: RecordedCanvasOp[] = [];

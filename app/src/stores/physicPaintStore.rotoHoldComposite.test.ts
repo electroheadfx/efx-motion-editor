@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   physicPaintStore,
@@ -24,10 +25,10 @@ const CAPACITY = 12;
 const INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 function payload(appFrame: number, tag: string): PhysicPaintRotoRealKeyPayload {
-  return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(tag), width: 10, height: 10 };
+  return { frameIndex: 0, appFrame, bytes: pngDataUrl(tag), width: 10, height: 10 };
 }
 
 function record(keyId: string, appFrame: number, tag: string): PhysicPaintRotoRealKeyRecord {
@@ -79,7 +80,7 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
       const stored = physicPaintStore.getRotoRealKeyRecord(LAYER, TEST_TRACK_ID, `key-hold-${appFrame}`);
       expect(stored).not.toBeNull();
       expect(source.renderedFrame).toBe(stored?.payload);
-      expect(source?.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
+      expect(source?.renderedFrame.bytes).toEqual(pngDataUrl(`hold-${appFrame}`));
       expect(source?.renderedFrame.appFrame).toBe(appFrame);
     }
   });
@@ -116,7 +117,7 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
     for (const appFrame of [4, 5, 6]) {
       const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, appFrame);
       if (source?.kind !== 'real') throw new Error(`Expected a real render source at frame ${appFrame}.`);
-      expect(source.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
+      expect(source.renderedFrame.bytes).toEqual(pngDataUrl(`hold-${appFrame}`));
     }
   });
 

@@ -505,7 +505,7 @@ function buildFreshKeyRecord(
     payload: Object.freeze({
       frameIndex: sourcePayload.frameIndex,
       appFrame: freshFrame,
-      dataUrl: sourcePayload.dataUrl,
+      bytes: sourcePayload.bytes,
       ...(sourcePayload.width !== undefined ? { width: sourcePayload.width } : {}),
       ...(sourcePayload.height !== undefined ? { height: sourcePayload.height } : {}),
     }),

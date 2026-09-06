@@ -1,6 +1,7 @@
 import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { rotoAlphaCanvasRegistry, canvasToWebpBytes } from '../lib/rotoAlphaCanvasRegistry';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
@@ -184,7 +185,7 @@ export function mountTrackRuntime(layerId: string, trackId: string): void {
 export function removeTrackRuntime(layerId: string, trackId: string): boolean {
   if (!layerId || !trackId) return false;
   let changed = false;
-  const dataUrls = _getTrackDataUrls(layerId, trackId);
+  const tokens = _getTrackBytesTokens(layerId, trackId);
   for (const map of [
     _frames,
     _rotoBackgroundMetadata,
@@ -221,8 +222,8 @@ export function removeTrackRuntime(layerId: string, trackId: string): boolean {
     changed = true;
     _notifyRotoPhysicalOperationLeaseChange();
   }
-  for (const dataUrl of dataUrls) {
-    if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
+  for (const token of tokens) {
+    if (!_isBytesTokenReferenced(token)) changed = rotoAlphaCanvasRegistry.delete(token) || changed;
   }
   return changed;
 }
@@ -329,27 +330,11 @@ export interface EfxPaintRuntimeProjection {
   readonly rotoPhysical: PhysicPaintRotoPhysicalDocument | null;
 }
 
-const _rotoAlphaCanvasRegistry = new Map<string, HTMLCanvasElement>();
-
-// G-52-10 ownership law: registration ADOPTS the canvas for the session — the
-// compositor's FIX 3 branch draws from it directly, so once registered a caller
-// must never release, resize, or mutate it (same lifetime as hydration entries).
-export function registerRotoAlphaCanvasFrame(dataUrl: string, canvas: HTMLCanvasElement): void {
-  if (!dataUrl.startsWith('data:image/png') || canvas.width <= 0 || canvas.height <= 0) return;
-  _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
-}
-
-export function hasRotoAlphaCanvasFrame(
-  dataUrl: string,
-  expectedSize?: { width: number; height: number },
-): boolean {
-  const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
-  // G-52-10: a zero-size entry (a registered canvas a caller later released or
-  // resized) is treated as absent so a fresh registration can overwrite it.
-  if (!canvas || canvas.width <= 0 || canvas.height <= 0) return false;
-  return !expectedSize
-    || (canvas.width === expectedSize.width && canvas.height === expectedSize.height);
-}
+// 52.1 (D-06): the Roto alpha-canvas registry lives in a leaf module
+// (lib/rotoAlphaCanvasRegistry.ts) so rotoCanvasFrames.ts can register/query
+// canvases without importing this store (which imports the reveal renderer,
+// which imports rotoCanvasFrames.ts — a module-body cycle).
+export { registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, canvasToWebpBytes } from '../lib/rotoAlphaCanvasRegistry';
 
 // 46-01 TRK-01 base law: every runtime map is addressed layerId -> trackId ->
 // value. trackId is the stable UUID identity from the v1.0 document
@@ -440,10 +425,12 @@ const _compositorImageFailed = new Set<string>();
  * clears the flattened memo (T-48-07) — the flattened key's clip terms don't
  * cover runtime bytes, so a stale record must not survive a bytes arrival.
  */
-const _backgroundSourceImages = new Map<string, string>();
-export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string): void {
-  if (_backgroundSourceImages.get(sourceRef) === dataUrl) return;
-  _backgroundSourceImages.set(sourceRef, dataUrl);
+const _backgroundSourceImages = new Map<string, Uint8Array>();
+const _backgroundSourceImageUrls = new Map<string, string>();
+export function registerBackgroundSourceImage(sourceRef: string, bytes: Uint8Array): void {
+  const existing = _backgroundSourceImages.get(sourceRef);
+  if (existing && buildFrameBytesToken(existing) === buildFrameBytesToken(bytes)) return;
+  _backgroundSourceImages.set(sourceRef, bytes);
   _flattenedMemo.clear();
   // 49-06 (UAT round 2): the async hydration (import/reopen) registers bytes
   // AFTER the document mutation already bumped efxPaintVersion — without a
@@ -464,10 +451,11 @@ export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string
  * reference never enters the flattened path (D-06), so a reference bytes
  * arrival must not invalidate the flattened composite.
  */
-const _referenceSourceImages = new Map<string, string>();
-export function registerReferenceSourceImage(sourceRef: string, dataUrl: string): void {
-  if (_referenceSourceImages.get(sourceRef) === dataUrl) return;
-  _referenceSourceImages.set(sourceRef, dataUrl);
+const _referenceSourceImages = new Map<string, Uint8Array>();
+export function registerReferenceSourceImage(sourceRef: string, bytes: Uint8Array): void {
+  const existing = _referenceSourceImages.get(sourceRef);
+  if (existing && buildFrameBytesToken(existing) === buildFrameBytesToken(bytes)) return;
+  _referenceSourceImages.set(sourceRef, bytes);
   physicPaintVersion.value++;
 }
 
@@ -500,10 +488,10 @@ export interface BackgroundSourceHydrationPorts {
    * different URLs and only the fallback decoded). Empty = absent.
    */
   resolveAssetUrls: (sourceRef: string) => readonly string[];
-  /** Fetch + decode the asset URL bytes into a dataUrl, or null on failure. */
-  decodeBytes: (url: string) => Promise<string | null>;
+  /** Fetch + decode the asset URL into raw bytes, or null on failure. */
+  decodeBytes: (url: string) => Promise<Uint8Array | null>;
   /** Register decoded bytes for a source ref (the existing registerBackgroundSourceImage). */
-  register: (sourceRef: string, dataUrl: string) => void;
+  register: (sourceRef: string, bytes: Uint8Array) => void;
 }
 
 /** Per-ref hydration outcome — the diagnostic the import path surfaces when a
@@ -533,9 +521,9 @@ export async function hydrateBackgroundSourceImages(
     // A freshly imported image can resolve through the imageStore OR the
     // picker fallback, and only one of the two URLs may be servable.
     for (const url of urls) {
-      const dataUrl = await ports.decodeBytes(url);
-      if (dataUrl !== null) {
-        ports.register(ref, dataUrl);
+      const bytes = await ports.decodeBytes(url);
+      if (bytes !== null) {
+        ports.register(ref, bytes);
         registered.push(ref);
         return;
       }
@@ -575,8 +563,8 @@ function _ensureDecodeHost(): HTMLDivElement {
   return _decodeHost;
 }
 
-function _decodeEfxAssetBytes(url: string): Promise<string | null> {
-  return new Promise<string | null>((resolve) => {
+function _decodeEfxAssetBytes(url: string): Promise<Uint8Array | null> {
+  return new Promise<Uint8Array | null>((resolve) => {
     const image = new Image();
     // 49-06 (UAT round 3): the efxasset:// origin differs from the page origin,
     // so a canvas rasterization of the loaded image is TAINTED unless the image
@@ -611,7 +599,7 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
           return;
         }
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL());
+        resolve(canvasToWebpBytes(canvas));
       } catch {
         resolve(null);
       } finally {
@@ -691,9 +679,9 @@ export async function hydrateReferenceSourceImages(
       return;
     }
     for (const url of urls) {
-      const dataUrl = await ports.decodeBytes(url);
-      if (dataUrl !== null) {
-        ports.register(ref, dataUrl);
+      const bytes = await ports.decodeBytes(url);
+      if (bytes !== null) {
+        ports.register(ref, bytes);
         registered.push(ref);
         return;
       }
@@ -747,7 +735,7 @@ export interface EfxPaintFlattenedFrameRecord {
   /**
    * G-52-8: the composite raster itself. Same-window draw surfaces (program
    * monitor, preview renderer) consume it directly — the PNG encode→decode
-   * round-trip through `renderedFrame.dataUrl` only runs for
+   * round-trip through `renderedFrame.bytes` only runs for
    * transport/serialization readers (lazy getter, encoded on first read).
    */
   readonly raster?: HTMLCanvasElement;
@@ -902,64 +890,64 @@ function _resolveRotoPhysicalStructural(layerId: string, trackId: string): RotoP
   _rotoPhysicalStructuralCache.set(cacheKey, entry);
   return entry;
 }
-function _collectFrameDataUrls(frames: Iterable<PhysicPaintRenderedFrame>, target: Set<string>): void {
+function _collectFrameBytesTokens(frames: Iterable<PhysicPaintRenderedFrame>, target: Set<string>): void {
   for (const frame of frames) {
-    target.add(frame.dataUrl);
-    const onionDataUrl = (frame as { onionDataUrl?: unknown }).onionDataUrl;
-    if (typeof onionDataUrl === 'string') target.add(onionDataUrl);
+    target.add(buildFrameBytesToken(frame.bytes));
+    const onionBytes = (frame as { onionBytes?: unknown }).onionBytes;
+    if (onionBytes instanceof Uint8Array) target.add(buildFrameBytesToken(onionBytes));
   }
 }
 
-/** Collect every payload dataUrl owned by ONE track (46-01 track-scoped). */
-function _getTrackDataUrls(layerId: string, trackId: string): Set<string> {
-  const dataUrls = new Set<string>();
-  _collectFrameDataUrls(_frames.get(layerId)?.get(trackId)?.values() ?? [], dataUrls);
-  _collectFrameDataUrls(_rotoCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], dataUrls);
-  _collectFrameDataUrls(_rotoGeneratedCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], dataUrls);
-  for (const record of _rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
-  for (const record of _rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
-  return dataUrls;
+/** Collect every payload bytes token owned by ONE track (46-01 track-scoped). */
+function _getTrackBytesTokens(layerId: string, trackId: string): Set<string> {
+  const tokens = new Set<string>();
+  _collectFrameBytesTokens(_frames.get(layerId)?.get(trackId)?.values() ?? [], tokens);
+  _collectFrameBytesTokens(_rotoCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], tokens);
+  _collectFrameBytesTokens(_rotoGeneratedCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], tokens);
+  for (const record of _rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildFrameBytesToken(record.payload.bytes));
+  for (const record of _rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildFrameBytesToken(record.payload.bytes));
+  return tokens;
 }
 
-function _isDataUrlReferenced(dataUrl: string): boolean {
-  const referencesDataUrl = (frames: Iterable<PhysicPaintRenderedFrame>): boolean => {
+function _isBytesTokenReferenced(token: string): boolean {
+  const referencesToken = (frames: Iterable<PhysicPaintRenderedFrame>): boolean => {
     for (const frame of frames) {
-      if (frame.dataUrl === dataUrl || (frame as { onionDataUrl?: unknown }).onionDataUrl === dataUrl) return true;
+      if (buildFrameBytesToken(frame.bytes) === token || ((frame as { onionBytes?: unknown }).onionBytes instanceof Uint8Array && buildFrameBytesToken((frame as { onionBytes?: Uint8Array }).onionBytes!) === token)) return true;
     }
     return false;
   };
   for (const layerTracks of _frames.values()) {
-    for (const trackFrames of layerTracks.values()) if (referencesDataUrl(trackFrames.values())) return true;
+    for (const trackFrames of layerTracks.values()) if (referencesToken(trackFrames.values())) return true;
   }
   for (const layerTracks of _rotoCacheMetadata.values()) {
-    for (const trackMetadata of layerTracks.values()) if (referencesDataUrl(trackMetadata.values())) return true;
+    for (const trackMetadata of layerTracks.values()) if (referencesToken(trackMetadata.values())) return true;
   }
   for (const layerTracks of _rotoGeneratedCacheMetadata.values()) {
-    for (const trackMetadata of layerTracks.values()) if (referencesDataUrl(trackMetadata.values())) return true;
+    for (const trackMetadata of layerTracks.values()) if (referencesToken(trackMetadata.values())) return true;
   }
   for (const layerTracks of _rotoRealKeyRecords.values()) {
     for (const trackRecords of layerTracks.values()) {
-      for (const record of trackRecords.values()) if (record.payload.dataUrl === dataUrl) return true;
+      for (const record of trackRecords.values()) if (buildFrameBytesToken(record.payload.bytes) === token) return true;
     }
   }
   for (const layerTracks of _rotoGroupOverrideRecords.values()) {
     for (const trackRecords of layerTracks.values()) {
-      for (const record of trackRecords.values()) if (record.payload.dataUrl === dataUrl) return true;
+      for (const record of trackRecords.values()) if (buildFrameBytesToken(record.payload.bytes) === token) return true;
     }
   }
   return false;
 }
 
-function _pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
-  for (const dataUrl of dataUrls) {
-    if (!_isDataUrlReferenced(dataUrl)) _rotoAlphaCanvasRegistry.delete(dataUrl);
+function _pruneUnreferencedRotoAlphaCanvases(tokens: Iterable<string>): void {
+  for (const token of tokens) {
+    if (!_isBytesTokenReferenced(token)) rotoAlphaCanvasRegistry.delete(token);
   }
 }
 
 function _clearLayerState(layerId: string): boolean {
-  const dataUrls = new Set<string>();
+  const tokens = new Set<string>();
   for (const trackId of _frames.get(layerId)?.keys() ?? []) {
-    for (const dataUrl of _getTrackDataUrls(layerId, trackId)) dataUrls.add(dataUrl);
+    for (const token of _getTrackBytesTokens(layerId, trackId)) tokens.add(token);
   }
   let changed = false;
   // Derived structural memo entries — pruned with the layer's source state
@@ -997,8 +985,8 @@ function _clearLayerState(layerId: string): boolean {
     changed = true;
     _notifyRotoPhysicalOperationLeaseChange();
   }
-  for (const dataUrl of dataUrls) {
-    if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
+  for (const token of tokens) {
+    if (!_isBytesTokenReferenced(token)) changed = rotoAlphaCanvasRegistry.delete(token) || changed;
   }
   return changed;
 }
@@ -1094,26 +1082,31 @@ function _getOrCreateCompositorMemo<K, V>(outer: Map<string, EfxPaintKeyedMemo<K
  * failed; re-checks the cache after setting src so synchronous decodes (test
  * stubs / hot decodes) resolve in the same tick.
  */
-function _compositorDecode(dataUrl: string): HTMLImageElement | null {
-  const cached = _compositorImageCache.get(dataUrl);
+
+function _compositorDecode(bytes: Uint8Array): HTMLImageElement | null {
+  const token = buildFrameBytesToken(bytes);
+  const cached = _compositorImageCache.get(token);
   if (cached) return cached;
-  if (_compositorImageLoading.has(dataUrl) || _compositorImageFailed.has(dataUrl)) return null;
+  if (_compositorImageLoading.has(token) || _compositorImageFailed.has(token)) return null;
   const image = new Image();
-  _compositorImageLoading.add(dataUrl);
+  _compositorImageLoading.add(token);
+  const blobUrl = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
   image.onload = () => {
-    _compositorImageLoading.delete(dataUrl);
-    _compositorImageCache.set(dataUrl, image);
+    _compositorImageLoading.delete(token);
+    _compositorImageCache.set(token, image);
+    URL.revokeObjectURL(blobUrl);
     physicPaintVersion.value++;
   };
   image.onerror = () => {
-    _compositorImageLoading.delete(dataUrl);
-    _compositorImageFailed.add(dataUrl);
+    _compositorImageLoading.delete(token);
+    _compositorImageFailed.add(token);
+    URL.revokeObjectURL(blobUrl);
     physicPaintVersion.value++;
   };
-  image.src = dataUrl;
-  if (_compositorImageCache.has(dataUrl)) {
-    _compositorImageLoading.delete(dataUrl);
-    return _compositorImageCache.get(dataUrl)!;
+  image.src = blobUrl;
+  if (_compositorImageCache.has(token)) {
+    _compositorImageLoading.delete(token);
+    return _compositorImageCache.get(token)!;
   }
   return null;
 }
@@ -1129,7 +1122,7 @@ function _trackContentRevision(layerId: string, trackId: string, frame: number):
   if (structural) return structural.contentRevision;
   const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
   if (!renderedFrame) return null;
-  return `${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
+  return buildFrameBytesToken(renderedFrame.bytes);
 }
 
 /**
@@ -1205,42 +1198,42 @@ function _preResolveTrackContent(
     if (source.kind === 'loop-placeholder') {
       return { kind: 'missing', missingRefs: source.missingSourceKeyIds ?? source.sourceKeyIds ?? [] };
     }
-    const dataUrl = source.renderedFrame.dataUrl;
+    const bytes = source.renderedFrame.bytes;
     // G-52-8 (FIX 3): decode-once across the whole app — launch hydration
     // already decoded this exact payload off the main thread into the alpha
     // canvas registry, so the compositor reuses that canvas instead of paying
     // a second main-thread decode (WebKit decodes lazily at the first
     // drawImage of the _compositorDecode Image). The registry canvas is a
     // read-only drawImage source here, same dimensions as the decoded image.
-    const registeredCanvas = _rotoAlphaCanvasRegistry.get(dataUrl);
+    const registeredCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(bytes));
     // G-52-10: fail-soft — a zero-size entry (a registered canvas a caller
     // later released) would throw InvalidStateError at drawImage; fall through
     // to _compositorDecode instead.
     if (registeredCanvas && registeredCanvas.width > 0 && registeredCanvas.height > 0) {
       return { kind: 'content', raster: registeredCanvas };
     }
-    const image = _compositorDecode(dataUrl);
+    const image = _compositorDecode(bytes);
     if (!image) return null;
     return { kind: 'content', raster: image };
   }
   const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
   if (!renderedFrame) return { kind: 'missing', missingRefs: [] };
-  const image = _compositorDecode(renderedFrame.dataUrl);
+  const image = _compositorDecode(renderedFrame.bytes);
   if (!image) return null;
   return { kind: 'content', raster: image };
 }
 
 /** 48-03 store-side implementation of the 48-04 resolveBackgroundSourceImage port. */
 function _resolveBackgroundSourceImage(sourceRef: string): HTMLImageElement | null {
-  const dataUrl = _backgroundSourceImages.get(sourceRef);
-  if (!dataUrl) return null;
-  return _compositorDecode(dataUrl);
+  const bytes = _backgroundSourceImages.get(sourceRef);
+  if (!bytes) return null;
+  return _compositorDecode(bytes);
 }
 
 /** 50-02 Task 2: the frame-aligned reference source verdict for the ghost draw path. */
 export interface ReferenceSourceFrameVerdict {
   readonly ref: string;
-  readonly dataUrl: string;
+  readonly bytes: Uint8Array;
   readonly clamped: boolean;
 }
 
@@ -1256,9 +1249,9 @@ function _resolveReferenceSourceImage(document: EfxPaintDocument, frame: number)
   if (track === null || track.sourceFrameRefs.length === 0) return null;
   const index = Math.min(frame, track.sourceFrameRefs.length - 1);
   const ref = track.sourceFrameRefs[index];
-  const dataUrl = _referenceSourceImages.get(ref);
-  if (dataUrl === undefined) return null;
-  return { ref, dataUrl, clamped: index !== frame };
+  const bytes = _referenceSourceImages.get(ref);
+  if (bytes === undefined) return null;
+  return { ref, bytes, clamped: index !== frame };
 }
 
 // ---------------------------------------------------------------------------
@@ -1326,7 +1319,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       motion: input.motion,
       mode: input.mode,
       size,
-      reference: { dataUrl: verdict.dataUrl, transform: track.transform, zoom: referenceZoom },
+      reference: { bytes: verdict.bytes, transform: track.transform, zoom: referenceZoom },
       signal: input.signal,
       onProgress: input.onProgress,
     });
@@ -1341,7 +1334,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
     payload: {
       frameIndex: frame.frameIndex,
       appFrame: frame.appFrame,
-      dataUrl: frame.dataUrl,
+      bytes: frame.bytes,
       width: frame.width,
       height: frame.height,
     },
@@ -1426,7 +1419,7 @@ function _makeRotoCacheFrame(
   backgroundOnly?: boolean,
   provenance?: Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT'>,
 ): PhysicPaintRotoCacheFrame {
-  const onionDataUrl = (renderedFrame as { onionDataUrl?: unknown }).onionDataUrl;
+  const onionBytes = (renderedFrame as { onionBytes?: Uint8Array }).onionBytes;
   return {
     ...renderedFrame,
     appFrame,
@@ -1438,7 +1431,7 @@ function _makeRotoCacheFrame(
     ...(provenance?.toSourceFrame !== undefined ? { toSourceFrame: provenance.toSourceFrame } : {}),
     ...(provenance?.interpolationT !== undefined ? { interpolationT: provenance.interpolationT } : {}),
     ...(backgroundOnly !== undefined ? { backgroundOnly } : {}),
-    ...(typeof onionDataUrl === 'string' ? { onionDataUrl } : {}),
+    ...(typeof onionBytes === 'string' ? { onionBytes } : {}),
   };
 }
 
@@ -1591,7 +1584,7 @@ function _makeBackgroundOnlySupportFrame(layerId: string, trackId: string, appFr
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`background-only-support:${layerId}:${appFrame}:${instruction.color}:${instruction.paperGrain ?? ''}:${instruction.grainStrength ?? 0}`)}`,
+    bytes: new Uint8Array(0),
     source: 'background-only-support',
     nearestRealKeyFrame,
     backgroundOnly: true,
@@ -1641,10 +1634,10 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
   return { ...frame, appFrame, frameIndex: 0, source: 'generated-interpolation' };
 }
 
-function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
+function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): Uint8Array | null {
   if (typeof document === 'undefined') return null;
-  const firstCanvas = _rotoAlphaCanvasRegistry.get(firstKeyFrame.dataUrl);
-  const secondCanvas = _rotoAlphaCanvasRegistry.get(secondKeyFrame.dataUrl);
+  const firstCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(firstKeyFrame.bytes));
+  const secondCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(secondKeyFrame.bytes));
   if (!firstCanvas || !secondCanvas) return null;
   const width = Math.max(1, Math.trunc(firstKeyFrame.width ?? firstCanvas.width));
   const height = Math.max(1, Math.trunc(firstKeyFrame.height ?? firstCanvas.height));
@@ -1659,10 +1652,10 @@ function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFr
   outputContext.globalAlpha = t;
   outputContext.drawImage(secondCanvas, 0, 0, width, height);
   outputContext.globalAlpha = 1;
-  return output.toDataURL('image/png');
+  return canvasToWebpBytes(output);
 }
 
-function _blendAlphaDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
+function _blendAlphaBytes(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): Uint8Array | null {
   return _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame, secondKeyFrame, t);
 }
 
@@ -1670,19 +1663,19 @@ export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPain
   return _withGeneratedAppFrame({
     frameIndex: 0,
     appFrame: targetFrame,
-    dataUrl: sourceKeyFrame.dataUrl,
+    bytes: sourceKeyFrame.bytes,
     width: sourceKeyFrame.width,
     height: sourceKeyFrame.height,
   }, targetFrame);
 }
 
 export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame | null {
-  const dataUrl = _blendAlphaDataUrl(firstKeyFrame, secondKeyFrame, t);
-  if (!dataUrl) return null;
+  const bytes = _blendAlphaBytes(firstKeyFrame, secondKeyFrame, t);
+  if (!bytes) return null;
   return _withGeneratedAppFrame({
     frameIndex: 0,
     appFrame: targetFrame,
-    dataUrl,
+    bytes,
     width: firstKeyFrame.width ?? secondKeyFrame.width,
     height: firstKeyFrame.height ?? secondKeyFrame.height,
   }, targetFrame);
@@ -1860,8 +1853,8 @@ function _backgroundSourceRevision(document: EfxPaintDocument): string {
     for (const ref of clip.sourceFrameRefs) refs.add(ref);
   }
   return [...refs].sort().map((ref) => {
-    const dataUrl = _backgroundSourceImages.get(ref);
-    return dataUrl === undefined ? `${ref}:missing` : `${ref}:${dataUrl.length}:${dataUrl.slice(0, 64)}`;
+    const bytes = _backgroundSourceImages.get(ref);
+    return bytes === undefined ? `${ref}:missing` : `${ref}:${buildFrameBytesToken(bytes)}`;
   }).join('|');
 }
 
@@ -1878,8 +1871,8 @@ export function _referenceSourceRevision(document: EfxPaintDocument): string {
   const track = document.photoReference;
   if (track === null) return '';
   return track.sourceFrameRefs.map((ref) => {
-    const dataUrl = _referenceSourceImages.get(ref);
-    return dataUrl === undefined ? `${ref}:missing` : `${ref}:${dataUrl.length}:${dataUrl.slice(0, 64)}`;
+    const bytes = _referenceSourceImages.get(ref);
+    return bytes === undefined ? `${ref}:missing` : `${ref}:${buildFrameBytesToken(bytes)}`;
   }).join('|');
 }
 
@@ -2022,7 +2015,7 @@ function _resolveFlattenedFrame(
   // lazy decode at first drawImage). Draw surfaces consume `raster` directly;
   // only transport/serialization readers (bridge, export, tests) pay the
   // encode, memoized on first read. The getter survives Object.freeze.
-  let encodedDataUrl: string | null = null;
+  let encodedBytes: Uint8Array | null = null;
   const record: EfxPaintFlattenedFrameRecord = Object.freeze({
     layerId,
     frame,
@@ -2031,9 +2024,9 @@ function _resolveFlattenedFrame(
     renderedFrame: Object.freeze({
       frameIndex: frame,
       appFrame: frame,
-      get dataUrl(): string {
-        if (encodedDataUrl === null) encodedDataUrl = raster.toDataURL();
-        return encodedDataUrl;
+      get bytes(): Uint8Array {
+        if (encodedBytes === null) encodedBytes = canvasToWebpBytes(raster) ?? new Uint8Array(0);
+        return encodedBytes;
       },
       width: size.width,
       height: size.height,
@@ -2055,8 +2048,27 @@ export const physicPaintStore = {
    * the neutral fill. Null when the ref has no registered bytes (the clip
    * hasn't hydrated yet, or the ref is dangling).
    */
-  getBackgroundSourceImageDataUrl(sourceRef: string): string | null {
+  getBackgroundSourceImageBytes(sourceRef: string): Uint8Array | null {
     return _backgroundSourceImages.get(sourceRef) ?? null;
+  },
+
+  /**
+   * 52.1 (D-06): memoized Blob URL for one Background source ref — the Bg
+   * rail's filmstrip cells paint it via <img src>. The URL is derived from
+   * the registered bytes (never a data: URL) and memoized per ref+token;
+   * replaced (old URL revoked) when the bytes change. Absorbed by the LRU
+   * in Plan 04.
+   */
+  getBackgroundSourceImageUrl(sourceRef: string): string | null {
+    const bytes = _backgroundSourceImages.get(sourceRef);
+    if (!bytes) return null;
+    const token = buildFrameBytesToken(bytes);
+    const key = `${sourceRef}:${token}`;
+    const cached = _backgroundSourceImageUrls.get(key);
+    if (cached) return cached;
+    const url = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
+    _backgroundSourceImageUrls.set(key, url);
+    return url;
   },
 
   /**
@@ -2137,8 +2149,8 @@ export const physicPaintStore = {
    * draw (the _compositorDecode idiom — never a per-draw decode, MEMORY: image
    * decode storms cause global slowness).
    */
-  getDecodedImage(dataUrl: string): HTMLImageElement | null {
-    return _compositorDecode(dataUrl);
+  getDecodedImage(bytes: Uint8Array): HTMLImageElement | null {
+    return _compositorDecode(bytes);
   },
 
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {
@@ -2463,7 +2475,7 @@ export const physicPaintStore = {
       const update = this.updateRotoPhysicalRealKeyPayload(payload.layerId, payload.trackId, physicalRecord.keyId, currentRevision, {
         frameIndex: payload.renderedFrame.frameIndex,
         appFrame: physicalRecord.appFrame,
-        dataUrl: payload.renderedFrame.dataUrl,
+        bytes: payload.renderedFrame.bytes,
         ...(payload.renderedFrame.width !== undefined ? { width: payload.renderedFrame.width } : {}),
         ...(payload.renderedFrame.height !== undefined ? { height: payload.renderedFrame.height } : {}),
       });
@@ -2476,7 +2488,7 @@ export const physicPaintStore = {
     } else {
       const rotoBackground = payload.rotoBackground ?? null;
       if (rotoBackground) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, payload.layerId).set(payload.trackId, { ...rotoBackground });
-      this.upsertRealRotoKeyFrame(payload.layerId, payload.trackId, payload.sourceFrame ?? payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
+      this.upsertRealRotoKeyFrame(payload.layerId, payload.trackId, payload.sourceFrame ?? payload.startFrame, { ...payload.renderedFrame, ...(payload.onionBytes ? { onionBytes: payload.onionBytes } : {}) }, payload.backgroundOnly === true);
       if (payload.rotoInterpolationSettings) this.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.rotoInterpolationSettings);
     }
     return {
@@ -2561,9 +2573,9 @@ export const physicPaintStore = {
     const rotoInterpolationFailureStatus = _rotoInterpolationFailureStatus.get(layerId)?.get(trackId);
     const rotoPlaybackSettings = _rotoPlaybackSettings.get(layerId)?.get(trackId);
     const alphaCanvases: Array<[string, HTMLCanvasElement]> = [];
-    for (const dataUrl of _getTrackDataUrls(layerId, trackId)) {
-      const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
-      if (canvas) alphaCanvases.push([dataUrl, canvas]);
+    for (const token of _getTrackBytesTokens(layerId, trackId)) {
+      const canvas = rotoAlphaCanvasRegistry.get(token);
+      if (canvas) alphaCanvases.push([token, canvas]);
     }
     if (!frames && !rotoBackground && !rotoCacheMetadata && !rotoGeneratedCacheMetadata && !rotoInterpolationSettings && !rotoInterpolationFailureStatus && !rotoPlaybackSettings && alphaCanvases.length === 0) return null;
     return {
@@ -2584,8 +2596,8 @@ export const physicPaintStore = {
     const { layerId, trackId } = snapshot;
     // Only the snapshot's track is replaced; sibling tracks stay untouched
     // (46-01 TRK-01: per-track teardown/restore law).
-    for (const dataUrl of _getTrackDataUrls(layerId, trackId)) {
-      _rotoAlphaCanvasRegistry.delete(dataUrl);
+    for (const token of _getTrackBytesTokens(layerId, trackId)) {
+      rotoAlphaCanvasRegistry.delete(token);
     }
     _frames.get(layerId)?.delete(trackId);
     _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
@@ -2620,8 +2632,8 @@ export const physicPaintStore = {
     if (snapshot.rotoInterpolationSettings) _getOrCreateLayerTrackMap(_rotoInterpolationSettings, layerId).set(trackId, _cloneRotoInterpolationSettings(snapshot.rotoInterpolationSettings));
     if (snapshot.rotoInterpolationFailureStatus) _getOrCreateLayerTrackMap(_rotoInterpolationFailureStatus, layerId).set(trackId, snapshot.rotoInterpolationFailureStatus);
     if (snapshot.rotoPlaybackSettings) _getOrCreateLayerTrackMap(_rotoPlaybackSettings, layerId).set(trackId, { ...snapshot.rotoPlaybackSettings });
-    for (const [dataUrl, canvas] of snapshot.alphaCanvases) {
-      if (!_rotoAlphaCanvasRegistry.has(dataUrl)) _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
+    for (const [token, canvas] of snapshot.alphaCanvases) {
+      if (!rotoAlphaCanvasRegistry.has(token)) rotoAlphaCanvasRegistry.set(token, canvas);
     }
     bumpTrackRevision(layerId, trackId);
   },
@@ -2636,14 +2648,16 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
     _rotoGeneratedCacheMetadata.clear();
     _rotoInterpolationSettings.clear();
     _rotoInterpolationFailureStatus.clear();
-    if (resetAlphaCanvases) _rotoAlphaCanvasRegistry.clear();
+    if (resetAlphaCanvases) rotoAlphaCanvasRegistry.clear();
+    for (const url of _backgroundSourceImageUrls.values()) URL.revokeObjectURL(url);
+    _backgroundSourceImageUrls.clear();
     _rotoRealKeyRecords.clear();
     _rotoGroupOverrideRecords.clear();
     _rotoPhysicalInterpolationState.clear();
@@ -2674,8 +2688,8 @@ export const physicPaintStore = {
     _notifyVisualChange();
   },
 
-  pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
-    _pruneUnreferencedRotoAlphaCanvases(dataUrls);
+  pruneUnreferencedRotoAlphaCanvases(tokens: Iterable<string>): void {
+    _pruneUnreferencedRotoAlphaCanvases(tokens);
   },
 
   // -------------------------------------------------------------------------
@@ -2737,7 +2751,7 @@ export const physicPaintStore = {
     }
 
     const previousRecords = this.getRotoRealKeyRecords(layerId, trackId);
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     const groupOverrideRecords = this.getRotoGroupOverrideRecords(layerId, trackId);
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
     const previousCapacity = this.getRotoPhysicalCapacity(layerId, trackId);
@@ -2774,7 +2788,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, selectedRecord?.keyId ?? null);
     _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, selectedRecord?.appFrame ?? Math.min(_rotoPhysicalCursorAppFrame.get(layerId)?.get(trackId) ?? 0, capacity - 1));
     _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, capacity);
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
     return { ok: true };
@@ -2895,7 +2909,7 @@ export const physicPaintStore = {
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
       trackId,
       new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
@@ -2914,7 +2928,7 @@ export const physicPaintStore = {
     if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
     else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
     return { ok: true, document };
@@ -2954,7 +2968,7 @@ export const physicPaintStore = {
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
       trackId,
       new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
@@ -2973,7 +2987,7 @@ export const physicPaintStore = {
     if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
     else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     return { ok: true, document };
   },
 
@@ -3407,7 +3421,7 @@ export const physicPaintStore = {
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
           frameIndex: rendered.frameIndex,
           appFrame,
-          dataUrl: rendered.dataUrl,
+          bytes: rendered.bytes,
           ...(rendered.width !== undefined ? { width: rendered.width } : {}),
           ...(rendered.height !== undefined ? { height: rendered.height } : {}),
         };
@@ -3473,7 +3487,7 @@ export const physicPaintStore = {
       const renderedFrame: PhysicPaintRotoRealKeyPayload = {
         frameIndex: rendered.frameIndex,
         appFrame,
-        dataUrl: rendered.dataUrl,
+        bytes: rendered.bytes,
         ...(rendered.width !== undefined ? { width: rendered.width } : {}),
         ...(rendered.height !== undefined ? { height: rendered.height } : {}),
       };
@@ -3536,7 +3550,7 @@ export const physicPaintStore = {
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
           frameIndex: rendered.frameIndex,
           appFrame,
-          dataUrl: rendered.dataUrl,
+          bytes: rendered.bytes,
           ...(rendered.width !== undefined ? { width: rendered.width } : {}),
           ...(rendered.height !== undefined ? { height: rendered.height } : {}),
         };
@@ -3597,7 +3611,7 @@ export const physicPaintStore = {
     const currentRevision = this.getRotoPhysicalContentRevision(layerId, trackId);
     const current = _rotoRealKeyRecords.get(layerId)?.get(trackId)?.get(keyId) ?? null;
     const reject = (error: string): { ok: false; error: string } => {
-      _pruneUnreferencedRotoAlphaCanvases([payload.dataUrl]);
+      _pruneUnreferencedRotoAlphaCanvases([buildFrameBytesToken(payload.bytes)]);
       return { ok: false, error };
     };
     if (!currentRevision || currentRevision !== expectedContentRevision || !current) return reject('Physical identity or content revision changed.');
@@ -3619,7 +3633,7 @@ export const physicPaintStore = {
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(trackId, new Map(validated.map((record) => [record.keyId, record])));
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases([current.payload.dataUrl]);
+    _pruneUnreferencedRotoAlphaCanvases([buildFrameBytesToken(current.payload.bytes)]);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId, diagnostics);
     return { ok: true, changed: true, contentRevision: nextRevision };
@@ -3630,7 +3644,7 @@ export const physicPaintStore = {
    * replacement/disposal.
    */
   clearRotoPhysicalRecords(layerId: string, trackId: string): void {
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     _rotoRealKeyRecords.get(layerId)?.delete(trackId);
     _rotoGroupOverrideRecords.get(layerId)?.delete(trackId);
     _rotoPhysicalInterpolationState.get(layerId)?.delete(trackId);
@@ -3641,7 +3655,7 @@ export const physicPaintStore = {
     _rotoPhysicalCursorAppFrame.get(layerId)?.delete(trackId);
     _rotoPhysicalCapacity.get(layerId)?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
   },
 
   // -------------------------------------------------------------------------
@@ -3941,7 +3955,7 @@ function _applyRotoTrackPaste(
     store.upsertRealRotoKeyFrame(layerId, trackId, record.appFrame, {
       frameIndex: 0,
       appFrame: record.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       width: record.payload.width ?? 0,
       height: record.payload.height ?? 0,
     });

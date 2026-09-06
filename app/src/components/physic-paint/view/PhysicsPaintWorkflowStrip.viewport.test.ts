@@ -40,6 +40,7 @@ import { describe, expect, it } from 'vitest';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const CELL_WIDTH_PX = 18;
 
@@ -418,7 +419,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
     const cachedFrames = Array.from({ length: capacity }, (_, appFrame) => ({
       frameIndex: appFrame,
       appFrame,
-      dataUrl: 'data:image/png;base64,',
+      bytes: testWebpBytes(''),
       source: 'real-key' as const,
     }));
 
@@ -557,12 +558,12 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
   describe('timeline content controls', () => {
     const records: readonly PhysicPaintRotoRealKeyRecord[] = [
-      { keyId: 'A', appFrame: 94, kind: 'real-key', payload: { frameIndex: 0, appFrame: 94, dataUrl: 'data:image/png;base64,YQ==' } },
-      { keyId: 'B', appFrame: 97, kind: 'real-key', payload: { frameIndex: 1, appFrame: 97, dataUrl: 'data:image/png;base64,Yg==' } },
-      { keyId: 'M1', appFrame: 100, kind: 'real-key', payload: { frameIndex: 2, appFrame: 100, dataUrl: 'data:image/png;base64,bTE=' } },
-      { keyId: 'M2', appFrame: 101, kind: 'real-key', payload: { frameIndex: 3, appFrame: 101, dataUrl: 'data:image/png;base64,bTI=' } },
-      { keyId: 'S1', appFrame: 110, kind: 'real-key', payload: { frameIndex: 4, appFrame: 110, dataUrl: 'data:image/png;base64,czE=' } },
-      { keyId: 'S2', appFrame: 111, kind: 'real-key', payload: { frameIndex: 5, appFrame: 111, dataUrl: 'data:image/png;base64,czI=' } },
+      { keyId: 'A', appFrame: 94, kind: 'real-key', payload: { frameIndex: 0, appFrame: 94, bytes: testWebpBytes('YQ==') } },
+      { keyId: 'B', appFrame: 97, kind: 'real-key', payload: { frameIndex: 1, appFrame: 97, bytes: testWebpBytes('Yg==') } },
+      { keyId: 'M1', appFrame: 100, kind: 'real-key', payload: { frameIndex: 2, appFrame: 100, bytes: testWebpBytes('bTE=') } },
+      { keyId: 'M2', appFrame: 101, kind: 'real-key', payload: { frameIndex: 3, appFrame: 101, bytes: testWebpBytes('bTI=') } },
+      { keyId: 'S1', appFrame: 110, kind: 'real-key', payload: { frameIndex: 4, appFrame: 110, bytes: testWebpBytes('czE=') } },
+      { keyId: 'S2', appFrame: 111, kind: 'real-key', payload: { frameIndex: 5, appFrame: 111, bytes: testWebpBytes('czI=') } },
     ];
     const loopClips: readonly PhysicPaintRotoLoopClip[] = [
       { loopId: 'motion', placementStart: 100, sourceKeyIds: ['M1', 'M2'], repeat: 2, mode: 'progressive' },
@@ -667,7 +668,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
       // Track B owns a real key at frame 8 in the runtime store.
       const bRecords: readonly PhysicPaintRotoRealKeyRecord[] = [
-        { keyId: 'b-key', appFrame: 8, kind: 'real-key', payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Yg==' } },
+        { keyId: 'b-key', appFrame: 8, kind: 'real-key', payload: { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('Yg==') } },
       ];
       const seeded = physicPaintStore.replaceRotoPhysicalDocument(layerId, trackB.id, {
         capacity: 240,
@@ -689,7 +690,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
         physicalCells: createPhysicalCells(240, [
           { kind: 'real', appFrame: 5, keyId: 'a-key' },
         ]),
-        cachedRotoFrames: [{ frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,YQ==', source: 'real-key' }],
+        cachedRotoFrames: [{ frameIndex: 0, appFrame: 5, bytes: testWebpBytes('YQ=='), source: 'real-key' }],
       });
       harness.render();
 

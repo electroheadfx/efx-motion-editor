@@ -4,18 +4,17 @@ import type { PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysical
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { hydrateRotoPhysicalLaunchContext } from './rotoLaunchHydration';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 vi.mock('./rotoCanvasFrames', () => ({
-  prepareRotoPhysicalRealKeyPngs: vi.fn(async () => {}),
+  prepareRotoPhysicalRealKeyFrames: vi.fn(async () => {}),
 }));
-
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
 
 const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: appFrame, appFrame, bytes: testWebpBytes(keyId), width: 10, height: 10 },
 });
 
 describe('hydrateRotoPhysicalLaunchContext multi-track install', () => {

@@ -222,8 +222,8 @@ describe('Physics Paint Play Script integration contract', () => {
     // 49-06 (UAT round 11): the child carries its runtime background source
     // bytes with the sync (the main window's registry is only hydrated at
     // project load), and the listener registers them BEFORE the revision guard.
-    expect(studio).toContain('getBackgroundSourceImageDataUrl(ref)');
-    expect(bridge).toContain('registerBackgroundSourceImage(ref, dataUrl)');
+    expect(studio).toContain('getBackgroundSourceImageBytes(ref)');
+    expect(bridge).toContain('registerBackgroundSourceImage(ref, bytes)');
   });
 });
 

@@ -10,6 +10,7 @@
  * error (edge TRK-01 empty/adjacency and TRK-03 ordering, resolved explicit).
  */
 
+import { testWebpBytes } from '../../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
@@ -45,18 +46,18 @@ function makeMultiTrackDocument(layerId: string, trackA = TRACK_A, trackB = TRAC
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: 0, appFrame, bytes: pngDataUrl(keyId), width: 10, height: 10 },
 });
 
 const rotoPhysicalFor = (records: ReturnType<typeof rotoRecord>[]) => ({
@@ -137,8 +138,8 @@ describe('efxPaintMultiTrackProjection', () => {
 
     hydrateRuntimeFromDocument(withPayload, perTrackFrames);
 
-    expect(physicPaintStore.getFrame(layerId, TRACK_A, 5)?.dataUrl).toBe(makeFrame(0, 5).dataUrl);
-    expect(physicPaintStore.getFrame(layerId, TRACK_B, 5)?.dataUrl).toBe(makeFrame(1, 5).dataUrl);
+    expect(physicPaintStore.getFrame(layerId, TRACK_A, 5)?.bytes).toEqual(makeFrame(0, 5).bytes);
+    expect(physicPaintStore.getFrame(layerId, TRACK_B, 5)?.bytes).toEqual(makeFrame(1, 5).bytes);
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TRACK_A).map((record) => record.keyId)).toEqual(['key-A']);
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TRACK_B).map((record) => record.keyId)).toEqual(['key-B']);
   });
@@ -168,8 +169,8 @@ describe('efxPaintMultiTrackProjection', () => {
     const restoredB = physicPaintStore.getFrames(layerId, TRACK_B);
     expect(Array.from(restoredA.keys()).sort()).toEqual([1, 3]);
     expect(Array.from(restoredB.keys()).sort()).toEqual([2]);
-    expect(restoredA.get(1)?.dataUrl).toBe(originalA.frames.get(1)?.dataUrl);
-    expect(restoredB.get(2)?.dataUrl).toBe(originalB.frames.get(2)?.dataUrl);
+    expect(restoredA.get(1)?.bytes).toBe(originalA.frames.get(1)?.bytes);
+    expect(restoredB.get(2)?.bytes).toBe(originalB.frames.get(2)?.bytes);
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TRACK_A).map((record) => record.keyId)).toEqual(['key-A']);
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TRACK_B).map((record) => record.keyId)).toEqual(['key-B']);
   });
@@ -190,8 +191,8 @@ describe('efxPaintMultiTrackProjection', () => {
       [TRACK_B, originalB.frames],
     ]));
 
-    expect(physicPaintStore.getFrame(layerId, TRACK_A, 5)?.dataUrl).toBe(makeFrame(0, 5).dataUrl);
-    expect(physicPaintStore.getFrame(layerId, TRACK_B, 5)?.dataUrl).toBe(makeFrame(1, 5).dataUrl);
+    expect(physicPaintStore.getFrame(layerId, TRACK_A, 5)?.bytes).toEqual(makeFrame(0, 5).bytes);
+    expect(physicPaintStore.getFrame(layerId, TRACK_B, 5)?.bytes).toEqual(makeFrame(1, 5).bytes);
   });
 
   it('projects a document with one empty and one populated Paint track without error', () => {

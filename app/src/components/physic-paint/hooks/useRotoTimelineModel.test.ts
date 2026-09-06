@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { effect } from '@preact/signals';
 
@@ -23,7 +24,7 @@ function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
   return Object.freeze({
     frameIndex: 0,
     appFrame,
-    dataUrl: BLANK_PNG_DATA_URL,
+    bytes: testWebpBytes(BLANK_PNG_DATA_URL),
     width: 100,
     height: 80,
   }) as PhysicPaintRotoRealKeyPayload;
@@ -166,7 +167,7 @@ describe('useRotoTimelineModel legacy parity (38.1 D-09)', () => {
       sourceFrame,
       displayFrame: appFrame,
       source: 'real-key',
-      dataUrl: `data:image/png;base64,real-${appFrame}`,
+      bytes: testWebpBytes('real-${appFrame}'),
     };
   }
 

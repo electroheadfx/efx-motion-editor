@@ -75,7 +75,7 @@ function resolveBackgroundClipCellImages(clip: FrameLoopClip, cellCount: number)
   const images: (string | null)[] = [];
   const capped = Math.min(cellCount, MAX_BG_CELL_IMAGES);
   for (let index = 0; index < capped; index += 1) {
-    images.push(physicPaintStore.getBackgroundSourceImageDataUrl(refs[index % refs.length]));
+    images.push(physicPaintStore.getBackgroundSourceImageUrl(refs[index % refs.length]));
   }
   return images;
 }

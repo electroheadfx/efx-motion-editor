@@ -47,6 +47,7 @@ import {
 } from '../../../types/physicPaint';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -79,7 +80,7 @@ function buildBaselineRecords(): PhysicPaintRotoRealKeyRecord[] {
     payload: {
       frameIndex: 0,
       appFrame: identity.appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     },
@@ -132,12 +133,57 @@ function resolveBaselineWithRecords(
   });
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+function normalizeParsedPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+  const bytes = payload.bytes as unknown;
+  return {
+    ...payload,
+    bytes: typeof bytes === 'string' ? base64ToBytes(bytes) : (bytes as Uint8Array),
+  };
+}
+
+function normalizeParsedIntent(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditIntent {
+  switch (intent.kind) {
+    case 'insert-empty-segment':
+      return { ...intent, blankPayload: normalizeParsedPayload(intent.blankPayload) };
+    case 'paste-key':
+      return { ...intent, clipboardPayload: normalizeParsedPayload(intent.clipboardPayload) };
+    case 'paste-key-group':
+      return { ...intent, entries: intent.entries.map((entry) => ({ ...entry, payload: normalizeParsedPayload(entry.payload) })) };
+    default:
+      return intent;
+  }
+}
+
 function parsePhysicalEditIntent(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditIntent {
   const parsed: unknown = JSON.parse(serializePhysicPaintRotoPhysicalEditIntent(intent));
   if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) {
     throw new Error(`Canonical ${intent.kind} intent must parse`);
   }
-  return parsed;
+  return normalizeParsedIntent(parsed);
+}
+
+function roundTripPhysicalDocument(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoPhysicalDocument {
+  const json = JSON.stringify(document, (_key, value) => (
+    value instanceof Uint8Array ? { __webpBytes: bytesToBase64(value) } : value
+  ));
+  return parsePhysicPaintRotoPhysicalDocument(JSON.parse(json, (_key, value) => (
+    value !== null && typeof value === 'object' && !Array.isArray(value) && typeof value.__webpBytes === 'string'
+      ? base64ToBytes(value.__webpBytes)
+      : value
+  )));
 }
 
 describe('transport-safe physical edit intent tracer', () => {
@@ -162,7 +208,7 @@ describe('transport-safe physical edit intent tracer', () => {
     const payloadAt = (appFrame: number): PhysicPaintRotoRealKeyPayload => ({
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     });
@@ -433,7 +479,7 @@ describe('intentional incoming interpolation breaks', () => {
         blankPayload: {
           frameIndex: 0,
           appFrame: 3,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },
@@ -456,7 +502,7 @@ describe('intentional incoming interpolation breaks', () => {
         payload: {
           frameIndex: 0,
           appFrame: 3,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },
@@ -490,7 +536,7 @@ describe('intentional incoming interpolation breaks', () => {
     const intent = (destinationAppFrame: number, blankPayload: PhysicPaintRotoRealKeyPayload = {
       frameIndex: 0,
       appFrame: destinationAppFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
     }) => ({
       kind: 'insert-empty-segment' as const,
       destinationAppFrame,
@@ -512,7 +558,7 @@ describe('intentional incoming interpolation breaks', () => {
       }),
       resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(-1) }),
       resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(16) }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, dataUrl: '' } as never) }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, bytes: testWebpBytes('') } as never) }),
     ];
 
     expect(resolutions).toHaveLength(7);
@@ -721,8 +767,8 @@ describe('incoming interpolation break lifecycle', () => {
 
   it('Copy/Paste into a trailing gap after a rail owns an incoming break (v0.9 boundary law)', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
     ];
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -751,10 +797,10 @@ describe('incoming interpolation break lifecycle', () => {
 
   it('Copy/Paste into a between-rail gap owns an incoming break', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'C', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'D', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'C', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'D', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
     ];
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -782,8 +828,8 @@ describe('incoming interpolation break lifecycle', () => {
 
   it('Copy/Paste before an existing rail isolates the key — the following rail keeps an incoming break (right-mirror boundary law)', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
     ];
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -813,8 +859,8 @@ describe('incoming interpolation break lifecycle', () => {
 
   it('Paint on an empty frame before an existing rail stays isolated (mirror of quick 260816-tv7)', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
     ];
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -844,8 +890,8 @@ describe('incoming interpolation break lifecycle', () => {
 
   it('Copy/Paste Group into a trailing gap owns a break on its first pasted key', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
     ];
     const intent = createPhysicPaintRotoPasteKeyGroupIntent(5, records.map((record) => Object.freeze({
       payload: record.payload,
@@ -872,8 +918,8 @@ describe('incoming interpolation break lifecycle', () => {
 
   it('Copy/Paste Group before an existing rail keeps the rail isolated (right-mirror boundary law)', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
     ];
     const intent = createPhysicPaintRotoPasteKeyGroupIntent(2, records.map((record) => Object.freeze({
       payload: record.payload,
@@ -910,7 +956,7 @@ describe('incoming interpolation break lifecycle', () => {
         blankPayload: {
           frameIndex: 0,
           appFrame: 7,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },
@@ -2275,7 +2321,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
       incomingInterpolationBreakKeyIds: [],
       revision,
     });
-    const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(parsed)));
+    const reopened = roundTripPhysicalDocument(parsed);
 
     expect(reopened.revision).toBe(revision);
     expect(reopened.realKeyRecords).toEqual(movedRecords);
@@ -3380,7 +3426,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — paste-key-group (GP-1..GP-7, D-
       payload: {
         frameIndex: 0,
         appFrame,
-        dataUrl: 'data:image/png;base64,AAAA',
+        bytes: testWebpBytes('AAAA'),
         width: 2,
         height: 2,
       },
@@ -3464,7 +3510,7 @@ describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key-group b
       kind: 'real-key' as const,
       keyId: 'undeclared',
       appFrame: 30,
-      payload: { frameIndex: 0, appFrame: 30, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      payload: { frameIndex: 0, appFrame: 30, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
     }];
     const mismatchedKind = {
       kind: 'paste-key',
@@ -3496,7 +3542,7 @@ describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(-1, entries)).toThrow();
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(1.5, entries)).toThrow();
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
-      { ...entries[0], payload: { ...entries[0].payload, dataUrl: 'malformed' } },
+      { ...entries[0], payload: { ...entries[0].payload, bytes: new Uint8Array(0) } },
       entries[1],
     ])).toThrow();
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
@@ -3528,7 +3574,7 @@ function lifecycleRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKe
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     },
@@ -3771,7 +3817,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       kind: 'real-key' as const,
       keyId,
       appFrame,
-      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
     }));
 
   it('rejects insert-slot when the selected key is Group-referenced', () => {

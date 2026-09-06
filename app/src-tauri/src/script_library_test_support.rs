@@ -144,30 +144,6 @@ pub fn encode_webp(
         width,
         height,
         quality,
-        encode_base64(rgba),
+        rgba.to_vec(),
     )
-}
-
-#[cfg(feature = "script-library-test-support")]
-fn encode_base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let value = (u32::from(chunk[0]) << 16)
-            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
-        output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
-        output.push(if chunk.len() > 1 {
-            ALPHABET[((value >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        output.push(if chunk.len() > 2 {
-            ALPHABET[(value & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    output
 }

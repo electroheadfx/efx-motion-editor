@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -82,13 +83,13 @@ import {
   type EfxPaintDocumentSaveInput,
 } from '../../../lib/efxPaintPersistence';
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const realKey = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
   kind: 'real-key',
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
+  payload: { frameIndex: 0, appFrame, bytes: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
 });
 
 const MAIN_CYCLE = ['A', 'B', 'C'];
@@ -195,14 +196,14 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
     it('paints one phase across every repeat and leaves the sibling Group and Action untouched', () => {
       const document = buildComboDocument(combo);
       const siblingBefore = JSON.stringify(document.loopClips[1]);
-      const sourceBytesBefore = document.realKeyRecords.map((record) => record.payload.dataUrl);
+      const sourceBytesBefore = document.realKeyRecords.map((record) => record.payload.bytes);
 
       const result = proposePhysicPaintRotoGroupFramePaint({
         document,
         groupId: 'group-main',
         appFrame: paintTarget,
         overrideKeyId: 'override-main',
-        renderedPayload: { frameIndex: 0, appFrame: paintTarget, dataUrl: pngDataUrl('painted'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: paintTarget, bytes: pngDataUrl('painted'), width: 10, height: 10 },
       });
 
       expect(result.ok).toBe(true);
@@ -217,7 +218,7 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
         syncState: 'modified',
         frameOverrides: [{ appFrame: extent.start + 1, keyId: 'override-main' }],
       });
-      expect(result.proposal.realKeyRecords.map((record) => record.payload.dataUrl)).toEqual(sourceBytesBefore);
+      expect(result.proposal.realKeyRecords.map((record) => record.payload.bytes)).toEqual(sourceBytesBefore);
       expect(JSON.stringify(result.proposal.loopClips[1])).toBe(siblingBefore);
     });
 
@@ -262,7 +263,7 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
         groupId: 'group-main',
         appFrame: paintTarget,
         overrideKeyId: 'override-main',
-        renderedPayload: { frameIndex: 0, appFrame: paintTarget, dataUrl: pngDataUrl('painted'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: paintTarget, bytes: pngDataUrl('painted'), width: 10, height: 10 },
       });
       expect(painted.ok).toBe(true);
       if (!painted.ok) return;
@@ -311,7 +312,7 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
         groupId: 'group-main',
         appFrame: paintTarget,
         overrideKeyId: MAIN_CYCLE[0],
-        renderedPayload: { frameIndex: 0, appFrame: paintTarget, dataUrl: pngDataUrl('painted'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: paintTarget, bytes: pngDataUrl('painted'), width: 10, height: 10 },
       })).toMatchObject({ ok: false, reason: 'duplicate-override-key-id' });
       expect(proposePhysicPaintRotoDeleteGroupFrame({
         document,

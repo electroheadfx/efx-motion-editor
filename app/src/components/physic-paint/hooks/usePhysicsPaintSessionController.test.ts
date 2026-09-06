@@ -3,6 +3,7 @@ import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../.
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { getDocument, registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
 import { buildPhysicsPaintDebugProof, createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from './usePhysicsPaintSessionController';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 vi.mock('@tauri-apps/plugin-fs', () => ({}));
 
@@ -11,7 +12,7 @@ function makeContext(): PhysicPaintLaunchContext {
 }
 
 function makeFrame(): PhysicPaintRenderedFrame {
-  return { frameIndex: 0, appFrame: 9, dataUrl: 'data:image/png;base64,AA==', width: 800, height: 520 };
+  return { frameIndex: 0, appFrame: 9, bytes: testWebpBytes('AA=='), width: 800, height: 520 };
 }
 
 function sessionHarness() {
@@ -50,7 +51,7 @@ describe('usePhysicsPaintSessionController helpers', () => {
 
   it('retains captured still and manifest fields in debug proof exports', () => {
     const proof = buildPhysicsPaintDebugProof({ frame: makeFrame(), layerId: 'layer-1', operationId: 'operation-1:debug:1', fps: 24 });
-    expect(proof.still).toMatchObject({ file: 'frame-0000.png', appFrame: 9, width: 800, height: 520, dataUrl: 'data:image/png;base64,AA==' });
+    expect(proof.still).toMatchObject({ file: 'frame-0000.webp', appFrame: 9, width: 800, height: 520, bytes: testWebpBytes('AA==') });
     expect(proof.manifest).toMatchObject({ file: 'manifest.json', layerId: 'layer-1', startFrame: 9, frameCount: 1, fps: 24 });
   });
 });

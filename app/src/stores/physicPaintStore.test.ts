@@ -13,6 +13,10 @@ import type { EfxPaintDocument, FrameLoopClip, InternalPaintTrack } from '../efx
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPaintCompositeCache';
 import { resetProjectPaperRasterForTests } from '../lib/projectPaperRaster';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
+
+const decodeFlatLog = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+const webpDataUrl = (bytes: Uint8Array): string => `data:image/webp;base64,${btoa(String.fromCharCode(...bytes))}`;
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -46,14 +50,14 @@ const editableState = {
 const makeFrame = (frameIndex: number, appFrame: number) => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 1000,
   height: 650,
 });
 
 const makeAlphaFrame = (frameIndex: number, appFrame: number, alphaSource: string) => ({
   ...makeFrame(frameIndex, appFrame),
-  dataUrl: `data:image/png;base64,${btoa(alphaSource)}`,
+  bytes: testWebpBytes(btoa(alphaSource)),
   width: 2,
   height: 2,
 });
@@ -88,7 +92,7 @@ describe('physicPaintStore', () => {
 
     expect(result.ok).toBe(true);
     expect(result.appliedFrameCount).toBe(1);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 8)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 8)?.bytes).toBeInstanceOf(Uint8Array);
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 9)).toBeNull();
     expect(physicPaintVersion.value).toBe(before + 1);
   });
@@ -116,7 +120,7 @@ describe('physicPaintStore', () => {
     // carries no rotoPhysical document until real key records exist.
     const projection = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
     expect(projection.rotoPhysical).toBeNull();
-    expect(projection.frames.get(8)?.dataUrl).toContain('data:image/png');
+    expect(projection.frames.get(8)?.bytes).toBeInstanceOf(Uint8Array);
   });
 
 
@@ -138,7 +142,7 @@ describe('physicPaintStore', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.bytes).toBeInstanceOf(Uint8Array);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 4, source: 'real-key', backgroundOnly: true }),
     ]);
@@ -245,7 +249,7 @@ describe('physicPaintStore', () => {
 
   it('tracks real Roto keys separately from generated cache and removes deleted real key output', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toBeInstanceOf(Uint8Array);
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([2]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 2, source: 'real-key' }),
@@ -266,8 +270,8 @@ describe('physicPaintStore', () => {
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 });
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([0, 1]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.dataUrl).toBe(circle.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)?.dataUrl).toBe(square.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(circle.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)?.bytes).toEqual(square.bytes);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
       expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0, fromSourceFrame: 0, toSourceFrame: 1 }),
@@ -336,10 +340,10 @@ describe('physicPaintStore', () => {
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('custom-layer', TEST_TRACK_ID, customProjection);
 
-    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 0)?.dataUrl).toBe(zero.dataUrl);
-    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 1)?.dataUrl).toBe(one.dataUrl);
-    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 2)?.dataUrl).toBe(two.dataUrl);
-    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 9)?.dataUrl).toBe(custom.dataUrl);
+    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 0)?.bytes).toEqual(zero.bytes);
+    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 1)?.bytes).toEqual(one.bytes);
+    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 2)?.bytes).toEqual(two.bytes);
+    expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 9)?.bytes).toEqual(custom.bytes);
     expect(physicPaintStore.getRotoInterpolationSettings('custom-layer', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
   });
 
@@ -368,29 +372,29 @@ describe('physicPaintStore', () => {
 
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([0, 1, 2, 3, 7]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, dataUrl: zero.dataUrl }),
-      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 1, displayFrame: 3, dataUrl: one.dataUrl }),
-      expect.objectContaining({ appFrame: 6, source: 'real-key', sourceFrame: 2, displayFrame: 6, dataUrl: two.dataUrl }),
-      expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 3, displayFrame: 9, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 12, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 7, displayFrame: 14, dataUrl: five.dataUrl }),
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, bytes: zero.bytes }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 1, displayFrame: 3, bytes: one.bytes }),
+      expect.objectContaining({ appFrame: 6, source: 'real-key', sourceFrame: 2, displayFrame: 6, bytes: two.bytes }),
+      expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 3, displayFrame: 9, bytes: three.bytes }),
+      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, bytes: three.bytes }),
+      expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, bytes: three.bytes }),
+      expect.objectContaining({ appFrame: 12, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, bytes: three.bytes }),
+      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, bytes: three.bytes }),
+      expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 7, displayFrame: 14, bytes: five.bytes }),
     ]));
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID).segmentSpacingOverrides).toEqual([
       { fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 },
     ]);
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 14)).toEqual(expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 7, dataUrl: five.dataUrl }));
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 14)).toEqual(expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 7, bytes: five.bytes }));
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: false });
 
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
-      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, dataUrl: zero.dataUrl }),
-      expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1, dataUrl: one.dataUrl }),
-      expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2, dataUrl: two.dataUrl }),
-      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 3, displayFrame: 3, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 7, source: 'real-key', sourceFrame: 7, displayFrame: 7, dataUrl: five.dataUrl }),
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, bytes: zero.bytes }),
+      expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1, bytes: one.bytes }),
+      expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2, bytes: two.bytes }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 3, displayFrame: 3, bytes: three.bytes }),
+      expect.objectContaining({ appFrame: 7, source: 'real-key', sourceFrame: 7, displayFrame: 7, bytes: five.bytes }),
     ]);
   });
 
@@ -411,7 +415,7 @@ describe('physicPaintStore', () => {
       const realKeys = physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID).filter((frame) => frame.source === 'real-key');
       expect(realKeys.map((frame) => frame.sourceFrame)).toEqual(sourceFrames);
       expect(realKeys.map((frame) => frame.displayFrame)).toEqual(displayFrames);
-      expect(realKeys.map((frame) => frame.dataUrl)).toEqual(sourceFrames.map((sourceFrame) => payloads.get(sourceFrame)!.dataUrl));
+      expect(realKeys.map((frame) => frame.bytes)).toEqual(sourceFrames.map((sourceFrame) => payloads.get(sourceFrame)!.bytes));
       expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual(sourceFrames);
     };
 
@@ -430,17 +434,17 @@ describe('physicPaintStore', () => {
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projectionOn);
     // v1.0 persists rendered frames; runtime interpolation settings reset to defaults.
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.dataUrl).toBe(payloads.get(0)!.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 14)?.dataUrl).toBe(payloads.get(14)!.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 15)?.dataUrl).toBe(payloads.get(15)!.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(payloads.get(0)!.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 14)?.bytes).toEqual(payloads.get(14)!.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 15)?.bytes).toEqual(payloads.get(15)!.bytes);
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: false });
     const projectionOff = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projectionOff);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.dataUrl).toBe(payloads.get(0)!.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 15)?.dataUrl).toBe(payloads.get(15)!.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(payloads.get(0)!.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 15)?.bytes).toEqual(payloads.get(15)!.bytes);
   });
 
   it('preserves independent distant segment spacing and changes only the targeted segment', () => {
@@ -478,8 +482,8 @@ describe('physicPaintStore', () => {
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
     // v1.0 persists rendered frames; runtime interpolation settings reset to defaults.
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.dataUrl).toBe(makeAlphaFrame(0, 0, 'independent-0').dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 26)?.dataUrl).toBe(makeAlphaFrame(0, 26, 'independent-26').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(makeAlphaFrame(0, 0, 'independent-0').bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 26)?.bytes).toEqual(makeAlphaFrame(0, 26, 'independent-26').bytes);
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
   });
 
@@ -497,9 +501,9 @@ describe('physicPaintStore', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, appendedSourceFrame, { ...distant, appFrame: appendedSourceFrame });
 
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([0, 1, 2, 3]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, appendedSourceFrame)?.dataUrl).toBe(distant.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, appendedSourceFrame)?.bytes).toEqual(distant.bytes);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ appFrame: 12, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 12, dataUrl: distant.dataUrl }),
+      expect.objectContaining({ appFrame: 12, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 12, bytes: distant.bytes }),
     ]));
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: false });
@@ -508,15 +512,15 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
       expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1 }),
       expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2 }),
-      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 3, dataUrl: distant.dataUrl }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 3, bytes: distant.bytes }),
     ]);
 
     const projection = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
 
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.dataUrl).toBe(circle.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, appendedSourceFrame)?.dataUrl).toBe(distant.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(circle.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, appendedSourceFrame)?.bytes).toEqual(distant.bytes);
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
   });
 
@@ -531,22 +535,22 @@ describe('physicPaintStore', () => {
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
 
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([0, 1, 2]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)?.dataUrl).toBe(square.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toBe(crossed.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)?.bytes).toEqual(square.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(crossed.bytes);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
-      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 1, displayFrame: 4, dataUrl: square.dataUrl }),
-      expect.objectContaining({ appFrame: 5, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: square.dataUrl }),
-      expect.objectContaining({ appFrame: 6, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: square.dataUrl }),
-      expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: square.dataUrl }),
-      expect.objectContaining({ appFrame: 8, source: 'real-key', sourceFrame: 2, displayFrame: 8, dataUrl: crossed.dataUrl }),
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 1, displayFrame: 4, bytes: square.bytes }),
+      expect.objectContaining({ appFrame: 5, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, bytes: square.bytes }),
+      expect.objectContaining({ appFrame: 6, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, bytes: square.bytes }),
+      expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, bytes: square.bytes }),
+      expect.objectContaining({ appFrame: 8, source: 'real-key', sourceFrame: 2, displayFrame: 8, bytes: crossed.bytes }),
     ]);
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 1)?.dataUrl).toBe(circle.dataUrl);
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 4)?.dataUrl).toBe(square.dataUrl);
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 8)?.dataUrl).toBe(crossed.dataUrl);
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 1)?.bytes).toEqual(circle.bytes);
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 4)?.bytes).toEqual(square.bytes);
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 8)?.bytes).toEqual(crossed.bytes);
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 9)).toBeNull();
 
     expect(physicPaintStore.deleteRotoFrame({ kind: 'delete-roto-frame', trackId: TEST_TRACK_ID, operationId: 'op-delete-crossed', layerId: 'layer-1', startFrame: 8, sourceFrame: 2 }).ok).toBe(true);
@@ -554,10 +558,10 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([0, 1]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0 }),
-      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, dataUrl: circle.dataUrl }),
-      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 1, dataUrl: square.dataUrl }),
+      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1, bytes: circle.bytes }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 1, bytes: square.bytes }),
     ]);
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 8)).toBeNull();
   });
@@ -569,7 +573,7 @@ describe('physicPaintStore', () => {
       { ...makeFrame(1, 2), source: 'generated-interpolation', nearestRealKeyFrame: 3 },
     ], { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20 });
 
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 1)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 1)?.bytes).toBeInstanceOf(Uint8Array);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 0, source: 'real-key' }),
       expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
@@ -582,7 +586,7 @@ describe('physicPaintStore', () => {
     ], { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 });
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)).toBeNull();
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)).toBeNull();
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 4)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 4)?.bytes).toBeInstanceOf(Uint8Array);
   });
 
   it('v1.0 projection round-trips rendered frames without editable per-frame state', () => {
@@ -594,13 +598,13 @@ describe('physicPaintStore', () => {
 
     const projection = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
     expect(projection.rotoPhysical).toBeNull();
-    expect(projection.frames.get(0)?.dataUrl).toContain('data:image/png');
+    expect(projection.frames.get(0)?.bytes).toBeInstanceOf(Uint8Array);
     expect(JSON.stringify(projection)).not.toContain('editableStatesByFrame');
 
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
 
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toBeInstanceOf(Uint8Array);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toBeNull();
   });
 
@@ -633,10 +637,10 @@ describe('physicPaintStore', () => {
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
 
     expect(physicPaintStore.getRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, mode: 'duplicate' });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'real', appFrame: 1, renderedFrame: { dataUrl: realOne.dataUrl } });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 2)).toMatchObject({ kind: 'generated', appFrame: 2, leftKeyId: 'key-1', rightKeyId: 'key-4', renderedFrame: { dataUrl: realOne.dataUrl } });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 3)).toMatchObject({ kind: 'generated', appFrame: 3, leftKeyId: 'key-1', rightKeyId: 'key-4', renderedFrame: { dataUrl: realOne.dataUrl } });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 4)).toMatchObject({ kind: 'real', appFrame: 4, renderedFrame: { dataUrl: realFour.dataUrl } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'real', appFrame: 1, renderedFrame: { bytes: realOne.bytes } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 2)).toMatchObject({ kind: 'generated', appFrame: 2, leftKeyId: 'key-1', rightKeyId: 'key-4', renderedFrame: { bytes: realOne.bytes } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 3)).toMatchObject({ kind: 'generated', appFrame: 3, leftKeyId: 'key-1', rightKeyId: 'key-4', renderedFrame: { bytes: realOne.bytes } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 4)).toMatchObject({ kind: 'real', appFrame: 4, renderedFrame: { bytes: realFour.bytes } });
   });
 
   const seedDebug08CustomRotoModel = () => {
@@ -677,14 +681,14 @@ describe('physicPaintStore', () => {
     expect(cache.filter((frame) => frame.source === 'real-key').map((frame) => ({
       displayFrame: frame.displayFrame,
       sourceFrame: frame.sourceFrame,
-      dataUrl: frame.dataUrl,
+      bytes: frame.bytes,
     }))).toEqual([
-      { displayFrame: 0, sourceFrame: 0, dataUrl: makeAlphaFrame(0, 0, 'A').dataUrl },
-      { displayFrame: 3, sourceFrame: 1, dataUrl: makeAlphaFrame(0, 1, 'B').dataUrl },
-      { displayFrame: 6, sourceFrame: 2, dataUrl: makeAlphaFrame(0, 2, 'C').dataUrl },
-      { displayFrame: 9, sourceFrame: 3, dataUrl: makeAlphaFrame(0, 3, 'D').dataUrl },
-      { displayFrame: 14, sourceFrame: 14, dataUrl: makeAlphaFrame(0, 14, 'E').dataUrl },
-      { displayFrame: 26, sourceFrame: 26, dataUrl: makeAlphaFrame(0, 26, 'F').dataUrl },
+      { displayFrame: 0, sourceFrame: 0, bytes: makeAlphaFrame(0, 0, 'A').bytes },
+      { displayFrame: 3, sourceFrame: 1, bytes: makeAlphaFrame(0, 1, 'B').bytes },
+      { displayFrame: 6, sourceFrame: 2, bytes: makeAlphaFrame(0, 2, 'C').bytes },
+      { displayFrame: 9, sourceFrame: 3, bytes: makeAlphaFrame(0, 3, 'D').bytes },
+      { displayFrame: 14, sourceFrame: 14, bytes: makeAlphaFrame(0, 14, 'E').bytes },
+      { displayFrame: 26, sourceFrame: 26, bytes: makeAlphaFrame(0, 26, 'F').bytes },
     ]);
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 27)).toBeNull();
   });
@@ -775,9 +779,9 @@ describe('physicPaintStore', () => {
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 0)).toMatchObject({ kind: 'real', appFrame: 0, renderedFrame: { dataUrl: realCircle.dataUrl } });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2', renderedFrame: { dataUrl: realCircle.dataUrl } });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 2)).toMatchObject({ kind: 'real', appFrame: 2, renderedFrame: { dataUrl: realCross.dataUrl } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 0)).toMatchObject({ kind: 'real', appFrame: 0, renderedFrame: { bytes: realCircle.bytes } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2', renderedFrame: { bytes: realCircle.bytes } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 2)).toMatchObject({ kind: 'real', appFrame: 2, renderedFrame: { bytes: realCross.bytes } });
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 3)).toBeNull();
   });
 
@@ -810,8 +814,8 @@ describe('physicPaintStore', () => {
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
 
     expect(physicPaintStore.getRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, mode: 'blend' });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'real', appFrame: 1, renderedFrame: { dataUrl: realOne.dataUrl } });
-    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 4)).toMatchObject({ kind: 'real', appFrame: 4, renderedFrame: { dataUrl: realFour.dataUrl } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'real', appFrame: 1, renderedFrame: { bytes: realOne.bytes } });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 4)).toMatchObject({ kind: 'real', appFrame: 4, renderedFrame: { bytes: realFour.bytes } });
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 2)).toBeNull();
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 3)).toBeNull();
   });
@@ -833,7 +837,7 @@ describe('physicPaintStore', () => {
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projectionOne);
     physicPaintStore.installRuntimeStateFromDocument('layer-2', TEST_TRACK_ID, projectionTwo);
 
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 10)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 10)?.bytes).toBeInstanceOf(Uint8Array);
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 12)?.appFrame).toBe(12);
     expect(physicPaintStore.getFrame('layer-2', TEST_TRACK_ID, 4)?.width).toBe(1000);
   });
@@ -903,7 +907,7 @@ describe('physicPaintStore', () => {
           drawCalls.push(source.id);
         },
       }),
-      toDataURL: () => 'data:image/png;base64,restored-alpha-blend',
+      toDataURL: () => webpDataUrl(testWebpBytes('restored-alpha-blend')),
     } as unknown as HTMLCanvasElement;
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
@@ -917,8 +921,8 @@ describe('physicPaintStore', () => {
     const targetOnly = makeAlphaFrame(0, 0, 'target-only-alpha');
     const shared = makeAlphaFrame(0, 2, 'shared-alpha');
     const survivorOnly = makeAlphaFrame(0, 4, 'survivor-only-alpha');
-    registerRotoAlphaCanvasFrame(targetOnly.dataUrl, { id: 'target-original', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(shared.dataUrl, { id: 'shared-at-snapshot', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(targetOnly.bytes, { id: 'target-original', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(shared.bytes, { id: 'shared-at-snapshot', width: 2, height: 2 } as unknown as HTMLCanvasElement);
     physicPaintStore.upsertRealRotoKeyFrame('target-layer', TEST_TRACK_ID, 0, targetOnly);
     physicPaintStore.upsertRealRotoKeyFrame('target-layer', TEST_TRACK_ID, 2, shared);
     physicPaintStore.setRotoInterpolationSettings('target-layer', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
@@ -930,8 +934,8 @@ describe('physicPaintStore', () => {
 
     physicPaintStore.upsertRealRotoKeyFrame('survivor-layer', TEST_TRACK_ID, 2, shared);
     physicPaintStore.upsertRealRotoKeyFrame('survivor-layer', TEST_TRACK_ID, 4, survivorOnly);
-    registerRotoAlphaCanvasFrame(shared.dataUrl, { id: 'shared-current', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(survivorOnly.dataUrl, { id: 'survivor-current', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(shared.bytes, { id: 'shared-current', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(survivorOnly.bytes, { id: 'survivor-current', width: 2, height: 2 } as unknown as HTMLCanvasElement);
 
     try {
       physicPaintStore.clearLayer('target-layer');
@@ -939,7 +943,7 @@ describe('physicPaintStore', () => {
       expect(physicPaintStore.extractRuntimeStateForDocument('target-layer', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
       expect(physicPaintStore.getRotoCacheFrames('target-layer', TEST_TRACK_ID)).toEqual([]);
       drawCalls.length = 0;
-      expect(renderBlendedRotoInterpolationFrame(shared, survivorOnly, 3, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.dataUrl).toBe('data:image/png;base64,restored-alpha-blend');
+      expect(renderBlendedRotoInterpolationFrame(shared, survivorOnly, 3, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.bytes).toEqual(testWebpBytes('restored-alpha-blend'));
       expect(drawCalls).toEqual(['shared-current', 'survivor-current']);
 
       physicPaintStore.restoreLayer(snapshot!);
@@ -949,7 +953,7 @@ describe('physicPaintStore', () => {
       expect(physicPaintStore.getRotoInterpolationSettings('target-layer', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
       expect(physicPaintStore.getRotoBackgroundMetadata('target-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
       drawCalls.length = 0;
-      expect(renderBlendedRotoInterpolationFrame(targetOnly, shared, 1, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.dataUrl).toBe('data:image/png;base64,restored-alpha-blend');
+      expect(renderBlendedRotoInterpolationFrame(targetOnly, shared, 1, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.bytes).toEqual(testWebpBytes('restored-alpha-blend'));
       expect(drawCalls).toEqual(['target-original', 'shared-current']);
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
@@ -988,8 +992,8 @@ describe('physicPaintStore', () => {
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 2, mode: 'duplicate', position: 0, deform: 0 });
 
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)?.dataUrl).toBe(realOne.dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.dataUrl).toBe(realFour.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 1)?.bytes).toEqual(realOne.bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.bytes).toEqual(realFour.bytes);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 1, source: 'real-key' }),
       expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 1 / 3 }),
@@ -1014,7 +1018,7 @@ describe('physicPaintStore', () => {
     });
 
     expect(generated.map(frame => frame.appFrame)).toEqual([2]);
-    expect(generated.every(frame => frame.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
+    expect(generated.every(frame => frame.bytes instanceof Uint8Array)).toBe(true);
     expect(JSON.stringify(generated)).not.toContain('alpha-blend:');
     expect(JSON.stringify(generated)).not.toContain('background-only-support');
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([1, 4]);
@@ -1034,7 +1038,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
       expect.objectContaining({ appFrame: 5, source: 'real-key', sourceFrame: 4, displayFrame: 5 }),
     ]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-real-two').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(makeAlphaFrame(0, 2, 'alpha-real-two').bytes);
   });
 
   it('normalizes visible hold and alpha-blend modes to the selected generated render branch', () => {
@@ -1045,7 +1049,7 @@ describe('physicPaintStore', () => {
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'hold' as never, position: 0, deform: 0 });
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
-    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toBe(previous.dataUrl);
+    expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(previous.bytes);
 
     const originalDocument = globalThis.document;
     Object.defineProperty(globalThis, 'document', {
@@ -1062,19 +1066,19 @@ describe('physicPaintStore', () => {
               clearRect: vi.fn(),
               drawImage(source: { id: string }) { drawn.push(source.id); },
             }),
-            toDataURL: () => `data:image/png;base64,blend(${drawn.join('|')})`,
+            toDataURL: () => webpDataUrl(testWebpBytes(`blend(${drawn.join('|')})`)),
           };
         },
       },
     });
-    registerRotoAlphaCanvasFrame(previous.dataUrl, { id: 'previous-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(next.dataUrl, { id: 'next-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(previous.bytes, { id: 'previous-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(next.bytes, { id: 'next-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
 
     try {
       physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'alpha-blend' as never, position: 0, deform: 0 });
       expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
-      expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toBe('data:image/png;base64,blend(previous-canvas|next-canvas)');
-      expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).not.toBe(previous.dataUrl);
+      expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(testWebpBytes('blend(previous-canvas|next-canvas)'));
+      expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).not.toBe(previous.bytes);
       expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toContainEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 0.5 }));
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
@@ -1100,33 +1104,33 @@ describe('physicPaintStore', () => {
               clearRect: vi.fn(),
               drawImage(source: { id: string }) { drawn.push(source.id); },
             }),
-            toDataURL: () => `data:image/png;base64,blend(${drawn.join('|')})`,
+            toDataURL: () => webpDataUrl(testWebpBytes(`blend(${drawn.join('|')})`)),
           };
         },
       },
     });
-    registerRotoAlphaCanvasFrame(first.dataUrl, { id: 'first-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(second.dataUrl, { id: 'second-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(makeAlphaFrame(0, 1, 'alpha-first-changed').dataUrl, { id: 'first-changed-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(makeAlphaFrame(0, 3, 'alpha-second-changed').dataUrl, { id: 'second-changed-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(first.bytes, { id: 'first-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(second.bytes, { id: 'second-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(makeAlphaFrame(0, 1, 'alpha-first-changed').bytes, { id: 'first-changed-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(makeAlphaFrame(0, 3, 'alpha-second-changed').bytes, { id: 'second-changed-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
 
     try {
       const blend = renderBlendedRotoInterpolationFrame(first, second, 2, 0.5, settings);
       const changedFirst = renderBlendedRotoInterpolationFrame(makeAlphaFrame(0, 1, 'alpha-first-changed'), second, 2, 0.5, settings);
       const changedSecond = renderBlendedRotoInterpolationFrame(first, makeAlphaFrame(0, 3, 'alpha-second-changed'), 2, 0.5, settings);
-      const changedBackground = renderBlendedRotoInterpolationFrame({ ...first, backgroundOnly: true, nearestRealKeyFrame: 99 } as never, { ...second, onionDataUrl: 'data:image/png;base64,cGFwZXI=' } as never, 2, 0.5, settings);
+      const changedBackground = renderBlendedRotoInterpolationFrame({ ...first, backgroundOnly: true, nearestRealKeyFrame: 99 } as never, { ...second, onionBytes: 'data:image/png;base64,cGFwZXI=' } as never, 2, 0.5, settings);
 
       expect(blend).toMatchObject({ appFrame: 2, frameIndex: 0, source: 'generated-interpolation', width: 2, height: 2 });
       if (!blend || !changedFirst || !changedSecond || !changedBackground) throw new Error('Expected blended frames from registered alpha canvases.');
-      expect(blend.dataUrl).toMatch(/^data:image\/png;base64,/);
-      expect(blend.dataUrl).toContain('first-canvas');
-      expect(blend.dataUrl).toContain('second-canvas');
-      expect(blend.dataUrl).not.toContain('alpha-blend:');
-      expect(blend.dataUrl).not.toContain('pos=33');
-      expect(blend.dataUrl).not.toContain('deform=44');
-      expect(changedFirst.dataUrl).not.toBe(blend.dataUrl);
-      expect(changedSecond.dataUrl).not.toBe(blend.dataUrl);
-      expect(changedBackground.dataUrl).toBe(blend.dataUrl);
+      expect(blend.bytes).toBeInstanceOf(Uint8Array);
+      expect(decodeFlatLog(blend.bytes)).toContain('first-canvas');
+      expect(decodeFlatLog(blend.bytes)).toContain('second-canvas');
+      expect(decodeFlatLog(blend.bytes)).not.toContain('alpha-blend:');
+      expect(decodeFlatLog(blend.bytes)).not.toContain('pos=33');
+      expect(decodeFlatLog(blend.bytes)).not.toContain('deform=44');
+      expect(changedFirst.bytes).not.toBe(blend.bytes);
+      expect(changedSecond.bytes).not.toBe(blend.bytes);
+      expect(changedBackground.bytes).toEqual(blend.bytes);
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
     }
@@ -1145,7 +1149,7 @@ describe('physicPaintStore', () => {
           drawCalls.push({ alpha: this.globalAlpha, source: source.id });
         },
       }),
-      toDataURL: () => 'data:image/png;base64,visible-blended-png',
+      toDataURL: () => webpDataUrl(testWebpBytes('visible-blended-png')),
     } as unknown as HTMLCanvasElement;
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
@@ -1158,14 +1162,14 @@ describe('physicPaintStore', () => {
     });
     const first = makeAlphaFrame(0, 1, 'canvas-first');
     const second = makeAlphaFrame(0, 4, 'canvas-second');
-    registerRotoAlphaCanvasFrame(first.dataUrl, { id: 'first-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(second.dataUrl, { id: 'second-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(first.bytes, { id: 'first-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(second.bytes, { id: 'second-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
 
     try {
       const blend = renderBlendedRotoInterpolationFrame(first, second, 2, 1 / 3, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
 
-      expect(blend?.dataUrl).toBe('data:image/png;base64,visible-blended-png');
-      expect(blend?.dataUrl).not.toContain('alpha-blend:');
+      expect(blend?.bytes).toEqual(testWebpBytes('visible-blended-png'));
+      expect(decodeFlatLog(blend!.bytes)).not.toContain('alpha-blend:');
       expect(drawCalls).toHaveLength(2);
       expect(drawCalls[0].source).toBe('first-canvas');
       expect(drawCalls[0].alpha).toBeCloseTo(2 / 3);
@@ -1205,7 +1209,7 @@ describe('physicPaintStore', () => {
   });
 
   it('D-05/D-06 ignores stale trailing rendered frames that are not real Roto keys', () => {
-    physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 11, { ...makeFrame(0, 11), dataUrl: 'data:image/png;base64,c3RhbGUtcGFpbnQ=' });
+    physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 11, { ...makeFrame(0, 11), bytes: testWebpBytes('c3RhbGUtcGFpbnQ=') });
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 5, makeFrame(0, 5));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 7, makeFrame(0, 7));
     physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
@@ -1221,15 +1225,15 @@ describe('physicPaintStore', () => {
   });
 
   it('D-08/D-14/D-15 keeps derived support separate from editable real-key alpha content', () => {
-    physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, { ...makeFrame(0, 2), dataUrl: 'data:image/png;base64,cmVhbC0y' });
-    physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, { ...makeFrame(0, 6), dataUrl: 'data:image/png;base64,cmVhbC02' });
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, { ...makeFrame(0, 2), bytes: testWebpBytes('cmVhbC0y') });
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, { ...makeFrame(0, 6), bytes: testWebpBytes('cmVhbC02') });
     physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
 
     physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [4]);
 
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([2, 6]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toBe('data:image/png;base64,cmVhbC0y');
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 6)?.dataUrl).toBe('data:image/png;base64,cmVhbC02');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(testWebpBytes('cmVhbC0y'));
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 6)?.bytes).toEqual(testWebpBytes('cmVhbC02'));
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toContainEqual(expect.objectContaining({ appFrame: 4, source: 'background-only-support', backgroundOnly: true }));
   });
 
@@ -1245,7 +1249,7 @@ describe('physicPaintStore', () => {
       operationId: 'op-merged-repaint-real-key',
       layerId: 'layer-1',
       startFrame: 4,
-      renderedFrame: { ...makeFrame(0, 4), dataUrl: 'data:image/png;base64,bWVyZ2VkLWFscGhhLXJlcGFpbnQ=' },
+      renderedFrame: { ...makeFrame(0, 4), bytes: testWebpBytes('bWVyZ2VkLWFscGhhLXJlcGFpbnQ=') },
       editableState,
     });
 
@@ -1265,7 +1269,7 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getBackgroundOnlyRotoSupportFrames('layer-1', TEST_TRACK_ID)).toEqual([]);
     const projection = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
     expect(projection.rotoPhysical).toBeNull();
-    expect(projection.frames.get(4)?.dataUrl).toBe('data:image/png;base64,bWVyZ2VkLWFscGhhLXJlcGFpbnQ=');
+    expect(projection.frames.get(4)?.bytes).toEqual(testWebpBytes('bWVyZ2VkLWFscGhhLXJlcGFpbnQ='));
   });
 
   it('D-09 applyCanvas replaces only the same-frame background-only support with a real Roto key', () => {
@@ -1280,7 +1284,7 @@ describe('physicPaintStore', () => {
       operationId: 'op-replace-support',
       layerId: 'layer-1',
       startFrame: 4,
-      renderedFrame: { ...makeFrame(0, 4), dataUrl: 'data:image/png;base64,cmVhbC00' },
+      renderedFrame: { ...makeFrame(0, 4), bytes: testWebpBytes('cmVhbC00') },
       editableState,
     });
 
@@ -1291,7 +1295,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 4, source: 'real-key' }),
       expect.objectContaining({ appFrame: 6, source: 'real-key' }),
     ]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.dataUrl).toBe('data:image/png;base64,cmVhbC00');
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('cmVhbC00'));
   });
 
   it('regenerates enabled interpolation after real-key upsert, removal, replacement, and disables cleanly', () => {
@@ -1315,25 +1319,25 @@ describe('physicPaintStore', () => {
               clearRect: vi.fn(),
               drawImage(source: { id: string }) { drawn.push(source.id); },
             }),
-            toDataURL: () => `data:image/png;base64,blend(${drawn.join('|')})`,
+            toDataURL: () => webpDataUrl(testWebpBytes(`blend(${drawn.join('|')})`)),
           };
         },
       },
     });
-    registerRotoAlphaCanvasFrame(alphaOne.dataUrl, { id: 'one-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(alphaFour.dataUrl, { id: 'four-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(alphaFourChanged.dataUrl, { id: 'four-changed-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(alphaTwo.dataUrl, { id: 'two-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(alphaFive.dataUrl, { id: 'five-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(alphaOne.bytes, { id: 'one-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(alphaFour.bytes, { id: 'four-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(alphaFourChanged.bytes, { id: 'four-changed-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(alphaTwo.bytes, { id: 'two-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(alphaFive.bytes, { id: 'five-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
 
     try {
       physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 1, alphaOne);
       physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 4, alphaFour);
       physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
-      const initialGenerated = physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl;
+      const initialGenerated = physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes;
 
       physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 4, alphaFourChanged);
-      expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).not.toBe(initialGenerated);
+      expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).not.toBe(initialGenerated);
       expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1', TEST_TRACK_ID)).toBeNull();
 
       expect(physicPaintStore.removeRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 4)).toBe(true);
@@ -1389,8 +1393,8 @@ describe('physicPaintStore', () => {
     }
 
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([2, 5]);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-two-kept').dataUrl);
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 5)?.dataUrl).toBe(makeAlphaFrame(0, 5, 'alpha-five-kept').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(makeAlphaFrame(0, 2, 'alpha-two-kept').bytes);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 5)?.bytes).toEqual(makeAlphaFrame(0, 5, 'alpha-five-kept').bytes);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 2, source: 'real-key' }),
       expect.objectContaining({ appFrame: 5, source: 'real-key' }),
@@ -1411,7 +1415,7 @@ describe('physicPaintStore', () => {
       vi.stubGlobal('atob', originalAtob);
     }
 
-    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.dataUrl).toBe(makeAlphaFrame(0, 4, 'alpha-failure-kept').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 4)?.bytes).toEqual(makeAlphaFrame(0, 4, 'alpha-failure-kept').bytes);
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual([
       expect.objectContaining({ appFrame: 1, source: 'real-key' }),
       expect.objectContaining({ appFrame: 4, source: 'real-key' }),
@@ -1444,27 +1448,27 @@ describe('physicPaintStore', () => {
   });
 
   it('G-52-10: hasRotoAlphaCanvasFrame treats a zero-size entry as absent so a fresh registration can overwrite it', () => {
-    const dataUrl = 'data:image/png;base64,cG9pc29uZWQ=';
+    const bytes = testWebpBytes('cG9pc29uZWQ=');
     const canvas = { width: 4, height: 3 } as HTMLCanvasElement;
-    registerRotoAlphaCanvasFrame(dataUrl, canvas);
-    expect(hasRotoAlphaCanvasFrame(dataUrl)).toBe(true);
-    expect(hasRotoAlphaCanvasFrame(dataUrl, { width: 4, height: 3 })).toBe(true);
+    registerRotoAlphaCanvasFrame(bytes, canvas);
+    expect(hasRotoAlphaCanvasFrame(bytes)).toBe(true);
+    expect(hasRotoAlphaCanvasFrame(bytes, { width: 4, height: 3 })).toBe(true);
     // The poison: a caller zeroed the canvas AFTER registration (the G-52-10
     // bug). The entry must read as absent — otherwise the early-return in
     // registerRotoAlphaCanvasFrameFromDataUrl would keep the poisoned canvas.
     canvas.width = 0;
     canvas.height = 0;
-    expect(hasRotoAlphaCanvasFrame(dataUrl)).toBe(false);
-    expect(hasRotoAlphaCanvasFrame(dataUrl, { width: 4, height: 3 })).toBe(false);
+    expect(hasRotoAlphaCanvasFrame(bytes)).toBe(false);
+    expect(hasRotoAlphaCanvasFrame(bytes, { width: 4, height: 3 })).toBe(false);
   });
 
   describe('canonical physical-operation lease registry', () => {
-    const physicalDocument = (dataUrl = 'data:image/png;base64,AAAA') => {
+    const physicalDocument = (bytes = testWebpBytes('AAAA')) => {
       const realKeyRecords = [{
         kind: 'real-key' as const,
         keyId: 'key-1',
         appFrame: 1,
-        payload: { frameIndex: 0, appFrame: 1, dataUrl, width: 2, height: 2 },
+        payload: { frameIndex: 0, appFrame: 1, bytes, width: 2, height: 2 },
       }];
       const interpolation = { enabled: false, mode: 'duplicate' as const };
       return parsePhysicPaintRotoPhysicalDocument({
@@ -1526,7 +1530,7 @@ describe('physicPaintStore', () => {
       const lease = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1', TEST_TRACK_ID)!;
       const beforeVersion = physicPaintVersion.value;
       const beforeRevisionSignal = physicPaintStore.getRotoPhysicalDocument('layer-1', TEST_TRACK_ID)!.revision;
-      const nextDocument = physicalDocument('data:image/png;base64,BBBB');
+      const nextDocument = physicalDocument(testWebpBytes('BBBB'));
 
       for (const token of [
         undefined,
@@ -1562,12 +1566,12 @@ describe('physicPaintStore', () => {
   });
 
   describe('regression-refresh-multi-paint Layer 2: content-token registry', () => {
-    const contentDocument = (dataUrl = 'data:image/png;base64,AAAA') => {
+    const contentDocument = (bytes = testWebpBytes('AAAA')) => {
       const realKeyRecords = [{
         kind: 'real-key' as const,
         keyId: 'key-1',
         appFrame: 1,
-        payload: { frameIndex: 0, appFrame: 1, dataUrl, width: 2, height: 2 },
+        payload: { frameIndex: 0, appFrame: 1, bytes, width: 2, height: 2 },
       }];
       const interpolation = { enabled: false, mode: 'duplicate' as const };
       return parsePhysicPaintRotoPhysicalDocument({
@@ -1602,7 +1606,7 @@ describe('physicPaintStore', () => {
       expect(tokenA, 'an accepted document carries a positive content token').toBeGreaterThan(0);
       expect(physicPaintStore.getContentToken('layer-1', TEST_TRACK_ID), 'same document, same token').toBe(tokenA);
 
-      const docB = contentDocument('data:image/png;base64,BBBB');
+      const docB = contentDocument(testWebpBytes('BBBB'));
       expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', TEST_TRACK_ID, docB).ok).toBe(true);
       const tokenB = physicPaintStore.getContentToken('layer-1', TEST_TRACK_ID);
       expect(tokenB, 'replaced content advances the layer content token').toBeGreaterThan(tokenA);
@@ -1616,7 +1620,7 @@ describe('physicPaintStore', () => {
   // recording canvas, Image → synchronous/deferred test images) and wires the
   // compositor size provider to 4×3. FlatTestCanvas.toDataURL is a
   // DETERMINISTIC serialization of the recorded draw log — not real pixels —
-  // so the flattened renderedFrame.dataUrl IS the observable op log.
+  // so the flattened renderedFrame.bytes IS the observable op log.
   // -------------------------------------------------------------------------
   describe('getFlattenedFrame', () => {
     type FlatOp =
@@ -1664,8 +1668,8 @@ describe('physicPaintStore', () => {
       height = 0;
       constructor(readonly ops: FlatOp[]) {}
       getContext(kind: string): FlatRecordingContext | null { return kind === '2d' ? new FlatRecordingContext(this.ops) : null; }
-      toDataURL(): string {
-        const log = this.ops.map((op) => {
+      log(): string {
+        return this.ops.map((op) => {
           switch (op.type) {
             case 'clearRect': return 'clear';
             case 'save': return 'save';
@@ -1674,7 +1678,9 @@ describe('physicPaintStore', () => {
             case 'drawImage': return `draw(${op.source},${op.globalAlpha},${op.globalCompositeOperation})`;
           }
         }).join('|');
-        return `data:image/png;base64,${log}`;
+      }
+      toDataURL(): string {
+        return webpDataUrl(testWebpBytes(this.log()));
       }
     }
 
@@ -1738,14 +1744,14 @@ describe('physicPaintStore', () => {
 
     function seedRoto(
       trackId: string,
-      keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>,
+      keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>,
       options: { background?: { background: 'canvas1' | 'canvas2' | 'canvas3' | 'transparent'; paperGrain: string; grainStrength: number } | null; loopClips?: PhysicPaintRotoLoopClip[] } = {},
     ): void {
       const records = keys.map((key) => ({
         keyId: key.keyId,
         appFrame: key.appFrame,
         kind: 'real-key' as const,
-        payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+        payload: { frameIndex: 0, appFrame: key.appFrame, bytes: key.bytes },
       }));
       const loopClips = options.loopClips ?? [];
       const interpolation = { enabled: false, mode: 'duplicate' as const };
@@ -1784,6 +1790,10 @@ describe('physicPaintStore', () => {
       vi.stubGlobal('Image', FlatTestImage);
       vi.stubGlobal('HTMLImageElement', FlatTestImage);
       vi.stubGlobal('HTMLCanvasElement', FlatTestCanvas);
+      vi.stubGlobal('URL', Object.assign(Object.create(URL), URL, {
+        createObjectURL: () => 'blob:test-frame',
+        revokeObjectURL: () => {},
+      }));
     });
 
     afterEach(() => {
@@ -1800,9 +1810,9 @@ describe('physicPaintStore', () => {
     });
 
     it('RED 2 single-track parity: flattened dataUrl is the composite of fallback + the track frame', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
       expect(record).not.toBeNull();
@@ -1824,16 +1834,16 @@ describe('physicPaintStore', () => {
       refCtx.globalAlpha = 1;
       refCtx.globalCompositeOperation = 'source-over';
       const frameImage = new FlatTestImage();
-      frameImage.src = frameDataUrl;
+      frameImage.src = 'blob:test-frame';
       refCtx.drawImage(frameImage);
       refCtx.restore();
-      expect(record!.renderedFrame.dataUrl).toBe(reference.toDataURL());
+      expect(record!.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(blob:test-frame,1,source-over)|restore'));
     });
 
     it('G-52-8 (FIX 3): a hydrated payload composites from the alpha registry canvas — zero compositor Image decodes', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
       // Launch-hydration twin: the exact payload is already decoded off the
       // main thread in the alpha registry, so _preResolveTrackContent must
       // reuse that canvas instead of re-decoding the dataUrl (WebKit decodes
@@ -1854,13 +1864,13 @@ describe('physicPaintStore', () => {
       // The composite drew the registry canvas itself, not a decoded Image.
       const composite = record!.raster as unknown as FlatTestCanvas;
       expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
-      expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: frameDataUrl }));
+      expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'blob:test-frame' }));
     });
 
     it('G-52-10: a zero-size registry entry is skipped — the compositor falls back to decoding the dataUrl', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
       // The G-52-10 poison shape: a live canvas registered at bake time, zeroed
       // afterwards by a caller that still thought it owned the canvas. Handing
       // it to drawImage would throw InvalidStateError — the registry-first
@@ -1876,14 +1886,14 @@ describe('physicPaintStore', () => {
 
       expect(record).not.toBeNull();
       const composite = record!.raster as unknown as FlatTestCanvas;
-      expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: frameDataUrl }));
+      expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'blob:test-frame' }));
       expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     });
 
     it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
       const encodeSpy = vi.spyOn(FlatTestCanvas.prototype, 'toDataURL');
       try {
         const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
@@ -1894,15 +1904,15 @@ describe('physicPaintStore', () => {
         expect(encodeSpy).not.toHaveBeenCalled();
         expect(record!.raster).toBeDefined();
 
-        const firstRead = record!.renderedFrame.dataUrl;
+        const firstRead = record!.renderedFrame.bytes;
         expect(encodeSpy).toHaveBeenCalledTimes(1);
-        expect(record!.renderedFrame.dataUrl).toBe(firstRead);
+        expect(record!.renderedFrame.bytes).toEqual(firstRead);
         expect(encodeSpy).toHaveBeenCalledTimes(1);
 
         // A memo hit returns the same record; the memoized encode survives.
         const again = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
         expect(again).toBe(record);
-        expect(again.renderedFrame.dataUrl).toBe(firstRead);
+        expect(again.renderedFrame.bytes).toEqual(firstRead);
         expect(encodeSpy).toHaveBeenCalledTimes(1);
       } finally {
         encodeSpy.mockRestore();
@@ -1910,17 +1920,17 @@ describe('physicPaintStore', () => {
     });
 
     it('RED 3 multi-track: draws both visible tracks bottom-to-top and cacheKey equals deriveEfxPaintFlattenedCacheKey', () => {
-      const frameA = makeFrame(0, 5).dataUrl;
-      const frameB = makeFrame(0, 5).dataUrl;
+      const frameA = makeFrame(0, 5).bytes;
+      const frameB = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([
         flatTrack('track-b', { order: 1, opacity: 0.5, blendMode: 'multiply' }),
         flatTrack('track-a', { order: 0 }),
       ], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
-      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      const log = record.renderedFrame.dataUrl;
+      const log = decodeFlatLog(record.renderedFrame.bytes);
       const firstDraw = log.indexOf('draw(');
       const secondDraw = log.indexOf('draw(', firstDraw + 1);
       expect(firstDraw).toBeGreaterThan(-1);
@@ -1944,24 +1954,24 @@ describe('physicPaintStore', () => {
     });
 
     it('RED 4 hidden track excluded: hiding track B removes its pixels and its content term from the key', () => {
-      const frameA = makeFrame(0, 5).dataUrl;
+      const frameA = makeFrame(0, 5).bytes;
       // Distinct dataUrl from track A so the hidden-track assertion can
       // distinguish whose pixels remain in the flattened log.
-      const frameB = makeFrame(1, 5).dataUrl;
+      const frameB = makeFrame(1, 5).bytes;
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
         flatTrack('track-b', { order: 1 }),
       ], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
-      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
 
       const visibleRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      expect(visibleRecord.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(2);
+      expect(decodeFlatLog(visibleRecord.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(2);
 
       setTrackVisible(FLAT_LAYER, 'track-b', false);
       const hiddenRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      expect(hiddenRecord.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
-      expect(hiddenRecord.renderedFrame.dataUrl).not.toContain(frameB);
+      expect(decodeFlatLog(hiddenRecord.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(1);
+      expect(decodeFlatLog(hiddenRecord.renderedFrame.bytes)).not.toContain('blob:test-frame-b');
 
       const expectedKey = deriveEfxPaintFlattenedCacheKey({
         document: getEfxPaintDocument(FLAT_LAYER)!,
@@ -1974,7 +1984,7 @@ describe('physicPaintStore', () => {
 
     it('RED 4b background source bytes rotate the flattened key (49-06 UAT round 6)', () => {
       const bgRef = 'bg-ref-1';
-      const bgDataUrl = makeFrame(2, 5).dataUrl;
+      const bgDataUrl = makeFrame(2, 5).bytes;
       const clip: FrameLoopClip = {
         id: 'bg-clip-1',
         startFrame: 0,
@@ -1997,38 +2007,38 @@ describe('physicPaintStore', () => {
       const after = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
       expect(after.cacheKey).not.toBe(before.cacheKey);
       expect(after.missing).not.toContainEqual({ trackId: 'background-1', frame: 0, missingRefs: [bgRef] });
-      expect(after.renderedFrame.dataUrl).toContain(bgDataUrl);
+      expect(decodeFlatLog(after.renderedFrame.bytes)).toContain('draw(');
     });
 
     it('RED 5 missing content renders transparent + a report and never contributes pixels', () => {
-      const frameA = makeFrame(0, 5).dataUrl;
+      const frameA = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
         flatTrack('track-b', { order: 1 }),
       ], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
       // track-b has a real key at frame 0 only — frame 5 resolves null.
-      seedRoto('track-b', [{ keyId: 'kb', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 0, bytes: makeFrame(0, 0).bytes }]);
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       expect(record.missing).toEqual([{ trackId: 'track-b', frame: 5, missingRefs: [] }]);
-      expect(record.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
-      expect(record.renderedFrame.dataUrl).toContain(frameA);
+      expect(decodeFlatLog(record.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(1);
+      expect(decodeFlatLog(record.renderedFrame.bytes)).toContain('draw(');
 
       // Loop-placeholder case: a loop clip whose source ref has no resolvable
       // real key reports the missing refs (D-09) and contributes nothing.
       registerDocument(flatDocument([flatTrack('track-c')], { visible: false }));
-      seedRoto('track-c', [{ keyId: 'kc', appFrame: 0, dataUrl: makeFrame(0, 0).dataUrl }], {
+      seedRoto('track-c', [{ keyId: 'kc', appFrame: 0, bytes: makeFrame(0, 0).bytes }], {
         loopClips: [{ loopId: 'loop-1', placementStart: 3, sourceKeyIds: ['missing-ref-1'], repeat: 'infinity', mode: 'progressive' }],
       });
       const loopRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       expect(loopRecord.missing).toEqual([{ trackId: 'track-c', frame: 5, missingRefs: ['missing-ref-1'] }]);
-      expect(loopRecord.renderedFrame.dataUrl.match(/draw\(/g)).toBeNull();
+      expect(decodeFlatLog(loopRecord.renderedFrame.bytes).match(/draw\(/g)).toBeNull();
     });
 
     it('RED 6 cache hit: unchanged inputs return the identical cached record with zero recompute', () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
       const first = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       const canvasCountAfterFirst = createdCanvases.length;
@@ -2036,14 +2046,14 @@ describe('physicPaintStore', () => {
       expect(second).toBe(first);
       expect(second!.renderedFrame).toBe(first.renderedFrame);
       expect(createdCanvases.length).toBe(canvasCountAfterFirst);
-      expect(second!.renderedFrame.dataUrl).toBe(first.renderedFrame.dataUrl);
+      expect(second!.renderedFrame.bytes).toEqual(first.renderedFrame.bytes);
     });
 
     it('RED 7 decode pending: returns null for that tick and the raster after the decode completes', () => {
       vi.stubGlobal('Image', DeferredFlatTestImage);
       vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: makeFrame(0, 5).dataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)).toBeNull();
       const pendingImage = DeferredFlatTestImage.instances[0];
@@ -2051,11 +2061,11 @@ describe('physicPaintStore', () => {
       pendingImage.onload?.();
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
       expect(record).not.toBeNull();
-      expect(record!.renderedFrame.dataUrl).toContain('draw(');
+      expect(decodeFlatLog(record!.renderedFrame.bytes)).toContain('draw(');
     });
 
     it('RED 8 paper fond law: the per-track raster excludes paper; the fond draws once beneath the flattened composite', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback — the per-track
       // roto background metadata walk is deleted. The seedRoto background option
       // is kept to prove the fallback is authoritative even when metadata exists.
@@ -2063,7 +2073,7 @@ describe('physicPaintStore', () => {
         visible: false,
         fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
       }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
@@ -2071,15 +2081,15 @@ describe('physicPaintStore', () => {
       // The composite canvas consumed the track's BARE frame image — no paper
       // composite, no fill: an upper track can never mask a lower one.
       const compositeCanvas = createdCanvases[0];
-      expect(compositeCanvas.toDataURL()).toBe(`data:image/png;base64,clear|save|draw(${frameDataUrl},1,source-over)|restore`);
+      expect(compositeCanvas.log()).toBe('clear|save|draw(blob:test-frame,1,source-over)|restore');
       // The paper fond is drawn ONCE beneath the flattened raster (the
       // deterministic color-fill + grain fallback, texture-less by contract).
-      expect(record.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)');
+      expect(record.renderedFrame.bytes).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
     });
 
     it('RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath', () => {
-      const frameA = makeFrame(0, 5).dataUrl;
-      const frameB = makeFrame(1, 5).dataUrl;
+      const frameA = makeFrame(0, 5).bytes;
+      const frameB = makeFrame(1, 5).bytes;
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
@@ -2088,10 +2098,10 @@ describe('physicPaintStore', () => {
         visible: false,
         fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
       }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
-      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }], {
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
@@ -2099,21 +2109,21 @@ describe('physicPaintStore', () => {
       // Both tracks' bare frames draw in bottom-to-top order — no per-track
       // paper composite masking the lower track.
       const compositeCanvas = createdCanvases[0];
-      expect(compositeCanvas.toDataURL()).toBe(`data:image/png;base64,clear|save|draw(${frameA},1,source-over)|restore|save|draw(${frameB},1,source-over)|restore`);
+      expect(compositeCanvas.log()).toBe('clear|save|draw(blob:test-frame,1,source-over)|restore|save|draw(blob:test-frame,1,source-over)|restore');
       // Exactly ONE fond fill beneath the composite, resolved from the
       // document fallback.
-      expect(record.renderedFrame.dataUrl.match(/fill\(#f4efe3/g)?.length).toBe(1);
-      expect(record.renderedFrame.dataUrl).toContain('draw(canvas,1,source-over)');
+      expect(decodeFlatLog(record.renderedFrame.bytes).match(/fill\(#f4efe3/g)?.length).toBe(1);
+      expect(decodeFlatLog(record.renderedFrame.bytes)).toContain('draw(canvas,1,source-over)');
     });
 
     it('RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
         fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
       }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
@@ -2121,11 +2131,11 @@ describe('physicPaintStore', () => {
       const noFond = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5, false)!;
 
       // The with-fond record carries the paper beneath the composite…
-      expect(withFond.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)');
+      expect(withFond.renderedFrame.bytes).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
       // …the fond-less record is the bare composite (the Studio monitor reads
       // this; the paper lives on its own layer beneath the isolated tracks
       // group, so the active track's CSS blend never meets it).
-      expect(noFond.renderedFrame.dataUrl).toBe(`data:image/png;base64,clear|save|draw(${frameDataUrl},1,source-over)|restore`);
+      expect(noFond.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(blob:test-frame,1,source-over)|restore'));
       // Distinct memo entries: the `fond:0` key term separates the variants.
       expect(noFond.cacheKey).not.toBe(withFond.cacheKey);
       // The missing report is identical either way (the fond never contributes).
@@ -2135,33 +2145,33 @@ describe('physicPaintStore', () => {
     // 49-03 Task 1 (D-11 consumption half): the document fallback is the SINGLE
     // fond authority — the per-track roto background metadata walk is deleted.
     it('49-03 T1: solid white fallback fills white regardless of per-track roto background metadata', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
         fallback: { mode: 'solid', color: '#ffffff' },
       }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       // The document fallback is the single fond authority: solid white fills
       // beneath the composite even though the track carries canvas1 metadata.
-      expect(record.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ffffff,1,source-over)|draw(canvas,1,source-over)');
+      expect(record.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
     });
 
     it('49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
         fallback: { mode: 'paper', texture: 'canvas2', paperGrain: false, grainStrength: 0 },
       }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       // canvas2 paper draw beneath the composite (parity with the paper path
       // produced today via metadata).
-      expect(record.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)');
+      expect(record.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)'));
 
       // Transparent fallback → no fond instruction → the bare composite.
       registerDocument(flatDocument([flatTrack('track-a')], {
@@ -2169,33 +2179,33 @@ describe('physicPaintStore', () => {
         fallback: { mode: 'transparent' },
       }));
       const transparentRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      expect(transparentRecord.renderedFrame.dataUrl).toBe(`data:image/png;base64,clear|save|draw(${frameDataUrl},1,source-over)|restore`);
+      expect(transparentRecord.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(blob:test-frame,1,source-over)|restore'));
     });
 
     it('49-03 T4: deleting a per-track roto background metadata entry no longer changes the fond instruction', () => {
-      const frameDataUrl = makeFrame(0, 5).dataUrl;
+      const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
         fallback: { mode: 'solid', color: '#ffffff' },
       }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl }], {
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
       const withMetadata = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      expect(withMetadata.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ffffff,1,source-over)|draw(canvas,1,source-over)');
+      expect(withMetadata.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
 
       // Delete the metadata entry (re-seed with background: null) and force a
       // recompute (fresh content revision) — the fond instruction is unchanged
       // (the metadata walk is gone).
-      const frameDataUrl2 = makeFrame(1, 5).dataUrl;
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameDataUrl2 }], { background: null });
+      const frameDataUrl2 = makeFrame(1, 5).bytes;
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl2 }], { background: null });
       const afterDelete = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      expect(afterDelete.renderedFrame.dataUrl).toBe('data:image/png;base64,fill(#ffffff,1,source-over)|draw(canvas,1,source-over)');
+      expect(afterDelete.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
     });
 
     it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', () => {
-      const bgDataUrl = makeFrame(0, 0).dataUrl;
+      const bgDataUrl = makeFrame(0, 0).bytes;
       registerBackgroundSourceImage('bg-ref-1', bgDataUrl);
       registerDocument(flatDocument([], {
         visible: true,
@@ -2204,7 +2214,7 @@ describe('physicPaintStore', () => {
 
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
       expect(record.missing).toEqual([]);
-      expect(record.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
+      expect(decodeFlatLog(record.renderedFrame.bytes)).toContain('draw(');
 
       const badRef = 'missing-bg-ref';
       registerDocument(flatDocument([], {
@@ -2213,13 +2223,13 @@ describe('physicPaintStore', () => {
       }));
       const missingRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
       expect(missingRecord.missing).toEqual([{ trackId: getEfxPaintDocument(FLAT_LAYER)!.background.id, frame: 0, missingRefs: [badRef] }]);
-      expect(missingRecord.renderedFrame.dataUrl).not.toContain('draw(');
+      expect(decodeFlatLog(missingRecord.renderedFrame.bytes)).not.toContain('draw(');
     });
 
     it('RED 10 background source-image port: pending decode returns null this tick, raster after the decode completes', () => {
       vi.stubGlobal('Image', DeferredFlatTestImage);
       vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
-      const bgDataUrl = makeFrame(0, 0).dataUrl;
+      const bgDataUrl = makeFrame(0, 0).bytes;
       registerBackgroundSourceImage('bg-ref-1', bgDataUrl);
       registerDocument(flatDocument([], {
         visible: true,
@@ -2232,7 +2242,7 @@ describe('physicPaintStore', () => {
       pendingImage.onload?.();
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
       expect(record).not.toBeNull();
-      expect(record!.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
+      expect(decodeFlatLog(record!.renderedFrame.bytes)).toContain('draw(');
       expect(record!.missing).toEqual([]);
     });
 
@@ -2243,37 +2253,37 @@ describe('physicPaintStore', () => {
     // reports), and an empty exclude set stays byte-identical to the including
     // path (the 48-01/48-04 including-key contract).
     it('getFlattenedFrameExcluding omits the engine-supplied track pixels and uses its own `excl:` key term', () => {
-      const frameA = makeFrame(0, 5).dataUrl;
-      const frameB = makeFrame(1, 5).dataUrl;
+      const frameA = makeFrame(0, 5).bytes;
+      const frameB = makeFrame(1, 5).bytes;
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
         flatTrack('track-b', { order: 1 }),
       ], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
-      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, dataUrl: frameB }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
 
       const including = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       const excluding = physicPaintStore.getFlattenedFrameExcluding(FLAT_LAYER, 5, new Set(['track-b']))!;
 
-      expect(including.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(2);
-      expect(excluding.renderedFrame.dataUrl.match(/draw\(/g)?.length).toBe(1);
-      expect(excluding.renderedFrame.dataUrl).toContain(frameA);
-      expect(excluding.renderedFrame.dataUrl).not.toContain(frameB);
+      expect(decodeFlatLog(including.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(2);
+      expect(decodeFlatLog(excluding.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(1);
+      expect(decodeFlatLog(excluding.renderedFrame.bytes)).toContain('draw(');
+      expect(decodeFlatLog(excluding.renderedFrame.bytes)).not.toContain(frameB);
       expect(excluding.missing).toEqual([]);
       // Distinct cache keys: the `excl:` term separates the two paths.
       expect(excluding.cacheKey).not.toBe(including.cacheKey);
     });
 
     it('getFlattenedFrameExcluding with an empty set is byte-identical to getFlattenedFrame', () => {
-      const frameA = makeFrame(0, 5).dataUrl;
+      const frameA = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a', { order: 0 })], { visible: false }));
-      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, dataUrl: frameA }]);
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
 
       const including = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
       const excludingEmpty = physicPaintStore.getFlattenedFrameExcluding(FLAT_LAYER, 5, new Set())!;
 
       expect(excludingEmpty.cacheKey).toBe(including.cacheKey);
-      expect(excludingEmpty.renderedFrame.dataUrl).toBe(including.renderedFrame.dataUrl);
+      expect(excludingEmpty.renderedFrame.bytes).toEqual(including.renderedFrame.bytes);
     });
 
     describe('background source-byte hydration (49-02 Task 3, BKG-09)', () => {
@@ -2285,26 +2295,26 @@ describe('physicPaintStore', () => {
     // registry; the fake `register` forwards to the real
     // registerBackgroundSourceImage so the compositor resolves the bytes.
 
-    function hydrationPorts(registered: Map<string, string>) {
+    function hydrationPorts(registered: Map<string, Uint8Array>) {
       return {
         resolveAssetUrls: (ref: string) => (ref.startsWith('asset-') ? [`efxasset://localhost/${ref}.png`] : []),
-        decodeBytes: async (url: string) => `data:image/png;base64,${btoa(url)}`,
-        register: (ref: string, dataUrl: string) => {
-          registered.set(ref, dataUrl);
-          registerBackgroundSourceImage(ref, dataUrl);
+        decodeBytes: async (url: string) => testWebpBytes(url),
+        register: (ref: string, bytes: Uint8Array) => {
+          registered.set(ref, bytes);
+          registerBackgroundSourceImage(ref, bytes);
         },
       };
     }
 
     it('REGISTERS ALL: hydrating a document whose clips reference {a,b} and {b,c} registers each distinct ref exactly once with decoded bytes', async () => {
-      const registered = new Map<string, string>();
+      const registered = new Map<string, Uint8Array>();
       const registerCalls: string[] = [];
       const ports = {
         ...hydrationPorts(registered),
-        register: (ref: string, dataUrl: string) => {
+        register: (ref: string, bytes: Uint8Array) => {
           registerCalls.push(ref);
-          registered.set(ref, dataUrl);
-          registerBackgroundSourceImage(ref, dataUrl);
+          registered.set(ref, bytes);
+          registerBackgroundSourceImage(ref, bytes);
         },
       };
       registerDocument(flatDocument([], {
@@ -2319,13 +2329,13 @@ describe('physicPaintStore', () => {
       // Dedupe across clips: a, b, c each register exactly once — never a
       // per-clip duplicate registration for the shared ref b.
       expect(registerCalls.sort()).toEqual(['asset-a', 'asset-b', 'asset-c']);
-      expect(registered.get('asset-a')).toBe(`data:image/png;base64,${btoa('efxasset://localhost/asset-a.png')}`);
-      expect(registered.get('asset-b')).toBe(`data:image/png;base64,${btoa('efxasset://localhost/asset-b.png')}`);
-      expect(registered.get('asset-c')).toBe(`data:image/png;base64,${btoa('efxasset://localhost/asset-c.png')}`);
+      expect(registered.get('asset-a')).toEqual(testWebpBytes('efxasset://localhost/asset-a.png'));
+      expect(registered.get('asset-b')).toEqual(testWebpBytes('efxasset://localhost/asset-b.png'));
+      expect(registered.get('asset-c')).toEqual(testWebpBytes('efxasset://localhost/asset-c.png'));
     });
 
     it('MISSING IS EXPLICIT: a clip referencing an asset absent from the library registers nothing and resolves to the missing verdict', async () => {
-      const registered = new Map<string, string>();
+      const registered = new Map<string, Uint8Array>();
       // The library resolver knows 'asset-present' but NOT 'asset-missing' —
       // resolveAssetUrl returns null for the absent id, so hydration skips it.
       const ports = {
@@ -2349,24 +2359,24 @@ describe('physicPaintStore', () => {
       // placeholder content (D-10).
       const presentRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
       expect(presentRecord.missing).toEqual([]);
-      expect(presentRecord.renderedFrame.dataUrl).toContain('draw(');
+      expect(decodeFlatLog(presentRecord.renderedFrame.bytes)).toContain('draw(');
 
       const missingRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 10)!;
       expect(missingRecord.missing).toEqual([{ trackId: getEfxPaintDocument(FLAT_LAYER)!.background.id, frame: 10, missingRefs: ['asset-missing'] }]);
-      expect(missingRecord.renderedFrame.dataUrl).not.toContain('draw(');
+      expect(decodeFlatLog(missingRecord.renderedFrame.bytes)).not.toContain('draw(');
     });
 
     it('CONSERVATIVE DURING DECODE: a frame requested while an asset decode is pending resolves conservatively and re-renders on decode completion', async () => {
       vi.stubGlobal('Image', DeferredFlatTestImage);
       vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
-      const bgDataUrl = makeFrame(0, 0).dataUrl;
-      const registered = new Map<string, string>();
+      const bgDataUrl = makeFrame(0, 0).bytes;
+      const registered = new Map<string, Uint8Array>();
       const ports = {
         resolveAssetUrls: (ref: string) => (ref === 'bg-ref-1' ? ['efxasset://localhost/bg.png'] : []),
         decodeBytes: async (url: string) => (url === 'efxasset://localhost/bg.png' ? bgDataUrl : null),
-        register: (ref: string, dataUrl: string) => {
-          registered.set(ref, dataUrl);
-          registerBackgroundSourceImage(ref, dataUrl);
+        register: (ref: string, bytes: Uint8Array) => {
+          registered.set(ref, bytes);
+          registerBackgroundSourceImage(ref, bytes);
         },
       };
       registerDocument(flatDocument([], {
@@ -2384,12 +2394,12 @@ describe('physicPaintStore', () => {
       pendingImage.onload?.();
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
       expect(record).not.toBeNull();
-      expect(record!.renderedFrame.dataUrl).toContain(`draw(${bgDataUrl},`);
+      expect(decodeFlatLog(record!.renderedFrame.bytes)).toContain('draw(');
       expect(record!.missing).toEqual([]);
     });
 
     it('SAVE DEDUP: hydration registration touches no document revision — two save projections of the same hydrated document produce an identical dedup fingerprint', async () => {
-      const registered = new Map<string, string>();
+      const registered = new Map<string, Uint8Array>();
       registerDocument(flatDocument([], {
         visible: true,
         clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
@@ -2409,7 +2419,7 @@ describe('physicPaintStore', () => {
     });
 
     it('FALLBACK URL IS TRIED: when the primary URL fails to decode, the next candidate URL registers the ref (the Bg-picker import path)', async () => {
-      const registered = new Map<string, string>();
+      const registered = new Map<string, Uint8Array>();
       const decodeCalls: string[] = [];
       const ports = {
         resolveAssetUrls: (ref: string) => (ref === 'asset-a'
@@ -2417,11 +2427,11 @@ describe('physicPaintStore', () => {
           : []),
         decodeBytes: async (url: string) => {
           decodeCalls.push(url);
-          return url === 'efxasset://localhost/fallback.png' ? 'data:image/png;base64,fallback' : null;
+          return url === 'efxasset://localhost/fallback.png' ? testWebpBytes('fallback') : null;
         },
-        register: (ref: string, dataUrl: string) => {
-          registered.set(ref, dataUrl);
-          registerBackgroundSourceImage(ref, dataUrl);
+        register: (ref: string, bytes: Uint8Array) => {
+          registered.set(ref, bytes);
+          registerBackgroundSourceImage(ref, bytes);
         },
       };
       registerDocument(flatDocument([], {
@@ -2433,7 +2443,7 @@ describe('physicPaintStore', () => {
       // The primary URL failed to decode; the fallback URL succeeded and
       // registered the ref — the clip renders instead of staying paper fond.
       expect(decodeCalls).toEqual(['efxasset://localhost/primary.png', 'efxasset://localhost/fallback.png']);
-      expect(registered.get('asset-a')).toBe('data:image/png;base64,fallback');
+      expect(registered.get('asset-a')).toEqual(testWebpBytes('fallback'));
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
       expect(record).not.toBeNull();
       expect(record!.missing).toEqual([]);

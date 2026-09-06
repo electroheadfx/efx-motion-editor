@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -73,13 +74,34 @@ import {
 } from '../../../lib/efxPaintPersistence';
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+/** JSON round-trip that preserves Uint8Array bytes (base64 marker) at any depth. */
+function jsonRoundTrip<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, v) => (v instanceof Uint8Array ? { __webpBytes: bytesToBase64(v) } : v)),
+    (_key, v) => (v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v.__webpBytes === 'string' ? base64ToBytes(v.__webpBytes) : v),
+  );
+}
 
 const realKey = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
+  payload: { frameIndex: 0, appFrame, bytes: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
 });
 
 /** Source cycle: five real keys at physical frames 0/3/6/9/12. */
@@ -459,7 +481,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       });
       const otherGroup = proposedGroup({ loopId: 'loop-2', placementStart: 30, phaseOrigin: 30, originalEndExclusive: 55, visibleRanges: [{ start: 30, endExclusive: 55 }] });
       const document = parsePhysicPaintRotoPhysicalDocument(baseDocument([group, otherGroup]));
-      const beforeSourceBytes = document.realKeyRecords.map((record) => record.payload.dataUrl);
+      const beforeSourceBytes = document.realKeyRecords.map((record) => record.payload.bytes);
       const beforeOtherGroup = JSON.stringify(document.loopClips[1]);
 
       const result = proposePhysicPaintRotoGroupFramePaint({
@@ -467,7 +489,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         groupId: 'loop-1',
         appFrame: 7,
         overrideKeyId: 'override-7',
-        renderedPayload: { frameIndex: 0, appFrame: 7, dataUrl: pngDataUrl('painted-7'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: 7, bytes: pngDataUrl('painted-7'), width: 10, height: 10 },
       });
 
       expect(result.ok).toBe(true);
@@ -480,7 +502,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       });
       expect(result.proposal.realKeyRecords
         .filter((record) => SOURCE_KEY_IDS.includes(record.keyId))
-        .map((record) => record.payload.dataUrl)).toEqual(beforeSourceBytes);
+        .map((record) => record.payload.bytes)).toEqual(beforeSourceBytes);
       expect(JSON.stringify(result.proposal.loopClips[1])).toBe(beforeOtherGroup);
       expect(result.impact).toEqual({
         kind: 'paint-group-frame',
@@ -516,7 +538,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         groupId: 'loop-1',
         appFrame: 0,
         overrideKeyId: 'override-0',
-        renderedPayload: { frameIndex: 0, appFrame: 0, dataUrl: pngDataUrl('painted-0'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: 0, bytes: pngDataUrl('painted-0'), width: 10, height: 10 },
       });
 
       expect(result.ok).toBe(true);
@@ -528,7 +550,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         kind: 'real-key',
         keyId: 'override-0',
         appFrame: 0,
-        payload: { frameIndex: 0, appFrame: 0, dataUrl: pngDataUrl('painted-0'), width: 10, height: 10 },
+        payload: { frameIndex: 0, appFrame: 0, bytes: pngDataUrl('painted-0'), width: 10, height: 10 },
       }]);
       expect(result.proposal.loopClips[0].frameOverrides).toEqual([{ appFrame: 0, keyId: 'override-0' }]);
       expect(result.proposal.loopClips[1]).toEqual(document.loopClips[1]);
@@ -542,7 +564,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         groupId: 'loop-1',
         appFrame: 4,
         overrideKeyId: 'override-4',
-        renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: pngDataUrl('painted-4'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: 4, bytes: pngDataUrl('painted-4'), width: 10, height: 10 },
       } as const;
 
       expect(proposePhysicPaintRotoGroupFramePaint({ ...operation, overrideKeyId: 'k1' })).toMatchObject({ ok: false, reason: 'duplicate-override-key-id' });
@@ -583,10 +605,10 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
     const first = parsePhysicPaintRotoPhysicalDocument(baseDocument([loop]));
     expect(first.loopClips).toEqual([canonical]);
 
-    const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify({
+    const reopened = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip({
       ...baseDocument([loop]),
       revision: first.revision,
-    })));
+    }));
     expect(JSON.stringify(reopened.loopClips)).toBe(JSON.stringify([canonical]));
   });
 
@@ -658,7 +680,7 @@ describe('parsePhysicPaintRotoPhysicalDocument incoming interpolation breaks', (
       valid.loopClips ?? [],
       valid.incomingInterpolationBreakKeyIds,
     );
-    const parsed = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(valid)));
+    const parsed = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip(valid));
     expect(JSON.stringify(parsed.incomingInterpolationBreakKeyIds)).toBe(JSON.stringify(['k3']));
     expect(Object.isFrozen(parsed.incomingInterpolationBreakKeyIds)).toBe(true);
 
@@ -744,7 +766,7 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
     // loop-free revision; the empty collection contributes no fingerprint
     // term, so the legacy revision stays canonical (D-29, no migration).
     const persisted = await saveDocuments('/project', runtimeOutput(baseDocument()));
-    const legacy = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
+    const legacy = jsonRoundTrip(persisted) as typeof persisted;
     const legacyDocument = (legacy['physic layer/1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical;
     delete legacyDocument.loopClips;
 

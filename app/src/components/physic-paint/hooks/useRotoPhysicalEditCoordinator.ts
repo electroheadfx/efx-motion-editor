@@ -94,7 +94,7 @@ import {
   buildCanonicalMoveGroupOverrideRecords,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../roto/physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
+import { isWebpBytes } from '../../../types/physicPaint';
 import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
@@ -520,7 +520,7 @@ function semanticDeltaEquals(
         || leftEntry.newKeyId !== rightEntry.newKeyId
         || leftEntry.payload.frameIndex !== rightEntry.payload.frameIndex
         || leftEntry.payload.appFrame !== rightEntry.payload.appFrame
-        || leftEntry.payload.dataUrl !== rightEntry.payload.dataUrl
+        || leftEntry.payload.bytes !== rightEntry.payload.bytes
         || leftEntry.payload.width !== rightEntry.payload.width
         || leftEntry.payload.height !== rightEntry.payload.height) {
         return false;
@@ -536,7 +536,7 @@ function semanticDeltaEquals(
     && left.newKeyId === right.newKeyId
     && leftPayload.frameIndex === rightPayload.frameIndex
     && leftPayload.appFrame === rightPayload.appFrame
-    && leftPayload.dataUrl === rightPayload.dataUrl
+    && leftPayload.bytes === rightPayload.bytes
     && leftPayload.width === rightPayload.width
     && leftPayload.height === rightPayload.height;
 }
@@ -592,7 +592,7 @@ function clonePayloadAtFrame(
   return {
     frameIndex: payload.frameIndex,
     appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   };
@@ -606,7 +606,7 @@ function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicP
     payload: {
       frameIndex: record.payload.frameIndex,
       appFrame: record.payload.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
@@ -689,7 +689,7 @@ function recordsEqual(
       || leftRecord.appFrame !== rightRecord.appFrame
       || leftRecord.payload.frameIndex !== rightRecord.payload.frameIndex
       || leftRecord.payload.appFrame !== rightRecord.payload.appFrame
-      || leftRecord.payload.dataUrl !== rightRecord.payload.dataUrl
+      || leftRecord.payload.bytes !== rightRecord.payload.bytes
       || leftRecord.payload.width !== rightRecord.payload.width
       || leftRecord.payload.height !== rightRecord.payload.height) return false;
   }
@@ -708,7 +708,7 @@ function applyPayloadRecordsEqual(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.dataUrl === candidate.payload.dataUrl
+      && record.payload.bytes === candidate.payload.bytes
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -785,7 +785,7 @@ function railSetCopyKeyRailMemberEqual(
       || entry.ownsIncomingBreak !== other.ownsIncomingBreak) return false;
     return entry.payload.frameIndex === other.payload.frameIndex
       && entry.payload.appFrame === other.payload.appFrame
-      && entry.payload.dataUrl === other.payload.dataUrl
+      && entry.payload.bytes === other.payload.bytes
       && entry.payload.width === other.payload.width
       && entry.payload.height === other.payload.height;
   });
@@ -925,7 +925,7 @@ function validatePlayScriptInput(
   const expectedFreshIds: string[] = [];
   for (let appFrame = delta.affectedStartAppFrame; appFrame <= delta.affectedEndAppFrame; appFrame += 1) {
     const proposed = proposedByFrame.get(appFrame);
-    if (!proposed || !isRotoPngDataUrl(proposed.payload.dataUrl)) return 'Play Script proposal is missing a valid PNG destination record.';
+    if (!proposed || !isWebpBytes(proposed.payload.bytes)) return 'Play Script proposal is missing a valid WebP destination record.';
     const current = currentByFrame.get(appFrame);
     if (current) {
       if (proposed.keyId !== current.keyId) return 'Play Script proposal changed an occupied destination identity.';
@@ -967,7 +967,7 @@ function recordsToApplyPayloadRecords(records: readonly PhysicPaintRotoRealKeyRe
     payload: {
       frameIndex: record.payload.frameIndex,
       appFrame: record.payload.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
@@ -2358,7 +2358,7 @@ function buildReplayRecords(
       payload: {
         frameIndex: record.payload.frameIndex,
         appFrame: record.payload.appFrame,
-        dataUrl: record.payload.dataUrl,
+        bytes: record.payload.bytes,
         ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
         ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
       },

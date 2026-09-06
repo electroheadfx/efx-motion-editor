@@ -539,7 +539,7 @@ function createSyntheticRotoCacheFrame(frame: number): PhysicPaintRotoCacheFrame
   return {
     frameIndex: 0,
     appFrame: frame,
-    dataUrl: 'data:image/png;base64,',
+    bytes: new Uint8Array(0),
     source: 'real-key',
   };
 }

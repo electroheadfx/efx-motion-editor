@@ -18,7 +18,7 @@ export async function mergeCachedRotoAlphaFrame(
 }
 
 export async function mergeRotoAlphaCanvases(
-  baseFrame: Pick<PhysicPaintRenderedFrame, 'dataUrl'> | null,
+  baseFrame: Pick<PhysicPaintRenderedFrame, 'bytes'> | null,
   scriptAlphaCanvas: HTMLCanvasElement,
   size: RotoAlphaMergeSize,
 ): Promise<HTMLCanvasElement> {
@@ -30,18 +30,13 @@ export async function mergeRotoAlphaCanvases(
 
   context.clearRect(0, 0, size.width, size.height);
   if (baseFrame) {
-    const baseImage = await loadCachedRotoBaseImage(baseFrame.dataUrl);
+    const baseImage = await loadCachedRotoBaseImage(baseFrame.bytes);
     context.drawImage(baseImage, 0, 0, size.width, size.height);
   }
   context.drawImage(scriptAlphaCanvas, 0, 0, size.width, size.height);
   return output;
 }
 
-function loadCachedRotoBaseImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Could not merge cached Roto alpha frame: cached base image failed to load.'));
-    image.src = dataUrl;
-  });
+function loadCachedRotoBaseImage(bytes: Uint8Array): Promise<ImageBitmap> {
+  return createImageBitmap(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }));
 }

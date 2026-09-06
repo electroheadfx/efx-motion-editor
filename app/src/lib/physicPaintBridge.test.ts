@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import type { AudioTrack } from '../types/audio';
@@ -43,7 +44,7 @@ import {
 import { proposeRails, type RotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
-import {
+import { encodeSourceBytesForDocumentSync,
   applyCommittedReferencedActionDeletion,
   applyPhysicPaintPayload,
   applyPhysicPaintRotoGroupFramePaint,
@@ -138,7 +139,7 @@ const editableState = {
 const makeFrame = (frameIndex: number, appFrame: number) => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 1000,
   height: 650,
 });
@@ -150,7 +151,7 @@ const makePhysicalRecord = (keyId: string, appFrame: number) => ({
   payload: {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`frame-${appFrame}`)}`,
+    bytes: testWebpBytes(btoa(`frame-${appFrame}`)),
     width: 1000,
     height: 650,
   },
@@ -165,15 +166,13 @@ const movePhysicalRecord = (
   payload: { ...record.payload, appFrame },
 });
 
-const TRANSPARENT_ONE_PIXEL_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XfM0WQAAAABJRU5ErkJggg==';
-const OPAQUE_ONE_PIXEL_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nH0AAAAASUVORK5CYII=';
+const TRANSPARENT_ONE_PIXEL_WEBP = testWebpBytes('transparent-one-pixel');
+const OPAQUE_ONE_PIXEL_WEBP = testWebpBytes('opaque-one-pixel');
 
 function makeEmptySegmentRecord(
   keyId: string,
   appFrame: number,
-  dataUrl = TRANSPARENT_ONE_PIXEL_PNG,
+  bytes = TRANSPARENT_ONE_PIXEL_WEBP,
 ) {
   return {
     keyId,
@@ -181,7 +180,7 @@ function makeEmptySegmentRecord(
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl,
+      bytes,
       width: 1,
       height: 1,
     },
@@ -237,10 +236,16 @@ function installCanonicalBlankCanvas(): void {
       return {
         width: 0,
         height: 0,
-        toDataURL: () => TRANSPARENT_ONE_PIXEL_PNG,
+        toDataURL: () => `data:image/webp;base64,${bytesToBase64(TRANSPARENT_ONE_PIXEL_WEBP)}`,
       } as unknown as HTMLCanvasElement;
     },
   });
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index]);
+  return btoa(binary);
 }
 
 
@@ -700,8 +705,8 @@ describe('physicPaintBridge', () => {
   it('retains the complete physical document through close sync and child reopen hydration', async () => {
     mockLayers([physicLayer()]);
     const records = [
-      makeEmptySegmentRecord('key-0', 0, OPAQUE_ONE_PIXEL_PNG),
-      makeEmptySegmentRecord('key-16', 16, OPAQUE_ONE_PIXEL_PNG),
+      makeEmptySegmentRecord('key-0', 0, OPAQUE_ONE_PIXEL_WEBP),
+      makeEmptySegmentRecord('key-16', 16, OPAQUE_ONE_PIXEL_WEBP),
       makeEmptySegmentRecord('key-32', 32),
     ].map((record) => ({ ...record, kind: 'real-key' as const }));
     const interpolation = { enabled: true, mode: 'duplicate' as const };
@@ -730,7 +735,7 @@ describe('physicPaintBridge', () => {
     const closeSync = applyPhysicPaintPayload(applyCanvasPayload({
       operationId: 'close-sync-key-32',
       startFrame: 32,
-      renderedFrame: { frameIndex: 0, appFrame: 32, dataUrl: TRANSPARENT_ONE_PIXEL_PNG, width: 1, height: 1 },
+      renderedFrame: { frameIndex: 0, appFrame: 32, bytes: TRANSPARENT_ONE_PIXEL_WEBP, width: 1, height: 1 },
       closeWindowAfterApply: true,
     }));
     expect(closeSync.ok).toBe(true);
@@ -741,7 +746,7 @@ describe('physicPaintBridge', () => {
 
     const launch = createPhysicPaintLaunchContext(physicLayer(), 32);
     for (const record of records) {
-      registerRotoAlphaCanvasFrame(record.payload.dataUrl, { width: 1, height: 1 } as HTMLCanvasElement);
+      registerRotoAlphaCanvasFrame(record.payload.bytes, { width: 1, height: 1 } as HTMLCanvasElement);
     }
     const reopened = await hydrateRotoPhysicalLaunchContext(launch, physicPaintStore);
 
@@ -916,9 +921,10 @@ describe('physicPaintBridge', () => {
       expect(typeof custom).toBe('function');
       // Before the sync the main realm knows neither the child-added clip's
       // source ref nor its bytes.
-      expect(physicPaintStore.getBackgroundSourceImageDataUrl('ref-shot-imported')).toBeNull();
+      expect(physicPaintStore.getBackgroundSourceImageBytes('ref-shot-imported')).toBeNull();
       expect(physicPaintStore.getBackgroundFrameVerdict('phys-layer-1', 0)).toBe('gap');
-      const dataUrl = 'data:image/png;base64,aW1wb3J0ZWQtc2hvdA==';
+      const importedBytes = testWebpBytes('aW1wb3J0ZWQtc2hvdA==');
+      const encoded = encodeSourceBytesForDocumentSync(importedBytes);
       custom(new CustomEvent(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, {
         detail: {
           document: {
@@ -937,13 +943,13 @@ describe('physicPaintBridge', () => {
               }],
             },
           },
-          backgroundSources: { 'ref-shot-imported': dataUrl },
+          backgroundSources: { 'ref-shot-imported': encoded },
         },
       }));
       // The carried bytes reach the main registry AND the newly covered frame
       // resolves 'content' — the main-app flattened composite renders the
       // child-session import instead of 'missing' (the "no Bg render" symptom).
-      expect(physicPaintStore.getBackgroundSourceImageDataUrl('ref-shot-imported')).toBe(dataUrl);
+      expect(physicPaintStore.getBackgroundSourceImageBytes('ref-shot-imported')).toEqual(importedBytes);
       expect(physicPaintStore.getBackgroundFrameVerdict('phys-layer-1', 0)).toBe('content');
     } finally {
       unlisten();
@@ -2698,14 +2704,14 @@ describe('physicPaintBridge', () => {
         ...basePayload,
         operationId: 'reject-empty-segment-non-blank',
         records: records.map((record) => record.keyId === 'key-12'
-          ? makeEmptySegmentRecord('key-12', 12, OPAQUE_ONE_PIXEL_PNG)
+          ? makeEmptySegmentRecord('key-12', 12, OPAQUE_ONE_PIXEL_WEBP)
           : record),
       },
       {
         ...basePayload,
         operationId: 'reject-empty-segment-unrelated-record',
         records: records.map((record) => record.keyId === 'key-0'
-          ? { ...record, payload: { ...record.payload, dataUrl: OPAQUE_ONE_PIXEL_PNG } }
+          ? { ...record, payload: { ...record.payload, bytes: OPAQUE_ONE_PIXEL_WEBP } }
           : record),
       },
       {
@@ -2820,7 +2826,7 @@ describe('physicPaintBridge', () => {
         appFrame: record.appFrame,
         payload: {
           ...record.payload,
-          dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+          bytes: testWebpBytes('iVBORw0KGgo='),
         },
       };
     });
@@ -2986,7 +2992,7 @@ describe('physicPaintBridge', () => {
       appFrame: 8,
       source: 'real-key',
       sourceFrame: 2,
-      dataUrl: makeFrame(0, 2).dataUrl,
+      bytes: makeFrame(0, 2).bytes,
     }));
     expect(physicPaintStore.getRotoFrame('phys-layer-1', TEST_TRACK_ID, 9)).toBeNull();
     const projection = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID);
@@ -3006,7 +3012,7 @@ describe('physicPaintBridge', () => {
       deform: 0,
       position: 0,
     });
-    const updatedPaint = `data:image/png;base64,${btoa('projected-source-update')}`;
+    const updatedPaint = testWebpBytes('projected-source-update');
 
     expect(physicPaintStore.getRotoFrame('phys-layer-1', TEST_TRACK_ID, 1)).toEqual(expect.objectContaining({
       appFrame: 1,
@@ -3025,7 +3031,7 @@ describe('physicPaintBridge', () => {
       displayFrame: 3,
       renderedFrame: {
         ...makeFrame(0, 1),
-        dataUrl: updatedPaint,
+        bytes: updatedPaint,
         source: 'real-key',
       },
       rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID),
@@ -3040,7 +3046,7 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getRotoFrame('phys-layer-1', TEST_TRACK_ID, 3)).toEqual(expect.objectContaining({
       source: 'real-key',
       sourceFrame: 1,
-      dataUrl: updatedPaint,
+      bytes: updatedPaint,
     }));
   });
 
@@ -3114,7 +3120,7 @@ describe('physicPaintBridge', () => {
       layerId: 'hydrated-runtime-layer',
       appliedFrameCount: 1,
     });
-    expect(physicPaintStore.getFrame('hydrated-runtime-layer', TEST_TRACK_ID, 8)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('hydrated-runtime-layer', TEST_TRACK_ID, 8)?.bytes).toBeInstanceOf(Uint8Array);
   });
 
 
@@ -3158,7 +3164,7 @@ describe('physicPaintBridge', () => {
     projectStore.hydrateFromMce(serialized, '/tmp/efx-physic-paint-test', loadedDocuments);
     const hydratedLayer = sequenceStore.sequences.peek()[0]?.layers[0];
     expect(hydratedLayer?.source).toEqual({ type: 'physic-paint', layerId: 'hydrated-phys-layer' });
-    expect(physicPaintStore.getFrame('hydrated-phys-layer', TEST_TRACK_ID, 12)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('hydrated-phys-layer', TEST_TRACK_ID, 12)?.bytes).toBeInstanceOf(Uint8Array);
 
     mockLayers([hydratedLayer as Layer]);
     const result = applyPhysicPaintPayload(applyCanvasPayload({ operationId: 'apply-still-hydrated', layerId: 'hydrated-phys-layer' }));
@@ -3492,7 +3498,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       incomingInterpolationBreakKeyIds: ['source-B'],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
     if (!launch.ok) throw new Error(launch.error);
@@ -3515,9 +3521,9 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
                       ...record,
                       payload: {
                         ...record.payload,
-                        dataUrl: record.keyId === 'source-A'
-                          ? OPAQUE_ONE_PIXEL_PNG
-                          : TRANSPARENT_ONE_PIXEL_PNG,
+                        bytes: record.keyId === 'source-A'
+                          ? OPAQUE_ONE_PIXEL_WEBP
+                          : TRANSPARENT_ONE_PIXEL_WEBP,
                         width: 1,
                         height: 1,
                       },
@@ -3638,7 +3644,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       incomingInterpolationBreakKeyIds: ['source-B'],
     });
     if (!parentSeed.ok) throw new Error(parentSeed.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
     if (!launch.ok) throw new Error(launch.error);
@@ -4062,7 +4068,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
             ...record,
             payload: {
               ...record.payload,
-              dataUrl: record.keyId === 'source-A' ? OPAQUE_ONE_PIXEL_PNG : TRANSPARENT_ONE_PIXEL_PNG,
+              bytes: record.keyId === 'source-A' ? OPAQUE_ONE_PIXEL_WEBP : TRANSPARENT_ONE_PIXEL_WEBP,
               width: 1,
               height: 1,
             },
@@ -4266,7 +4272,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       incomingInterpolationBreakKeyIds: ['source-B'],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     // Launching on frame 20 installs 'ordinary' as the live parent selection
     // through the real launch path (createPhysicPaintLaunchContext selects the
     // key at the requested frame) — the pre-delete selection under test.
@@ -4773,7 +4779,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
       incomingInterpolationBreakKeyIds: ['k6'],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
     if (!launch.ok) throw new Error(launch.error);
     const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
@@ -4796,13 +4802,13 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
               sourceKeyId: 'k0',
               sourceAppFrame: 0,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 0, dataUrl: records[0].payload.dataUrl, width: 1000, height: 650 },
+              payload: { frameIndex: 0, appFrame: 0, bytes: records[0].payload.bytes, width: 1000, height: 650 },
             }),
             Object.freeze({
               sourceKeyId: 'k2',
               sourceAppFrame: 2,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 2, dataUrl: records[1].payload.dataUrl, width: 1000, height: 650 },
+              payload: { frameIndex: 0, appFrame: 2, bytes: records[1].payload.bytes, width: 1000, height: 650 },
             }),
           ]),
         }),
@@ -4816,13 +4822,13 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
               sourceKeyId: 'k6',
               sourceAppFrame: 6,
               ownsIncomingBreak: true,
-              payload: { frameIndex: 0, appFrame: 6, dataUrl: records[2].payload.dataUrl, width: 1000, height: 650 },
+              payload: { frameIndex: 0, appFrame: 6, bytes: records[2].payload.bytes, width: 1000, height: 650 },
             }),
             Object.freeze({
               sourceKeyId: 'k8',
               sourceAppFrame: 8,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 8, dataUrl: records[3].payload.dataUrl, width: 1000, height: 650 },
+              payload: { frameIndex: 0, appFrame: 8, bytes: records[3].payload.bytes, width: 1000, height: 650 },
             }),
           ]),
         }),
@@ -4930,7 +4936,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
       incomingInterpolationBreakKeyIds: ['k6'],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
     if (!launch.ok) throw new Error(launch.error);
     const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
@@ -4948,8 +4954,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
           firstKeyFrame: 0,
           firstKeyOwnsIncomingBreak: false,
           entries: Object.freeze([
-            Object.freeze({ sourceKeyId: 'k0', sourceAppFrame: 0, ownsIncomingBreak: false, payload: { frameIndex: 0, appFrame: 0, dataUrl: records[0].payload.dataUrl, width: 1000, height: 650 } }),
-            Object.freeze({ sourceKeyId: 'k2', sourceAppFrame: 2, ownsIncomingBreak: false, payload: { frameIndex: 0, appFrame: 2, dataUrl: records[1].payload.dataUrl, width: 1000, height: 650 } }),
+            Object.freeze({ sourceKeyId: 'k0', sourceAppFrame: 0, ownsIncomingBreak: false, payload: { frameIndex: 0, appFrame: 0, bytes: records[0].payload.bytes, width: 1000, height: 650 } }),
+            Object.freeze({ sourceKeyId: 'k2', sourceAppFrame: 2, ownsIncomingBreak: false, payload: { frameIndex: 0, appFrame: 2, bytes: records[1].payload.bytes, width: 1000, height: 650 } }),
           ]),
         }),
       ]),
@@ -5072,7 +5078,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
       incomingInterpolationBreakKeyIds: [],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(sourceRecord.payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(sourceRecord.payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
     if (!launch.ok) throw new Error(launch.error);
     const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
@@ -5202,7 +5208,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
       incomingInterpolationBreakKeyIds: ['k6'],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
     if (!launch.ok) throw new Error(launch.error);
     const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
@@ -5226,7 +5232,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', () 
               sourceKeyId: 'k0',
               sourceAppFrame: 0,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 0, dataUrl: records[0].payload.dataUrl, width: 1000, height: 650 },
+              payload: { frameIndex: 0, appFrame: 0, bytes: records[0].payload.bytes, width: 1000, height: 650 },
             }),
           ]),
         }),
@@ -5454,7 +5460,7 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
       incomingInterpolationBreakKeyIds: [],
     });
     if (!seeded.ok) throw new Error(seeded.error);
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 4 });
     if (!launch.ok) throw new Error(launch.error);
@@ -5545,7 +5551,7 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
       overrideKeyId: 'override-source-0',
       renderedPayload: {
         ...makePhysicalRecord('override-source-0', 0).payload,
-        dataUrl: OPAQUE_ONE_PIXEL_PNG,
+        bytes: OPAQUE_ONE_PIXEL_WEBP,
         width: 1,
         height: 1,
       },
@@ -5662,7 +5668,7 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
       expect(physicPaintVersion.peek()).toBe(beforeVersion);
       expect(rotoPhysicalRevision.peek()).toBe(beforePhysicalRevision);
       expect(physicPaintStore.getRotoPhysicalRenderSource(test.layer.id, TEST_TRACK_ID, 0)).toEqual(beforeRenderSource);
-      expect(hasRotoAlphaCanvasFrame(test.acceptedDocument.realKeyRecords[0].payload.dataUrl, { width: 1000, height: 650 })).toBe(true);
+      expect(hasRotoAlphaCanvasFrame(test.acceptedDocument.realKeyRecords[0].payload.bytes, { width: 1000, height: 650 })).toBe(true);
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
     },
   );
@@ -5678,7 +5684,7 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
 
     expect(applyPhysicPaintRotoGroupFramePaint({
       ...test.request,
-      renderedPayload: { ...test.request.renderedPayload, dataUrl: OPAQUE_ONE_PIXEL_PNG },
+      renderedPayload: { ...test.request.renderedPayload, bytes: OPAQUE_ONE_PIXEL_WEBP },
     })).toEqual({ ok: false, reason: 'changed-payload' });
     expect(applyPhysicPaintRotoGroupFramePaint(test.request)).toEqual({
       ok: false,
@@ -5801,7 +5807,7 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
       operationId: string,
       document: NonNullable<ReturnType<typeof physicPaintStore.getRotoPhysicalDocument>>,
       leaseToken: NonNullable<typeof childLease>,
-      dataUrl: string,
+      bytes: Uint8Array,
     ): Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }> => {
       const destination = document.realKeyRecords.find((record) => record.appFrame === 0) ?? null;
       const intent: PhysicPaintRotoPhysicalEditIntent = {
@@ -5812,7 +5818,7 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
         clipboardPayload: {
           frameIndex: 0,
           appFrame: 0,
-          dataUrl,
+          bytes,
           width: 1,
           height: 1,
         },
@@ -5853,8 +5859,8 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
       };
     };
 
-    const firstStrokeRaster = TRANSPARENT_ONE_PIXEL_PNG;
-    const combinedTwoStrokeRaster = OPAQUE_ONE_PIXEL_PNG;
+    const firstStrokeRaster = TRANSPARENT_ONE_PIXEL_WEBP;
+    const combinedTwoStrokeRaster = OPAQUE_ONE_PIXEL_WEBP;
     const preparedCanvas = { width: 1, height: 1 } as HTMLCanvasElement;
     registerRotoAlphaCanvasFrame(firstStrokeRaster, preparedCanvas);
     registerRotoAlphaCanvasFrame(combinedTwoStrokeRaster, preparedCanvas);
@@ -5887,10 +5893,10 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
     expect({
       secondPublicationError: secondResult.ok ? null : secondResult.error,
       rejectedPublicationPreservedPriorAcceptedState: secondResult.ok
-        || acceptedAfterSecond?.realKeyRecords[0]?.payload.dataUrl === firstStrokeRaster,
-      acceptedRaster: acceptedAfterSecond?.realKeyRecords[0]?.payload.dataUrl ?? null,
+        || acceptedAfterSecond?.realKeyRecords[0]?.payload.bytes === firstStrokeRaster,
+      acceptedRaster: acceptedAfterSecond?.realKeyRecords[0]?.payload.bytes ?? null,
       cachedRaster: acceptedRenderSource?.kind === 'real'
-        ? acceptedRenderSource.renderedFrame.dataUrl
+        ? acceptedRenderSource.renderedFrame.bytes
         : null,
       acceptedRealKeyState: acceptedRenderSource?.kind ?? null,
       acceptedSelectedKeyId: acceptedAfterSecond?.selectedKeyId ?? null,

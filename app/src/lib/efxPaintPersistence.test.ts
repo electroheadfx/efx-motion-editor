@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
@@ -117,7 +118,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     };
     const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-x', {
       document: withFrame,
-      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]])]]),
+      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AQID'), width: 100, height: 50 }]])]]),
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
@@ -149,7 +150,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(restored.background).toEqual(document.background);
     const restoredFrame = loaded.get('layer-x')!.frames.get(document.tracks[0].id)?.get(0);
     expect(restoredFrame?.appFrame).toBe(0);
-    expect(restoredFrame?.dataUrl).toBe('data:image/png;base64,AQID');
+    expect(restoredFrame?.bytes).toEqual(testWebpBytes('AQID'));
   });
 
   it('fails closed when the persisted document has unknown members', async () => {
@@ -189,7 +190,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     };
     const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-idem', {
       document: withFrame,
-      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]])]]),
+      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AQID'), width: 100, height: 50 }]])]]),
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
@@ -212,19 +213,19 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
       ...document,
       tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
     };
-    const makeDocuments = (dataUrl: string) => new Map<string, EfxPaintDocumentSaveInput>([['layer-rollback', {
+    const makeDocuments = (bytes: Uint8Array) => new Map<string, EfxPaintDocumentSaveInput>([['layer-rollback', {
       document: withFrame,
-      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, dataUrl, width: 100, height: 50 }]])]]),
+      frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, bytes, width: 100, height: 50 }]])]]),
     }]]);
 
     // First save commits a generation.
-    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments('data:image/png;base64,AQID'), async () => {});
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID')), async () => {});
     expect(files.has(`/project/${frameRef}`)).toBe(true);
 
     // Second save stages new bytes, then the project write throws.
     await expect(saveEfxPaintDocumentsWithProjectWrite(
       '/project',
-      makeDocuments('data:image/png;base64,BAID'),
+      makeDocuments(testWebpBytes('BAID')),
       async () => { throw new Error('forced project save failure'); },
     )).rejects.toThrow('forced project save failure');
 
@@ -235,7 +236,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     );
     // The prior committed generation remains published with its original bytes.
     const { readFile } = await import('@tauri-apps/plugin-fs');
-    expect(Array.from(await readFile(`/project/${frameRef}`))).toEqual([1, 2, 3]);
+    expect(Array.from(await readFile(`/project/${frameRef}`))).toEqual(Array.from(testWebpBytes('AQID')));
     // The staging generation is gone.
     expect(Array.from(files.keys()).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
     expect(Array.from(dirs).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
@@ -264,8 +265,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-2t', {
       document: withFrames,
       frames: new Map([
-        [trackA.id, new Map([[5, { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,AQID', width: 100, height: 50 }]])],
-        [trackB.id, new Map([[5, { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,BAID', width: 100, height: 50 }]])],
+        [trackA.id, new Map([[5, { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AQID'), width: 100, height: 50 }]])],
+        [trackB.id, new Map([[5, { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('BAID'), width: 100, height: 50 }]])],
       ]),
     }]]);
     const writeProject = vi.fn(async () => {});
@@ -278,8 +279,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     // Load restores per-track frames at the same appFrame without a throw.
     const loaded = await loadEfxPaintDocuments('/project', persisted);
     const restored = loaded.get('layer-2t')!;
-    expect(restored.frames.get(trackA.id)?.get(5)?.dataUrl).toBe('data:image/png;base64,AQID');
-    expect(restored.frames.get(trackB.id)?.get(5)?.dataUrl).toBe('data:image/png;base64,BAID');
+    expect(restored.frames.get(trackA.id)?.get(5)?.bytes).toEqual(testWebpBytes('AQID'));
+    expect(restored.frames.get(trackB.id)?.get(5)?.bytes).toEqual(testWebpBytes('BAID'));
   });
 
   it('loads per-track frame maps with validated cache paths', async () => {
@@ -288,8 +289,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const trackB = { ...trackA, id: 'track-b', order: 1 };
     const pathA = buildEfxPaintFrameCachePath('layer-pt', trackA.id, { appFrame: 1, frameIndex: 0 });
     const pathB = buildEfxPaintFrameCachePath('layer-pt', trackB.id, { appFrame: 2, frameIndex: 0 });
-    files.set(`/project/${pathA}`, new Uint8Array([1, 2, 3]));
-    files.set(`/project/${pathB}`, new Uint8Array([4, 5, 6]));
+    files.set(`/project/${pathA}`, testWebpBytes('AQID'));
+    files.set(`/project/${pathB}`, testWebpBytes('BAUG'));
     const payload = { 'layer-pt': {
       ...document,
       tracks: [
@@ -301,8 +302,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const loaded = await loadEfxPaintDocuments('/project', payload);
     const restored = loaded.get('layer-pt')!;
     expect(Array.from(restored.frames.keys()).sort()).toEqual([trackA.id, trackB.id]);
-    expect(restored.frames.get(trackA.id)?.get(1)?.dataUrl).toBe('data:image/png;base64,AQID');
-    expect(restored.frames.get(trackB.id)?.get(2)?.dataUrl).toBe('data:image/png;base64,BAUG');
+    expect(restored.frames.get(trackA.id)?.get(1)?.bytes).toEqual(testWebpBytes('AQID'));
+    expect(restored.frames.get(trackB.id)?.get(2)?.bytes).toEqual(testWebpBytes('BAUG'));
   });
 
   it('fails closed when a persisted track frame cachePath is unsafe', async () => {

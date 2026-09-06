@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
@@ -147,7 +148,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-preview:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-preview:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };
@@ -299,7 +300,7 @@ describe('preview accepted Group lifecycle parity', () => {
       kind: 'real',
       appFrame: 5,
       keyId: 'override-5',
-      renderedFrame: expect.objectContaining({ dataUrl: payload(5, 'override').dataUrl }),
+      renderedFrame: expect.objectContaining({ bytes: payload(5, 'override').bytes }),
     }));
     expect(neighbor).toEqual(expect.objectContaining({
       kind: 'generated',
@@ -307,7 +308,7 @@ describe('preview accepted Group lifecycle parity', () => {
       cycleOffset: 2,
     }));
     if (!neighbor || neighbor.kind !== 'generated') throw new Error('Expected generated Group neighbor.');
-    expect(neighbor.renderedFrame.dataUrl).not.toBe(payload(5, 'override').dataUrl);
+    expect(neighbor.renderedFrame.bytes).not.toBe(payload(5, 'override').bytes);
   });
 
   it('retains immutable phase while detached and reflects accepted regeneration immediately', () => {

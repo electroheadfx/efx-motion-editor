@@ -12,6 +12,7 @@
  * PhysicsPaintKeyRail.test.tsx); the subscription and CSS contracts are
  * source/CSS reads like the strip's contract tests.
  */
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,7 +56,7 @@ const INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 const makeFrame = (appFrame: number, tag: string) => ({
   frameIndex: 0,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 4,
   height: 4,
 });
@@ -63,7 +64,7 @@ const makeFrame = (appFrame: number, tag: string) => ({
 const makePayload = (appFrame: number, tag: string): PhysicPaintRotoRealKeyPayload => ({
   frameIndex: 0,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 4,
   height: 4,
 });

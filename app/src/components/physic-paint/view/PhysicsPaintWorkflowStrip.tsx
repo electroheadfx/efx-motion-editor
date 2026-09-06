@@ -198,7 +198,7 @@ export interface PhysicsPaintWorkflowStripFrameMarker {
 
 export interface PhysicsPaintWorkflowOnionPreviewFrame {
   frame: number;
-  dataUrl: string;
+  bytes: Uint8Array;
   direction: 'previous' | 'next';
   distance: number;
   source: 'roto';
@@ -582,7 +582,7 @@ export function buildRotoTimelineStructuralIndex(
         cachedFrameByAppFrame.set(appFrame, {
           frameIndex: 0,
           appFrame,
-          dataUrl: 'data:image/png;base64,',
+          bytes: new Uint8Array(0),
           source: 'generated-interpolation',
         });
       }

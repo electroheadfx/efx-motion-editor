@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
@@ -48,7 +49,7 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceVisible(layerId, false);
     const document = getDocument(layerId)!;
     expect(shouldDrawReferenceGhost(document, 0, false)).toEqual({ draw: false, verdict: null });
@@ -58,7 +59,7 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     const document = getDocument(layerId)!;
     expect(shouldDrawReferenceGhost(document, 0, true)).toEqual({ draw: false, verdict: null });
   });
@@ -67,12 +68,12 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['present', 'absent']);
-    registerReferenceSourceImage('present', 'data:present');
+    registerReferenceSourceImage('present', testWebpBytes('data:present'));
     const document = getDocument(layerId)!;
     // frame 0 resolves; frame 1 is missing → fail-closed null
     expect(shouldDrawReferenceGhost(document, 0, false)).toEqual({
       draw: true,
-      verdict: { ref: 'present', dataUrl: 'data:present', clamped: false },
+      verdict: { ref: 'present', bytes: testWebpBytes('data:present'), clamped: false },
     });
     expect(shouldDrawReferenceGhost(document, 1, false)).toEqual({ draw: false, verdict: null });
   });
@@ -81,22 +82,22 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0', 'f1', 'f2']);
-    registerReferenceSourceImage('f0', 'data:f0');
-    registerReferenceSourceImage('f1', 'data:f1');
-    registerReferenceSourceImage('f2', 'data:f2');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
+    registerReferenceSourceImage('f1', testWebpBytes('data:f1'));
+    registerReferenceSourceImage('f2', testWebpBytes('data:f2'));
     const document = getDocument(layerId)!;
     expect(shouldDrawReferenceGhost(document, 0, false)).toEqual({
       draw: true,
-      verdict: { ref: 'f0', dataUrl: 'data:f0', clamped: false },
+      verdict: { ref: 'f0', bytes: testWebpBytes('data:f0'), clamped: false },
     });
     expect(shouldDrawReferenceGhost(document, 1, false)).toEqual({
       draw: true,
-      verdict: { ref: 'f1', dataUrl: 'data:f1', clamped: false },
+      verdict: { ref: 'f1', bytes: testWebpBytes('data:f1'), clamped: false },
     });
     // frame 3 clamps to the last source frame (sequence end holds)
     expect(shouldDrawReferenceGhost(document, 3, false)).toEqual({
       draw: true,
-      verdict: { ref: 'f2', dataUrl: 'data:f2', clamped: true },
+      verdict: { ref: 'f2', bytes: testWebpBytes('data:f2'), clamped: true },
     });
   });
 });
@@ -186,7 +187,7 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceOpacity(layerId, 0.8);
     setPhotoReferenceTransform(layerId, { x: 10, y: 20, scaleX: 1.5, scaleY: 0.5, rotation: 45 });
     const document = getDocument(layerId)!;
@@ -211,7 +212,7 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceTransform(layerId, { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 });
     const document = getDocument(layerId)!;
     const ops: GhostOp[] = [];
@@ -223,14 +224,14 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     expect(translate.x).toBe(100 / 2 + 10 * 0.5);
     expect(translate.y).toBe(50 / 2 + 20 * 0.5);
     const draw = ops.find((op) => op.type === 'drawImage') as Extract<GhostOp, { type: 'drawImage' }>;
-    expect(draw.source).toBe('data:f0');
+    expect(draw.source).toMatch(/^blob:/);
   });
 
   it('decodes the reference once per dataUrl across repeated draws (G-52-5 decode-storm fix)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     const document = getDocument(layerId)!;
 
     let constructions = 0;
@@ -262,7 +263,7 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceTransform(layerId, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90 });
     const document = getDocument(layerId)!;
     const ops: GhostOp[] = [];
