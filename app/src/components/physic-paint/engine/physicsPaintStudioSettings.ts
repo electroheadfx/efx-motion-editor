@@ -23,7 +23,7 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
   return {
     tool: 'paint',
     color: '#103c65',
-    size: 6,
+    size: 11,
     opacity: 100,
     background: 'canvas1',
     paperGrain: 'canvas1',
