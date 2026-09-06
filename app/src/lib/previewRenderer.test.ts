@@ -22,6 +22,13 @@ vi.mock('../stores/projectStore', () => ({
   },
 }));
 
+// 52.1-05 (D-13): the compositor decodes frame bytes through the shared LRU
+// (`decodeWebpFrame` → `createImageBitmap` → ImageBitmap), never a Blob URL.
+// Mock the Rust decode leaf so the async decode is observable without reaching
+// the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
 import { PreviewRenderer, blendModeToCompositeOp, resolvePhysicPaintTrackVisibility } from './previewRenderer';
 import { renderGlobalFrame } from './exportRenderer';
 import { resetProjectPaperRasterForTests } from './projectPaperRaster';
@@ -49,6 +56,12 @@ let offscreenOperations: RecordedCanvasOp[] = [];
 const blobContentByBlob = new WeakMap<Blob, Uint8Array>();
 const OriginalBlob = globalThis.Blob;
 const blobUrlFor = (seed: string): string => `blob:test:${seed}`;
+// 52.1-05 (D-13): the decoded frame is now an ImageBitmap (no `src`), so the
+// recorded drawImage source is a deterministic per-seed label instead of a Blob
+// URL. `flushDecode` drains the microtask queue so a kicked-off async decode
+// completes before the second (warm) render pass.
+const bitmapLabelFor = (seed: string): string => `bitmap:${seed}`;
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 type RecordedCanvasOp =
   | { type: 'fillRect'; x: number; y: number; w: number; h: number; fillStyle: string; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation }
@@ -112,7 +125,10 @@ class RecordingCanvasContext {
   drawImage(source?: CanvasImageSource, ...args: number[]): void {
     this.operations.push({
       type: 'drawImage',
-      source: source instanceof TestImage ? source.src : source instanceof TestCanvas ? 'canvas' : 'unknown',
+      source: source instanceof TestImage ? source.src
+        : source instanceof TestCanvas ? 'canvas'
+        : source instanceof FlatTestBitmap ? bitmapLabelFor(source.label)
+        : 'unknown',
       args,
       globalAlpha: this.globalAlpha,
       globalCompositeOperation: this.globalCompositeOperation,
@@ -164,6 +180,14 @@ class TestImage {
   get src(): string {
     return this.currentSrc;
   }
+}
+
+/** The decoded ImageBitmap the LRU hands back (no `src` — a real ImageBitmap). */
+class FlatTestBitmap {
+  width = 4;
+  height = 3;
+  close = vi.fn();
+  constructor(public label: string) {}
 }
 
 function makeCanvas(ctx: RecordingCanvasContext): HTMLCanvasElement {
@@ -241,6 +265,23 @@ beforeEach(() => {
   vi.stubGlobal('Image', TestImage);
   vi.stubGlobal('HTMLImageElement', TestImage);
   vi.stubGlobal('HTMLCanvasElement', TestCanvas);
+  // 52.1-05 (D-13): the decode path is `decodeWebpFrame` → ImageData →
+  // createImageBitmap. Encode the seed into the returned rgba so the bitmap
+  // label is deterministic per source frame.
+  decodeWebpFrameMock.mockReset();
+  decodeWebpFrameMock.mockImplementation(async ({ bytes }: { bytes: Uint8Array }) => {
+    const seed = new TextDecoder().decode(bytes.slice(32));
+    const rgba = new Uint8Array(4 * 3 * 4);
+    for (let index = 0; index < seed.length && index < rgba.length; index += 1) rgba[index] = seed.charCodeAt(index) & 0xff;
+    return { width: 4, height: 3, rgba };
+  });
+  vi.stubGlobal('ImageData', class {
+    constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+  });
+  vi.stubGlobal('createImageBitmap', async (imageData: { data: Uint8ClampedArray }, _options: unknown) => {
+    const seed = new TextDecoder().decode(imageData.data).replace(/\0+$/, '');
+    return new FlatTestBitmap(seed);
+  });
   vi.stubGlobal('Blob', class extends OriginalBlob {
     constructor(parts: BlobPart[], options?: BlobPropertyBag) {
       super(parts, options);
@@ -305,8 +346,8 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     // the renderer never paints paper itself — the fond arrives INSIDE the
     // flattened raster.
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
-    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
-    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0z') }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0z') }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
     // G-52-8: the flattened draw is the record's raster canvas itself — no
     // PNG encode→decode round-trip through a decoded Image.
@@ -316,7 +357,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     ]);
   });
 
-  it('a real Roto frame with paper metadata bakes paper + frame into ONE flattened raster (per-track parity)', () => {
+  it('a real Roto frame with paper metadata bakes paper + frame into ONE flattened raster (per-track parity)', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
@@ -324,21 +365,22 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
     // Store-side: the paper color-fill fallback and the frame pixels are both
     // composited into the flattened raster (paperCanvas deliberately null).
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
     // Renderer-side: ONE flattened draw — the record's raster canvas itself
     // (G-52-8: no PNG round-trip), never a separate paper canvas + frame.
     const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
     expect(flattenedDraws.length).toBeGreaterThanOrEqual(1);
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
   });
 
-  it('an interpolated interior frame bakes paper + generated alpha into ONE flattened raster', () => {
+  it('an interpolated interior frame bakes paper + generated alpha into ONE flattened raster', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
       { keyId: 'key-3', appFrame: 3, bytes: testWebpBytes('cmVhbC0z') },
@@ -347,22 +389,23 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
     // Store-side: paper + the duplicate-mode generated alpha (left key) baked.
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
-    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0z') }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0z') }));
     expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
     // Renderer-side: ONE flattened draw — the record's raster canvas itself
     // (G-52-8: no PNG round-trip) — no separate paper/content draws.
     const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
     expect(flattenedDraws.length).toBeGreaterThanOrEqual(1);
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0z') }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0z') }));
   });
 
-  it('36.12-GENERATED-FRAMES bakes published generated interpolation alpha into the flattened raster after close/reopen load', () => {
+  it('36.12-GENERATED-FRAMES bakes published generated interpolation alpha into the flattened raster after close/reopen load', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
       { keyId: 'key-3', appFrame: 3, bytes: testWebpBytes('cmVhbC0z') },
@@ -374,6 +417,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
     // The store's projection still resolves the generated interior, and the
@@ -385,11 +429,11 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
       rightKeyId: 'key-3',
     });
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
   });
 
-  it('36.13-PREVIEW-EXPORT-PARITY bakes store-regenerated 2 -> 6 span output at direct physical appFrame positions after save/load', () => {
+  it('36.13-PREVIEW-EXPORT-PARITY bakes store-regenerated 2 -> 6 span output at direct physical appFrame positions after save/load', async () => {
     seedPhysicalRoto([
       { keyId: 'key-0', appFrame: 0, bytes: testWebpBytes('cmVhbC0w') },
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
@@ -404,6 +448,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
 
     // The 2 -> 6 span derives gap interiors at direct physical appFrames 3, 4, 5.
     renderer.renderFrame([makeRotoLayer()], 4, [], 24, true, 1, 4);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 4, [], 24, true, 1, 4);
 
     expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', TEST_TRACK_ID, 4)).toMatchObject({
@@ -414,11 +459,11 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
       renderedFrame: { bytes: testWebpBytes('cmVhbC0y') },
     });
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0y') }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0y') }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
   });
 
-  it('36.11 bakes renderer-owned paper + merged real-key alpha repaint into ONE flattened raster', () => {
+  it('36.11 bakes renderer-owned paper + merged real-key alpha repaint into ONE flattened raster', async () => {
     seedPhysicalRoto([
       { keyId: 'key-5', appFrame: 5, bytes: testWebpBytes('cmVhbC01') },
     ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 } });
@@ -460,17 +505,18 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 5, [], 24, true, 1, 5);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 5, [], 24, true, 1, 5);
 
     // The flattened raster bakes paper (color-fill fallback) + the merged
     // real-key repaint; the renderer paints the single raster.
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('bWVyZ2VkLXJlcGFpbnQtYWxwaGE=') }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('bWVyZ2VkLXJlcGFpbnQtYWxwaGE=') }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
     // G-52-8: the flattened draw is the record's raster canvas itself — no
     // PNG encode→decode round-trip through a decoded Image.
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('bWVyZ2VkLXJlcGFpbnQtYWxwaGE=') }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('bWVyZ2VkLXJlcGFpbnQtYWxwaGE=') }));
   });
 
   it('renders content Physics Paint in layer-local frames while ordinary Paint stays sequence-global', () => {
@@ -566,10 +612,10 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
   });
 
-  it('draws the flattened raster when no solo is armed and the active track is visible', () => {
+  it('draws the flattened raster when no solo is armed and the active track is visible', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
@@ -577,18 +623,19 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+    await flushDecode();
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
     // The store bakes the real key into the flattened raster; the renderer
     // paints the single flattened raster (never the raw key dataUrl).
-    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
     expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'drawImage' }));
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: blobUrlFor('cmVhbC0x') }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
   });
 });
 
 describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
-  const FLAT_1 = blobUrlFor('FLAT_1');
+  const FLAT_1 = bitmapLabelFor('FLAT_1');
   const FLAT_2 = blobUrlFor('FLAT_2');
 
   it('seam contract: resolves physic-paint content only through getFlattenedFrame, exactly once per render', () => {
@@ -616,7 +663,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(getFrame).not.toHaveBeenCalled();
   });
 
-  it('parent application: draws the flattened raster at the parent effectiveOpacity and blend only (CMP-03)', () => {
+  it('parent application: draws the flattened raster at the parent effectiveOpacity and blend only (CMP-03)', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ]);
@@ -636,8 +683,9 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     // Load-then-draw: the first pass decodes the flattened raster, the second
-    // paints it from the image cache.
+    // paints it from the LRU bitmap.
     renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
+    await flushDecode();
     renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
 
     const parentDraw = ctx.operations.find(
@@ -665,7 +713,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(ctx.operations).toEqual([]);
   });
 
-  it('collectPhysicPaintFrameSources returns the flattened record and preload decodes its dataUrl', () => {
+  it('collectPhysicPaintFrameSources returns the flattened record and preload decodes its dataUrl', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ]);
@@ -683,6 +731,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(sources).toEqual([flattened]);
 
     renderer.preloadPhysicPaintFrames(sources);
+    await flushDecode();
     expect(renderer.isPhysicPaintFrameResolved(flattened)).toBe(true);
   });
 
