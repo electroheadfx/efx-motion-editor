@@ -1794,6 +1794,8 @@ export interface PhysicPaintRenderedFrame {
   appFrame: number;
   /** Rendered WebP-lossless output only (compact bytes, D-05/D-18). Editable stroke/engine state is never transported here. */
   bytes: Uint8Array;
+  /** Canonical sidecar ref (D-08): refs-only load returns this path with empty bytes; the decode path fetches bytes on demand. */
+  cachePath?: string;
   width?: number;
   height?: number;
   /** Roto cache provenance; generated frames are render-only and never editable. */

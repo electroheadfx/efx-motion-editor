@@ -18,7 +18,7 @@
  * `isSafeEfxPaintCachePath` (T-45-11, ASVS V12).
  */
 
-import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
@@ -86,7 +86,7 @@ export function stableSegment(value: string): string {
 function frameFileName(frame: Pick<PhysicPaintRenderedFrame, 'appFrame' | 'frameIndex'>): string {
   const appFrame = String(frame.appFrame).padStart(6, '0');
   const frameIndex = String(frame.frameIndex).padStart(4, '0');
-  return `frame-${appFrame}-${frameIndex}.png`;
+  return `frame-${appFrame}-${frameIndex}.webp`;
 }
 
 /**
@@ -337,15 +337,17 @@ export async function saveEfxPaintDocumentsWithProjectWrite(
 
 /**
  * Load the persisted layerId → document map. Every document passes the
- * fail-closed parser before any store hydration (T-45-13); sidecar PNGs are
- * read back through the plugin-fs idiom with every path guarded by
- * `isSafeEfxPaintCachePath` (T-45-11, T-46-04). Frame bytes are carried per
- * track (trackId → appFrame → frame) so two tracks may own frames at the same
+ * fail-closed parser before any store hydration (T-45-13); every sidecar path
+ * is guarded by `isSafeEfxPaintCachePath` (T-45-11, T-46-04). D-08: the load
+ * is refs-only — each frame carries its canonical `cachePath` ref with empty
+ * bytes, and the decode path fetches the WebP sidecar on demand (never an
+ * eager per-frame readFile on open). Frame refs are carried per track
+ * (trackId → appFrame → frame) so two tracks may own frames at the same
  * appFrame without collision (46-02, TRK-03). Returns an empty map when the
  * key is absent.
  */
 export async function loadEfxPaintDocuments(
-  projectRoot: string,
+  _projectRoot: string,
   persistedMap: Record<string, unknown> | undefined,
 ): Promise<ReadonlyMap<string, EfxPaintLoadedDocument>> {
   const loaded = new Map<string, EfxPaintLoadedDocument>();
@@ -363,14 +365,11 @@ export async function loadEfxPaintDocuments(
         if (!isSafeEfxPaintCachePath(ref.cachePath)) {
           throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has an unsafe sidecar path.`);
         }
-        const bytes = await readFile(`${projectRoot}/${ref.cachePath}`);
-        if (bytes.length === 0) {
-          throw new Error(`EFX Paint sidecar is empty: ${ref.cachePath}`);
-        }
         trackFrames.set(appFrame, {
           frameIndex: 0,
           appFrame,
-          bytes,
+          bytes: new Uint8Array(0),
+          cachePath: ref.cachePath,
           width: ref.width,
           height: ref.height,
         });

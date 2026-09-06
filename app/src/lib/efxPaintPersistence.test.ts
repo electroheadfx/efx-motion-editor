@@ -150,7 +150,29 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(restored.background).toEqual(document.background);
     const restoredFrame = loaded.get('layer-x')!.frames.get(document.tracks[0].id)?.get(0);
     expect(restoredFrame?.appFrame).toBe(0);
-    expect(restoredFrame?.bytes).toEqual(testWebpBytes('AQID'));
+    // D-08: refs-only load — the frame carries its cachePath ref, not the bytes.
+    expect(restoredFrame?.cachePath).toBe(frameRef);
+    expect(restoredFrame?.bytes).toEqual(new Uint8Array(0));
+  });
+
+  it('loads refs only — no per-frame sidecar readFile on open (D-08)', async () => {
+    const document = createEfxPaintDocument('layer-lazy');
+    const track = document.tracks[0];
+    const frameRef = buildEfxPaintFrameCachePath('layer-lazy', track.id, { appFrame: 0, frameIndex: 0 });
+    files.set(`/project/${frameRef}`, testWebpBytes('AQID'));
+    const payload = { 'layer-lazy': {
+      ...document,
+      tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
+    } };
+
+    const { readFile } = await import('@tauri-apps/plugin-fs');
+    const readFileCallsBefore = vi.mocked(readFile).mock.calls.length;
+    const loaded = await loadEfxPaintDocuments('/project', payload);
+    const restoredFrame = loaded.get('layer-lazy')!.frames.get(track.id)?.get(0);
+    expect(restoredFrame?.cachePath).toBe(frameRef);
+    expect(restoredFrame?.bytes).toEqual(new Uint8Array(0));
+    // No sidecar byte fetch happened on open.
+    expect(vi.mocked(readFile).mock.calls.length).toBe(readFileCallsBefore);
   });
 
   it('fails closed when the persisted document has unknown members', async () => {
@@ -244,7 +266,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('embeds the trackId in the canonical cache path and the guard accepts it', () => {
     const path = buildEfxPaintFrameCachePath('layer-x', 'track-y', { appFrame: 7, frameIndex: 3 });
-    expect(path).toBe(`cache/efx-paint/${stableSegment('layer-x')}/track-y/frame-000007-0003.png`);
+    expect(path).toBe(`cache/efx-paint/${stableSegment('layer-x')}/track-y/frame-000007-0003.webp`);
     expect(isSafeEfxPaintCachePath(path)).toBe(true);
   });
 
@@ -279,8 +301,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     // Load restores per-track frames at the same appFrame without a throw.
     const loaded = await loadEfxPaintDocuments('/project', persisted);
     const restored = loaded.get('layer-2t')!;
-    expect(restored.frames.get(trackA.id)?.get(5)?.bytes).toEqual(testWebpBytes('AQID'));
-    expect(restored.frames.get(trackB.id)?.get(5)?.bytes).toEqual(testWebpBytes('BAID'));
+    expect(restored.frames.get(trackA.id)?.get(5)?.cachePath).toBe(pathA);
+    expect(restored.frames.get(trackB.id)?.get(5)?.cachePath).toBe(pathB);
   });
 
   it('loads per-track frame maps with validated cache paths', async () => {
@@ -302,8 +324,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const loaded = await loadEfxPaintDocuments('/project', payload);
     const restored = loaded.get('layer-pt')!;
     expect(Array.from(restored.frames.keys()).sort()).toEqual([trackA.id, trackB.id]);
-    expect(restored.frames.get(trackA.id)?.get(1)?.bytes).toEqual(testWebpBytes('AQID'));
-    expect(restored.frames.get(trackB.id)?.get(2)?.bytes).toEqual(testWebpBytes('BAUG'));
+    expect(restored.frames.get(trackA.id)?.get(1)?.cachePath).toBe(pathA);
+    expect(restored.frames.get(trackB.id)?.get(2)?.cachePath).toBe(pathB);
   });
 
   it('fails closed when a persisted track frame cachePath is unsafe', async () => {
