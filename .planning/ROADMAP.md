@@ -469,7 +469,7 @@ Plans:
 **Goal:** Replace the base64-dataUrl frame runtime with a bytes/ImageBitmap runtime, move PNG→WebP-lossless encode/decode into Rust, lazy-load sidecars behind a byte-budgeted LRU, and raise the working-resolution cap 1000→1920 — so HD projects paint at native resolution without main-thread jank or heap blowup.
 **Requirements**: TBD (D-01..D-19 locked decisions)
 **Depends on:** Phase 52
-**Plans:** 1/7 plans executed
+**Plans:** 2/7 plans executed
 
 Plans:
 **Wave 1**
@@ -478,7 +478,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 52.1-02-PLAN.md — Tracer: Rust FrameCodec trait + WebPLosslessCodec + encode/decode commands + JS byte bridge
+- [x] 52.1-02-PLAN.md — Tracer: Rust FrameCodec trait + WebPLosslessCodec + encode/decode commands + JS byte bridge
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

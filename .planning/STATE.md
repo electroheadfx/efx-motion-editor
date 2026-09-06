@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.1"
 current_phase_name: Modern frame runtime + native HD paint (INSERTED)
 status: executing
-stopped_at: Completed 52.1-01-PLAN.md
-last_updated: "2026-09-06T08:29:59.006Z"
+stopped_at: Completed 52.1-02-PLAN.md
+last_updated: "2026-09-06T08:40:44.566Z"
 last_activity: 2026-09-06
 last_activity_desc: Phase 52.1 execution started
-state_head: 7dd75fcddf6f6d7a63ec54c1546083ee566c616e
+state_head: 46469b44a067bdd60debaf7e122dbb881967c63c
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 49
-  completed_plans: 43
+  completed_plans: 44
   percent: 40
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-09-06 — Phase 52.1 execution started
 
@@ -104,6 +104,7 @@ Progress: [████████████████████] 42/42 p
 | Phase 50 P05 | 19 | 3 tasks | 11 files |
 | Phase 50 P06 | 10min | 2 tasks | 2 files |
 | Phase 52.1 P01 | 2 min | 2 tasks | 5 files |
+| Phase 52.1-modern-frame-runtime-native-hd-paint P02 | 35 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -243,6 +244,9 @@ Recent decisions affecting current work:
 - [Phase 52]: Photo-weight baked keys decode OFF the main thread (dataUrl → Blob → createImageBitmap, with Image + await img.decode() fallback) and the flattened record carries the composite raster with a LAZY dataUrl getter — the draw path never pays a PNG encode/decode round-trip (G-52-7/G-52-8).
 - [Phase 52.1]: Corrected plan target versions to actual latest (api 2.11.1, cli 2.11.4, tauri-build 2.6.3, plugins independent latest; only Rust tauri crate has 2.11.5)
 - [Phase 52.1]: Raised root pnpm overrides (preact ^10.29.8, @preact/signals ^2.11.2) so the bump is not pinned back
+- [Phase 52.1]: Encode via encode_advanced with exact=1 (config_exact), not encode_lossless() which does not set exact
+- [Phase 52.1]: Use direct invoke (not safeInvoke) so raw Uint8Array return is explicit and acceptance grep invoke( matches
+- [Phase 52.1]: Keep bytesToBase64/base64ToBytes — deletion is Plan 03's apply-path retarget
 
 ### Pending Todos
 
@@ -286,6 +290,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-06T08:29:57.573Z
-Stopped at: Completed 52.1-01-PLAN.md
+Last session: 2026-09-06T08:40:43.197Z
+Stopped at: Completed 52.1-02-PLAN.md
 Resume file: None
