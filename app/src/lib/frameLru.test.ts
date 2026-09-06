@@ -75,4 +75,20 @@ describe('FrameLru (byte-budgeted LRU with pinning)', () => {
     expect(a.close).toHaveBeenCalledTimes(1);
     expect(lru.get('a')).toBeUndefined();
   });
+
+  it('clear() evicts every entry (pinned included), closing each bitmap and zeroing the byte total', () => {
+    const lru = new FrameLru(1500);
+    const a = mockBitmap();
+    const b = mockBitmap();
+    lru.put('a', a, 10, 10);
+    lru.put('b', b, 10, 10);
+    lru.pin('a'); // pinned — clear() must still close it (teardown, not eviction)
+
+    lru.clear();
+    expect(a.close).toHaveBeenCalledTimes(1);
+    expect(b.close).toHaveBeenCalledTimes(1);
+    expect(lru.get('a')).toBeUndefined();
+    expect(lru.get('b')).toBeUndefined();
+    expect(lru.byteTotal).toBe(0);
+  });
 });

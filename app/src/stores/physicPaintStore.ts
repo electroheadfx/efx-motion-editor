@@ -2,6 +2,8 @@ import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { rotoAlphaCanvasRegistry, canvasToWebpBytes } from '../lib/rotoAlphaCanvasRegistry';
+import { decodeWebpFrame } from '../lib/webpFrameCodec';
+import { frameLru } from '../lib/frameLru';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
@@ -414,10 +416,8 @@ export function _setPhysicPaintCompositorSizeProvider(cb: (() => { width: number
 const _flattenedMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintFlattenedFrameRecord>>();
 const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>>();
 
-/** Store-side dataUrl decode cache (mirrors previewRenderer's imageCache idiom). */
-const _compositorImageCache = new Map<string, HTMLImageElement>();
-const _compositorImageLoading = new Set<string>();
-const _compositorImageFailed = new Set<string>();
+/** In-flight decode guard (D-12): prevents duplicate decode kicks for the same bytes token. */
+const _compositorDecodeLoading = new Set<string>();
 
 /**
  * Background sourceRef → dataUrl registry (48-04 port wiring; Phase 49's import
@@ -1075,39 +1075,35 @@ function _getOrCreateCompositorMemo<K, V>(outer: Map<string, EfxPaintKeyedMemo<K
 }
 
 /**
- * 48-03 store-side decode cache (mirrors previewRenderer's imageCache idiom):
- * dataUrl → HTMLImageElement, with loading/failed sets and an onload/onerror
- * that bump the existing physicPaintVersion clock (never a new subscription
- * surface, MEMORY: always bump AND subscribe). Returns null while pending or
- * failed; re-checks the cache after setting src so synchronous decodes (test
- * stubs / hot decodes) resolve in the same tick.
+ * 52.1-04 (D-12/D-13/D-14): the single decoded-frame decode path. Resolves the
+ * byte-budgeted LRU handle (keyed by the stable bytes content token) instead of
+ * the absorbed decode-once cache. On a miss it kicks off the async Rust decode
+ * (`decode_webp_frame` → raw RGBA → transient ImageData → createImageBitmap with
+ * premultiplyAlpha:'none') and returns null this tick; the decode-complete
+ * version-clock bump re-fires subscribers (the _compositorDecode idiom, MEMORY:
+ * always bump AND subscribe). ImageData exists only as the transient IPC→bitmap
+ * bridge, never stored (D-13).
  */
 
-function _compositorDecode(bytes: Uint8Array): HTMLImageElement | null {
+function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   const token = buildFrameBytesToken(bytes);
-  const cached = _compositorImageCache.get(token);
+  const cached = frameLru.get(token);
   if (cached) return cached;
-  if (_compositorImageLoading.has(token) || _compositorImageFailed.has(token)) return null;
-  const image = new Image();
-  _compositorImageLoading.add(token);
-  const blobUrl = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
-  image.onload = () => {
-    _compositorImageLoading.delete(token);
-    _compositorImageCache.set(token, image);
-    URL.revokeObjectURL(blobUrl);
-    physicPaintVersion.value++;
-  };
-  image.onerror = () => {
-    _compositorImageLoading.delete(token);
-    _compositorImageFailed.add(token);
-    URL.revokeObjectURL(blobUrl);
-    physicPaintVersion.value++;
-  };
-  image.src = blobUrl;
-  if (_compositorImageCache.has(token)) {
-    _compositorImageLoading.delete(token);
-    return _compositorImageCache.get(token)!;
-  }
+  if (_compositorDecodeLoading.has(token)) return null;
+  _compositorDecodeLoading.add(token);
+  void (async () => {
+    try {
+      const { width, height, rgba } = await decodeWebpFrame({ bytes });
+      const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+      const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: 'none' });
+      frameLru.put(token, bitmap, width, height);
+    } catch {
+      // Decode failed — leave the token uncached so a later query retries.
+    } finally {
+      _compositorDecodeLoading.delete(token);
+      physicPaintVersion.value++;
+    }
+  })();
   return null;
 }
 
@@ -1224,7 +1220,7 @@ function _preResolveTrackContent(
 }
 
 /** 48-03 store-side implementation of the 48-04 resolveBackgroundSourceImage port. */
-function _resolveBackgroundSourceImage(sourceRef: string): HTMLImageElement | null {
+function _resolveBackgroundSourceImage(sourceRef: string): ImageBitmap | null {
   const bytes = _backgroundSourceImages.get(sourceRef);
   if (!bytes) return null;
   return _compositorDecode(bytes);
@@ -2149,7 +2145,7 @@ export const physicPaintStore = {
    * draw (the _compositorDecode idiom — never a per-draw decode, MEMORY: image
    * decode storms cause global slowness).
    */
-  getDecodedImage(bytes: Uint8Array): HTMLImageElement | null {
+  getDecodedImage(bytes: Uint8Array): ImageBitmap | null {
     return _compositorDecode(bytes);
   },
 
@@ -2648,7 +2644,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -2679,9 +2675,8 @@ export const physicPaintStore = {
     // rest of the store (decode caches clear here only, per the plan).
     _flattenedMemo.clear();
     _trackRasterMemo.clear();
-    _compositorImageCache.clear();
-    _compositorImageLoading.clear();
-    _compositorImageFailed.clear();
+    _compositorDecodeLoading.clear();
+    frameLru.clear();
     _backgroundSourceImages.clear();
     _referenceSourceImages.clear();
     trackRevisions.clear();

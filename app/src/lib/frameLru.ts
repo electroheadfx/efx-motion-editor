@@ -91,6 +91,15 @@ export class FrameLru {
     return this.totalBytes;
   }
 
+  /** Evict every entry, closing each bitmap (reset/teardown). */
+  clear(): void {
+    for (const entry of this.entries.values()) {
+      entry.bitmap.close();
+    }
+    this.entries.clear();
+    this.totalBytes = 0;
+  }
+
   private evictIfNeeded(): void {
     while (this.totalBytes > this.byteCeiling) {
       let victim: FrameLruEntry | undefined;

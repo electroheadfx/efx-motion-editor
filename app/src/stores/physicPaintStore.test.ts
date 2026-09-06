@@ -15,8 +15,23 @@ import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPain
 import { resetProjectPaperRasterForTests } from '../lib/projectPaperRaster';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 
+// 52.1-04 (D-13): the decode path invokes the Rust `decode_webp_frame` command
+// (leaf module) then bridges raw RGBA → ImageData → createImageBitmap. The
+// store imports `decodeWebpFrame` from webpFrameCodec; mock it here so the
+// compositor decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({
+  decodeWebpFrameMock: vi.fn(),
+}));
+
+vi.mock('../lib/webpFrameCodec', () => ({
+  decodeWebpFrame: decodeWebpFrameMock,
+  encodeWebpFrame: vi.fn(),
+}));
+
 const decodeFlatLog = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 const webpDataUrl = (bytes: Uint8Array): string => `data:image/webp;base64,${btoa(String.fromCharCode(...bytes))}`;
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -1653,8 +1668,8 @@ describe('physicPaintStore', () => {
       clearRect(): void { this.ops.push({ type: 'clearRect' }); }
       fillRect(): void { this.ops.push({ type: 'fillRect', fillStyle: String(this.fillStyle), globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation }); }
       drawImage(source?: unknown, ..._args: number[]): void {
-        // Label any src-bearing image (FlatTestImage OR DeferredFlatTestImage)
-        // by its src; canvases and other sources log as 'canvas'.
+        // Label any src-bearing image (FlatTestBitmap) by its src; canvases
+        // and other sources log as 'canvas'.
         const sourceLabel = source !== null && typeof source === 'object' && 'src' in source
           ? String((source as { src: unknown }).src)
           : 'canvas';
@@ -1684,28 +1699,11 @@ describe('physicPaintStore', () => {
       }
     }
 
-    class FlatTestImage {
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      crossOrigin = '';
+    class FlatTestBitmap {
       width = 4;
       height = 3;
-      private currentSrc = '';
-      set src(value: string) { this.currentSrc = value; this.onload?.(); }
-      get src(): string { return this.currentSrc; }
-    }
-
-    class DeferredFlatTestImage {
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      crossOrigin = '';
-      width = 4;
-      height = 3;
-      static instances: DeferredFlatTestImage[] = [];
-      private currentSrc = '';
-      constructor() { DeferredFlatTestImage.instances.push(this); }
-      set src(value: string) { this.currentSrc = value; }
-      get src(): string { return this.currentSrc; }
+      src = 'bitmap:test-frame';
+      close = vi.fn();
     }
 
     const FLAT_LAYER = 'flat-layer';
@@ -1773,10 +1771,11 @@ describe('physicPaintStore', () => {
 
     beforeEach(() => {
       resetEfxPaintStore();
-      DeferredFlatTestImage.instances = [];
       createdCanvases = [];
       resetProjectPaperRasterForTests();
       _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+      decodeWebpFrameMock.mockReset();
+      decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
       vi.stubGlobal('document', {
         createElement: (tag: string) => {
           if (tag === 'canvas') {
@@ -1787,19 +1786,41 @@ describe('physicPaintStore', () => {
           return {};
         },
       });
-      vi.stubGlobal('Image', FlatTestImage);
-      vi.stubGlobal('HTMLImageElement', FlatTestImage);
       vi.stubGlobal('HTMLCanvasElement', FlatTestCanvas);
-      vi.stubGlobal('URL', Object.assign(Object.create(URL), URL, {
-        createObjectURL: () => 'blob:test-frame',
-        revokeObjectURL: () => {},
-      }));
+      vi.stubGlobal('ImageData', class {
+        constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+      });
+      vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
+      // The paper fond path (projectPaperRaster) loads its texture via `new
+      // Image()`; the stub never fires onload so the texture stays unresolved
+      // and the deterministic color-fill fallback draws (the fond tests assert
+      // the texture-less fallback).
+      vi.stubGlobal('Image', class {
+        src = '';
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+      });
     });
 
     afterEach(() => {
       _setPhysicPaintCompositorSizeProvider(null);
       vi.unstubAllGlobals();
     });
+
+    // 52.1-04 (D-13): the decode is async (decode_webp_frame → createImageBitmap).
+    // A flatten that returns null this tick has kicked off a decode; flush the
+    // microtask queue and re-query so the LRU hit resolves the raster. With N
+    // tracks the flatten returns null as soon as the FIRST unresolved track's
+    // decode is pending, so each re-query resolves one more track — loop until
+    // the record materializes (bounded to avoid an infinite loop on a real bug).
+    async function flattenAfterDecode(layerId: string, frame: number, includeFond = true) {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const record = physicPaintStore.getFlattenedFrame(layerId, frame, includeFond);
+        if (record !== null) return record;
+        await flushDecode();
+      }
+      return null;
+    }
 
     it('RED 1 guard: returns null for an unknown layer and for non-integer/negative frames', () => {
       expect(physicPaintStore.getFlattenedFrame('unknown-layer', 5)).toBeNull();
@@ -1809,12 +1830,12 @@ describe('physicPaintStore', () => {
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, NaN)).toBeNull();
     });
 
-    it('RED 2 single-track parity: flattened dataUrl is the composite of fallback + the track frame', () => {
+    it('RED 2 single-track parity: flattened dataUrl is the composite of fallback + the track frame', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+      const record = await flattenAfterDecode(FLAT_LAYER, 5);
       expect(record).not.toBeNull();
       expect(record!.layerId).toBe(FLAT_LAYER);
       expect(record!.frame).toBe(5);
@@ -1833,41 +1854,37 @@ describe('physicPaintStore', () => {
       refCtx.save();
       refCtx.globalAlpha = 1;
       refCtx.globalCompositeOperation = 'source-over';
-      const frameImage = new FlatTestImage();
-      frameImage.src = 'blob:test-frame';
+      const frameImage = new FlatTestBitmap();
       refCtx.drawImage(frameImage);
       refCtx.restore();
-      expect(record!.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(blob:test-frame,1,source-over)|restore'));
+      expect(record!.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(bitmap:test-frame,1,source-over)|restore'));
     });
 
-    it('G-52-8 (FIX 3): a hydrated payload composites from the alpha registry canvas — zero compositor Image decodes', () => {
+    it('G-52-8 (FIX 3): a hydrated payload composites from the alpha registry canvas — zero compositor Image decodes', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
       // Launch-hydration twin: the exact payload is already decoded off the
       // main thread in the alpha registry, so _preResolveTrackContent must
-      // reuse that canvas instead of re-decoding the dataUrl (WebKit decodes
-      // lazily at the first drawImage — the G-52-8 per-frame scrub cost).
+      // reuse that canvas instead of re-decoding the bytes (the G-52-8
+      // per-frame scrub cost). The registry canvas short-circuits the decode
+      // path entirely — decodeWebpFrame must never be invoked.
       const hydratedCanvas = new FlatTestCanvas([]);
       hydratedCanvas.width = 4;
       hydratedCanvas.height = 3;
       registerRotoAlphaCanvasFrame(frameDataUrl, hydratedCanvas as unknown as HTMLCanvasElement);
-      // A deferred Image proves the decode path: if the compositor re-decoded,
-      // the image would never load and the flatten would return null.
-      vi.stubGlobal('Image', DeferredFlatTestImage);
-      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+      const record = await flattenAfterDecode(FLAT_LAYER, 5);
 
       expect(record).not.toBeNull();
-      expect(DeferredFlatTestImage.instances).toHaveLength(0);
-      // The composite drew the registry canvas itself, not a decoded Image.
+      expect(decodeWebpFrameMock).not.toHaveBeenCalled();
+      // The composite drew the registry canvas itself, not a decoded bitmap.
       const composite = record!.raster as unknown as FlatTestCanvas;
       expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
-      expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'blob:test-frame' }));
+      expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'bitmap:test-frame' }));
     });
 
-    it('G-52-10: a zero-size registry entry is skipped — the compositor falls back to decoding the dataUrl', () => {
+    it('G-52-10: a zero-size registry entry is skipped — the compositor falls back to decoding the dataUrl', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
@@ -1882,21 +1899,31 @@ describe('physicPaintStore', () => {
       poisoned.width = 0;
       poisoned.height = 0;
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+      const record = await flattenAfterDecode(FLAT_LAYER, 5);
 
       expect(record).not.toBeNull();
       const composite = record!.raster as unknown as FlatTestCanvas;
-      expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'blob:test-frame' }));
+      expect(composite.ops).toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'bitmap:test-frame' }));
       expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     });
 
-    it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', () => {
+    it('D-14 premultiplyAlpha: the decode path calls createImageBitmap with premultiplyAlpha none (straight alpha)', async () => {
+      const createImageBitmapSpy = vi.fn(async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
+      vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
+
+      await flattenAfterDecode(FLAT_LAYER, 5);
+      expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'none' });
+    });
+
+    it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
       const encodeSpy = vi.spyOn(FlatTestCanvas.prototype, 'toDataURL');
       try {
-        const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
+        const record = await flattenAfterDecode(FLAT_LAYER, 5);
 
         expect(record).not.toBeNull();
         // The flatten itself encodes NOTHING — draw surfaces consume the
@@ -1919,7 +1946,7 @@ describe('physicPaintStore', () => {
       }
     });
 
-    it('RED 3 multi-track: draws both visible tracks bottom-to-top and cacheKey equals deriveEfxPaintFlattenedCacheKey', () => {
+    it('RED 3 multi-track: draws both visible tracks bottom-to-top and cacheKey equals deriveEfxPaintFlattenedCacheKey', async () => {
       const frameA = makeFrame(0, 5).bytes;
       const frameB = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([
@@ -1929,7 +1956,7 @@ describe('physicPaintStore', () => {
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       const log = decodeFlatLog(record.renderedFrame.bytes);
       const firstDraw = log.indexOf('draw(');
       const secondDraw = log.indexOf('draw(', firstDraw + 1);
@@ -1953,7 +1980,7 @@ describe('physicPaintStore', () => {
       expect(record.cacheKey).toBe(expectedKey);
     });
 
-    it('RED 4 hidden track excluded: hiding track B removes its pixels and its content term from the key', () => {
+    it('RED 4 hidden track excluded: hiding track B removes its pixels and its content term from the key', async () => {
       const frameA = makeFrame(0, 5).bytes;
       // Distinct dataUrl from track A so the hidden-track assertion can
       // distinguish whose pixels remain in the flattened log.
@@ -1965,13 +1992,13 @@ describe('physicPaintStore', () => {
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
 
-      const visibleRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const visibleRecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect(decodeFlatLog(visibleRecord.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(2);
 
       setTrackVisible(FLAT_LAYER, 'track-b', false);
-      const hiddenRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const hiddenRecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect(decodeFlatLog(hiddenRecord.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(1);
-      expect(decodeFlatLog(hiddenRecord.renderedFrame.bytes)).not.toContain('blob:test-frame-b');
+      expect(decodeFlatLog(hiddenRecord.renderedFrame.bytes)).not.toContain('bitmap:test-frame-b');
 
       const expectedKey = deriveEfxPaintFlattenedCacheKey({
         document: getEfxPaintDocument(FLAT_LAYER)!,
@@ -1982,7 +2009,7 @@ describe('physicPaintStore', () => {
       expect(hiddenRecord.cacheKey).toBe(expectedKey);
     });
 
-    it('RED 4b background source bytes rotate the flattened key (49-06 UAT round 6)', () => {
+    it('RED 4b background source bytes rotate the flattened key (49-06 UAT round 6)', async () => {
       const bgRef = 'bg-ref-1';
       const bgDataUrl = makeFrame(2, 5).bytes;
       const clip: FrameLoopClip = {
@@ -1997,20 +2024,20 @@ describe('physicPaintStore', () => {
 
       // Before the source bytes arrive the background resolves 'missing' — the
       // composite still returns a record (D-09 report), keyed WITHOUT the bytes.
-      const before = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      const before = (await flattenAfterDecode(FLAT_LAYER, 0))!;
       expect(before.missing).toContainEqual({ trackId: 'background-1', frame: 0, missingRefs: [bgRef] });
 
       // Bytes arriving MUST rotate the flattened key — the composite content
       // changes while the document does not, so the monitor's compare-then-draw
       // guard (cacheKey-based) must see a new key and redraw the background.
       registerBackgroundSourceImage(bgRef, bgDataUrl);
-      const after = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      const after = (await flattenAfterDecode(FLAT_LAYER, 0))!;
       expect(after.cacheKey).not.toBe(before.cacheKey);
       expect(after.missing).not.toContainEqual({ trackId: 'background-1', frame: 0, missingRefs: [bgRef] });
       expect(decodeFlatLog(after.renderedFrame.bytes)).toContain('draw(');
     });
 
-    it('RED 5 missing content renders transparent + a report and never contributes pixels', () => {
+    it('RED 5 missing content renders transparent + a report and never contributes pixels', async () => {
       const frameA = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([
         flatTrack('track-a', { order: 0 }),
@@ -2020,7 +2047,7 @@ describe('physicPaintStore', () => {
       // track-b has a real key at frame 0 only — frame 5 resolves null.
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 0, bytes: makeFrame(0, 0).bytes }]);
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect(record.missing).toEqual([{ trackId: 'track-b', frame: 5, missingRefs: [] }]);
       expect(decodeFlatLog(record.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(1);
       expect(decodeFlatLog(record.renderedFrame.bytes)).toContain('draw(');
@@ -2031,16 +2058,16 @@ describe('physicPaintStore', () => {
       seedRoto('track-c', [{ keyId: 'kc', appFrame: 0, bytes: makeFrame(0, 0).bytes }], {
         loopClips: [{ loopId: 'loop-1', placementStart: 3, sourceKeyIds: ['missing-ref-1'], repeat: 'infinity', mode: 'progressive' }],
       });
-      const loopRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const loopRecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect(loopRecord.missing).toEqual([{ trackId: 'track-c', frame: 5, missingRefs: ['missing-ref-1'] }]);
       expect(decodeFlatLog(loopRecord.renderedFrame.bytes).match(/draw\(/g)).toBeNull();
     });
 
-    it('RED 6 cache hit: unchanged inputs return the identical cached record with zero recompute', () => {
+    it('RED 6 cache hit: unchanged inputs return the identical cached record with zero recompute', async () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
-      const first = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const first = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       const canvasCountAfterFirst = createdCanvases.length;
       const second = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
       expect(second).toBe(first);
@@ -2049,22 +2076,21 @@ describe('physicPaintStore', () => {
       expect(second!.renderedFrame.bytes).toEqual(first.renderedFrame.bytes);
     });
 
-    it('RED 7 decode pending: returns null for that tick and the raster after the decode completes', () => {
-      vi.stubGlobal('Image', DeferredFlatTestImage);
-      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+    it('RED 7 decode pending: returns null for that tick and the raster after the decode completes', async () => {
+      let resolveDecode!: (value: { width: number; height: number; rgba: Uint8Array }) => void;
+      decodeWebpFrameMock.mockReturnValueOnce(new Promise((resolve) => { resolveDecode = resolve; }));
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)).toBeNull();
-      const pendingImage = DeferredFlatTestImage.instances[0];
-      expect(pendingImage).toBeDefined();
-      pendingImage.onload?.();
+      resolveDecode({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
+      await flushDecode();
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5);
       expect(record).not.toBeNull();
       expect(decodeFlatLog(record!.renderedFrame.bytes)).toContain('draw(');
     });
 
-    it('RED 8 paper fond law: the per-track raster excludes paper; the fond draws once beneath the flattened composite', () => {
+    it('RED 8 paper fond law: the per-track raster excludes paper; the fond draws once beneath the flattened composite', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback — the per-track
       // roto background metadata walk is deleted. The seedRoto background option
@@ -2077,17 +2103,17 @@ describe('physicPaintStore', () => {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // The composite canvas consumed the track's BARE frame image — no paper
       // composite, no fill: an upper track can never mask a lower one.
       const compositeCanvas = createdCanvases[0];
-      expect(compositeCanvas.log()).toBe('clear|save|draw(blob:test-frame,1,source-over)|restore');
+      expect(compositeCanvas.log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore');
       // The paper fond is drawn ONCE beneath the flattened raster (the
       // deterministic color-fill + grain fallback, texture-less by contract).
       expect(record.renderedFrame.bytes).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
     });
 
-    it('RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath', () => {
+    it('RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath', async () => {
       const frameA = makeFrame(0, 5).bytes;
       const frameB = makeFrame(1, 5).bytes;
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
@@ -2105,18 +2131,18 @@ describe('physicPaintStore', () => {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // Both tracks' bare frames draw in bottom-to-top order — no per-track
       // paper composite masking the lower track.
       const compositeCanvas = createdCanvases[0];
-      expect(compositeCanvas.log()).toBe('clear|save|draw(blob:test-frame,1,source-over)|restore|save|draw(blob:test-frame,1,source-over)|restore');
+      expect(compositeCanvas.log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore|save|draw(bitmap:test-frame,1,source-over)|restore');
       // Exactly ONE fond fill beneath the composite, resolved from the
       // document fallback.
       expect(decodeFlatLog(record.renderedFrame.bytes).match(/fill\(#f4efe3/g)?.length).toBe(1);
       expect(decodeFlatLog(record.renderedFrame.bytes)).toContain('draw(canvas,1,source-over)');
     });
 
-    it('RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key', () => {
+    it('RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
       registerDocument(flatDocument([flatTrack('track-a')], {
@@ -2127,15 +2153,15 @@ describe('physicPaintStore', () => {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
-      const withFond = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      const noFond = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5, false)!;
+      const withFond = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      const noFond = (await flattenAfterDecode(FLAT_LAYER, 5, false))!;
 
       // The with-fond record carries the paper beneath the composite…
       expect(withFond.renderedFrame.bytes).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
       // …the fond-less record is the bare composite (the Studio monitor reads
       // this; the paper lives on its own layer beneath the isolated tracks
       // group, so the active track's CSS blend never meets it).
-      expect(noFond.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(blob:test-frame,1,source-over)|restore'));
+      expect(noFond.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(bitmap:test-frame,1,source-over)|restore'));
       // Distinct memo entries: the `fond:0` key term separates the variants.
       expect(noFond.cacheKey).not.toBe(withFond.cacheKey);
       // The missing report is identical either way (the fond never contributes).
@@ -2144,7 +2170,7 @@ describe('physicPaintStore', () => {
 
     // 49-03 Task 1 (D-11 consumption half): the document fallback is the SINGLE
     // fond authority — the per-track roto background metadata walk is deleted.
-    it('49-03 T1: solid white fallback fills white regardless of per-track roto background metadata', () => {
+    it('49-03 T1: solid white fallback fills white regardless of per-track roto background metadata', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
@@ -2154,13 +2180,13 @@ describe('physicPaintStore', () => {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // The document fallback is the single fond authority: solid white fills
       // beneath the composite even though the track carries canvas1 metadata.
       expect(record.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
     });
 
-    it('49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond', () => {
+    it('49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
@@ -2168,7 +2194,7 @@ describe('physicPaintStore', () => {
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // canvas2 paper draw beneath the composite (parity with the paper path
       // produced today via metadata).
       expect(record.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)'));
@@ -2178,11 +2204,11 @@ describe('physicPaintStore', () => {
         visible: false,
         fallback: { mode: 'transparent' },
       }));
-      const transparentRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
-      expect(transparentRecord.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(blob:test-frame,1,source-over)|restore'));
+      const transparentRecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      expect(transparentRecord.renderedFrame.bytes).toEqual(testWebpBytes('clear|save|draw(bitmap:test-frame,1,source-over)|restore'));
     });
 
-    it('49-03 T4: deleting a per-track roto background metadata entry no longer changes the fond instruction', () => {
+    it('49-03 T4: deleting a per-track roto background metadata entry no longer changes the fond instruction', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
@@ -2192,7 +2218,7 @@ describe('physicPaintStore', () => {
         background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
       });
 
-      const withMetadata = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const withMetadata = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect(withMetadata.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
 
       // Delete the metadata entry (re-seed with background: null) and force a
@@ -2200,11 +2226,11 @@ describe('physicPaintStore', () => {
       // (the metadata walk is gone).
       const frameDataUrl2 = makeFrame(1, 5).bytes;
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl2 }], { background: null });
-      const afterDelete = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const afterDelete = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect(afterDelete.renderedFrame.bytes).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
     });
 
-    it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', () => {
+    it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', async () => {
       const bgDataUrl = makeFrame(0, 0).bytes;
       registerBackgroundSourceImage('bg-ref-1', bgDataUrl);
       registerDocument(flatDocument([], {
@@ -2212,7 +2238,7 @@ describe('physicPaintStore', () => {
         clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['bg-ref-1'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
       }));
 
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      const record = (await flattenAfterDecode(FLAT_LAYER, 0))!;
       expect(record.missing).toEqual([]);
       expect(decodeFlatLog(record.renderedFrame.bytes)).toContain('draw(');
 
@@ -2221,14 +2247,14 @@ describe('physicPaintStore', () => {
         visible: true,
         clips: [{ id: 'clip-2', startFrame: 0, sourceFrameRefs: [badRef], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
       }));
-      const missingRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      const missingRecord = (await flattenAfterDecode(FLAT_LAYER, 0))!;
       expect(missingRecord.missing).toEqual([{ trackId: getEfxPaintDocument(FLAT_LAYER)!.background.id, frame: 0, missingRefs: [badRef] }]);
       expect(decodeFlatLog(missingRecord.renderedFrame.bytes)).not.toContain('draw(');
     });
 
-    it('RED 10 background source-image port: pending decode returns null this tick, raster after the decode completes', () => {
-      vi.stubGlobal('Image', DeferredFlatTestImage);
-      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+    it('RED 10 background source-image port: pending decode returns null this tick, raster after the decode completes', async () => {
+      let resolveDecode!: (value: { width: number; height: number; rgba: Uint8Array }) => void;
+      decodeWebpFrameMock.mockReturnValueOnce(new Promise((resolve) => { resolveDecode = resolve; }));
       const bgDataUrl = makeFrame(0, 0).bytes;
       registerBackgroundSourceImage('bg-ref-1', bgDataUrl);
       registerDocument(flatDocument([], {
@@ -2237,9 +2263,8 @@ describe('physicPaintStore', () => {
       }));
 
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)).toBeNull();
-      const pendingImage = DeferredFlatTestImage.instances[0];
-      expect(pendingImage).toBeDefined();
-      pendingImage.onload?.();
+      resolveDecode({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
+      await flushDecode();
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
       expect(record).not.toBeNull();
       expect(decodeFlatLog(record!.renderedFrame.bytes)).toContain('draw(');
@@ -2252,7 +2277,7 @@ describe('physicPaintStore', () => {
     // never share a cache entry (different participating sets / missing
     // reports), and an empty exclude set stays byte-identical to the including
     // path (the 48-01/48-04 including-key contract).
-    it('getFlattenedFrameExcluding omits the engine-supplied track pixels and uses its own `excl:` key term', () => {
+    it('getFlattenedFrameExcluding omits the engine-supplied track pixels and uses its own `excl:` key term', async () => {
       const frameA = makeFrame(0, 5).bytes;
       const frameB = makeFrame(1, 5).bytes;
       registerDocument(flatDocument([
@@ -2262,7 +2287,9 @@ describe('physicPaintStore', () => {
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
 
-      const including = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const including = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      // Both tracks' bytes are already decoded in the LRU, so the excluding
+      // variant resolves synchronously (its own `excl:` memo entry).
       const excluding = physicPaintStore.getFlattenedFrameExcluding(FLAT_LAYER, 5, new Set(['track-b']))!;
 
       expect(decodeFlatLog(including.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(2);
@@ -2274,12 +2301,12 @@ describe('physicPaintStore', () => {
       expect(excluding.cacheKey).not.toBe(including.cacheKey);
     });
 
-    it('getFlattenedFrameExcluding with an empty set is byte-identical to getFlattenedFrame', () => {
+    it('getFlattenedFrameExcluding with an empty set is byte-identical to getFlattenedFrame', async () => {
       const frameA = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a', { order: 0 })], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
 
-      const including = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 5)!;
+      const including = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       const excludingEmpty = physicPaintStore.getFlattenedFrameExcluding(FLAT_LAYER, 5, new Set())!;
 
       expect(excludingEmpty.cacheKey).toBe(including.cacheKey);
@@ -2357,18 +2384,18 @@ describe('physicPaintStore', () => {
       // The present ref resolves to content; the absent ref yields the missing
       // verdict (transparent + missing report), never a throw and never
       // placeholder content (D-10).
-      const presentRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)!;
+      const presentRecord = (await flattenAfterDecode(FLAT_LAYER, 0))!;
       expect(presentRecord.missing).toEqual([]);
       expect(decodeFlatLog(presentRecord.renderedFrame.bytes)).toContain('draw(');
 
-      const missingRecord = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 10)!;
+      const missingRecord = (await flattenAfterDecode(FLAT_LAYER, 10))!;
       expect(missingRecord.missing).toEqual([{ trackId: getEfxPaintDocument(FLAT_LAYER)!.background.id, frame: 10, missingRefs: ['asset-missing'] }]);
       expect(decodeFlatLog(missingRecord.renderedFrame.bytes)).not.toContain('draw(');
     });
 
     it('CONSERVATIVE DURING DECODE: a frame requested while an asset decode is pending resolves conservatively and re-renders on decode completion', async () => {
-      vi.stubGlobal('Image', DeferredFlatTestImage);
-      vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+      let resolveDecode!: (value: { width: number; height: number; rgba: Uint8Array }) => void;
+      decodeWebpFrameMock.mockReturnValueOnce(new Promise((resolve) => { resolveDecode = resolve; }));
       const bgDataUrl = makeFrame(0, 0).bytes;
       const registered = new Map<string, Uint8Array>();
       const ports = {
@@ -2389,9 +2416,8 @@ describe('physicPaintStore', () => {
       // The compositor decode is pending this tick → conservative null, never a
       // crash; hydration never blocked document registration.
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0)).toBeNull();
-      const pendingImage = DeferredFlatTestImage.instances[0];
-      expect(pendingImage).toBeDefined();
-      pendingImage.onload?.();
+      resolveDecode({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
+      await flushDecode();
       const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
       expect(record).not.toBeNull();
       expect(decodeFlatLog(record!.renderedFrame.bytes)).toContain('draw(');
@@ -2444,7 +2470,7 @@ describe('physicPaintStore', () => {
       // registered the ref — the clip renders instead of staying paper fond.
       expect(decodeCalls).toEqual(['efxasset://localhost/primary.png', 'efxasset://localhost/fallback.png']);
       expect(registered.get('asset-a')).toEqual(testWebpBytes('fallback'));
-      const record = physicPaintStore.getFlattenedFrame(FLAT_LAYER, 0);
+      const record = await flattenAfterDecode(FLAT_LAYER, 0);
       expect(record).not.toBeNull();
       expect(record!.missing).toEqual([]);
     });
