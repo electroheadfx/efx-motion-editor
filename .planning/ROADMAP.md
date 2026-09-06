@@ -482,7 +482,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 52.1-03-PLAN.md — Runtime frame identity retarget (bytes field, WebP probe, registries re-keyed, raw-byte apply path)
+- [x] 52.1-03-PLAN.md — Runtime frame identity retarget (bytes field, WebP probe, registries re-keyed, raw-byte apply path)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
