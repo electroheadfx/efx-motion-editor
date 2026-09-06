@@ -23,6 +23,15 @@ import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalMo
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import { clearProjectPaperRasterCache } from '../../../lib/projectPaperRaster';
 
+// 52.1-04 (D-13): the flattened path decodes frame bytes via the Rust
+// `decode_webp_frame` leaf → ImageData → createImageBitmap. Mock the leaf so
+// the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../../../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 // Task 2 source-contract fixtures (the D-06 onion projection and the D-09
 // capsule copy live in the Studio, not the monitor — read the sources to pin
 // the active-track source seam and the monitor < engine < onion z-order).
@@ -163,6 +172,14 @@ class DeferredFlatTestImage {
   get src(): string { return this.currentSrc; }
 }
 
+/** The decoded ImageBitmap the LRU hands back; `src` carries the frame seed. */
+class FlatTestBitmap {
+  width = 4;
+  height = 3;
+  close = vi.fn();
+  constructor(readonly src: string) {}
+}
+
 /** The monitor's own <canvas>: records clear/draw ops per effect run. */
 class MonitorTestContext {
   readonly ops: string[] = [];
@@ -291,6 +308,12 @@ beforeEach(() => {
   DeferredFlatTestImage.instances = [];
   clearProjectPaperRasterCache();
   _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+  decodeWebpFrameMock.mockReset();
+  decodeWebpFrameMock.mockImplementation(({ bytes }: { bytes: Uint8Array }) => ({
+    width: 4,
+    height: 3,
+    rgba: bytes,
+  }));
   vi.stubGlobal('document', {
     createElement: (tag: string) => {
       if (tag === 'canvas') return new FlatTestCanvas([]);
@@ -300,6 +323,13 @@ beforeEach(() => {
   vi.stubGlobal('Image', FlatTestImage);
   vi.stubGlobal('HTMLImageElement', FlatTestImage);
   vi.stubGlobal('HTMLCanvasElement', FlatTestCanvas);
+  vi.stubGlobal('ImageData', class {
+    constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+  });
+  vi.stubGlobal('createImageBitmap', async (imageData: { data: Uint8ClampedArray }, _options: unknown) => {
+    const seed = new TextDecoder().decode(imageData.data.slice(32));
+    return new FlatTestBitmap(seed);
+  });
   // 52.1: the compositor decodes frame bytes into a Blob URL; make the URL
   // deterministic (derived from the frame seed) so draw-log assertions can
   // distinguish one track's content from another.
@@ -333,7 +363,7 @@ function drawCount(canvas: MonitorTestCanvas): number {
 }
 
 describe('PhysicsPaintProgramMonitor', () => {
-  it('(a) playback mode draws the full flattened frame for the current frame', () => {
+  it('(a) playback mode draws the full flattened frame for the current frame', async () => {
     const frameA = makeFrame(0, 5).bytes;
     const frameB = makeFrame(1, 5).bytes;
     registerDocument(flatDocument([
@@ -342,6 +372,10 @@ describe('PhysicsPaintProgramMonitor', () => {
     ], { visible: false }));
     seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
     seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
+    // Pre-warm the decode-once LRU so the flattened record resolves synchronously.
+    physicPaintStore.getDecodedImage(frameA);
+    physicPaintStore.getDecodedImage(frameB);
+    await flushDecode();
     const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
     const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
 
@@ -360,7 +394,7 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(drawCount(canvas)).toBe(1);
   });
 
-  it('(b) editing mode draws the active-track-excluded composite', () => {
+  it('(b) editing mode draws the active-track-excluded composite', async () => {
     const frameA = makeFrame(0, 5).bytes;
     const frameB = makeFrame(1, 5).bytes;
     registerDocument(flatDocument([
@@ -369,6 +403,10 @@ describe('PhysicsPaintProgramMonitor', () => {
     ], { visible: false }));
     seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
     seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
+    // Pre-warm the decode-once LRU so the flattened record resolves synchronously.
+    physicPaintStore.getDecodedImage(frameA);
+    physicPaintStore.getDecodedImage(frameB);
+    await flushDecode();
     const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
     const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
 
@@ -405,21 +443,19 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(drawCount(canvas)).toBe(1);
   });
 
-  it('(d) a pending decode (null) keeps the last drawn frame', () => {
+  it('(d) a pending decode (null) keeps the last drawn frame', async () => {
     registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
     seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
     const canvas = renderMonitor(baseProps());
     expect(drawCount(canvas)).toBe(1);
 
-    // Introduce a registered-but-not-yet-decoded background source with a
-    // deferred decode: the clip covers frame 5 (infinite repeat), so the
-    // store-side background gate returns null for the whole flattened call
-    // this tick. (G-52-8: the monitor's own Image decode no longer exists —
-    // the raster draws synchronously — so the pending/null law is pinned at
-    // its remaining source: the store returning null.)
-    vi.stubGlobal('Image', DeferredFlatTestImage);
-    vi.stubGlobal('HTMLImageElement', DeferredFlatTestImage);
+    // Introduce a registered-but-not-yet-decoded background source: the clip
+    // covers frame 5 (infinite repeat), so the store-side background gate
+    // returns null for the whole flattened call this tick. (G-52-8: the
+    // monitor's own Image decode no longer exists — the raster draws
+    // synchronously — so the pending/null law is pinned at its remaining
+    // source: the store returning null.)
     registerBackgroundSourceImage('bg-ref-pending', makeFrame(2, 0).bytes);
     registerDocument(flatDocument([flatTrack('track-a')], {
       visible: true,
@@ -433,14 +469,12 @@ describe('PhysicsPaintProgramMonitor', () => {
 
     // Completing the pending decode bumps physicPaintVersion → the effect now
     // draws the completed flattened frame.
-    const pendingImage = DeferredFlatTestImage.instances[0];
-    expect(pendingImage).toBeDefined();
-    pendingImage.onload?.();
+    await flushDecode();
     rerenderMonitor(baseProps());
     expect(drawCount(canvas)).toBe(2);
   });
 
-  it('(e) a hidden active track is excluded from the editing base', () => {
+  it('(e) a hidden active track is excluded from the editing base', async () => {
     const frameA = makeFrame(0, 5).bytes;
     const frameB = makeFrame(1, 5).bytes;
     registerDocument(flatDocument([
@@ -449,6 +483,10 @@ describe('PhysicsPaintProgramMonitor', () => {
     ], { visible: false }));
     seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
     seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
+    // Pre-warm the decode-once LRU so the flattened record resolves synchronously.
+    physicPaintStore.getDecodedImage(frameA);
+    physicPaintStore.getDecodedImage(frameB);
+    await flushDecode();
     const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
 
     const canvas = renderMonitor(baseProps({ activeTrackId: 'track-a' }));
@@ -576,7 +614,7 @@ describe('PhysicsPaintProgramMonitor', () => {
       expect(summaryMock).toHaveBeenCalledTimes(1);
     });
 
-    it('(d) a resolved genuine-dangling report restores the idle capsule exactly once', () => {
+    it('(d) a resolved genuine-dangling report restores the idle capsule exactly once', async () => {
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 0, bytes: makeFrame(0, 0).bytes }], {
         loopClips: [danglingLoopClip()],
@@ -590,6 +628,11 @@ describe('PhysicsPaintProgramMonitor', () => {
       // (the Loop Clip is gone, so frame 5 now resolves to real content).
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
       physicPaintVersion.value++;
+      rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
+
+      // The real key's decode is async — flush it so the flattened record
+      // resolves and the cleared capsule publishes.
+      await flushDecode();
       rerenderMonitor(baseProps({ onMissingSourcesChange: summaryMock }));
 
       // Exactly one clear publication — the idle restore.

@@ -48,6 +48,15 @@ vi.mock('../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer', ()
   renderRotoRevealFrames: harness.renderReveal,
 }));
 
+// 52.1-04 (D-13): the flattened path decodes frame bytes via the Rust
+// `decode_webp_frame` leaf → ImageData → createImageBitmap. Mock the leaf so
+// the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 const TEST_TRACK_ID = 'track-1';
 
 function makeTrackDocument(layerId: string): EfxPaintDocument {
@@ -224,8 +233,9 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
 
     // The baked keys are ordinary track content: the flattened seam resolves
     // them like any real key (D-02 — one track pipeline, no second compositor).
-    // The compositor decodes the key dataUrls via `new Image()` — stub the
-    // decode surface like the photo-reference exclusion test does.
+    // The compositor decodes the key dataUrls through the shared decode-once
+    // LRU (decode_webp_frame → ImageData → createImageBitmap) — stub that
+    // surface like the photo-reference exclusion test does.
     class FlatImage {
       onload: (() => void) | null = null;
       onerror: (() => void) | null = null;
@@ -236,6 +246,11 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
       set src(value: string) { this.currentSrc = value; this.onload?.(); }
       get src(): string { return this.currentSrc; }
     }
+    class FlatBitmap {
+      width = 4;
+      height = 3;
+      close = vi.fn();
+    }
     class FlatCanvas {
       width = 0;
       height = 0;
@@ -244,10 +259,20 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
       }
       toDataURL(): string { return PNG_1X1; }
     }
+    decodeWebpFrameMock.mockReset();
+    decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
     vi.stubGlobal('Image', FlatImage);
     vi.stubGlobal('HTMLImageElement', FlatImage);
     vi.stubGlobal('HTMLCanvasElement', FlatCanvas);
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+    vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatBitmap());
     vi.stubGlobal('document', { createElement: (tag: string) => (tag === 'canvas' ? new FlatCanvas() : {}) });
+
+    // Kick off the async decode and flush it so the flattened record resolves.
+    physicPaintStore.getFlattenedFrame(layerId, 10);
+    await flushDecode();
 
     const flattened = physicPaintStore.getFlattenedFrame(layerId, 10);
     expect(flattened).not.toBeNull();

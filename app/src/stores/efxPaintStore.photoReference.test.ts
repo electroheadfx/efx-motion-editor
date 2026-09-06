@@ -27,6 +27,15 @@ import {
 } from './efxPaintStore';
 import type { BackgroundEditDescriptor } from './efxPaintStore';
 
+// 52.1-04 (D-13): the flattened path decodes frame bytes via the Rust
+// `decode_webp_frame` leaf → ImageData → createImageBitmap. Mock the leaf so
+// the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -285,14 +294,27 @@ describe('photo reference exclusion + persistence (50-02 Task 3)', () => {
       get src(): string { return this.currentSrc; }
     }
 
+    /** The decoded ImageBitmap the LRU hands back (no `src` — a real ImageBitmap). */
+    class FlatTestBitmap {
+      width = 4;
+      height = 3;
+      close = vi.fn();
+    }
+
     beforeEach(() => {
       _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+      decodeWebpFrameMock.mockReset();
+      decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
       vi.stubGlobal('document', {
         createElement: (tag: string) => (tag === 'canvas' ? new FlatTestCanvas([]) : {}),
       });
       vi.stubGlobal('Image', FlatTestImage);
       vi.stubGlobal('HTMLImageElement', FlatTestImage);
       vi.stubGlobal('HTMLCanvasElement', FlatTestCanvas);
+      vi.stubGlobal('ImageData', class {
+        constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+      });
+      vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
     });
 
     afterEach(() => {
@@ -300,10 +322,14 @@ describe('photo reference exclusion + persistence (50-02 Task 3)', () => {
       vi.unstubAllGlobals();
     });
 
-    it('getFlattenedFrame output is byte-identical regardless of reference state (D-06)', () => {
+    it('getFlattenedFrame output is byte-identical regardless of reference state (D-06)', async () => {
       const layerId = 'layer-photo';
       registerDocument(makeTrackDocument(layerId));
       physicPaintStore.setFrame(layerId, TEST_TRACK_ID, 0, makeFrame(0, 0));
+
+      // Kick off the async decode and flush it so the flattened record resolves.
+      physicPaintStore.getFlattenedFrame(layerId, 0);
+      await flushDecode();
 
       const noReference = physicPaintStore.getFlattenedFrame(layerId, 0)!;
       expect(noReference).not.toBeNull();
