@@ -9,11 +9,11 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-type PreviewBackgroundEngine = EfxPaintEngine & { resetBackground: () => void };
+type PreviewBackgroundEngine = EfxPaintEngine & { resetBackground: (skipRedraw?: boolean) => void; clearPreviewBaseImage: (skipRedraw?: boolean) => void };
 
 export function clearRotoEngineCanvas(engine: PreviewBackgroundEngine): void {
-  engine.clearPreviewBaseImage();
-  engine.resetBackground();
+  engine.clearPreviewBaseImage(true);
+  engine.resetBackground(true);
   engine.clear();
 }
 
@@ -87,7 +87,7 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
       }
       input.reference.setUrl(null);
       if (input.engine) {
-        (input.engine as PreviewBackgroundEngine).resetBackground();
+        (input.engine as PreviewBackgroundEngine).resetBackground(true);
         input.engine.clear();
         input.reference.loadFrame(frame, input.engine as PreviewBackgroundEngine);
       }

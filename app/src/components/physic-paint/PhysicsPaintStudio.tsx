@@ -138,7 +138,7 @@ type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 
 type SoleOccurrenceDeleteTarget = Readonly<GroupLifecycleDeleteTarget & {
   operationKind: 'delete-group-frame';
 }>;
-type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
+type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: (skipRedraw?: boolean) => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: (skipRedraw?: boolean) => void };
 
 /**
  * 49-03 (D-11 consumption half): bridge the store's resolved fond instruction
@@ -2258,8 +2258,8 @@ export function PhysicsPaintStudio() {
       // cannot be superseded before this paint (no pre-paint isLatest recheck).
       setCachedRotoReferenceUrl(null);
       if (engine) {
-        engine.clearPreviewBaseImage();
-        (engine as PreviewBackgroundEngine).resetBackground();
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       }
@@ -2282,8 +2282,8 @@ export function PhysicsPaintStudio() {
       // switch the launch snapshot still points at the previous track.
       if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind === 'generated') {
         setCachedRotoReferenceUrl(null);
-        engine.clearPreviewBaseImage();
-        (engine as PreviewBackgroundEngine).resetBackground();
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       }
@@ -2353,8 +2353,8 @@ export function PhysicsPaintStudio() {
     const engine = engineRef.current as PreviewBackgroundEngine | null;
     setCachedRotoReferenceUrl(null);
     if (engine) {
-      engine.clearPreviewBaseImage();
-      engine.resetBackground();
+      (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+      engine.resetBackground(true);
       engine.clear();
     }
     // A hidden active track stays a blank canvas (hide/solo truth table); any
@@ -2397,16 +2397,16 @@ export function PhysicsPaintStudio() {
       // update propagates through the same rAF scheduler as navigation.
       if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       else if (engine && effect.restore.kind === 'clear-blank') {
-        engine.clearPreviewBaseImage();
-        (engine as PreviewBackgroundEngine).resetBackground();
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
       }
       scheduleRotoStartFramePropagation(frame);
     },
     clearCanvas: (frame) => {
       if (!engine || frame !== currentFrame) return;
-      engine.clearPreviewBaseImage();
-      (engine as PreviewBackgroundEngine).resetBackground();
+      (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+      (engine as PreviewBackgroundEngine).resetBackground(true);
       engine.clear();
     },
     navigate: navigateToSyncedPhysicalFrame,

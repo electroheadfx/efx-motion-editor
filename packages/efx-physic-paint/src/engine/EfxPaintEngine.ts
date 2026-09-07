@@ -748,7 +748,12 @@ export class EfxPaintEngine {
     image.src = dataUrl
   }
 
-  resetBackground(): void {
+  // skipRedraw: leave-path callers (resetBackground immediately followed by
+  // clear()) pass true — clear() discards allActions and repaints the dry
+  // canvas from drawBg, so the redrawAll() stroke replay is wasted work. The
+  // drawBg/redrawPreviewBase/memo writes still happen (they are the state the
+  // skip memo and the following clear() rely on).
+  resetBackground(skipRedraw = false): void {
     this.requestRender()
     this.previewBackgroundRequestId += 1
     const inputs = this.lastResetBackgroundInputs
@@ -766,7 +771,7 @@ export class EfxPaintEngine {
     }
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
-    this.redrawAll()
+    if (!skipRedraw) this.redrawAll()
     this.lastResetBackgroundData = this.bgData
     this.lastResetBackgroundInputs = {
       bgMode: this.state.bgMode,
@@ -909,7 +914,12 @@ export class EfxPaintEngine {
     this.redrawAll()
   }
 
-  clearPreviewBaseImage(): void {
+  // skipRedraw: leave-path callers (clearPreviewBaseImage immediately followed
+  // by resetBackground + clear()) pass true — clear() repaints the dry canvas
+  // from drawBg, so the redrawAll() stroke replay is wasted work. The state
+  // writes (previewBaseEnabled=false, previewBaseImage=null, generation reset)
+  // still happen.
+  clearPreviewBaseImage(skipRedraw = false): void {
     this.requestRender()
     this.previewBaseRequestId += 1
     this.previewBaseEnabled = false
@@ -922,7 +932,7 @@ export class EfxPaintEngine {
     this.appliedPreviewBaseAppFrame = null
     this.appliedPreviewBaseExplicit = false
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
-    this.redrawAll()
+    if (!skipRedraw) this.redrawAll()
   }
 
   /** Set paper grain for physics (key matches PaperConfig.name) */
