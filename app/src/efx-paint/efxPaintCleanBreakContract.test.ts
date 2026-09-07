@@ -67,6 +67,42 @@ const ALLOWLIST = new Set([
   'app/src/efx-paint/efxPaintCleanBreakContract.test.ts',
 ]);
 
+/**
+ * 52.1 (D-19): the frame-transport forbidden tokens — the base64/PNG frame
+ * runtime surface that must be retired. The base64 PNG prefix, the synchronous
+ * canvas string export, the JS PNG encode/decode helpers, the base64 bridge
+ * helpers, and the string-keyed cache names.
+ */
+const FRAME_TRANSPORT_FORBIDDEN_TOKENS = [
+  'data:image/png',
+  'toDataURL',
+  'encodePngDataUrl',
+  'decodePngDataUrl',
+  'bytesToBase64',
+  'base64ToBytes',
+  '_compositorImageCache',
+  '_rotoAlphaCanvasRegistry',
+];
+
+/**
+ * Exact relative paths allowed to reference the frame-transport tokens:
+ *   - the import/export interchange path (D-01) — PNG survives as
+ *     import/export interchange via the browser's own encoder
+ *     (rotoAlphaCanvasRegistry.ts canvasToPngBytes);
+ *   - the JSON transport boundary (52.1-03 decision "base64 at the JSON
+ *     persistence boundary only") — bytesToBase64 serializes Uint8Array
+ *     across the Tauri emitTo JSON hop (webpBytes.ts, types/physicPaint.ts,
+ *     physicsPaintRotoScriptThumbnail.ts);
+ *   - this contract file (it must name the tokens to detect them).
+ */
+const FRAME_TRANSPORT_ALLOWLIST = new Set([
+  'app/src/lib/rotoAlphaCanvasRegistry.ts',
+  'app/src/lib/webpBytes.ts',
+  'app/src/types/physicPaint.ts',
+  'app/src/components/physic-paint/roto/physicsPaintRotoScriptThumbnail.ts',
+  'app/src/efx-paint/efxPaintCleanBreakContract.test.ts',
+]);
+
 const FIXTURES_DIR = 'app/src/efx-paint/document/__fixtures__';
 
 /** Files allowed to reference the 'physic_paint_outputs' carrier token. */
@@ -153,12 +189,21 @@ interface TokenMatch {
   token: string;
 }
 
-function scanForTokens(tokens: string[], isAllowed: (relPath: string) => boolean): TokenMatch[] {
+function isTestFile(relPath: string): boolean {
+  return /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(relPath);
+}
+
+function scanForTokens(
+  tokens: string[],
+  isAllowed: (relPath: string) => boolean,
+  options: { skipTestFiles?: boolean } = {},
+): TokenMatch[] {
   const matches: TokenMatch[] = [];
   for (const root of SCAN_ROOTS) {
     for (const file of walkFiles(root)) {
       const relPath = relative(REPO_ROOT, file);
       if (isAllowed(relPath)) continue;
+      if (options.skipTestFiles && isTestFile(relPath)) continue;
       const strip = createCommentStripper();
       const lines = readFileSync(file, 'utf8').split('\n');
       for (let i = 0; i < lines.length; i += 1) {
@@ -236,6 +281,18 @@ describe('DOC-04 clean-break grep contract', () => {
     expect(
       present,
       `Removed launch-payload fields crept back into PhysicPaintLaunchContext (lines ${start + 1}-${end + 1}): ${present.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('forbids the frame-transport tokens outside the allowlist (D-19)', () => {
+    const matches = scanForTokens(
+      FRAME_TRANSPORT_FORBIDDEN_TOKENS,
+      (relPath) => FRAME_TRANSPORT_ALLOWLIST.has(relPath),
+      { skipTestFiles: true },
+    );
+    expect(
+      matches,
+      `Frame-transport surface still reachable (deletion checklist):\n${formatMatches(matches)}`,
     ).toEqual([]);
   });
 });
