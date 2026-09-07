@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+const invoke = vi.hoisted(() => vi.fn());
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+
+import { createPhysicPaintThumbnailNativeEncoder } from './physicsPaintBridgeTransport';
 import {
   applyPhysicPaintImageLibraryRequest,
   createImageLibraryRequestLifecycle,
@@ -126,5 +132,45 @@ describe('image-library bridge pair (49-04, Task 1)', () => {
     expect(bridge).toContain("import { tempProjectDir } from './projectDir';");
     expect(bridge).toContain("getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? '')");
     expect(bridge).toContain("getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? ''");
+  });
+});
+
+describe('thumbnail native encoder raw-bytes transport (52.1 Save Action regression)', () => {
+  it('sends the rgba as the raw invoke body with dimensions in headers, and normalizes the number-array response', async () => {
+    invoke.mockResolvedValueOnce([82, 73, 70, 70, 87, 69, 66, 80]);
+    const rgba = new Uint8Array(2 * 2 * 4).fill(7);
+
+    const result = await createPhysicPaintThumbnailNativeEncoder().encodeWebp({ width: 2, height: 2, quality: 0.8, rgba });
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    const [command, body, options] = invoke.mock.calls[0];
+    expect(command).toBe('script_library_encode_thumbnail_webp');
+    // The raw Uint8Array IS the invoke body. Crossing the event bridge (or a
+    // JSON arg) index-objects the bytes and orphans the request — the silent
+    // Save Action stall this regression came from.
+    expect(body).toBe(rgba);
+    expect(options.headers).toMatchObject({ width: '2', height: '2', quality: '0.8' });
+    expect(options.headers.operationid).toMatch(/^physics-paint-thumbnail-/);
+    expect(result.width).toBe(2);
+    expect(result.height).toBe(2);
+    expect(result.mimeType).toBe('image/webp');
+    // macOS serializes a raw response as a JSON number array — normalize.
+    expect(result.bytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(result.bytes)).toEqual([82, 73, 70, 70, 87, 69, 66, 80]);
+  });
+
+  it('propagates a Rust encode failure as a rejection so the save failure is loud (no silent stall)', async () => {
+    invoke.mockRejectedValueOnce(new Error('Thumbnail RGBA length does not match dimensions'));
+
+    await expect(
+      createPhysicPaintThumbnailNativeEncoder().encodeWebp({ width: 2, height: 2, quality: 0.8, rgba: new Uint8Array(16) }),
+    ).rejects.toThrow('Thumbnail RGBA length does not match dimensions');
+  });
+
+  it('keeps the retired event relay out of the transport', () => {
+    // The tree-wide scan lives in efxPaintCleanBreakContract.test.ts (D-19);
+    // this pins the transport file itself.
+    expect(transport).not.toContain('PHYSIC_PAINT_THUMBNAIL_ENCODE');
+    expect(transport).not.toContain("emitTo('main', PHYSIC_PAINT_THUMBNAIL");
   });
 });

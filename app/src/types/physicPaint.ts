@@ -1769,24 +1769,6 @@ export interface PhysicPaintStateSaveResult {
   error?: string;
 }
 
-export interface PhysicPaintThumbnailEncodeRequest {
-  operationId: string;
-  width: number;
-  height: number;
-  quality: number;
-  rgba: Uint8Array;
-}
-
-export interface PhysicPaintThumbnailEncodeResult {
-  operationId: string;
-  ok: boolean;
-  width: number;
-  height: number;
-  mimeType: 'image/webp';
-  bytes?: Uint8Array;
-  error?: string;
-}
-
 export interface PhysicPaintRenderedFrame {
   /** Generated sequence-local frame index. For still applies this is 0. */
   frameIndex: number;
@@ -2253,24 +2235,6 @@ export function isPhysicPaintApplyResultMessage(value: unknown): value is Physic
   );
 }
 
-export function isPhysicPaintThumbnailEncodeRequest(value: unknown): value is PhysicPaintThumbnailEncodeRequest {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'width', 'height', 'quality', 'rgba'])) return false;
-  if (!isBoundedOperationId(value.operationId) || !isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64)) return false;
-  if (typeof value.quality !== 'number' || !Number.isFinite(value.quality) || value.quality < 0.75 || value.quality > 0.85) return false;
-  if (!(value.rgba instanceof Uint8Array)) return false;
-  const expectedBytes = value.width * value.height * 4;
-  return value.rgba.length === expectedBytes;
-}
-
-export function isPhysicPaintThumbnailEncodeResult(value: unknown): value is PhysicPaintThumbnailEncodeResult {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'width', 'height', 'mimeType', 'bytes', 'error'])) return false;
-  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
-  if (!isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64) || value.mimeType !== 'image/webp') return false;
-  if (value.error !== undefined && typeof value.error !== 'string') return false;
-  if (!value.ok) return value.bytes === undefined && isNonEmptyString(value.error);
-  return isWebpBytes(value.bytes) && value.error === undefined;
-}
-
 export function isPhysicPaintScriptLibraryRequest(value: unknown): value is PhysicPaintScriptLibraryRequest {
   if (!isRecord(value) || !isNonEmptyString(value.operationId)) return false;
   if (value.kind === 'scan') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId');
@@ -2428,10 +2392,6 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 
 function isBoundedOperationId(value: unknown): value is string {
   return isNonEmptyString(value) && value.length <= 256 && !/[^\x20-\x7e]/.test(value);
-}
-
-function isBoundedThumbnailDimension(value: unknown, max: number): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= max;
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

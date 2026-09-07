@@ -1,8 +1,8 @@
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest, PhysicPaintThumbnailEncodeRequest, PhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
-import { isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest } from '../../../types/physicPaint';
 import { toTransportPayload } from '../../../lib/webpBytes';
-import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { toUint8Array } from '../../../lib/webpFrameCodec';
+import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 
@@ -125,32 +125,21 @@ export async function sendPhysicPaintRotoAuthorityRequest(request: PhysicPaintRo
 export function createPhysicPaintThumbnailNativeEncoder(): RotoScriptThumbnailNativeEncoder {
   return {
     async encodeWebp({ width, height, quality, rgba }) {
-      const eventApi = await import('@tauri-apps/api/event');
-      if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') throw new Error('Tauri thumbnail encoder bridge is unavailable');
-      const operationId = `physics-paint-thumbnail-${Date.now()}-${crypto.randomUUID()}`;
-      const request: PhysicPaintThumbnailEncodeRequest = { operationId, width, height, quality, rgba };
-      let timeout = 0;
-      let unlisten: (() => void) | undefined;
-      try {
-        let resolveResult: (result: PhysicPaintThumbnailEncodeResult) => void = () => {};
-        let rejectResult: (error: Error) => void = () => {};
-        const resultPromise = new Promise<PhysicPaintThumbnailEncodeResult>((resolve, reject) => {
-          resolveResult = resolve;
-          rejectResult = reject;
-        });
-        unlisten = await eventApi.listen(PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT, (event) => {
-          if (!isPhysicPaintThumbnailEncodeResult(event.payload) || event.payload.operationId !== operationId) return;
-          resolveResult(event.payload);
-        });
-        timeout = window.setTimeout(() => rejectResult(new Error('Native WebP encoding timed out')), 10_000);
-        await eventApi.emitTo('main', PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, request);
-        const result = await resultPromise;
-        if (!result.ok || !result.bytes) throw new Error(result.error ?? 'Native WebP encoding failed');
-        return { width: result.width, height: result.height, mimeType: result.mimeType, bytes: result.bytes };
-      } finally {
-        if (timeout) window.clearTimeout(timeout);
-        unlisten?.();
-      }
+      const core = await import('@tauri-apps/api/core');
+      if (typeof core.invoke !== 'function') throw new Error('Tauri thumbnail encoder invoke is unavailable');
+      // 52.1 (D-05/D-07): raw byte-body invoke, mirroring encode_webp_frame —
+      // never the event bridge, whose JSON serialization turns the rgba
+      // Uint8Array into an index object the main-window validator rejects,
+      // orphaning the request until the (silent) timeout kills the save.
+      const result = await core.invoke('script_library_encode_thumbnail_webp', rgba, {
+        headers: {
+          operationid: `physics-paint-thumbnail-${Date.now()}-${crypto.randomUUID()}`,
+          width: String(width),
+          height: String(height),
+          quality: String(quality),
+        },
+      });
+      return { width, height, mimeType: 'image/webp', bytes: toUint8Array(result) };
     },
   };
 }

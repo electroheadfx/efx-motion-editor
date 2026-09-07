@@ -17,7 +17,8 @@ export interface DecodedWebpFrame {
 }
 
 /**
- * Normalize the `encode_webp_frame` invoke result back to a `Uint8Array`.
+ * Normalize a raw-codec invoke result (`encode_webp_frame`,
+ * `script_library_encode_thumbnail_webp`) back to a `Uint8Array`.
  *
  * The Rust command returns `InvokeResponseBody::Raw(Vec<u8>)`, but on macOS
  * Tauri serializes a raw response through `format_result` →
@@ -27,7 +28,7 @@ export interface DecodedWebpFrame {
  * downstream frame validator. Non-macOS platforms may instead deliver an
  * `ArrayBuffer` (Channel path) or a `Uint8Array`; all three are handled.
  */
-function toUint8Array(value: unknown): Uint8Array {
+export function toUint8Array(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) return value;
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
   if (Array.isArray(value)) return new Uint8Array(value);

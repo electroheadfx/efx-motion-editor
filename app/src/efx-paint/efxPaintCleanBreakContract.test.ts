@@ -82,6 +82,13 @@ const FRAME_TRANSPORT_FORBIDDEN_TOKENS = [
   'base64ToBytes',
   '_compositorImageCache',
   '_rotoAlphaCanvasRegistry',
+  // 52.1 Save Action regression: the retired thumbnail-encode event relay.
+  // Thumbnail bytes cross the Tauri boundary as a raw invoke body (D-05/D-07),
+  // never over the JSON event bridge, which index-objects the Uint8Array and
+  // orphans the request.
+  'PHYSIC_PAINT_THUMBNAIL_ENCODE',
+  'physic-paint:thumbnail-encode',
+  'installPhysicPaintThumbnailEncodeListener',
 ];
 
 /**

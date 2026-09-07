@@ -10,7 +10,6 @@ import {
   type PhysicPaintActionTransactionPrepareRequest,
   type PhysicPaintActionTransactionResult,
   type PhysicPaintScriptLibraryResult,
-  type PhysicPaintThumbnailEncodeRequest,
 } from '../types/physicPaint';
 
 // Result type mirroring Rust's Result pattern (locked decision)
@@ -108,10 +107,6 @@ export function scriptLibraryDelete(authority: string, scriptId: string, expecte
 }
 export function scriptLibraryMigrateSavedProjects(sourceFilePath: string, destinationFilePath: string): Promise<Result<ScriptLibraryMigrationResult>> {
   return safeInvoke('script_library_migrate_saved_projects', { sourceFilePath, destinationFilePath });
-}
-
-export function scriptLibraryEncodeThumbnailWebp(request: PhysicPaintThumbnailEncodeRequest): Promise<Result<{ width: number; height: number; mimeType: 'image/webp'; bytes: Uint8Array }>> {
-  return safeInvoke('script_library_encode_thumbnail_webp', { request });
 }
 
 function actionTransactionFailure(

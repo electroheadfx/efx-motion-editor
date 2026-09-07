@@ -6,6 +6,7 @@ use crate::services::script_library::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
+use tauri::ipc::{InvokeBody, InvokeResponseBody, Request, Response};
 use tauri::{command, State, WebviewWindow};
 
 const MAIN_WINDOW_LABEL: &str = "main";
@@ -33,10 +34,37 @@ pub struct ThumbnailEncodeResponse {
     bytes: Vec<u8>,
 }
 
-#[command]
-pub fn script_library_encode_thumbnail_webp(window: WebviewWindow, request: ThumbnailEncodeRequest) -> Result<ThumbnailEncodeResponse, String> {
-    require_main_window(&window)?;
-    encode_thumbnail_webp(request)
+/// Encode an RGBA buffer to a WebP thumbnail. The raw RGBA crosses the Tauri
+/// boundary as the invoke body — 52.1 (D-05/D-07): never the event bridge,
+/// whose JSON serialization turns a `Uint8Array` into an index object the
+/// main-window validator rejects (the request was orphaned until the child's
+/// 10s timeout, silently failing every Save Action thumbnail). `async` keeps
+/// the CPU encode off the main thread, mirroring `encode_webp_frame`.
+#[command(async)]
+pub fn script_library_encode_thumbnail_webp(request: Request) -> Result<Response, String> {
+    let headers = request.headers();
+    let header = |name: &str| -> Result<&str, String> {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| format!("script_library_encode_thumbnail_webp: missing or invalid {name} header"))
+    };
+    let operation_id = header("operationid")?.to_string();
+    let width: u32 = header("width")?
+        .parse()
+        .map_err(|_| "script_library_encode_thumbnail_webp: invalid width header".to_string())?;
+    let height: u32 = header("height")?
+        .parse()
+        .map_err(|_| "script_library_encode_thumbnail_webp: invalid height header".to_string())?;
+    let quality: f32 = header("quality")?
+        .parse()
+        .map_err(|_| "script_library_encode_thumbnail_webp: invalid quality header".to_string())?;
+    let rgba = match request.body() {
+        InvokeBody::Raw(bytes) => bytes.clone(),
+        _ => return Err("script_library_encode_thumbnail_webp: expected a raw byte body".to_string()),
+    };
+    let response = encode_thumbnail_webp(ThumbnailEncodeRequest { operation_id, width, height, quality, rgba })?;
+    Ok(Response::new(InvokeResponseBody::Raw(response.bytes)))
 }
 
 #[cfg(feature = "script-library-test-support")]
