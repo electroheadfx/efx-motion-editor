@@ -40,6 +40,7 @@ import type {
   PhysicPaintRotoBackgroundMetadata,
 } from '../../../types/physicPaint';
 import {
+  base64ToWebpBytes,
   buildFrameBytesToken,
   isWebpBytes,
 } from '../../../lib/webpBytes';
@@ -896,10 +897,18 @@ export function parsePhysicPaintRotoPhysicalState(
 }
 
 function cloneAndFreezeRealKeyPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+  // 52.1 (D-05): the durable JSON form carries `bytes` as base64 (the canonical
+  // form accepted by isCanonicalBase64WebpBytes). Normalize it back to a
+  // Uint8Array here so buildFrameBytesToken (revision) and every downstream
+  // consumer see the live in-memory shape, never a base64 string.
+  const rawBytes = payload.bytes as unknown;
+  const bytes = typeof rawBytes === 'string'
+    ? base64ToWebpBytes(rawBytes) ?? new Uint8Array(0)
+    : rawBytes as Uint8Array;
   return Object.freeze({
     frameIndex: payload.frameIndex,
     appFrame: payload.appFrame,
-    bytes: payload.bytes,
+    bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;

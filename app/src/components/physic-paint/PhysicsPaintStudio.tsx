@@ -1534,8 +1534,8 @@ export function PhysicsPaintStudio() {
     getIncomingInterpolationBreakKeyIds: () => launchContext
       ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())
       : [],
-    buildBlankRotoFrame: (frame) => ({
-      ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
+    buildBlankRotoFrame: async (frame) => ({
+      ...(await buildBlankRotoFrame(canvasWidth, canvasHeight, frame)),
       source: 'real-key',
     }),
     executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<EfxPaintDocument>),
@@ -1569,7 +1569,7 @@ export function PhysicsPaintStudio() {
     }
     if (source.keyId !== null) return null;
 
-    const blank = buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
+    const blank = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
     const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
       physicalEditCoordinator.pendingOperationId,
       physicalEditCoordinator.acceptedOutput,
@@ -1623,7 +1623,7 @@ export function PhysicsPaintStudio() {
       dirtyFrames: dirtyRotoFramesRef.current,
       applyStatus,
       flushInFlight: false,
-      buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
+      buildBlankRotoFrame: async (frame): Promise<PhysicPaintRotoCacheFrame> => ({ ...(await buildBlankRotoFrame(canvasWidth, canvasHeight, frame)), source: 'real-key' }),
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
       showCachedReference: (frame) => setCachedRotoReferenceUrl(getFrameBlobUrl(frame.bytes)),

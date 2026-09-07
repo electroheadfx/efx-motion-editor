@@ -17,12 +17,33 @@ export interface DecodedWebpFrame {
 }
 
 /**
+ * Normalize the `encode_webp_frame` invoke result back to a `Uint8Array`.
+ *
+ * The Rust command returns `InvokeResponseBody::Raw(Vec<u8>)`, but on macOS
+ * Tauri serializes a raw response through `format_result` →
+ * `serde_json::to_string`, so the JS promise resolves to a plain JSON number
+ * array (`[82,73,70,70,...]`) rather than a `Uint8Array`. `isWebpBytes` requires
+ * `instanceof Uint8Array`, so the un-normalized array silently fails every
+ * downstream frame validator. Non-macOS platforms may instead deliver an
+ * `ArrayBuffer` (Channel path) or a `Uint8Array`; all three are handled.
+ */
+function toUint8Array(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (Array.isArray(value)) return new Uint8Array(value);
+  throw new Error('encode_webp_frame returned an unexpected payload shape.');
+}
+
+/**
  * Encode an RGBA buffer to WebP-lossless frame bytes via the Rust
  * `encode_webp_frame` command. Raw `Uint8Array` crosses the Tauri boundary as
  * bytes — never base64 (unlike `emitTo` JSON events).
  */
-export function encodeWebpFrame(args: { rgba: Uint8Array; width: number; height: number }): Promise<Uint8Array> {
-  return invoke('encode_webp_frame', { rgba: args.rgba, width: args.width, height: args.height }) as Promise<Uint8Array>;
+export async function encodeWebpFrame(args: { rgba: Uint8Array; width: number; height: number }): Promise<Uint8Array> {
+  const result = await invoke('encode_webp_frame', args.rgba, {
+    headers: { width: String(args.width), height: String(args.height) },
+  });
+  return toUint8Array(result);
 }
 
 /**
@@ -31,4 +52,21 @@ export function encodeWebpFrame(args: { rgba: Uint8Array; width: number; height:
  */
 export function decodeWebpFrame(args: { bytes: Uint8Array }): Promise<DecodedWebpFrame> {
   return invoke('decode_webp_frame', { bytes: args.bytes }) as Promise<DecodedWebpFrame>;
+}
+
+/**
+ * Encode a canvas to WebP-lossless frame bytes via the Rust `encode_webp_frame`
+ * command. Reads the one remaining synchronous `getImageData` readback, then
+ * hands the raw RGBA to the Rust codec — never `toDataURL('image/webp')`, which
+ * WebKit silently falls back to PNG (and Chrome emits lossy VP8, not VP8L).
+ */
+export async function encodeCanvasAsWebp(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not read canvas pixels for WebP encode.');
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  return encodeWebpFrame({
+    rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength),
+    width: canvas.width,
+    height: canvas.height,
+  });
 }

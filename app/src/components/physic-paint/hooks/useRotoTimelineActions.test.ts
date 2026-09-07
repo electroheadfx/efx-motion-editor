@@ -154,7 +154,7 @@ function createHarness(options: HarnessOptions = {}) {
     getLaunchContext: () => launch,
     getIncomingInterpolationBreakKeyIds: options.getIncomingInterpolationBreakKeyIds
       ?? (() => options.incomingInterpolationBreakKeyIds ?? []),
-    buildBlankRotoFrame: (appFrame) => ({
+    buildBlankRotoFrame: async (appFrame) => ({
       frameIndex: 0,
       appFrame,
       bytes: options.blankDataUrl ?? BLANK_PNG_DATA_URL,

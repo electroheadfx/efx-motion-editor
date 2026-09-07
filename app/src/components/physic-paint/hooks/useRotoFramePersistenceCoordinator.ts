@@ -508,8 +508,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId, trackId);
     if (!record || record.appFrame !== appFrame || !contentRevision) return false;
     livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
-    const blank = buildBlankRotoFrame(size.width, size.height, appFrame);
-    void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+    void buildBlankRotoFrame(size.width, size.height, appFrame).then((blank) => {
+      void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+    });
     return true;
   }, [upsertCachedFrame]);
 

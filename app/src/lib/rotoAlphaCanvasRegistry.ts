@@ -30,14 +30,14 @@ export function hasRotoAlphaCanvasFrame(
 }
 
 /**
- * Synchronous canvas → WebP-lossless bytes via the browser's own encoder
- * (toDataURL + atob). The store's regeneration API is synchronous; the async
- * Rust encoder would ripple through the whole store mutation API. The base64
- * payload is a browser-API boundary conversion, never transported.
+ * Synchronous canvas → PNG bytes via the browser's own encoder (toDataURL +
+ * atob). Display-only derived frames (interpolation blends) use this — PNG is
+ * honest here because these bytes never reach real-key validation or
+ * persistence. Real keys are VP8L-only (Rust codec).
  */
-export function canvasToWebpBytes(canvas: HTMLCanvasElement): Uint8Array | null {
+export function canvasToPngBytes(canvas: HTMLCanvasElement): Uint8Array | null {
   try {
-    const dataUrl = canvas.toDataURL('image/webp');
+    const dataUrl = canvas.toDataURL('image/png');
     const comma = dataUrl.indexOf(',');
     if (comma < 0) return null;
     const binary = atob(dataUrl.slice(comma + 1));

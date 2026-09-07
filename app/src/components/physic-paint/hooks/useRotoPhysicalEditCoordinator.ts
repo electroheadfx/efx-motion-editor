@@ -95,6 +95,7 @@ import {
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { isWebpBytes } from '../../../types/physicPaint';
+import { buildFrameBytesToken } from '../../../lib/webpBytes';
 import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
@@ -439,6 +440,11 @@ function createAuthorizedPhysicalEditPayload(
   }
 }
 
+function payloadBytesEqual(left: unknown, right: unknown): boolean {
+  if (!(left instanceof Uint8Array) || !(right instanceof Uint8Array)) return false;
+  return buildFrameBytesToken(left) === buildFrameBytesToken(right);
+}
+
 function semanticDeltaEquals(
   left: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
   right: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
@@ -520,7 +526,7 @@ function semanticDeltaEquals(
         || leftEntry.newKeyId !== rightEntry.newKeyId
         || leftEntry.payload.frameIndex !== rightEntry.payload.frameIndex
         || leftEntry.payload.appFrame !== rightEntry.payload.appFrame
-        || leftEntry.payload.bytes !== rightEntry.payload.bytes
+        || !payloadBytesEqual(leftEntry.payload.bytes, rightEntry.payload.bytes)
         || leftEntry.payload.width !== rightEntry.payload.width
         || leftEntry.payload.height !== rightEntry.payload.height) {
         return false;
@@ -536,7 +542,7 @@ function semanticDeltaEquals(
     && left.newKeyId === right.newKeyId
     && leftPayload.frameIndex === rightPayload.frameIndex
     && leftPayload.appFrame === rightPayload.appFrame
-    && leftPayload.bytes === rightPayload.bytes
+    && payloadBytesEqual(leftPayload.bytes, rightPayload.bytes)
     && leftPayload.width === rightPayload.width
     && leftPayload.height === rightPayload.height;
 }
@@ -689,7 +695,7 @@ function recordsEqual(
       || leftRecord.appFrame !== rightRecord.appFrame
       || leftRecord.payload.frameIndex !== rightRecord.payload.frameIndex
       || leftRecord.payload.appFrame !== rightRecord.payload.appFrame
-      || leftRecord.payload.bytes !== rightRecord.payload.bytes
+      || !payloadBytesEqual(leftRecord.payload.bytes, rightRecord.payload.bytes)
       || leftRecord.payload.width !== rightRecord.payload.width
       || leftRecord.payload.height !== rightRecord.payload.height) return false;
   }
@@ -708,7 +714,7 @@ function applyPayloadRecordsEqual(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.bytes === candidate.payload.bytes
+      && payloadBytesEqual(record.payload.bytes, candidate.payload.bytes)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -785,7 +791,7 @@ function railSetCopyKeyRailMemberEqual(
       || entry.ownsIncomingBreak !== other.ownsIncomingBreak) return false;
     return entry.payload.frameIndex === other.payload.frameIndex
       && entry.payload.appFrame === other.payload.appFrame
-      && entry.payload.bytes === other.payload.bytes
+      && payloadBytesEqual(entry.payload.bytes, other.payload.bytes)
       && entry.payload.width === other.payload.width
       && entry.payload.height === other.payload.height;
   });

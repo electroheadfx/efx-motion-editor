@@ -1,6 +1,7 @@
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest, PhysicPaintThumbnailEncodeRequest, PhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
 import { isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
+import { toTransportPayload } from '../../../lib/webpBytes';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
@@ -93,12 +94,15 @@ export async function sendEfxPaintDocumentSync(
   if (bridgeMode === 'Tauri') {
     const eventApi = await import('@tauri-apps/api/event');
     if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
-    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload);
+    // 52.1 (D-05): emitTo serializes as JSON, turning the document's real-key
+    // `bytes` (Uint8Array) into index objects. Convert bytes -> base64 so the
+    // main-window parser sees the canonical string form.
+    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, toTransportPayload(payload));
     return;
   }
   if (bridgeMode === 'Browser fallback') {
     if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
-    window.opener.postMessage({ type: PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload }, window.location.origin);
+    window.opener.postMessage({ type: PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, payload: toTransportPayload(payload) }, window.location.origin);
     return;
   }
   throw new Error('App bridge is not connected');
@@ -155,7 +159,10 @@ export async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPaylo
   if (bridgeMode === 'Tauri') {
     const eventApi = await import('@tauri-apps/api/event');
     if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
-    await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, payload);
+    // 52.1 (D-05): emitTo serializes as JSON, which turns Uint8Array frame
+    // bytes into index objects. Convert bytes -> base64 so the parent-side
+    // validators see the canonical string form instead of a corrupted array.
+    await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, toTransportPayload(payload));
     return;
   }
 

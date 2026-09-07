@@ -217,7 +217,7 @@ describe('Physics Paint Play Script integration contract', () => {
     // idempotency-guarded by document revision (the launch push is a no-op).
     expect(bridge).toContain("PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document'");
     expect(bridge).toContain('installPhysicPaintEfxPaintDocumentListener');
-    expect(bridge).toContain('parseEfxPaintDocument(incoming.document ?? payload)');
+    expect(bridge).toContain('parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload))');
     expect(bridge).toContain('buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)');
     // 49-06 (UAT round 11): the child carries its runtime background source
     // bytes with the sync (the main window's registry is only hydrated at

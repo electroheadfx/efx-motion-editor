@@ -3,6 +3,7 @@ import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import { fromTransportPayload, toTransportPayload } from './webpBytes';
 import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import {
@@ -51,11 +52,11 @@ import { getDocument as getEfxPaintDocument, registerDocument as registerEfxPain
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
-  canvasToWebpBytes,
   physicPaintStore,
   registerBackgroundSourceImage,
   type PhysicPaintRotoPhysicalOperationLeaseToken,
 } from '../stores/physicPaintStore';
+import { encodeCanvasAsWebp } from './webpFrameCodec';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
@@ -369,14 +370,14 @@ function debugReplaySnapshotDiff(
   console.warn(`[replay-diff] replay target mismatch: ${failures.join(' | ') || 'unknown-field'}`);
 }
 
-export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
+export async function applyPhysicPaintPayload(payload: unknown): Promise<PhysicPaintApplyResult> {
   return applyPhysicPaintPayloadWithPublicationLease(payload);
 }
 
-function applyPhysicPaintPayloadWithPublicationLease(
+async function applyPhysicPaintPayloadWithPublicationLease(
   payload: unknown,
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
-): PhysicPaintApplyResult {
+): Promise<PhysicPaintApplyResult> {
   const base = resultBase(payload);
   if (!isStructuredClonePlainData(payload) || !isPhysicPaintApplyPayload(payload)) {
     return failureResult(base, 'Invalid physics paint apply payload');
@@ -427,9 +428,9 @@ function applyPhysicPaintPayloadWithPublicationLease(
   try {
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
-      result = physicPaintStore.applyCanvas(payload);
+      result = await physicPaintStore.applyCanvas(payload);
     } else if (payload.kind === 'update-roto-interpolation-settings') {
-      const generatedFrames = physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);
+      const generatedFrames = await physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);
       result = successResult(payload, generatedFrames.length);
     } else if (payload.kind === 'update-roto-playback-settings') {
       const changed = physicPaintStore.setRotoPlaybackSettings(payload.layerId, payload.trackId, payload.settings);
@@ -478,9 +479,9 @@ function applyPhysicPaintPayloadWithPublicationLease(
           if (!affectedSources.has(source) && !existingSources.has(source)) return applyFailureResult(payload, 'Play Script batch contains an unexpected out-of-range real key.');
         }
       }
-      result = physicPaintStore.replaceRotoKeyFrames(payload);
+      result = await physicPaintStore.replaceRotoKeyFrames(payload);
     } else if (payload.kind === 'replace-roto-physical-map') {
-      result = applyPhysicPaintRotoPhysicalMap(payload, publicationLeaseToken);
+      result = await applyPhysicPaintRotoPhysicalMap(payload, publicationLeaseToken);
     } else {
       result = applyFailureResult(payload, 'Unsupported physics paint payload');
     }
@@ -506,7 +507,7 @@ async function applyPreparedPhysicPaintPayload(
       error instanceof Error ? error.message : 'Canonical Roto PNG preparation failed.',
     );
   }
-  const result = applyPhysicPaintPayloadWithPublicationLease(
+  const result = await applyPhysicPaintPayloadWithPublicationLease(
     payload,
     publicationLeaseToken,
   );
@@ -517,6 +518,11 @@ async function applyPreparedPhysicPaintPayload(
 async function applyTransportedPhysicPaintPayload(
   payload: unknown,
 ): Promise<PhysicPaintApplyResult> {
+  // 52.1 (D-05): the child serialized frame bytes as base64 (emitTo JSON turns
+  // Uint8Array into index objects). Decode the canonical base64 `bytes` fields
+  // back to Uint8Array before validation/handling so the in-memory payload
+  // shape matches the direct (non-transported) apply path.
+  payload = fromTransportPayload(payload);
   if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) {
     return applyPreparedPhysicPaintPayload(payload);
   }
@@ -764,6 +770,11 @@ function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()
 
 function stableSerialize(value: unknown, seen: WeakSet<object>): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
+  // 52.1 (D-05): frame bytes are a Uint8Array. Serializing them as a plain
+  // object (Object.keys → sort → per-byte JSON.stringify) is O(n log n) and
+  // blows past the 5s apply timeout for photo-weight frames. Fingerprint by the
+  // O(1) content token instead — same content, same token (G-52-6).
+  if (value instanceof Uint8Array) return buildFrameBytesToken(value);
   if (seen.has(value)) throw new TypeError('Physics Paint payload contains a cyclic value.');
   seen.add(value);
   try {
@@ -925,10 +936,10 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   return null;
 }
 
-function isCanonicalBlankRotoPayload(
+async function isCanonicalBlankRotoPayload(
   payload: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyPayload,
   destinationAppFrame: number,
-): boolean {
+): Promise<boolean> {
   if (payload.frameIndex !== 0
     || payload.appFrame !== destinationAppFrame
     || !Number.isInteger(payload.width)
@@ -940,14 +951,14 @@ function isCanonicalBlankRotoPayload(
     const canvas = document.createElement('canvas');
     canvas.width = payload.width as number;
     canvas.height = payload.height as number;
-    const blankBytes = canvasToWebpBytes(canvas);
-    return blankBytes !== null && buildFrameBytesToken(payload.bytes) === buildFrameBytesToken(blankBytes);
+    const blankBytes = await encodeCanvasAsWebp(canvas);
+    return buildFrameBytesToken(payload.bytes) === buildFrameBytesToken(blankBytes);
   } catch {
     return false;
   }
 }
 
-function validateInsertEmptySegmentPhysicalDelta(input: {
+async function validateInsertEmptySegmentPhysicalDelta(input: {
   readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
   readonly currentRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
   readonly proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
@@ -956,7 +967,7 @@ function validateInsertEmptySegmentPhysicalDelta(input: {
   readonly currentIncomingInterpolationBreakKeyIds: readonly string[];
   readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
   readonly capacity: number;
-}): string | null {
+}): Promise<string | null> {
   const {
     payload,
     currentRecords,
@@ -979,7 +990,7 @@ function validateInsertEmptySegmentPhysicalDelta(input: {
   if (!semanticValidation.ok) return semanticValidation.error;
   const delta = payload.semanticDelta as Extract<NonNullable<typeof payload.semanticDelta>, { kind: 'insert-empty-segment' }>;
   const inserted = proposedRecords.find((record) => record.keyId === delta.insertedKeyId);
-  if (!inserted || !isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame)) {
+  if (!inserted || !(await isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame))) {
     return 'Empty-segment insert must carry the canonical blank Paint payload.';
   }
   if (stableSerialize(proposedLoopClips, new WeakSet<object>())
@@ -1464,10 +1475,10 @@ function validateCanonicalGroupLifecycleEdit(input: {
   return null;
 }
 
-function applyPhysicPaintRotoPhysicalMap(
+async function applyPhysicPaintRotoPhysicalMap(
   payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>,
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
-): PhysicPaintRotoPhysicalEditApplyResult {
+): Promise<PhysicPaintRotoPhysicalEditApplyResult> {
   const reject = (error: string, stagedRevision?: string) => physicalEditResult(payload, { ok: false, error, stagedRevision });
   const isPlayScript = payload.operationKind === 'play-script';
   if (isPlayScript && (!projectStore.filePath.peek() || !projectStore.scriptLibraryAuthority.peek())) {
@@ -1696,7 +1707,7 @@ function applyPhysicPaintRotoPhysicalMap(
     if (canonicalValidationError) return reject(canonicalValidationError, stagedRevision);
   }
   if (payload.operationKind === 'insert-empty-segment') {
-    const validationError = validateInsertEmptySegmentPhysicalDelta({
+    const validationError = await validateInsertEmptySegmentPhysicalDelta({
       payload,
       currentRecords,
       proposedRecords,
@@ -2702,7 +2713,9 @@ export async function installPhysicPaintRotoAuthorityListener(): Promise<() => v
   const emitResult = async (result: PhysicPaintRotoAuthorityResult, source?: Pick<Window, 'postMessage'> | null) => {
     if (isTauriRuntime()) {
       const eventApi = await import('@tauri-apps/api/event');
-      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, result);
+      // 52.1 (D-05): physicalRecords carry Uint8Array bytes; emitTo JSON would
+      // turn them into index objects. Convert bytes -> base64 on the way out.
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, toTransportPayload(result));
     }
     if (typeof window !== 'undefined') source?.postMessage?.({ type: PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, payload: result }, window.location.origin);
   };
@@ -2772,8 +2785,17 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
         const payload = event.payload;
         const result = await applyTransportedPhysicPaintPayload(payload);
         onResult?.(result);
-        await eventApi.emit?.(PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
-        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
+        // 52.1 (D-05): the result echoes the semanticDelta whose clipboardPayload
+        // bytes are a Uint8Array. emitTo serializes as JSON, which would turn the
+        // bytes into an index object and make the child's isPhysicPaintApplyResult
+        // reject the result (silent timeout). Convert bytes -> base64 on the way
+        // out so the child's validator sees the canonical string form.
+        // NOTE: the raw `emit` broadcast was removed — it JSON-serialized the
+        // Uint8Array into an index object and the child's Tauri listener rejected
+        // that duplicate (the "invalid Tauri apply result" warning). The child is
+        // the only Tauri listener for this event and already receives the encoded
+        // result via emitTo below.
+        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, toTransportPayload(result));
         sendBrowserApplyResult(result);
         if (result.ok && isPhysicPaintApplyPayload(payload) && shouldCloseNativeWindowAfterApply(payload)) await closeNativePhysicPaintWindow();
       });
@@ -2838,7 +2860,10 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
           }
         }
       }
-      const document = parseEfxPaintDocument(incoming.document ?? payload);
+      // 52.1 (D-05): the child serialized the document's real-key bytes as
+      // base64 (emitTo JSON). Decode back to Uint8Array before the canonical
+      // parser so the in-memory shape matches the direct path.
+      const document = parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload));
       const current = getEfxPaintDocument(document.parentLayerId);
       if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
       registerEfxPaintDocument(document);
@@ -3147,7 +3172,11 @@ async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext):
   try {
     const core = await import('@tauri-apps/api/core') as TauriCoreApi;
     if (!core.invoke) return { ok: false, error: 'Tauri invoke API unavailable' };
-    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context });
+    // 52.1 (D-05): invoke serializes the context as JSON, which turns the
+    // document's real-key `bytes` (Uint8Array) into index objects. Convert
+    // bytes -> base64 so the child's launch validator sees the canonical
+    // string form instead of a corrupted array.
+    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context: toTransportPayload(context) });
     if (!isTauriPhysicsPaintLaunchResult(result)) {
       return { ok: false, error: `Physics paint native command returned an invalid result: ${JSON.stringify(result)}` };
     }
@@ -3206,7 +3235,7 @@ function buildPhysicsPaintUrl(context: PhysicPaintLaunchContext): string {
   const baseUrl = typeof window !== 'undefined' && window.location?.origin
     ? new URL(PHYSIC_PAINT_FALLBACK_PATH, window.location.origin)
     : new URL(PHYSIC_PAINT_FALLBACK_PATH, 'http://localhost');
-  baseUrl.searchParams.set('context', JSON.stringify(context));
+  baseUrl.searchParams.set('context', JSON.stringify(toTransportPayload(context)));
   return `${baseUrl.pathname}${baseUrl.search}`;
 }
 

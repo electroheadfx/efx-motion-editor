@@ -27,7 +27,25 @@ import { clearProjectPaperRasterCache } from '../../../lib/projectPaperRaster';
 // `decode_webp_frame` leaf → ImageData → createImageBitmap. Mock the leaf so
 // the async decode is observable without reaching the Tauri boundary.
 const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
-vi.mock('../../../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+vi.mock('../../../lib/webpFrameCodec', () => ({
+  decodeWebpFrame: decodeWebpFrameMock,
+  encodeCanvasAsWebp: vi.fn(async (canvas: { log?: () => string; toDataURL?: () => string }) => {
+    let seed = '';
+    if (typeof canvas.log === 'function') {
+      seed = canvas.log();
+    } else if (typeof canvas.toDataURL === 'function') {
+      const dataUrl = canvas.toDataURL();
+      const comma = dataUrl.indexOf(',');
+      if (comma >= 0) seed = atob(dataUrl.slice(comma + 1));
+    }
+    const bytes = new Uint8Array(32 + seed.length);
+    bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+    bytes.set([0x57, 0x45, 0x42, 0x50], 8);
+    bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
+    for (let index = 0; index < seed.length; index += 1) bytes[32 + index] = seed.charCodeAt(index) & 0xff;
+    return bytes;
+  }),
+}));
 
 /** Flush the microtask queue so a kicked-off async decode completes. */
 const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -389,7 +407,7 @@ describe('PhysicsPaintProgramMonitor', () => {
     const record = getFlattenedFrame.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
     expect(record).not.toBeNull();
     // Full composite: both tracks draw.
-    expect(decodeFlatLog(record.renderedFrame.bytes).match(/draw\(/g)?.length).toBe(2);
+    expect(decodeFlatLog((await record.encodeBytes())).match(/draw\(/g)?.length).toBe(2);
     // The monitor drew the record's raster into its canvas exactly once.
     expect(drawCount(canvas)).toBe(1);
   });
@@ -421,7 +439,7 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(calledExclude.has('track-a')).toBe(true);
     const record = getFlattenedFrameExcluding.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
     // The active track's pixels never reach the base (T-48-16).
-    const log = decodeFlatLog(record.renderedFrame.bytes);
+    const log = decodeFlatLog((await record.encodeBytes()));
     expect(log.match(/draw\(/g)?.length).toBe(1);
     expect(log).not.toContain(frameSeed(frameA));
     expect(log).toContain(frameSeed(frameB));
@@ -498,7 +516,7 @@ describe('PhysicsPaintProgramMonitor', () => {
     const excludeSet = getFlattenedFrameExcluding.mock.calls[0][2];
     expect(excludeSet.has('track-a')).toBe(true);
     const record = getFlattenedFrameExcluding.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
-    const log = decodeFlatLog(record.renderedFrame.bytes);
+    const log = decodeFlatLog((await record.encodeBytes()));
     expect(log.match(/draw\(/g)?.length).toBe(1);
     expect(log).not.toContain(frameSeed(frameA));
     expect(log).toContain(frameSeed(frameB));

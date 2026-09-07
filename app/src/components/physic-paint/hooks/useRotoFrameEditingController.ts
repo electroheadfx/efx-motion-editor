@@ -85,7 +85,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     const shouldCapture = !(hasCachedReference && !input.editBuffer.dirtyFramesRef.current.has(input.currentFrame)) && persist;
     const capturedFrame = shouldCapture
       ? await buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(input.engine), input.currentFrame, input.canvasSize)
-      : buildBlankRotoFrame(input.canvasSize.width, input.canvasSize.height, input.currentFrame);
+      : await buildBlankRotoFrame(input.canvasSize.width, input.canvasSize.height, input.currentFrame);
     return input.editBuffer.snapshotFrame({
       frame: input.currentFrame,
       state,

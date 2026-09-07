@@ -1,6 +1,7 @@
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { buildPhysicPaintRotoPhysicalRevision, parsePhysicPaintRotoPhysicalDocument } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
 import {
   buildEfxPaintFrameCachePath,
@@ -153,6 +154,50 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     // D-08: refs-only load — the frame carries its cachePath ref, not the bytes.
     expect(restoredFrame?.cachePath).toBe(frameRef);
     expect(restoredFrame?.bytes).toEqual(new Uint8Array(0));
+  });
+
+  it('round-trips real-key record bytes as base64 in the persisted JSON (52.1 D-05)', async () => {
+    const document = createEfxPaintDocument('layer-bytes');
+    const track = document.tracks[0];
+    const bytes = testWebpBytes('real-key-bytes');
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const records = [
+      { keyId: 'key-1', appFrame: 0, kind: 'real-key' as const, payload: { frameIndex: 0, appFrame: 0, bytes, width: 2, height: 2 } },
+    ];
+    const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 24,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    const withRoto = { ...document, tracks: [{ ...track, rotoPhysical }] };
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-bytes', {
+      document: withRoto,
+      frames: new Map(),
+    }]]);
+    const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
+
+    await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+
+    const [payload] = writeProject.mock.calls[0] as [Record<string, unknown>, string | null];
+    const persistedTrack = (payload['layer-bytes'] as { tracks: Array<{ rotoPhysical: { realKeyRecords: Array<{ payload: { bytes: unknown } }> } }> }).tracks[0];
+    const persistedBytes = persistedTrack.rotoPhysical.realKeyRecords[0].payload.bytes;
+    // The persisted JSON form carries bytes as base64, never a Uint8Array index object.
+    expect(typeof persistedBytes).toBe('string');
+    expect(persistedBytes).not.toContain('"0"');
+
+    // Load decodes base64 back to a Uint8Array.
+    const loaded = await loadEfxPaintDocuments('/project', payload);
+    const restored = loaded.get('layer-bytes')!.document;
+    const restoredBytes = restored.tracks[0].rotoPhysical!.realKeyRecords[0].payload.bytes;
+    expect(restoredBytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(restoredBytes)).toEqual(Array.from(bytes));
   });
 
   it('loads refs only — no per-frame sidecar readFile on open (D-08)', async () => {

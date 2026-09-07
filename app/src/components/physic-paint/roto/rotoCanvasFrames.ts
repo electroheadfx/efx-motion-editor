@@ -1,6 +1,6 @@
 import type { BgMode, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import { buildFrameBytesToken, isWebpBytes, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { canvasToWebpBytes, hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../lib/rotoAlphaCanvasRegistry';
+import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../lib/rotoAlphaCanvasRegistry';
 import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import {
   parsePhysicPaintRotoPhysicalDocument,
@@ -194,11 +194,11 @@ export function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: numbe
   return output;
 }
 
-export function buildBlankRotoFrame(width: number, height: number, appFrame: number): RenderedFramePayload {
+export async function buildBlankRotoFrame(width: number, height: number, appFrame: number): Promise<RenderedFramePayload> {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const bytes = canvasToWebpBytes(canvas) ?? new Uint8Array(0);
+  const bytes = await encodeCanvasAsWebp(canvas, appFrame);
   registerRotoAlphaCanvasFrame(bytes, canvas);
   return buildRenderedFramePayload(canvas, appFrame, bytes);
 }

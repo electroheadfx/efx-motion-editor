@@ -983,6 +983,7 @@ describe('pixel acceptance matrix — parent boundary and straight alpha (SPECS 
       frame: 1,
       cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
       renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
       missing: [],
     };
     vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);

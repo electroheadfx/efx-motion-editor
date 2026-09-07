@@ -158,27 +158,28 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
       ctx.drawImage(record.raster, 0, 0, canvas.width, canvas.height);
       return;
     }
-    // Fallback for raster-less records (hand-built sources): decode the bytes
-    // and draw on load. A synchronous decode (test stubs / hot decodes) draws
-    // in the same tick.
-    const image = new Image();
-    const blobUrl = URL.createObjectURL(new Blob([record.renderedFrame.bytes.slice()], { type: 'image/webp' }));
-    image.onload = () => {
-      URL.revokeObjectURL(blobUrl);
-      if (drawnKeyRef.current !== drawnKey) return;
-      const liveCanvas = canvasRef.current;
-      if (!liveCanvas) return;
-      const liveCtx = liveCanvas.getContext('2d');
-      if (!liveCtx) return;
-      liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
-      liveCtx.drawImage(image, 0, 0, liveCanvas.width, liveCanvas.height);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(blobUrl);
-      // A failed decode draws nothing this tick; the next clock bump retries.
-      if (drawnKeyRef.current === drawnKey) drawnKeyRef.current = null;
-    };
-    image.src = blobUrl;
+    // Fallback for raster-less records (hand-built sources): encode the bytes
+    // (async Rust codec) and draw on load.
+    void record.encodeBytes().then((bytes) => {
+      const image = new Image();
+      const blobUrl = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
+      image.onload = () => {
+        URL.revokeObjectURL(blobUrl);
+        if (drawnKeyRef.current !== drawnKey) return;
+        const liveCanvas = canvasRef.current;
+        if (!liveCanvas) return;
+        const liveCtx = liveCanvas.getContext('2d');
+        if (!liveCtx) return;
+        liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+        liveCtx.drawImage(image, 0, 0, liveCanvas.width, liveCanvas.height);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        // A failed decode draws nothing this tick; the next clock bump retries.
+        if (drawnKeyRef.current === drawnKey) drawnKeyRef.current = null;
+      };
+      image.src = blobUrl;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store
     // version clocks are read inside the effect's dep array (narrow leaf
     // subscription, never the Studio root); resolvedFrame is the exact

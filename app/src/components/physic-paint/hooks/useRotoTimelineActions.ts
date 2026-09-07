@@ -1426,7 +1426,7 @@ export interface RotoTimelineActionsInput {
   /** Complete stable-key-owned incoming interpolation break collection. */
   getIncomingInterpolationBreakKeyIds?: () => readonly string[];
   /** Existing transparent blank-frame builder shared with + Key. */
-  buildBlankRotoFrame?: (appFrame: number) => PhysicPaintRotoCacheFrame;
+  buildBlankRotoFrame?: (appFrame: number) => Promise<PhysicPaintRotoCacheFrame>;
   /** Generic acknowledged coordinator execute seam (Plan 36.14-04). */
   executePhysicalEdit?: (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => Promise<boolean>;
   /** Coordinator pending operation id Signal (Plan 36.14-04). */
@@ -1917,7 +1917,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
-  const insertRotoFrame = useCallback((): Promise<boolean> => {
+  const insertRotoFrame = useCallback(async (): Promise<boolean> => {
     const target = classifyRotoInsertTarget(readRotoInsertTargetInput(input));
     const rejection = mapRotoInsertProductReason(target);
     if (rejection !== null) {
@@ -1942,7 +1942,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         kind: 'insert-empty-segment',
         destinationAppFrame: target.appFrame,
         insertedKeyId,
-        blankPayload: toEmptyKeyPayload(input.buildBlankRotoFrame(target.appFrame), target.appFrame),
+        blankPayload: toEmptyKeyPayload(await input.buildBlankRotoFrame(target.appFrame), target.appFrame),
       },
       operationKind: 'insert-empty-segment',
       requiredKeyId: null,

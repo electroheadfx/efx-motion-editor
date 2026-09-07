@@ -1,13 +1,13 @@
 import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
-import { rotoAlphaCanvasRegistry, canvasToWebpBytes } from '../lib/rotoAlphaCanvasRegistry';
-import { decodeWebpFrame } from '../lib/webpFrameCodec';
+import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanvasRegistry';
+import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 import { frameLru } from '../lib/frameLru';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
-import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
+import { type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
 // efxPaintStore document registry. The efxPaintStore ↔ physicPaintStore import
@@ -336,7 +336,7 @@ export interface EfxPaintRuntimeProjection {
 // (lib/rotoAlphaCanvasRegistry.ts) so rotoCanvasFrames.ts can register/query
 // canvases without importing this store (which imports the reveal renderer,
 // which imports rotoCanvasFrames.ts — a module-body cycle).
-export { registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, canvasToWebpBytes } from '../lib/rotoAlphaCanvasRegistry';
+export { registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame } from '../lib/rotoAlphaCanvasRegistry';
 
 // 46-01 TRK-01 base law: every runtime map is addressed layerId -> trackId ->
 // value. trackId is the stable UUID identity from the v1.0 document
@@ -348,6 +348,16 @@ const _frames = new Map<string, Map<string, Map<number, PhysicPaintRenderedFrame
 const _rotoBackgroundMetadata = new Map<string, Map<string, PhysicPaintRotoBackgroundMetadata>>();
 const _rotoCacheMetadata = new Map<string, Map<string, Map<number, PhysicPaintRotoCacheFrame>>>();
 const _rotoGeneratedCacheMetadata = new Map<string, Map<string, Map<number, PhysicPaintRotoCacheFrame>>>();
+
+// 52.1 lever 1: read-path cache for generated (blend/duplicate) frames, keyed
+// by the cacheRevision string (which embeds contentRevision — the freshness
+// signal, so a stale entry is never served). Populated on-demand in
+// getRotoPhysicalRenderSource; cleared on store reset. Holds raw bytes (never
+// canvases/dataURLs); byte-budgeted with FIFO eviction so a long edit session
+// cannot grow it unbounded.
+const _generatedRenderSourceCache = new Map<string, PhysicPaintRenderedFrame>();
+let _generatedRenderSourceCacheBytes = 0;
+const GENERATED_RENDER_SOURCE_CACHE_BYTE_CEILING = 64 * 1024 * 1024;
 const _rotoInterpolationSettings = new Map<string, Map<string, PhysicPaintRotoInterpolationSettings>>();
 const _rotoInterpolationFailureStatus = new Map<string, Map<string, string>>();
 const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regenerate. Real keys were kept.';
@@ -578,7 +588,7 @@ function _decodeEfxAssetBytes(url: string): Promise<Uint8Array | null> {
     // never needs this — which is why the user could select images while the
     // clip never rendered.
     image.crossOrigin = 'anonymous';
-    image.onload = () => {
+    image.onload = async () => {
       try {
         // 49-06 (UAT round 5): cap the rasterization at 2048px on the longest
         // side — a full-res import rasterized at native size produces a
@@ -601,7 +611,7 @@ function _decodeEfxAssetBytes(url: string): Promise<Uint8Array | null> {
           return;
         }
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvasToWebpBytes(canvas));
+        resolve(await encodeCanvasAsWebp(canvas));
       } catch {
         resolve(null);
       } finally {
@@ -736,12 +746,14 @@ export interface EfxPaintFlattenedFrameRecord {
   readonly cacheKey: string;
   /**
    * G-52-8: the composite raster itself. Same-window draw surfaces (program
-   * monitor, preview renderer) consume it directly — the PNG encode→decode
-   * round-trip through `renderedFrame.bytes` only runs for
-   * transport/serialization readers (lazy getter, encoded on first read).
+   * monitor, preview renderer) consume it directly — the WebP encode only runs
+   * for transport/serialization readers via `encodeBytes()` (async Rust codec,
+   * memoized on first call). `renderedFrame.bytes` is a placeholder; readers
+   * that need the real bytes must await `encodeBytes()`.
    */
   readonly raster?: HTMLCanvasElement;
   readonly renderedFrame: PhysicPaintRenderedFrame;
+  readonly encodeBytes: () => Promise<Uint8Array>;
   readonly missing: readonly EfxPaintMissingSourceEntry[];
 }
 
@@ -1095,10 +1107,15 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   _compositorDecodeLoading.add(token);
   const promise = (async (): Promise<ImageBitmap | null> => {
     try {
-      const { width, height, rgba } = await decodeWebpFrame({ bytes });
-      const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
-      const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: 'none' });
-      frameLru.put(token, bitmap, width, height);
+      // Two-format law: real keys are VP8L (Rust codec); display-only derived
+      // frames (interpolation blends) are PNG. Sniff the magic bytes — never
+      // feed PNG bytes to the Rust WebP decoder.
+      const isWebp = bytes.length >= 16
+        && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x4c;
+      const bitmap = isWebp
+        ? await _decodeWebpToBitmap(bytes)
+        : await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }));
+      frameLru.put(token, bitmap, bitmap.width, bitmap.height);
       return bitmap;
     } catch {
       // Decode failed — leave the token uncached so a later query retries.
@@ -1111,6 +1128,12 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   })();
   _compositorDecodePromises.set(token, promise);
   return null;
+}
+
+async function _decodeWebpToBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
+  const { width, height, rgba } = await decodeWebpFrame({ bytes });
+  const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+  return createImageBitmap(imageData, { premultiplyAlpha: 'none' });
 }
 
 /**
@@ -1669,6 +1692,10 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
   return { ...frame, appFrame, frameIndex: 0, source: 'generated-interpolation' };
 }
 
+// Two-format law: blended interpolation bytes are PNG (display-only, never
+// persisted/validated); real keys are VP8L-only. The browser's toDataURL cannot
+// emit VP8L, and these derived frames never reach validation, so an explicit
+// image/png producer is honest here.
 function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): Uint8Array | null {
   if (typeof document === 'undefined') return null;
   const firstCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(firstKeyFrame.bytes));
@@ -1687,7 +1714,8 @@ function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFr
   outputContext.globalAlpha = t;
   outputContext.drawImage(secondCanvas, 0, 0, width, height);
   outputContext.globalAlpha = 1;
-  return canvasToWebpBytes(output);
+  const bytes = canvasToPngBytes(output);
+  return bytes;
 }
 
 function _blendAlphaBytes(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): Uint8Array | null {
@@ -1781,6 +1809,44 @@ function _regenerateGeneratedRotoCache(layerId: string, trackId: string, setting
     generatedFrames.push(generatedFrame);
   }
   return { changed: removed || generatedFrames.length > 0, generatedFrames, failed: false };
+}
+
+/**
+ * 52.1 lever 1: resolve a generated (blend/duplicate) frame through the
+ * read-path cache keyed by cacheRevision. The cacheRevision embeds
+ * contentRevision, so a real-key edit (which rotates contentRevision) can
+ * never be served a stale blend. On a miss the frame is rendered once and
+ * stored; the cache is byte-budgeted (FIFO eviction) and holds raw bytes.
+ */
+function _getOrRenderGeneratedRotoFrame(
+  cacheRevision: string,
+  mode: 'duplicate' | 'blend',
+  left: PhysicPaintRotoRealKeyRecord,
+  right: PhysicPaintRotoRealKeyRecord,
+  appFrame: number,
+  t: number,
+): PhysicPaintRenderedFrame | null {
+  const cached = _generatedRenderSourceCache.get(cacheRevision);
+  if (cached) {
+    return cached;
+  }
+  const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode };
+  const rendered = mode === 'duplicate'
+    ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
+    : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, t, settings);
+  if (!rendered) {
+    return null;
+  }
+  _generatedRenderSourceCache.set(cacheRevision, rendered);
+  _generatedRenderSourceCacheBytes += rendered.bytes.length;
+  while (_generatedRenderSourceCacheBytes > GENERATED_RENDER_SOURCE_CACHE_BYTE_CEILING) {
+    const oldestKey = _generatedRenderSourceCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = _generatedRenderSourceCache.get(oldestKey);
+    _generatedRenderSourceCache.delete(oldestKey);
+    if (oldest) _generatedRenderSourceCacheBytes -= oldest.bytes.length;
+  }
+  return rendered;
 }
 
 function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operationId' | 'layerId' | 'startFrame'>, error: string): PhysicPaintApplyResult {
@@ -2044,13 +2110,11 @@ function _resolveFlattenedFrame(
     fondCtx.drawImage(result.raster, 0, 0);
     raster = fondCanvas;
   }
-  // G-52-8 (FIX 4): the record carries the raster and encodes the PNG LAZILY —
-  // at photo weight a synchronous raster.toDataURL() costs ~40-80ms on the main
-  // thread, and both draw surfaces then decoded that fresh dataUrl again (WebKit
-  // lazy decode at first drawImage). Draw surfaces consume `raster` directly;
-  // only transport/serialization readers (bridge, export, tests) pay the
-  // encode, memoized on first read. The getter survives Object.freeze.
-  let encodedBytes: Uint8Array | null = null;
+  // G-52-8 (FIX 4): the record carries the raster; draw surfaces consume it
+  // directly. The WebP encode is async (Rust codec) and memoized on first call
+  // via encodeBytes() — transport/serialization readers (bridge, export, tests)
+  // await it. The memoized Promise survives Object.freeze.
+  let encodedBytesPromise: Promise<Uint8Array> | null = null;
   const record: EfxPaintFlattenedFrameRecord = Object.freeze({
     layerId,
     frame,
@@ -2059,13 +2123,14 @@ function _resolveFlattenedFrame(
     renderedFrame: Object.freeze({
       frameIndex: frame,
       appFrame: frame,
-      get bytes(): Uint8Array {
-        if (encodedBytes === null) encodedBytes = canvasToWebpBytes(raster) ?? new Uint8Array(0);
-        return encodedBytes;
-      },
+      bytes: new Uint8Array(0),
       width: size.width,
       height: size.height,
     }),
+    encodeBytes: () => {
+      if (encodedBytesPromise === null) encodedBytesPromise = encodeCanvasAsWebp(raster);
+      return encodedBytesPromise;
+    },
     missing: result.missing,
   });
   flattenedMemo.set(flattenedKey, record);
@@ -2683,11 +2748,13 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
     _rotoGeneratedCacheMetadata.clear();
+    _generatedRenderSourceCache.clear();
+    _generatedRenderSourceCacheBytes = 0;
     _rotoInterpolationSettings.clear();
     _rotoInterpolationFailureStatus.clear();
     if (resetAlphaCanvases) rotoAlphaCanvasRegistry.clear();
@@ -3448,10 +3515,11 @@ export const physicPaintStore = {
         const right = this.getRotoRealKeyRecord(layerId, trackId, lifecycleTarget.rightSourceKeyId);
         const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
         if (!left || !right || !interpolation.enabled) return null;
-        const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
-        const rendered = interpolation.mode === 'duplicate'
-          ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-          : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, lifecycleTarget.progress, settings);
+        const group = structural.loopClips.find((candidate) => candidate.loopId === lifecycleTarget.groupId);
+        if (!group) return null;
+        const sourceCycleId = getPhysicsPaintRotoSourceCycleId(group.sourceKeyIds);
+        const cacheRevision = `${contentRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`;
+        const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, lifecycleTarget.progress);
         if (!rendered) return null;
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
           frameIndex: rendered.frameIndex,
@@ -3460,9 +3528,6 @@ export const physicPaintStore = {
           ...(rendered.width !== undefined ? { width: rendered.width } : {}),
           ...(rendered.height !== undefined ? { height: rendered.height } : {}),
         };
-        const group = structural.loopClips.find((candidate) => candidate.loopId === lifecycleTarget.groupId);
-        if (!group) return null;
-        const sourceCycleId = getPhysicsPaintRotoSourceCycleId(group.sourceKeyIds);
         return {
           kind: 'generated',
           layerId,
@@ -3473,7 +3538,7 @@ export const physicPaintStore = {
           sourceCycleId,
           cycleOffset: lifecycleTarget.cycleOffset,
           contentRevision,
-          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`,
+          cacheRevision,
           renderedFrame,
         };
       }
@@ -3513,11 +3578,9 @@ export const physicPaintStore = {
       const right = this.getRotoRealKeyRecord(layerId, trackId, cell.rightKeyId);
       if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
       const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
-      const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
       const distance = right.appFrame - left.appFrame;
-      const rendered = interpolation.mode === 'duplicate'
-        ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-        : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, settings);
+      const cacheRevision = `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`;
+      const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, (appFrame - left.appFrame) / distance);
       if (!rendered) return null;
       const renderedFrame: PhysicPaintRotoRealKeyPayload = {
         frameIndex: rendered.frameIndex,
@@ -3534,7 +3597,7 @@ export const physicPaintStore = {
         rightKeyId: right.keyId,
         interpolationMode: interpolation.mode,
         contentRevision,
-        cacheRevision: `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`,
+        cacheRevision,
         renderedFrame,
       };
     }
@@ -3577,10 +3640,11 @@ export const physicPaintStore = {
         if (!left || !right) return null;
         const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
         if (!interpolation.enabled) return null;
-        const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
-        const rendered = interpolation.mode === 'duplicate'
-          ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-          : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, resolution.progress, settings);
+        // Cycle-local identity: equivalent source cycles share generated
+        // cache entries across repeat destinations and Loop Clip instances,
+        // while distinct ordered cycles cannot collide on one adjacent pair.
+        const cacheRevision = `${contentRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`;
+        const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, resolution.progress);
         if (!rendered) return null;
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
           frameIndex: rendered.frameIndex,
@@ -3599,10 +3663,7 @@ export const physicPaintStore = {
           sourceCycleId: resolution.sourceCycleId,
           cycleOffset: resolution.cycleOffset,
           contentRevision,
-          // Cycle-local identity: equivalent source cycles share generated
-          // cache entries across repeat destinations and Loop Clip instances,
-          // while distinct ordered cycles cannot collide on one adjacent pair.
-          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`,
+          cacheRevision,
           renderedFrame,
         };
       }

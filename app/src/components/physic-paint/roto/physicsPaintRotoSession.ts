@@ -73,7 +73,7 @@ export interface RotoSessionInput {
   dirtyFrames?: readonly number[] | ReadonlySet<number>;
   copiedKey?: RotoSessionCopiedKeyValue | null;
   canvasSize?: { width: number; height: number };
-  buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
+  buildBlankRotoFrame: (appFrame: number) => Promise<PhysicPaintRotoCacheFrame>;
   keyActionInFlight?: boolean;
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;

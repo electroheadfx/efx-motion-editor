@@ -25,6 +25,10 @@ impl FrameCodec for WebPLosslessCodec {
         config.exact = 1;
         config.alpha_compression = 0;
         config.quality = 75.0;
+        // 52.1 perf: lossless `method` defaults to 4 (slow, ~200-500ms/frame at
+        // 1920×1080). Drop to 1 — the fastest lossless effort that still
+        // compresses — so a frame change no longer stalls the UI for seconds.
+        config.method = 1;
 
         let encoder = webp::Encoder::from_rgba(rgba, width, height);
         let memory = encoder

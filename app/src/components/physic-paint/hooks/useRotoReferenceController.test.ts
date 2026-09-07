@@ -1,4 +1,4 @@
-import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+import { testPngBytes, testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
 import {
@@ -442,5 +442,33 @@ describe('Roto reference controller', () => {
   it('never-fallback: a future unknown render-source variant is a hard error, never silent content', () => {
     const forged = { kind: 'future-variant', layerId: 'layer-1', appFrame: 7 } as unknown as PhysicPaintRotoPhysicalRenderSource;
     expect(() => findCachedRotoDisplayFrame(7, { getPhysicalRenderSource: () => forged })).toThrow(/Unhandled Roto physical render-source kind/);
+  });
+
+  it('accepts a PNG generated (blend) frame with matching contentRevision and rejects on revision mismatch (two-format law)', () => {
+    const blendSource = {
+      kind: 'generated' as const,
+      layerId: 'layer-1',
+      appFrame: 4,
+      leftKeyId: 'key-1',
+      rightKeyId: 'key-9',
+      interpolationMode: 'blend' as const,
+      contentRevision: 'rev-1',
+      cacheRevision: 'rev-1:generated:blend:key-1:key-9:4',
+      renderedFrame: { frameIndex: 0, appFrame: 4, bytes: testPngBytes('blend-generated') },
+    };
+
+    // A PNG generated frame with matching contentRevision resolves (blend mode
+    // derives PNG via canvasToPngBytes — the two-format law, never WebP).
+    expect(findCachedRotoDisplayFrame(4, { getPhysicalRenderSource: () => blendSource })).toMatchObject({
+      appFrame: 4,
+      bytes: testPngBytes('blend-generated'),
+      contentRevision: 'rev-1',
+      cacheRevision: 'rev-1:generated:blend:key-1:key-9:4',
+    });
+
+    // A revision mismatch rejects the PNG generated frame — never a stale display.
+    expect(findCachedRotoDisplayFrame(4, {
+      getPhysicalRenderSource: () => ({ ...blendSource, cacheRevision: 'rev-0:generated:blend:key-1:key-9:4' }),
+    })).toBeNull();
   });
 });

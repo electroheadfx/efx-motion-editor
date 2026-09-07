@@ -45,7 +45,7 @@ function buildSession(overrides: Partial<RotoSessionInput> = {}) {
   return createRotoSession({
     currentFrame: 1,
     realKeyFrames: [buildCacheFrame(1)],
-    buildBlankRotoFrame: (appFrame) => buildCacheFrame(appFrame),
+    buildBlankRotoFrame: async (appFrame) => buildCacheFrame(appFrame),
     ...overrides,
   });
 }

@@ -2085,7 +2085,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
           getCurrentAppFrame: () => 10,
           getLaunchContext: () => ({ operationId: 'launch', layerId: 'layer-1' }) as PhysicPaintLaunchContext,
           getIncomingInterpolationBreakKeyIds: () => [],
-          buildBlankRotoFrame: (appFrame) => ({
+          buildBlankRotoFrame: async (appFrame) => ({
             frameIndex: 0,
             appFrame,
             bytes: pngDataUrl(`blank-${appFrame}`),

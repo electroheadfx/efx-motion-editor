@@ -91,7 +91,7 @@ import type {
   PhysicPaintRotoPhysicalEditSemanticDelta,
   PhysicPaintRotoPhysicalEditTarget,
 } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import { buildFrameBytesToken, PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 export type {
   PhysicPaintRotoLinkedSourceSpacingScope,
   PhysicPaintRotoPhysicalEditIntent,
@@ -498,7 +498,7 @@ function payloadEqualsAtFrame(
 ): boolean {
   return actual.frameIndex === expected.frameIndex
     && actual.appFrame === appFrame
-    && actual.bytes === expected.bytes
+    && buildFrameBytesToken(actual.bytes) === buildFrameBytesToken(expected.bytes)
     && actual.width === expected.width
     && actual.height === expected.height;
 }

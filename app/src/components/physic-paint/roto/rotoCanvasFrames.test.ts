@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../lib/rotoAlphaCanvasRegistry';
 import { addOccupiedRotoFrame, buildBlankRotoFrame, drawCanvasAtSize, encodeRotoFrameFromCanvas, registerRotoAlphaCanvasFrameFromBytes } from './rotoCanvasFrames';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+import { isWebpBytes } from '../../../types/physicPaint';
 
 vi.mock('../../../lib/rotoAlphaCanvasRegistry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../lib/rotoAlphaCanvasRegistry')>();
@@ -102,8 +103,8 @@ describe('rotoCanvasFrames', () => {
     expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(testWebpBytes('dGVzdA=='), canvas);
   });
 
-  it('builds blank transparent frame metadata and registers its alpha canvas', () => {
-    const frame = buildBlankRotoFrame(320, 180, 7);
+  it('builds blank transparent frame metadata and registers its alpha canvas', async () => {
+    const frame = await buildBlankRotoFrame(320, 180, 7);
     const canvas = createdCanvases[0] as unknown as HTMLCanvasElement;
 
     expect(frame).toEqual({
@@ -113,6 +114,9 @@ describe('rotoCanvasFrames', () => {
       width: 320,
       height: 180,
     });
+    // RED-first regression: the blank frame must be VP8L (Rust codec), never
+    // the old toDataURL('image/webp') producer (PNG in WebKit / VP8 in Chrome).
+    expect(isWebpBytes(frame.bytes)).toBe(true);
     expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith(frame.bytes, canvas);
   });
 });

@@ -25,8 +25,8 @@ import {
 
 export type { PhysicPaintRotoInterpolationMode } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
-import { isWebpBytes, buildFrameBytesToken } from '../lib/webpBytes';
-export { isWebpBytes, buildFrameBytesToken };
+import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
+export { isWebpBytes, isPngBytes, buildFrameBytesToken };
 
 export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
 export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';

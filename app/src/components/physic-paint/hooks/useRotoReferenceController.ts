@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
-import { buildFrameBytesToken, isWebpBytes } from '../../../types/physicPaint';
+import { buildFrameBytesToken, isPngBytes, isWebpBytes } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
 /**
@@ -78,7 +78,10 @@ function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSo
   return expectedCacheRevision !== null
     && source.renderedFrame.appFrame === source.appFrame
     && source.cacheRevision === expectedCacheRevision
-    && isWebpBytes(source.renderedFrame.bytes);
+    // Two-format law: generated frames are WebP (duplicate mode copies the
+    // real key's VP8L bytes) or PNG (blend mode derives via canvasToPngBytes).
+    // Both are display-only; neither reaches real-key validation or persistence.
+    && (isWebpBytes(source.renderedFrame.bytes) || isPngBytes(source.renderedFrame.bytes));
 }
 
 function findAcceptedRotoPhysicalFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {

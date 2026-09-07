@@ -398,6 +398,22 @@ export class EfxPaintEngine {
   // accepted render for the same frame.
   private appliedPreviewBaseAppFrame: number | null = null
   private appliedPreviewBaseExplicit: boolean = false
+  // 52.1: an explicit (content-token) preview-base paint is in flight — its
+  // async blob decode has not yet applied or dropped. A plain refresh (no
+  // content token) must not supersede it, or the completion reconcile paint is
+  // dropped and the guard churns (the "completion paint dropped" error).
+  private inFlightExplicitPreviewBase: boolean = false
+  // 52.1: an explicit completion paint whose async decode landed while the user
+  // was mid-stroke (state.drawing true). It is NOT dropped — it is parked here
+  // and re-applied the moment the active stroke ends (onPointerUp), so the
+  // reconcile paint never needs the guard's repair churn.
+  private pendingExplicitPreviewBase: {
+    image: HTMLImageElement
+    requestId: number
+    dataUrl: string
+    generation: number
+    appFrame?: number
+  } | null = null
   // 38.1-07: resetBackground skip memo — an unchanged background (same bgData
   // identity AND same input tuple) performs no drawBg/redraw work. Every other
   // background writer REPLACES this.bgData, so the identity half covers them
@@ -784,9 +800,14 @@ export class EfxPaintEngine {
 
   setPreviewBaseImageUrl(dataUrl: string, contentToken?: number, appFrame?: number): void {
     this.requestRender()
+    const requestExplicit = contentToken !== undefined
+    // 52.1: a plain refresh (no content token) must not supersede an explicit
+    // completion paint whose async decode is still in flight — that supersede
+    // is what drops the reconcile paint and makes the guard churn.
+    if (!requestExplicit && this.inFlightExplicitPreviewBase) return
     const requestId = ++this.previewBaseRequestId
     const requestContentToken = contentToken ?? this.nextPreviewBaseContentToken()
-    const requestExplicit = contentToken !== undefined
+    if (requestExplicit) this.inFlightExplicitPreviewBase = true
     // Keep the auto-assignment counter above any explicit content token this
     // engine has seen, so a later auto-issued paint (navigation/editing) is
     // never gated by an older explicit completion token. Layer 2 callers that
@@ -804,6 +825,7 @@ export class EfxPaintEngine {
       // reload resolving content from an older revision) must never paint
       // over the newer settled content.
       if (requestContentToken < (this.appliedPreviewBaseGeneration ?? 0)) {
+        if (requestExplicit) this.inFlightExplicitPreviewBase = false
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
@@ -824,7 +846,26 @@ export class EfxPaintEngine {
           if (oldest !== undefined) this.previewBaseImageCache.delete(oldest)
         }
       }
-      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) {
+      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
+        const superseded = requestId !== this.previewBaseRequestId
+        // A superseded explicit paint means a NEWER explicit paint is in flight
+        // (a subsequent stroke's reconcile on the same frame). Keep the in-flight
+        // flag set and do NOT notify the guard — it would wrongly repair the older
+        // paint; the newer paint settles and notifies instead.
+        if (requestExplicit && superseded) return
+        if (requestExplicit) this.inFlightExplicitPreviewBase = false
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
+        return
+      }
+      if (this.state.drawing) {
+        // The decode landed mid-stroke. A plain refresh is dropped (it must not
+        // clobber the wet layer), but an explicit completion paint is DEFERRED —
+        // parked and re-applied on pointer-up so the reconcile never churns the
+        // guard. Keep the in-flight flag set: the paint is still pending.
+        if (requestExplicit) {
+          this.pendingExplicitPreviewBase = { image, requestId, dataUrl, generation: requestContentToken, appFrame }
+          return
+        }
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
@@ -832,6 +873,7 @@ export class EfxPaintEngine {
         // Content-token regression: a decode completing with an OLDER content
         // token than the last settled paint must never touch the canvas, even
         // when its requestId is current (a stale-content re-issue).
+        if (requestExplicit) this.inFlightExplicitPreviewBase = false
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
@@ -839,6 +881,7 @@ export class EfxPaintEngine {
       this.notifyPreviewBaseSettled(dataUrl, 'applied', requestContentToken)
     }
     image.onerror = () => {
+      if (requestExplicit) this.inFlightExplicitPreviewBase = false
       this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
     }
     image.src = dataUrl
@@ -900,9 +943,19 @@ export class EfxPaintEngine {
     return this.previewBaseGenerationCounter
   }
 
-  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false): void {
-    if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
-    if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false): boolean {
+    if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
+      if (explicit) this.inFlightExplicitPreviewBase = false
+      return false
+    }
+    if (this.state.drawing) {
+      // Cache-hit apply landing mid-stroke: defer an explicit completion paint
+      // (same as the async decode path), drop a plain refresh.
+      if (explicit) this.pendingExplicitPreviewBase = { image, requestId, dataUrl: dataUrl ?? '', generation, appFrame }
+      return false
+    }
+    if (explicit) this.inFlightExplicitPreviewBase = false
+    if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return false
     this.previewBaseImage = image
     this.previewBaseEnabled = true
     this.previewBackgroundSeparated = true
@@ -912,6 +965,7 @@ export class EfxPaintEngine {
     this.appliedPreviewBaseExplicit = explicit
     this.redrawPreviewBase()
     this.redrawAll()
+    return true
   }
 
   // skipRedraw: leave-path callers (clearPreviewBaseImage immediately followed
@@ -922,6 +976,7 @@ export class EfxPaintEngine {
   clearPreviewBaseImage(skipRedraw = false): void {
     this.requestRender()
     this.previewBaseRequestId += 1
+    this.pendingExplicitPreviewBase = null
     this.previewBaseEnabled = false
     this.previewBackgroundSeparated = false
     this.previewBaseImage = null
@@ -2460,6 +2515,15 @@ export class EfxPaintEngine {
     this.state.drawing = false
     this.previewStroke = null
     this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+    // Apply any explicit completion paint deferred while the stroke was active.
+    const pending = this.pendingExplicitPreviewBase
+    if (pending) {
+      this.pendingExplicitPreviewBase = null
+      if (pending.requestId === this.previewBaseRequestId) {
+        const applied = this.applyPreviewBaseImage(pending.image, pending.requestId, pending.dataUrl, pending.generation, pending.appFrame, true)
+        if (applied) this.notifyPreviewBaseSettled(pending.dataUrl, 'applied', pending.generation)
+      }
+    }
 
     if (this.rawPts.length < 3) {
       this.rawPts = []

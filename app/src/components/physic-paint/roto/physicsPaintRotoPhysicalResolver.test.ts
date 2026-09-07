@@ -3534,6 +3534,54 @@ describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key-group b
   });
 });
 
+describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key branch (52.1 transport)', () => {
+  it('accepts a paste-to-empty delta whose clipboard and pasted bytes are separate Uint8Array objects with identical content', () => {
+    // 52.1 (D-05): the apply payload crosses the Tauri emitTo JSON boundary as
+    // base64 and is decoded back to a fresh Uint8Array per field, so the
+    // clipboardPayload.bytes and nextRecords[].payload.bytes are distinct
+    // objects with equal content. The semantic delta must compare by content,
+    // not reference (the pre-bytes dataUrl form compared by value).
+    const clipboardPayload = {
+      frameIndex: 0,
+      appFrame: 0,
+      bytes: testWebpBytes('paste-transport'),
+      width: 2,
+      height: 2,
+    };
+    const pastedRecord = {
+      kind: 'real-key' as const,
+      keyId: 'pasted-transport',
+      appFrame: 0,
+      payload: {
+        frameIndex: 0,
+        appFrame: 0,
+        bytes: testWebpBytes('paste-transport'),
+        width: 2,
+        height: 2,
+      },
+    };
+    const semanticDelta = {
+      kind: 'paste-key' as const,
+      destinationAppFrame: 0,
+      destinationKeyId: null,
+      newKeyId: 'pasted-transport',
+      clipboardPayload,
+    };
+
+    const result = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: 'paste-key',
+      currentRecords: [],
+      nextRecords: [pastedRecord],
+      semanticDelta,
+      capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+      selectedKeyId: 'pasted-transport',
+      selectedAppFrame: 0,
+    });
+
+    expect(result).toEqual({ ok: true });
+  });
+});
+
 describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7)', () => {
   it('GP-7: throws on malformed input and deeply freezes one fresh identity per entry', () => {
     const entries = buildGroupEntries();

@@ -647,6 +647,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
       frame: 1,
       cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
       renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
       missing: [],
     };
     const getFlattened = vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
@@ -675,6 +676,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
       frame: 1,
       cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
       renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
       missing: [],
     };
     vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
@@ -722,6 +724,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
       frame: 1,
       cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
       renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
       missing: [],
     };
     vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
@@ -744,6 +747,7 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
       frame: 2,
       cacheKey: 'physic-paint:roto-layer:flattened:rev-2',
       renderedFrame: { frameIndex: 0, appFrame: 2, bytes: testWebpBytes('FLAT_2') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
       missing: [{ trackId: TEST_TRACK_ID, frame: 2, missingRefs: ['hold-ref'] }],
     });
     const ctx = new RecordingCanvasContext();

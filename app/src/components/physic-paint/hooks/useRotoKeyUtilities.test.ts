@@ -89,7 +89,7 @@ function createHarness(options: HarnessOptions = {}) {
     canvasSize: { width: 100, height: 80 },
     applyStatus: options.applyStatus ?? 'idle',
     flushInFlight: options.flushInFlight ?? false,
-    buildBlankRotoFrame: (frame) => realKeyFrame(frame),
+    buildBlankRotoFrame: async (frame) => realKeyFrame(frame),
     setDirtyFrames: vi.fn(),
     syncPendingRotoFrames: vi.fn(),
     restoreFrame: vi.fn(),

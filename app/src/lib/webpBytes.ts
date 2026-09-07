@@ -7,6 +7,7 @@
 const WEBP_RIFF = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
 const WEBP_TAG = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP" (offset 8)
 const WEBP_VP8L = [0x56, 0x50, 0x38, 0x4c] as const; // "VP8L" (offset 12, lossless)
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 
 /**
  * WebP RIFF/VP8L byte probe: accepts a `Uint8Array` whose bytes 0-3 are RIFF,
@@ -22,6 +23,47 @@ export function isWebpBytes(value: unknown): value is Uint8Array {
 }
 
 /**
+ * PNG signature probe: accepts a `Uint8Array` whose first 8 bytes are the PNG
+ * magic signature. Display-only derived frames (interpolation blends) are PNG
+ * (the two-format law — real keys are VP8L-only); this probe lets the
+ * reference controller accept them without feeding them to the Rust WebP
+ * decoder.
+ */
+export function isPngBytes(value: unknown): value is Uint8Array {
+  if (!(value instanceof Uint8Array)) return false;
+  if (value.length < 8) return false;
+  return PNG_SIGNATURE.every((byte, index) => value[index] === byte);
+}
+
+/**
+ * Encode raw bytes as a base64 string. Chunked to stay under the
+ * `String.fromCharCode` argument-count limit for photo-weight frames.
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+/**
+ * Decode a base64 string back to raw bytes ONLY when the decoded payload is a
+ * valid WebP RIFF/VP8L frame. Returns null for non-base64, non-WebP, or
+ * malformed input — the transport boundary uses this to distinguish the
+ * `bytes`/`onionBytes` fields (which cross JSON as base64) from ordinary
+ * string fields (operation IDs, key IDs) that must never be decoded.
+ */
+export function base64ToWebpBytes(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return isWebpBytes(bytes) ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * O(1) content token over frame bytes (G-52-6 pattern): length + head-64 +
  * tail-64 hex. Change-safe for same-encoder WebP output (deflate streams have
  * no resync points) and never a full-payload scan.
@@ -34,4 +76,39 @@ export function buildFrameBytesToken(bytes: Uint8Array): string {
   let tailHex = '';
   for (let index = 0; index < tail.length; index += 1) tailHex += tail[index].toString(16).padStart(2, '0');
   return `${bytes.length}:${headHex}:${tailHex}`;
+}
+
+/**
+ * 52.1 (D-05) transport boundary: Tauri `emitTo` serializes event payloads as
+ * JSON, and `JSON.stringify` turns a `Uint8Array` into an index object
+ * (`{"0":82,"1":73,...}`) — the parent-side validators then reject the frame
+ * bytes and the physical edit / cache apply silently fails. These two deep
+ * transforms convert every `Uint8Array` (the `bytes`/`onionBytes` fields) to
+ * base64 on the way out and back to `Uint8Array` on the way in, so the raw
+ * bytes survive the JSON hop without changing the in-memory payload shape.
+ */
+export function toTransportPayload(value: unknown): unknown {
+  if (value instanceof Uint8Array) return bytesToBase64(value);
+  if (Array.isArray(value)) return value.map(toTransportPayload);
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) result[key] = toTransportPayload(entry);
+    return result;
+  }
+  return value;
+}
+
+export function fromTransportPayload(value: unknown): unknown {
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === 'string') {
+    const bytes = base64ToWebpBytes(value);
+    if (bytes) return bytes;
+  }
+  if (Array.isArray(value)) return value.map(fromTransportPayload);
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) result[key] = fromTransportPayload(entry);
+    return result;
+  }
+  return value;
 }

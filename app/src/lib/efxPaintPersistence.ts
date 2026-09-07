@@ -23,6 +23,7 @@ import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { toTransportPayload } from './webpBytes';
 import { publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
 
 export const EFX_PAINT_CACHE_DIR = 'cache/efx-paint';
@@ -231,7 +232,11 @@ async function prepareEfxPaintSave(
         pendingWrites.push({ path: ref.cachePath, bytes });
       }
     }
-    persistedDocuments[layerId] = document;
+    // 52.1 (D-05): the durable document carries real-key `bytes` as Uint8Array.
+    // JSON.stringify turns a Uint8Array into an index object, so the persisted
+    // form must carry bytes as base64 (the canonical JSON form). The loader
+    // decodes base64 back to Uint8Array in cloneAndFreezeRealKeyPayload.
+    persistedDocuments[layerId] = toTransportPayload(document);
   }
 
   const stagingBasename = createStagingBasename();

@@ -142,7 +142,7 @@ export interface RotoKeyUtilityTransactionInput {
   pasteTarget?: RotoKeyUtilityPasteTarget | null;
   segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
   canvasSize?: { width: number; height: number };
-  buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
+  buildBlankRotoFrame: (appFrame: number) => Promise<PhysicPaintRotoCacheFrame>;
 }
 
 export interface ApplyRotoKeyUtilityTransactionToLocalStateInput<TEditable = unknown, TPreview extends { appFrame: number } = PhysicPaintRotoCacheFrame> {
