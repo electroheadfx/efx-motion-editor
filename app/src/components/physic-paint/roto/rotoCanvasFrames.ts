@@ -194,11 +194,22 @@ export function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: numbe
   return output;
 }
 
+// 52.1 (Part 1): a blank Roto frame is always the same all-transparent WebP
+// for a given canvas size, but the Rust encode re-ran on every new key (the
+// 112ms `frame.buildBlank` stall at the start of a stroke). Cache the bytes per
+// size so a new key reuses them instead of re-encoding.
+const blankFrameBytesCache = new Map<string, Uint8Array>();
+
 export async function buildBlankRotoFrame(width: number, height: number, appFrame: number): Promise<RenderedFramePayload> {
+  const cacheKey = `${width}x${height}`;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const bytes = await encodeCanvasAsWebp(canvas, appFrame);
+  let bytes = blankFrameBytesCache.get(cacheKey);
+  if (!bytes) {
+    bytes = await encodeCanvasAsWebp(canvas, appFrame);
+    blankFrameBytesCache.set(cacheKey, bytes);
+  }
   registerRotoAlphaCanvasFrame(bytes, canvas);
   return buildRenderedFramePayload(canvas, appFrame, bytes);
 }
