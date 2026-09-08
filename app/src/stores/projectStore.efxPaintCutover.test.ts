@@ -67,6 +67,7 @@ const ipcScriptLibraryBindSavedProject = vi.hoisted(() => vi.fn());
 const ipcScriptLibraryClearActiveProject = vi.hoisted(() => vi.fn());
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const loadPhysicPaintData = vi.hoisted(() => vi.fn());
 const saveEfxPaintDocumentsWithProjectWrite = vi.hoisted(() => vi.fn());
 const loadEfxPaintDocuments = vi.hoisted(() => vi.fn());
@@ -91,6 +92,7 @@ vi.mock('../lib/ipc', () => ({
   scriptLibraryClearActiveProject: ipcScriptLibraryClearActiveProject,
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
 }));
 
 // Keep the real module (efxPaintStore needs the real buildEfxPaintFrameCachePath)

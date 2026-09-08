@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
@@ -32,6 +33,7 @@ function moveGeneration(projectDir: string, stagingBasename: string): void {
 vi.mock('../../../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({

@@ -340,6 +340,23 @@ export function settlePhysicPaintCacheGeneration(
   );
 }
 
+export interface PhysicPaintCacheHardlinkResult {
+  accepted: true;
+  /** Relative frame paths whose canonical sidecar was missing and must be written fresh. */
+  missing: string[];
+}
+
+export function hardlinkPhysicPaintCacheFrames(
+  projectDir: string,
+  stagingBasename: string,
+  unchangedPaths: string[],
+): Promise<Result<PhysicPaintCacheHardlinkResult>> {
+  return safeInvoke<PhysicPaintCacheHardlinkResult>(
+    'hardlink_physic_paint_cache_frames',
+    { projectDir, stagingBasename, unchangedPaths },
+  );
+}
+
 // --- Image commands ---
 export async function imageGetInfo(path: string): Promise<Result<ImageInfo>> {
   return safeInvoke<ImageInfo>('image_get_info', { path });

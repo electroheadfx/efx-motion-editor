@@ -13,6 +13,7 @@ import {
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
@@ -44,6 +45,7 @@ function exchangeGeneration(projectDir: string, stagingBasename: string): void {
 vi.mock('./ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -103,6 +105,22 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
       }
       activeTransactions.delete(transactionId);
       return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
+    });
+    hardlinkPhysicPaintCacheFrames.mockImplementation(async (projectDir: string, stagingBasename: string, unchangedPaths: string[]) => {
+      const canonicalRoot = `${projectDir}/cache/efx-paint`;
+      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+      const missing: string[] = [];
+      for (const relative of unchangedPaths) {
+        const source = `${canonicalRoot}/${relative}`;
+        const target = `${stagingRoot}/${relative}`;
+        const bytes = files.get(source);
+        if (bytes === undefined) {
+          missing.push(relative);
+        } else {
+          files.set(target, bytes);
+        }
+      }
+      return { ok: true, data: { accepted: true, missing } };
     });
   });
 
@@ -394,5 +412,76 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(stableSegment('a/b\\c')).not.toContain('\\');
     expect(stableSegment('a/b')).not.toBe(stableSegment('a_b'));
     expect(stableSegment('')).toMatch(/^layer-/);
+  });
+
+  it('re-stages only changed frames and hardlinks unchanged frames (52.1 a2)', async () => {
+    const document = createEfxPaintDocument('layer-incr');
+    const track = document.tracks[0];
+    const frameRefA = buildEfxPaintFrameCachePath('layer-incr', track.id, { appFrame: 0, frameIndex: 0 });
+    const frameRefB = buildEfxPaintFrameCachePath('layer-incr', track.id, { appFrame: 1, frameIndex: 0 });
+    const withFrames = {
+      ...document,
+      tracks: [{ ...track, frames: {
+        0: { cachePath: frameRefA, width: 100, height: 50 },
+        1: { cachePath: frameRefB, width: 100, height: 50 },
+      } }],
+    };
+    const makeDocuments = (bytesA: Uint8Array, bytesB: Uint8Array) => new Map<string, EfxPaintDocumentSaveInput>([['layer-incr', {
+      document: withFrames,
+      frames: new Map([[track.id, new Map([
+        [0, { frameIndex: 0, appFrame: 0, bytes: bytesA, width: 100, height: 50 }],
+        [1, { frameIndex: 0, appFrame: 1, bytes: bytesB, width: 100, height: 50 }],
+      ])]]),
+    }]]);
+
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')), async () => {});
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
+    expect(firstWriteCount).toBeGreaterThan(0);
+
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')), async () => {});
+
+    const secondWrites = vi.mocked(writeFile).mock.calls.slice(firstWriteCount);
+    const writtenPaths = secondWrites.map(([path]) => String(path));
+    expect(writtenPaths.some((path) => path.includes('frame-000000-0000'))).toBe(true);
+    expect(writtenPaths.some((path) => path.includes('frame-000001-0000'))).toBe(false);
+    expect(hardlinkPhysicPaintCacheFrames).toHaveBeenCalled();
+    const hardlinkArgs = hardlinkPhysicPaintCacheFrames.mock.calls[0] as [string, string, string[]];
+    expect(hardlinkArgs[2]).toContain(frameRefB.slice('cache/efx-paint/'.length));
+    expect(files.has(`/project/${frameRefA}`)).toBe(true);
+    expect(files.has(`/project/${frameRefB}`)).toBe(true);
+  });
+
+  it('falls back to full re-stage when hardlink fails (52.1 a2)', async () => {
+    const document = createEfxPaintDocument('layer-fallback');
+    const track = document.tracks[0];
+    const frameRefA = buildEfxPaintFrameCachePath('layer-fallback', track.id, { appFrame: 0, frameIndex: 0 });
+    const frameRefB = buildEfxPaintFrameCachePath('layer-fallback', track.id, { appFrame: 1, frameIndex: 0 });
+    const withFrames = {
+      ...document,
+      tracks: [{ ...track, frames: {
+        0: { cachePath: frameRefA, width: 100, height: 50 },
+        1: { cachePath: frameRefB, width: 100, height: 50 },
+      } }],
+    };
+    const makeDocuments = (bytesA: Uint8Array, bytesB: Uint8Array) => new Map<string, EfxPaintDocumentSaveInput>([['layer-fallback', {
+      document: withFrames,
+      frames: new Map([[track.id, new Map([
+        [0, { frameIndex: 0, appFrame: 0, bytes: bytesA, width: 100, height: 50 }],
+        [1, { frameIndex: 0, appFrame: 1, bytes: bytesB, width: 100, height: 50 }],
+      ])]]),
+    }]]);
+
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')), async () => {});
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
+
+    hardlinkPhysicPaintCacheFrames.mockResolvedValueOnce({ ok: false, error: 'EXDEV' });
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')), async () => {});
+
+    const secondWrites = vi.mocked(writeFile).mock.calls.slice(firstWriteCount);
+    const writtenPaths = secondWrites.map(([path]) => String(path));
+    expect(writtenPaths.some((path) => path.includes('frame-000000-0000'))).toBe(true);
+    expect(writtenPaths.some((path) => path.includes('frame-000001-0000'))).toBe(true);
   });
 });

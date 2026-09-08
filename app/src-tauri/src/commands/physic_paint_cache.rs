@@ -1,5 +1,5 @@
 use crate::services::physic_paint_cache::{
-    publish_cache_generation, settle_cache_generation, CacheSettlementAction,
+    hardlink_cache_frames, publish_cache_generation, settle_cache_generation, CacheSettlementAction,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -33,6 +33,13 @@ pub struct PhysicPaintCacheSettlementResult {
     pub cleanup_status: PhysicPaintCacheCleanupStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cleanup_diagnostic: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhysicPaintCacheHardlinkResult {
+    pub accepted: bool,
+    pub missing: Vec<String>,
 }
 
 #[tauri::command]
@@ -72,5 +79,19 @@ pub fn settle_physic_paint_cache_generation(
             PhysicPaintCacheCleanupStatus::Complete
         },
         cleanup_diagnostic: settlement.cleanup_diagnostic,
+    })
+}
+
+#[tauri::command]
+pub fn hardlink_physic_paint_cache_frames(
+    project_dir: String,
+    staging_basename: String,
+    unchanged_paths: Vec<String>,
+) -> Result<PhysicPaintCacheHardlinkResult, String> {
+    let project_dir = PathBuf::from(project_dir);
+    let hardlink = hardlink_cache_frames(&project_dir, &staging_basename, &unchanged_paths)?;
+    Ok(PhysicPaintCacheHardlinkResult {
+        accepted: true,
+        missing: hardlink.missing,
     })
 }

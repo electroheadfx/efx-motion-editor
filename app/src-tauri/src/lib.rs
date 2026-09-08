@@ -812,6 +812,7 @@ pub fn run() {
             image::import_images,
             physic_paint_cache_commands::publish_physic_paint_cache_generation,
             physic_paint_cache_commands::settle_physic_paint_cache_generation,
+            physic_paint_cache_commands::hardlink_physic_paint_cache_frames,
             frame_codec_commands::encode_webp_frame,
             frame_codec_commands::decode_webp_frame,
             config::config_get_theme,

@@ -16,6 +16,21 @@
  * fail-closed `parseEfxPaintDocument` (T-45-13) and reads the sidecar PNGs
  * back through the plugin-fs idiom, guarding every path with
  * `isSafeEfxPaintCachePath` (T-45-11, ASVS V12).
+ *
+ * IMMUTABILITY LAW (52.1 a2): canonical sidecars under `cache/efx-paint/` are
+ * NEVER written in place. They are replaced only by the native atomic
+ * directory swap (`publish_physic_paint_cache_generation`). Incremental
+ * staging hardlinks unchanged sidecars into the staging generation, so any
+ * future in-place writer would silently alias through those hardlinks and
+ * corrupt the canonical generation. Do not add an in-place write path.
+ *
+ * Incremental staging (52.1 a2): a save stages only the frames whose byte
+ * token changed since the last save (`savedFrameTokens`), hardlinks the
+ * unchanged frames into the staging generation, and lets the swap publish the
+ * complete generation. A hardlink failure (EXDEV/EPERM — different volume or
+ * unsupported filesystem) degrades to a full re-stage; a missing sidecar
+ * (ENOENT) is written fresh. Deleted frames are simply absent from the
+ * staging generation, so the swap releases their inode.
  */
 
 import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs';
@@ -24,7 +39,7 @@ import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentPar
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { toTransportPayload } from './webpBytes';
-import { publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
+import { hardlinkPhysicPaintCacheFrames, publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
 
 export const EFX_PAINT_CACHE_DIR = 'cache/efx-paint';
 export const EFX_PAINT_CACHE_PARENT_DIR = 'cache';
@@ -63,6 +78,14 @@ type PendingWrite = { readonly path: string; readonly bytes: Uint8Array };
  * and skips sidecar staging entirely (T-45-12 idempotency edge).
  */
 const savedDocumentCache = new Map<string, Record<string, unknown>>();
+
+/**
+ * Last-saved per-frame byte tokens, keyed `layerId:trackId:appFrame` (52.1 a2).
+ * Populated only after a successful commit; the changed set on the next save is
+ * every frame whose current token differs from this map. Empty after a restart
+ * (or a first save), which forces a full re-stage — the fail-closed default.
+ */
+const savedFrameTokens = new Map<string, string>();
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -145,6 +168,8 @@ interface PreparedEfxPaintSave {
   readonly removeCanonicalAfterCommit: boolean;
   /** Sidecar directories to remove in the commit arm (46-05 D-15). */
   readonly deletions: readonly string[];
+  /** Per-frame byte tokens (`layerId:trackId:appFrame` → token) to cache on commit (52.1 a2). */
+  readonly frameTokens: ReadonlyMap<string, string>;
 }
 
 /**
@@ -174,6 +199,47 @@ function buildEfxPaintSaveFingerprint(
   return `${projectDir}\0${terms.sort().join('\0')}`;
 }
 
+async function stageFrame(
+  projectDir: string,
+  stagingRelativeRoot: string,
+  write: PendingWrite,
+  ensuredDirectories: Set<string>,
+): Promise<void> {
+  const stagingRelativePath = `${stagingRelativeRoot}${write.path.slice(EFX_PAINT_CACHE_DIR.length)}`;
+  const directory = stagingRelativePath.slice(0, stagingRelativePath.lastIndexOf('/'));
+  if (!ensuredDirectories.has(directory)) {
+    await mkdir(`${projectDir}/${directory}`, { recursive: true });
+    ensuredDirectories.add(directory);
+  }
+  await writeFile(`${projectDir}/${stagingRelativePath}`, write.bytes);
+}
+
+/**
+ * Hardlink unchanged sidecars into the staging generation, returning the frames
+ * that must instead be written fresh. A hardlink failure (EXDEV/EPERM — the
+ * canonical and staging dirs are not on the same volume, or the filesystem
+ * forbids hardlinks) degrades to a full re-stage of every unchanged frame;
+ * a missing source (ENOENT) is written fresh for that frame only.
+ */
+async function hardlinkUnchangedFrames(
+  projectDir: string,
+  stagingBasename: string,
+  unchangedFrames: ReadonlyArray<{ cachePath: string; bytes: Uint8Array }>,
+): Promise<PendingWrite[]> {
+  const byRelativePath = new Map<string, Uint8Array>();
+  for (const frame of unchangedFrames) {
+    byRelativePath.set(frame.cachePath.slice(EFX_PAINT_CACHE_DIR.length + 1), frame.bytes);
+  }
+  const result = await hardlinkPhysicPaintCacheFrames(projectDir, stagingBasename, Array.from(byRelativePath.keys()));
+  if (!result.ok) {
+    return unchangedFrames.map((frame) => ({ path: frame.cachePath, bytes: frame.bytes }));
+  }
+  const missing = new Set(result.data.missing);
+  return unchangedFrames
+    .filter((frame) => missing.has(frame.cachePath.slice(EFX_PAINT_CACHE_DIR.length + 1)))
+    .map((frame) => ({ path: frame.cachePath, bytes: frame.bytes }));
+}
+
 async function prepareEfxPaintSave(
   projectDir: string,
   documents: ReadonlyMap<string, EfxPaintDocumentSaveInput> | undefined,
@@ -185,6 +251,7 @@ async function prepareEfxPaintSave(
       publication: null,
       removeCanonicalAfterCommit: true,
       deletions: [],
+      frameTokens: new Map(),
     };
   }
 
@@ -209,10 +276,13 @@ async function prepareEfxPaintSave(
       publication: null,
       removeCanonicalAfterCommit: false,
       deletions,
+      frameTokens: new Map(),
     };
   }
 
-  const pendingWrites: PendingWrite[] = [];
+  const changedWrites: PendingWrite[] = [];
+  const unchangedFrames: Array<{ cachePath: string; bytes: Uint8Array }> = [];
+  const frameTokens = new Map<string, string>();
   const persistedDocuments: Record<string, unknown> = {};
 
   for (const [layerId, input] of documents) {
@@ -229,7 +299,14 @@ async function prepareEfxPaintSave(
         if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
           throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
         }
-        pendingWrites.push({ path: ref.cachePath, bytes });
+        const key = `${layerId}:${track.id}:${appFrame}`;
+        const token = buildFrameBytesToken(bytes);
+        frameTokens.set(key, token);
+        if (savedFrameTokens.get(key) === token) {
+          unchangedFrames.push({ cachePath: ref.cachePath, bytes });
+        } else {
+          changedWrites.push({ path: ref.cachePath, bytes });
+        }
       }
     }
     // 52.1 (D-05): the durable document carries real-key `bytes` as Uint8Array.
@@ -247,14 +324,14 @@ async function prepareEfxPaintSave(
   try {
     await mkdir(stagingRoot, { recursive: true });
     const ensuredDirectories = new Set<string>();
-    for (const write of pendingWrites) {
-      const stagingRelativePath = `${stagingRelativeRoot}${write.path.slice(EFX_PAINT_CACHE_DIR.length)}`;
-      const directory = stagingRelativePath.slice(0, stagingRelativePath.lastIndexOf('/'));
-      if (!ensuredDirectories.has(directory)) {
-        await mkdir(`${projectDir}/${directory}`, { recursive: true });
-        ensuredDirectories.add(directory);
+    for (const write of changedWrites) {
+      await stageFrame(projectDir, stagingRelativeRoot, write, ensuredDirectories);
+    }
+    if (unchangedFrames.length > 0) {
+      const framesToWrite = await hardlinkUnchangedFrames(projectDir, stagingBasename, unchangedFrames);
+      for (const write of framesToWrite) {
+        await stageFrame(projectDir, stagingRelativeRoot, write, ensuredDirectories);
       }
-      await writeFile(`${projectDir}/${stagingRelativePath}`, write.bytes);
     }
 
     const publication = await publishPhysicPaintCacheGeneration(projectDir, stagingBasename);
@@ -265,6 +342,7 @@ async function prepareEfxPaintSave(
       publication: { transactionId: publication.data.transactionId },
       removeCanonicalAfterCommit: false,
       deletions,
+      frameTokens,
     };
   } catch (error) {
     await removeStagingGeneration(stagingRoot);
@@ -307,6 +385,10 @@ async function settlePreparedEfxPaintSave(
     savedDocumentCache.clear();
     if (prepared.fingerprint) {
       savedDocumentCache.set(prepared.fingerprint, structuredClone(prepared.persistedDocuments));
+    }
+    savedFrameTokens.clear();
+    for (const [key, token] of prepared.frameTokens) {
+      savedFrameTokens.set(key, token);
     }
   }
 }

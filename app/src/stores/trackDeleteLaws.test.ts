@@ -40,6 +40,7 @@ import {
 // the actual `remove` calls, never through on-disk state.
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 const PROJECT_DIR = '/project/root';
@@ -73,6 +74,7 @@ function exchangeGeneration(projectDir: string, stagingBasename: string): void {
 vi.mock('../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -479,6 +481,22 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       }
       activeTransactions.delete(transactionId);
       return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
+    });
+    hardlinkPhysicPaintCacheFrames.mockImplementation(async (projectDir: string, stagingBasename: string, unchangedPaths: string[]) => {
+      const canonicalRoot = `${projectDir}/cache/efx-paint`;
+      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+      const missing: string[] = [];
+      for (const relative of unchangedPaths) {
+        const source = `${canonicalRoot}/${relative}`;
+        const target = `${stagingRoot}/${relative}`;
+        const bytes = files.get(source);
+        if (bytes === undefined) {
+          missing.push(relative);
+        } else {
+          files.set(target, bytes);
+        }
+      }
+      return { ok: true, data: { accepted: true, missing } };
     });
   });
 

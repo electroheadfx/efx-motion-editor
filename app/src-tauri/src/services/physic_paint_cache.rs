@@ -28,6 +28,13 @@ pub struct CacheSettlement {
     pub cleanup_diagnostic: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CacheHardlink {
+    /// Relative frame paths whose canonical sidecar was missing (ENOENT) and
+    /// must be written fresh by the caller instead of hardlinked.
+    pub missing: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum CacheTransactionPhase {
@@ -199,6 +206,65 @@ pub fn settle_cache_generation(
             }
             CacheSettlementAction::Rollback => rollback_transaction(&cache_parent, marker),
         }
+    }
+}
+
+/// Hardlink unchanged canonical sidecars into a staging generation so the
+/// atomic directory swap can publish a complete generation without re-writing
+/// unchanged frame bytes (52.1 a2 incremental staging).
+///
+/// Same-volume proof: `fs::hard_link` fails with `EXDEV`/`EPERM`/`EOPNOTSUPP`
+/// when the canonical and staging directories are not on the same filesystem
+/// (or the filesystem forbids hardlinks). Those errors propagate to the caller,
+/// which degrades to a full re-stage — never a partial save. A missing source
+/// (`NotFound`) is NOT an error: the caller writes that frame fresh.
+///
+/// Platform note: APFS (macOS) supports hardlinks within a volume; NTFS and
+/// ext4 (future Windows/Linux targets) also support hardlinks, but the
+/// same-volume constraint and the caller's full-re-stage fallback keep the
+/// behaviour correct regardless of filesystem.
+pub fn hardlink_cache_frames(
+    project_dir: &Path,
+    staging_basename: &str,
+    unchanged_paths: &[String],
+) -> Result<CacheHardlink, String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (project_dir, staging_basename, unchanged_paths);
+        return Err("Physics Paint cache hardlink is supported only on macOS".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        validate_staging_basename(staging_basename)?;
+        let project_root = resolve_project_root(project_dir)?;
+        let cache_parent = resolve_cache_parent(&project_root)?;
+        let canonical_path = cache_parent.join(CANONICAL_CACHE_BASENAME);
+        let staging_path = cache_parent.join(staging_basename);
+
+        let mut missing = Vec::new();
+        for relative in unchanged_paths {
+            validate_unchanged_path(relative)?;
+            let source = canonical_path.join(relative);
+            let target = staging_path.join(relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!("Could not create Physics Paint staging directory: {error}")
+                })?;
+            }
+            match fs::hard_link(&source, &target) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    missing.push(relative.clone());
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "Could not hardlink Physics Paint cache frame (same-volume required): {error}"
+                    ));
+                }
+            }
+        }
+        Ok(CacheHardlink { missing })
     }
 }
 
@@ -520,6 +586,20 @@ fn validate_staging_basename(value: &str) -> Result<(), String> {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
     {
         return Err("Invalid Physics Paint staging basename".to_string());
+    }
+    Ok(())
+}
+
+fn validate_unchanged_path(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.starts_with('/')
+        || value.contains('\\')
+        || value.contains('\0')
+        || value
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return Err("Invalid Physics Paint cache frame path".to_string());
     }
     Ok(())
 }

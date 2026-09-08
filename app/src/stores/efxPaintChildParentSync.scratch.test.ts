@@ -16,6 +16,7 @@ const ipcProjectSave = vi.hoisted(() => vi.fn());
 const ipcScriptLibraryBindSavedProject = vi.hoisted(() => vi.fn());
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const publishPhysicPaintProjectContext = vi.hoisted(() => vi.fn());
 const addRecentProject = vi.hoisted(() => vi.fn());
 const setLastProjectPath = vi.hoisted(() => vi.fn());
@@ -39,6 +40,7 @@ vi.mock('../lib/ipc', () => ({
   scriptLibraryClearActiveProject: vi.fn(),
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
 }));
 
 vi.mock('../lib/physicPaintBridge', () => ({
