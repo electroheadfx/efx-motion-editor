@@ -99,6 +99,7 @@ import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchConte
 import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
 import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle } from './bridge/gestureIdleScheduler';
+import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -3678,7 +3679,7 @@ export function PhysicsPaintStudio() {
     documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
   }
   const documentSyncPushGuard = documentSyncPushGuardRef.current;
-  const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback') => {
+  const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback'): Promise<void> | null => {
     const document = documentSyncPushGuard.evaluate(
       () => {
         try {
@@ -3689,7 +3690,7 @@ export function PhysicsPaintStudio() {
       },
       () => efxPaintVersion.peek(),
     );
-    if (!document) return;
+    if (!document) return null;
     // 49-06 (UAT round 11): carry the runtime background source bytes to the
     // main window — ITS registry is only hydrated at project load, so a clip
     // added during the child session (the Bg-picker import) resolves 'missing'
@@ -3712,7 +3713,7 @@ export function PhysicsPaintStudio() {
     } catch {
       // Quota exceeded — the launch-context fallback still applies on reload.
     }
-    void sendEfxPaintDocumentSync(
+    return sendEfxPaintDocumentSync(
       document,
       mode,
       Object.keys(backgroundSources).length > 0 ? backgroundSources : undefined,
@@ -3733,9 +3734,31 @@ export function PhysicsPaintStudio() {
     const mode = bridgeModeRef.current;
     if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
     if (!readInteractionIdle()) return;
-    pushLiveProjection(layerId, mode);
+    void pushLiveProjection(layerId, mode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value, interactionIdle.value]);
+  // 52.1 (flush-before-save/export): the main window requests a synchronous
+  // drain of the Studio's queued post-gesture work before it serializes the
+  // project. The flush settles the engine, drains the Roto capture queue, and
+  // pushes the document — the result is emitted only after the push is queued,
+  // so the main window's mirror is current when the save/export proceeds.
+  const flushStudioStateRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  flushStudioStateRef.current = async () => {
+    engineRef.current?.flushPendingStrokeFinalizations();
+    await rotoPersistence.flushLivePixels();
+    const layerId = launchContext?.layerId;
+    const mode = bridgeModeRef.current;
+    if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+      await pushLiveProjection(layerId, mode);
+    }
+  };
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void installPhysicPaintFlushRequestListener(() => flushStudioStateRef.current()).then((unsub) => {
+      unlisten = unsub;
+    });
+    return () => unlisten?.();
+  }, []);
   // 49-04 (Task 2): the scoped full-area asset picker (S2). The Studio realm's
   // imageStore is empty (Pitfall 2), so the picker populates its grid from the
   // main webview via the image-library bridge pair and imports new images

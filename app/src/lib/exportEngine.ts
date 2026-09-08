@@ -1,5 +1,6 @@
 import { PreviewRenderer } from './previewRenderer';
 import { renderGlobalFrame, renderFrameWithMotionBlur, preloadExportImages } from './exportRenderer';
+import { requestPhysicPaintFlush } from './physicPaintFlush';
 import { frameMap, crossDissolveOverlaps } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
@@ -133,6 +134,10 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     exportStore.updateProgress({ status: 'error', errorMessage: 'No output folder selected' });
     return;
   }
+
+  // 52.1: drain the Studio's queued post-gesture work before reading the frame
+  // map, so an export never renders a stale document/sidecar set.
+  await requestPhysicPaintFlush();
 
   let fm = frameMap.peek();
 

@@ -27,6 +27,7 @@ import {physicPaintStore, _setPhysicPaintMarkDirtyCallback, _setPhysicPaintCompo
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
+import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
 import {loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
 import {findLegacyPhysicPaintRejection} from '../efx-paint/document/efxPaintCleanBreak';
@@ -741,6 +742,9 @@ export const projectStore = {
       }
 
       const projectDir = currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
+      // 52.1: drain the Studio's queued post-gesture work before serializing, so
+      // a stroke + immediate Save never persists a stale document/sidecar set.
+      await requestPhysicPaintFlush();
       const documents = buildEfxPaintDocuments();
       await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const result = await ipcProjectSave({
@@ -784,6 +788,8 @@ export const projectStore = {
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     try {
       const project = buildMceProject();
+      // 52.1: drain the Studio's queued post-gesture work before serializing.
+      await requestPhysicPaintFlush();
       const documents = buildEfxPaintDocuments();
       await saveEfxPaintDocumentsWithProjectWrite(parentDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const projectForSave: MceProject = {
