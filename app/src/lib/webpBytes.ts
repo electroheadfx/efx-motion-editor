@@ -4,6 +4,8 @@
  * them without a module-body cycle (the two import each other's validators).
  */
 
+import { countByteFields, debugTag, estimatePayloadBytes } from './debugAttribution';
+
 const WEBP_RIFF = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
 const WEBP_TAG = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP" (offset 8)
 const WEBP_VP8L = [0x56, 0x50, 0x38, 0x4c] as const; // "VP8L" (offset 12, lossless)
@@ -36,13 +38,27 @@ export function isPngBytes(value: unknown): value is Uint8Array {
 }
 
 /**
- * Encode raw bytes as a base64 string. Chunked to stay under the
- * `String.fromCharCode` argument-count limit for photo-weight frames.
+ * Encode raw bytes as a base64 string. Lookup-table 3→4 encode with a chunked
+ * output array — the prior `String.fromCharCode(...spread)` + `btoa` path was
+ * ~180–400ms for a 10MB frame payload (the per-action transport bottleneck).
  */
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  return btoa(binary);
+  const length = bytes.length;
+  const output: string[] = [];
+  for (let index = 0; index < length; index += 3) {
+    const b0 = bytes[index];
+    const b1 = index + 1 < length ? bytes[index + 1] : 0;
+    const b2 = index + 2 < length ? bytes[index + 2] : 0;
+    output.push(
+      BASE64_ALPHABET[b0 >> 2]
+      + BASE64_ALPHABET[((b0 & 3) << 4) | (b1 >> 4)]
+      + (index + 1 < length ? BASE64_ALPHABET[((b1 & 15) << 2) | (b2 >> 6)] : '=')
+      + (index + 2 < length ? BASE64_ALPHABET[b2 & 63] : '='),
+    );
+  }
+  return output.join('');
 }
 
 /**
@@ -88,26 +104,42 @@ export function buildFrameBytesToken(bytes: Uint8Array): string {
  * bytes survive the JSON hop without changing the in-memory payload shape.
  */
 export function toTransportPayload(value: unknown): unknown {
+  // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
+  const t0 = performance.now();
+  const result = toTransportPayloadInner(value);
+  debugTag('transport.to', performance.now() - t0, `bytes=${estimatePayloadBytes(value)} byteFields=${countByteFields(value)}`);
+  return result;
+}
+
+function toTransportPayloadInner(value: unknown): unknown {
   if (value instanceof Uint8Array) return bytesToBase64(value);
-  if (Array.isArray(value)) return value.map(toTransportPayload);
+  if (Array.isArray(value)) return value.map(toTransportPayloadInner);
   if (value && typeof value === 'object') {
     const result: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) result[key] = toTransportPayload(entry);
+    for (const [key, entry] of Object.entries(value)) result[key] = toTransportPayloadInner(entry);
     return result;
   }
   return value;
 }
 
 export function fromTransportPayload(value: unknown): unknown {
+  // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
+  const t0 = performance.now();
+  const result = fromTransportPayloadInner(value);
+  debugTag('transport.from', performance.now() - t0, `bytes=${estimatePayloadBytes(value)} byteFields=${countByteFields(value)}`);
+  return result;
+}
+
+function fromTransportPayloadInner(value: unknown): unknown {
   if (value instanceof Uint8Array) return value;
   if (typeof value === 'string') {
     const bytes = base64ToWebpBytes(value);
     if (bytes) return bytes;
   }
-  if (Array.isArray(value)) return value.map(fromTransportPayload);
+  if (Array.isArray(value)) return value.map(fromTransportPayloadInner);
   if (value && typeof value === 'object') {
     const result: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) result[key] = fromTransportPayload(entry);
+    for (const [key, entry] of Object.entries(value)) result[key] = fromTransportPayloadInner(entry);
     return result;
   }
   return value;
