@@ -1,4 +1,3 @@
-import type { EfxPaintDocument } from '@efxlab/efx-physic-paint';
 import type { EfxPaintDocument as EfxPaintDocumentPayload } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
@@ -1795,7 +1794,6 @@ export interface PhysicPaintApplyCanvasPayload {
   sourceFrame?: number;
   displayFrame?: number;
   renderedFrame: PhysicPaintRenderedFrame;
-  editableState?: EfxPaintDocument;
   backgroundOnly?: boolean;
   onionBytes?: Uint8Array;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
@@ -2081,8 +2079,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
 
   if (value.kind === 'apply-canvas') {
     const sourceFrame = typeof value.sourceFrame === 'number' ? value.sourceFrame : value.startFrame;
-    return (value.editableState === undefined || isEfxPaintDocumentEditableState(value.editableState)) &&
-      optionalNonNegativeInteger(value.sourceFrame) &&
+    return optionalNonNegativeInteger(value.sourceFrame) &&
       optionalNonNegativeInteger(value.displayFrame) &&
       isPhysicPaintRenderedFrame(value.renderedFrame, sourceFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
@@ -2354,31 +2351,6 @@ function containsForbiddenApplyField(value: Record<string, unknown>): boolean {
     if (FORBIDDEN_APPLY_FIELDS.has(key)) return true;
   }
   return false;
-}
-
-/**
- * v1.0 document payload guard for the apply-canvas editableState carrier (D-03).
- * The engine's save() output carries engine-only strokes/settings on the active
- * track; the app-side parser's closed TRACK_KEYS rejects those carriers, so the
- * guard validates a carrier-stripped copy through the full fail-closed parse.
- * Legacy version:2 payloads fail the parse and are rejected.
- */
-function isEfxPaintDocumentEditableState(value: unknown): value is EfxPaintDocument {
-  if (!isRecord(value) || !Array.isArray(value.tracks)) return false;
-  const stripped = {
-    ...value,
-    tracks: value.tracks.map((track) => {
-      if (!isRecord(track)) return track;
-      const { strokes: _strokes, settings: _settings, ...rest } = track;
-      return rest;
-    }),
-  };
-  try {
-    parseEfxPaintDocument(stripped);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function isNonEmptyString(value: unknown): value is string {

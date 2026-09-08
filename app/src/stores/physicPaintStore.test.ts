@@ -49,31 +49,6 @@ const TEST_TRACK_ID = 'track-1';
 
 
 
-const editableState = {
-  version: 1 as const,
-  parentLayerId: 'layer-1',
-  documentRevision: 0,
-  activeTrackId: 'track-1',
-  tracks: [{
-    id: 'track-1',
-    name: 'Paint',
-    order: 0,
-    visible: true,
-    solo: false,
-    opacity: 1,
-    blendMode: 'normal' as const,
-    revision: 0,
-    frames: {},
-    rotoPhysical: null,
-    loopClips: [],
-    strokes: [{ tool: 'paint', pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]], color: '#103c65', params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 }, time: 123, diffusionFrames: 0 }],
-    settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
-  }],
-  background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' as const }, visible: true, revision: 0 },
-  photoReference: null,
-  compositeRevision: 0,
-};
-
 const makeFrame = (frameIndex: number, appFrame: number) => ({
   frameIndex,
   appFrame,
@@ -115,7 +90,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 8,
       renderedFrame: makeFrame(0, 8),
-      editableState,
     });
 
     expect(result.ok).toBe(true);
@@ -133,12 +107,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 8,
       renderedFrame: makeFrame(0, 8),
-      editableState: {
-        ...editableState,
-        tracks: editableState.tracks.map((track) => track.id === editableState.activeTrackId
-          ? { ...track, settings: { ...track.settings, bgMode: 'transparent' } }
-          : track),
-      },
       rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
     });
 
@@ -160,12 +128,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 4,
       renderedFrame: makeFrame(0, 4),
-      editableState: {
-        ...editableState,
-        tracks: editableState.tracks.map((track) => track.id === editableState.activeTrackId
-          ? { ...track, strokes: [] }
-          : track),
-      },
       backgroundOnly: true,
     });
 
@@ -184,7 +146,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 1,
       renderedFrame: makeFrame(0, 1),
-      editableState,
       rotoBackground: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
     });
     physicPaintStore.applyCanvas({
@@ -194,7 +155,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 3,
       renderedFrame: makeFrame(0, 3),
-      editableState,
     });
 
     const backgroundState = { mode: 'paper' as const, metadata: physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)! };
@@ -213,7 +173,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 8,
       renderedFrame: makeFrame(0, 8),
-      editableState,
     });
 
     const result = physicPaintStore.deleteRotoFrame({
@@ -1278,7 +1237,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 4,
       renderedFrame: { ...makeFrame(0, 4), bytes: testWebpBytes('bWVyZ2VkLWFscGhhLXJlcGFpbnQ=') },
-      editableState,
     });
 
     expect(result.ok).toBe(true);
@@ -1313,7 +1271,6 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 4,
       renderedFrame: { ...makeFrame(0, 4), bytes: testWebpBytes('cmVhbC00') },
-      editableState,
     });
 
     expect(result.ok).toBe(true);
