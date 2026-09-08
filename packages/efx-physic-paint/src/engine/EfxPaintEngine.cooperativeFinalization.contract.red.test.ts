@@ -615,7 +615,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.pendingStrokeFinalizations.map((job: any) => job.id)).toEqual(['brush-1', 'brush-2'])
   })
 
-  it('waits for 500 ms of pointer inactivity before batching the queued stroke to completion', () => {
+  it('waits for 1000 ms of pointer inactivity before batching the queued stroke to completion', () => {
     const { engine, finalized, enqueue } = createHarness()
     let now = 1_000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
@@ -623,12 +623,12 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.lastPointerInputTime = now
 
     engine.scheduleStrokeFinalization()
-    now = 1_499
+    now = 1_999
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
     expect(finalized).toEqual([])
 
-    now = 1_500
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
@@ -645,11 +645,11 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.markStrokeHandoffComplete()
     engine.scheduleStrokeFinalization()
 
-    now = 2_099
+    now = 2_599
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
-    now = 2_100
+    now = 2_600
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1'])
   })
@@ -663,7 +663,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.scheduleStrokeFinalization()
     engine.hasPendingInput = vi.fn(() => true)
 
-    now = 1_500
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
@@ -685,11 +685,11 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.activeStrokeFinalization).toBeNull()
 
     engine.lastPointerInputTime = now
-    now = 1_899
+    now = 2_399
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
-    now = 1_900
+    now = 2_400
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1'])
   })
@@ -710,14 +710,14 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     // The single idle rule: exactly ONE post-idle drain publishes the WHOLE
     // scripted sequence — the canvas must never show intermediate per-stroke
     // renders (the 'last strokes missing until a click' regression-amplifier).
-    now = 1_500
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
     expect(engine.activeStrokeFinalization).toBeNull()
 
     // Nothing is re-scheduled: the next visual frame is a no-op (single render).
-    now = 1_600
+    now = 2_100
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
   })
@@ -742,7 +742,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     // finishes brush-1..brush-4 in the first post-idle frame, leaving
     // brush-5 and brush-6 for the next frame — the queue is never drained in
     // one turn, whatever the budget.
-    now = 1_500
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3', 'brush-4'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(2)
@@ -761,7 +761,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.lastPointerInputTime = now
     engine.state.drawing = true
     engine.scheduleStrokeFinalization()
-    now = 1_600
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 

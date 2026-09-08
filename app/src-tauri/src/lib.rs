@@ -194,6 +194,10 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         let app_handle = app.clone();
         window.on_window_event(move |event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                // 52.1: the main Preview holds its canvas while a paint child
+                // is open (see physicPaintLaunchActive); a manual child close
+                // (no apply) must release that gate so the main re-renders.
+                let _ = app_handle.emit("physic-paint:window-closed", ());
                 if let Some(state) = app_handle.try_state::<DisplaySleepGuardState>() {
                     if let Ok(mut held) = state.0.lock() {
                         *held = None;

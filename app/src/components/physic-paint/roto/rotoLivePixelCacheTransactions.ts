@@ -1,4 +1,26 @@
-import { onInteractionIdle, readInteractionIdle } from '../bridge/gestureIdleScheduler';
+import { onInteractionIdle, readInteractionIdle, readLastInteractionAt } from '../bridge/gestureIdleScheduler';
+
+/**
+ * 52.1 (Part 3): a capture produces its capture→encode→commit pipeline only
+ * when the gesture has been quiet for this long. Between rapid strokes each
+ * inter-stroke idle transition otherwise starts a full WebP encode whose
+ * result is superseded by the next stroke's capture — during continuous
+ * drawing N strokes burned N encodes while only the last could commit. A quiet
+ * window collapses a burst to a single encode of the settled canvas; the
+ * navigation/close/save/export flush paths bypass the window via forceFlush.
+ *
+ * The window must exceed the user's inter-stroke pause, not just the 400ms
+ * idle flip: the cache save on a FRESH key is a full-frame readback (~83ms
+ * synchronous main-thread getImageData) + WebP encode + parent push whose
+ * parent-side decode re-saturates the shared GPU process — and a long string of
+ * ~80ms rAF stutter follows every save. The user's own diagnosis (cache save
+ * slows the main thread from the first stroke): at any quiet shorter than their
+ * stroke cadence the save fires between strokes and the next stroke lands in
+ * its drain. 6000ms collocates the save only at a LONG genuine stop; save /
+ * export / navigation / Apply flush pending captures synchronously via
+ * forceFlush, so nothing is ever lost.
+ */
+export const CAPTURE_PRODUCE_QUIET_MS = 6000;
 
 export interface RotoLivePixelIdentity {
   readonly launchId: string;
@@ -105,10 +127,20 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         return false;
       };
       const work = (async () => {
-        await waitForIdleOrForce();
+        // Produce waits for idle AND the quiet window (Part 3): a mid-burst
+        // pause (< CAPTURE_PRODUCE_QUIET_MS) re-enters the loop instead of
+        // starting an encode the next stroke would supersede. forceFlush skips
+        // the window — save/export/navigation/close must drain immediately.
+        for (;;) {
+          await waitForIdleOrForce();
+          if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, input.resolveCurrent())) return reject('stale-before-produce');
+          if (forceFlush) break;
+          const quietFor = performance.now() - readLastInteractionAt();
+          if (quietFor >= CAPTURE_PRODUCE_QUIET_MS) break;
+          await new Promise<void>((resolve) => setTimeout(resolve, CAPTURE_PRODUCE_QUIET_MS - quietFor));
+        }
         const producerStartedAt = input.recordPerformance ? performance.now() : 0;
         input.recordPerformance?.({ stage: 'cache-task-handoff', category: 'scheduled-wait', durationMs: producerStartedAt - queuedAt, timestamp: producerStartedAt, mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
-        if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, input.resolveCurrent())) return reject('stale-before-produce');
         const value = await input.produce();
         input.recordPerformance?.({ stage: 'cache-producer', category: 'async-elapsed', durationMs: performance.now() - producerStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
         const current = input.resolveCurrent();

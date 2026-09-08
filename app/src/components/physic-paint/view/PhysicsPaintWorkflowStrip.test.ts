@@ -577,7 +577,10 @@ describe('localized render contract', () => {
     expect(cellStart).toBeGreaterThanOrEqual(0);
     expect(cellBlock).toContain("recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton')");
     expect(cellBlock).toContain('const tooltip = useStyledTooltip();');
-    expect(code).toContain('const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);');
+    expect(code).toContain('const RotoTimelineCellButton = memo(');
+    // 52.1 (fresh-key glitch): the memo compares VM CONTENT (not identity) so a
+    // key-creation rebuild does not re-render all ~626 unchanged cells.
+    expect(code).toContain('rotoCellVmValuesEqual(prev.vm, next.vm)');
     expect(code).toContain('const handleRotoTimelineCellClick = useCallback(');
     expect(code).toContain('const handleRotoTimelineCellPointerDown = useCallback(');
     expect(map).toContain('key={frame}');

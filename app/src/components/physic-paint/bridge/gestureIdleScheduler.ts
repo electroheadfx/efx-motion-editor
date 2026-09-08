@@ -47,6 +47,8 @@ export const interactionIdle = signal(true);
 const idleListeners = new Set<() => void>();
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let lastMoveRearm = 0;
+/** Wall-clock of the last pointer down/move/up/cancel — the capture producer's quiet-window clock (52.1 Part 3). -Infinity = no interaction yet (always quiet). */
+let lastInteractionAt = Number.NEGATIVE_INFINITY;
 
 function armIdleTimer(): void {
   if (idleTimer !== null) clearTimeout(idleTimer);
@@ -63,12 +65,14 @@ function armIdleTimer(): void {
 export function beginInteraction(pointerId: number): void {
   activePointers.add(pointerId);
   interactionIdle.value = false;
+  lastInteractionAt = performance.now();
   armIdleTimer();
 }
 
 /** pointermove (throttled) — re-arms the silence timer during a long drag. */
 export function markInteractionActive(): void {
   const now = performance.now();
+  lastInteractionAt = now;
   if (now - lastMoveRearm < GESTURE_MOVE_REARM_THROTTLE_MS) return;
   lastMoveRearm = now;
   interactionIdle.value = false;
@@ -79,7 +83,13 @@ export function markInteractionActive(): void {
 export function endInteraction(pointerId: number): void {
   activePointers.delete(pointerId);
   interactionIdle.value = false;
+  lastInteractionAt = performance.now();
   armIdleTimer();
+}
+
+/** Non-subscribing read of the last interaction wall-clock (non-throttled — includes moves between throttle windows). */
+export function readLastInteractionAt(): number {
+  return lastInteractionAt;
 }
 
 /** Non-subscribing read for the push/capture paths (must not create subscriptions). */

@@ -127,7 +127,7 @@ export function createPhysicsPaintSessionController(
     if (!engine || !launchContext) return;
     try {
       const canvas = engine.exportCompositeCanvas();
-      const context = canvas.getContext('2d');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
       if (!context) throw new Error('Debug proof canvas is unavailable.');
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
       const bytes = await encodeWebpFrame({ rgba: new Uint8Array(imageData.data), width: canvas.width, height: canvas.height });

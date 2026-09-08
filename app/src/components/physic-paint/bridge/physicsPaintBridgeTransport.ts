@@ -97,7 +97,8 @@ export async function sendEfxPaintDocumentSync(
     // 52.1 (D-05): emitTo serializes as JSON, turning the document's real-key
     // `bytes` (Uint8Array) into index objects. Convert bytes -> base64 so the
     // main-window parser sees the canonical string form.
-    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, toTransportPayload(payload));
+    const encoded = toTransportPayload(payload);
+    await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, encoded);
     return;
   }
   if (bridgeMode === 'Browser fallback') {
@@ -151,7 +152,8 @@ export async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPaylo
     // 52.1 (D-05): emitTo serializes as JSON, which turns Uint8Array frame
     // bytes into index objects. Convert bytes -> base64 so the parent-side
     // validators see the canonical string form instead of a corrupted array.
-    await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, toTransportPayload(payload));
+    const encoded = toTransportPayload(payload);
+    await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, encoded);
     return;
   }
 

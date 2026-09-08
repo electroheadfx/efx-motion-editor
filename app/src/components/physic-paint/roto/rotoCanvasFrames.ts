@@ -32,7 +32,7 @@ export async function registerRotoAlphaCanvasFrameFromBytes(
     const canvas = document.createElement('canvas');
     canvas.width = expectedSize?.width ?? width;
     canvas.height = expectedSize?.height ?? height;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Canonical Roto WebP canvas is unavailable.');
     context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
     registerRotoAlphaCanvasFrame(bytes, canvas);
@@ -130,7 +130,8 @@ export function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanva
   const background = (track?.settings?.bgMode ?? 'transparent') as BgMode;
   try {
     engine.setBgMode('transparent');
-    return engine.exportCompositeCanvas();
+    const canvas = engine.exportCompositeCanvas();
+    return canvas;
   } finally {
     engine.setBgMode(background);
     engine.load(state);
@@ -169,7 +170,7 @@ function buildRenderedFramePayload(canvas: HTMLCanvasElement, appFrame: number, 
 async function encodeCanvasAsWebp(canvas: HTMLCanvasElement, sourceFrame: number, mutationId?: number): Promise<Uint8Array> {
   const profiling = isPhysicsPaintProfilingEnabled();
   const encodingStartedAt = profiling ? performance.now() : 0;
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Could not read Roto alpha frame pixels.');
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const readbackAt = profiling ? performance.now() : 0;
@@ -189,7 +190,7 @@ export function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: numbe
   const output = document.createElement('canvas');
   output.width = size.width;
   output.height = size.height;
-  const context = output.getContext('2d');
+  const context = output.getContext('2d', { willReadFrequently: true });
   context?.drawImage(canvas, 0, 0, size.width, size.height);
   return output;
 }

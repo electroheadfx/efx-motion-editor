@@ -25,7 +25,7 @@ export async function mergeRotoAlphaCanvases(
   const output = document.createElement('canvas');
   output.width = size.width;
   output.height = size.height;
-  const context = output.getContext('2d');
+  const context = output.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Could not merge Roto alpha frames: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);

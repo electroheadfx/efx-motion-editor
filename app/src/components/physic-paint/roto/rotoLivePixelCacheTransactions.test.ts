@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
-import { createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
+import { CAPTURE_PRODUCE_QUIET_MS, createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
 import { beginInteraction, endInteraction, GESTURE_IDLE_WINDOW_MS, interactionIdle } from '../bridge/gestureIdleScheduler';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
@@ -227,7 +227,9 @@ describe('Roto live pixel cache transactions — gesture-idle gating', () => {
   });
 
   it('defers produce until the idle transition while a gesture is active', async () => {
-    vi.useFakeTimers();
+    // performance must be faked alongside timers: the produce quiet window
+    // (Part 3) reads performance.now() directly.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
     beginInteraction(1);
     const produce = vi.fn(async () => 'pixels');
     const commit = vi.fn();
@@ -238,7 +240,12 @@ describe('Roto live pixel cache transactions — gesture-idle gating', () => {
     expect(produce).not.toHaveBeenCalled();
 
     endInteraction(1);
+    // 52.1 (Part 3): the idle transition alone is not enough — produce also
+    // waits for the capture quiet window so a mid-burst pause never starts an
+    // encode the next stroke would supersede.
     await vi.advanceTimersByTimeAsync(GESTURE_IDLE_WINDOW_MS);
+    expect(produce).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CAPTURE_PRODUCE_QUIET_MS);
     await expect(work).resolves.toBe(true);
     expect(produce).toHaveBeenCalledOnce();
     expect(commit).toHaveBeenCalledWith('pixels');

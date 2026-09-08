@@ -170,7 +170,7 @@ function compositeRevealMask(
   const output = document.createElement('canvas');
   output.width = size.width;
   output.height = size.height;
-  const context = output.getContext('2d');
+  const context = output.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Could not composite reveal mask: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);

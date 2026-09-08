@@ -58,7 +58,7 @@ export function applyEraseStroke(
   // Render erase mask to offscreen canvas (same shape as paint brush)
   const off = document.createElement('canvas')
   off.width = bounds.w; off.height = bounds.h
-  const oc = off.getContext('2d')!
+  const oc = off.getContext('2d', { willReadFrequently: true })!
   oc.translate(-bounds.x0, -bounds.y0)
 
   const base = ribbon(curve, radius, 0.8, hasPenInput)

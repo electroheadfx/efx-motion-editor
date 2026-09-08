@@ -1122,6 +1122,24 @@ export interface PhysicPaintRotoPhysicalEditRecord {
 }
 
 /**
+ * 52.1 (Part 2) wire-only record reference. On the bridge, a real-key record
+ * whose bytes are unchanged relative to the expected (parent-current) state
+ * rides as a content-token ref instead of re-sending the full byte payload;
+ * the parent resolves the ref against its own store before validation, so the
+ * in-memory payload contract above never changes shape.
+ */
+export interface PhysicPaintRotoPhysicalEditRecordRef {
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly refToken: string;
+}
+
+export function isPhysicPaintRotoPhysicalEditRecordRef(value: unknown): value is PhysicPaintRotoPhysicalEditRecordRef {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['keyId', 'appFrame', 'refToken'])) return false;
+  return isBoundedPhysicalKeyId(value.keyId) && isNonNegativeInteger(value.appFrame) && isNonEmptyString(value.refToken);
+}
+
+/**
  * Active parent-authoritative physical-edit acknowledgement. The result
  * echoes the exact settlement tuple (operation ID, kind, layer,
  * launch/project context), staged and accepted revisions, selection, outcome,

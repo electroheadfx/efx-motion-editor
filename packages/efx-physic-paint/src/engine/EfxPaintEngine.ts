@@ -156,7 +156,24 @@ export type PaintHistoryAvailability = {
 /** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
 export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
 
-const STROKE_FINALIZATION_IDLE_MS = 500
+// 52.1: 500ms → 1000ms. Finalization turns are ~47ms blocks that chain
+// back-to-back during any idle gap; the user's paint cadence (~900ms between
+// strokes) kept opening the 500ms window mid-session. 1s of real quiet before
+// the first turn keeps every inter-stroke gap clean.
+const STROKE_FINALIZATION_IDLE_MS = 1000
+// 52.1 (2nd-stroke freeze): natural drying is cosmetic evaporation; every
+// dryStep reads back + writes back the dry canvas region (a long stroke's bbox
+// is large) and blocks the thread for ~87ms on the GPU semaphore. The user's
+// inter-stroke pause (~1s) let the old 1000ms gate fire between strokes and the
+// whole session crawled at ~8fps. Only evaporate at a genuine stop (matching
+// the capture/documentSync quiet windows); residual wet is handled by the next
+// stroke's prepareWetLayerForStroke + finalize, so skipping drying mid-train is
+// safe.
+const DRYING_QUIET_MS = 2500
+// 52.1 (2nd-stroke freeze): while a paint train is this recent, a fresh-key base
+// apply must not upload its 8.3MB texture (see applyPreviewBaseImage) — existing
+// keys never re-upload during painting, which is why they stay perfect.
+const PAINT_TRAIN_BASE_DRAW_MS = 1500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
 /** Interactive strokes drain at most this many phase steps per visual frame — batches the final render. */
@@ -807,8 +824,6 @@ export class EfxPaintEngine {
   }
 
   setPreviewBaseImageUrl(dataUrl: string, contentToken?: number, appFrame?: number): void {
-    // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
-    const t0 = performance.now()
     this.requestRender()
     const requestExplicit = contentToken !== undefined
     // 52.1: a plain refresh (no content token) must not supersede an explicit
@@ -895,10 +910,6 @@ export class EfxPaintEngine {
       this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
     }
     image.src = dataUrl
-    // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
-    if (typeof window !== 'undefined' && window.localStorage?.getItem('efx.physicsPaint.profile') === '1') {
-      console.warn(`[52.1-attrib] engine.previewBase.set ${(performance.now() - t0).toFixed(1)}ms | explicit=${requestExplicit} inFlight=${this.inFlightExplicitPreviewBase} drawing=${this.state.drawing} appFrame=${appFrame ?? '?'} token=${requestContentToken}`)
-    }
   }
 
   /** The dataUrl of the preview base image currently applied to the canvas, or null. */
@@ -957,7 +968,7 @@ export class EfxPaintEngine {
     return this.previewBaseGenerationCounter
   }
 
-  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false): boolean {
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false, skipFullReplay = false): boolean {
     if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
       if (explicit) this.inFlightExplicitPreviewBase = false
       return false
@@ -977,6 +988,19 @@ export class EfxPaintEngine {
     this.appliedPreviewBaseGeneration = generation
     this.appliedPreviewBaseAppFrame = appFrame ?? null
     this.appliedPreviewBaseExplicit = explicit
+    if (skipFullReplay || performance.now() - this.lastPointerInputTime < PAINT_TRAIN_BASE_DRAW_MS) {
+      // 52.1 (2nd-stroke freeze): a fresh key's acceptance base apply used to
+      // redrawPreviewBase() + redrawAll() — the FIRST drawImage of the new base
+      // image uploads an 8.3MB texture to the GPU process, a multi-hundred-ms
+      // wait landing exactly where the user is between stroke 1 and 2. Existing
+      // keys never re-upload a base texture during painting (theirs was
+      // uploaded at navigation), which is exactly why they stay perfect. While a
+      // paint train is active (a stroke just lifted/pressed) the stroke is
+      // already live over this same blank base, so only the base image FIELD
+      // changes; previewBaseCtx stays correct and the texture uploads later at
+      // the next genuine redraw (a real stop or navigation).
+      return true
+    }
     this.redrawPreviewBase()
     this.redrawAll()
     return true
@@ -1212,6 +1236,16 @@ export class EfxPaintEngine {
     if (this.dryingInterval) return // already drying
     this.requestRender()
     this.dryingInterval = setInterval(() => {
+      // 52.1: each dryStep does a full-frame getImageData on the GPU-backed dry
+      // canvas — a synchronous IPC wait that flushes the drawing queue. While
+      // the user is painting or just lifted the pen, that queue still holds
+      // the last stroke's commands, so the 10fps readback parks the main
+      // thread for hundreds of ms and starves the next stroke's input (the
+      // 2nd-stroke freeze). Drying is cosmetic (seconds-scale evaporation):
+      // skip ticks until the gesture has been quiet for the idle window.
+      if (this.state.drawing) return
+      const lastInteractionTime = Math.max(this.lastPointerInputTime, this.lastStrokeHandoffTime)
+      if (performance.now() - lastInteractionTime < DRYING_QUIET_MS) return
       // Check if there's still wet paint
       let hasWet = false
       for (let i = 0; i < this.size; i += 64) {
@@ -1222,7 +1256,7 @@ export class EfxPaintEngine {
         return
       }
       dryStep(this.wet, this.drying, this.dualCanvas.dryCtx,
-        this.width, this.height, this.state.drySpeed, this.paperHeight)
+        this.width, this.height, this.state.drySpeed, this.paperHeight, undefined, this.lastStrokeBounds)
       // Each drying step changes the visible wet — re-composite the display.
       this.displayCompositeDirty = true
       this.requestRender()
@@ -1472,11 +1506,45 @@ export class EfxPaintEngine {
     const canvas = document.createElement('canvas')
     canvas.width = this.width
     canvas.height = this.height
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     ctx.clearRect(0, 0, this.width, this.height)
     ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
     ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
     return canvas
+  }
+
+  /** 52.1 (fresh-frame first-paint freeze): drain the frame's freshly-applied
+   * base/display uploads to the GPU NOW, during idle activation, instead of
+   * letting the first paint's synchronous readback flush them mid-stroke (the
+   * measured ~380-400ms rAF gaps that broke the fast-chained 2nd stroke on a new
+   * frame). A 1px readback of the dry canvas synchronously drains the whole
+   * canvas queue. Negligible on already-resident surfaces; one ~hundreds-ms
+   * drain on a brand-new frame's cold surfaces. */
+  warmCanvasSurfaces(): void {
+    if (this.destroyed) return
+    this.requestRender()
+    try {
+      this.dualCanvas.dryCtx.getImageData(0, 0, 1, 1)
+    } catch {
+      // A detached/cleared canvas throws — the drain is best-effort.
+    }
+  }
+
+  /** 52.1 (fresh-frame first-paint freeze): hold input for `ms` on a newly
+   * activated frame so the cold GPU surfaces settle BEFORE the first stroke
+   * (the user-validated "+key then wait ~1s" recipe, encoded). Without the
+   * gate, the first paint's synchronous readback flushes the fresh surface
+   * mid-stroke — the ~380ms rAF gaps that broke the fast-chained 2nd stroke.
+   * Releases itself and notifies the Studio through the caller. */
+  lockInputForWarm(ms: number): Promise<void> {
+    this.inputLocked = true
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        this.inputLocked = false
+        this.requestRender()
+        resolve()
+      }, ms)
+    })
   }
 
   /** Copy the completed live paint only, excluding preview base and paper/background. */
@@ -1492,7 +1560,7 @@ export class EfxPaintEngine {
     const canvas = document.createElement('canvas')
     canvas.width = this.width
     canvas.height = this.height
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     ctx.clearRect(0, 0, this.width, this.height)
     this.recordPerformance('live-alpha-allocate', 'sync-cpu', allocationStartedAt, { mutationId, branch })
 
@@ -2177,7 +2245,7 @@ export class EfxPaintEngine {
         active.phase = 'fluid'
         return
       }
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry')
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(active.pending.points, active.pending.opts))
       this.finishInteractivePaintFinalization(active)
       return
     }
@@ -2193,6 +2261,25 @@ export class EfxPaintEngine {
       this.replayDiffusionFrame(active.continuationFrame, sampleHFn, pending.physicsMode)
       active.continuationFrame += 1
       if (active.continuationFrame >= pending.continuationFrames) this.completeActiveStrokeFinalization(active)
+    }
+  }
+
+  // 52.1 (2nd-stroke freeze): the dry canvas region this stroke owns — clamp
+  // every per-stroke forceDryAll readback/writeback to it instead of the
+  // full 1920×1080 frame (8.3MB each). The stroke-1 finalize's full writeback
+  // queued up for stroke 2's synchronous getImageData to flush (~1s block).
+  private dryRegionForStroke(points: readonly PenPoint[], opts: BrushOpts): { x0: number; y0: number; x1: number; y1: number } {
+    let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
+    for (const p of points) {
+      sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
+      sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
+    }
+    const brushR = brushRenderRadius(opts)
+    return {
+      x0: Math.max(0, Math.floor(sx0 - brushR)),
+      y0: Math.max(0, Math.floor(sy0 - brushR)),
+      x1: Math.min(this.width - 1, Math.ceil(sx1 + brushR)),
+      y1: Math.min(this.height - 1, Math.ceil(sy1 + brushR)),
     }
   }
 
@@ -2260,46 +2347,68 @@ export class EfxPaintEngine {
     if (physicsMode === 'local') {
       const keepR = brushRenderRadius(opts) * 3 + 40
       const keepR2 = keepR * keepR
+      // 52.1 (2nd-stroke freeze): the stroke-start readback was the WHOLE
+      // full-frame dry canvas (8.3MB) — at stroke 2 that readback had to flush
+      // stroke 1's queued full-frame writeback first (~1s GPU-semaphore park).
+      // Scope the readback + eventual writeback to the union of the previous
+      // stroke's bbox (where deferred wet lives, to composite+dry far pixels)
+      // and the keepR preserve box around the new stroke start.
+      const kx0 = Math.max(0, Math.floor(pt.x - keepR)), ky0 = Math.max(0, Math.floor(pt.y - keepR))
+      const kx1 = Math.min(this.width - 1, Math.ceil(pt.x + keepR)), ky1 = Math.min(this.height - 1, Math.ceil(pt.y + keepR))
+      const prev = this.lastStrokeBounds
+      // lastStrokeBounds is `Math.floor(sx0 - brushR)` and can dip below 0 for
+      // a stroke near an edge — a negative getImageData origin throws
+      // IndexSizeError. Clamp the union rect into the canvas like forceDryAll.
+      const rx0 = Math.max(0, prev ? Math.min(prev.x0, kx0) : kx0)
+      const ry0 = Math.max(0, prev ? Math.min(prev.y0, ky0) : ky0)
+      const rx1 = Math.min(this.width - 1, prev ? Math.max(prev.x1, kx1) : kx1)
+      const ry1 = Math.min(this.height - 1, prev ? Math.max(prev.y1, ky1) : ky1)
+      const rw = rx1 - rx0 + 1
+      const rh = ry1 - ry0 + 1
       const readbackStartedAt = observePrimitive ? performance.now() : 0
-      const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
-      if (observePrimitive) observePrimitive('paint-pre-stroke-local-full-frame-readback', performance.now() - readbackStartedAt)
+      const id = this.dualCanvas.dryCtx.getImageData(rx0, ry0, rw, rh)
+      if (observePrimitive) observePrimitive('paint-pre-stroke-local-readback', performance.now() - readbackStartedAt)
       const d = id.data
       let changed = false
       const pixelLoopStartedAt = observePrimitive ? performance.now() : 0
-      for (let i = 0; i < this.size; i++) {
-        if (this.wet.alpha[i] < 1) continue
-        const x = i % this.width, y = (i / this.width) | 0
-        const dx = x - pt.x, dy = y - pt.y
-        if (dx * dx + dy * dy > keepR2) {
-          const pixelOpacity = this.wet.strokeOpacity[i]
-          const displayAlpha = wetDisplayAlpha(this.wet.alpha[i], pixelOpacity, sampleH(this.paperHeight, x, y, this.width, this.height)) / 255
-          if (displayAlpha > 0.005) {
-            const pi = i * 4, ma = d[pi + 3] / 255
-            const oa = Math.min(1, ma + displayAlpha * (1 - ma))
-            const bt = displayAlpha / Math.max(0.005, oa)
-            d[pi] = Math.round(clamp(lerp(d[pi], this.wet.r[i], bt), 0, 255))
-            d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], this.wet.g[i], bt), 0, 255))
-            d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], this.wet.b[i], bt), 0, 255))
-            d[pi + 3] = Math.round(clamp(oa * 255, 0, 255))
-            changed = true
+      for (let y = ry0; y <= ry1; y++) {
+        const rowBase = y * this.width
+        for (let x = rx0; x <= rx1; x++) {
+          const i = rowBase + x
+          if (this.wet.alpha[i] < 1) continue
+          const dx = x - pt.x, dy = y - pt.y
+          if (dx * dx + dy * dy > keepR2) {
+            const pixelOpacity = this.wet.strokeOpacity[i]
+            const displayAlpha = wetDisplayAlpha(this.wet.alpha[i], pixelOpacity, sampleH(this.paperHeight, x, y, this.width, this.height)) / 255
+            if (displayAlpha > 0.005) {
+              const di = ((y - ry0) * rw + (x - rx0)) * 4
+              const ma = d[di + 3] / 255
+              const oa = Math.min(1, ma + displayAlpha * (1 - ma))
+              const bt = displayAlpha / Math.max(0.005, oa)
+              d[di] = Math.round(clamp(lerp(d[di], this.wet.r[i], bt), 0, 255))
+              d[di + 1] = Math.round(clamp(lerp(d[di + 1], this.wet.g[i], bt), 0, 255))
+              d[di + 2] = Math.round(clamp(lerp(d[di + 2], this.wet.b[i], bt), 0, 255))
+              d[di + 3] = Math.round(clamp(oa * 255, 0, 255))
+              changed = true
+            }
+            this.wet.alpha[i] = 0; this.wet.wetness[i] = 0
+            this.wet.r[i] = 0; this.wet.g[i] = 0; this.wet.b[i] = 0
+            this.wet.strokeOpacity[i] = 0
+            this.drying.dryPos[i] = 0
           }
-          this.wet.alpha[i] = 0; this.wet.wetness[i] = 0
-          this.wet.r[i] = 0; this.wet.g[i] = 0; this.wet.b[i] = 0
-          this.wet.strokeOpacity[i] = 0
-          this.drying.dryPos[i] = 0
         }
       }
       if (observePrimitive) observePrimitive('paint-pre-stroke-local-pixel-loop', performance.now() - pixelLoopStartedAt)
       if (changed) {
         const writebackStartedAt = observePrimitive ? performance.now() : 0
-        this.dualCanvas.dryCtx.putImageData(id, 0, 0)
-        if (observePrimitive) observePrimitive('paint-pre-stroke-local-full-frame-writeback', performance.now() - writebackStartedAt)
+        this.dualCanvas.dryCtx.putImageData(id, rx0, ry0)
+        if (observePrimitive) observePrimitive('paint-pre-stroke-local-writeback', performance.now() - writebackStartedAt)
       }
       this.stopNaturalDrying()
       return
     }
 
-    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry')
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry', this.lastStrokeBounds)
   }
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
@@ -2417,7 +2526,7 @@ export class EfxPaintEngine {
 
       // Bake to canvas — in local mode, keep wet for stroke interaction
       if (this.state.physicsMode !== 'local') {
-        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry')
+        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(points, opts))
       } else if (options.startNaturalDrying) {
         // Start natural drying timer (research: paint dries over time via evaporation)
         this.startNaturalDrying()
@@ -2434,7 +2543,7 @@ export class EfxPaintEngine {
         this.getDryRestoreData(),
         observePrimitive,
       )
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry')
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry', this.lastStrokeBounds)
     }
 
     // Compute last stroke bounding box for physics "Last" mode
@@ -2538,7 +2647,10 @@ export class EfxPaintEngine {
     if (pending) {
       this.pendingExplicitPreviewBase = null
       if (pending.requestId === this.previewBaseRequestId) {
-        const applied = this.applyPreviewBaseImage(pending.image, pending.requestId, pending.dataUrl, pending.generation, pending.appFrame, true)
+        // 52.1: the pointerUp parked apply must NOT replay the full action
+        // history (see applyPreviewBaseImage skipFullReplay) — the stroke just
+        // painted is already live on the dry/display canvas.
+        const applied = this.applyPreviewBaseImage(pending.image, pending.requestId, pending.dataUrl, pending.generation, pending.appFrame, true, true)
         if (applied) this.notifyPreviewBaseSettled(pending.dataUrl, 'applied', pending.generation)
       }
     }

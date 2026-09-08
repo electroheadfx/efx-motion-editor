@@ -4,8 +4,6 @@
  * them without a module-body cycle (the two import each other's validators).
  */
 
-import { countByteFields, debugTag, estimatePayloadBytes } from './debugAttribution';
-
 const WEBP_RIFF = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
 const WEBP_TAG = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP" (offset 8)
 const WEBP_VP8L = [0x56, 0x50, 0x38, 0x4c] as const; // "VP8L" (offset 12, lossless)
@@ -104,11 +102,7 @@ export function buildFrameBytesToken(bytes: Uint8Array): string {
  * bytes survive the JSON hop without changing the in-memory payload shape.
  */
 export function toTransportPayload(value: unknown): unknown {
-  // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
-  const t0 = performance.now();
-  const result = toTransportPayloadInner(value);
-  debugTag('transport.to', performance.now() - t0, `bytes=${estimatePayloadBytes(value)} byteFields=${countByteFields(value)}`);
-  return result;
+  return toTransportPayloadInner(value);
 }
 
 function toTransportPayloadInner(value: unknown): unknown {
@@ -123,11 +117,7 @@ function toTransportPayloadInner(value: unknown): unknown {
 }
 
 export function fromTransportPayload(value: unknown): unknown {
-  // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
-  const t0 = performance.now();
-  const result = fromTransportPayloadInner(value);
-  debugTag('transport.from', performance.now() - t0, `bytes=${estimatePayloadBytes(value)} byteFields=${countByteFields(value)}`);
-  return result;
+  return fromTransportPayloadInner(value);
 }
 
 function fromTransportPayloadInner(value: unknown): unknown {

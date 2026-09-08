@@ -10,6 +10,7 @@ import {
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
   isPhysicPaintRotoPhysicalEditApplyPayload,
+  isPhysicPaintRotoPhysicalEditRecordRef,
   isPhysicPaintRotoPhysicalEditApplyResult,
   isPhysicPaintRotoPhysicalEditIntent,
   isPhysicPaintActionHistoryReleaseRequest,
@@ -196,6 +197,17 @@ describe('physic paint payload contracts', () => {
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
+    // 52.1 (Part 2): a wire ref record ({ keyId, appFrame, refToken }) is NOT a
+    // valid in-memory payload record — the parent bridge expands refs to full
+    // records before this validator ever runs.
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      records: [{ keyId: 'inserted-key', appFrame: 4, refToken: 'tok' }],
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4, refToken: 'tok' })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4, refToken: 'tok', extra: 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef(records[0])).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
       intent: { kind: 'delete-key', selectedKeyId: 'inserted-key' },

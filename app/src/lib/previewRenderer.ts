@@ -156,7 +156,7 @@ export class PreviewRenderer {
 
   constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
     this.canvas = canvas;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       throw new Error('PreviewRenderer: failed to get 2d context');
     }
@@ -432,7 +432,7 @@ export class PreviewRenderer {
         const off = document.createElement('canvas');
         off.width = projW;
         off.height = projH;
-        const offCtx = off.getContext('2d')!;
+        const offCtx = off.getContext('2d', { willReadFrequently: true })!;
         if (paintFrame) {
           // FX frames need white bg (p5.brush); flat frames use layer's persisted bgColor
           const hasFx = paintFrame.elements.some((el: any) => el.brushStyle && el.brushStyle !== 'flat');
@@ -959,7 +959,7 @@ export class PreviewRenderer {
       this.blurOffscreen.width = w;
       this.blurOffscreen.height = h;
     }
-    const ctx = this.blurOffscreen.getContext('2d');
+    const ctx = this.blurOffscreen.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
     return {canvas: this.blurOffscreen, ctx};
   }
@@ -1003,7 +1003,7 @@ export class PreviewRenderer {
         }
         if (this.offscreenCanvas.width !== vw) this.offscreenCanvas.width = vw;
         if (this.offscreenCanvas.height !== vh) this.offscreenCanvas.height = vh;
-        const vidCtx = this.offscreenCanvas.getContext('2d');
+        const vidCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
         if (vidCtx) {
           vidCtx.clearRect(0, 0, vw, vh);
           vidCtx.drawImage(source, 0, 0);
@@ -1088,7 +1088,7 @@ export class PreviewRenderer {
         }
         if (this.offscreenCanvas.width !== vw) this.offscreenCanvas.width = vw;
         if (this.offscreenCanvas.height !== vh) this.offscreenCanvas.height = vh;
-        const offCtx = this.offscreenCanvas.getContext('2d');
+        const offCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
         if (offCtx) {
           offCtx.clearRect(0, 0, vw, vh);
           offCtx.drawImage(source, 0, 0);

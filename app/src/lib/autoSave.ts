@@ -31,7 +31,7 @@ function scheduleSave() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     if (projectStore.filePath.value && projectStore.isDirty.value && (paintVersionsChanged() || nonPaintDirty)) {
-      void projectStore.saveProject().then(recordSaved);
+      void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved);
     }
   }, 2000); // 2-second debounce
 }
@@ -72,7 +72,7 @@ export function startAutoSave(): void {
   // Periodic save every 60 seconds as safety net
   intervalId = setInterval(() => {
     if (projectStore.filePath.value && projectStore.isDirty.value && (paintVersionsChanged() || nonPaintDirty)) {
-      void projectStore.saveProject().then(recordSaved);
+      void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved);
     }
   }, 60_000);
 }

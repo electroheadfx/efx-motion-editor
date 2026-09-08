@@ -716,7 +716,7 @@ export const projectStore = {
   },
 
   /** Save the project to its .mce file. If filePath is null, caller should use saveProjectAs. */
-  async saveProject(options?: { deferScriptAuthority?: boolean }) {
+  async saveProject(options?: { deferScriptAuthority?: boolean; skipPaintFlush?: boolean }) {
     if (isSaving.value) return; // Prevent concurrent saves
     const currentFilePath = filePath.value;
     if (!currentFilePath) return; // Cannot save without a file path
@@ -744,7 +744,11 @@ export const projectStore = {
       const projectDir = currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
       // 52.1: drain the Studio's queued post-gesture work before serializing, so
       // a stroke + immediate Save never persists a stale document/sidecar set.
-      await requestPhysicPaintFlush();
+      // The debounced auto-save skips it (skipPaintFlush): the flush forces the
+      // engine's finalize drain, which is unbounded at 1080p (~0.5-2s on the
+      // Studio's main thread at 52.1 sizes) and fires from inside the user's
+      // next stroke — the autosave's freshness guarantee doesn't need it.
+      if (!options?.skipPaintFlush) await requestPhysicPaintFlush();
       const documents = buildEfxPaintDocuments();
       await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const result = await ipcProjectSave({

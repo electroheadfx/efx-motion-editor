@@ -980,6 +980,33 @@ function recordsToApplyPayloadRecords(records: readonly PhysicPaintRotoRealKeyRe
   }));
 }
 
+/**
+ * 52.1 (Part 2): the wire copy of the physical-edit payload. Real-key records
+ * whose bytes are identical to the expected (parent-current) state ride the
+ * bridge as content-token refs instead of full byte payloads — the parent
+ * resolves them against its own store before validation. `beforeRecords` is
+ * the exact snapshot `expectedRevision` refers to, so a ref can never point at
+ * bytes the parent does not hold; the pending/recovery copy of the payload
+ * keeps full records.
+ */
+function compactRecordsForTransport(
+  records: PhysicPaintRotoPhysicalEditApplyPayload['records'],
+  beforeRecords: readonly PhysicPaintRotoRealKeyRecord[],
+): PhysicPaintRotoPhysicalEditApplyPayload['records'] {
+  const beforeTokens = new Map(beforeRecords.map((record) => [record.keyId, buildFrameBytesToken(record.payload.bytes)]));
+  let refCount = 0;
+  const compacted = records.map((record) => {
+    const token = beforeTokens.get(record.keyId);
+    if (token === undefined || token !== buildFrameBytesToken(record.payload.bytes)) return record;
+    refCount += 1;
+    return { keyId: record.keyId, appFrame: record.appFrame, refToken: token };
+  });
+  if (refCount === 0) return records;
+  // Wire-only shape — refs are expanded back to full records at the bridge
+  // boundary, so the in-memory payload type (full records) stays authoritative.
+  return compacted as PhysicPaintRotoPhysicalEditApplyPayload['records'];
+}
+
 function replayProposalMatchesTarget(
   proposal: PhysicPaintRotoPhysicalEditProposal,
   target: RotoPhysicalEditSnapshot<unknown>,
@@ -2204,7 +2231,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         portsRef.current.status.setLastError(null);
 
         try {
-          await portsRef.current.bridge.sendPhysicalEditPayload(payload);
+          const wirePayload: PhysicPaintRotoPhysicalEditApplyPayload = {
+            ...payload,
+            records: compactRecordsForTransport(payload.records, before.records),
+          };
+          await portsRef.current.bridge.sendPhysicalEditPayload(wirePayload);
         } catch (error) {
           finalizeFailed(pending, before, 'transport', error);
           return false;

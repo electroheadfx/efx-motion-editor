@@ -75,7 +75,10 @@ export function setupDualCanvas(
   displayCanvas.style.height = 'auto'
   container.appendChild(displayCanvas)
 
-  const previewBaseCtx = previewBaseCanvas.getContext('2d')!
+  // 52.1: CPU-backed like dry/display — any GPU-backed context's synchronous
+  // readback becomes a cross-process IPC wait that can park the renderer main
+  // thread for its ~1s timeout under GPU contention.
+  const previewBaseCtx = previewBaseCanvas.getContext('2d', { willReadFrequently: true })!
   const dryCtx = dryCanvas.getContext('2d', { willReadFrequently: true })!
   // CPU-backed display canvas: the wet composite putImageData runs every frame
   // while paint is wet. On a GPU-backed displayed canvas that uploads 2.6MB to

@@ -125,7 +125,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     const { layerId } = props;
     if (!layerId) return;
@@ -168,7 +168,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
         if (drawnKeyRef.current !== drawnKey) return;
         const liveCanvas = canvasRef.current;
         if (!liveCanvas) return;
-        const liveCtx = liveCanvas.getContext('2d');
+        const liveCtx = liveCanvas.getContext('2d', { willReadFrequently: true });
         if (!liveCtx) return;
         liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
         liveCtx.drawImage(image, 0, 0, liveCanvas.width, liveCanvas.height);

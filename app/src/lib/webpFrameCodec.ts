@@ -44,7 +44,8 @@ export async function encodeWebpFrame(args: { rgba: Uint8Array; width: number; h
   const result = await invoke('encode_webp_frame', args.rgba, {
     headers: { width: String(args.width), height: String(args.height) },
   });
-  return toUint8Array(result);
+  const bytes = toUint8Array(result);
+  return bytes;
 }
 
 /**
@@ -62,7 +63,7 @@ export function decodeWebpFrame(args: { bytes: Uint8Array }): Promise<DecodedWeb
  * WebKit silently falls back to PNG (and Chrome emits lossy VP8, not VP8L).
  */
 export async function encodeCanvasAsWebp(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Could not read canvas pixels for WebP encode.');
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   return encodeWebpFrame({

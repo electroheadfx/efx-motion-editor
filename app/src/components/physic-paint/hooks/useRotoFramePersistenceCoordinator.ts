@@ -423,7 +423,14 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     layerId: string;
     keyId?: string;
     appFrame: number;
-    liveAlphaCanvas: HTMLCanvasElement;
+    // 52.1 (2nd-stroke freeze): a factory instead of an eager canvas. Calling
+    // mutationEngine.copyLiveAlphaCanvas() immediately at stroke-completion
+    // SYNCHRONOUSLY flushes every pending stroke finalization (a full-raster
+    // drain measured at 500-1942ms) right when the user is starting their next
+    // stroke. Resolving the snapshot inside the idled/settled produce moves that
+    // drain to the genuine stop, where the bounded rAF finalize loop has already
+    // applied the pending rasters (queue empty -> fast copy).
+    liveAlphaCanvas: HTMLCanvasElement | (() => HTMLCanvasElement);
     cachedBase: RenderedFramePayload | null;
     size: { width: number; height: number };
     mutationId?: number;
@@ -459,10 +466,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         return currentIdentityKey === identityKey ? identity : null;
       },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
-      produce: () => capture.cachedBase
-        ? mergeCachedRotoAlphaFrame(capture.cachedBase, capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
-        : encodeRotoFrameFromCanvas(capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId),
-      commit: (rendered, current) => upsertCachedFrame(
+      produce: () => {
+        // Resolve the snapshot only once the capture gate has settled and the
+        // finalize loop has applied the pending rasters — never synchronously at
+        // stroke-completion (see the liveAlphaCanvas factory note above).
+        const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
+          ? capture.liveAlphaCanvas()
+          : capture.liveAlphaCanvas;
+        return capture.cachedBase
+          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
+          : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
+      },
+      commit: async (rendered, current) => {
+        const result = await upsertCachedFrame(
         { ...rendered, appFrame: current.appFrame },
         capture.backgroundOnly === true,
         undefined,
@@ -473,7 +489,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         capture.background,
         capture.keyId,
         contentRevision,
-      ),
+        );
+        return result;
+      },
     });
   }, [getCurrentIdentity, upsertCachedFrame]);
 

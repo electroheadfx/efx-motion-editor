@@ -108,7 +108,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
     return subscribeRotoPlaybackBackground({
       context,

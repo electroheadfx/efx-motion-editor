@@ -336,7 +336,7 @@ export function PhysicsPaintRightPanel({
   const currentHsv = useMemo(() => rgbToHsv(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
   useEffect(() => {
     const canvas = colorBoxRef.current;
-    const context = canvas?.getContext('2d');
+    const context = canvas?.getContext('2d', { willReadFrequently: true });
     if (!canvas || !context) return;
     const hueRgb = hsvToRgb(currentHsv.h, 1, 1);
     context.fillStyle = `rgb(${hueRgb.r}, ${hueRgb.g}, ${hueRgb.b})`;

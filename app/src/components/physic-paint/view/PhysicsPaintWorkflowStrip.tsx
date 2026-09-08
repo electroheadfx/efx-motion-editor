@@ -1420,7 +1420,47 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
   );
 }
 
-const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);
+// 52.1 (fresh-key glitch): the per-cell derivation cache full-invalidates
+// whenever physicalCellByAppFrame identity changes (a fresh key inserts a new
+// cell), handing EVERY cell a brand-new RotoCellViewModel object. The default
+// memo identity check then re-renders all ~626 cells on each key creation even
+// though their content is byte-identical — a ~157ms JS burst + DOM-diff churn
+// inside the paint window. Compare VM CONTENT (not identity) so unchanged cells
+// bail and only the frame(s) whose derivation actually changed re-render.
+function rotoCellVmValuesEqual(a: RotoCellViewModel, b: RotoCellViewModel): boolean {
+  if (a.frame !== b.frame) return false;
+  if (a.baseMeaning !== b.baseMeaning) return false;
+  if (a.state !== b.state) return false;
+  if (a.label !== b.label) return false;
+  if (a.title !== b.title) return false;
+  if (a.ariaLabel !== b.ariaLabel) return false;
+  if (a.fillClass !== b.fillClass) return false;
+  if (a.isEditableTarget !== b.isEditableTarget) return false;
+  if (a.isCurrent !== b.isCurrent) return false;
+  if (a.isDirty !== b.isDirty) return false;
+  if (a.isPending !== b.isPending) return false;
+  if (a.overlays.length !== b.overlays.length) return false;
+  for (let i = 0; i < a.overlays.length; i++) {
+    if (a.overlays[i] !== b.overlays[i]) return false;
+  }
+  return true;
+}
+
+const RotoTimelineCellButton = memo(
+  RotoTimelineCellButtonImpl,
+  (prev, next) => prev.frame === next.frame
+    && prev.semanticKind === next.semanticKind
+    && prev.cellKeyId === next.cellKeyId
+    && prev.cellClass === next.cellClass
+    && prev.dragEligible === next.dragEligible
+    && prev.startsInterpolationSegment === next.startsInterpolationSegment
+    && prev.ariaLabel === next.ariaLabel
+    && prev.ariaSelected === next.ariaSelected
+    && prev.tooltipCopy === next.tooltipCopy
+    && prev.onCellPointerDown === next.onCellPointerDown
+    && prev.onCellClick === next.onCellClick
+    && rotoCellVmValuesEqual(prev.vm, next.vm),
+);
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');

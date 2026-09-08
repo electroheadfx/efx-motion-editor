@@ -98,7 +98,7 @@ import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoB
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
-import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle } from './bridge/gestureIdleScheduler';
+import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
 import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
@@ -295,15 +295,31 @@ function useTrailingThrottledRevision(source: ReadonlySignal<number>, delayMs: n
   const timerRef = useRef<number | null>(null);
   const latestRef = useRef(source.peek());
   useEffect(() => {
+    const flush = () => {
+      timerRef.current = null;
+      // 52.1: the chrome rebuild (600+ strip cells — the JS commit is ~130ms
+      // but the layer rasterization storm it queues chokes the shared GPU
+      // process for ~600ms) must never fire inside a paint cadence. Require
+      // 1s of REAL quiet, not merely "idle at timer expiry": an inter-stroke
+      // gap of 400ms+ flips interactionIdle while the user is about to press
+      // the next stroke.
+      const quietFor = performance.now() - readLastInteractionAt();
+      if (!readInteractionIdle() || quietFor < delayMs) {
+        timerRef.current = window.setTimeout(flush, 300);
+        return;
+      }
+      throttled.current.value = latestRef.current;
+    };
     const unsubscribe = effect(() => {
       const next = source.value;
       if (next === latestRef.current) return;
       latestRef.current = next;
       if (timerRef.current === null) {
-        timerRef.current = window.setTimeout(() => {
-          timerRef.current = null;
-          throttled.current.value = latestRef.current;
-        }, delayMs);
+        // 52.1: idle changes (e.g. a +Key click) must show promptly; only a
+        // change arriving mid-gesture (paste-key at stroke start on a virgin
+        // frame) waits for the long quiet window.
+        const idleDelay = readInteractionIdle() && performance.now() - readLastInteractionAt() >= delayMs ? 150 : delayMs;
+        timerRef.current = window.setTimeout(flush, idleDelay);
       }
     });
     return () => {
@@ -326,6 +342,21 @@ function readDocumentActiveTrackId(layerId: string): string {
   return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
 }
 
+// 52.1: the gesture-path documentSync flush must wait for real quiet, not the
+// 400ms idle flip (which lands between two strokes). The full-document push
+// (4.4MB) + main-window decode re-saturates the shared GPU process; at 1s of
+// quiet that still fired inside a ~1.5s inter-stroke gap and froze the very
+// next stroke ("always the 2nd stroke" on a fresh key). 2500ms puts the push +
+// decode at a genuine stop. Matches CAPTURE_PRODUCE_QUIET_MS.
+const DOCUMENT_SYNC_GESTURE_QUIET_MS = 2500;
+
+// 52.1 (fresh-frame first-paint freeze): a newly-activated frame's canvas
+// surfaces are cold — the first paint's synchronous readback flushes them
+// mid-stroke (the ~380ms rAF gaps on the fast-chained 2nd stroke). The
+// user-validated recipe is "+key then wait ~1s"; this gate holds the pen that
+// long (in idle) so the GPU settles before the first stroke, with a visible cue.
+const FRESH_FRAME_WARM_MS = 1000;
+
 /**
  * 49-04 (Task 2): merges the main-webview library (authoritative imageStore)
  * with the Studio realm's own imageStore (which gains newly imported images via
@@ -343,9 +374,9 @@ function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceI
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
-  const recordEnginePerformance = profilePerformance
-    ? (sample: PaintPerformanceSample) => recordPhysicsPaintPerformance(sample)
-    : undefined;
+  const recordEnginePerformance = (sample: PaintPerformanceSample) => {
+    if (profilePerformance) recordPhysicsPaintPerformance(sample);
+  };
   const [isPlaying, setIsPlaying] = useState(false);
   // 38.1-D-01/D-08: the playback per-tick surface is signal-backed — written
   // by onStart/onFrame per tick and read ONLY via .peek() (statusMessage) or
@@ -386,11 +417,21 @@ export function PhysicsPaintStudio() {
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
   // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
-  // Studio on every paint event; a trailing 150ms throttle collapses a stroke
+  // Studio on every paint event; a trailing throttle collapses a stroke
   // burst into one flush so the chrome freezes while painting (the user's
-  // start-paint stutter). The canvas and the push effect keep the RAW
-  // physicPaintVersion — only the strip chrome reads the throttled revision.
-  const throttledPaintRevision = useTrailingThrottledRevision(physicPaintVersion, 150);
+  // start-paint stutter). 52.1: delay raised 150ms → 1000ms and the flush is
+  // idle-gated — the strip only rebuilds after a real pause, so a paint cadence
+  // with sub-second gaps never lands a rebuild between strokes. The canvas and
+  // the push effect keep the RAW physicPaintVersion — only the strip chrome
+  // reads the throttled revision.
+  const throttledPaintRevision = useTrailingThrottledRevision(physicPaintVersion, 1000);
+  // 52.1: key creation on a virgin frame bumps efxPaintVersion (structural)
+  // mid-stroke — the raw subscription above rebuilt the 626-cell strip DURING
+  // stroke 1 (measured 131ms) and flooded the shared GPU process right before
+  // stroke 2 landed. The strip data memos read a throttled copy instead;
+  // engine-facing effects (canvasMount/canvasStack/documentSync) keep the raw
+  // signal. When idle (a +Key click), the flush below still lands in ~150ms.
+  const throttledEfxRevision = useTrailingThrottledRevision(efxPaintVersion, 1000);
   // regression-refresh-multi-paint Layer 2: the completion reconcile paints at
   // the ACCEPTED document's CONTENT token (monotonic, content-derived) instead
   // of a content-agnostic session generation. The reconcile ceiling keeps the
@@ -621,13 +662,13 @@ export function PhysicsPaintStudio() {
   // document clock, so a row click / add / duplicate must re-resolve these
   // residuals against the newly active track ("the Studio re-reads on
   // efxPaintVersion").
-  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [], [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
+  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [], [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
   const rotoIncomingInterpolationBreakKeyIds = useMemo(
     () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId()) : [],
-    [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value],
+    [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value],
   );
-  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
-  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
+  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
+  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
   const keyRailGroupOwnedKeyIds = useMemo(() => {
     const owned = new Set<string>();
     for (const clip of rotoLoopClips) {
@@ -676,7 +717,7 @@ export function PhysicsPaintStudio() {
   // above — the store getter returns a fresh clone per call, and an unstable
   // identity here defeats the useRotoTimelineModel structural memo, forcing a
   // full signal-graph rebuild on every Studio render.
-  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : undefined, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);
+  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : undefined, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
   const currentFrame = launchContext?.startFrame ?? 0;
   // UAT-3: persisted operation-result capsule line. An operation publishes its
   // outcome here (survives the operation's own selection aftermath); only a NEW
@@ -1109,7 +1150,10 @@ export function PhysicsPaintStudio() {
     rotoScript.discardScript();
     setLastError(null);
   }, [rotoScript, setLastError]);
-  const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
+  // 52.1 (user directive): empty (key-less) frames reject painting — the artist
+  // must first create a key (+ ). This both teaches the workflow and avoids the
+  // cold fresh-frame first-paint path that broke a fast-chained 2nd stroke.
+  const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked || currentFrameSelectionKind === 'empty';
   const {
     selectTool,
     setBrushColor,
@@ -1343,6 +1387,13 @@ export function PhysicsPaintStudio() {
         const acceptedContentToken = rotoPreviewBaseContentToken();
         const currentAppliedGeneration = engineRef.current?.getAppliedPreviewBaseContentToken?.() ?? null;
         const generation = Math.max(acceptedContentToken, currentAppliedGeneration ?? 0);
+        // Synchronous on purpose (52.1): the reconcile is ALSO what refreshes
+        // cachedRotoRepaintBaseFrame, which the next stroke's live-pixel
+        // capture needs as its merge base. Deferring it left the base stale and
+        // every fresh-key stroke re-encoded the full frame (base=no, 390-511ms)
+        // instead of a ~4ms merge. The GPU-heavy engine upload is bounded by the
+        // base apply once; the mid-train capture/encode floods are held out by
+        // the capture+documentSync quiet windows instead.
         loadCachedRotoReferenceFrame(
           appFrame,
           engineRef.current as PreviewBackgroundEngine | null,
@@ -2134,32 +2185,14 @@ export function PhysicsPaintStudio() {
       rotoFrameEditing.beginFrameEdit();
       return;
     }
-    if (pendingFirstPaintTargetRef.current) return;
-
-    const request = prepareRotoScriptTargetRef.current({
-      selectionKind: 'empty',
-      layerId: launch.layerId,
-      keyId: null,
-      appFrame: currentFrame,
-    });
-    const pending = {
-      launchOperationId: launch.operationId,
-      layerId: launch.layerId,
-      appFrame: currentFrame,
-      promise: request,
-    };
-    pendingFirstPaintTargetRef.current = pending;
-    void request.then((target) => {
-      if (pendingFirstPaintTargetRef.current !== pending) return;
-      if (!target) {
-        pendingFirstPaintTargetRef.current = null;
-        return;
-      }
-      rotoFrameEditing.beginFrameEdit();
-    }).catch((error) => {
-      if (pendingFirstPaintTargetRef.current === pending) pendingFirstPaintTargetRef.current = null;
-      console.error('[PhysicsPaintStudio] Could not create the first Roto key', error);
-    });
+    // 52.1 (user directive): painting directly on an EMPTY frame is disabled.
+    // Silently auto-promoting to a new key ran the promotion inside the first
+    // stroke's path and its cold fresh surfaces broke a fast-chained 2nd stroke
+    // (WKWebView commit stall). Requiring the explicit "+key" action teaches the
+    // workflow and lets the key's surfaces settle at creation time — the
+    // artist knows a key must exist before the first paint stroke.
+    pendingFirstPaintTargetRef.current = null;
+    setLastError('Créez une key (+) avant de peindre sur ce frame.');
   };
   const beginRotoFrameEdit = useCallback(() => {
     beginRotoFrameEditImplRef.current();
@@ -2398,7 +2431,25 @@ export function PhysicsPaintStudio() {
       const frame = effect.restore.frame;
       // 38.1 D-03/D-04: canvas paint first within this flow; the startFrame
       // update propagates through the same rAF scheduler as navigation.
-      if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+      if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) {
+        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        // 52.1 fresh-frame warm: after the applied base's decode+drawImage lands,
+        // drain the cold surface upload in the idle so the first stroke never
+        // flushes it mid-paint (the fast-chained 2nd-stroke ~380ms freeze).
+        const warmThenUnlock = async () => {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          (engine as unknown as { warmCanvasSurfaces?: () => void }).warmCanvasSurfaces?.();
+          // Blank (just-activated) keys are cold — hold the pen so the first
+          // stroke doesn't flush the fresh surfaces mid-paint (user's "+key then
+          // wait" recipe for the paint-without-wait case).
+          if (effect.restore.kind === 'blank-real-key') {
+            setApplyMessage('Préparation du canevas…');
+            await (engine as unknown as { lockInputForWarm?: (ms: number) => Promise<void> }).lockInputForWarm?.(FRESH_FRAME_WARM_MS);
+            setApplyMessage(null);
+          }
+        };
+        void warmThenUnlock();
+      }
       else if (engine && effect.restore.kind === 'clear-blank') {
         (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
         (engine as PreviewBackgroundEngine).resetBackground(true);
@@ -2645,6 +2696,9 @@ export function PhysicsPaintStudio() {
         && currentLaunch.startFrame === acceptedSelectedAppFrame
         && currentEngine
       ) {
+        // Synchronous (52.1): this reload is also what refreshes the cached
+        // repaint base the next stroke's capture merges onto — deferring it
+        // stranded the base and forced a full-frame re-encode per stroke.
         loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, currentEngine as PreviewBackgroundEngine);
       }
       if (transition === 'accepted' && accepted && accepted.operationId === detail?.operationId) {
@@ -3230,7 +3284,13 @@ export function PhysicsPaintStudio() {
         ? completedTarget.expectedKeyId
         : null;
     const pendingFirstPaintTarget = pendingFirstPaintTargetRef.current;
-    const liveAlphaCanvas = isEmpty ? null : mutationEngine.copyLiveAlphaCanvas();
+    // 52.1 (2nd-stroke freeze): do NOT snapshot the engine canvas here — the
+    // eager copyLiveAlphaCanvas() synchronously flushes every pending stroke
+    // finalization (~500-1900ms full-raster drain) at the very moment the user
+    // starts the next stroke. Pass a factory instead; the capture resolve it
+    // inside its settled/idle produce, where the bounded rAF finalize loop has
+    // already applied the pending rasters (queue empty -> fast).
+    const liveAlphaCanvas = isEmpty ? null : (() => mutationEngine.copyLiveAlphaCanvas());
     void (async () => {
       let keyId = initialKeyId;
       if (!keyId && completedTarget.kind === 'empty') {
@@ -3332,9 +3392,11 @@ export function PhysicsPaintStudio() {
   }, []);
   const rotoInputDisabledMessage = currentFrameIsGeneratedRoto
     ? `Generated frame ${currentFrame} is render-only.`
-    : mutationLocked
-      ? 'Finish the current Roto script operation.'
-      : undefined;
+    : currentFrameSelectionKind === 'empty'
+      ? 'Créez une key (+) avant de peindre sur ce frame.'
+      : mutationLocked
+        ? 'Finish the current Roto script operation.'
+        : undefined;
   const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
@@ -3732,30 +3794,61 @@ export function PhysicsPaintStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [efxPaintVersion.value]);
   // Non-gesture path: a mutation while already idle flushes on a 2s debounce.
+  // 52.1: also require 1s of real quiet at fire time — a 2s timer can still
+  // land inside a short pause mid-train (idle flips after 400ms of silence).
   useEffect(() => {
     if (!documentSyncDirty.value) return;
-    const timer = window.setTimeout(() => {
-      if (!readInteractionIdle()) return;
+    let timer: number | null = null;
+    const tryFlush = () => {
+      timer = null;
+      if (!readInteractionIdle() || !documentSyncDirty.peek()) return;
+      const quietMs = performance.now() - readLastInteractionAt();
+      if (quietMs < DOCUMENT_SYNC_GESTURE_QUIET_MS) {
+        timer = window.setTimeout(tryFlush, DOCUMENT_SYNC_GESTURE_QUIET_MS - quietMs);
+        return;
+      }
       documentSyncDirty.value = false;
       const layerId = launchContext?.layerId;
       const mode = bridgeModeRef.current;
       if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
         void pushLiveProjection(layerId, mode);
       }
-    }, 2000);
-    return () => window.clearTimeout(timer);
+    };
+    timer = window.setTimeout(tryFlush, 2000);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentSyncDirty.value, launchContext?.layerId]);
   // Gesture path: the idle transition flushes any pending dirty state once.
+  // 52.1: the gesture flush must wait for 1s of REAL quiet, not the 400ms
+  // idle flip — that flip lands in the gap between two strokes, and on a
+  // virgin frame the full-document serialize + push + main-window cold decode
+  // saturate the shared GPU process exactly there (the felt 2nd-stroke
+  // glitch). Re-arm until the gesture train has been silent for a full second.
   useEffect(() => {
     if (!interactionIdle.value) return;
     if (!documentSyncDirty.peek()) return;
-    documentSyncDirty.value = false;
-    const layerId = launchContext?.layerId;
-    const mode = bridgeModeRef.current;
-    if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
-      void pushLiveProjection(layerId, mode);
-    }
+    let timer: number | null = null;
+    const tryFlush = () => {
+      timer = null;
+      if (!readInteractionIdle() || !documentSyncDirty.peek()) return;
+      const quietMs = performance.now() - readLastInteractionAt();
+      if (quietMs < DOCUMENT_SYNC_GESTURE_QUIET_MS) {
+        timer = window.setTimeout(tryFlush, DOCUMENT_SYNC_GESTURE_QUIET_MS - quietMs);
+        return;
+      }
+      documentSyncDirty.value = false;
+      const layerId = launchContext?.layerId;
+      const mode = bridgeModeRef.current;
+      if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+        void pushLiveProjection(layerId, mode);
+      }
+    };
+    tryFlush();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interactionIdle.value, launchContext?.layerId]);
   // 52.1 (flush-before-save/export): the main window requests a synchronous
@@ -3768,7 +3861,13 @@ export function PhysicsPaintStudio() {
   // every paint/drag).
   const flushStudioStateRef = useRef<() => Promise<void>>(() => Promise.resolve());
   flushStudioStateRef.current = async () => {
-    engineRef.current?.flushPendingStrokeFinalizations();
+    // 52.1: mid-gesture the unbounded finalize drain synchronously rasters the
+    // previous stroke (~1.3s at 1080p) inside the user's current stroke — the
+    // 2nd-stroke freeze. Completed strokes already carry their pixels through
+    // the capture queue (copied at stroke end), and the interactive finalizer
+    // drains the queue cooperatively once the gesture ends, so skip the drain
+    // whenever a gesture is in flight; idle flushes keep the full contract.
+    if (readInteractionIdle()) engineRef.current?.flushPendingStrokeFinalizations();
     await rotoPersistence.flushLivePixels();
     if (!documentSyncDirty.peek()) return;
     const layerId = launchContext?.layerId;

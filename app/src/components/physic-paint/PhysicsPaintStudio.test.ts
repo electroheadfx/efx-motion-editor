@@ -251,7 +251,7 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     // 47-01 UAT round 8: the strip subscriptions read the THROTTLED paint
     // revision (trailing 150ms flush) so a stroke burst does not re-render the
     // whole Studio per paint event.
-    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);');
+    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);');
     expect(studio).toContain('getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),');
     expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),');
     expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
@@ -313,7 +313,7 @@ describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
     expect(studio).toContain('.filter((loopClip) => loopClip.scriptId === actionId)');
     expect(studio).toContain('if (!groupsById.has(loopClip.loopId)) groupsById.set(loopClip.loopId, loopClip);');
     expect(studio).toContain('left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId)');
-    expect(studio).toContain('[launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]');
+    expect(studio).toContain('[launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]');
   });
 
   it('reveals only an available source Action when a stable Group is selected', () => {

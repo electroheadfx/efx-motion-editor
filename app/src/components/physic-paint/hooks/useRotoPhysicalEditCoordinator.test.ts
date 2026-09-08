@@ -25,6 +25,8 @@ import type {
   PhysicPaintRotoPhysicalEditSemanticDelta,
   RailSetDeleteMember,
 } from '../../../types/physicPaint';
+import { isPhysicPaintRotoPhysicalEditRecordRef } from '../../../types/physicPaint';
+import { buildFrameBytesToken } from '../../../lib/webpBytes';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -286,7 +288,20 @@ function harness(options: {
     return { ok: true as const };
   });
   const sendPhysicalEditPayload = vi.fn(async (nextPayload: PhysicPaintRotoPhysicalEditApplyPayload) => {
-    payload = nextPayload;
+    // 52.1 (Part 2): the wire payload carries unchanged records as content-token
+    // refs. Expand them against the harness's canonical pre-op records exactly
+    // like the parent bridge (token verified, fail-closed on mismatch).
+    payload = {
+      ...nextPayload,
+      records: nextPayload.records.map((entry) => {
+        if (!isPhysicPaintRotoPhysicalEditRecordRef(entry)) return entry;
+        const before = records.find((record) => record.keyId === entry.keyId);
+        if (!before || buildFrameBytesToken(before.payload.bytes) !== entry.refToken) {
+          throw new Error(`Test parent: unresolvable record ref "${entry.keyId}".`);
+        }
+        return { keyId: entry.keyId, appFrame: entry.appFrame, payload: { ...before.payload, appFrame: entry.appFrame } };
+      }),
+    };
     if (options.transportRejects) throw new Error('transport failed');
   });
   const reconcileCurrentFrame = vi.fn();
