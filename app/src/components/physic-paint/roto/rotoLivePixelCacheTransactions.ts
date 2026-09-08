@@ -72,7 +72,10 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
   });
 
   const waitForIdleOrForce = (): Promise<void> => {
-    if (forceFlush || readInteractionIdle()) return Promise.resolve();
+    if (forceFlush) return Promise.resolve();
+    // Preserve the original macrotask yield (setTimeout 0) when already idle so
+    // the encode never runs on the microtask queue ahead of pending input.
+    if (readInteractionIdle()) return new Promise<void>((resolve) => setTimeout(resolve, 0));
     return new Promise<void>((resolve) => {
       idleWaiters.add(resolve);
     });

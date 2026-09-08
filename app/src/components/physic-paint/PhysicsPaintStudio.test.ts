@@ -210,11 +210,12 @@ describe('Physics Paint Play Script integration contract', () => {
     // mutation (track CRUD) to the main window or the added track never lands
     // in the .mce.
     expect(studio).toContain('sendEfxPaintDocumentSync(');
-    expect(studio).toContain("if (mode !== 'Tauri' && mode !== 'Browser fallback') return;");
-    // 52.1 (gesture-idle scheduler): the push is idle-gated — held while a
-    // stroke/drag is in flight, flushed on the idle transition.
-    expect(studio).toContain('if (!readInteractionIdle()) return;');
-    expect(studio).toContain('// eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value, interactionIdle.value]);');
+    expect(studio).toContain("if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {");
+    // 52.1 (gesture-idle scheduler): mutations set a dirty flag; the push runs
+    // once on the idle transition, not once per mutation.
+    expect(studio).toContain('documentSyncDirty.value = true;');
+    expect(studio).toContain('if (!interactionIdle.value) return;');
+    expect(studio).toContain('if (!documentSyncDirty.value) return;');
     expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
     // The main-window listener is fail-closed (canonical parser) and
     // idempotency-guarded by document revision (the launch push is a no-op).

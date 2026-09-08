@@ -3721,22 +3721,44 @@ export function PhysicsPaintStudio() {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     });
   };
-  // 52.1 (gesture-idle scheduler): ONE idle-gated push replaces the prior
-  // immediate (efxPaintVersion) + 2s-debounced (physicPaintVersion) pair. The
-  // push fires on a document-structure change (track CRUD) or a paint/roto
-  // edit, but only when the user is idle — while a stroke/drag is in flight the
-  // push is held and flushes on the idle transition. The serialize's
-  // efxPaintVersion bump re-fires this effect; the documentSyncPushGuard skips
-  // the duplicate.
+  // 52.1 (gesture-idle scheduler): mutations only SET a dirty flag; the
+  // serialize + documentSync runs ONCE on the idle transition (gesture path) or
+  // on a 2s debounce (non-gesture edits while already idle). A burst of
+  // paint/roto edits coalesces into a single push instead of one serialize per
+  // mutation — the prior per-mutation push was the regression.
+  const documentSyncDirtyRef = useRef(signal(false));
+  const documentSyncDirty = documentSyncDirtyRef.current;
   useEffect(() => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const mode = bridgeModeRef.current;
-    if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
-    if (!readInteractionIdle()) return;
-    void pushLiveProjection(layerId, mode);
+    documentSyncDirty.value = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value, interactionIdle.value]);
+  }, [efxPaintVersion.value, physicPaintVersion.value]);
+  // Non-gesture path: a mutation while already idle flushes on a 2s debounce.
+  useEffect(() => {
+    if (!documentSyncDirty.value) return;
+    const timer = window.setTimeout(() => {
+      if (!readInteractionIdle()) return;
+      documentSyncDirty.value = false;
+      const layerId = launchContext?.layerId;
+      const mode = bridgeModeRef.current;
+      if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+        void pushLiveProjection(layerId, mode);
+      }
+    }, 2000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentSyncDirty.value, launchContext?.layerId]);
+  // Gesture path: the idle transition flushes any pending dirty state once.
+  useEffect(() => {
+    if (!interactionIdle.value) return;
+    if (!documentSyncDirty.peek()) return;
+    documentSyncDirty.value = false;
+    const layerId = launchContext?.layerId;
+    const mode = bridgeModeRef.current;
+    if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+      void pushLiveProjection(layerId, mode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interactionIdle.value, launchContext?.layerId]);
   // 52.1 (flush-before-save/export): the main window requests a synchronous
   // drain of the Studio's queued post-gesture work before it serializes the
   // project. The flush settles the engine, drains the Roto capture queue, and
