@@ -235,6 +235,22 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     expect(projected.documentRevision).toBe(document.documentRevision);
   });
 
+  it('bumps efxPaintVersion only when the projection actually changed (52.1 Fix A load-bearing assumption)', () => {
+    const document = makeTrackDocument('layer-idem');
+    registerDocument(document);
+    const before = efxPaintVersion.value;
+    // No runtime mutation: serialize is a no-op → no bump.
+    serializeRuntimeIntoDocument('layer-idem');
+    expect(efxPaintVersion.value).toBe(before);
+    // Mutate the runtime: serialize now changes the document → bumps once.
+    physicPaintStore.setFrame('layer-idem', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    serializeRuntimeIntoDocument('layer-idem');
+    expect(efxPaintVersion.value).toBe(before + 1);
+    // No further mutation: serialize is a no-op again → no bump.
+    serializeRuntimeIntoDocument('layer-idem');
+    expect(efxPaintVersion.value).toBe(before + 1);
+  });
+
   it('never reads or writes another layer runtime maps when projecting layer A', () => {
     const documentA = makeTrackDocument('layer-A');
     registerDocument(documentA);
