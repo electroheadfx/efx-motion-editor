@@ -1,3 +1,5 @@
+import { onInteractionIdle, readInteractionIdle } from '../bridge/gestureIdleScheduler';
+
 export interface RotoLivePixelIdentity {
   readonly launchId: string;
   readonly layerId: string;
@@ -58,6 +60,23 @@ function matchesIdentity(expected: RotoLivePixelIdentity, current: RotoLivePixel
 export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransactions {
   const revisions = new Map<string, number>();
   const pending = new Map<string, Promise<boolean>>();
+  // 52.1 (gesture-idle scheduler): the encode (produce) + apply (commit) of a
+  // stroke capture is deferred to the idle transition so it never overlaps the
+  // next gesture. `forceFlush` is set by the navigation/close/save/export flush
+  // paths, which must run the pending captures synchronously.
+  let forceFlush = false;
+  const idleWaiters = new Set<() => void>();
+  onInteractionIdle(() => {
+    for (const resolve of idleWaiters) resolve();
+    idleWaiters.clear();
+  });
+
+  const waitForIdleOrForce = (): Promise<void> => {
+    if (forceFlush || readInteractionIdle()) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      idleWaiters.add(resolve);
+    });
+  };
 
   const invalidate = (identity: RotoLivePixelIdentityInput) => {
     const key = identityKey(identity);
@@ -83,7 +102,7 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         return false;
       };
       const work = (async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await waitForIdleOrForce();
         const producerStartedAt = input.recordPerformance ? performance.now() : 0;
         input.recordPerformance?.({ stage: 'cache-task-handoff', category: 'scheduled-wait', durationMs: producerStartedAt - queuedAt, timestamp: producerStartedAt, mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
         if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, input.resolveCurrent())) return reject('stale-before-produce');
@@ -117,11 +136,18 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
     },
     revision: (identity) => revisions.get(identityKey(identity)) ?? 0,
     async flush(identity) {
-      if (identity) {
-        await pending.get(identityKey(identity));
-        return;
+      forceFlush = true;
+      for (const resolve of idleWaiters) resolve();
+      idleWaiters.clear();
+      try {
+        if (identity) {
+          await pending.get(identityKey(identity));
+          return;
+        }
+        await Promise.all(pending.values());
+      } finally {
+        forceFlush = false;
       }
-      await Promise.all(pending.values());
     },
     hasPending: (identity) => identity ? pending.has(identityKey(identity)) : pending.size > 0,
   };

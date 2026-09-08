@@ -8,7 +8,7 @@ import { useRef, useEffect } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { EfxPaintEngine } from './engine/EfxPaintEngine'
 import type { EngineConfig, NativePenInput } from './types'
-import type { CompletedPaintMutation, PaintPerformanceSample } from './engine/EfxPaintEngine'
+import type { CompletedPaintMutation, InputActivityKind, PaintPerformanceSample } from './engine/EfxPaintEngine'
 
 export interface EfxPaintCanvasProps extends EngineConfig {
   width?: number
@@ -18,6 +18,7 @@ export interface EfxPaintCanvasProps extends EngineConfig {
   onNativePenInputReady?: (handler: (input: NativePenInput) => void) => void
   onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void
   onPerformanceSample?: (sample: PaintPerformanceSample) => void
+  onInputActivity?: (kind: InputActivityKind, pointerId: number) => void
   beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>
 }
 
@@ -62,9 +63,11 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
   const engineRef = useRef<EfxPaintEngine | null>(null)
   const completedMutationRef = useRef(props.onCompletedMutation)
   const performanceSampleRef = useRef(props.onPerformanceSample)
+  const inputActivityRef = useRef(props.onInputActivity)
   const beforeEngineDestroyRef = useRef(props.beforeEngineDestroy)
   completedMutationRef.current = props.onCompletedMutation
   performanceSampleRef.current = props.onPerformanceSample
+  inputActivityRef.current = props.onInputActivity
   beforeEngineDestroyRef.current = props.beforeEngineDestroy
 
   useEffect(() => {
@@ -80,6 +83,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
     engineRef.current = engine
     engine.setCompletedMutationListener((mutation) => completedMutationRef.current?.(mutation, engine))
     engine.setPerformanceListener(performanceSampleRef.current ? (sample) => performanceSampleRef.current?.(sample) : null)
+    engine.onInputActivity = (kind, pointerId) => inputActivityRef.current?.(kind, pointerId)
     props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))
 
     return initializeEfxPaintCanvasEngine({

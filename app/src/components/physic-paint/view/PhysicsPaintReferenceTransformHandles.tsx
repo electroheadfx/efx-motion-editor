@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 import type { PhotoReferenceTransform } from '../../../efx-paint/document/efxPaintDocument';
 import { efxPaintVersion, getDocument, setPhotoReferenceTransform } from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
@@ -181,6 +182,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         handleType: 'rotate',
         startBounds: bounds,
       };
+      beginInteraction(e.pointerId);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
@@ -196,6 +198,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         handleType: handleHit,
         startBounds: bounds,
       };
+      beginInteraction(e.pointerId);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
@@ -210,6 +213,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         handleType: 'rotate',
         startBounds: bounds,
       };
+      beginInteraction(e.pointerId);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
@@ -223,6 +227,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         startTransform: { ...transform },
         startBounds: bounds,
       };
+      beginInteraction(e.pointerId);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
@@ -231,6 +236,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   function handlePointerMove(e: PointerEvent) {
     const state = dragRef.current;
     if (state.mode === 'none') return;
+    markInteractionActive();
 
     if (state.mode === 'pending') {
       const dist = Math.hypot(e.clientX - state.startClientX, e.clientY - state.startClientY);
@@ -324,6 +330,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   }
 
   function handlePointerUp(e: PointerEvent) {
+    if (dragRef.current.mode !== 'none') endInteraction(e.pointerId);
     dragRef.current = {
       mode: 'none',
       startClientX: 0,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, EfxPaintDocument as EfxPaintDocumentModel, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -97,6 +97,8 @@ import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
+import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle } from './bridge/gestureIdleScheduler';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -3300,6 +3302,11 @@ export function PhysicsPaintStudio() {
   const handleCanvasCompletedMutation = useCallback((mutation: CompletedPaintMutation, mutationEngine: EfxPaintEngine) => {
     canvasCompletedMutationImplRef.current(mutation, mutationEngine);
   }, []);
+  const handleCanvasInputActivity = useCallback((kind: 'down' | 'move' | 'up' | 'cancel', pointerId: number) => {
+    if (kind === 'down') beginInteraction(pointerId);
+    else if (kind === 'move') markInteractionActive();
+    else endInteraction(pointerId);
+  }, []);
   const cachedRotoPlaybackComposition = useMemo(() => launchContext ? {
     width: projectCanvasWidth,
     height: projectCanvasHeight,
@@ -3327,7 +3334,7 @@ export function PhysicsPaintStudio() {
     : mutationLocked
       ? 'Finish the current Roto script operation.'
       : undefined;
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -3345,6 +3352,7 @@ export function PhysicsPaintStudio() {
       onNativePenInputReady: handleNativePenInputReady,
       onCompletedMutation: handleCanvasCompletedMutation,
       onPerformanceSample: recordEnginePerformance,
+      onInputActivity: handleCanvasInputActivity,
       beforeEngineDestroy: rotoScript.prepareEngineDisposal,
       getStrokeMetadata,
       trackOpacity: mountActiveTrack?.opacity ?? 1,
@@ -3661,13 +3669,26 @@ export function PhysicsPaintStudio() {
   // mirror marked the project dirty (auto-save storm, corrupted saves, paint
   // slowness). The debounce keeps the parent's runtime eventually consistent
   // with the child's live state without touching the paint hot path.
+  // 52.1 (Fix A): the debounced push's serialize bumps efxPaintVersion, which
+  // re-fires the immediate push effect — the same document would cross the
+  // bridge twice per gesture. The guard skips the duplicate; its hasPushed
+  // latch keeps the launch/crash-recovery mount push alive.
+  const documentSyncPushGuardRef = useRef<DocumentSyncPushGuard | null>(null);
+  if (documentSyncPushGuardRef.current === null) {
+    documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
+  }
+  const documentSyncPushGuard = documentSyncPushGuardRef.current;
   const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback') => {
-    let document: EfxPaintDocumentModel | null = null;
-    try {
-      document = serializeRuntimeIntoDocument(layerId);
-    } catch {
-      document = getEfxPaintDocument(layerId);
-    }
+    const document = documentSyncPushGuard.evaluate(
+      () => {
+        try {
+          return serializeRuntimeIntoDocument(layerId);
+        } catch {
+          return getEfxPaintDocument(layerId);
+        }
+      },
+      () => efxPaintVersion.peek(),
+    );
     if (!document) return;
     // 49-06 (UAT round 11): carry the runtime background source bytes to the
     // main window — ITS registry is only hydrated at project load, so a clip
@@ -3699,23 +3720,22 @@ export function PhysicsPaintStudio() {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     });
   };
+  // 52.1 (gesture-idle scheduler): ONE idle-gated push replaces the prior
+  // immediate (efxPaintVersion) + 2s-debounced (physicPaintVersion) pair. The
+  // push fires on a document-structure change (track CRUD) or a paint/roto
+  // edit, but only when the user is idle — while a stroke/drag is in flight the
+  // push is held and flushes on the idle transition. The serialize's
+  // efxPaintVersion bump re-fires this effect; the documentSyncPushGuard skips
+  // the duplicate.
   useEffect(() => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     const mode = bridgeModeRef.current;
     if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
+    if (!readInteractionIdle()) return;
     pushLiveProjection(layerId, mode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, efxPaintVersion.value]);
-  useEffect(() => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const mode = bridgeModeRef.current;
-    if (mode !== 'Tauri' && mode !== 'Browser fallback') return;
-    const timer = window.setTimeout(() => pushLiveProjection(layerId, mode), 2000);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, physicPaintVersion.value]);
+  }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value, interactionIdle.value]);
   // 49-04 (Task 2): the scoped full-area asset picker (S2). The Studio realm's
   // imageStore is empty (Pitfall 2), so the picker populates its grid from the
   // main webview via the image-library bridge pair and imports new images

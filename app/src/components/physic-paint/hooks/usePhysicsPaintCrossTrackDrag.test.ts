@@ -28,6 +28,7 @@ vi.mock('@preact/signals', () => ({
     };
     return hookRuntime.signals[index] as { value: Value; peek: () => Value };
   },
+  signal: <Value>(initial: Value) => ({ value: initial, peek() { return this.value; } }),
 }));
 
 import {

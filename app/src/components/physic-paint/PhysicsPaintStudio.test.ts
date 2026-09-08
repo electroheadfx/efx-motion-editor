@@ -211,7 +211,10 @@ describe('Physics Paint Play Script integration contract', () => {
     // in the .mce.
     expect(studio).toContain('sendEfxPaintDocumentSync(');
     expect(studio).toContain("if (mode !== 'Tauri' && mode !== 'Browser fallback') return;");
-    expect(studio).toContain('// eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [launchContext?.layerId, efxPaintVersion.value]);');
+    // 52.1 (gesture-idle scheduler): the push is idle-gated — held while a
+    // stroke/drag is in flight, flushed on the idle transition.
+    expect(studio).toContain('if (!readInteractionIdle()) return;');
+    expect(studio).toContain('// eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [launchContext?.layerId, efxPaintVersion.value, physicPaintVersion.value, interactionIdle.value]);');
     expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
     // The main-window listener is fail-closed (canonical parser) and
     // idempotency-guarded by document revision (the launch push is a no-op).

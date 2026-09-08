@@ -153,6 +153,9 @@ export type PaintHistoryAvailability = {
   redo: number
 }
 
+/** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
+export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
+
 const STROKE_FINALIZATION_IDLE_MS = 500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
@@ -469,6 +472,8 @@ export class EfxPaintEngine {
   private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
   private historyAvailabilityListener: ((availability: PaintHistoryAvailability) => void) | null = null
   private performanceListener: ((sample: PaintPerformanceSample) => void) | null = null
+  /** 52.1: pointer-input activity callback for the Studio's gesture-idle scheduler. */
+  public onInputActivity: ((kind: InputActivityKind, pointerId: number) => void) | null = null
   private nextMutationId: number = 1
   private activeMutationId: number | null = null
   private lastCompletedMutationId: number | null = null
@@ -478,6 +483,7 @@ export class EfxPaintEngine {
   private readonly boundPointerMove: (e: PointerEvent) => void
   private readonly boundPointerUp: (e: PointerEvent) => void
   private readonly boundPointerLeave: (e: PointerEvent) => void
+  private readonly boundPointerCancel: (e: PointerEvent) => void
   private readonly boundTouchStart: (e: TouchEvent) => void
 
   // --- Deferred Init (for async init()) ---
@@ -577,6 +583,7 @@ export class EfxPaintEngine {
     this.boundPointerMove = this.onPointerMove.bind(this)
     this.boundPointerUp = this.onPointerUp.bind(this)
     this.boundPointerLeave = this.onPointerLeave.bind(this)
+    this.boundPointerCancel = this.onPointerCancel.bind(this)
     this.boundTouchStart = (e: TouchEvent) => e.preventDefault()
 
     // Set up pointer event listeners on the dry canvas
@@ -585,6 +592,7 @@ export class EfxPaintEngine {
     canvas.addEventListener('pointermove', this.boundPointerMove)
     canvas.addEventListener('pointerup', this.boundPointerUp)
     canvas.addEventListener('pointerleave', this.boundPointerLeave)
+    canvas.addEventListener('pointercancel', this.boundPointerCancel)
     canvas.addEventListener('touchstart', this.boundTouchStart, { passive: false })
 
     // Store paper config for async init() — consumers call init() to load textures
@@ -799,6 +807,8 @@ export class EfxPaintEngine {
   }
 
   setPreviewBaseImageUrl(dataUrl: string, contentToken?: number, appFrame?: number): void {
+    // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
+    const t0 = performance.now()
     this.requestRender()
     const requestExplicit = contentToken !== undefined
     // 52.1: a plain refresh (no content token) must not supersede an explicit
@@ -885,6 +895,10 @@ export class EfxPaintEngine {
       this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
     }
     image.src = dataUrl
+    // TEMP-DEBUG (never commit): staged ms-tag for the 52.1 slowdown attribution.
+    if (typeof window !== 'undefined' && window.localStorage?.getItem('efx.physicsPaint.profile') === '1') {
+      console.warn(`[52.1-attrib] engine.previewBase.set ${(performance.now() - t0).toFixed(1)}ms | explicit=${requestExplicit} inFlight=${this.inFlightExplicitPreviewBase} drawing=${this.state.drawing} appFrame=${appFrame ?? '?'} token=${requestContentToken}`)
+    }
   }
 
   /** The dataUrl of the preview base image currently applied to the canvas, or null. */
@@ -1429,6 +1443,7 @@ export class EfxPaintEngine {
     canvas.removeEventListener('pointermove', this.boundPointerMove)
     canvas.removeEventListener('pointerup', this.boundPointerUp)
     canvas.removeEventListener('pointerleave', this.boundPointerLeave)
+    canvas.removeEventListener('pointercancel', this.boundPointerCancel)
     canvas.removeEventListener('touchstart', this.boundTouchStart)
   }
 
@@ -2464,6 +2479,7 @@ export class EfxPaintEngine {
       this.lastCompletedMutationId = null
     }
     e.preventDefault()
+    this.onInputActivity?.('down', e.pointerId)
     this.lastPointerInputTime = handlerStartedAt
     this.lastRenderActivityTime = performance.now()
     this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
@@ -2485,6 +2501,7 @@ export class EfxPaintEngine {
 
     if (!this.state.drawing) return
     e.preventDefault()
+    this.onInputActivity?.('move', e.pointerId)
 
     // Handle coalesced events for smooth strokes
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : null
@@ -2504,6 +2521,7 @@ export class EfxPaintEngine {
 
   private onPointerUp(e: PointerEvent): void {
     if (!this.state.drawing) return
+    this.onInputActivity?.('up', e.pointerId)
     this.requestRender()
     const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
     const mutationId = this.nextMutationId++
@@ -2555,6 +2573,19 @@ export class EfxPaintEngine {
     this.cursorX = -1
     if (this.state.drawing) this.onPointerUp(e)
     else this.requestRender()
+  }
+
+  private onPointerCancel(e: PointerEvent): void {
+    this.onInputActivity?.('cancel', e.pointerId)
+    if (!this.state.drawing) return
+    this.state.drawing = false
+    this.previewStroke = null
+    this.rawPts = []
+    try {
+      this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+    } catch {
+      // The browser auto-releases capture on cancel; the release may already be gone.
+    }
   }
 
   private consumePointerSamples(events: readonly PointerEvent[]): void {

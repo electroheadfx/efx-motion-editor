@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 import { createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
+import { beginInteraction, endInteraction, GESTURE_IDLE_WINDOW_MS, interactionIdle } from '../bridge/gestureIdleScheduler';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const codec = vi.hoisted(() => ({ encode: vi.fn() }));
@@ -217,5 +218,46 @@ describe('Roto live pixel cache transactions', () => {
 
     expect(remove).toHaveBeenCalledOnce();
     expect(commit).not.toHaveBeenCalled();
+  });
+});
+
+describe('Roto live pixel cache transactions — gesture-idle gating', () => {
+  afterEach(() => {
+    interactionIdle.value = true;
+  });
+
+  it('defers produce until the idle transition while a gesture is active', async () => {
+    vi.useFakeTimers();
+    beginInteraction(1);
+    const produce = vi.fn(async () => 'pixels');
+    const commit = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({ sourceFrame: 7, produce, commit });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(produce).not.toHaveBeenCalled();
+
+    endInteraction(1);
+    await vi.advanceTimersByTimeAsync(GESTURE_IDLE_WINDOW_MS);
+    await expect(work).resolves.toBe(true);
+    expect(produce).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledWith('pixels');
+  });
+
+  it('forces a deferred produce synchronously on flush (navigation/close/save)', async () => {
+    vi.useFakeTimers();
+    beginInteraction(1);
+    const produce = vi.fn(async () => 'pixels');
+    const commit = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({ sourceFrame: 7, produce, commit });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(produce).not.toHaveBeenCalled();
+
+    await transactions.flush(7);
+    await expect(work).resolves.toBe(true);
+    expect(produce).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledWith('pixels');
   });
 });

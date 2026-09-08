@@ -33,6 +33,7 @@
 
 import { useRef } from 'preact/hooks';
 import { useSignal, type Signal } from '@preact/signals';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 
 /** One Paint-track row's viewport bounds (Bg row excluded by the strip). */
 export interface CrossTrackRowBounds {
@@ -207,6 +208,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
   };
 
   const cleanup = (session: CrossTrackDragSession) => {
+    endInteraction(session.pointerId);
     const active = inputRef.current;
     const win = resolveWindowLike(active);
     if (win) {
@@ -235,6 +237,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     const session = sessionRef.current;
     const moveEvent = event as PointerEvent;
     if (!session || moveEvent.pointerId !== session.pointerId) return;
+    markInteractionActive();
     const active = inputRef.current;
     const destination = computeCrossTrackDestination(
       active.getRowBounds(),
@@ -336,6 +339,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     if (!active.getRowBounds().some((row) => row.trackId === source.fromTrackId)) return;
     const win = resolveWindowLike(active);
     if (!win) return;
+    beginInteraction(event.pointerId);
     const session: CrossTrackDragSession = {
       pointerId: event.pointerId,
       source,
