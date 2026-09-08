@@ -216,6 +216,15 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('documentSyncDirty.value = true;');
     expect(studio).toContain('if (!interactionIdle.value) return;');
     expect(studio).toContain('if (!documentSyncDirty.value) return;');
+    // 52.1 (Part 1): the dirty flag is set ONLY on structural changes
+    // (efxPaintVersion) — physical edits (physicPaintVersion) ship via
+    // applyPayload and must NOT re-trigger a full-document sync.
+    expect(studio).toContain('}, [efxPaintVersion.value]);');
+    expect(studio).not.toContain('[efxPaintVersion.value, physicPaintVersion.value]');
+    // 52.1 (Part 1): the flush (save/export) pushes the document ONLY when a
+    // structural change is pending — the auto-save → flush path must not
+    // re-serialize the full document on physical edits.
+    expect(studio).toContain('if (!documentSyncDirty.peek()) return;');
     expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
     // The main-window listener is fail-closed (canonical parser) and
     // idempotency-guarded by document revision (the launch push is a no-op).

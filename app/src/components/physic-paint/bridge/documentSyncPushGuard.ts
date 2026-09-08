@@ -1,12 +1,12 @@
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 
 /**
- * 52.1 (Fix A): deduplicates the child→main document sync push. The debounced
- * push (physicPaintVersion) serializes the runtime into the document, which
- * bumps efxPaintVersion and re-fires the immediate push effect — the same
- * document then crosses the bridge a second time per gesture. The guard skips
- * a push when the serialize produced no version bump AND a push already
- * happened this session.
+ * 52.1 (Fix A): deduplicates the child→main document sync push. The push
+ * (efxPaintVersion) serializes the runtime into the document, which bumps
+ * efxPaintVersion and re-fires the immediate push effect — the same document
+ * then crosses the bridge a second time per gesture. The guard skips a push
+ * when the serialize produced no version bump AND a push already happened this
+ * session.
  *
  * The hasPushed latch keeps the FIRST push alive: after a reload (launch
  * registration, crash-recovery rehydration) the main window may hold an older

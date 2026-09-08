@@ -3663,17 +3663,17 @@ export function PhysicsPaintStudio() {
   // child's runtime, so Track 1's rotoPhysical stayed at launch state and the
   // main window's runtime mirror + save path diverged from the child's live
   // records (delete rejections, keys lost on save).
-  // 47-01 UAT round 8: the push fires IMMEDIATELY on document-structure
-  // changes (efxPaintVersion) and on a 500ms DEBOUNCE after paint/roto edits
-  // (physicPaintVersion) — round-7 subscribed to every paint event, so every
-  // stroke serialized the whole document over the bridge and the parent's
-  // mirror marked the project dirty (auto-save storm, corrupted saves, paint
-  // slowness). The debounce keeps the parent's runtime eventually consistent
-  // with the child's live state without touching the paint hot path.
-  // 52.1 (Fix A): the debounced push's serialize bumps efxPaintVersion, which
-  // re-fires the immediate push effect — the same document would cross the
-  // bridge twice per gesture. The guard skips the duplicate; its hasPushed
-  // latch keeps the launch/crash-recovery mount push alive.
+  // 52.1 (Part 1): the push fires ONLY on document-structure changes
+  // (efxPaintVersion). Physical edits (drag/paint) are excluded — they ship
+  // their result via the applyPayload bridge, and the main window's save path
+  // re-projects frames/rotoPhysical from its own runtime (updated by
+  // applyPayload), so a document sync on every paint event was redundant (the
+  // 52.1 slowdown: a full 10MB document re-serialized + base64-encoded twice
+  // per action). The round-8 physicPaintVersion debounce is retired.
+  // 52.1 (Fix A): the push's serialize bumps efxPaintVersion, which re-fires
+  // the immediate push effect — the same document would cross the bridge twice
+  // per gesture. The guard skips the duplicate; its hasPushed latch keeps the
+  // launch/crash-recovery mount push alive.
   const documentSyncPushGuardRef = useRef<DocumentSyncPushGuard | null>(null);
   if (documentSyncPushGuardRef.current === null) {
     documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
@@ -3721,17 +3721,16 @@ export function PhysicsPaintStudio() {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     });
   };
-  // 52.1 (gesture-idle scheduler): mutations only SET a dirty flag; the
-  // serialize + documentSync runs ONCE on the idle transition (gesture path) or
-  // on a 2s debounce (non-gesture edits while already idle). A burst of
-  // paint/roto edits coalesces into a single push instead of one serialize per
-  // mutation — the prior per-mutation push was the regression.
+  // 52.1 (gesture-idle scheduler): STRUCTURAL mutations only SET a dirty flag;
+  // the serialize + documentSync runs ONCE on the idle transition (gesture
+  // path) or on a 2s debounce (non-gesture edits while already idle). Physical
+  // edits are excluded (see Part 1 above) — they ship via applyPayload.
   const documentSyncDirtyRef = useRef(signal(false));
   const documentSyncDirty = documentSyncDirtyRef.current;
   useEffect(() => {
     documentSyncDirty.value = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [efxPaintVersion.value, physicPaintVersion.value]);
+  }, [efxPaintVersion.value]);
   // Non-gesture path: a mutation while already idle flushes on a 2s debounce.
   useEffect(() => {
     if (!documentSyncDirty.value) return;
@@ -3762,12 +3761,16 @@ export function PhysicsPaintStudio() {
   // 52.1 (flush-before-save/export): the main window requests a synchronous
   // drain of the Studio's queued post-gesture work before it serializes the
   // project. The flush settles the engine, drains the Roto capture queue, and
-  // pushes the document — the result is emitted only after the push is queued,
-  // so the main window's mirror is current when the save/export proceeds.
+  // pushes the document ONLY when a structural change is pending
+  // (documentSyncDirty) — physical edits already ship via applyPayload, so a
+  // document push on every auto-save was redundant (the 52.1 slowdown: the
+  // auto-save → flush → documentSync path re-serialized the full document on
+  // every paint/drag).
   const flushStudioStateRef = useRef<() => Promise<void>>(() => Promise.resolve());
   flushStudioStateRef.current = async () => {
     engineRef.current?.flushPendingStrokeFinalizations();
     await rotoPersistence.flushLivePixels();
+    if (!documentSyncDirty.peek()) return;
     const layerId = launchContext?.layerId;
     const mode = bridgeModeRef.current;
     if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
