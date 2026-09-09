@@ -198,6 +198,12 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
                 // is open (see physicPaintLaunchActive); a manual child close
                 // (no apply) must release that gate so the main re-renders.
                 let _ = app_handle.emit("physic-paint:window-closed", ());
+                // Single-window model: restore the main editor window when the
+                // Studio closes (manual close or apply-with-close).
+                if let Some(main_window) = app_handle.get_webview_window("main") {
+                    let _ = main_window.show();
+                    let _ = main_window.set_focus();
+                }
                 if let Some(state) = app_handle.try_state::<DisplaySleepGuardState>() {
                     if let Ok(mut held) = state.0.lock() {
                         *held = None;
@@ -229,6 +235,12 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
     window.show().map_err(|error| format!("Could not show physics paint window: {error}"))?;
     window.center().map_err(|error| format!("Could not center physics paint window: {error}"))?;
     window.set_focus().map_err(|error| format!("Could not focus physics paint window: {error}"))?;
+    // Single-window model: the Studio owns the layer session while open — hide
+    // the main editor window so the two never present simultaneously. The main
+    // window is restored on the Studio's Destroyed event below.
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.hide().map_err(|error| format!("Could not hide main window: {error}"))?;
+    }
     window.emit("physic-paint:launch", &context).map_err(|error| format!("Could not send physics paint launch context: {error}"))?;
 
     let visible = window.is_visible().map_err(|error| format!("Could not verify physics paint window visibility: {error}"))?;
