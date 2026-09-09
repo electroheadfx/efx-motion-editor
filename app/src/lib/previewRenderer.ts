@@ -156,7 +156,7 @@ export class PreviewRenderer {
 
   constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
     this.canvas = canvas;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw new Error('PreviewRenderer: failed to get 2d context');
     }
