@@ -162,7 +162,7 @@ describe('Roto reference controller', () => {
     expect(engine.clear).toHaveBeenCalledTimes(1);
     expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith(getFrameBlobUrl(cached.bytes), undefined, 4);
     expect(syncPending).toHaveBeenCalledTimes(1);
-    expect(setApplyMessage).toHaveBeenCalledWith('Cached physical base loaded for frame 4. Add paint to update this key.');
+    expect(setApplyMessage).toHaveBeenCalledWith('Cache loaded at frame 4. Add paint to update this key.');
   });
 
   it('replaces rejected dirty pixels with one explicitly accepted physical base', () => {

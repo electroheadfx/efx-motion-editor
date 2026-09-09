@@ -213,7 +213,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();
-      input.setApplyMessage(`Cached physical base loaded for frame ${appFrame}. Add paint to update this key.`);
+      input.setApplyMessage(`Cache loaded at frame ${appFrame}. Add paint to update this key.`);
     } else {
       engine.clearPreviewBaseImage();
       engine.resetBackground();

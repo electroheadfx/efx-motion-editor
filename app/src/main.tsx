@@ -138,8 +138,8 @@ if (window.location.pathname === '/physics-paint') {
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu
     // accelerators before keydown reaches the webview, so these menu event
     // listeners are the sole path for undo/redo on that platform.
-    listen('menu:undo', () => { undo(); });
-    listen('menu:redo', () => { redo(); });
+    listen('menu:undo', () => { if (document.hasFocus()) undo(); });
+    listen('menu:redo', () => { if (document.hasFocus()) redo(); });
 
     // Listen for zoom events emitted by the native macOS View menu.
     // Zoom in/out now use bare = / - keys via tinykeys (no Cmd modifier),

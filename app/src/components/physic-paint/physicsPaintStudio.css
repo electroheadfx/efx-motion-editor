@@ -2174,6 +2174,8 @@ button.destructive {
 .physics-paint-status-capsule .lucide {
   flex: 0 0 auto;
   color: #f8c96b;
+  position: relative;
+  z-index: 1;
 }
 
 .physics-paint-status-capsule-error .lucide {
@@ -2186,24 +2188,28 @@ button.destructive {
   color: #dde7f0;
   text-overflow: ellipsis;
   white-space: nowrap;
+  position: relative;
+  z-index: 1;
 }
 
 .physics-paint-status-capsule-warm {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 3px;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.15);
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .physics-paint-status-capsule-warm-fill {
   display: block;
   height: 100%;
-  border-radius: 2px;
-  background: #f8c96b;
+  border-radius: 999px;
+  background: rgba(248, 201, 107, 0.45);
   transition: width 60ms linear;
 }
 

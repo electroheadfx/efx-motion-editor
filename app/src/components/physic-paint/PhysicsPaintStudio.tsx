@@ -2293,24 +2293,14 @@ export function PhysicsPaintStudio() {
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
       engine?.flushPendingStrokeFinalizations();
-      // 38.1-07 D-03 (strengthened): INITIATE the save-before-leave flush
-      // WITHOUT awaiting. The flush operates on ALREADY-CAPTURED live-pixel
-      // transaction buffers and parent deliveries — it captures no engine
-      // pixels at await time, so the engine.clear() below cannot corrupt it.
-      // The flush is always initiated and always awaited afterward with the
-      // verbatim error path — never skipped, never weakened (save-before-leave,
-      // RESEARCH Pitfall 5).
+      // 52.1 (paint-loss fix): the save-before-leave flush must complete BEFORE
+      // engine.clear(). The 52.1 lazy liveAlphaCanvas factory resolves the
+      // engine canvas inside the flush's produce step (on the microtask queue),
+      // so clearing the engine first copied an EMPTY canvas and dropped the
+      // just-painted stroke. Await the flush first — the canvas copy is fast
+      // (the finalize loop above already drained the queue) — then clear.
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
-      // 38.1 D-03 canvas-first: the engine paint issues NOW, in the navigation
-      // intent tick — zero intervening awaits since begin(), so the generation
-      // cannot be superseded before this paint (no pre-paint isLatest recheck).
       setCachedRotoReferenceUrl(null);
-      if (engine) {
-        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-        (engine as PreviewBackgroundEngine).resetBackground(true);
-        engine.clear();
-        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
-      }
       try {
         await flushPromise;
       } catch {
@@ -2318,9 +2308,15 @@ export function PhysicsPaintStudio() {
         setApplyMessage(`Could not save Roto frame ${currentFrame} before navigation.`);
         return false;
       }
+      if (engine) {
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
+        engine.clear();
+        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+      }
       // 38.1 D-05: superseded navigation — a newer intent owns the canvas. The
-      // same-tick paint above already happened (the approved D-03 trade), but
-      // a superseded navigation never propagates and never repaints.
+      // paint above already happened, but a superseded navigation never
+      // propagates and never repaints.
       if (!rotoNavigationGeneration.isLatest(generation)) return false;
       // 38.1-07: post-flush neighbor pickup — a generated destination repaints
       // once so it picks up the just-flushed neighbor key pixels. The kind
@@ -2568,6 +2564,39 @@ export function PhysicsPaintStudio() {
     if (changed) rotoScript.notifySourceRevision();
     return changed;
   }, [rotoMoveHistoryRedo, rotoScript]);
+
+  // 52.1 (undo/redo shortcut): Cmd+Z / Cmd+Shift+Z are intercepted by the native
+  // macOS menu at the Cocoa layer and emitted as menu:undo / menu:redo events —
+  // the Studio's onKeyDown never sees them. Listen for those events and route to
+  // the Studio's own undo/redo, gated on document.hasFocus() so the main window's
+  // listener (which also receives the broadcast) never double-fires.
+  useEffect(() => {
+    let disposed = false;
+    let unlistenUndo: (() => void) | undefined;
+    let unlistenRedo: (() => void) | undefined;
+    const cleanup = () => {
+      unlistenUndo?.();
+      unlistenRedo?.();
+      unlistenUndo = undefined;
+      unlistenRedo = undefined;
+    };
+    const install = async () => {
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        if (typeof eventApi.listen !== 'function') return;
+        unlistenUndo = await eventApi.listen('menu:undo', () => { if (document.hasFocus()) void undo(); });
+        unlistenRedo = await eventApi.listen('menu:redo', () => { if (document.hasFocus()) void redo(); });
+        if (disposed) cleanup();
+      } catch {
+        // menu events are macOS-only; ignore elsewhere
+      }
+    };
+    void install();
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [undo, redo]);
 
   const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
   const { getStrokeMetadata } = usePhysicsPaintLaunchIntegration({
