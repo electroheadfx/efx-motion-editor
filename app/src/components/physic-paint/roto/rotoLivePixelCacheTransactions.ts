@@ -169,7 +169,13 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
       })();
       pending.set(key, work);
       const clearPending = () => {
-        if (pending.get(key) === work) pending.delete(key);
+        // A superseded capture must never touch the LIVE capture's entries:
+        // `producers`/`snapshots` hold only the latest produce/snapshot per key,
+        // so a stale work settling (stale-before-produce) would otherwise wipe the
+        // pre-clear snapshot the live work still needs, forcing it to re-read the
+        // cleared canvas and commit an empty frame (52.1 paint-loss on leave).
+        if (pending.get(key) !== work) return;
+        pending.delete(key);
         producers.delete(key);
         snapshots.delete(key);
       };
