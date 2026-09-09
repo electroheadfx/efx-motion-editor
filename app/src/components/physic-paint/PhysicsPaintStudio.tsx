@@ -1826,13 +1826,21 @@ export function PhysicsPaintStudio() {
     rotoCachedPlayback.updateFps(fps);
     rotoPlaybackSettingsController.enqueue(rotoCachedPlayback.getSettings());
   }, [rotoCachedPlayback, rotoPlaybackSettingsController]);
+  // 52.1 (background sync on close): the documentSync push is idle-gated, so a
+  // non-stroke change (e.g. a background select) can be pending when the window
+  // closes. The close flush used to gate on strokes/pixels/playback only — a
+  // bare document change was dropped and the main window kept the old document.
+  // These refs are assigned after documentSyncDirty/pushLiveProjection are built.
+  const pendingDocumentSyncRef = useRef<() => boolean>(() => false);
+  const flushDocumentSyncRef = useRef<() => Promise<void>>(async () => {});
   usePhysicsPaintCloseFlush(
-    () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels() || rotoPlaybackSettingsController.hasPending()),
+    () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels() || rotoPlaybackSettingsController.hasPending() || pendingDocumentSyncRef.current()),
     async () => {
       if (workflowMode !== 'roto') return;
       engineRef.current?.flushPendingStrokeFinalizations();
       await rotoPersistence.flushLivePixels(currentFrame);
       await rotoPlaybackSettingsController.flush();
+      await flushDocumentSyncRef.current();
     },
     // 41-05 (D-08): audio engine release runs unconditionally on close,
     // before the hasPending gate — closing the window always stops and
@@ -3793,6 +3801,18 @@ export function PhysicsPaintStudio() {
     documentSyncDirty.value = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [efxPaintVersion.value]);
+  // 52.1 (background sync on close): wire the close-flush refs to the live dirty
+  // flag + push so a bare non-stroke document change survives window close.
+  pendingDocumentSyncRef.current = () => documentSyncDirty.peek();
+  flushDocumentSyncRef.current = async () => {
+    if (!documentSyncDirty.peek()) return;
+    documentSyncDirty.value = false;
+    const layerId = launchContext?.layerId;
+    const mode = bridgeModeRef.current;
+    if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+      await pushLiveProjection(layerId, mode);
+    }
+  };
   // Non-gesture path: a mutation while already idle flushes on a 2s debounce.
   // 52.1: also require 1s of real quiet at fire time — a 2s timer can still
   // land inside a short pause mid-train (idle flips after 400ms of silence).

@@ -4,6 +4,7 @@ import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
 import { applyBackgroundFallbackToEngine } from '../engine/physicsPaintStudioSettings';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import { efxPaintVersion, getDocument as getEfxPaintDocument } from '../../../stores/efxPaintStore';
 
 
 export function usePhysicsPaintEngineLifecycle(input: {
@@ -67,10 +68,17 @@ export function usePhysicsPaintEngineLifecycle(input: {
   // 49-04 (UAT fix): the engine bgMode hydrates from the DOCUMENT FALLBACK (the
   // single authority), not the carried per-track roto background — the selector
   // and engine must agree with the monitor fond before the first click.
+  // 52.1 (background live-reapply): the previous reading came from the launch
+  // context SNAPSHOT, so a mid-session background change (handleBackgroundChange
+  // → setBackgroundFallback) wrote the live document + bumped efxPaintVersion but
+  // never re-applied the engine bgMode — the Studio kept the launch background
+  // ("when I set to paper, the studio not update"). Read the LIVE document and
+  // re-apply on every efxPaintVersion bump.
   useEffect(() => {
-    const fallback = input.launchContext?.document?.background?.fallback;
+    const layerId = input.launchContext?.layerId;
+    const fallback = layerId ? getEfxPaintDocument(layerId)?.background?.fallback : undefined;
     if (engine && fallback) applyBackgroundFallbackToEngine(engine, fallback);
-  }, [engine, input.launchContext?.document?.background?.fallback]);
+  }, [engine, input.launchContext?.layerId, efxPaintVersion.value]);
 
 
   useEffect(() => () => {
