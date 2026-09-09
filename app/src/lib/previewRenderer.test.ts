@@ -691,6 +691,44 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(ctx.operations).toEqual([]);
   });
 
+  it('clears the stale composite when the last drawable layer is deleted (52.1)', () => {
+    // Post-delete state: only the empty base "Key Photos" layer remains — no
+    // image at this frame, nothing loading. "Keep previous frame" must not
+    // freeze the deleted layer's pixels; the canvas is cleared instead.
+    const baseLayer: Layer = {
+      id: 'base',
+      name: 'Key Photos',
+      type: 'image-sequence',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'image-sequence', imageIds: [] },
+      isBase: true,
+    };
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([baseLayer], 1, [], 24, true, 1, 1);
+
+    expect(ctx.operations).toContainEqual({ type: 'clearRect' });
+  });
+
+  it('keeps the previous frame while a present physics layer is mid-decode (52.1)', () => {
+    // Anti-flicker guard preserved: a present-but-unresolved physics layer is a
+    // pending decode, NOT a deletion — the previous frame is kept (no clearRect).
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
+    ]);
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(null);
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+
+    expect(ctx.operations).not.toContainEqual({ type: 'clearRect' });
+  });
+
   it('collectPhysicPaintFrameSources returns the flattened record and preload decodes its dataUrl', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },

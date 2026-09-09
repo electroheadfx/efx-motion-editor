@@ -287,6 +287,13 @@ export class PreviewRenderer {
     }
 
     let hasDrawable = false;
+    // 52.1 (delete-layer stale pixels): "keep previous frame" below is an
+    // anti-flicker guard for content still arriving — an image mid-load
+    // (re-renders via onImageLoaded) or a physics frame mid-decode (re-renders
+    // via the physicPaintVersion bump). When a layer is deleted nothing is in
+    // flight, so the stale composite must be cleared, not kept. Track whether
+    // any visible layer is genuinely pending.
+    let hasPendingContent = false;
     if (!clearCanvas) {
       // In overlay mode, the canvas already has content from a prior pass.
       // Adjustment layers modify existing pixels — any visible layer is drawable.
@@ -308,6 +315,9 @@ export class PreviewRenderer {
             hasDrawable = true;
             break;
           }
+          // A present-but-unresolved physics layer is mid-decode: its completion
+          // bumps physicPaintVersion and re-renders, so the previous frame is kept.
+          hasPendingContent = true;
         } else if (isAdjustmentLayer(layer)) {
           // Adjustments only matter if there's content below; continue checking
           continue;
@@ -327,10 +337,17 @@ export class PreviewRenderer {
           }
         }
       }
+      // Image loads kicked inside resolveLayerSource re-render via onImageLoaded.
+      if (this.loadingImages.size > 0) hasPendingContent = true;
     }
 
     if (!hasDrawable) {
-      return; // Keep previous frame
+      if (!hasPendingContent) {
+        // Nothing drawable and nothing on the way — the previous composite is
+        // stale (its layer was deleted). Clear it rather than freeze it.
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      }
+      return; // Keep previous frame only while content is still arriving
     }
 
     const ctx = this.ctx;
