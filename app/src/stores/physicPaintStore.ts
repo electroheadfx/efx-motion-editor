@@ -2004,9 +2004,6 @@ function _resolveFlattenedFrame(
 
   const participating = participatingPaintTracks(efxDocument)
     .filter((track) => !excludeTrackIds.has(track.id));
-  // TEMP-DEBUG-52.1 (screen blend): log the flattened composite's participating
-  // tracks so we can see whether any carries a non-normal blendMode.
-  if (typeof console !== 'undefined') console.info('[52.1-screen]', layerId, 'frame', frame, 'tracks', participating.map((t) => ({ order: t.order, blend: t.blendMode, name: t.name })));
   const trackContentRevisions = new Map<string, string>();
   for (const track of participating) {
     const revision = _trackContentRevision(layerId, track.id, frame);
