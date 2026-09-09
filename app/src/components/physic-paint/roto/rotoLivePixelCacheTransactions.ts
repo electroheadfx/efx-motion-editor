@@ -62,6 +62,14 @@ export interface RotoLivePixelCacheTransactions {
   flush: (identity?: RotoLivePixelIdentityInput) => Promise<void>;
   hasPending: (identity?: RotoLivePixelIdentityInput) => boolean;
   remove: (identity: RotoLivePixelIdentityInput, commit: () => void) => boolean;
+  /**
+   * Synchronously start the produce step (canvas readback + encode) for a
+   * pending capture, so the canvas copy happens BEFORE the caller clears the
+   * engine. The encode promise is stored and the pending work's produce reuses
+   * it instead of re-copying the (now-cleared) live canvas. No-op when there is
+   * no pending capture for the identity.
+   */
+  snapshot: (identity: RotoLivePixelIdentityInput) => void;
 }
 
 function identityKey(identity: RotoLivePixelIdentityInput): string {
@@ -82,6 +90,12 @@ function matchesIdentity(expected: RotoLivePixelIdentity, current: RotoLivePixel
 export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransactions {
   const revisions = new Map<string, number>();
   const pending = new Map<string, Promise<boolean>>();
+  // 52.1 (scrub regression): the produce step (canvas readback + encode) is
+  // deferred to the idle/settled microtask, but the navigation flush must copy
+  // the canvas BEFORE engine.clear() runs. `snapshot` starts the produce
+  // synchronously and stores its result so the pending work reuses it.
+  const producers = new Map<string, () => unknown>();
+  const snapshots = new Map<string, unknown>();
   // 52.1 (gesture-idle scheduler): the encode (produce) + apply (commit) of a
   // stroke capture is deferred to the idle transition so it never overlaps the
   // next gesture. `forceFlush` is set by the navigation/close/save/export flush
@@ -121,6 +135,7 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         : captureInput;
       const key = identityKey(identity);
       const pixelRevision = invalidate(identity);
+      producers.set(key, input.produce as () => unknown);
       const queuedAt = input.recordPerformance ? performance.now() : 0;
       const reject = (outcome: string) => {
         input.recordPerformance?.({ stage: 'cache-revision-check', category: 'sync-cpu', durationMs: 0, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame, outcome });
@@ -141,7 +156,8 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         }
         const producerStartedAt = input.recordPerformance ? performance.now() : 0;
         input.recordPerformance?.({ stage: 'cache-task-handoff', category: 'scheduled-wait', durationMs: producerStartedAt - queuedAt, timestamp: producerStartedAt, mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
-        const value = await input.produce();
+        const snapshot = snapshots.get(key) as Promise<T> | T | undefined;
+        const value = await (snapshot ?? input.produce());
         input.recordPerformance?.({ stage: 'cache-producer', category: 'async-elapsed', durationMs: performance.now() - producerStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
         const current = input.resolveCurrent();
         if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, current)) return reject('stale-before-commit');
@@ -154,6 +170,8 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
       pending.set(key, work);
       const clearPending = () => {
         if (pending.get(key) === work) pending.delete(key);
+        producers.delete(key);
+        snapshots.delete(key);
       };
       void work.then(clearPending, clearPending);
       return work;
@@ -185,5 +203,12 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
       }
     },
     hasPending: (identity) => identity ? pending.has(identityKey(identity)) : pending.size > 0,
+    snapshot(identity) {
+      const key = identityKey(identity);
+      if (!pending.has(key)) return;
+      const produce = producers.get(key);
+      if (!produce) return;
+      snapshots.set(key, produce());
+    },
   };
 }

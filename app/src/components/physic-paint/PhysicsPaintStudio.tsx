@@ -2293,26 +2293,27 @@ export function PhysicsPaintStudio() {
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
       engine?.flushPendingStrokeFinalizations();
-      // 52.1 (paint-loss fix): the save-before-leave flush must complete BEFORE
-      // engine.clear(). The 52.1 lazy liveAlphaCanvas factory resolves the
-      // engine canvas inside the flush's produce step (on the microtask queue),
-      // so clearing the engine first copied an EMPTY canvas and dropped the
-      // just-painted stroke. Await the flush first — the canvas copy is fast
-      // (the finalize loop above already drained the queue) — then clear.
+      // 52.1 (paint-loss fix + scrub regression): snapshot the live canvas
+      // SYNCHRONOUSLY before engine.clear() so the flush's produce (which runs
+      // on the microtask) reuses this copy instead of re-reading the cleared
+      // canvas. The canvas paint below stays in the navigation intent tick —
+      // it must NOT block on the flush's encode + parent push, or the scrub
+      // release settle stalls (the "image scrub no work" regression).
+      rotoPersistence.snapshotLivePixels(currentFrame);
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
       setCachedRotoReferenceUrl(null);
+      if (engine) {
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
+        engine.clear();
+        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+      }
       try {
         await flushPromise;
       } catch {
         setApplyStatus('error');
         setApplyMessage(`Could not save Roto frame ${currentFrame} before navigation.`);
         return false;
-      }
-      if (engine) {
-        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-        (engine as PreviewBackgroundEngine).resetBackground(true);
-        engine.clear();
-        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       }
       // 38.1 D-05: superseded navigation — a newer intent owns the canvas. The
       // paint above already happened, but a superseded navigation never
@@ -3025,6 +3026,11 @@ export function PhysicsPaintStudio() {
     if (scrubActiveRef.current) {
       rotoScrubFrameSignal.value = frame;
       rotoCachedScrub(frame);
+      // Realtime image preview: paint the cached frame for the scrubbed cell
+      // WITHOUT the save-before-leave flush (that stays on the release settle).
+      // The pointer-down seek already snapshotted + flushed the origin frame's
+      // paint, so this clear cannot drop it.
+      loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null);
       return;
     }
     // Non-scrub navigation clears any settled scrub feed left sticky while the
@@ -3032,7 +3038,7 @@ export function PhysicsPaintStudio() {
     if (rotoScrubFrameSignal.peek() !== null) rotoScrubFrameSignal.value = null;
     publishOperationResult(null);
     void requestRotoFrameNavigationRef.current(frame);
-  }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal]);
+  }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame]);
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target
   // in the SAME click. The selection is applied SYNCHRONOUSLY in the click

@@ -532,6 +532,12 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     return true;
   }, [upsertCachedFrame]);
 
+  const snapshotLivePixels = useCallback((appFrame: number): void => {
+    const identity = resolveFrameIdentityInput(appFrame);
+    if (!identity) return;
+    livePixelTransactionsRef.current.snapshot(identity);
+  }, [resolveFrameIdentityInput]);
+
   const flushLivePixels = useCallback(async (appFrame?: number): Promise<void> => {
     const identity = appFrame === undefined ? undefined : resolveFrameIdentityInput(appFrame) ?? undefined;
     await livePixelTransactionsRef.current.flush(identity);
@@ -579,6 +585,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     upsertCachedFrame,
     captureLivePixels,
     invalidateLivePixels,
+    snapshotLivePixels,
     flushLivePixels,
     hasPendingLivePixels: () => livePixelTransactionsRef.current.hasPending() || parentDeliveryRef.current.size > 0 || parentDeliveryErrorRef.current.size > 0,
     removeCachedFrame,
