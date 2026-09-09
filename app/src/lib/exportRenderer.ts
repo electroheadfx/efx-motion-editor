@@ -200,7 +200,7 @@ export function renderGlobalFrame(
 
             // Composite onto main canvas
             if (glResult) {
-              const ctx = canvas.getContext('2d')!;
+              const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
               ctx.save();
               ctx.setTransform(1, 0, 0, 1, 0, 0);
               ctx.clearRect(0, 0, w, h);
@@ -282,7 +282,7 @@ export function renderGlobalFrame(
       const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
       if (solidAlpha > 0) {
         const color = activeFade?.color ?? '#000000';
-        const solidCtx = canvas.getContext('2d')!;
+        const solidCtx = canvas.getContext('2d', { willReadFrequently: true })!;
         solidCtx.save();
         solidCtx.setTransform(1, 0, 0, 1, 0, 0);  // physical pixel coords (per Pitfall 5)
         solidCtx.globalAlpha = solidAlpha;
