@@ -514,7 +514,7 @@ async function applyPhysicPaintPayloadWithPublicationLease(
  * bytes. A missing key or token mismatch fails closed (the store and the
  * document are never touched by a half-resolved records list).
  */
-function expandRotoPhysicalEditRecordRefs(payload: unknown): { payload: unknown } | { error: string } {
+export function expandRotoPhysicalEditRecordRefs(payload: unknown): { payload: unknown } | { error: string } {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { payload };
   const candidate = payload as Record<string, unknown>;
   if (candidate.kind !== 'replace-roto-physical-map') return { payload };

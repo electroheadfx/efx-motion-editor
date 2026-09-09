@@ -37,6 +37,7 @@ import {
 import { timelineStore } from '../stores/timelineStore';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
+  buildFrameBytesToken,
   isPhysicPaintApplyResult,
   isPhysicPaintRotoPhysicalEditApplyPayload,
   isPhysicPaintRotoPhysicalEditIntent,
@@ -65,6 +66,7 @@ import { encodeSourceBytesForDocumentSync,
   applyPhysicPaintPayload,
   applyPhysicPaintRotoGroupFramePaint,
   createPhysicPaintLaunchContext,
+  expandRotoPhysicalEditRecordRefs,
   getPhysicPaintRotoAuthority,
   handlePhysicPaintFrameSyncMessage,
   installPhysicPaintApplyListener,
@@ -346,6 +348,74 @@ describe('physicPaintBridge', async () => {
       value: originalWindow,
       writable: true,
       configurable: true,
+    });
+  });
+
+  describe('expandRotoPhysicalEditRecordRefs', () => {
+    it('expands unchanged content-token refs against the parent store and leaves full records intact', () => {
+      const recordA = makePhysicalRecord('A', 1);
+      const recordB = makePhysicalRecord('B', 3);
+      seedPhysicalDocument('phys-layer-1', [recordA, recordB]);
+      const tokenA = buildFrameBytesToken(recordA.payload.bytes);
+
+      const result = expandRotoPhysicalEditRecordRefs({
+        kind: 'replace-roto-physical-map',
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        records: [
+          { keyId: 'A', appFrame: 1, refToken: tokenA },
+          { keyId: 'B', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, bytes: recordB.payload.bytes, width: 1000, height: 650 } },
+        ],
+      });
+
+      expect('error' in result).toBe(false);
+      const records = (result as { payload: { records: unknown[] } }).payload.records;
+      expect(records).toHaveLength(2);
+      expect(records[0]).toEqual({ keyId: 'A', appFrame: 1, payload: { ...recordA.payload, appFrame: 1 } });
+      expect(records[1]).toEqual({ keyId: 'B', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, bytes: recordB.payload.bytes, width: 1000, height: 650 } });
+    });
+
+    it('fails closed when a ref key is unknown to the parent document', () => {
+      seedPhysicalDocument('phys-layer-1', [makePhysicalRecord('A', 1)]);
+
+      const result = expandRotoPhysicalEditRecordRefs({
+        kind: 'replace-roto-physical-map',
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        records: [{ keyId: 'MISSING', appFrame: 1, refToken: 'tok' }],
+      });
+
+      expect('error' in result).toBe(true);
+      expect((result as { error: string }).error).toContain('unknown to the parent document');
+    });
+
+    it('fails closed when a ref token no longer matches the parent content', () => {
+      seedPhysicalDocument('phys-layer-1', [makePhysicalRecord('A', 1)]);
+
+      const result = expandRotoPhysicalEditRecordRefs({
+        kind: 'replace-roto-physical-map',
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        records: [{ keyId: 'A', appFrame: 1, refToken: 'stale-token' }],
+      });
+
+      expect('error' in result).toBe(true);
+      expect((result as { error: string }).error).toContain('no longer matches');
+    });
+
+    it('returns the payload unchanged when no record is a ref', () => {
+      const payload = {
+        kind: 'replace-roto-physical-map',
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        records: [{ keyId: 'A', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('x'), width: 1, height: 1 } }],
+      };
+      expect(expandRotoPhysicalEditRecordRefs(payload)).toEqual({ payload });
+    });
+
+    it('returns the payload unchanged for a non-physical payload', () => {
+      const payload = { kind: 'apply-canvas', layerId: 'phys-layer-1' };
+      expect(expandRotoPhysicalEditRecordRefs(payload)).toEqual({ payload });
     });
   });
 
