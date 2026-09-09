@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: "52.1"
-current_phase_name: Modern frame runtime + native HD paint (INSERTED)
-status: executing
-stopped_at: Completed 52.1-06-PLAN.md
-last_updated: "2026-09-06T15:55:47.579Z"
-last_activity: 2026-09-06
-last_activity_desc: Phase 52.1 execution started
-state_head: 266cdb0e3de184207c6584eccb16e5a429a74b64
+current_phase: "53"
+current_phase_name: Integrated v1.0.0 Acceptance
+status: pending
+stopped_at: Completed 52.1-07-SUMMARY.md
+last_updated: "2026-09-09T14:40:00.000Z"
+last_activity: 2026-09-09
+last_activity_desc: Phase 52.1 closed
+state_head: c372e736
 progress:
   total_phases: 10
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 49
-  completed_plans: 48
-  percent: 40
+  completed_plans: 49
+  percent: 50
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.1 — Modern frame runtime + native HD paint (INSERTED)
+**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
 
 ## Current Position
 
-Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — EXECUTING
+Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — COMPLETE
 Plan: 7 of 7
-Status: Ready to execute
-Last activity: 2026-09-06 — Phase 52.1 execution started
+Status: Closed 2026-09-09
+Last activity: 2026-09-09 — Phase 52.1 closed; Phase 53 next
 
-Progress: [████████████████████] 42/42 plans ([████░░░░░░] 40%)
+Progress: [████████████████████] 49/49 plans ([█████░░░░░] 50%)
 
 ## Performance Metrics
 
@@ -254,6 +254,9 @@ Recent decisions affecting current work:
 - [Phase 52.1]: decode_webp_frame takes bytes (not a path), so fetch-on-demand is deferred to Plan 05; Plan 04 decode path is invoke(decode_webp_frame, { bytes })
 - [Phase 52.1]: prefetchNeighborFrames wired via an optional prefetchNeighbors callback on useRotoNavigationCoordinator (layer-agnostic); the Studio closes over launchContext.layerId
 - [Phase 52.1]: ImageData exists only as the transient IPC-to-bitmap bridge, never stored
+- [Phase 52.1 close]: Plan-04 TDD deviation (tests bundled inside feat commits, no RED-first history) receives a conscious `--force-mvp-gate` override at phase close, on the record (52.1-04-SUMMARY "Phase-close override" + 52.1-07-SUMMARY)
+- [Phase 52.1 close]: The chunk budget stays at 1300 kB — NOT raised. Main chunk 1305.11 kB (13.68 kB over the 1291.43 kB baseline). Attribution via a pre-phase baseline build against the bumped node_modules (1296.24 kB): ~4.8 kB dep bumps (+ intervening quicks) + ~8.9 kB 52.1 feature code — the overage is NOT purely dep-bumps-only; documented and left red pending user sign-off on any future raise
+- [Phase 52.1 close]: Plan-07 native roto UAT signed off on feeling (drag, paint-burst, general fluidity); the numeric docSync count was declined by the user — validation recorded as feeling-based
 
 ### Pending Todos
 

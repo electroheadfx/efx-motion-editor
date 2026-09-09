@@ -469,7 +469,7 @@ Plans:
 **Goal:** Replace the base64-dataUrl frame runtime with a bytes/ImageBitmap runtime, move PNG→WebP-lossless encode/decode into Rust, lazy-load sidecars behind a byte-budgeted LRU, and raise the working-resolution cap 1000→1920 — so HD projects paint at native resolution without main-thread jank or heap blowup.
 **Requirements**: TBD (D-01..D-19 locked decisions)
 **Depends on:** Phase 52
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans executed
 
 Plans:
 **Wave 1**
@@ -498,7 +498,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 52.1-07-PLAN.md — Clean-break contract + full gates + native roto UAT
+- [x] 52.1-07-PLAN.md — Clean-break contract + full gates + native roto UAT
 
 ### Phase 53: Integrated v1.0.0 Acceptance
 
@@ -534,4 +534,5 @@ Plans:
 | 50. Photo/Reference Track | v1.0.0 | 6/6 | Complete | 2026-09-01 |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Complete | 2026-09-02 |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
+| 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |
