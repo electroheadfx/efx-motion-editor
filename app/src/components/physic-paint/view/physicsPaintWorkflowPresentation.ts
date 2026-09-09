@@ -299,7 +299,7 @@ export function getRotoStatusCapsuleIdleContext({
 }): string | null {
   if (cellKind === 'real') return `Real Roto key · Frame ${frame}`;
   if (cellKind === 'generated') return `Generated frame · Frame ${frame}`;
-  if (cellKind === 'empty') return `Empty frame · Frame ${frame}`;
+  if (cellKind === 'empty') return `Empty frame · Frame ${frame} — add a key (+) to paint`;
   return null;
 }
 

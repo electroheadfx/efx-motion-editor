@@ -226,6 +226,10 @@ export interface PhysicsPaintWorkflowStripProps {
   statusMessage?: string | null;
   /** Capsule icon tone: the current status message is an apply/rejection error. */
   statusIsError?: boolean;
+  /** 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen.
+   *  The capsule renders a thin bar so the artist knows when the canvas is
+   *  released. Absent/0 = idle. */
+  warmProgress?: ReadonlySignal<number>;
   /** Persisted operation-result line (UAT-3): survives the operation's own
    *  selection publication until a NEW explicit gesture or the next operation. */
   operationResult?: string | null;
@@ -755,9 +759,11 @@ function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFra
   return <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }} />;
 }
 
-function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean }) {
+function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean; warmProgress?: ReadonlySignal<number> }) {
   const tooltip = useStyledTooltip();
   const capsuleText = props.capsuleText.value;
+  const warm = props.warmProgress?.value ?? 0;
+  const warming = warm > 0 && warm < 100;
   return (
     <div
       class={`physics-paint-status-capsule${props.isError ? ' physics-paint-status-capsule-error' : ''}`}
@@ -770,6 +776,11 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
         ? <TriangleAlert size={16} aria-hidden="true" />
         : <Info size={16} aria-hidden="true" />}
       <span class="physics-paint-status-capsule-text">{capsuleText}</span>
+      {warming && (
+        <span class="physics-paint-status-capsule-warm" aria-hidden="true">
+          <span class="physics-paint-status-capsule-warm-fill" style={{ width: `${warm}%` }} />
+        </span>
+      )}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
     </div>
   );
@@ -780,6 +791,8 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   capsuleText: Signal<string>;
   /** Capsule icon tone: a warning triangle when the current message is an error. */
   capsuleIsError: boolean;
+  /** 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen. */
+  warmProgress?: ReadonlySignal<number>;
   ready: boolean;
   playbackAvailable: boolean;
   playbackActive: boolean;
@@ -1174,7 +1187,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         ) : null}
         <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
       </div>
-      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} />
+      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       <span
         class="physics-paint-roto-key-icon-action physics-paint-toolbox-button-anchor"
         ref={toolboxAnchorRef}
@@ -4156,6 +4169,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
         capsuleIsError={Boolean(props.statusIsError)}
+        warmProgress={props.warmProgress}
         ready={props.ready !== false}
         playbackAvailable={Boolean(props.rotoCachedPlaybackAvailable)}
         playbackActive={Boolean(props.isRotoCachedPlaybackActive)}

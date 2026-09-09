@@ -260,7 +260,7 @@ describe('getRotoStatusCapsuleIdleContext — current-cell idle mapping (38-08, 
   it('maps each semantic cell kind to its exact physical-frame context', () => {
     expect(getRotoStatusCapsuleIdleContext({ cellKind: 'real', frame: 5 })).toBe('Real Roto key · Frame 5');
     expect(getRotoStatusCapsuleIdleContext({ cellKind: 'generated', frame: 9 })).toBe('Generated frame · Frame 9');
-    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'empty', frame: 7 })).toBe('Empty frame · Frame 7');
+    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'empty', frame: 7 })).toBe('Empty frame · Frame 7 — add a key (+) to paint');
     expect(getRotoStatusCapsuleIdleContext({ cellKind: null, frame: 3 })).toBeNull();
   });
 

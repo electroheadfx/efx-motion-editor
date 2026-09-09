@@ -767,6 +767,10 @@ export function PhysicsPaintStudio() {
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
+  // 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen
+  // (FRESH_FRAME_WARM_MS); the capsule renders a thin bar so the artist knows
+  // when the canvas is released. 0 = idle, 100 = released.
+  const warmProgress = useSignal(0);
   // 49-04 (UAT fix): the document fallback is the single authority on open —
   // hydrate the selector mode (and the paper arm's grain controls) from it so
   // the selector, engine, and monitor fond agree before the first click. The
@@ -2452,8 +2456,19 @@ export function PhysicsPaintStudio() {
           // wait" recipe for the paint-without-wait case).
           if (effect.restore.kind === 'blank-real-key') {
             setApplyMessage('Préparation du canevas…');
+            warmProgress.value = 0;
+            const warmStartedAt = performance.now();
+            const warmTick = () => {
+              const elapsed = performance.now() - warmStartedAt;
+              const next = Math.min(100, Math.round((elapsed / FRESH_FRAME_WARM_MS) * 100));
+              warmProgress.value = next;
+              if (next < 100) requestAnimationFrame(warmTick);
+            };
+            requestAnimationFrame(warmTick);
             await (engine as unknown as { lockInputForWarm?: (ms: number) => Promise<void> }).lockInputForWarm?.(FRESH_FRAME_WARM_MS);
+            warmProgress.value = 100;
             setApplyMessage(null);
+            window.setTimeout(() => { if (warmProgress.peek() === 100) warmProgress.value = 0; }, 300);
           }
         };
         void warmThenUnlock();
@@ -4260,7 +4275,7 @@ export function PhysicsPaintStudio() {
         onApplyScript: handleApplyScript,
         onDiscardScript: handleDiscardScript,
         rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,
-        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
+        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), warmProgress, onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
         // routes the navigation audio funnel to scrub; release stops the

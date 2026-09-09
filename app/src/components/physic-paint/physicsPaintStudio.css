@@ -2188,6 +2188,25 @@ button.destructive {
   white-space: nowrap;
 }
 
+.physics-paint-status-capsule-warm {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.physics-paint-status-capsule-warm-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #f8c96b;
+  transition: width 60ms linear;
+}
+
 .physics-paint-pill {
   position: relative;
   display: inline-flex;
