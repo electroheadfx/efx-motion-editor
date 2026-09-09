@@ -414,6 +414,8 @@ export class PreviewRenderer {
         const flattened = resolveFlattened(paintLayerId);
         if (!flattened) continue;
         const source = this.getPhysicPaintImageSource(flattened);
+        // TEMP-DEBUG-52.1 (screen blend): the layer blend applied around the flattened raster.
+        if (typeof console !== 'undefined') console.info('[52.1-screen]', 'layer', layer.id, 'layerBlendMode', layer.blendMode);
         // CMP-03/Pitfall 6: the parent applies ITS opacity/blend exactly once
         // around the flattened raster — internal track properties are never
         // re-applied here (D-01/D-02 live store-side inside compositeFrame).
