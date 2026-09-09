@@ -1093,7 +1093,8 @@ function _getOrCreateCompositorMemo<K, V>(outer: Map<string, EfxPaintKeyedMemo<K
  * byte-budgeted LRU handle (keyed by the stable bytes content token) instead of
  * the absorbed decode-once cache. On a miss it kicks off the async Rust decode
  * (`decode_webp_frame` → raw RGBA → transient ImageData → createImageBitmap with
- * premultiplyAlpha:'none') and returns null this tick; the decode-complete
+ * premultiplyAlpha:'premultiply' — see _decodeWebpToBitmap for the WKWebView
+ * straight-bitmap wash) and returns null this tick; the decode-complete
  * version-clock bump re-fires subscribers (the _compositorDecode idiom, MEMORY:
  * always bump AND subscribe). ImageData exists only as the transient IPC→bitmap
  * bridge, never stored (D-13).
@@ -1133,7 +1134,14 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
 async function _decodeWebpToBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
   const { width, height, rgba } = await decodeWebpFrame({ bytes });
   const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
-  return createImageBitmap(imageData, { premultiplyAlpha: 'none' });
+  // 52.1 (washed-out regression): premultiply AT bitmap creation. drawImage
+  // only ever consumes premultiplied data, and WKWebView draws a
+  // straight-alpha-flagged ('none') bitmap AS IF premultiplied — every
+  // semi-transparent stroke pixel composites over-bright ("screen-blend" wash).
+  // Hydrated keys escaped because they draw from rotoAlphaCanvasRegistry
+  // canvases (browser-decoded blob, already premultiplied); a freshly applied
+  // key misses the registry and lands here, so only its new strokes washed out.
+  return createImageBitmap(imageData, { premultiplyAlpha: 'premultiply' });
 }
 
 /**

@@ -1877,14 +1877,14 @@ describe('physicPaintStore', () => {
       expect(composite.ops).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'canvas' }));
     });
 
-    it('D-14 premultiplyAlpha: the decode path calls createImageBitmap with premultiplyAlpha none (straight alpha)', async () => {
+    it('D-14 premultiplyAlpha: the decode path premultiplies at bitmap creation (WKWebView draws straight-flagged bitmaps as premultiplied — the washed-out wash)', async () => {
       const createImageBitmapSpy = vi.fn(async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
       vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
 
       await flattenAfterDecode(FLAT_LAYER, 5);
-      expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'none' });
+      expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'premultiply' });
     });
 
     it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', async () => {
@@ -2485,7 +2485,7 @@ describe('physicPaintStore', () => {
 
       expect(decodeWebpFrameMock).toHaveBeenCalledTimes(3);
       expect(createImageBitmapSpy).toHaveBeenCalledTimes(3);
-      expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'none' });
+      expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'premultiply' });
     });
 
     it('prefetchNeighborFrames never evicts the just-drawn frame (LRU ordering)', async () => {
