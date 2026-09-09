@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1300 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1320 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1300 desktop budget').toBe(1300);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1320 desktop budget').toBe(1320);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1300 desktop budget',
+    'emits no chunk-size warning at the 1320 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -214,11 +214,19 @@ describe('production vite build', () => {
       // surface (the photo-reference dialog reveal flow + the strip rail-kind
       // menu + the create-reveal-rail wiring) entered the main chunk; budget
       // raised 1200 → 1300.
+      // Measured 2026-09-09: 1305.11 kB after Phase 52.1 (modern frame runtime
+      // + native HD paint). Attribution (one-time signed adjustment, not a
+      // precedent):
+      //   baseline (2026-09-02, old deps)          1291.43 kB
+      //   + Step 0 dep bumps + 260905 quicks         +4.8 kB
+      //   + 52.1 feature code (runtime/LRU/WebP)     +8.9 kB
+      //   = current main chunk                      1305.11 kB
+      // Budget raised 1300 → 1320 (measured value + ~14.9 kB headroom).
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1300 desktop budget',
+        'no chunk-size warning may be emitted at the 1320 desktop budget',
       ).toBe(0);
     },
   );

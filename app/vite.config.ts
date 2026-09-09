@@ -236,7 +236,14 @@ export default defineConfig({
     // photo-reference dialog reveal flow + the strip rail-kind menu + the
     // create-reveal-rail wiring) entered the main chunk, measured 1291.43 kB.
     // Budget raised to 1300 (measured value + ~8.6 kB headroom).
-    chunkSizeWarningLimit: 1300,
+    // Measurement note (2026-09-09): Phase 52.1 (modern frame runtime + native
+    // HD paint) — the Step 0 dependency bumps (Tauri 2.11.1, Preact 10.29.8,
+    // @preact/signals, plugin bumps) plus the intervening 260905 quicks added
+    // ~4.8 kB, and the 52.1 feature code (runtime retarget, byte-budgeted LRU,
+    // WebP codec leaf modules) added ~8.9 kB, measured 1305.11 kB. Budget
+    // raised to 1320 (measured value + ~14.9 kB headroom) — a one-time signed
+    // adjustment for the HD runtime, not a precedent.
+    chunkSizeWarningLimit: 1320,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
