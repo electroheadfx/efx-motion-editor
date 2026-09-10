@@ -60,6 +60,8 @@ function createHarness(tool: 'paint' | 'erase' = 'paint') {
     lastPointerSampleTimeStamp: Number.NEGATIVE_INFINITY,
     lastAcceptedPointerSampleTimeStamp: Number.NEGATIVE_INFINITY,
     lastPointerInputTime: 0,
+    lastStrokeInputTime: 0,
+    lastStrokeHandoffTime: 0,
     lastNativePenInputTime: 0,
     nativePenInput: null,
     cursorX: -1,
@@ -311,17 +313,17 @@ describe('EfxPaintEngine pointer sample capture', () => {
     engine.strokeFinalizationScheduled = true
     engine.runStrokeFinalizationTurn = vi.fn()
 
-    now = 1_400
+    now = 1_200
     engine.onPointerMove(pointerEvent({ x: 40, y: 40, timeStamp: 40, buttons: 0, pointerType: 'mouse' }))
-    now = 1_800
+    now = 1_300
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.runStrokeFinalizationTurn).not.toHaveBeenCalled()
 
-    now = 1_899
+    now = 1_399
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.runStrokeFinalizationTurn).not.toHaveBeenCalled()
 
-    now = 1_900
+    now = 1_400
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.runStrokeFinalizationTurn).toHaveBeenCalledTimes(1)
   })
@@ -356,11 +358,11 @@ describe('EfxPaintEngine pointer sample capture', () => {
     expect(engine.runStrokeFinalizationTurn).not.toHaveBeenCalled()
     expect(engine.flushPendingStrokeFinalizations).not.toHaveBeenCalled()
 
-    now = 1_799
+    now = 1_699
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.runStrokeFinalizationTurn).not.toHaveBeenCalled()
 
-    now = 1_800
+    now = 1_700
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.runStrokeFinalizationTurn).toHaveBeenCalledTimes(1)
   })

@@ -156,11 +156,14 @@ export type PaintHistoryAvailability = {
 /** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
 export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
 
-// 52.1: 500ms → 1000ms. Finalization turns are ~47ms blocks that chain
-// back-to-back during any idle gap; the user's paint cadence (~900ms between
-// strokes) kept opening the 500ms window mid-session. 1s of real quiet before
-// the first turn keeps every inter-stroke gap clean.
-const STROKE_FINALIZATION_IDLE_MS = 1000
+// 52.1: 1000ms → 400ms (user UAT request, progressive rendering). The 48ms
+// time-bounded turn + state.drawing block keep render work out of the gesture;
+// the only exposure is one bounded slice at pen-down when the user resumes
+// mid-turn. 400ms opens the gate inside natural inter-stroke pauses
+// (~300-500ms) so a finished stroke renders before the next one starts — the
+// standalone's progressive feel — instead of bursting the whole backlog after
+// a full 1s stop (the 52.1 slow-stroke trace's all-at-once landing).
+const STROKE_FINALIZATION_IDLE_MS = 400
 // 52.1 (2nd-stroke freeze): natural drying is cosmetic evaporation; every
 // dryStep reads back + writes back the dry canvas region (a long stroke's bbox
 // is large) and blocks the thread for ~87ms on the GPU semaphore. The user's
