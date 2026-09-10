@@ -9,7 +9,6 @@ import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
-import { PhysicsPaintScriptApplyModeDialog } from './PhysicsPaintScriptApplyModeDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
@@ -267,9 +266,6 @@ export interface PhysicsPaintStudioViewProps {
   canvas: PhysicsPaintCanvasStackViewProps;
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
-  /** 52.1 quick: the Apply render-mode chooser (live vs background) — always
-   *  mounted so its focus restore rides the open→close flip; renders null closed. */
-  applyModeDialog?: ComponentProps<typeof PhysicsPaintScriptApplyModeDialog>;
   /** 50-UAT (modal redesign): the floating Photo Reference dialog — a movable
    *  dialog opened from the strip camera icon (Play Script dialog pattern). */
   referenceDialog?: ComponentProps<typeof PhysicsPaintPhotoReferenceDialog> | null;
@@ -289,7 +285,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, applyModeDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
   return (
     <main class="demo-shell">
       <section
@@ -307,8 +303,8 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               the engine canvas stays mounted underneath (D-01 lock). */}
           {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
           {referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}
-          {/* 52.1 quick B: the background-apply pill lives INSIDE the canvas
-              region (position:relative, no overflow clip — the canvas-toast
+          {/* 52.1 quick B: the apply pill lives INSIDE the canvas region
+              (position:relative, no overflow clip — the canvas-toast
               pattern). It previously rendered inside the workflow strip, whose
               overflow-y:hidden clipped it away: the pill never appeared. */}
           <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
@@ -321,8 +317,6 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         />
 
         <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
-
-        {applyModeDialog ? <PhysicsPaintScriptApplyModeDialog {...applyModeDialog} /> : null}
 
         {referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
 
@@ -346,10 +340,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
 
 /**
  * 52.1 quick B: apply progress pill — floats centered over the canvas
- * region's bottom edge (just above the workflow strip) for the whole apply,
- * in both render modes (live: progressive paint + progress; background:
- * frozen canvas + progress). It owns its applyProgress subscription so
- * per-completion ticks re-render only this pill, never the Studio view.
+ * region's bottom edge (just above the workflow strip) for the whole apply:
+ * progressive live paint plus per-brush progress. It owns its applyProgress
+ * subscription so per-completion ticks re-render only this pill, never the
+ * Studio view.
  */
 function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
   const applyProgress = rotoScript?.applyProgress.value ?? null;

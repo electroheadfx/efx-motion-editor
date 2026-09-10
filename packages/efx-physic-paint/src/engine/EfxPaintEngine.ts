@@ -345,7 +345,6 @@ export class EfxPaintEngine {
   // the whole canvas every frame — the sustained full-canvas upload churn that
   // killed the WKWebView GPU process.
   private displayCompositeDirty = true
-  private displayCompositeSuppressed = false
   private lastDisplayCompositeTime = 0
   private lastCursorRect: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPreviewBbox: { x0: number; y0: number; x1: number; y1: number } | null = null
@@ -1680,43 +1679,6 @@ export class EfxPaintEngine {
     if (mode) this.requestRender()
   }
 
-  /**
-   * Freeze/unfreeze the visible display composite while the stroke drain keeps
-   * running (background script-apply: strokes commit offscreen, then the final
-   * frame lands at once on release). Unlike animation mode this does NOT skip
-   * the drain or the async preview-background guards — it only holds back the
-   * per-stroke canvas updates.
-   *
-   * The freeze must cover the DRY canvas, not just the display composite: the
-   * drain force-dries every completed stroke straight into the dry canvas
-   * (browser-composited), which the render()-gate never touched. Stamping the
-   * visible stack (preview base + dry) into the display canvas alone is NOT a
-   * freeze: the stamp preserves alpha, so wherever the pre-apply frame is
-   * unpainted the cover is transparent and the live dry writes show through —
-   * suppressed applies still painted strokes mid-run. On suppress we stamp
-   * the cover AND hide the dry canvas from the browser compositor
-   * (visibility, not display: the dry canvas is position:relative and owns
-   * the stack's layout box). Wet is contractually empty at apply start (the
-   * mutation lock guarantees no active stroke), so previewBase+dry
-   * reproduces the pre-apply composite exactly. On release we restore the
-   * dry canvas and the drain's displayCompositeDirty flag makes the next
-   * compositeDisplayNow clear the cover for the single final reveal.
-   */
-  setDisplayCompositeSuppressed(suppressed: boolean): void {
-    if (this.displayCompositeSuppressed === suppressed) return
-    this.displayCompositeSuppressed = suppressed
-    if (suppressed) {
-      const displayCtx = this.dualCanvas.displayCtx
-      displayCtx.clearRect(0, 0, this.width, this.height)
-      displayCtx.drawImage(this.dualCanvas.previewBaseCanvas, 0, 0)
-      displayCtx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
-      this.dualCanvas.dryCanvas.style.visibility = 'hidden'
-      return
-    }
-    this.dualCanvas.dryCanvas.style.visibility = ''
-    this.requestRender()
-  }
-
   /** Render strokes up to specified point counts — used by progressive playback consumers. */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
     this.requestRender()
@@ -1751,19 +1713,6 @@ export class EfxPaintEngine {
     // In animation mode, skip compositing — AnimationPlayer controls rendering
     if (this.animationMode) {
       this.rafId = requestAnimationFrame(() => this.render())
-      return
-    }
-
-    // Background script-apply: the canvas freezes at its pre-apply state while
-    // the drain below keeps finalizing the scripted burst. Loop pacing mirrors
-    // the normal tail so the queue never starves while suppressed.
-    if (this.displayCompositeSuppressed) {
-      this.runScheduledStrokeFinalizationFrame()
-      if (this.shouldKeepRendering()) {
-        this.rafId = requestAnimationFrame(() => this.render())
-      } else {
-        this.rafId = 0
-      }
       return
     }
 
