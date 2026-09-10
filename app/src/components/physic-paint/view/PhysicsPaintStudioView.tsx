@@ -9,6 +9,7 @@ import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
+import { PhysicsPaintScriptApplyModeDialog } from './PhysicsPaintScriptApplyModeDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
@@ -265,6 +266,9 @@ export interface PhysicsPaintStudioViewProps {
   canvas: PhysicsPaintCanvasStackViewProps;
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
+  /** 52.1 quick: the Apply render-mode chooser (live vs background) — always
+   *  mounted so its focus restore rides the open→close flip; renders null closed. */
+  applyModeDialog?: ComponentProps<typeof PhysicsPaintScriptApplyModeDialog>;
   /** 50-UAT (modal redesign): the floating Photo Reference dialog — a movable
    *  dialog opened from the strip camera icon (Play Script dialog pattern). */
   referenceDialog?: ComponentProps<typeof PhysicsPaintPhotoReferenceDialog> | null;
@@ -284,7 +288,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, applyModeDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
   return (
     <main class="demo-shell">
       <section
@@ -311,6 +315,8 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         />
 
         <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
+
+        {applyModeDialog ? <PhysicsPaintScriptApplyModeDialog {...applyModeDialog} /> : null}
 
         {referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
 

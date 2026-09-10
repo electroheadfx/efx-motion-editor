@@ -70,6 +70,9 @@ export interface RecordedStrokeGroup {
   continuations?: readonly Readonly<PaintStroke>[];
 }
 
+/** Apply render pacing: live animates stroke by stroke in the canvas; background enqueues the whole burst up front (engine scripted-coalescing drain) with the display composite frozen until the final frame. */
+export type RotoScriptApplyMode = 'live' | 'background';
+
 export interface RotoScriptEnginePort {
   getStrokes: () => PaintStroke[];
   getStrokeCount?: () => number;
@@ -77,6 +80,8 @@ export interface RotoScriptEnginePort {
   enqueueRecordedStroke: (group: Readonly<RecordedStrokeGroup>) => number;
   flushPendingStrokeFinalizations?: () => void;
   setInputLocked: (locked: boolean) => void;
+  /** Background apply only: hold back per-stroke canvas updates while physics drains. */
+  setDisplayCompositeSuppressed?: (suppressed: boolean) => void;
 }
 
 export interface RotoScriptPersistenceCapture {
@@ -117,7 +122,7 @@ export interface RotoScriptClipboardController {
   copiedAppFrame: ReadonlySignal<number | null>;
   copiedStrokeCount: ReadonlySignal<number>;
   applying: ReadonlySignal<boolean>;
-  applyProgress: ReadonlySignal<{ completed: number; total: number } | null>;
+  applyProgress: ReadonlySignal<{ completed: number; total: number; mode: RotoScriptApplyMode } | null>;
   status: Signal<string | null>;
   error: Signal<RotoScriptOperationError | null>;
   availability: ReadonlySignal<RotoScriptActionAvailability>;
@@ -126,9 +131,9 @@ export interface RotoScriptClipboardController {
   captureScriptForPersistence: () => Promise<RotoScriptPersistenceCapture | null>;
   replaceClipboardFromPersisted: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => RotoScriptClipboardReplacementOutcome;
   prepareScriptLoadAndApply: () => PreparedRotoScriptLoadAndApply | null;
-  applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
+  applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply, mode?: RotoScriptApplyMode) => Promise<boolean>;
   cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
-  applyScript: () => Promise<boolean>;
+  applyScript: (mode?: RotoScriptApplyMode) => Promise<boolean>;
   discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
   updateEngine: (engine: RotoScriptEnginePort | null) => void;
@@ -148,6 +153,7 @@ interface ActiveApplyOperation {
   id: number;
   engine: RotoScriptEnginePort;
   launchGeneration: number;
+  mode: RotoScriptApplyMode;
   script: RotoPaintScript;
   destinationKeyId: string;
   destinationAppFrame: number;
@@ -204,7 +210,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   const hasCopiedScript = computed(() => clipboard.value !== null);
   const copiedAppFrame = computed(() => clipboard.value?.sourceFrame ?? null);
   const copiedStrokeCount = computed(() => clipboard.value?.brushes.length ?? 0);
-  const applyProgressState = signal<{ completed: number; total: number } | null>(null);
+  const applyProgressState = signal<{ completed: number; total: number; mode: RotoScriptApplyMode } | null>(null);
   const applying = computed(() => applyProgressState.value !== null);
   const applyProgress = computed(() => applyProgressState.value);
   const status = signal<string | null>(null);
@@ -517,13 +523,13 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     releasePreparedScriptLoadAndApply(preparedScriptLoadAndApply);
   }
 
-  function applyPreparedScript(preparation: PreparedRotoScriptLoadAndApply): Promise<boolean> {
+  function applyPreparedScript(preparation: PreparedRotoScriptLoadAndApply, mode: RotoScriptApplyMode = 'live'): Promise<boolean> {
     const activePreparation = preparedScriptLoadAndApply;
     if (!activePreparation || activePreparation !== preparation) return Promise.resolve(false);
     const valid = isPreparedScriptLoadAndApplyValid(activePreparation);
     releasePreparedScriptLoadAndApply(activePreparation);
     if (!valid) return Promise.resolve(false);
-    return applyScript();
+    return applyScript(mode);
   }
 
   function publishApplyStatus(operation: ActiveApplyOperation, terminalStatus: string): void {
@@ -534,6 +540,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (activeApply !== operation || operation.finishing) return;
     operation.finishing = true;
     const complete = async () => {
+      // Background mode reveal: whatever the outcome, unfreeze the canvas so the
+      // drained strokes land as one final composite (same end state as live).
+      if (operation.mode === 'background') operation.engine.setDisplayCompositeSuppressed?.(false);
       let applied = success && !operation.cancelled;
       try {
         if (applied) await ports.flushSourcePublication?.(operation.destinationAppFrame);
@@ -620,7 +629,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
           : 'Apply Script could not enqueue its first brush',
         cause,
       );
-      finishApply(operation, false);
+      // A background burst can leave earlier brushes in flight; their completions
+      // close the operation instead of finishing past them. Live pacing always
+      // arrives here with nothing in flight, so it finishes immediately as before.
+      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
     }
   }
 
@@ -631,7 +643,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     error.value = null;
   }
 
-  async function applyScript(): Promise<boolean> {
+  async function applyScript(mode: RotoScriptApplyMode = 'live'): Promise<boolean> {
     if (disposed || disposalRequested || !availability.value.canApply) return false;
     const engine = engineState.peek();
     const script = clipboard.value;
@@ -675,8 +687,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       return false;
     }
 
-    applyProgressState.value = { completed: 0, total: script.brushes.length };
+    applyProgressState.value = { completed: 0, total: script.brushes.length, mode };
     status.value = `Applying 0/${script.brushes.length}`;
+    // Background mode freezes the visible canvas BEFORE the first enqueue so no
+    // per-stroke composite can land; finishApply releases it for the final reveal.
+    if (mode === 'background') engine.setDisplayCompositeSuppressed?.(true);
     return new Promise((resolve) => {
       let settleOperation = () => {};
       const settled = new Promise<void>((settle) => { settleOperation = settle; });
@@ -684,6 +699,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         id: acceptedEngineGeneration,
         engine,
         launchGeneration: acceptedLaunchGeneration,
+        mode,
         script,
         destinationKeyId: target.keyId,
         destinationAppFrame: target.appFrame,
@@ -702,7 +718,22 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         resolve,
       };
       activeApply = operation;
-      enqueueNextBrush(operation);
+      if (mode === 'background') {
+        // Enqueue the whole burst up front: the engine's scripted-stroke
+        // coalescing (allScripted → bounded multi-stroke flush turns) then drains
+        // the queue without the live path's per-brush completion round-trips.
+        // The loop stops on invalidation/failure via enqueueNextBrush's own guards.
+        while (
+          activeApply === operation
+          && !operation.cancelled
+          && !operation.failure
+          && operation.nextBrushIndex < operation.script.brushes.length
+        ) {
+          enqueueNextBrush(operation);
+        }
+      } else {
+        enqueueNextBrush(operation);
+      }
     });
   }
 
@@ -716,9 +747,18 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       && !operation.consumedMutationIds.has(mutation.mutationId)) {
       operation.consumedMutationIds.add(mutation.mutationId);
       operation.completed += 1;
-      applyProgressState.value = { completed: operation.completed, total: operation.script.brushes.length };
+      applyProgressState.value = { completed: operation.completed, total: operation.script.brushes.length, mode: operation.mode };
       if (!operation.cancelled && operation.publishUi && launchGeneration === operation.launchGeneration) {
         status.value = `Applying ${operation.completed}/${operation.script.brushes.length}`;
+      }
+      if (operation.mode === 'background') {
+        // Every brush was enqueued up front — finish once all expected mutations
+        // consumed. This also closes mid-burst invalidation/enqueue failures:
+        // their in-flight completions still land here and end the operation.
+        if (operation.consumedMutationIds.size === operation.expectedMutationIds.size) {
+          finishApply(operation, !operation.cancelled && !operation.failure && operation.completed === operation.script.brushes.length);
+        }
+        return;
       }
       queueMicrotask(() => enqueueNextBrush(operation));
       return;

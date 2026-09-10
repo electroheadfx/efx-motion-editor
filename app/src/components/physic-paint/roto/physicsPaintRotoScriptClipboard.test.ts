@@ -43,6 +43,7 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
       return nextMutationId++;
     }),
     setInputLocked: vi.fn((locked: boolean) => locks.push(locked)),
+    setDisplayCompositeSuppressed: vi.fn(),
   };
   const onFirstAcceptedBrush = vi.fn();
   let prepareTarget = async (current: RotoScriptSourceSnapshot): Promise<RotoScriptPhysicalTarget | null> =>
@@ -414,17 +415,17 @@ describe('Roto script clipboard controller', () => {
     const firstApply = test.controller.applyScript();
     await flushMicrotasks();
     expect(test.controller.applying.value).toBe(true);
-    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'live' });
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
     test.controller.observeCompletedMutation(test.engine, completion(999));
     expect(test.controller.status.value).toBe('Applying 0/2');
-    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'live' });
     test.controller.observeCompletedMutation(test.engine, completion(100));
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await Promise.resolve();
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
     expect(test.controller.status.value).toBe('Applying 1/2');
-    expect(test.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
+    expect(test.controller.applyProgress.value).toEqual({ completed: 1, total: 2, mode: 'live' });
     test.controller.observeCompletedMutation(test.engine, completion(101));
     await expect(firstApply).resolves.toBe(true);
     expect(test.controller.status.value).toBe('Applied 2');
@@ -503,9 +504,9 @@ describe('Roto script clipboard controller', () => {
     await flushMicrotasks();
     cancelled.controller.cancelApply();
     expect(cancelled.controller.applying.value).toBe(true);
-    expect(cancelled.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(cancelled.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'live' });
     cancelled.controller.observeCompletedMutation(cancelled.engine, completion(100));
-    expect(cancelled.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
+    expect(cancelled.controller.applyProgress.value).toEqual({ completed: 1, total: 2, mode: 'live' });
     await expect(cancelledApply).resolves.toBe(false);
     expect(cancelled.controller.applying.value).toBe(false);
     expect(cancelled.controller.applyProgress.value).toBeNull();
@@ -734,9 +735,9 @@ describe('Roto script clipboard controller', () => {
     await flushMicrotasks();
 
     test.controller.updateEngine(replacement);
-    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'live' });
     test.controller.observeCompletedMutation(replacement, completion(100));
-    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'live' });
     test.controller.observeCompletedMutation(test.engine, completion(100));
 
     await expect(applying).resolves.toBe(false);
@@ -841,5 +842,96 @@ describe('Roto script clipboard discard availability port (36.15-07)', () => {
     expect(typeof availability.canApply).toBe('boolean');
     expect(availability.copyDisabledReason === null || typeof availability.copyDisabledReason === 'string').toBe(true);
     expect(availability.applyDisabledReason === null || typeof availability.applyDisabledReason === 'string').toBe(true);
+  });
+
+  // 52.1 quick — Apply render modes: background enqueues the burst up front
+  // (the engine's scripted-coalescing drain then paces it) behind a frozen
+  // canvas; live keeps the per-brush pacing and never touches suppression.
+  describe('apply render modes', () => {
+    it('background mode enqueues the whole burst up front and reveals only at the end', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+
+      const applying = test.controller.applyScript('background');
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(2);
+      expect(test.engine.setDisplayCompositeSuppressed).toHaveBeenNthCalledWith(1, true);
+      expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'background' });
+      expect(test.controller.getAcceptedTarget(test.engine, 100)?.publishPixels).toBe(false);
+      expect(test.controller.getAcceptedTarget(test.engine, 101)?.publishPixels).toBe(true);
+
+      let resolved: boolean | null = null;
+      void applying.then((value) => { resolved = value; });
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+      await flushMicrotasks();
+      expect(resolved).toBeNull();
+      expect(test.controller.applyProgress.value).toEqual({ completed: 1, total: 2, mode: 'background' });
+      expect(test.controller.status.value).toBe('Applying 1/2');
+
+      test.controller.observeCompletedMutation(test.engine, completion(101));
+      await expect(applying).resolves.toBe(true);
+      expect(resolved).toBe(true);
+      expect(test.controller.status.value).toBe('Applied 2');
+      expect(test.controller.applyProgress.value).toBeNull();
+      expect(test.engine.setDisplayCompositeSuppressed).toHaveBeenLastCalledWith(false);
+    });
+
+    it('live mode (default) keeps per-brush pacing and never suppresses the display', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+
+      const applying = test.controller.applyScript();
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(1);
+      expect(test.engine.setDisplayCompositeSuppressed).not.toHaveBeenCalled();
+      expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2, mode: 'live' });
+
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(2);
+      test.controller.observeCompletedMutation(test.engine, completion(101));
+      await expect(applying).resolves.toBe(true);
+      expect(test.engine.setDisplayCompositeSuppressed).not.toHaveBeenCalled();
+    });
+
+    it('background mode waits out the in-flight burst on cancel and still releases the display', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+
+      const applying = test.controller.applyScript('background');
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(2);
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+      test.controller.cancelApply();
+      test.controller.observeCompletedMutation(test.engine, completion(101));
+
+      await expect(applying).resolves.toBe(false);
+      expect(test.controller.error.value?.code).toBe('apply-cancelled');
+      expect(test.engine.setDisplayCompositeSuppressed).toHaveBeenLastCalledWith(false);
+      expect(test.controller.applyProgress.value).toBeNull();
+    });
+
+    it('background mode closes as failed after the in-flight brushes drain when an enqueue throws mid-burst', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+      test.engine.enqueueRecordedStroke.mockImplementationOnce((group) => {
+        test.submitted.push(group);
+        return 100;
+      }).mockImplementationOnce(() => { throw new Error('burst failure'); });
+
+      const applying = test.controller.applyScript('background');
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(1);
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+
+      await expect(applying).resolves.toBe(false);
+      expect(test.controller.error.value?.code).toBe('apply-enqueue-failed');
+      expect(test.controller.error.value?.cause).toBe('burst failure');
+      expect(test.engine.setDisplayCompositeSuppressed).toHaveBeenLastCalledWith(false);
+    });
   });
 });

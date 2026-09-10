@@ -120,7 +120,7 @@ import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkf
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
-import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import type { RotoScriptApplyMode, RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
@@ -1120,15 +1120,38 @@ export function PhysicsPaintStudio() {
       preservedGroup ?? chooseCursorRelativeLinkedGroup(linkedGroups, cursorFrame)
     )?.loopId ?? null;
   }, [rotoLoopClips, rotoScriptLibrary]);
+  // 52.1 quick: every Scripts-panel Apply first floats the render-mode chooser
+  // (live vs background); the pending promise resolves with the pick and null
+  // on dismiss. The dialog opens BEFORE prepareScriptLoadAndApply so a dismiss
+  // never begins an operation/lock.
+  const applyRenderModeDialogOpen = useSignal(false);
+  const applyRenderModeResolverRef = useRef<((mode: RotoScriptApplyMode | null) => void) | null>(null);
+  const requestApplyRenderMode = useCallback((): Promise<RotoScriptApplyMode | null> => new Promise((resolve) => {
+    // Re-entry (a second Apply click while the chooser floats): settle the stale
+    // waiter as dismissed so its apply aborts, then own the dialog.
+    applyRenderModeResolverRef.current?.(null);
+    applyRenderModeResolverRef.current = resolve;
+    applyRenderModeDialogOpen.value = true;
+  }), []);
+  const settleApplyRenderMode = useCallback((mode: RotoScriptApplyMode | null) => {
+    const resolver = applyRenderModeResolverRef.current;
+    applyRenderModeResolverRef.current = null;
+    applyRenderModeDialogOpen.value = false;
+    resolver?.(mode);
+  }, []);
+  const handleApplyRenderModeChoose = useCallback((mode: RotoScriptApplyMode) => settleApplyRenderMode(mode), [settleApplyRenderMode]);
+  const handleApplyRenderModeDismiss = useCallback(() => settleApplyRenderMode(null), [settleApplyRenderMode]);
   const handleSelectedScriptLoadAndApply = useCallback(async () => {
     const selectedId = rotoScriptLibrary.selectedId.peek();
     if (!selectedId) return;
+    const mode = await requestApplyRenderMode();
+    if (!mode) return;
     const preparation = rotoScript.prepareScriptLoadAndApply();
     if (!preparation) return;
     try {
       const loaded = await rotoScriptLibrary.activateAndLoad(selectedId, preparation);
       if (!loaded) return;
-      const applied = await rotoScript.applyPreparedScript(preparation);
+      const applied = await rotoScript.applyPreparedScript(preparation, mode);
       if (applied) setLastError(null);
       else {
         const message = rotoScript.error.peek()?.message;
@@ -1137,19 +1160,22 @@ export function PhysicsPaintStudio() {
     } finally {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
-  }, [rotoScript, rotoScriptLibrary]);
+  }, [rotoScript, rotoScriptLibrary, requestApplyRenderMode]);
   // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
   // useCallbacks wired into the workflow memo (the Tools popover Actions
   // section). Bodies moved verbatim from the rightPanel scripts props.
   const handleApplyScript = useCallback(() => {
-    void rotoScript.applyScript().then((success) => {
+    void (async () => {
+      const mode = await requestApplyRenderMode();
+      if (!mode) return;
+      const success = await rotoScript.applyScript(mode);
       if (success) setLastError(null);
       else {
         const message = rotoScript.error.peek()?.message;
         if (message) setLastError(message);
       }
-    });
-  }, [rotoScript, setLastError]);
+    })();
+  }, [rotoScript, setLastError, requestApplyRenderMode]);
   const handleDiscardScript = useCallback(() => {
     rotoScript.discardScript();
     setLastError(null);
@@ -3301,6 +3327,11 @@ export function PhysicsPaintStudio() {
     brushColor: settings.color,
     returnFocusRef: playButtonRef,
   }));
+  const applyModeDialog = {
+    open: applyRenderModeDialogOpen.value,
+    onChoose: handleApplyRenderModeChoose,
+    onDismiss: handleApplyRenderModeDismiss,
+  };
   const canvasEngineReadyImplRef = useRef<(readyEngine: EfxPaintEngine) => void>(() => {});
   canvasEngineReadyImplRef.current = (readyEngine) => {
     readyEngine.setHistoryAvailabilityListener((availability) => {
@@ -4201,6 +4232,7 @@ export function PhysicsPaintStudio() {
     canvas: canvasStack,
     rightPanel,
     playScriptDialog,
+    applyModeDialog,
     referenceDialog,
     scriptPickerDialog,
     workflow: {

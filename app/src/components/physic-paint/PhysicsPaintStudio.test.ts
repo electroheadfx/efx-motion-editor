@@ -53,7 +53,7 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('useRotoScriptLibraryController');
     expect(studio).toContain('useRotoPlayScriptController');
     expect(studio).toContain('rotoCachedPlayback');
-    expect(studio).toContain('applyPreparedScript(preparation)');
+    expect(studio).toContain('applyPreparedScript(preparation, mode)');
     expect(studio).toContain('activateAndLoad(selectedId, preparation)');
     expect(studio).not.toContain('renderFromStrokes');
   });

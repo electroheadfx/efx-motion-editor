@@ -345,6 +345,7 @@ export class EfxPaintEngine {
   // the whole canvas every frame — the sustained full-canvas upload churn that
   // killed the WKWebView GPU process.
   private displayCompositeDirty = true
+  private displayCompositeSuppressed = false
   private lastDisplayCompositeTime = 0
   private lastCursorRect: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPreviewBbox: { x0: number; y0: number; x1: number; y1: number } | null = null
@@ -1679,6 +1680,21 @@ export class EfxPaintEngine {
     if (mode) this.requestRender()
   }
 
+  /**
+   * Freeze/unfreeze the visible display composite while the stroke drain keeps
+   * running (background script-apply: strokes commit offscreen, then the final
+   * frame lands at once on release). Unlike animation mode this does NOT skip
+   * the drain or the async preview-background guards — it only holds back the
+   * per-stroke canvas updates.
+   */
+  setDisplayCompositeSuppressed(suppressed: boolean): void {
+    if (this.displayCompositeSuppressed === suppressed) return
+    this.displayCompositeSuppressed = suppressed
+    // On release the completed strokes have already set displayCompositeDirty,
+    // so the next frame publishes one final composite.
+    if (!suppressed) this.requestRender()
+  }
+
   /** Render strokes up to specified point counts — used by progressive playback consumers. */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
     this.requestRender()
@@ -1713,6 +1729,19 @@ export class EfxPaintEngine {
     // In animation mode, skip compositing — AnimationPlayer controls rendering
     if (this.animationMode) {
       this.rafId = requestAnimationFrame(() => this.render())
+      return
+    }
+
+    // Background script-apply: the canvas freezes at its pre-apply state while
+    // the drain below keeps finalizing the scripted burst. Loop pacing mirrors
+    // the normal tail so the queue never starves while suppressed.
+    if (this.displayCompositeSuppressed) {
+      this.runScheduledStrokeFinalizationFrame()
+      if (this.shouldKeepRendering()) {
+        this.rafId = requestAnimationFrame(() => this.render())
+      } else {
+        this.rafId = 0
+      }
       return
     }
 
