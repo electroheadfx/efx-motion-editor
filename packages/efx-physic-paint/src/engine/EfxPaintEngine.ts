@@ -1702,11 +1702,13 @@ export class EfxPaintEngine {
   setDisplayCompositeSuppressed(suppressed: boolean): void {
     if (this.displayCompositeSuppressed === suppressed) return
     this.displayCompositeSuppressed = suppressed
+    console.log('[bg52] suppress', suppressed, 'queue', this.pendingStrokeFinalizations.length, 't', Math.round(performance.now()))
     if (suppressed) {
       const displayCtx = this.dualCanvas.displayCtx
       displayCtx.clearRect(0, 0, this.width, this.height)
       displayCtx.drawImage(this.dualCanvas.previewBaseCanvas, 0, 0)
       displayCtx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+      console.log('[bg52] cover stamped', 't', Math.round(performance.now()))
       return
     }
     this.requestRender()
@@ -1873,6 +1875,7 @@ export class EfxPaintEngine {
 
   /** Full wet composite into the display, keeping the scratch an exact mirror. */
   private compositeDisplayNow(): void {
+    console.log('[bg52] composite', 'suppressed', this.displayCompositeSuppressed, 'caller', (new Error().stack ?? '').split('\n').slice(2, 4).map((line) => line.trim()).join(' <- '), 't', Math.round(performance.now()))
     const displayCtx = this.dualCanvas.displayCtx
     const scratch = this.wetDisplayScratch
     // The scratch must mirror the composite EXACTLY: stale wet pixels from a
@@ -2100,7 +2103,10 @@ export class EfxPaintEngine {
       this.state.drawing ||
       performance.now() - lastInteractionTime < STROKE_FINALIZATION_IDLE_MS ||
       this.hasPendingInput()
-    ) return
+    ) {
+      console.log('[bg52] drain-gated', 'drawing', this.state.drawing, 'idleWait', Math.round(performance.now() - lastInteractionTime), 'queue', this.pendingStrokeFinalizations.length, 't', Math.round(performance.now()))
+      return
+    }
     this.strokeFinalizationScheduled = false
     // Layer 3 coalescing is now SCRIPTED-ONLY: a scripted burst (Roto script
     // apply enqueueing many strokes inside the inactivity window) drains in one
@@ -2224,6 +2230,7 @@ export class EfxPaintEngine {
     // single canvas update (the standalone's stroke-group feel).
     this.displayCompositeDirty = true
     this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
+    console.log('[bg52] stroke-complete', pending.mutationId, 'queue', this.pendingStrokeFinalizations.length, 'suppressed', this.displayCompositeSuppressed, 't', Math.round(performance.now()))
     const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
     if (historyEntry) historyEntry.deferred = null
     this.notifyCompletedMutation(pending.tool, pending.mutationId)

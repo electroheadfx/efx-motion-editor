@@ -3351,6 +3351,7 @@ export function PhysicsPaintStudio() {
     const { kind, isEmpty, mutationId } = mutation;
     rotoMoveHistory.observePaintMutation(mutationId, kind);
     const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
+    console.log('[bg52] studio-mutation', kind, mutationId, 'publishPixels', acceptedTarget?.publishPixels ?? '-', 'isEmpty', isEmpty, 't', Math.round(performance.now()));
     const publicationIdentity = acceptedTarget?.publicationIdentity;
     const canPublishCapturedApply = Boolean(publicationIdentity);
     const canPublishCurrentEngine = mutationEngine === engineRef.current
@@ -3417,6 +3418,7 @@ export function PhysicsPaintStudio() {
         ? capturedBaseAppFrame === appFrame ? capturedBase : null
         : cachedBaseAppFrame === appFrame ? cachedRotoRepaintBaseFrame : null;
       const snapshotStartedAt = profilePerformance ? performance.now() : 0;
+      console.log('[bg52] capture-staged', 'mutationId', mutationId, 't', Math.round(performance.now()));
       const capture = rotoPersistence.captureLivePixels({
         layerId: publicationIdentity?.layerId ?? currentLaunch.layerId,
         operationId: publicationIdentity?.operationId,
@@ -3441,6 +3443,7 @@ export function PhysicsPaintStudio() {
           true,
         );
       }
+      console.log('[bg52] capture-resolved', 'mutationId', mutationId, 't', Math.round(performance.now()));
     })().catch((error) => {
       console.error('[PhysicsPaintStudio] Automatic Roto pixel cache failed', error);
     }).finally(() => {

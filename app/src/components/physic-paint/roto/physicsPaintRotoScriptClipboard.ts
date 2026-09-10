@@ -561,6 +561,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const complete = async () => {
       // Background mode reveal: whatever the outcome, unfreeze the canvas so the
       // drained strokes land as one final composite (same end state as live).
+      console.log('[bg52] finish', success, 'completed', operation.completed, 't', Math.round(performance.now()));
       if (operation.mode === 'background') operation.engine.setDisplayCompositeSuppressed?.(false);
       let applied = success && !operation.cancelled;
       try {
@@ -569,6 +570,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         applied = false;
         operation.failure = operationError('apply', 'apply-partial-failure', `Apply Script pixels could not be published after ${operation.completed} brushes`, cause);
       }
+      console.log('[bg52] publication-flushed', 't', Math.round(performance.now()));
       applied = applied && !operation.cancelled && launchGeneration === operation.launchGeneration && engineState.peek() === operation.engine;
       if (activeApply !== operation) return;
       activeApply = null;
@@ -702,6 +704,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
     applyProgressState.value = { completed: 0, total: script.brushes.length, mode };
     status.value = `Applying 0/${script.brushes.length}`;
+    console.log('[bg52] apply-start', mode, 'brushes', script.brushes.length, 't', Math.round(performance.now()));
     // Background mode freezes the visible canvas BEFORE the first enqueue so no
     // per-stroke composite can land; finishApply releases it for the final reveal.
     if (mode === 'background') engine.setDisplayCompositeSuppressed?.(true);
@@ -746,6 +749,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       ) {
         enqueueNextBrush(operation);
       }
+      console.log('[bg52] burst-enqueued', operation.nextBrushIndex, 't', Math.round(performance.now()));
     });
   }
 
@@ -760,6 +764,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       operation.consumedMutationIds.add(mutation.mutationId);
       operation.completed += 1;
       applyProgressState.value = { completed: operation.completed, total: operation.script.brushes.length, mode: operation.mode };
+      console.log('[bg52] progress', operation.completed, '/', operation.script.brushes.length, operation.mode, 't', Math.round(performance.now()));
       if (!operation.cancelled && operation.publishUi && launchGeneration === operation.launchGeneration) {
         status.value = `Applying ${operation.completed}/${operation.script.brushes.length}`;
       }
