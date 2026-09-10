@@ -345,14 +345,15 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
 }
 
 /**
- * 52.1 quick B: background-apply progress pill — floats centered over the
- * canvas region's bottom edge (just above the workflow strip) for the whole
- * background render. It owns its applyProgress subscription so per-completion
- * ticks re-render only this pill, never the Studio view.
+ * 52.1 quick B: apply progress pill — floats centered over the canvas
+ * region's bottom edge (just above the workflow strip) for the whole apply,
+ * in both render modes (live: progressive paint + progress; background:
+ * frozen canvas + progress). It owns its applyProgress subscription so
+ * per-completion ticks re-render only this pill, never the Studio view.
  */
 function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
   const applyProgress = rotoScript?.applyProgress.value ?? null;
-  if (applyProgress?.mode !== 'background') return null;
+  if (!applyProgress) return null;
   return (
     <div
       class="physics-paint-apply-progress"

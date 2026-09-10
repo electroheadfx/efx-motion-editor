@@ -1689,28 +1689,31 @@ export class EfxPaintEngine {
    *
    * The freeze must cover the DRY canvas, not just the display composite: the
    * drain force-dries every completed stroke straight into the dry canvas
-   * (zIndex 2, browser-composited), which the render()-gate never touched — so
-   * suppressed applies still painted strokes mid-run. On suppress we stamp the
-   * current visible stack (preview base + dry) into the display canvas
-   * (zIndex 3, above dry): the dry writes continue underneath, hidden by the
-   * opaque cover, and the canvas holds its exact pre-apply state. Wet is
-   * contractually empty at apply start (the mutation lock guarantees no active
-   * stroke), so previewBase+dry reproduces the pre-apply composite exactly.
-   * On release the drain's completions have set displayCompositeDirty, so the
-   * next compositeDisplayNow clears the cover for the single final reveal.
+   * (browser-composited), which the render()-gate never touched. Stamping the
+   * visible stack (preview base + dry) into the display canvas alone is NOT a
+   * freeze: the stamp preserves alpha, so wherever the pre-apply frame is
+   * unpainted the cover is transparent and the live dry writes show through —
+   * suppressed applies still painted strokes mid-run. On suppress we stamp
+   * the cover AND hide the dry canvas from the browser compositor
+   * (visibility, not display: the dry canvas is position:relative and owns
+   * the stack's layout box). Wet is contractually empty at apply start (the
+   * mutation lock guarantees no active stroke), so previewBase+dry
+   * reproduces the pre-apply composite exactly. On release we restore the
+   * dry canvas and the drain's displayCompositeDirty flag makes the next
+   * compositeDisplayNow clear the cover for the single final reveal.
    */
   setDisplayCompositeSuppressed(suppressed: boolean): void {
     if (this.displayCompositeSuppressed === suppressed) return
     this.displayCompositeSuppressed = suppressed
-    console.log('[bg52] suppress', suppressed, 'queue', this.pendingStrokeFinalizations.length, 't', Math.round(performance.now()))
     if (suppressed) {
       const displayCtx = this.dualCanvas.displayCtx
       displayCtx.clearRect(0, 0, this.width, this.height)
       displayCtx.drawImage(this.dualCanvas.previewBaseCanvas, 0, 0)
       displayCtx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
-      console.log('[bg52] cover stamped', 't', Math.round(performance.now()))
+      this.dualCanvas.dryCanvas.style.visibility = 'hidden'
       return
     }
+    this.dualCanvas.dryCanvas.style.visibility = ''
     this.requestRender()
   }
 
@@ -1875,7 +1878,6 @@ export class EfxPaintEngine {
 
   /** Full wet composite into the display, keeping the scratch an exact mirror. */
   private compositeDisplayNow(): void {
-    console.log('[bg52] composite', 'suppressed', this.displayCompositeSuppressed, 'caller', (new Error().stack ?? '').split('\n').slice(2, 4).map((line) => line.trim()).join(' <- '), 't', Math.round(performance.now()))
     const displayCtx = this.dualCanvas.displayCtx
     const scratch = this.wetDisplayScratch
     // The scratch must mirror the composite EXACTLY: stale wet pixels from a
@@ -2103,10 +2105,7 @@ export class EfxPaintEngine {
       this.state.drawing ||
       performance.now() - lastInteractionTime < STROKE_FINALIZATION_IDLE_MS ||
       this.hasPendingInput()
-    ) {
-      console.log('[bg52] drain-gated', 'drawing', this.state.drawing, 'idleWait', Math.round(performance.now() - lastInteractionTime), 'queue', this.pendingStrokeFinalizations.length, 't', Math.round(performance.now()))
-      return
-    }
+    ) return
     this.strokeFinalizationScheduled = false
     // Layer 3 coalescing is now SCRIPTED-ONLY: a scripted burst (Roto script
     // apply enqueueing many strokes inside the inactivity window) drains in one
@@ -2230,7 +2229,6 @@ export class EfxPaintEngine {
     // single canvas update (the standalone's stroke-group feel).
     this.displayCompositeDirty = true
     this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
-    console.log('[bg52] stroke-complete', pending.mutationId, 'queue', this.pendingStrokeFinalizations.length, 'suppressed', this.displayCompositeSuppressed, 't', Math.round(performance.now()))
     const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
     if (historyEntry) historyEntry.deferred = null
     this.notifyCompletedMutation(pending.tool, pending.mutationId)
