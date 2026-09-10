@@ -484,6 +484,14 @@ export class EfxPaintEngine {
   private lastNativePenInputTime: number = 0
   private lastPointerInputTime: number = 0
   private lastStrokeHandoffTime: number = 0
+  // Stroke-scoped input clock (pointer down/up/cancel + drawing moves only —
+  // hover excluded). The finalization drain gates on THIS, not the hover clock:
+  // gaps between strokes are full of hover, so a hover-inclusive clock never
+  // opens the idle window mid-session and the whole burst piles onto the last
+  // stroke — and hovering to WATCH the drain keeps pausing it, stretching the
+  // last stroke's finalization wall time by seconds. Drying and the base-draw
+  // train gate keep the hover-inclusive clock (conservative = correct there).
+  private lastStrokeInputTime: number = 0
   private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
   private readonly paperTextureScale: number
   private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
@@ -2034,7 +2042,7 @@ export class EfxPaintEngine {
 
   private runScheduledStrokeFinalizationFrame(): void {
     if (!this.strokeFinalizationScheduled || this.destroyed) return
-    const lastInteractionTime = Math.max(this.lastPointerInputTime, this.lastStrokeHandoffTime)
+    const lastInteractionTime = Math.max(this.lastStrokeInputTime, this.lastStrokeHandoffTime)
     if (
       this.state.drawing ||
       performance.now() - lastInteractionTime < STROKE_FINALIZATION_IDLE_MS ||
@@ -2590,6 +2598,7 @@ export class EfxPaintEngine {
     e.preventDefault()
     this.onInputActivity?.('down', e.pointerId)
     this.lastPointerInputTime = handlerStartedAt
+    this.lastStrokeInputTime = handlerStartedAt
     this.lastRenderActivityTime = performance.now()
     this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
     this.state.drawing = true
@@ -2611,6 +2620,7 @@ export class EfxPaintEngine {
     if (!this.state.drawing) return
     e.preventDefault()
     this.onInputActivity?.('move', e.pointerId)
+    this.lastStrokeInputTime = performance.now()
 
     // Handle coalesced events for smooth strokes
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : null
@@ -2635,6 +2645,7 @@ export class EfxPaintEngine {
     const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
     const mutationId = this.nextMutationId++
     this.lastPointerInputTime = performance.now()
+    this.lastStrokeInputTime = this.lastPointerInputTime
     this.lastRenderActivityTime = this.lastPointerInputTime
     const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : null
     if (coalesced && coalesced.length > 0) this.consumePointerSamples(coalesced)
@@ -2690,6 +2701,7 @@ export class EfxPaintEngine {
   private onPointerCancel(e: PointerEvent): void {
     this.onInputActivity?.('cancel', e.pointerId)
     if (!this.state.drawing) return
+    this.lastStrokeInputTime = performance.now()
     this.state.drawing = false
     this.previewStroke = null
     this.rawPts = []

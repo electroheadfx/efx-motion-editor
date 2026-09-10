@@ -45,6 +45,7 @@ function createHarness() {
     strokeFinalizationGeneration: 0,
     destroyed: false,
     lastPointerInputTime: 0,
+    lastStrokeInputTime: 0,
     lastStrokeHandoffTime: 0,
     activeMutationId: null,
     performanceListener: null,
@@ -233,6 +234,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.inputLocked = false
     engine.lastCompletedMutationId = null
     engine.lastPointerInputTime = 0
+    engine.lastStrokeInputTime = 0
     engine.rawPts = []
     engine.dualCanvas = {
       dryCanvas: {
@@ -596,6 +598,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.inputLocked = false
     engine.lastCompletedMutationId = null
     engine.lastPointerInputTime = 0
+    engine.lastStrokeInputTime = 0
     engine.rawPts = []
     engine.dualCanvas = {
       dryCanvas: {
@@ -621,6 +624,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     enqueue('brush-1')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
 
     engine.scheduleStrokeFinalization()
     now = 1_999
@@ -678,6 +682,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     enqueue('brush-1')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.scheduleStrokeFinalization()
 
     now = 1_400
@@ -685,6 +690,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.activeStrokeFinalization).toBeNull()
 
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     now = 2_399
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
@@ -705,6 +711,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-2', 'paint', 0, true)
     enqueue('brush-3', 'paint', 0, true)
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.scheduleStrokeFinalization()
 
     // The single idle rule: exactly ONE post-idle drain publishes the WHOLE
@@ -736,6 +743,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-5')
     enqueue('brush-6')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.scheduleStrokeFinalization()
 
     // The harness completes a stroke in 3 steps; the 12-step frame budget
@@ -759,6 +767,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     enqueue('brush-1')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.state.drawing = true
     engine.scheduleStrokeFinalization()
     now = 2_000
@@ -777,6 +786,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-1')
     enqueue('brush-2')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.state.drawing = true
     engine.scheduleStrokeFinalization()
     now = 2_000
