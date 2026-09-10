@@ -201,6 +201,34 @@ export function isPhysicsPaintProfilingEnabled(): boolean {
   return profilingEnabled();
 }
 
+// DEV-only rolling file sink: while profiling is enabled, flush a snapshot to
+// <appdata>/studio-perf-trace.json every 2s so a live run is read straight off
+// disk (no console copy/paste). One rolling file — self-cleaning.
+const PROFILE_TRACE_FILE = 'studio-perf-trace.json';
+
+export function startPhysicsPaintPerformanceFileSink(): () => void {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return () => {};
+  let inFlight = false;
+  const timer = window.setInterval(() => {
+    if (inFlight || !profilingEnabled()) return;
+    inFlight = true;
+    void (async () => {
+      try {
+        const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+        await writeTextFile(PROFILE_TRACE_FILE, JSON.stringify({
+          writtenAt: new Date().toISOString(),
+          ...snapshotPhysicsPaintPerformance(),
+        }, null, 2), { baseDir: BaseDirectory.AppData });
+      } catch {
+        // Browser fallback or fs unavailable — the console API remains the sink.
+      } finally {
+        inFlight = false;
+      }
+    })();
+  }, 2000);
+  return () => window.clearInterval(timer);
+}
+
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
   Object.defineProperty(window, '__EFX_PHYSICS_PAINT_PROFILE__', {
     configurable: true,

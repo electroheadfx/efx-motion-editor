@@ -107,7 +107,7 @@ import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanva
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
-import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
+import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, startPhysicsPaintPerformanceFileSink } from './performance/physicsPaintPerformanceTrace';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -377,6 +377,9 @@ export function PhysicsPaintStudio() {
   const recordEnginePerformance = (sample: PaintPerformanceSample) => {
     if (profilePerformance) recordPhysicsPaintPerformance(sample);
   };
+  // DEV: rolling perf-trace file sink (<appdata>/studio-perf-trace.json) — the
+  // interval no-ops unless profiling is enabled, so this is inert in normal use.
+  useEffect(() => startPhysicsPaintPerformanceFileSink(), []);
   const [isPlaying, setIsPlaying] = useState(false);
   // 38.1-D-01/D-08: the playback per-tick surface is signal-backed — written
   // by onStart/onFrame per tick and read ONLY via .peek() (statusMessage) or
