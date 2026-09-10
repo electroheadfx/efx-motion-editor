@@ -1681,6 +1681,7 @@ export class EfxPaintEngine {
 
   /** Render strokes up to specified point counts — used by progressive playback consumers. */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
+    console.log('[da52] renderPartialStrokes', strokeData.length, Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '))
     this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.resetReplaySurface(true)
@@ -2082,6 +2083,7 @@ export class EfxPaintEngine {
   }
 
   public flushPendingStrokeFinalizations(): void {
+    console.log('[da52] flush', this.pendingStrokeFinalizations.length, Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '))
     this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.runStrokeFinalizationTurn(true, Infinity, Infinity)
@@ -2791,6 +2793,7 @@ export class EfxPaintEngine {
   // ================================================================
 
   private redrawAll(): void {
+    console.log('[da52] redrawAll', this.allActions.length, Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '))
     this.resetReplaySurface()
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
