@@ -140,6 +140,8 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
           props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
           false,
         );
+    // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
+    console.warn('[52.1-refresh-dbg] studio monitor effect', { resolvedFrame, activeTrackId: props.activeTrackId, record: record?.cacheKey ?? null, drawnKey: drawnKeyRef.current });
     // Pending decode: the store returns null this tick. Keep the last drawn
     // frame — no flicker-to-blank; the next version-clock bump re-runs the
     // effect and draws the completed raster.

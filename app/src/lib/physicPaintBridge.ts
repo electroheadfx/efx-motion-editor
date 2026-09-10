@@ -442,6 +442,8 @@ async function applyPhysicPaintPayloadWithPublicationLease(
   try {
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
+      // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
+      console.warn('[52.1-refresh-dbg] parent apply-canvas', { operationId: payload.operationId, layerId: payload.layerId, startFrame: payload.startFrame });
       result = await physicPaintStore.applyCanvas(payload);
     } else if (payload.kind === 'update-roto-interpolation-settings') {
       const generatedFrames = await physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);

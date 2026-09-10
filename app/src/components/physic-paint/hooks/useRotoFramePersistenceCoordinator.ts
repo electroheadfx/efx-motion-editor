@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import { buildFrameBytesToken } from '../../../lib/webpBytes';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
@@ -396,6 +397,8 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // history are all deferred to the matching physical acknowledgement.
       return true;
     }
+    // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
+    console.warn('[52.1-refresh-dbg] child commit', { keyId: route.keyId, appFrame: renderedFrame.appFrame, contentRevision: route.contentRevision, token: buildFrameBytesToken(renderedFrame.bytes) });
     const accepted = {
       ...renderedFrame,
       keyId: route.keyId,
