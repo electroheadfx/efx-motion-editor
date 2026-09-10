@@ -18,6 +18,7 @@ import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
 import {setDebugReplayDiff} from './lib/physicPaintBridge';
+import {installPhysicPaintPerfTraceSink} from './lib/physicPaintPerfTraceSink';
 // 46 UAT debug hook: enable per-clause apply-payload rejection logging from the
 // console via window.__setDebugApplyPayloadValidation(true).
 (window as unknown as { __setDebugApplyPayloadValidation: (enabled: boolean) => void }).__setDebugApplyPayloadValidation = setDebugApplyPayloadValidation;
@@ -122,6 +123,9 @@ if (window.location.pathname === '/physics-paint') {
     // sibling bridge installs above; the discarded cleanup handle matches the
     // app-lifetime pattern.
     await installPhysicPaintFrameSyncListener();
+    // DEV-only: parent-side writer for the Studio's rolling perf-trace file
+    // (the child holds no fs:* capability — 49-04 Pitfall 3).
+    if (import.meta.env.DEV) await installPhysicPaintPerfTraceSink();
 
     // 41-03 (D-02): push revisioned audio-preview context updates to the EFX
     // Paint window on every main-editor audio change. Main window only — this
