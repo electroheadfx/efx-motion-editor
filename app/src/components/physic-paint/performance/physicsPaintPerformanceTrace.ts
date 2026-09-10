@@ -75,6 +75,12 @@ const CRITICAL_STAGES = new Set([
   'stroke-first-raster-publication',
   'stroke-finalization',
   'next-pointerdown-dispatch',
+  // TEMP-DIAG (52.1 slow-stroke): low-volume full-repaint signals — keep them
+  // eviction-proof and listed in recentCriticalSamples for the slow-stroke
+  // correlation timeline.
+  'redraw-all',
+  'flush-all',
+  'preview-base-apply',
 ]);
 const samples: PhysicsPaintPerformanceSample[] = [];
 const counters = new Map<PhysicsPaintPerformanceCounterName, number>();

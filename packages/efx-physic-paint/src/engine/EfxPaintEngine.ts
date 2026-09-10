@@ -977,6 +977,8 @@ export class EfxPaintEngine {
   }
 
   private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false, skipFullReplay = false): boolean {
+    const applyStartedAt = this.performanceListener ? performance.now() : 0
+    const applyBranch = explicit ? 'explicit' : 'refresh'
     if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
       if (explicit) this.inFlightExplicitPreviewBase = false
       return false
@@ -985,6 +987,7 @@ export class EfxPaintEngine {
       // Cache-hit apply landing mid-stroke: defer an explicit completion paint
       // (same as the async decode path), drop a plain refresh.
       if (explicit) this.pendingExplicitPreviewBase = { image, requestId, dataUrl: dataUrl ?? '', generation, appFrame }
+      this.recordPerformance('preview-base-apply', 'sync-cpu', applyStartedAt, { branch: applyBranch, outcome: 'deferred-drawing' })
       return false
     }
     if (explicit) this.inFlightExplicitPreviewBase = false
@@ -1007,10 +1010,12 @@ export class EfxPaintEngine {
       // already live over this same blank base, so only the base image FIELD
       // changes; previewBaseCtx stays correct and the texture uploads later at
       // the next genuine redraw (a real stop or navigation).
+      this.recordPerformance('preview-base-apply', 'sync-cpu', applyStartedAt, { branch: applyBranch, outcome: 'skipped-train' })
       return true
     }
     this.redrawPreviewBase()
     this.redrawAll()
+    this.recordPerformance('preview-base-apply', 'sync-cpu', applyStartedAt, { branch: applyBranch, outcome: 'full-replay' })
     return true
   }
 
@@ -1820,6 +1825,7 @@ export class EfxPaintEngine {
 
   /** Full wet composite into the display, keeping the scratch an exact mirror. */
   private compositeDisplayNow(): void {
+    const compositeStartedAt = this.performanceListener ? performance.now() : 0
     const displayCtx = this.dualCanvas.displayCtx
     const scratch = this.wetDisplayScratch
     // The scratch must mirror the composite EXACTLY: stale wet pixels from a
@@ -1836,6 +1842,7 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = 0
     this.lastPreviewBbox = null
     this.lastCursorRect = null
+    this.recordPerformance('display-composite', 'sync-cpu', compositeStartedAt)
   }
 
   /**
@@ -2077,11 +2084,14 @@ export class EfxPaintEngine {
   }
 
   public flushPendingStrokeFinalizations(): void {
+    const flushStartedAt = this.performanceListener ? performance.now() : 0
+    const queuedBeforeFlush = this.pendingStrokeFinalizations.length
     this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.runStrokeFinalizationTurn(true, Infinity, Infinity)
     }
     this.strokeFinalizationScheduled = false
+    this.recordPerformance('flush-all', 'sync-cpu', flushStartedAt, { branch: `queued:${queuedBeforeFlush}` })
   }
 
   private startNextStrokeFinalization(): ActiveStrokeFinalization | null {
@@ -2131,7 +2141,10 @@ export class EfxPaintEngine {
         continue
       }
       do {
+        const stepStartedAt = this.performanceListener ? performance.now() : 0
+        const phaseBeforeStep = active.phase
         this.stepInteractivePaintFinalization(active)
+        this.recordPerformance('finalize-step', 'sync-cpu', stepStartedAt, { branch: phaseBeforeStep, mutationId: active.pending.mutationId })
         steps++
       } while (flush && this.activeStrokeFinalization === active && steps < maxSteps)
       completedStrokes++
@@ -2781,6 +2794,7 @@ export class EfxPaintEngine {
   // ================================================================
 
   private redrawAll(): void {
+    const replayStartedAt = this.performanceListener ? performance.now() : 0
     this.resetReplaySurface()
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
@@ -2791,6 +2805,7 @@ export class EfxPaintEngine {
     }
 
     this.renderVisibleWetLayer()
+    this.recordPerformance('redraw-all', 'sync-cpu', replayStartedAt, { branch: `actions:${this.allActions.length}` })
   }
 
   private replayDiffusion(
