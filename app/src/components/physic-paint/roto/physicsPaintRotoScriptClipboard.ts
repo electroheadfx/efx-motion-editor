@@ -553,7 +553,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       );
     }
     const complete = async () => {
-      console.log('[da52] apply-finish', success, operation.completed, Date.now());
       let applied = success && !operation.cancelled;
       try {
         if (applied) await ports.flushSourcePublication?.(operation.destinationAppFrame);
@@ -650,7 +649,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   async function applyScript(): Promise<boolean> {
     if (disposed || disposalRequested || !availability.value.canApply) return false;
-    console.log('[da52] applyScript', Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '));
     const engine = engineState.peek();
     const script = clipboard.value;
     const source = sourceState.value;
@@ -721,7 +719,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         resolve,
       };
       activeApply = operation;
-      console.log('[da52] burst-start', operation.script.brushes.length, Date.now());
       // The whole burst enqueues up front: the engine's scripted-stroke
       // coalescing (allScripted → bounded multi-stroke flush turns) drains the
       // queue, so Apply paints in fast multi-stroke bursts instead of pacing
@@ -735,7 +732,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       ) {
         enqueueNextBrush(operation);
       }
-      console.log('[da52] burst-end', operation.nextBrushIndex, Date.now());
     });
   }
 

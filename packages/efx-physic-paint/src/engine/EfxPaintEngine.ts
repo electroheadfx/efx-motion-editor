@@ -98,6 +98,8 @@ type DeferredStrokeFinalization = {
   continuationFrames: number
   mutationId: number
   queuedAt: number
+  /** allActions entries this pending covers (1 primary + N zero-point continuations) — redrawAll skips that trailing span so queued strokes render only via the drain. */
+  actionCount: number
   /** Scripted strokes (enqueueRecordedStroke) coalesce into one drain; interactive strokes pace one step per frame. */
   isScripted: boolean
 }
@@ -1681,7 +1683,6 @@ export class EfxPaintEngine {
 
   /** Render strokes up to specified point counts — used by progressive playback consumers. */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
-    console.log('[da52] renderPartialStrokes', strokeData.length, Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '))
     this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.resetReplaySurface(true)
@@ -1960,6 +1961,7 @@ export class EfxPaintEngine {
       continuationFrames: continuations.reduce((total, continuation) => total + Math.max(0, Math.min(600, Math.trunc(continuation.diffusionFrames ?? 0))), 0),
       mutationId,
       queuedAt: performance.now(),
+      actionCount: actions.length,
       isScripted,
     }
 
@@ -2083,7 +2085,6 @@ export class EfxPaintEngine {
   }
 
   public flushPendingStrokeFinalizations(): void {
-    console.log('[da52] flush', this.pendingStrokeFinalizations.length, Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '))
     this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.runStrokeFinalizationTurn(true, Infinity, Infinity)
@@ -2793,12 +2794,24 @@ export class EfxPaintEngine {
   // ================================================================
 
   private redrawAll(): void {
-    console.log('[da52] redrawAll', this.allActions.length, Date.now(), new Error().stack?.split('\n').slice(1, 4).join(' <- '))
     this.resetReplaySurface()
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
-    for (const a of this.allActions) {
+    // Strokes still queued for finalization are rendered by the scheduled
+    // drain — replaying them here renders each queued stroke twice: a mid-burst
+    // preview-base apply (first-open scripted apply, [da52] trace) replayed
+    // the whole 35-stroke burst synchronously (~14s blocked, all-at-once), then
+    // the drain rendered it again live. The one in-flight stroke stays in the
+    // replay: the surface reset wipes its partial wet pixels, so skipping it
+    // would orphan its continuation state (pre-existing quirk, unchanged).
+    let queuedActions = 0
+    for (const pending of this.pendingStrokeFinalizations) queuedActions += pending.actionCount
+    if (this.activeStrokeFinalization) queuedActions -= this.activeStrokeFinalization.pending.actionCount
+    const replayCount = Math.max(0, this.allActions.length - Math.max(0, queuedActions))
+
+    for (let i = 0; i < replayCount; i++) {
+      const a = this.allActions[i]
       this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }

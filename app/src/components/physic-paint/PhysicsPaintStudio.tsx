@@ -1123,7 +1123,6 @@ export function PhysicsPaintStudio() {
   const handleSelectedScriptLoadAndApply = useCallback(async () => {
     const selectedId = rotoScriptLibrary.selectedId.peek();
     if (!selectedId) return;
-    console.log('[da52] handleSelectedScriptLoadAndApply', Date.now());
     const preparation = rotoScript.prepareScriptLoadAndApply();
     if (!preparation) return;
     try {
@@ -1144,7 +1143,6 @@ export function PhysicsPaintStudio() {
   // section). Bodies moved verbatim from the rightPanel scripts props.
   const handleApplyScript = useCallback(() => {
     void (async () => {
-      console.log('[da52] handleApplyScript', Date.now());
       const success = await rotoScript.applyScript();
       if (success) setLastError(null);
       else {
