@@ -1887,6 +1887,28 @@ describe('physicPaintStore', () => {
       expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'premultiply' });
     });
 
+    it('REPRO 52.1 refresh: a real-key payload update rotates the flattened memo and re-decodes the new bytes', async () => {
+      const bytesA = testWebpBytes(btoa('refresh-content-A'));
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: bytesA }]);
+
+      const recordA = await flattenAfterDecode(FLAT_LAYER, 5);
+      expect(recordA).not.toBeNull();
+      const decodesBefore = decodeWebpFrameMock.mock.calls.length;
+
+      // Close-time apply-canvas twin: new bytes land on the SAME key.
+      const revision = physicPaintStore.getRotoPhysicalContentRevision(FLAT_LAYER, 'track-a')!;
+      const bytesB = testWebpBytes(btoa('refresh-content-B-different'));
+      const update = physicPaintStore.updateRotoPhysicalRealKeyPayload(FLAT_LAYER, 'track-a', 'ka', revision, { frameIndex: 0, appFrame: 5, bytes: bytesB });
+      expect(update).toMatchObject({ ok: true, changed: true });
+
+      const recordB = await flattenAfterDecode(FLAT_LAYER, 5);
+      expect(recordB).not.toBeNull();
+      expect(recordB!.cacheKey).not.toBe(recordA!.cacheKey);
+      // The new bytes missed the registry and LRU, so a fresh Rust decode ran.
+      expect(decodeWebpFrameMock.mock.calls.length).toBeGreaterThan(decodesBefore);
+    });
+
     it('G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
