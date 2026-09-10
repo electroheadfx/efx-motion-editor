@@ -176,12 +176,16 @@ const DRYING_QUIET_MS = 2500
 const PAINT_TRAIN_BASE_DRAW_MS = 1500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
-/** Interactive strokes drain at most this many phase steps per visual frame — batches the final render. */
-const MAX_INTERACTIVE_STEPS_PER_FRAME = 12
-/** Hard cap on the interactive drain turn's synchronous block — the drain runs
- *  in the gap between strokes; a long turn delays the next stroke's first
- *  samples (the stroke-start stutter the user felt every few strokes). */
-const STROKE_FINALIZATION_MAX_TURN_MS = 12
+/** Hard cap on the interactive drain turn's synchronous block. The drain only
+ *  runs after the stroke-input idle gate opens (never mid-gesture), so the cap
+ *  prices gap throughput, not in-stroke jank. 12ms starved the queue: grain
+ *  layers cost 17-37ms and local-fluid ticks 58-74ms, so a turn ran ~1 step per
+ *  frame and the backlog outgrew the drain (the 52.1 slow-stroke trace: 5-7s
+ *  queue waits). The original standalone blocked pointer-up for the WHOLE
+ *  stroke raster (hundreds of ms) and stayed responsive in practice; 48ms lands
+ *  each completed group within a few frames while a pen-down mid-turn waits at
+ *  most one slice. */
+const STROKE_FINALIZATION_MAX_TURN_MS = 48
 /** Minimum interval between full display composites while a drain is running —
  * the per-frame full-canvas upload is the main remaining GPU churn during a
  * painting session; 30fps keeps the final render visibly fast. */
@@ -977,8 +981,6 @@ export class EfxPaintEngine {
   }
 
   private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false, skipFullReplay = false): boolean {
-    const applyStartedAt = this.performanceListener ? performance.now() : 0
-    const applyBranch = explicit ? 'explicit' : 'refresh'
     if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
       if (explicit) this.inFlightExplicitPreviewBase = false
       return false
@@ -987,7 +989,6 @@ export class EfxPaintEngine {
       // Cache-hit apply landing mid-stroke: defer an explicit completion paint
       // (same as the async decode path), drop a plain refresh.
       if (explicit) this.pendingExplicitPreviewBase = { image, requestId, dataUrl: dataUrl ?? '', generation, appFrame }
-      this.recordPerformance('preview-base-apply', 'sync-cpu', applyStartedAt, { branch: applyBranch, outcome: 'deferred-drawing' })
       return false
     }
     if (explicit) this.inFlightExplicitPreviewBase = false
@@ -1010,12 +1011,10 @@ export class EfxPaintEngine {
       // already live over this same blank base, so only the base image FIELD
       // changes; previewBaseCtx stays correct and the texture uploads later at
       // the next genuine redraw (a real stop or navigation).
-      this.recordPerformance('preview-base-apply', 'sync-cpu', applyStartedAt, { branch: applyBranch, outcome: 'skipped-train' })
       return true
     }
     this.redrawPreviewBase()
     this.redrawAll()
-    this.recordPerformance('preview-base-apply', 'sync-cpu', applyStartedAt, { branch: applyBranch, outcome: 'full-replay' })
     return true
   }
 
@@ -1825,7 +1824,6 @@ export class EfxPaintEngine {
 
   /** Full wet composite into the display, keeping the scratch an exact mirror. */
   private compositeDisplayNow(): void {
-    const compositeStartedAt = this.performanceListener ? performance.now() : 0
     const displayCtx = this.dualCanvas.displayCtx
     const scratch = this.wetDisplayScratch
     // The scratch must mirror the composite EXACTLY: stale wet pixels from a
@@ -1842,7 +1840,6 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = 0
     this.lastPreviewBbox = null
     this.lastCursorRect = null
-    this.recordPerformance('display-composite', 'sync-cpu', compositeStartedAt)
   }
 
   /**
@@ -2070,13 +2067,11 @@ export class EfxPaintEngine {
     if (allScripted) {
       this.runStrokeFinalizationTurn(true, MAX_COALESCED_STROKES_PER_FRAME, Infinity)
     } else {
-      // Interactive strokes batch a bounded number of phase steps per visual
-      // frame — one step per frame drains at ~1 stroke/second, so a long
-      // painting session's queue takes minutes to finalize. Batching keeps the
-      // final render fast while the per-frame block stays small (the drain
-      // only runs in the 500ms inactivity window, never mid-stroke; the turn
-      // also yields to a time budget and to pending input between strokes).
-      this.runStrokeFinalizationTurn(false, Infinity, MAX_INTERACTIVE_STEPS_PER_FRAME, STROKE_FINALIZATION_MAX_TURN_MS)
+      // Interactive strokes drain in time-bounded turns, paced by TIME only:
+      // the idle gate keeps a turn out of every gesture, and the turn yields
+      // per frame so a pen-down waits at most one slice. The former 12-step cap
+      // let a backlog of big-step strokes outrun the drain (52.1 slow-stroke).
+      this.runStrokeFinalizationTurn(false, Infinity, Infinity, STROKE_FINALIZATION_MAX_TURN_MS)
     }
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.strokeFinalizationScheduled = true
@@ -2084,14 +2079,11 @@ export class EfxPaintEngine {
   }
 
   public flushPendingStrokeFinalizations(): void {
-    const flushStartedAt = this.performanceListener ? performance.now() : 0
-    const queuedBeforeFlush = this.pendingStrokeFinalizations.length
     this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.runStrokeFinalizationTurn(true, Infinity, Infinity)
     }
     this.strokeFinalizationScheduled = false
-    this.recordPerformance('flush-all', 'sync-cpu', flushStartedAt, { branch: `queued:${queuedBeforeFlush}` })
   }
 
   private startNextStrokeFinalization(): ActiveStrokeFinalization | null {
@@ -2141,10 +2133,7 @@ export class EfxPaintEngine {
         continue
       }
       do {
-        const stepStartedAt = this.performanceListener ? performance.now() : 0
-        const phaseBeforeStep = active.phase
         this.stepInteractivePaintFinalization(active)
-        this.recordPerformance('finalize-step', 'sync-cpu', stepStartedAt, { branch: phaseBeforeStep, mutationId: active.pending.mutationId })
         steps++
       } while (flush && this.activeStrokeFinalization === active && steps < maxSteps)
       completedStrokes++
@@ -2177,6 +2166,14 @@ export class EfxPaintEngine {
     if (active.generation !== this.strokeFinalizationGeneration) return
     const pending = active.pending
     if (this.pendingStrokeFinalizations[0] === pending) this.pendingStrokeFinalizations.shift()
+    // 52.1 (slow-stroke): composite ONCE per completed stroke — the per-step
+    // dirty flag fired a full display composite per phase step (the trace's 160
+    // composites for 12 strokes, ~2s of main-thread upload per backlog drain)
+    // and read as "the canvas refreshes too many times per stroke". The queued
+    // outline stays the pending preview until the stroke's render lands; the
+    // 30ms composite throttle merges strokes completed in one turn into a
+    // single canvas update (the standalone's stroke-group feel).
+    this.displayCompositeDirty = true
     this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
     const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
     if (historyEntry) historyEntry.deferred = null
@@ -2186,9 +2183,6 @@ export class EfxPaintEngine {
   }
 
   private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
-    // Every finalization step mutates the wet/dry pixels — the next render
-    // frame re-composites the display.
-    this.displayCompositeDirty = true
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
@@ -2794,7 +2788,6 @@ export class EfxPaintEngine {
   // ================================================================
 
   private redrawAll(): void {
-    const replayStartedAt = this.performanceListener ? performance.now() : 0
     this.resetReplaySurface()
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
@@ -2805,7 +2798,6 @@ export class EfxPaintEngine {
     }
 
     this.renderVisibleWetLayer()
-    this.recordPerformance('redraw-all', 'sync-cpu', replayStartedAt, { branch: `actions:${this.allActions.length}` })
   }
 
   private replayDiffusion(
