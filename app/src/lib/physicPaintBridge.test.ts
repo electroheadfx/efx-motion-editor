@@ -66,6 +66,7 @@ import { encodeSourceBytesForDocumentSync,
   applyPhysicPaintPayload,
   applyPhysicPaintRotoGroupFramePaint,
   createPhysicPaintLaunchContext,
+  deactivatePhysicPaintLaunch,
   expandRotoPhysicalEditRecordRefs,
   getPhysicPaintRotoAuthority,
   handlePhysicPaintFrameSyncMessage,
@@ -76,6 +77,7 @@ import { encodeSourceBytesForDocumentSync,
   installPhysicPaintFrameSyncListener,
   isPhysicPaintChildAudioClaimed,
   openPhysicPaintCanvas,
+  physicPaintLaunchActive,
   PHYSIC_PAINT_APPLY_EVENT,
   PHYSIC_PAINT_APPLY_RESULT_EVENT,
   PHYSIC_PAINT_AUDIO_CONTEXT_EVENT,
@@ -3381,6 +3383,21 @@ describe('physicPaintBridge', async () => {
 
     expect(seek).not.toHaveBeenCalled();
     expect(ensureFrameVisible).not.toHaveBeenCalled();
+  });
+
+  it('settles displayFrame onto the Studio-synced cursor when the launch gate clears (52.1 close-stale)', () => {
+    // The child frame-sync seeks only currentFrame (the playhead); the main
+    // Preview renders displayFrame. Clearing the launch gate (Studio closed)
+    // must settle the render frame onto the synced cursor — otherwise the
+    // canvas keeps drawing the pre-session frame until the next scrub.
+    handlePhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 3 });
+    expect(timelineStore.currentFrame.value).toBe(3);
+    expect(timelineStore.displayFrame.value).not.toBe(3);
+
+    deactivatePhysicPaintLaunch();
+
+    expect(timelineStore.displayFrame.value).toBe(3);
+    expect(physicPaintLaunchActive.value).toBe(false);
   });
 
   it('installs a browser message listener for D-26 frame sync and removes it on cleanup', async () => {

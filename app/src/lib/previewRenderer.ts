@@ -429,8 +429,6 @@ export class PreviewRenderer {
         // draws nothing this tick; the decode-complete physicPaintVersion bump
         // re-renders (subscription at the top of this loop).
         const flattened = resolveFlattened(paintLayerId);
-        // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-        console.warn('[52.1-refresh-dbg] physics draw', { paintLayerId, frame: physicPaintLookupFrame, hit: flattened !== null, cacheKey: flattened?.cacheKey ?? null });
         if (!flattened) continue;
         const source = this.getPhysicPaintImageSource(flattened);
         // CMP-03/Pitfall 6: the parent applies ITS opacity/blend exactly once

@@ -114,8 +114,6 @@ export function Preview() {
       // and freezes the child's next stroke. Hold the last frame for the whole
       // child session (the child owns the paint surface); clear the gate on
       // window close and the main re-renders the settled composite once.
-      // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-      console.warn('[52.1-refresh-dbg] preview effect', { frame: globalFrame, launchActive: physicPaintLaunchActive.value, rawVersion: physicPaintVersion.peek(), throttled: throttledPhysicPaintRevision.value });
       if (physicPaintLaunchActive.value) return;
 
       renderFromFrameMap(globalFrame);

@@ -275,6 +275,12 @@ function activatePhysicalLaunchAuthority(context: PhysicPaintLaunchContext): voi
 
 /** Clear the child-session gate (see physicPaintLaunchActive) — idempotent. */
 export function deactivatePhysicPaintLaunch(): void {
+  // 52.1 (close-settle): the Studio's frame-sync seeks only currentFrame (the
+  // playhead); the main Preview renders displayFrame. Settle displayFrame onto
+  // the synced cursor BEFORE clearing the gate — the same law the playback
+  // engine applies on stop — so the first ungated re-render draws the frame
+  // the playhead shows, not the pre-session frame (the close-stale defect).
+  timelineStore.syncDisplayFrame();
   physicPaintLaunchActive.value = false;
 }
 
@@ -442,8 +448,6 @@ async function applyPhysicPaintPayloadWithPublicationLease(
   try {
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
-      // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-      console.warn('[52.1-refresh-dbg] parent apply-canvas', { operationId: payload.operationId, layerId: payload.layerId, startFrame: payload.startFrame });
       result = await physicPaintStore.applyCanvas(payload);
     } else if (payload.kind === 'update-roto-interpolation-settings') {
       const generatedFrames = await physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);

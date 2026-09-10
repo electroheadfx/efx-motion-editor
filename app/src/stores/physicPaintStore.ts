@@ -135,8 +135,6 @@ export function bumpTrackRevision(
   entry.paint.value++;
   entry.roto.value++;
   physicPaintVersion.value++;
-  // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-  console.warn('[52.1-refresh-dbg] bumpTrackRevision', { trackId, version: physicPaintVersion.value });
   _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
   if (markDirty) _markProjectDirty?.();
   if (diagnostics) {
@@ -1108,8 +1106,6 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   if (cached) return cached;
   if (_compositorDecodeLoading.has(token)) return null;
   _compositorDecodeLoading.add(token);
-  // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-  console.warn('[52.1-refresh-dbg] decode kick', { token });
   const promise = (async (): Promise<ImageBitmap | null> => {
     try {
       // Two-format law: real keys are VP8L (Rust codec); display-only derived
@@ -1121,12 +1117,8 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
         ? await _decodeWebpToBitmap(bytes)
         : await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }));
       frameLru.put(token, bitmap, bitmap.width, bitmap.height);
-      // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-      console.warn('[52.1-refresh-dbg] decode done', { token, ok: true });
       return bitmap;
     } catch {
-      // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-      console.warn('[52.1-refresh-dbg] decode done', { token, ok: false });
       // Decode failed — leave the token uncached so a later query retries.
       return null;
     } finally {
@@ -3078,10 +3070,6 @@ export const physicPaintStore = {
       return { ok: false, error: error instanceof Error ? error.message : 'Invalid physical Roto document.' };
     }
     if (document.capacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) return { ok: false, error: 'Physical Roto document exceeds maximum capacity.' };
-    // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS): the mirror is
-    // the ONLY path that writes real-key bytes WITHOUT a version bump — if this
-    // fires with the new stroke's bytes, the parent's refresh never re-fires.
-    console.warn('[52.1-refresh-dbg] MIRROR install (silent, no bump)', { layerId, trackId, revision: document.revision, keyCount: document.realKeyRecords.length, tokens: document.realKeyRecords.map((record) => buildFrameBytesToken(record.payload.bytes)) });
     const projection = projectPhysicPaintRotoPhysicalTimeline({
       identities: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
       capacity: document.capacity,
@@ -3746,8 +3734,6 @@ export const physicPaintStore = {
       this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
       this.getRotoGroupOverrideRecords(layerId, trackId),
     );
-    // TEMP-DEBUG (52.1 refresh defect; REMOVE AFTER DIAGNOSIS)
-    console.warn('[52.1-refresh-dbg] updateRealKeyPayload', { keyId, changed: nextRevision !== currentRevision, prevToken: buildFrameBytesToken(current.payload.bytes), nextToken: buildFrameBytesToken(payload.bytes) });
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(trackId, new Map(validated.map((record) => [record.keyId, record])));
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
