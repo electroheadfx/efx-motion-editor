@@ -1911,10 +1911,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     ? null
     : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
   const scriptStatus = props.rotoScript?.status.value ?? null;
-  // 52.1 quick: background Apply rides the existing per-completion progress
-  // signal — the pill below renders only for that mode (live keeps its canvas
-  // animation plus the status capsule line).
-  const scriptApplyProgress = props.rotoScript?.applyProgress.value ?? null;
   // 260905-dso: the relocated buffer Apply/Clear availability — mirrors the
   // ScriptsPanel derivation exactly, reading the signals in render the same
   // way the strip already reads physicalActions?.canInsertFrame.value.
@@ -4169,24 +4165,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onPointerUp={handleStripResizePointerEnd}
         onPointerCancel={handleStripResizePointerEnd}
       />
-      {scriptApplyProgress?.mode === 'background' ? (
-        <div
-          class="physics-paint-apply-progress"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={scriptApplyProgress.total}
-          aria-valuenow={scriptApplyProgress.completed}
-          aria-label={`Applying Action — ${scriptApplyProgress.completed} of ${scriptApplyProgress.total} brushes`}
-        >
-          <span class="physics-paint-apply-progress-track" aria-hidden="true">
-            <span
-              class="physics-paint-apply-progress-fill"
-              style={{ width: `${Math.round((scriptApplyProgress.completed / Math.max(1, scriptApplyProgress.total)) * 100)}%` }}
-            />
-          </span>
-          <span class="physics-paint-apply-progress-label">Applying {scriptApplyProgress.completed}/{scriptApplyProgress.total}</span>
-        </div>
-      ) : null}
       <PhysicsPaintWorkflowStaticChrome
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}

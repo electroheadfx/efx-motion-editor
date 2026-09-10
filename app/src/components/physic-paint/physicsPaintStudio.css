@@ -4200,11 +4200,14 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* Background-apply progress pill — floats centered just above the workflow
-   strip's top edge while a background render drains (canvas stays frozen). */
+/* Background-apply progress pill — floats centered over the canvas region's
+   bottom edge (just above the workflow strip) while a background render drains
+   (canvas stays frozen). It must live OUTSIDE the strip: the strip's
+   overflow-y:hidden clips anything anchored past its top edge, which hid the
+   pill entirely in its first release. */
 .physics-paint-apply-progress {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

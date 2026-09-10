@@ -1686,13 +1686,30 @@ export class EfxPaintEngine {
    * frame lands at once on release). Unlike animation mode this does NOT skip
    * the drain or the async preview-background guards — it only holds back the
    * per-stroke canvas updates.
+   *
+   * The freeze must cover the DRY canvas, not just the display composite: the
+   * drain force-dries every completed stroke straight into the dry canvas
+   * (zIndex 2, browser-composited), which the render()-gate never touched — so
+   * suppressed applies still painted strokes mid-run. On suppress we stamp the
+   * current visible stack (preview base + dry) into the display canvas
+   * (zIndex 3, above dry): the dry writes continue underneath, hidden by the
+   * opaque cover, and the canvas holds its exact pre-apply state. Wet is
+   * contractually empty at apply start (the mutation lock guarantees no active
+   * stroke), so previewBase+dry reproduces the pre-apply composite exactly.
+   * On release the drain's completions have set displayCompositeDirty, so the
+   * next compositeDisplayNow clears the cover for the single final reveal.
    */
   setDisplayCompositeSuppressed(suppressed: boolean): void {
     if (this.displayCompositeSuppressed === suppressed) return
     this.displayCompositeSuppressed = suppressed
-    // On release the completed strokes have already set displayCompositeDirty,
-    // so the next frame publishes one final composite.
-    if (!suppressed) this.requestRender()
+    if (suppressed) {
+      const displayCtx = this.dualCanvas.displayCtx
+      displayCtx.clearRect(0, 0, this.width, this.height)
+      displayCtx.drawImage(this.dualCanvas.previewBaseCanvas, 0, 0)
+      displayCtx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+      return
+    }
+    this.requestRender()
   }
 
   /** Render strokes up to specified point counts — used by progressive playback consumers. */

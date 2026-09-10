@@ -20,6 +20,7 @@ import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
 import { PhysicsPaintReferenceGhostLayer } from './PhysicsPaintReferenceGhostLayer';
 import { PhysicsPaintReferenceTransformHandles } from './PhysicsPaintReferenceTransformHandles';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowRotoScriptState } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
@@ -306,6 +307,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               the engine canvas stays mounted underneath (D-01 lock). */}
           {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
           {referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}
+          {/* 52.1 quick B: the background-apply pill lives INSIDE the canvas
+              region (position:relative, no overflow clip — the canvas-toast
+              pattern). It previously rendered inside the workflow strip, whose
+              overflow-y:hidden clipped it away: the pill never appeared. */}
+          <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
         </section>
 
         <PhysicsPaintRightPanelRegion
@@ -335,5 +341,34 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         ) : null}
       </section>
     </main>
+  );
+}
+
+/**
+ * 52.1 quick B: background-apply progress pill — floats centered over the
+ * canvas region's bottom edge (just above the workflow strip) for the whole
+ * background render. It owns its applyProgress subscription so per-completion
+ * ticks re-render only this pill, never the Studio view.
+ */
+function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
+  const applyProgress = rotoScript?.applyProgress.value ?? null;
+  if (applyProgress?.mode !== 'background') return null;
+  return (
+    <div
+      class="physics-paint-apply-progress"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={applyProgress.total}
+      aria-valuenow={applyProgress.completed}
+      aria-label={`Applying Action — ${applyProgress.completed} of ${applyProgress.total} brushes`}
+    >
+      <span class="physics-paint-apply-progress-track" aria-hidden="true">
+        <span
+          class="physics-paint-apply-progress-fill"
+          style={{ width: `${Math.round((applyProgress.completed / Math.max(1, applyProgress.total)) * 100)}%` }}
+        />
+      </span>
+      <span class="physics-paint-apply-progress-label">Applying {applyProgress.completed}/{applyProgress.total}</span>
+    </div>
   );
 }
