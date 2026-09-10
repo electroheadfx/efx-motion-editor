@@ -138,7 +138,7 @@ export function PhysicsPaintScriptApplyModeDialog({
               onClick={() => choose('live')}
             >
               <strong>Live render</strong>
-              <span>Watch the Action paint stroke by stroke in the canvas.</span>
+              <span>Watch the Action paint in fast multi-stroke bursts on the canvas.</span>
             </button>
             <button
               type="button"
