@@ -4771,15 +4771,20 @@ button.destructive {
    The label's base rule already truncates; this class makes the contract
    explicit and grep-able. */
 .physics-paint-track-row-label-ellipsis {
+  /* 260911-s1j mockup layout: the name is pushed right (auto margin) and the
+     trash stays pinned at the far right; the 8px right padding keeps the
+     mockup's name→trash gap (8px padding + the row's 5px gap). */
+  margin-left: auto;
+  padding-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 47-02 Task 1: per-row solo (S) toggle. A compact chip before the tools
-   group; since 260911-sli its pressed state reflects the track's document
-   `solo` flag (the one the click toggles and the compositor filters on) —
-   the armed chip shows the same accent family as the active row. */
+/* 47-02 Task 1 (260911-s1j): the standing inline solo (S) chip — the row-level
+   solo indicator, always visible. Its pressed state reflects the track's
+   document `solo` flag (the one the click toggles and the compositor filters
+   on); armed paints the unmistakable orange family. */
 .physics-paint-track-row-solo {
   flex: 0 0 auto;
   display: inline-flex;
@@ -4805,13 +4810,14 @@ button.destructive {
 }
 
 .physics-paint-track-row-solo-armed {
-  border-color: #6f90ff;
-  background: #2f3a4d;
-  color: #ffffff;
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .physics-paint-track-row-solo-armed:hover {
-  background: #33425a;
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
 }
 
 .physics-paint-track-row-solo:focus-visible {
@@ -4819,133 +4825,17 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* 260911-sli: the standing armed-solo badge — visible while the ⋯ tools panel
-   is collapsed, so an armed document solo always explains itself on the row. */
-.physics-paint-track-row-solo-badge {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid #6f90ff;
-  border-radius: 5px;
-  background: #2f3a4d;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-/* 47 UAT: the per-row frame-blending toggle's pressed state — the same
-   accent family as the armed solo chip, so an enabled blend reads at a
-   glance on every track row. */
+/* 47 UAT (260911-s1j): the per-row frame-blending toggle's armed state — the
+   same unmistakable orange family as the armed solo chip. */
 .physics-paint-track-row-blend-enabled {
-  border-color: #6f90ff;
-  background: #2f3a4d;
-  color: #ffffff;
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .physics-paint-track-row-blend-enabled:hover {
-  background: #33425a;
-}
-
-/* Hover-visible tool buttons (eye / pencil / copy / trash-2). 47-01 UAT
-   round 5: the tools collapse to ZERO width while hidden (max-width: 0 +
-   overflow: hidden) so they reserve no layout space at rest — the track name
-   keeps the full header width and reads whole ("Track 1", not "1"). On hover
-   they expand to their reserved width (max-width: 84px) and push the label
-   left; the label truncates rather than being covered by an overlay.
-   pointer-events are disabled while hidden so the invisible buttons never
-   swallow header clicks.
-
-   47-01 UAT round 2: the dark right-to-left gradient is removed — it washed a
-   dark veil over the track name. The buttons now carry their own solid
-   surfaces (below), so they separate from the label without a gradient. */
-.physics-paint-track-row-tools {
-  flex: 0 0 auto;
-  max-width: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.12s ease, max-width 0.12s ease;
-}
-
-/* 47-01 UAT round 6: the tools open ONLY from the small more-button at the
-   name's right extreme (data-tools-open='true' set by the strip state) — a
-   hover or a click on the name never reveals them (a name click selects the
-   track). Leaving the panel or the header closes them (onPointerLeave in the
-   component).
-
-   47 UAT: while the panel is open it takes over the WHOLE row — the standing
-   controls (grip, eye, blend, name) and the more-button hide, and the three
-   tool buttons (solo / copy / trash) stretch across the track's full width
-   (flex: 1 each). */
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-grip,
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-label,
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools-toggle,
-.physics-paint-track-row-header[data-tools-open='true'] > .physics-paint-track-row-tool-button {
-  display: none;
-}
-
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools {
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: none;
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  justify-content: stretch;
-  gap: 4px;
-}
-
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools .physics-paint-track-row-tool-button,
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools .physics-paint-track-row-solo {
-  flex: 1 1 0;
-  width: auto;
-  min-width: 0;
-  height: 22px;
-}
-
-/* 47-01 UAT round 6: the more-button lives at the header's right extreme,
-   always visible — the explicit opener for the tool panel. Sized like the
-   tool buttons so the row's action affordance reads as one family. */
-.physics-paint-track-row-tools-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid #58616b;
-  border-radius: 4px;
-  background: #3a424c;
-  color: #d8dde3;
-  cursor: pointer;
-}
-
-.physics-paint-track-row-tools-toggle:hover {
-  background: #45505c;
-  border-color: #69727c;
-  color: #e5edf8;
-}
-
-.physics-paint-track-row-tools-toggle:focus-visible {
-  outline: 2px solid #6f90ff;
-  outline-offset: 1px;
-}
-
-.physics-paint-track-row-tools-toggle svg {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
 }
 
 /* 47-01 hide: a hidden Paint track fades its cells to gray — every key and
