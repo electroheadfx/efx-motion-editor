@@ -6,9 +6,9 @@ current_phase: "53"
 current_phase_name: Integrated v1.0.0 Acceptance
 status: pending
 stopped_at: Completed 52.1-07-SUMMARY.md
-last_updated: "2026-09-11T09:04:34.000Z"
+last_updated: "2026-09-11T17:35:00.000Z"
 last_activity: 2026-09-11
-last_activity_desc: Quick 260911-f2p completed — Phase 48 + 52.1 verification records backfilled
+last_activity_desc: "Quick 260911-sli completed — armed solo surfaced on the track row (badge + chip bound to the doc flag); native UAT pending"
 state_head: c372e736
 progress:
   total_phases: 10
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — COMPLETE
 Plan: 7 of 7
 Status: Closed 2026-09-09
-Last activity: 2026-09-11 — Completed quick task 260911-jy4: Close Phase 51 verification gap — AUD-01..04
+Last activity: 2026-09-11 — Completed quick task 260911-sli: Surface armed solo on the track row (native UAT pending — badge rows + folded 260911-g1g 3-track rows)
 
 Progress: [████████████████████] 49/49 plans ([█████░░░░░] 50%)
 
@@ -282,6 +282,7 @@ None yet.
 | 260911-f2p | Backfill missing milestone verification records for Phase 48 and Phase 52.1 and reconcile REQUIREMENTS.md CMP-01..06 | 2026-09-11 | 596ecb58 | [260911-f2p-backfill-missing-milestone-verification-](./quick/260911-f2p-backfill-missing-milestone-verification-/) |
 | 260911-g1g | Align hide/solo semantics — hide is a hard off-switch | 2026-09-11 | 12cdee36 | [260911-g1g-align-hide-solo-semantics-hide-is-a-hard](./quick/260911-g1g-align-hide-solo-semantics-hide-is-a-hard/) |
 | 260911-jy4 | Close Phase 51 verification gap — AUD-01..04 | 2026-09-11 | 41d4235e | [260911-jy4-close-phase-51-verification-gap-aud-01-0](./quick/260911-jy4-close-phase-51-verification-gap-aud-01-0/) |
+| 260911-sli | Surface armed solo on the track row — standing badge + chip bound to the document solo flag; folds the pending 260911-g1g hide/solo native UAT | 2026-09-11 | 42a22183 | [260911-sli-surface-armed-solo-on-the-track-row](./quick/260911-sli-surface-armed-solo-on-the-track-row/) |
 
 ### Roadmap Evolution
 
