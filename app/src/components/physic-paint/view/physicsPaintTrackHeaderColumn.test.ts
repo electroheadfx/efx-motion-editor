@@ -2,12 +2,14 @@
  * 47-02 Task 1: pinned header column component behavior tests (TML-01/02/03/07,
  * D-02/D-04/D-06/D-07/D-08).
  *
- * The header column is hook-free (presentational — the strip owns rename/tools
- * state and flows it down), so the tests invoke it as a plain function and walk
- * the returned vnode tree, expanding the hook-free `PhysicsPaintTrackRowHeader`
- * vnodes the same way the strip viewport test does. The row solo chip/badge
- * reflect the track's document solo flag; since 260911-sli the session-only
- * `physicsPaintSoloArm` signal no longer drives the row.
+ * The header column is hook-free (presentational — the strip owns rename state
+ * and flows it down), so the tests invoke it as a plain function and walk the
+ * returned vnode tree, expanding the hook-free `PhysicsPaintTrackRowHeader`
+ * vnodes the same way the strip viewport test does. Since 260911-s1j every row
+ * control is standing inline (grip / eye / S / blend, right-pushed name, trash
+ * pinned far right): the solo chip itself is the row-level indicator (orange
+ * when armed — the 260911-sli badge is folded into it), and the session-only
+ * `physicsPaintSoloArm` signal never drives the row.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren } from 'preact';
@@ -160,8 +162,6 @@ interface ColumnRenderOptions {
   readonly onAddTrack?: () => void;
   readonly onDuplicateTrack?: (trackId: string) => void;
   readonly onRequestDeleteTrack?: (trackId: string) => void;
-  readonly toolsOpenTrackId?: string | null;
-  readonly onToggleTools?: (trackId: string) => void;
 }
 
 function renderColumn(options: ColumnRenderOptions): TestVNode {
@@ -178,8 +178,6 @@ function renderColumn(options: ColumnRenderOptions): TestVNode {
     onAddTrack: options.onAddTrack ?? vi.fn(),
     onDuplicateTrack: options.onDuplicateTrack ?? vi.fn(),
     onRequestDeleteTrack: options.onRequestDeleteTrack ?? vi.fn(),
-    toolsOpenTrackId: options.toolsOpenTrackId ?? null,
-    onToggleTools: options.onToggleTools ?? vi.fn(),
   });
 }
 
@@ -627,31 +625,55 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(hasClass(headerCell(rootB, fixture.trackB.id), 'physics-paint-track-row-header-active')).toBe(true);
   });
 
-  it('routes hide and solo toggles to onToggleVisible/onToggleSolo and reflects the track document solo flag (TML-04 surface, 260911-sli)', () => {
+  it('renders the row controls inline in mockup order — grip, eye, S, blend, name, trash — and reflects the track document solo flag (TML-04 surface, 260911-s1j)', () => {
     const fixture = makeTwoTrackFixture();
     const onToggleVisible = vi.fn();
     const onToggleSolo = vi.fn();
-    const root = renderFixture(fixture, { onToggleVisible, onToggleSolo });
+    const onRequestDeleteTrack = vi.fn();
+    const root = renderFixture(fixture, { onToggleVisible, onToggleSolo, onRequestDeleteTrack });
     const headerA = headerCell(root, fixture.trackA.id);
 
-    // 47 UAT: the hide (eye) toggle is a standing row control before the name
-    // (no longer inside the hover tools panel).
+    // 260911-s1j: every control is standing inline — the ⋯ expander, its tools
+    // panel, the duplicate button, and the 260911-sli badge no longer exist.
+    expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
+    expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
+    expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'))).toHaveLength(0);
+
+    // The mockup order: grip < eye < S < blend < name < trash.
+    const sequence = [...walk(headerA)]
+      .map((vnode) => {
+        if (hasClass(vnode, 'physics-paint-track-row-grip')) return 'grip';
+        if (vnode.props['aria-label'] === 'Hide Track 1') return 'eye';
+        if (vnode.props['aria-label'] === 'Solo Track 1') return 'solo';
+        if (vnode.props['aria-label'] === 'Blend Track 1') return 'blend';
+        if (hasClass(vnode, 'physics-paint-track-row-label')) return 'name';
+        if (vnode.props['aria-label'] === 'Delete Track 1') return 'trash';
+        return null;
+      })
+      .filter((entry): entry is string => entry !== null);
+    expect(sequence).toEqual(['grip', 'eye', 'solo', 'blend', 'name', 'trash']);
+
+    // The eye toggle routes the hide intent.
     const eye = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Hide Track 1');
     (eye.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleVisible).toHaveBeenCalledWith(fixture.trackA.id);
 
-    // A solo-false track: the chip is unpressed and no row badge exists.
+    // A solo-false track: the chip is unpressed.
     const solo = findOne(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
     expect(hasClass(solo, 'physics-paint-track-row-solo-armed')).toBe(false);
     expect(String(solo.props['aria-pressed'])).toBe('false');
-    expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'))).toHaveLength(0);
 
     // Clicking still routes the toggle intent.
     (solo.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleSolo).toHaveBeenCalledWith(fixture.trackA.id);
 
-    // 260911-sli: an armed document solo is visible on the row itself — the
-    // chip reads pressed and the badge renders outside the collapsed panel.
+    // The trash is standing inline and routes the delete request.
+    const trash = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Delete Track 1');
+    (trash.props.onClick as (event: unknown) => void)(clickEvent());
+    expect(onRequestDeleteTrack).toHaveBeenCalledWith(fixture.trackA.id);
+
+    // An armed document solo arms the inline S — the S itself is the row-level
+    // indicator (no badge, no aria-label suffix).
     const soloTrackA: InternalPaintTrack = { ...fixture.trackA, solo: true };
     const armedFixture: ColumnFixture = { ...fixture, tracks: [soloTrackA, fixture.trackB], trackA: soloTrackA };
     const armedRoot = renderFixture(armedFixture);
@@ -659,15 +681,13 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     const armedSolo = findOne(armedHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
     expect(hasClass(armedSolo, 'physics-paint-track-row-solo-armed')).toBe(true);
     expect(String(armedSolo.props['aria-pressed'])).toBe('true');
-    const badge = findOne(armedHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'));
-    expect(badge.props['aria-hidden']).toBe('true');
-    expect(String(armedHeader.props['aria-label'])).toBe(`Select track ${soloTrackA.name} (solo armed)`);
+    expect(String(armedHeader.props['aria-label'])).toBe(`Select track ${soloTrackA.name}`);
     // The unarmed sibling row stays clean.
-    const siblingHeader = headerCell(armedRoot, fixture.trackB.id);
-    expect(findAll(siblingHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'))).toHaveLength(0);
+    const siblingSolo = findOne(headerCell(armedRoot, fixture.trackB.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
+    expect(hasClass(siblingSolo, 'physics-paint-track-row-solo-armed')).toBe(false);
 
-    // 260911-sli: the session-only playback arm (physicsPaintSoloArm) no
-    // longer drives the row — arming it leaves the chip and badge untouched.
+    // 260911-sli: the session-only playback arm (physicsPaintSoloArm) never
+    // drives the row — arming it leaves the chip untouched.
     expect(toggleSolo()).toBe(true);
     try {
       const sessionArmedRoot = renderFixture(fixture);
@@ -724,20 +744,21 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(String(label.props.title)).toBe(longName);
   });
 
-  it('renders the Bg row locked and muted with no hover/duplicate/delete actions (D-06)', () => {
+  it('renders the Bg row locked and muted with no inline Paint controls (D-06, 260911-s1j)', () => {
     const fixture = makeTwoTrackFixture();
     const root = renderFixture(fixture);
     const bg = headerCell(root, fixture.background.id);
     expect(hasClass(bg, 'physics-paint-track-row-header-background')).toBe(true);
     // Lock indicator present.
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-lock'))).toHaveLength(1);
-    // No hover capability: not a role=button, no click, no tools group, no
-    // more-button, no reorder grab.
+    // No hover capability: not a role=button, no click, no reorder grab and
+    // none of the standing Paint controls (grip / eye / S / blend / trash are
+    // Paint-row-only).
     expect(bg.props.role).toBeUndefined();
     expect(bg.props.onClick).toBeUndefined();
-    expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
-    expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-grip'))).toHaveLength(0);
+    expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(0);
+    expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(0);
   });
 
   it('paints the Bg row header SELECTED when a Bg clip is selected and blanks every normal track\'s active highlight (49-06 UAT)', () => {
@@ -762,41 +783,31 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(hasClass(headerCell(idleRoot, fixture.background.id), 'physics-paint-track-row-header-selected')).toBe(false);
   });
 
-  it('adds a track from the column + button and exposes duplicate/delete actions per Paint row (D-07)', () => {
+  it('adds a track from the column + button and exposes the standing inline delete action per Paint row (D-07, 260911-s1j)', () => {
     const fixture = makeTwoTrackFixture();
     const onAddTrack = vi.fn();
-    const onDuplicateTrack = vi.fn();
     const onRequestDeleteTrack = vi.fn();
-    const onToggleTools = vi.fn();
 
     // The '+' add button lives in the column strip and routes through onAddTrack.
-    const root = renderFixture(fixture, { onAddTrack });
+    const root = renderFixture(fixture, { onAddTrack, onRequestDeleteTrack });
     const strip = findOne(root, (vnode) => vnode.type === PhysicsPaintTrackColumnStrip);
     const addButton = findOne(expandComponent(strip), (vnode) => vnode.props['aria-label'] === 'Add track');
     (addButton.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onAddTrack).toHaveBeenCalledTimes(1);
 
-    // The tools panel opens only from the more-button (47-01 UAT round 6) and
-    // exposes the duplicate + delete actions for that row.
-    const rootClosed = renderFixture(fixture, { onToggleTools });
-    const more = findOne(headerCell(rootClosed, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'));
-    (more.props.onClick as (event: unknown) => void)(clickEvent());
-    expect(onToggleTools).toHaveBeenCalledWith(fixture.trackA.id);
-
-    const rootOpen = renderFixture(fixture, {
-      toolsOpenTrackId: fixture.trackA.id,
-      onDuplicateTrack,
-      onRequestDeleteTrack,
-    });
-    const headerA = headerCell(rootOpen, fixture.trackA.id);
-    const duplicate = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Duplicate Track 1');
-    (duplicate.props.onClick as (event: unknown) => void)(clickEvent());
-    expect(onDuplicateTrack).toHaveBeenCalledWith(fixture.trackA.id);
+    // 260911-s1j: the delete action is a standing inline control — no tools
+    // panel to open. Two Paint rows exist, so the row is deletable.
+    const headerA = headerCell(root, fixture.trackA.id);
     const trash = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Delete Track 1');
-    // Two Paint rows exist, so the row is deletable — no disabled guard.
     expect(trash.props['aria-disabled']).toBeUndefined();
     (trash.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onRequestDeleteTrack).toHaveBeenCalledWith(fixture.trackA.id);
+
+    // 260911-s1j: the duplicate affordance is retired from the row UI — no
+    // Duplicate control renders for any row (the strip path stays wired).
+    for (const cell of headerCells(root)) {
+      expect(findAll(cell, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Duplicate '))).toHaveLength(0);
+    }
   });
 });
 
@@ -856,16 +867,16 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
     expect(publishStatus).toHaveBeenCalledTimes(rejections.length);
   });
 
-  it('routes the duplicate intent once from the row tools (TML-02/D-09)', () => {
+  it('retires the duplicate affordance from the row UI while the strip keeps the path wired (260911-s1j)', () => {
     const fixture = makeRegisteredFixture();
     const onDuplicateTrack = vi.fn();
     const harness = createStripHarness({ fixture, onDuplicateTrack });
     harness.render();
 
-    const duplicate = findNode(harness.headerCell(fixture.trackA.id), (vnode) => vnode.props['aria-label'] === 'Duplicate Track 1');
-    (duplicate.props.onClick as (event: unknown) => void)(clickEvent());
-    expect(onDuplicateTrack).toHaveBeenCalledTimes(1);
-    expect(onDuplicateTrack).toHaveBeenCalledWith(fixture.trackA.id);
+    // UI removal only — no Duplicate control renders on any row; the
+    // onDuplicateTrack path stays wired for a later re-exposure.
+    expect(findAll(harness.tree(), (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Duplicate '))).toHaveLength(0);
+    expect(onDuplicateTrack).not.toHaveBeenCalled();
   });
 
   it('opens the acknowledge-and-delete dialog via requestDeleteTrack and confirms with commitDeleteTrack(layerId, trackId, true) once (D-17)', () => {

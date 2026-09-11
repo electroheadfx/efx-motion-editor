@@ -749,13 +749,18 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(activeHeader).toBeDefined();
       expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
       expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
-      // 47-01 UAT round 6: the tools open ONLY from the more-button — the
-      // header never tracks a hover zone; a pointer-leave closes the panel.
+      // 260911-s1j: every row control is standing inline — no ⋯ expander, no
+      // tools panel, and no hover zone (the header never tracks pointer moves
+      // or closes anything on leave).
       expect(activeHeader!.props.onPointerMove).toBeUndefined();
-      expect(typeof activeHeader!.props.onPointerLeave).toBe('function');
+      expect(activeHeader!.props.onPointerLeave).toBeUndefined();
       expect(activeHeader!.props['data-tools-open']).toBeUndefined();
-      // The more-button (tools toggle) is rendered for every Paint header.
-      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(1);
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
+      // The inline controls render: the solo chip and exactly three tool
+      // buttons (eye, blend, trash).
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(1);
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(3);
       // 47-01 UAT round 5: the header label carries the FULL track name (the
       // "Track 1" vs "1" fix) — the label span text must match the track name.
       const activeLabel = findOne(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
@@ -775,6 +780,9 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(String(bgLabel.props.children)).toBe('Bg');
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
+      // 260911-s1j: none of the standing Paint controls leak onto the Bg row.
+      expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(0);
+      expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(0);
 
       // The header column is a sibling of the horizontal scroller, never a
       // descendant — so it stays pinned while the frame cells scroll (D-05).
