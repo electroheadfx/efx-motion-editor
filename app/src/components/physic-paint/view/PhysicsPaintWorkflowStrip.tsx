@@ -1218,8 +1218,12 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Interpolation</div>
+            {/* 260911-s1j follow-up: Frame blending is retired from the mode
+                dropdown until the engine's blended-frame slowdown work lands.
+                Stored blend states coerce to Frame duplicate at the store
+                boundary, so the remaining option is the only reachable mode. */}
             <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-              <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
+              <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option></select></label>
               <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
             </div>
           </div>

@@ -691,7 +691,9 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const section = code.slice(sectionIndex, sectionEnd === -1 ? code.length : sectionEnd);
     expect(section).toContain('aria-label="Interpolation mode"');
     expect(section).toContain('<option value="duplicate">Frame duplicate</option>');
-    expect(section).toContain('<option value="blend">Frame blending</option>');
+    // 260911-s1j follow-up: Frame blending is retired until the engine's
+    // blended-frame slowdown work lands — the dropdown offers duplicate only.
+    expect(section).not.toContain('<option value="blend">');
     expect(section).not.toContain('physics-paint-roto-interpolation-toggle');
     expect(section).not.toContain('generated in-betweens');
     expect(code).not.toContain('>Interpolation</span>');
@@ -1083,15 +1085,20 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     }
   });
 
-  it('renders the interpolation pill as a dropdown offering Frame duplicate and Frame blending', () => {
+  it('offers Frame duplicate as the only interpolation mode — Frame blending is retired until the engine work lands (260911-s1j follow-up)', () => {
     const code = source();
     expect(code).toContain('aria-label="Interpolation mode"');
     expect(code).toContain('<option value="duplicate">Frame duplicate</option>');
-    // Renamed 'Frame blend' → 'Frame blending' (36.15-09, UAT Gap E-4).
-    expect(code).toContain('<option value="blend">Frame blending</option>');
-    expect(code).not.toContain('<option value="blend">Frame blend</option>');
+    // 260911-s1j follow-up: the blend mode is unreachable in the product
+    // until the engine's blended-frame slowdown work lands (the store coerces
+    // stored blend states to Frame duplicate).
+    const selectStart = code.indexOf('aria-label="Interpolation mode"');
+    const selectEnd = code.indexOf('</select>', selectStart);
+    expect(selectEnd).toBeGreaterThan(selectStart);
+    const select = code.slice(selectStart, selectEnd);
+    expect(select).not.toContain('value="blend"');
+    expect(select).not.toContain('Frame blending');
     expect(code).not.toContain('<option value="duplicate">Duplicate</option>');
-    expect(code).not.toContain('<option value="blend">Blend</option>');
   });
 
   it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete (Key Spacing relocated to the popover)', () => {

@@ -800,11 +800,22 @@ describe('physicPaintStore', () => {
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('layer-1', TEST_TRACK_ID, projection);
 
-    expect(physicPaintStore.getRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, mode: 'blend' });
+    // 260911-s1j follow-up: Frame blending is retired — a persisted blend
+    // state loads as Frame duplicate (the store coerces it at entry).
+    expect(physicPaintStore.getRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, mode: 'duplicate' });
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'real', appFrame: 1, renderedFrame: { bytes: realOne.bytes } });
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 4)).toMatchObject({ kind: 'real', appFrame: 4, renderedFrame: { bytes: realFour.bytes } });
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 2)).toBeNull();
     expect(physicPaintStore.getRotoPhysicalRenderSource('layer-1', TEST_TRACK_ID, 3)).toBeNull();
+  });
+
+  it('retires Frame blending at the interpolation-state setter — blend coerces to Frame duplicate and keeps enabled (260911-s1j follow-up)', () => {
+    const armed = physicPaintStore.setRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID, { enabled: true, mode: 'blend' });
+    expect(armed.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, mode: 'duplicate' });
+    const disarmed = physicPaintStore.setRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID, { enabled: false, mode: 'blend' });
+    expect(disarmed.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalInterpolationState('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, mode: 'duplicate' });
   });
 
   it('extracts and installs rendered output by layer and app frame', () => {

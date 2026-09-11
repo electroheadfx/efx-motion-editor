@@ -3531,7 +3531,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       makePhysicalRecord('ordinary', 20),
     ];
     const groupOverrideRecords = [makePhysicalRecord('override-5', 5)];
-    const interpolation = { enabled: true, mode: 'blend' as const };
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
     const loopClips = [{
       loopId: 'group-1',
       placementStart: 0,
@@ -3676,7 +3676,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       makePhysicalRecord('source-B', 2),
       makePhysicalRecord('ordinary', 20),
     ];
-    const interpolation = { enabled: true, mode: 'blend' as const };
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
     const extentEnd = input.placementStart + 3 * input.repeat;
     const group = {
       loopId: 'group-1',
@@ -4090,7 +4090,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       makePhysicalRecord('override-5', 5),
       makePhysicalRecord('override-15', 15),
     ];
-    const interpolation = { enabled: true, mode: 'blend' as const };
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
     const loopClips = [
       {
         loopId: 'group-1', placementStart: 0, sourceKeyIds: ['source-A', 'source-B'], repeat: 3 as const,
@@ -4305,7 +4305,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       makePhysicalRecord('source-B', 2),
       makePhysicalRecord('ordinary', 20),
     ];
-    const interpolation = { enabled: true, mode: 'blend' as const };
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
     const loopClips = [{
       loopId: 'group-1',
       placementStart: 0,
@@ -4372,7 +4372,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
       groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: proposed.proposal.interpolation.enabled,
-      interpolationMode: 'blend',
+      interpolationMode: 'duplicate',
       loopClips: proposed.proposal.loopClips,
       incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
       selectedKeyId: proposed.proposal.selectedKeyId,
@@ -4401,7 +4401,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       records: seededDoc.realKeyRecords.map(({ kind: _kind, ...record }) => record),
       groupOverrideRecords: (seededDoc.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: seededDoc.interpolation.enabled,
-      interpolationMode: 'blend',
+      interpolationMode: 'duplicate',
       loopClips: seededDoc.loopClips,
       incomingInterpolationBreakKeyIds: seededDoc.incomingInterpolationBreakKeyIds,
       // The undo replay submits the TRUE pre-delete selection carried by the
@@ -4435,7 +4435,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
       records: acceptedDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
       groupOverrideRecords: (acceptedDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: acceptedDocument.interpolation.enabled,
-      interpolationMode: 'blend',
+      interpolationMode: 'duplicate',
       loopClips: acceptedDocument.loopClips,
       incomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
       selectedKeyId: acceptedDocument.selectedKeyId,

@@ -4,7 +4,6 @@ import {
   rotoPhysicalRevision,
   physicPaintVersion,
   _setPhysicPaintMarkDirtyCallback,
-  registerRotoAlphaCanvasFrame,
 } from './physicPaintStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -238,7 +237,11 @@ describe('linked-loop render-source branch (D-26/D-27)', async () => {
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 10)).toBeNull();
   });
 
-  it('renders spaced linked interiors with duplicate/blend semantics and one cycle-local cache identity across repeats and shared loops', async () => {
+  // 260911-s1j follow-up: Frame blending is retired (blend states coerce to
+  // Frame duplicate at the store entry), so this contract covers the
+  // reachable duplicate semantics only — the blend renderer keeps its direct
+  // unit coverage in physicPaintStore.test.ts.
+  it('renders spaced linked interiors with duplicate semantics and one cycle-local cache identity across repeats and shared loops', async () => {
     const spaced = [record('A', 0), record('B', 3), record('C', 6)];
     installRecords(spaced, CAPACITY, { enabled: true, mode: 'duplicate' });
     installLoops([
@@ -265,35 +268,6 @@ describe('linked-loop render-source branch (D-26/D-27)', async () => {
     expect(linkedCacheRevision).toContain(`:linked-generated:duplicate:${sourceCycleId}:A:B:1`);
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 12)).toMatchObject({ kind: 'generated', appFrame: 12 });
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 17)).toMatchObject({ kind: 'real', keyId: 'A', appFrame: 17 });
-
-    const originalDocument = globalThis.document;
-    const outputCanvas = {
-      width: 0,
-      height: 0,
-      getContext: () => ({ globalAlpha: 1, clearRect: vi.fn(), drawImage: vi.fn() }),
-      toDataURL: () => `data:image/webp;base64,${btoa(String.fromCharCode(...testWebpBytes('linked-loop-blend')))}`,
-    } as unknown as HTMLCanvasElement;
-    Object.defineProperty(globalThis, 'document', {
-      configurable: true,
-      value: { createElement: () => outputCanvas },
-    });
-    registerRotoAlphaCanvasFrame(spaced[0].payload.bytes, { width: 4, height: 4 } as HTMLCanvasElement);
-    registerRotoAlphaCanvasFrame(spaced[1].payload.bytes, { width: 4, height: 4 } as HTMLCanvasElement);
-    try {
-      installRecords(spaced, CAPACITY, { enabled: true, mode: 'blend' });
-      installLoops([loopClip('loop-blend', 10, ['A', 'B', 'C'], 2, 10, 7)]);
-      const blend = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 12);
-      expect(blend).toMatchObject({
-        kind: 'generated',
-        appFrame: 12,
-        leftKeyId: 'A',
-        rightKeyId: 'B',
-        interpolationMode: 'blend',
-        renderedFrame: { bytes: testWebpBytes('linked-loop-blend') },
-      });
-    } finally {
-      Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
-    }
   });
 
   it('separates linked-generated cache identity for distinct ordered source cycles with the same adjacent pair and cycle offset', async () => {

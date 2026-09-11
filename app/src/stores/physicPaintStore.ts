@@ -306,6 +306,20 @@ const DEFAULT_ROTO_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings 
 };
 
 /**
+ * 260911-s1j follow-up: Frame blending is retired from the product surface
+ * until the engine's blended-frame slowdown work lands. Every physical
+ * interpolation state entering the store is coerced to Frame duplicate here
+ * — the map can never hold blend, so every read (render paths, UI,
+ * persistence, revision and memo identity checks) observes one coherent
+ * mode. The canonical model and the blended renderer keep the mode type
+ * intact for the later re-introduction.
+ */
+function _retireFrameBlendingMode(state: PhysicPaintRotoInterpolationState): PhysicPaintRotoInterpolationState {
+  if (state.mode !== 'blend') return state;
+  return Object.freeze({ enabled: state.enabled, mode: 'duplicate' });
+}
+
+/**
  * One unresolvable Loop Clip intersecting a queried frame window (Phase 43,
  * D-28). Carries the verbatim missing source keyIds (D-31) and the loop's
  * effective end so the export preflight can name the blocked range without
@@ -2444,7 +2458,7 @@ export const physicPaintStore = {
       const groupOverrideMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
       for (const record of physical.groupOverrideRecords ?? []) groupOverrideMap.set(record.keyId, record);
       _getOrCreateLayerTrackMap(_rotoGroupOverrideRecords, layerId).set(trackId, groupOverrideMap);
-      _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, physical.interpolation);
+      _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(physical.interpolation));
       _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, physical.scriptMotion);
       _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, physical.loopClips);
       _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, physical.incomingInterpolationBreakKeyIds);
@@ -2845,6 +2859,7 @@ export const physicPaintStore = {
     if (!isPhysicPaintRotoInterpolationState(interpolation)) {
       return { ok: false, error: 'Interpolation state must include canonical enabled and mode fields.' };
     }
+    const nextInterpolation = _retireFrameBlendingMode(interpolation);
 
     let validatedRecords: readonly PhysicPaintRotoRealKeyRecord[];
     try {
@@ -2859,7 +2874,7 @@ export const physicPaintStore = {
     const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
       identities,
       capacity,
-      interpolationEnabled: interpolation.enabled,
+      interpolationEnabled: nextInterpolation.enabled,
       incomingInterpolationBreakKeyIds: currentIncomingBreaks,
     });
     if (!projectionResult.ok) {
@@ -2883,7 +2898,7 @@ export const physicPaintStore = {
     );
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(
       validatedRecords,
-      interpolation,
+      nextInterpolation,
       currentLoopClips,
       currentIncomingBreaks,
       groupOverrideRecords,
@@ -2895,8 +2910,8 @@ export const physicPaintStore = {
     recordMap.clear();
     for (const record of validatedRecords) recordMap.set(record.keyId, record);
     _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, Object.freeze({
-      enabled: interpolation.enabled,
-      mode: interpolation.mode,
+      enabled: nextInterpolation.enabled,
+      mode: nextInterpolation.mode,
     }) as PhysicPaintRotoInterpolationState);
     if (!_rotoPhysicalScriptMotion.get(layerId)?.has(trackId)) _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO);
     const previousSelectedKeyId = _rotoPhysicalSelectedKeyId.get(layerId)?.get(trackId) ?? null;
@@ -3034,7 +3049,7 @@ export const physicPaintStore = {
       trackId,
       new Map((document.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
     );
-    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, document.interpolation);
+    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(document.interpolation));
     _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
@@ -3093,7 +3108,7 @@ export const physicPaintStore = {
       trackId,
       new Map((document.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
     );
-    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, document.interpolation);
+    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(document.interpolation));
     _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
@@ -3343,11 +3358,12 @@ export const physicPaintStore = {
     if (!isPhysicPaintRotoInterpolationState(state)) {
       return { ok: false, error: 'Interpolation state must include canonical enabled and mode fields.' };
     }
+    const next = _retireFrameBlendingMode(state);
     const current = this.getRotoPhysicalInterpolationState(layerId, trackId);
-    if (current.enabled === state.enabled && current.mode === state.mode) return { ok: true };
+    if (current.enabled === next.enabled && current.mode === next.mode) return { ok: true };
     _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, Object.freeze({
-      enabled: state.enabled,
-      mode: state.mode,
+      enabled: next.enabled,
+      mode: next.mode,
     }) as PhysicPaintRotoInterpolationState);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
