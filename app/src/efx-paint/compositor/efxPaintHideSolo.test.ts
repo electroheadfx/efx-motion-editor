@@ -67,6 +67,15 @@ describe('participatingPaintTracks — hide/solo truth table (CMP-02)', () => {
     expect(participatingPaintTracks(doc).map((track) => track.id)).toEqual(['track-b']);
   });
 
+  it('a visible solo plus a hidden solo: only the visible soloed track participates, the hidden track stays out', () => {
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0, solo: true }),
+      makeTrack('track-b', { order: 1 }),
+      makeTrack('track-c', { order: 2, visible: false, solo: true }),
+    ]);
+    expect(participatingPaintTracks(doc).map((track) => track.id)).toEqual(['track-a']);
+  });
+
   it('order ties break deterministically by track.id localeCompare — never insertion order (edge CMP-01/CMP-02 ordering)', () => {
     const doc = makeDocument([
       makeTrack('track-b', { order: 5 }),
