@@ -192,4 +192,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-08-23*
-*Last updated: 2026-08-24 (TRK-07 complete via 46-05)*
+*Last updated: 2026-09-11 (CMP-01..06 verification records backfilled — see 48-VERIFICATION.md and 52.1-VERIFICATION.md)*
