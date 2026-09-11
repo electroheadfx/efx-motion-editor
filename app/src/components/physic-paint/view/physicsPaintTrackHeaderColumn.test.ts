@@ -641,7 +641,7 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
 
     // The mockup order: grip < eye < S < blend < name < trash.
     const sequence = [...walk(headerA)]
-      .map((vnode) => {
+      .map((vnode): string | null => {
         if (hasClass(vnode, 'physics-paint-track-row-grip')) return 'grip';
         if (vnode.props['aria-label'] === 'Hide Track 1') return 'eye';
         if (vnode.props['aria-label'] === 'Solo Track 1') return 'solo';
@@ -873,9 +873,12 @@ describe('physicsPaintTrackHeaderColumn track CRUD interactions (47-02 Task 2)',
     const harness = createStripHarness({ fixture, onDuplicateTrack });
     harness.render();
 
-    // UI removal only — no Duplicate control renders on any row; the
-    // onDuplicateTrack path stays wired for a later re-exposure.
-    expect(findAll(harness.tree(), (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Duplicate '))).toHaveLength(0);
+    // UI removal only — no Duplicate control renders on any ROW (the action
+    // row's Duplicate Frame control is unrelated); the onDuplicateTrack path
+    // stays wired for a later re-exposure.
+    for (const cell of headerCells(harness.tree())) {
+      expect(findAll(cell, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Duplicate '))).toHaveLength(0);
+    }
     expect(onDuplicateTrack).not.toHaveBeenCalled();
   });
 

@@ -1551,9 +1551,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // and flow down to the matching `PhysicsPaintTrackRowHeader` as props.
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
-  // 47-01 UAT round 6: the tool panel opens only from the header's more-button
-  // (one open panel at a time); leaving the panel or the header closes it.
-  const [toolsOpenTrackId, setToolsOpenTrackId] = useState<string | null>(null);
   // 47-01 UAT round 3: flexible/resizable strip height. `null` = auto (default
   // = exactly enough for all rows + Bg, capped at 270px); a number = the user's
   // session-local manual resize. Clamped to [1 row, full content height] so the
@@ -1623,15 +1620,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const handleCancelRename = useCallback(() => {
     setRenamingTrackId(null);
   }, []);
-  const handleToggleTrackTools = useCallback((trackId: string) => {
-    setToolsOpenTrackId((current) => (current === trackId ? null : trackId));
-  }, []);
-  const handleCloseTrackTools = useCallback(() => {
-    setToolsOpenTrackId(null);
-  }, []);
   // 47-02 Task 2: 'S' solo toggle intent — the row's armed state reflects the
-  // session solo arm (physicsPaintSoloArm); the click routes the desired
-  // visibility to the controller (setTrackSolo).
+  // track's DOCUMENT solo flag (260911-sli/s1j); the click routes the desired
+  // visibility to the controller (setTrackSolo). The session playback arm
+  // (physicsPaintSoloArm) stays exclusive to the playback pill.
   const handleToggleSolo = useCallback((trackId: string) => {
     const track = props.tracks?.find((candidate) => candidate.id === trackId);
     props.onToggleSolo?.(trackId, !track?.solo);
@@ -1648,7 +1640,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       props.rotoPhysicalActions?.publishStatus?.('Could not delete track.');
       return;
     }
-    setToolsOpenTrackId(null);
     setDeletePreview(preview);
   }, [props.layerId, props.rotoPhysicalActions]);
   const handleCancelDeleteTrack = useCallback(() => {
@@ -4251,9 +4242,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             onRenameDraftChange: handleRenameDraftChange,
             onCommitRename: handleCommitRename,
             onCancelRename: handleCancelRename,
-            toolsOpenTrackId: toolsOpenTrackId,
-            onToggleTools: handleToggleTrackTools,
-            onCloseTools: handleCloseTrackTools,
             headerRowsRef: headerRowsRef,
             headerColumnRef: headerColumnRef,
             onHeaderScroll: syncHeaderScroll,
