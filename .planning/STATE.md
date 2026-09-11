@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — COMPLETE
 Plan: 7 of 7
 Status: Closed 2026-09-09
-Last activity: 2026-09-11 — Completed quick task 260911-f2p: Backfill missing milestone verification records (Phase 48 + 52.1)
+Last activity: 2026-09-11 — Completed quick task 260911-g1g: Align hide/solo semantics — hide is a hard off-switch
 
 Progress: [████████████████████] 49/49 plans ([█████░░░░░] 50%)
 
@@ -280,6 +280,7 @@ None yet.
 | 260905-f3v | Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default | 2026-09-05 | cc113daa | [260905-f3v-actions-tab-polish-styled-guarded-toolti](./quick/260905-f3v-actions-tab-polish-styled-guarded-toolti/) |
 | 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | ddb4ebde | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
 | 260911-f2p | Backfill missing milestone verification records for Phase 48 and Phase 52.1 and reconcile REQUIREMENTS.md CMP-01..06 | 2026-09-11 | 596ecb58 | [260911-f2p-backfill-missing-milestone-verification-](./quick/260911-f2p-backfill-missing-milestone-verification-/) |
+| 260911-g1g | Align hide/solo semantics — hide is a hard off-switch | 2026-09-11 | 12cdee36 | [260911-g1g-align-hide-solo-semantics-hide-is-a-hard](./quick/260911-g1g-align-hide-solo-semantics-hide-is-a-hard/) |
 
 ### Roadmap Evolution
 
