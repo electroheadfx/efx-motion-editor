@@ -6,9 +6,9 @@ current_phase: "53"
 current_phase_name: Integrated v1.0.0 Acceptance
 status: pending
 stopped_at: Completed 52.1-07-SUMMARY.md
-last_updated: "2026-09-11T17:35:00.000Z"
+last_updated: "2026-09-11T18:32:00.000Z"
 last_activity: 2026-09-11
-last_activity_desc: "Quick 260911-sli completed — armed solo surfaced on the track row (badge + chip bound to the doc flag); native UAT pending"
+last_activity_desc: "Quick 260911-s1j completed — track-row header redesign (inline controls, ⋯ panel + duplicate retired, orange armed states, document-level interpolation mode); native UAT pending, folds the 260911-sli rows"
 state_head: c372e736
 progress:
   total_phases: 10
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — COMPLETE
 Plan: 7 of 7
 Status: Closed 2026-09-09
-Last activity: 2026-09-11 — Completed quick task 260911-sli: Surface armed solo on the track row (native UAT pending — badge rows + folded 260911-g1g 3-track rows)
+Last activity: 2026-09-11 — Completed quick task 260911-s1j: Track-row header redesign (inline controls; native UAT pending — folds the 260911-sli badge rows + the 260911-g1g 3-track rows) — supersedes the 260911-sli badge surface
 
 Progress: [████████████████████] 49/49 plans ([█████░░░░░] 50%)
 
@@ -281,6 +281,7 @@ None yet.
 | 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | ddb4ebde | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
 | 260911-f2p | Backfill missing milestone verification records for Phase 48 and Phase 52.1 and reconcile REQUIREMENTS.md CMP-01..06 | 2026-09-11 | 596ecb58 | [260911-f2p-backfill-missing-milestone-verification-](./quick/260911-f2p-backfill-missing-milestone-verification-/) |
 | 260911-g1g | Align hide/solo semantics — hide is a hard off-switch | 2026-09-11 | 12cdee36 | [260911-g1g-align-hide-solo-semantics-hide-is-a-hard](./quick/260911-g1g-align-hide-solo-semantics-hide-is-a-hard/) |
+| 260911-s1j | Track-row header redesign — inline controls [grip/eye/S/blend], ⋯ panel + duplicate button retired, orange armed solo/blend, Tools popover Blend toggle removed, document-level interpolation mode (amends 260911-sli) | 2026-09-11 | 6a78f90a | [260911-s1j-track-row-header-redesign-inline-row-con](./quick/260911-s1j-track-row-header-redesign-inline-row-con/) |
 | 260911-jy4 | Close Phase 51 verification gap — AUD-01..04 | 2026-09-11 | 41d4235e | [260911-jy4-close-phase-51-verification-gap-aud-01-0](./quick/260911-jy4-close-phase-51-verification-gap-aud-01-0/) |
 | 260911-sli | Surface armed solo on the track row — standing badge + chip bound to the document solo flag; folds the pending 260911-g1g hide/solo native UAT | 2026-09-11 | 42a22183 | [260911-sli-surface-armed-solo-on-the-track-row](./quick/260911-sli-surface-armed-solo-on-the-track-row/) |
 
