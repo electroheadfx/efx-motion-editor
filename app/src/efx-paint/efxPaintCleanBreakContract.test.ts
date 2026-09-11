@@ -100,11 +100,17 @@ const FRAME_TRANSPORT_FORBIDDEN_TOKENS = [
  *     persistence boundary only") — bytesToBase64 serializes Uint8Array
  *     across the Tauri emitTo JSON hop (webpBytes.ts, types/physicPaint.ts,
  *     physicsPaintRotoScriptThumbnail.ts);
+ *   - the decode IPC response leg (52.1 quick fix 3d1cb4d3): the Rust
+ *     `decode_webp_frame` response returns its RGBA base64-encoded — a raw
+ *     response body degrades to a JSON number array on macOS (~33 MB
+ *     marshalled per 1920x1080 frame, ~3.4 s measured 2026-09-11); the
+ *     request leg stays raw (webpFrameCodec.ts);
  *   - this contract file (it must name the tokens to detect them).
  */
 const FRAME_TRANSPORT_ALLOWLIST = new Set([
   'app/src/lib/rotoAlphaCanvasRegistry.ts',
   'app/src/lib/webpBytes.ts',
+  'app/src/lib/webpFrameCodec.ts',
   'app/src/types/physicPaint.ts',
   'app/src/components/physic-paint/roto/physicsPaintRotoScriptThumbnail.ts',
   'app/src/efx-paint/efxPaintCleanBreakContract.test.ts',
