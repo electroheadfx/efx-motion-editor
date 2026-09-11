@@ -566,6 +566,30 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(false);
   });
 
+  it('a hidden-only solo does not arm solo filtering', () => {
+    // The only solo flag sits on a hidden track: solo mode never arms, so the
+    // visible non-soloed track still renders (matches participatingPaintTracks).
+    const document = createEfxPaintDocument('roto-layer');
+    const base = document.tracks[0];
+    const trackA: InternalPaintTrack = { ...base, id: 'track-a', name: 'Paint A', order: 0 };
+    const trackB: InternalPaintTrack = { ...base, id: 'track-b', name: 'Paint B', order: 1, visible: false, solo: true };
+    registerDocument({ ...document, tracks: [trackA, trackB] });
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-a')).toBe(true);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(false);
+  });
+
+  it('a visible solo plus a hidden solo: only the visible solo participates, the hidden track stays out', () => {
+    const document = createEfxPaintDocument('roto-layer');
+    const base = document.tracks[0];
+    const trackA: InternalPaintTrack = { ...base, id: 'track-a', name: 'Paint A', order: 0, solo: true };
+    const trackB: InternalPaintTrack = { ...base, id: 'track-b', name: 'Paint B', order: 1 };
+    const trackC: InternalPaintTrack = { ...base, id: 'track-c', name: 'Paint C', order: 2, visible: false, solo: true };
+    registerDocument({ ...document, tracks: [trackA, trackB, trackC] });
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-a')).toBe(true);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(false);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-c')).toBe(false);
+  });
+
   it('an unknown track or absent document resolves hidden (fail closed)', () => {
     const document = createEfxPaintDocument('roto-layer');
     registerDocument(document);
