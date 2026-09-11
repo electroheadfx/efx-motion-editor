@@ -179,12 +179,16 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(block).not.toContain('Delete key');
   });
 
-  it('keeps the interpolation mode dropdown, onion, and key utility controls', () => {
+  it('keeps the onion and key utility controls; the interpolation dropdown no longer renders (260911-s1j follow-up)', () => {
     const code = source();
-    expect(code).toContain('physics-paint-roto-interpolation-controls');
-    expect(code).toContain('aria-label="Interpolation mode"');
+    // 260911-s1j follow-up: the Interpolation section (mode dropdown + status
+    // pill) left the Tools popover — the mode is fixed on Frame duplicate
+    // until the engine's Frame blending work lands.
+    expect(code).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(code).not.toContain('aria-label="Interpolation mode"');
+    expect(code).not.toContain('physics-paint-roto-interpolation-select');
     // 260911-s1j: the Blend on/off toggle left the Tools popover — the row
-    // button owns on/off per track; the section holds only the mode dropdown.
+    // button owns on/off per track.
     expect(code).not.toContain('physics-paint-roto-interpolation-toggle');
     expect(code).not.toContain('Disable generated in-betweens');
     expect(code).toContain('aria-label="Empty frames between real keys"');
@@ -195,11 +199,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onPasteRotoFrame');
   });
 
-  it('disables the interpolation mode dropdown only while the mutation lock is active (260911-s1j)', () => {
+  it('retires the interpolation dropdown markup while the retained wiring stays declared (260911-s1j follow-up)', () => {
     const code = source();
     expect(getWorkflowStripPropsInterface(code)).toContain('mutationLocked?: boolean');
+    // Retained wiring: the disabled-state derivation and the port stay
+    // declared for the re-introduction; only the rendered dropdown is gone.
     expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);');
-    expect(code).toContain('disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange}');
+    expect(code).not.toContain('disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange}');
     // The retired toggle's click guard is gone with it.
     expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toBeNull();
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
@@ -612,7 +618,7 @@ describe('localized static and live Workflow regions', () => {
     expect(staticBlock).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
     expect(staticBlock).toContain('physics-paint-workflow-header');
     expect(staticBlock).toContain('physics-paint-pill--playback');
-    expect(staticBlock).toContain('physics-paint-pill--interpolation');
+    expect(staticBlock).not.toContain('physics-paint-pill--interpolation');
     expect(staticBlock).toContain('aria-label="Close"');
     expect(staticBlock).toContain('<PhysicsPaintWorkflowLiveStatus');
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')")).toBe(1);
@@ -683,20 +689,19 @@ function getCssRuleBlock(styles: string, selector: string): string {
 }
 
 describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
-  it('renders the interpolation section as the mode dropdown only — no Blend toggle, no count input, no text label (260911-s1j)', () => {
+  it('removes the Interpolation section from the tools popover — the mode is fixed on Frame duplicate (260911-s1j follow-up)', () => {
     const code = source();
-    const sectionIndex = code.indexOf('physics-paint-toolbox-section-heading">Interpolation');
-    expect(sectionIndex).toBeGreaterThanOrEqual(0);
-    const sectionEnd = code.indexOf('physics-paint-toolbox-divider', sectionIndex);
-    const section = code.slice(sectionIndex, sectionEnd === -1 ? code.length : sectionEnd);
-    expect(section).toContain('aria-label="Interpolation mode"');
-    expect(section).toContain('<option value="duplicate">Frame duplicate</option>');
-    // 260911-s1j follow-up: Frame blending is retired until the engine's
-    // blended-frame slowdown work lands — the dropdown offers duplicate only.
-    expect(section).not.toContain('<option value="blend">');
-    expect(section).not.toContain('physics-paint-roto-interpolation-toggle');
-    expect(section).not.toContain('generated in-betweens');
-    expect(code).not.toContain('>Interpolation</span>');
+    expect(code).not.toContain('physics-paint-toolbox-section-heading">Interpolation');
+    expect(code).not.toContain('aria-label="Interpolation mode"');
+    expect(code).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(code).not.toContain('physics-paint-roto-interpolation-select');
+    expect(code).not.toContain('physics-paint-roto-interpolation-mode');
+    expect(code).not.toContain('Frame duplicate');
+    // The popover keeps its remaining sections.
+    expect(code).toContain('physics-paint-toolbox-section-heading">Key Spacing');
+    expect(code).toContain('physics-paint-toolbox-section-heading">Actions');
+    expect(code).not.toContain('physics-paint-roto-interpolation-toggle');
+    expect(code).not.toContain('generated in-betweens');
     expect(code).not.toContain('Interpolation count');
     expect(code).not.toContain('inBetweenCount');
   });
@@ -724,13 +729,12 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const navigationBlock = getCssRuleBlock(styles, '.physics-paint-pill--navigation {');
     expect(navigationBlock).toContain('#34383c');
     expect(navigationBlock).toContain('#575e66');
-    // 43.5-02 final polish: the relocated interpolation and Key Spacing pills
-    // live inside the liquid-glass popover, where their tonal backgrounds read
-    // as a double surface — the background is removed, the border stays.
-    const interpolationBlock = getCssRuleBlock(styles, '.physics-paint-pill--interpolation {');
-    expect(interpolationBlock).not.toContain('#323a43');
-    expect(interpolationBlock).not.toContain('background:');
-    expect(interpolationBlock).toContain('#596775');
+    // 260911-s1j follow-up: the Interpolation pill left the popover with its
+    // dropdown — its dedicated rules are retired outright.
+    expect(styles).not.toContain('.physics-paint-pill--interpolation');
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-controls');
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-mode');
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-select');
     const playbackBlock = getCssRuleBlock(styles, '.physics-paint-pill--playback {');
     expect(playbackBlock).toContain('#34383c');
     expect(playbackBlock).toContain('#59616a');
@@ -766,15 +770,15 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
-  it('renders the elastic status capsule between the navigation and interpolation pills with the Info glyph', () => {
+  it('renders the elastic status capsule between the navigation controls and Close with the Info glyph', () => {
     const code = source();
     const header = getHeaderBlock(code);
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
     const capsuleIndex = header.indexOf('<PhysicsPaintWorkflowLiveStatus');
-    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
+    const closeIndex = header.indexOf('aria-label="Close"');
     expect(navigationIndex).toBeGreaterThanOrEqual(0);
     expect(capsuleIndex).toBeGreaterThan(navigationIndex);
-    expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
+    expect(closeIndex).toBeGreaterThan(capsuleIndex);
     const capsule = code.slice(code.indexOf('function PhysicsPaintWorkflowLiveStatus'), code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'));
     // 49-05 (UI-SPEC): the capsule keeps the polite live region, and rejections
     // additionally announce with role="alert" — the role is conditional on the
@@ -835,14 +839,6 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(cellComponent).toContain('data-roto-app-frame');
     expect(cellComponent).toContain('data-roto-kind');
     expect(cellComponent).toContain('data-roto-key-id');
-    // The interpolation pill adopts the styled tooltip in place of its native title (Pitfall 4).
-    const pillIndex = code.indexOf('physics-paint-pill--interpolation');
-    expect(pillIndex).toBeGreaterThanOrEqual(0);
-    const pillEnd = code.indexOf('<div class="physics-paint-state-actions"', pillIndex);
-    const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
-    expect(pill).not.toContain('title=');
-    expect(pill).toContain('PhysicsPaintStyledTooltip');
-    expect(pill).toContain('{props.interpolationStatus}');
   });
 
   it('styles the capsule as the sole flex:1 truncating region and deletes the retired stack/legend CSS', () => {
@@ -1046,20 +1042,19 @@ describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2
 });
 
 describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT Gap A)', () => {
-  it('orders the top bar as navigation, playback, capsule, interpolation, Close with no Tools menu or header key actions', () => {
+  it('orders the top bar as navigation, playback, capsule, Close with no interpolation pill, Tools menu, or header key actions (260911-s1j follow-up)', () => {
     const header = getHeaderBlock(source());
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
     const playbackIndex = header.indexOf('physics-paint-pill--playback');
     const capsuleIndex = header.indexOf('<PhysicsPaintWorkflowLiveStatus');
-    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
     const closeIndex = header.indexOf('aria-label="Close"');
-    for (const index of [navigationIndex, playbackIndex, capsuleIndex, interpolationIndex, closeIndex]) {
+    for (const index of [navigationIndex, playbackIndex, capsuleIndex, closeIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(playbackIndex).toBeGreaterThan(navigationIndex);
     expect(capsuleIndex).toBeGreaterThan(playbackIndex);
-    expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
-    expect(closeIndex).toBeGreaterThan(interpolationIndex);
+    expect(closeIndex).toBeGreaterThan(capsuleIndex);
+    expect(header).not.toContain('physics-paint-pill--interpolation');
     // 43.5-02: the ToolCase button (dynamic aria-label carrying live
     // interpolation state) and the relocated Key Spacing form now live in the
     // header block inside the toolbox popover, so the apply-spacing pill is
@@ -1085,20 +1080,13 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     }
   });
 
-  it('offers Frame duplicate as the only interpolation mode — Frame blending is retired until the engine work lands (260911-s1j follow-up)', () => {
+  it('removes the interpolation mode dropdown outright — no select, no mode options (260911-s1j follow-up)', () => {
     const code = source();
-    expect(code).toContain('aria-label="Interpolation mode"');
-    expect(code).toContain('<option value="duplicate">Frame duplicate</option>');
-    // 260911-s1j follow-up: the blend mode is unreachable in the product
-    // until the engine's blended-frame slowdown work lands (the store coerces
-    // stored blend states to Frame duplicate).
-    const selectStart = code.indexOf('aria-label="Interpolation mode"');
-    const selectEnd = code.indexOf('</select>', selectStart);
-    expect(selectEnd).toBeGreaterThan(selectStart);
-    const select = code.slice(selectStart, selectEnd);
-    expect(select).not.toContain('value="blend"');
-    expect(select).not.toContain('Frame blending');
-    expect(code).not.toContain('<option value="duplicate">Duplicate</option>');
+    expect(code).not.toContain('aria-label="Interpolation mode"');
+    expect(code).not.toContain('<select');
+    expect(code).not.toContain('<option');
+    expect(code).not.toContain('value="duplicate"');
+    expect(code).not.toContain('value="blend"');
   });
 
   it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete (Key Spacing relocated to the popover)', () => {
@@ -1184,26 +1172,16 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
     const header = getHeaderBlock(source());
     const headerTopRegionCount = (header.match(/region="top"/g) ?? []).length;
     const allTopRegionCount = (source().match(/region="top"/g) ?? []).length;
-    // Interpolation and Close declare the header region in this block; the
-    // extracted status-capsule child declares the same region at its owner.
-    expect(headerTopRegionCount).toBe(2);
-    expect(allTopRegionCount).toBe(3);
+    // Close declares the header region in this block (the interpolation pill
+    // left with its dropdown — 260911-s1j follow-up); the extracted
+    // status-capsule child declares the same region at its owner.
+    expect(headerTopRegionCount).toBe(1);
+    expect(allTopRegionCount).toBe(2);
     const styles = css();
     const surface = getCssRuleBlock(styles, '.physics-paint-styled-tooltip {');
     const belowNotch = getCssRuleBlock(styles, '.physics-paint-styled-tooltip--below .physics-paint-styled-tooltip-notch {');
     expect(surface).toContain('position: fixed');
     expect(belowNotch).toContain('border-bottom: 6px solid var(--color-tooltip-bg)');
-  });
-
-  it('keeps the interpolation mode select native so the open dropdown renders above studio chrome', () => {
-    const code = source();
-    const selectIndex = code.indexOf('aria-label="Interpolation mode"');
-    expect(selectIndex).toBeGreaterThanOrEqual(0);
-    const selectStart = code.lastIndexOf('<select', selectIndex);
-    expect(selectStart).toBeGreaterThanOrEqual(0);
-    // No custom listbox/menu replaces the native dropdown.
-    expect(code).not.toContain('role="listbox"');
-    expect(code).not.toContain('role="menu"');
   });
 });
 

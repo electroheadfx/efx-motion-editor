@@ -2912,11 +2912,14 @@ export function PhysicsPaintStudio() {
   requestRotoFrameNavigationRef.current = requestRotoFrameNavigation;
   const rotoKeyRecordsRef = useRef(rotoKeyRecords);
   rotoKeyRecordsRef.current = rotoKeyRecords;
-  // 260911-s1j: the Tools popover's mode dropdown is the DOCUMENT-LEVEL mode
-  // choice — it writes every track's physical interpolation state (each
-  // track's own enabled flag preserved) through the same direct store op the
-  // per-row blend button uses; the old active-track coordinator path and the
-  // popover's on/off toggle are retired (the row button owns on/off).
+  // 260911-s1j: the Tools popover's mode dropdown writes every track's
+  // physical interpolation state (each track's own enabled flag preserved)
+  // through the same direct store op the per-row blend button uses; the old
+  // active-track coordinator path and the popover's on/off toggle are retired
+  // (the row button owns on/off). 260911-s1j follow-up: the dropdown itself is
+  // REMOVED from the Tools popover (mode fixed on Frame duplicate — the store
+  // coerces every blend state to duplicate); this handler and its wiring stay
+  // retained for the re-introduction.
   const handleRotoInterpolationModeChange = useCallback((mode: PhysicPaintRotoInterpolationState['mode']) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;

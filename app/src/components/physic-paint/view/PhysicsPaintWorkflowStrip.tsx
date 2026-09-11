@@ -1103,11 +1103,6 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
   }
-  function handleInterpolationModeChange(event: Event) {
-    const mode = (event.currentTarget as HTMLSelectElement).value;
-    if (mode !== 'duplicate' && mode !== 'blend') return;
-    props.onInterpolationModeChange?.(mode);
-  }
   return (
     <div class="physics-paint-workflow-header">
       <div class="physics-paint-pill physics-paint-pill--navigation physics-paint-roto-navigation-controls" role="group" aria-label="Roto frame navigation">
@@ -1211,23 +1206,17 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation mode and Key Spacing.', null)}
+          {buildGuardedActionTooltipCopy('Open timeline tools — Key Spacing and Actions.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
       {(props.onApplyScript || props.onDiscardScript) ? (
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
-          <div class="physics-paint-toolbox-section">
-            <div class="physics-paint-toolbox-section-heading">Interpolation</div>
-            {/* 260911-s1j follow-up: Frame blending is retired from the mode
-                dropdown until the engine's blended-frame slowdown work lands.
-                Stored blend states coerce to Frame duplicate at the store
-                boundary, so the remaining option is the only reachable mode. */}
-            <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-              <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option></select></label>
-              <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
-            </div>
-          </div>
-          <div class="physics-paint-toolbox-divider" />
+          {/* 260911-s1j follow-up: the Interpolation section (mode dropdown +
+              status pill) is removed from the UI — the mode is fixed on Frame
+              duplicate until the engine's Frame blending slowdown work lands
+              (the store coerces every blend state to duplicate). The retained
+              interpolation props/handler stay wired on the static chrome for
+              the re-introduction. */}
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Key Spacing</div>
             {props.forceSpacingScopeLine ? (

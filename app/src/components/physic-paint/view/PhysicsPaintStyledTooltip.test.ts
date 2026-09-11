@@ -339,7 +339,7 @@ describe('PhysicsPaintStyledTooltip surface contract', () => {
     const styles = css();
     const tooltipCss = styles.slice(
       styles.indexOf('.physics-paint-styled-tooltip'),
-      styles.indexOf('.physics-paint-roto-interpolation-controls'),
+      styles.indexOf('.physics-paint-roto-force-spacing-controls'),
     );
     const surface = tooltipCss.slice(0, tooltipCss.indexOf('}'));
     expect(TOOLTIP_VIEWPORT_MARGIN).toBe(8);
