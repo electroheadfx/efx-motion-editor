@@ -2802,46 +2802,6 @@ button.destructive {
   white-space: nowrap;
 }
 
-.physics-paint-roto-interpolation-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: transparent;
-  color: #b8c7ff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-
-.physics-paint-roto-interpolation-toggle:hover:not(:disabled) {
-  background: rgba(184, 199, 255, 0.14);
-}
-
-.physics-paint-roto-interpolation-toggle.active {
-  background: rgba(184, 199, 255, 0.2);
-  color: #dbe4ff;
-}
-
-.physics-paint-roto-interpolation-toggle:focus-visible {
-  outline: 2px solid #9bb7ff;
-  outline-offset: 2px;
-}
-
-.physics-paint-roto-interpolation-toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.physics-paint-roto-interpolation-controls[data-pending="true"] .physics-paint-roto-interpolation-toggle {
-  cursor: wait;
-}
-
 .physics-paint-roto-force-spacing-controls {
   min-width: 0;
 }
@@ -6094,24 +6054,12 @@ button.destructive {
   font-variant-numeric: tabular-nums;
 }
 
-/* Blend-state badge (D-04): 6px filled dot pinned at the icon's top-right
-   corner (2px insets), read-only projection of the timeline-owned
-   interpolation state — never interactive, never a second authority. */
+/* The ToolCase icon wrapper (260911-s1j: the interpolation-state badge is
+   retired — the row's blend button is the per-track state, and the mode
+   dropdown is the only interpolation control left in the popover). */
 .physics-paint-toolbox-badge-anchor {
   position: relative;
   display: inline-flex;
-}
-
-.physics-paint-toolbox-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #dbe4ff;
-  box-shadow: 0 0 0 1px #37393a;
-  pointer-events: none;
 }
 
 /* 47-02 Task 2 (TML-02, D-17): the acknowledge-and-delete dialog surface.

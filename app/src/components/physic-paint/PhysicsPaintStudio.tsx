@@ -117,7 +117,6 @@ import {
   type RotoRailSetPasteIdentity,
 } from './roto/physicsPaintRotoRailSetCopy';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
-import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
@@ -2909,28 +2908,27 @@ export function PhysicsPaintStudio() {
     hasLaunchContext: Boolean(launchContext),
     frames: rotoCachedPlaybackAvailableFrames,
   });
-  const { updateRotoInterpolationSettings } = useRotoInterpolationController({
-    launchContext,
-    interpolation: rotoInterpolationState,
-    records: rotoKeyRecords,
-    selectedKeyId: selectedKeyId.value,
-    selectedAppFrame: selectedKeyId.value === null ? null : currentFrame,
-    pendingOperationId: physicalEditCoordinator.pendingOperationId,
-    executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
-    isMutationLocked: isPhysicalMutationLocked,
-  });
-  const updateRotoInterpolationSettingsRef = useRef(updateRotoInterpolationSettings);
-  updateRotoInterpolationSettingsRef.current = updateRotoInterpolationSettings;
   const requestRotoFrameNavigationRef = useRef(requestRotoFrameNavigation);
   requestRotoFrameNavigationRef.current = requestRotoFrameNavigation;
   const rotoKeyRecordsRef = useRef(rotoKeyRecords);
   rotoKeyRecordsRef.current = rotoKeyRecords;
-  const handleRotoInterpolationEnabledChange = useCallback((enabled: boolean) => {
-    void updateRotoInterpolationSettingsRef.current({ enabled });
-  }, []);
+  // 260911-s1j: the Tools popover's mode dropdown is the DOCUMENT-LEVEL mode
+  // choice — it writes every track's physical interpolation state (each
+  // track's own enabled flag preserved) through the same direct store op the
+  // per-row blend button uses; the old active-track coordinator path and the
+  // popover's on/off toggle are retired (the row button owns on/off).
   const handleRotoInterpolationModeChange = useCallback((mode: PhysicPaintRotoInterpolationState['mode']) => {
-    void updateRotoInterpolationSettingsRef.current({ mode });
-  }, []);
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    if (physicalEditCoordinator.pendingOperationId.value !== null) return;
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return;
+    for (const track of document.tracks) {
+      const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id);
+      if (current.mode === mode) continue;
+      physicPaintStore.setRotoPhysicalInterpolationState(layerId, track.id, { enabled: current.enabled, mode });
+    }
+  }, [launchContext?.layerId]);
   const handleSelectRotoSpacingProxy = useCallback((
     proxy: PhysicsPaintRotoSpacingProxy,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
@@ -4268,7 +4266,7 @@ export function PhysicsPaintStudio() {
         // read subscribes this bundle like the sibling signal reads above; the
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
-        onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
+        onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers

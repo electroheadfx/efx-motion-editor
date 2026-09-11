@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -260,7 +260,8 @@ export interface PhysicsPaintWorkflowStripProps {
    * ~120 cells per tick).
    */
   rotoCachedPlaybackTick?: Signal<RotoCachedPlaybackTick | null> | null;
-  onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
+  /** 260911-s1j: the document-level interpolation mode intent (writes every
+   *  track); per-track on/off lives on the row's blend button. */
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
@@ -818,7 +819,6 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   soloArmedClass: string;
   soloToolDisabled: boolean;
   soloToolDisabledReason: string | null;
-  onInterpolationEnabledChange?: (enabled: boolean) => void;
   onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
@@ -1197,7 +1197,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <button
           type="button"
           class={`physics-paint-roto-key-icon-button physics-paint-toolbox-toggle${toolboxOpen ? ' physics-paint-toolbox-toggle-open' : ''}`}
-          aria-label={props.onInterpolationEnabledChange ? (props.interpolationEnabled ? 'Timeline tools, interpolation on' : 'Timeline tools, interpolation off') : 'Timeline tools'}
+          aria-label="Timeline tools"
           aria-haspopup="dialog"
           aria-expanded={toolboxOpen}
           aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
@@ -1207,20 +1207,18 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         >
           <span class="physics-paint-toolbox-badge-anchor">
             <ToolCase size={18} aria-hidden="true" />
-            {props.interpolationEnabled ? <span class="physics-paint-toolbox-badge" aria-hidden="true" /> : null}
           </span>
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation and Key Spacing.', null)}
+          {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation mode and Key Spacing.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
-      {(props.onInterpolationEnabledChange || props.onApplyScript || props.onDiscardScript) ? (
+      {(props.onApplyScript || props.onDiscardScript) ? (
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Interpolation</div>
             <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-              <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
               <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
               <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
             </div>
@@ -4182,7 +4180,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         soloArmedClass={soloArmedClass}
         soloToolDisabled={soloToolDisabled}
         soloToolDisabledReason={soloToolDisabledReason}
-        onInterpolationEnabledChange={props.onRotoInterpolationEnabledChange}
         onInterpolationModeChange={props.onRotoInterpolationModeChange}
         onGoToFirstFrame={props.onGoToFirstFrame}
         onGoToPreviousFrame={props.onGoToPreviousFrame}

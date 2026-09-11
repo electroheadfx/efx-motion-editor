@@ -1073,7 +1073,6 @@ describe('Canvas navigation render localization', () => {
 describe('Workflow navigation render localization', () => {
   it('assembles Workflow with named stable callbacks instead of inline action closures', () => {
     for (const handler of [
-      'handleRotoInterpolationEnabledChange',
       'handleRotoInterpolationModeChange',
       'handleToggleRotoKeySelection',
       'handleCollapseRotoSelectionToKey',
@@ -1087,10 +1086,29 @@ describe('Workflow navigation render localization', () => {
     const workflowEnd = studio.indexOf('status: { shortcutsVisible }', workflowStart);
     const workflowBlock = studio.slice(workflowStart, workflowEnd);
     expect(workflowStart).toBeGreaterThanOrEqual(0);
-    expect(workflowBlock).not.toContain('onRotoInterpolationEnabledChange: (');
+    expect(workflowBlock).not.toContain('onRotoInterpolationModeChange: (');
     expect(workflowBlock).not.toContain('onNavigateToSyncedFrame: (');
-    expect(workflowBlock).toContain('onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange');
+    expect(workflowBlock).toContain('onRotoInterpolationModeChange: handleRotoInterpolationModeChange');
     expect(workflowBlock).toContain('onNavigateToSyncedFrame: handleNavigateToSyncedFrame');
+    // 260911-s1j: the popover's enable toggle is retired — the Studio wires no
+    // onRotoInterpolationEnabledChange (the row blend button owns on/off).
+    expect(studio).not.toContain('onRotoInterpolationEnabledChange');
+    expect(studio).not.toContain('handleRotoInterpolationEnabledChange');
+  });
+
+  it('writes the document-level interpolation mode to EVERY track and preserves each track\'s enabled flag (260911-s1j)', () => {
+    const handlerStart = studio.indexOf('const handleRotoInterpolationModeChange = useCallback(');
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    const handlerEnd = studio.indexOf('const handleSelectRotoSpacingProxy = useCallback(', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handler).toContain('getEfxPaintDocument(layerId)');
+    expect(handler).toContain('for (const track of document.tracks)');
+    expect(handler).toContain('physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id)');
+    expect(handler).toContain('physicPaintStore.setRotoPhysicalInterpolationState(layerId, track.id, { enabled: current.enabled, mode })');
+    expect(handler).toContain('physicalEditCoordinator.pendingOperationId.value !== null');
+    // The old active-track coordinator path is gone entirely.
+    expect(studio).not.toContain('useRotoInterpolationController');
+    expect(studio).not.toContain('updateRotoInterpolationSettings');
   });
 
   it('keeps ordinary Workflow frame navigation outside physical edit, document replacement, and history authority', () => {
