@@ -11,6 +11,9 @@
  * when armed — the 260911-sli badge is folded into it), and the session-only
  * `physicsPaintSoloArm` signal never drives the row.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren } from 'preact';
 import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
@@ -56,6 +59,9 @@ import { PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED } from '../roto/physicsPaintRo
 import { signal } from '@preact/signals';
 import { PhysicsPaintWorkflowStrip, computeEnsureRowScrollDelta } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
+
+const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
+const css = () => readFileSync(cssPath, 'utf8');
 
 interface TestVNode {
   type: unknown;
@@ -729,6 +735,21 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     } finally {
       physicPaintStore.setRotoPhysicalInterpolationState(layerId, fixture.trackA.id, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED);
     }
+  });
+
+  it('paints the armed blend button in the orange family, out-specifying the base tool-button rule (260911-s1j follow-up)', () => {
+    const styles = css();
+    // The base `.physics-paint-track-row-tool-button` rule sits LATER in the
+    // file at equal specificity; only the compound selector keeps the armed
+    // orange painting (the equal-specificity version was overridden and the
+    // button never turned orange).
+    const armedIndex = styles.indexOf('.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled {');
+    expect(armedIndex).toBeGreaterThanOrEqual(0);
+    const armedBlock = styles.slice(armedIndex, styles.indexOf('}', armedIndex));
+    expect(armedBlock).toContain('border-color: #f59e0b');
+    expect(armedBlock).toContain('background: rgba(245, 158, 11, 0.2)');
+    expect(armedBlock).toContain('color: #fbbf24');
+    expect(styles).toContain('.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover {');
   });
 
   it('truncates a long name with an ellipsis class and keeps the full name in the title tooltip (D-02)', () => {

@@ -4789,14 +4789,17 @@ button.destructive {
 }
 
 /* 47 UAT (260911-s1j): the per-row frame-blending toggle's armed state — the
-   same unmistakable orange family as the armed solo chip. */
-.physics-paint-track-row-blend-enabled {
+   same unmistakable orange family as the armed solo chip. The compound
+   selectors beat the base `.physics-paint-track-row-tool-button` rule, which
+   sits LATER in this file at equal specificity and would otherwise win the
+   cascade and paint the neutral gray. */
+.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled {
   border-color: #f59e0b;
   background: rgba(245, 158, 11, 0.2);
   color: #fbbf24;
 }
 
-.physics-paint-track-row-blend-enabled:hover {
+.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover {
   border-color: #fbbf24;
   background: rgba(245, 158, 11, 0.28);
 }
