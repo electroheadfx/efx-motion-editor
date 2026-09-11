@@ -186,6 +186,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               activeTrackId={effectiveActiveTrackId}
               onSelectTrack={onSelectTrack}
               visible={track.visible}
+              solo={track.solo}
               reorderable
               deletable={deletable}
               editing={renamingTrackId === track.id}

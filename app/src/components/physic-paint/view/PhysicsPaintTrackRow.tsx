@@ -28,7 +28,6 @@
 import { useRef } from 'preact/hooks';
 import { Blend, Camera, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
-import { isSoloArmed } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -724,6 +723,8 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onSelectTrack?: (trackId: string) => void;
   /** Current track visibility (drives the eye icon + aria-pressed). */
   readonly visible?: boolean;
+  /** Current document solo flag (260911-sli): drives the chip's pressed state and the always-visible row badge. */
+  readonly solo?: boolean;
   /** Paint rows get the reorder grab; the Background row is locked (D-06). */
   readonly reorderable?: boolean;
   /** False hides/disables the delete affordance for the last surviving Paint track (D-17). */
@@ -789,6 +790,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     activeTrackId,
     onSelectTrack,
     visible = true,
+    solo = false,
     reorderable = true,
     deletable = true,
     editing = false,
@@ -866,7 +868,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
       data-tools-open={toolsOpen ? 'true' : undefined}
       role="button"
       tabIndex={0}
-      aria-label={`Select track ${label}`}
+      aria-label={solo ? `Select track ${label} (solo armed)` : `Select track ${label}`}
       onClick={() => onSelectTrack?.(trackId)}
       // 47-02 Task 2: a double-click on the row opens the edit-in-place rename
       // field (TML-02, D-03) — the same intent the pencil tool button carries.
@@ -970,6 +972,15 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
             class="physics-paint-track-row-label physics-paint-track-row-label-ellipsis"
             title={label}
           >{label}</span>
+          {/* 260911-sli: the armed document solo stays visible while the ⋯
+              tools panel is collapsed (the flag filters the composite). */}
+          {solo ? (
+            <span
+              class="physics-paint-track-row-solo-badge"
+              aria-hidden="true"
+              title="Solo armed — other tracks are filtered from the preview and playback"
+            >S</span>
+          ) : null}
           {/* 47-01 UAT round 6: the tools open ONLY from the small more-button
               at the name's right extreme (never on header hover or click —
               a click on the name selects the track); leaving the panel closes
@@ -986,10 +997,10 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           >
             <button
               type="button"
-              class={`physics-paint-track-row-solo${isSoloArmed() ? ' physics-paint-track-row-solo-armed' : ''}`}
+              class={`physics-paint-track-row-solo${solo ? ' physics-paint-track-row-solo-armed' : ''}`}
               aria-label={`Solo ${label}`}
-              aria-pressed={isSoloArmed() ? 'true' : 'false'}
-              title={isSoloArmed() ? `Un-solo ${label}` : `Solo ${label}`}
+              aria-pressed={solo ? 'true' : 'false'}
+              title={solo ? `Un-solo ${label}` : `Solo ${label}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onToggleSolo?.(trackId);
