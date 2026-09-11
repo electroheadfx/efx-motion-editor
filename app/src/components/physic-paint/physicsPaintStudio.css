@@ -4733,7 +4733,10 @@ button.destructive {
 .physics-paint-track-row-label-ellipsis {
   /* 260911-s1j mockup layout: the name is pushed right (auto margin) and the
      trash stays pinned at the far right; the 8px right padding keeps the
-     mockup's name→trash gap (8px padding + the row's 5px gap). */
+     mockup's name→trash gap (8px padding + the row's 5px gap). flex-grow is
+     cleared so the auto margin — not the label box — consumes the free space
+     (a growing label would keep its text left-aligned after the buttons). */
+  flex: 0 1 auto;
   margin-left: auto;
   padding-right: 8px;
   overflow: hidden;
