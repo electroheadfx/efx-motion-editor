@@ -5,8 +5,9 @@
  * The header column is hook-free (presentational — the strip owns rename/tools
  * state and flows it down), so the tests invoke it as a plain function and walk
  * the returned vnode tree, expanding the hook-free `PhysicsPaintTrackRowHeader`
- * vnodes the same way the strip viewport test does. The solo-arm reflection
- * reads the real `physicsPaintSoloArm` module-level signal.
+ * vnodes the same way the strip viewport test does. The row solo chip/badge
+ * reflect the track's document solo flag; since 260911-sli the session-only
+ * `physicsPaintSoloArm` signal no longer drives the row.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren } from 'preact';
@@ -626,7 +627,7 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(hasClass(headerCell(rootB, fixture.trackB.id), 'physics-paint-track-row-header-active')).toBe(true);
   });
 
-  it('routes hide and solo toggles to onToggleVisible/onToggleSolo and reflects the solo arm state (TML-04 surface)', () => {
+  it('routes hide and solo toggles to onToggleVisible/onToggleSolo and reflects the track document solo flag (TML-04 surface, 260911-sli)', () => {
     const fixture = makeTwoTrackFixture();
     const onToggleVisible = vi.fn();
     const onToggleSolo = vi.fn();
@@ -639,26 +640,42 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     (eye.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleVisible).toHaveBeenCalledWith(fixture.trackA.id);
 
-    // The solo (S) toggle.
+    // A solo-false track: the chip is unpressed and no row badge exists.
     const solo = findOne(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
     expect(hasClass(solo, 'physics-paint-track-row-solo-armed')).toBe(false);
+    expect(String(solo.props['aria-pressed'])).toBe('false');
+    expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'))).toHaveLength(0);
+
+    // Clicking still routes the toggle intent.
     (solo.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleSolo).toHaveBeenCalledWith(fixture.trackA.id);
 
-    // The armed state reflects the module-level solo arm (D-20).
+    // 260911-sli: an armed document solo is visible on the row itself — the
+    // chip reads pressed and the badge renders outside the collapsed panel.
+    const soloTrackA: InternalPaintTrack = { ...fixture.trackA, solo: true };
+    const armedFixture: ColumnFixture = { ...fixture, tracks: [soloTrackA, fixture.trackB], trackA: soloTrackA };
+    const armedRoot = renderFixture(armedFixture);
+    const armedHeader = headerCell(armedRoot, soloTrackA.id);
+    const armedSolo = findOne(armedHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
+    expect(hasClass(armedSolo, 'physics-paint-track-row-solo-armed')).toBe(true);
+    expect(String(armedSolo.props['aria-pressed'])).toBe('true');
+    const badge = findOne(armedHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'));
+    expect(badge.props['aria-hidden']).toBe('true');
+    expect(String(armedHeader.props['aria-label'])).toBe(`Select track ${soloTrackA.name} (solo armed)`);
+    // The unarmed sibling row stays clean.
+    const siblingHeader = headerCell(armedRoot, fixture.trackB.id);
+    expect(findAll(siblingHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'))).toHaveLength(0);
+
+    // 260911-sli: the session-only playback arm (physicsPaintSoloArm) no
+    // longer drives the row — arming it leaves the chip and badge untouched.
     expect(toggleSolo()).toBe(true);
     try {
-      const armedRoot = renderFixture(fixture);
-      const armedSolo = findOne(headerCell(armedRoot, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
-      expect(hasClass(armedSolo, 'physics-paint-track-row-solo-armed')).toBe(true);
-      expect(String(armedSolo.props['aria-pressed'])).toBe('true');
+      const sessionArmedRoot = renderFixture(fixture);
+      const sessionArmedSolo = findOne(headerCell(sessionArmedRoot, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
+      expect(hasClass(sessionArmedSolo, 'physics-paint-track-row-solo-armed')).toBe(false);
     } finally {
       disarmSolo();
     }
-    const disarmedRoot = renderFixture(fixture);
-    const disarmedSolo = findOne(headerCell(disarmedRoot, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
-    expect(hasClass(disarmedSolo, 'physics-paint-track-row-solo-armed')).toBe(false);
-    expect(String(disarmedSolo.props['aria-pressed'])).toBe('false');
   });
 
   it('renders a per-track frame-blending toggle after the eye and routes the click to onToggleBlend, arming with the row\'s own canonical interpolation state (47 UAT)', () => {
