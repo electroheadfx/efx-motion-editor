@@ -60,6 +60,18 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /**
+ * Decode a base64 string back to raw bytes with no payload validation — the
+ * decode-IPC response leg (frame RGBA is not a WebP payload; see the
+ * magic-validated `base64ToWebpBytes` for transport fields).
+ */
+export function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+/**
  * Decode a base64 string back to raw bytes ONLY when the decoded payload is a
  * valid WebP RIFF/VP8L frame. Returns null for non-base64, non-WebP, or
  * malformed input — the transport boundary uses this to distinguish the
@@ -68,9 +80,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
  */
 export function base64ToWebpBytes(value: string): Uint8Array | null {
   try {
-    const binary = atob(value);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const bytes = base64ToBytes(value);
     return isWebpBytes(bytes) ? bytes : null;
   } catch {
     return null;

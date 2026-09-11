@@ -1133,7 +1133,13 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
 
 async function _decodeWebpToBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
   const { width, height, rgba } = await decodeWebpFrame({ bytes });
-  const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+  const imageData = new ImageData(
+    rgba instanceof Uint8Array
+      ? new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.byteLength)
+      : new Uint8ClampedArray(rgba),
+    width,
+    height,
+  );
   // 52.1 (washed-out regression): premultiply AT bitmap creation. drawImage
   // only ever consumes premultiplied data, and WKWebView draws a
   // straight-alpha-flagged ('none') bitmap AS IF premultiplied — every

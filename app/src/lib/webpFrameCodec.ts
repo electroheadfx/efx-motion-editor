@@ -5,6 +5,7 @@
  * which imports `physicPaintStore.ts` — a module-body cycle).
  */
 import { invoke } from '@tauri-apps/api/core';
+import { base64ToBytes } from './webpBytes';
 
 /**
  * Decoded WebP frame returned by the Rust `decode_webp_frame` command.
@@ -13,7 +14,13 @@ import { invoke } from '@tauri-apps/api/core';
 export interface DecodedWebpFrame {
   width: number;
   height: number;
-  rgba: Uint8Array;
+  rgba: Uint8Array<ArrayBuffer>;
+  /**
+   * Rust-side `decode_rgba` wall time in ms (diagnostic telemetry emitted by
+   * `decode_webp_frame`). Absent on older payloads and in test mocks — treat a
+   * missing value as "not measured".
+   */
+  codecMs?: number;
 }
 
 /**
@@ -50,10 +57,26 @@ export async function encodeWebpFrame(args: { rgba: Uint8Array; width: number; h
 
 /**
  * Decode WebP frame bytes back to `{ width, height, rgba }` via the Rust
- * `decode_webp_frame` command. Raw `Uint8Array` in, raw `Uint8Array` out.
+ * `decode_webp_frame` command. The compressed bytes cross as the raw invoke
+ * body (mirroring `encodeWebpFrame`), and the RGBA returns base64 —
+ * deliberately NOT a raw response body: on macOS a raw response degrades to a
+ * JSON number array (see `toUint8Array`), and a 1920×1080 frame would cost
+ * ~33 MB of JSON marshalling on the main thread (~3.4 s measured in the
+ * 2026-09-11 stall session). Base64 keeps the leg a flat string.
  */
-export function decodeWebpFrame(args: { bytes: Uint8Array }): Promise<DecodedWebpFrame> {
-  return invoke('decode_webp_frame', { bytes: args.bytes }) as Promise<DecodedWebpFrame>;
+export async function decodeWebpFrame(args: { bytes: Uint8Array }): Promise<DecodedWebpFrame> {
+  const result = await invoke('decode_webp_frame', args.bytes) as {
+    width: number;
+    height: number;
+    rgbaBase64: string;
+    codecMs?: number;
+  };
+  return {
+    width: result.width,
+    height: result.height,
+    rgba: base64ToBytes(result.rgbaBase64),
+    codecMs: result.codecMs,
+  };
 }
 
 /**
