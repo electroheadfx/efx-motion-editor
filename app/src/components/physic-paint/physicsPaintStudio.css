@@ -4776,10 +4776,10 @@ button.destructive {
   white-space: nowrap;
 }
 
-/* 47-02 Task 1: per-row solo (S) toggle. A compact always-visible chip before
-   the tools group; its pressed state reflects the session solo arm
-   (physicsPaintSoloArm, D-20) — the armed chip shows the same accent family
-   as the active row so the armed playback filter reads at a glance. */
+/* 47-02 Task 1: per-row solo (S) toggle. A compact chip before the tools
+   group; since 260911-sli its pressed state reflects the track's document
+   `solo` flag (the one the click toggles and the compositor filters on) —
+   the armed chip shows the same accent family as the active row. */
 .physics-paint-track-row-solo {
   flex: 0 0 auto;
   display: inline-flex;
@@ -4817,6 +4817,25 @@ button.destructive {
 .physics-paint-track-row-solo:focus-visible {
   outline: 2px solid #6f90ff;
   outline-offset: 1px;
+}
+
+/* 260911-sli: the standing armed-solo badge — visible while the ⋯ tools panel
+   is collapsed, so an armed document solo always explains itself on the row. */
+.physics-paint-track-row-solo-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #6f90ff;
+  border-radius: 5px;
+  background: #2f3a4d;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 /* 47 UAT: the per-row frame-blending toggle's pressed state — the same
