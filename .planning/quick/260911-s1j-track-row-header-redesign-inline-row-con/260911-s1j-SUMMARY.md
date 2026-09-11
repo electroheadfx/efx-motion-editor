@@ -108,6 +108,19 @@ Orange armed family (both states): `border-color: #f59e0b; background: rgba(245,
 - Document-level mode loop pinned by the new Studio test; the retired wiring absent from the Studio source.
 - Full suite + `tsc` green on the final tree; `git status --short` shows only the known uncommitted instrumentation beyond this quick's files (PhysicsPaintStudio.tsx staged hunks = this quick's only).
 
+## UAT follow-up fixes (2026-09-11, from the combined native UAT pass)
+
+| Commit | Fix |
+|--------|-----|
+| `27770218` | **Frame blending retired.** The blended-frame render needs engine slowdown work before it can ship, so the mode option left the Tools dropdown (it now holds only **Frame duplicate**), and every physical interpolation state entering the store coerces blend → duplicate (`_retireFrameBlendingMode` in `physicPaintStore.ts`) — a project saved with blend falls back on load, so no surface can render the slow path. The canonical model type and `renderBlendedRotoInterpolationFrame` stay intact for the later re-introduction (restore the `<option>` + delete the helper). The unreachable loop-clip blend contract was removed (the renderer keeps its direct unit coverage in `physicPaintStore.test.ts`); bridge fixtures aligned to the reachable duplicate mode. |
+| `fa5756e5` | **Blend button orange.** The armed rule was shadowed — `.physics-paint-track-row-tool-button` sits later in the CSS at equal specificity and repainted the neutral gray. The armed rule now uses the compound selector `.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled`, pinned by a CSS regression test in the column suite. |
+
+Amended UAT expectations (supersede rows 7–8 above):
+- The Tools popover's Interpolation dropdown offers **only "Frame duplicate"** — no Frame blending option; a blend-mode project reopens as Frame duplicate.
+- A track enabled via its row blend button paints the **orange** armed family, matching the armed S.
+
+Gates: full suite exit 0 — 194 files passed (+2 skipped), **3550 passed**, 0 failed; `tsc --noEmit` exit 0. Native UAT still pending for the amended pass.
+
 ---
 
 *Quick: 260911-s1j-track-row-header-redesign-inline-row-con*
