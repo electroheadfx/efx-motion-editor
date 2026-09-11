@@ -87,6 +87,9 @@ function getActiveTrackId(layerId: string): string {
  * - no solo armed → every track whose `visible !== false` resolves visible;
  * - any solo armed → only tracks that are `visible !== false` AND soloed show;
  * - hide always wins over solo (`visible: false` is hidden even when soloed);
+ * - solo arming considers only tracks whose `visible !== false` — a hidden
+ *   track's solo flag never arms solo mode (CMP-02 adjacency, matching
+ *   `participatingPaintTracks` in efxPaintHideSolo.ts);
  * - unknown track id or absent document fails closed to hidden.
  * 48-03: this filter is consumed by the Studio active-track editing surface
  * (PhysicsPaintStudio.tsx) until 48-05; the flattened delivery itself applies
@@ -97,7 +100,9 @@ export function resolvePhysicPaintTrackVisibility(layerId: string, trackId: stri
   if (!document) return false;
   const track = document.tracks.find((candidate) => candidate.id === trackId);
   if (!track || track.visible === false) return false;
-  const soloArmed = document.tracks.some((candidate) => candidate.solo === true);
+  // A hidden track's solo never arms solo mode (hide wins over solo), so solo
+  // arming considers only visible tracks.
+  const soloArmed = document.tracks.some((candidate) => candidate.visible !== false && candidate.solo === true);
   if (!soloArmed) return true;
   return track.solo === true;
 }
