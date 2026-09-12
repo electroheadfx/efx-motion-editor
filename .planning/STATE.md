@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 53
-current_phase_name: Integrated v1.0.0 Acceptance
+current_phase: "52.2"
+current_phase_name: Project package format — references only
 status: pending
 stopped_at: Phase 52.2 context gathered
-last_updated: "2026-09-12T11:05:16.861Z"
+last_updated: "2026-09-12T13:01:32.419Z"
 last_activity: 2026-09-11
 last_activity_desc: "Quick 260911-s1j closed — native UAT PASSED 2026-09-11 (amended pass, folds the 260911-sli rows); .mce package-format decision locked: Phase 52.2 before 53, autosave quick cancelled"
-state_head: 855abc6c3d48a4242d57c4b27f5f383945924e72
+state_head: 91e0fc45707cab4ea4898c69228db6b9cf363a16
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 49
+  total_plans: 65
   completed_plans: 49
   percent: 55
 ---
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — COMPLETE
+Phase: 52.2 (Project package format — references only) — READY TO EXECUTE
 Plan: 7 of 7
 Status: Closed 2026-09-09
 Last activity: 2026-09-11 — Completed quick task 260911-s1j (native UAT PASSED 2026-09-11 — folds the 260911-sli badge rows + the 260911-g1g 3-track rows) — supersedes the 260911-sli badge surface
