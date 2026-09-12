@@ -1,4 +1,5 @@
 import { testWebpBytes } from '../testUtils/testWebpBytes';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fromTransportPayload, toTransportPayload } from './webpBytes';
 
@@ -20,6 +21,8 @@ import type { AudioTrack } from '../types/audio';
 import { audioStore } from '../stores/audioStore';
 import { layerStore } from '../stores/layerStore';
 import {
+  getFrameMediaVerdict,
+  hasFrameMediaBytes,
   hasRotoAlphaCanvasFrame,
   physicPaintStore,
   physicPaintVersion,
@@ -47,6 +50,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
   requirePhysicPaintRotoInlineBytes,
+  parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoLoopClip,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -63,8 +67,10 @@ import { proposeRails, type RotoRailSetCopyPayload } from '../components/physic-
 import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import { encodeSourceBytesForDocumentSync,
+  _setPhysicPaintDocumentSyncFramePorts,
   applyCommittedReferencedActionDeletion,
   applyPhysicPaintPayload,
+  awaitPendingPhysicPaintFrameMediaInstalls,
   applyPhysicPaintRotoGroupFramePaint,
   createPhysicPaintLaunchContext,
   deactivatePhysicPaintLaunch,
@@ -87,6 +93,7 @@ import { encodeSourceBytesForDocumentSync,
   PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT,
   PHYSIC_PAINT_LAUNCH_EVENT,
   publishPhysicPaintAudioPlaybackState,
+  resetPhysicPaintDocumentSyncFrameState,
 } from './physicPaintBridge';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -325,6 +332,8 @@ describe('physicPaintBridge', async () => {
   beforeEach(() => {
     physicPaintStore.reset();
     resetEfxPaintStore();
+    resetPhysicPaintDocumentSyncFrameState();
+    _setPhysicPaintDocumentSyncFramePorts(null);
     registerTrackDocument('phys-layer-1');
     setParentSequence([physicLayer()], 600);
     Object.defineProperty(globalThis, 'window', {
@@ -1010,6 +1019,199 @@ describe('physicPaintBridge', async () => {
     } finally {
       unlisten();
     }
+  });
+
+  /**
+   * 52.2-10 (D-12, T-52.2-33/34/35): the MAIN window is the receiver of the
+   * Studio's document sync. With the document crossing REFERENCE-SHAPED, the
+   * receiver owns exactly two jobs: decide from its own digest store which
+   * rasters it lacks (no decode, no file read to answer), and pull only those.
+   * A digest is the identity — a receiver that keys by keyId re-pulls on every
+   * paste and mis-applies a re-delivered retry.
+   */
+  describe('52.2-10 receiver applies references by digest (D-12)', () => {
+    const RECEIVER_LAYER = 'phys-layer-1';
+    const frameDigest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+
+    type ReceiverPortSpies = {
+      has: ReturnType<typeof vi.fn>;
+      install: ReturnType<typeof vi.fn>;
+      request: ReturnType<typeof vi.fn>;
+    };
+
+    /** Inject the receiver's digest store as spy ports; `held` answers "do I have it?". */
+    const injectReceiverPorts = (held: (digest: string) => boolean): ReceiverPortSpies => {
+      const ports = {
+        has: vi.fn((digest: string) => held(digest)),
+        install: vi.fn(async (_digest: string, _bytes: Uint8Array) => ({ ok: true as const })),
+        request: vi.fn((_digests: readonly string[]) => undefined),
+      };
+      _setPhysicPaintDocumentSyncFramePorts(ports);
+      return ports;
+    };
+
+    /** A reference-shaped document (no inline raster in either collection). */
+    const referenceDocument = (digests: readonly string[]): EfxPaintDocument => {
+      const base = makeTrackDocument(RECEIVER_LAYER);
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const realKeyRecords = digests.map((digest, index) => ({
+        kind: 'real-key' as const,
+        keyId: `key-${index}`,
+        appFrame: index,
+        payload: {
+          frameIndex: 0,
+          appFrame: index,
+          media: { relativePath: `frames/${RECEIVER_LAYER}/key-${index}.webp`, digest, width: 8, height: 6 },
+        },
+      }));
+      const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
+        capacity: 600,
+        realKeyRecords,
+        groupOverrideRecords: [],
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], [], []),
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: [],
+      });
+      return { ...base, documentRevision: 1, tracks: [{ ...base.tracks[0], rotoPhysical }] };
+    };
+
+    /** Install the receiver listener and hand back its document-sync entry point. */
+    const openReceiver = async () => {
+      const unlisten = await installPhysicPaintEfxPaintDocumentListener();
+      const custom = (window.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+        .find(([name]) => name === PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT)?.[1] as (event: Event) => void;
+      const deliver = (document: EfxPaintDocument, changedBytes?: Record<string, string>): void => {
+        custom(new CustomEvent(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, {
+          detail: changedBytes === undefined ? { document } : { document, changedBytes },
+        }));
+      };
+      return { deliver, unlisten };
+    };
+
+    it('applying a sync whose references are all known performs zero decode and zero byte requests', async () => {
+      const bytes = testWebpBytes('receiver-already-holds');
+      const digest = frameDigest(bytes);
+      const ports = injectReceiverPorts(() => true);
+
+      const { deliver, unlisten } = await openReceiver();
+      try {
+        deliver(referenceDocument([digest]));
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+
+        expect(ports.request).not.toHaveBeenCalled();
+        expect(ports.install).not.toHaveBeenCalled();
+      } finally {
+        unlisten();
+      }
+    });
+
+    it('applying a sync with one unknown digest requests exactly that digest and installs the frames once they arrive', async () => {
+      const knownBytes = testWebpBytes('receiver-holds-this-one');
+      const knownDigest = frameDigest(knownBytes);
+      const bytes = testWebpBytes('receiver-lacks-this-one');
+      const digest = frameDigest(bytes);
+      const ports = injectReceiverPorts((candidate) => candidate === knownDigest);
+
+      const { deliver, unlisten } = await openReceiver();
+      try {
+        deliver(referenceDocument([knownDigest, digest]));
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+
+        // Exactly the missing digest is asked for — never the whole document.
+        expect(ports.request).toHaveBeenCalledTimes(1);
+        expect(ports.request).toHaveBeenCalledWith([digest]);
+        expect(ports.install).not.toHaveBeenCalled();
+
+        // The response carries the pixels on the digest-keyed channel.
+        deliver(referenceDocument([knownDigest, digest]), { [digest]: bytesToBase64(bytes) });
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+
+        expect(ports.install).toHaveBeenCalledTimes(1);
+        const [installedDigest, installedBytes] = ports.install.mock.calls[0] as [string, Uint8Array];
+        expect(installedDigest).toBe(digest);
+        expect(Array.from(installedBytes)).toEqual(Array.from(bytes));
+      } finally {
+        unlisten();
+      }
+    });
+
+    it('a re-delivered sync is idempotent: exactly one byte request in total across both deliveries', async () => {
+      const bytes = testWebpBytes('receiver-retry');
+      const digest = frameDigest(bytes);
+      const ports = injectReceiverPorts(() => false);
+
+      const { deliver, unlisten } = await openReceiver();
+      try {
+        deliver(referenceDocument([digest]));
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+        deliver(referenceDocument([digest]));
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+
+        // A retry storm cannot re-pull the document: content already asked for
+        // (or already held) is never re-requested (T-52.2-35).
+        expect(ports.request).toHaveBeenCalledTimes(1);
+        expect(ports.request).toHaveBeenCalledWith([digest]);
+      } finally {
+        unlisten();
+      }
+    });
+
+    it('refuses an entry whose bytes do not hash to the digest that carried them — recorded, never applied', async () => {
+      const claimedBytes = testWebpBytes('claimed-content');
+      const digest = frameDigest(claimedBytes);
+      const tampered = testWebpBytes('tampered-content');
+
+      const { deliver, unlisten } = await openReceiver();
+      try {
+        deliver(referenceDocument([digest]), { [digest]: bytesToBase64(tampered) });
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+
+        // The digest is the identity AND the verification: a mislabelled entry
+        // cannot displace correct content, and the refusal is observable.
+        expect(hasFrameMediaBytes(digest)).toBe(false);
+        expect(getFrameMediaVerdict(digest)).toBe('digest-mismatch');
+      } finally {
+        unlisten();
+      }
+    });
+
+    it('REAL STORE: a verified arrival is installed under its digest and answers the known-digest query', async () => {
+      const bytes = testWebpBytes('verified-arrival');
+      const digest = frameDigest(bytes);
+
+      const { deliver, unlisten } = await openReceiver();
+      try {
+        deliver(referenceDocument([digest]), { [digest]: bytesToBase64(bytes) });
+        await awaitPendingPhysicPaintFrameMediaInstalls();
+
+        expect(hasFrameMediaBytes(digest)).toBe(true);
+        expect(getFrameMediaVerdict(digest)).toBeNull();
+      } finally {
+        unlisten();
+      }
+    });
+
+    it('installs the raster of an applied canvas under its content digest, so a later sync answers "already held"', async () => {
+      const layer = physicLayer();
+      mockLayers([layer]);
+      seedPhysicalDocument(layer.id, [makePhysicalRecord('key-1', 0)]);
+      const bytes = testWebpBytes('applied-canvas-frame');
+
+      const result = await applyPhysicPaintPayload(applyCanvasPayload({
+        layerId: layer.id,
+        startFrame: 0,
+        renderedFrame: { frameIndex: 0, appFrame: 0, bytes, width: 8, height: 6 },
+      }));
+      expect(result.ok).toBe(true);
+      await awaitPendingPhysicPaintFrameMediaInstalls();
+
+      expect(hasFrameMediaBytes(frameDigest(bytes))).toBe(true);
+    });
   });
 
   it('a fresh child launch clears any stale audio claim left by a previous window (D-05 lifecycle)', async () => {

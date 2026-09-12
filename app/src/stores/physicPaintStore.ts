@@ -493,6 +493,41 @@ export function getFrameMediaVerdict(digest: string): FrameMediaVerdict | null {
 }
 
 /**
+ * 52.2-10 (D-12, T-52.2-33/34): the receiver's bridged-raster store — the
+ * landing half of the bridge's digest-keyed byte channel. The 52.2-09 read leg
+ * answers the SAME question (`hasFrameMediaBytes`) from the frame LRU; this map
+ * is what makes that answer true for a raster that arrived over the bridge
+ * instead of from a package file, with no decode and no file read.
+ */
+export type FrameMediaInstallResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{ ok: false; reason: FrameMediaRefusalReason }>;
+
+/**
+ * Does the receiver already hold this digest? Answered from the LRU and the
+ * bridged-bytes map only — never a decode, never a file read (T-52.2-35: this
+ * answer is what keeps a retry storm from re-pulling the document).
+ */
+export function hasFrameMediaBytes(_digest: string): boolean {
+  // RED stub (52.2-10 Task 3) — GREEN consults frameLru + _frameMediaBytes.
+  return false;
+}
+
+/**
+ * Install bridged raster bytes under their content digest. `expectedDigest`
+ * claims the content; the digest is recomputed from the bytes and a mismatch
+ * is refused and recorded, never applied (T-52.2-33/34 — the digest is the
+ * identity AND the verification, same law as the disk read path).
+ */
+export async function installFrameMediaBytes(
+  _bytes: Uint8Array,
+  _expectedDigest?: string,
+): Promise<FrameMediaInstallResult> {
+  // RED stub (52.2-10 Task 3) — GREEN hashes, verifies, and stores the bytes.
+  return { ok: false, reason: 'io' };
+}
+
+/**
  * Background sourceRef → dataUrl registry (48-04 port wiring; Phase 49's import
  * UI is the production writer). Registering bytes for a previously-missing ref
  * clears the flattened memo (T-48-07) — the flattened key's clip terms don't

@@ -2903,6 +2903,51 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
 }
 
 /**
+ * 52.2-10 (D-12, T-52.2-33/34/35): the receiver's frame-media port pair. With
+ * the document crossing REFERENCE-SHAPED, the receiver owns exactly two jobs:
+ * answer "do I already hold this digest?" from its own store (no decode, no
+ * file read) and install the rasters it does receive under their digest. The
+ * ports are injectable so the contract tests drive the decision without a real
+ * store; production binds them to physicPaintStore + the missing-digest
+ * request channel.
+ */
+export interface PhysicPaintDocumentSyncFramePorts {
+  has(digest: string): boolean;
+  install(digest: string, bytes: Uint8Array): Promise<{ ok: true } | { ok: false; reason: string }>;
+  request(digests: readonly string[]): void;
+}
+
+let _documentSyncFramePorts: PhysicPaintDocumentSyncFramePorts | null = null;
+
+/**
+ * 52.2-10 (D-12): swap the receiver's digest-store ports. Pass `null` to return
+ * to the production defaults (the physicPaintStore-backed pair). Test-only
+ * surface, on the `_setPhysicPaintPackageDirProvider` pattern.
+ */
+export function _setPhysicPaintDocumentSyncFramePorts(ports: PhysicPaintDocumentSyncFramePorts | null): void {
+  _documentSyncFramePorts = ports;
+}
+
+/**
+ * 52.2-10 (D-12): drop the receiver's per-session digest memory — the
+ * requested-digest set and any tracked install promises. Transient event
+ * state, like the transport's delivered-digest claim.
+ */
+export function resetPhysicPaintDocumentSyncFrameState(): void {
+  // RED stub (52.2-10 Task 3) — GREEN clears the requested-digest set.
+  void _documentSyncFramePorts;
+}
+
+/**
+ * 52.2-10 (D-12): await the in-flight installs kicked by a document sync (and
+ * by the apply path's digest install). Never rejects — an install failure is
+ * recorded on the store's verdict map, not thrown at the caller.
+ */
+export async function awaitPendingPhysicPaintFrameMediaInstalls(): Promise<void> {
+  // RED stub (52.2-10 Task 3) — GREEN drains the tracked install set.
+}
+
+/**
  * 47-01: main-window listener for the child's EFX Paint document sync. The
  * incoming payload is validated fail-closed by the canonical parser and
  * re-registered into the main window's efxPaintStore ONLY when the document

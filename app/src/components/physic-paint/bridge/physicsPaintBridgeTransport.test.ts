@@ -14,6 +14,7 @@ vi.mock('../performance/physicsPaintPerformanceTrace', () => ({ recordPhysicsPai
 
 import {
   createPhysicPaintThumbnailNativeEncoder,
+  markEfxPaintDocumentSyncFrameDelivered,
   resetEfxPaintDocumentSyncTransferState,
   sendEfxPaintDocumentSync,
 } from './physicsPaintBridgeTransport';
@@ -355,6 +356,19 @@ describe('52.2-10 reference sync with a digest-keyed byte channel (D-12)', () =>
     // payload is bounded by the metadata, not the pixels (assert a ceiling).
     expect(cold).toBeGreaterThan(512 * 1024);
     expect(warmed).toBeLessThan(64 * 1024);
+  });
+
+  it('marks a frame delivered through the apply channel so the next sync withholds its bytes', async () => {
+    const bytes = testWebpBytes('delivered-through-apply');
+    const document = syncDocument([{ keyId: 'key-1', appFrame: 0, bytes }]);
+
+    // The coordinator delivered this raster through the per-key apply channel;
+    // the sender's claim about the receiver's frame store must now be truthful
+    // for the digest channel (D-12 steady state, T-52.2-35 retry law).
+    await markEfxPaintDocumentSyncFrameDelivered(LAYER, document.tracks[0].id, 'key-1', bytes);
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+
+    expect(lastSync().changedBytes).toBeUndefined();
   });
 
   it('keeps the bridge telemetry stages on every sync', async () => {

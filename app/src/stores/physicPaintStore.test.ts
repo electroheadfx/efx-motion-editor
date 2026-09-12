@@ -7,7 +7,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, hasFrameMediaBytes, installFrameMediaBytes, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -2849,6 +2849,50 @@ describe('physicPaintStore', () => {
         expect('bytes' in record.payload).toBe(false);
         expect(record.payload.media?.relativePath).toBe(reference.relativePath);
         expect(getFrameMediaVerdict(reference.digest)).toBe('missing');
+      });
+
+      it('resolves a transport-installed digest from memory with zero package reads (52.2-10, D-12)', async () => {
+        const bytes = testWebpBytes('bridged-media');
+        const digest = digestOf(bytes);
+        installReferenceOnly([mediaRecord('key-1', 0, mediaRef('key-1', digest))]);
+        // The raster arrived over the bridge's digest-keyed byte channel. No
+        // file exists at the reference in this fixture, so a package read is
+        // exactly the regression this case catches (T-52.2-35: the receiver
+        // answers "already held" from memory, never by re-reading).
+        await installFrameMediaBytes(bytes, digest);
+        expect(hasFrameMediaBytes(digest)).toBe(true);
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+        await flushDecode();
+
+        expect(readFrameMediaMock).not.toHaveBeenCalled();
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        expect(record).not.toBeNull();
+        expect(record!.missing).toEqual([]);
+        expect(decodeFlatLog(await record!.encodeBytes())).toContain('draw(');
+      });
+
+      it('refuses bridged bytes whose digest claim does not match their content (52.2-10, T-52.2-33/34)', async () => {
+        const claimedBytes = testWebpBytes('claimed-bridged');
+        const tamperedBytes = testWebpBytes('tampered-bridged');
+        const claimedDigest = digestOf(claimedBytes);
+        const reference = mediaRef('key-1', claimedDigest);
+        installReferenceOnly([mediaRecord('key-1', 0, reference)]);
+
+        const result = await installFrameMediaBytes(tamperedBytes, claimedDigest);
+
+        expect(result).toEqual({ ok: false, reason: 'digest-mismatch' });
+        expect(hasFrameMediaBytes(claimedDigest)).toBe(false);
+        expect(getFrameMediaVerdict(claimedDigest)).toBe('digest-mismatch');
+        // The refusal is terminally recorded, so the seam answers missing from
+        // the verdict without a read — a mislabelled entry cannot displace
+        // correct content, and nothing was served from the tampered bytes
+        // (T-52.2-34; a brand-new child frame has no package file yet).
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        expect(record).not.toBeNull();
+        expect(record!.missing).toEqual([{ trackId: MEDIA_TRACK, frame: 0, missingRefs: [reference.relativePath] }]);
+        await flushDecode();
+        expect(readFrameMediaMock).not.toHaveBeenCalled();
       });
     });
   });

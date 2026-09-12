@@ -127,6 +127,23 @@ export function resetEfxPaintDocumentSyncTransferState(): void {
   documentSyncSentDigests.clear();
 }
 
+/**
+ * 52.2-10 (D-12, T-52.2-35): the sender-side counterpart of the receiver's
+ * `has`/`install` port pair. The frame persistence coordinator marks a frame
+ * whose bytes it just delivered through the apply channel, so the next
+ * document sync treats that digest as receiver-held and withholds it — a
+ * retry after a partial success re-sends only what the receiver actually
+ * lacks.
+ */
+export async function markEfxPaintDocumentSyncFrameDelivered(
+  _layerId: string,
+  _trackId: string,
+  _keyId: string,
+  _bytes: Uint8Array,
+): Promise<void> {
+  // RED stub (52.2-10 Task 3) — GREEN records the content digest as delivered.
+}
+
 function isFrameMediaReferenceValue(value: unknown): value is FrameMediaReference {
   try {
     parseFrameMediaReference(value, 'sync.media');
