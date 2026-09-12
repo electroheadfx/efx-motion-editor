@@ -2,8 +2,8 @@
  * Phase 45-05 cutover test suite: the v1.0 EFX Paint document funnel, run
  * end-to-end through the 52.2-07 package save.
  *
- * Task 1 (gate): openProject refuses pre-v1.0 projects end-to-end with a
- * blocking no-recourse dialog and zero store mutation (D-05/D-07, Pitfall F4).
+ * Task 1 (gate): openProject refuses pre-52.2 projects end-to-end with a
+ * blocking no-recourse dialog and zero store mutation (D-08, Pitfall F4).
  * Task 2 (save/load): both save paths drive the REAL `savePackage` — the
  * manifest, the layer sub-files and the media reach their canonical paths
  * through one package transaction — and open hydrates documents into
@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import { findLegacyPhysicPaintRejection } from '../efx-paint/document/efxPaintCleanBreak';
+import { findPackageFormatRejection } from '../efx-paint/document/efxPaintCleanBreak';
 import { LEGACY_PHYSIC_PAINT_REJECTED_COPY } from '../lib/efxPaintRejectionDialog';
 import { settlePackageFileTokens } from '../lib/efxPaintPersistence';
 import type { EfxPaintLoadedDocument } from '../lib/efxPaintPersistence';
@@ -350,9 +350,12 @@ function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
 
 // --- Fixtures ---
 
-/** Pre-v1.0 project: non-empty physic_paint_outputs triggers the gate (D-06). */
+/**
+ * A pre-52.2 project (D-08 clean break): the last main-editor version with no
+ * `formatVersion`, so the gate refuses it as an older format whatever else the
+ * file carries.
+ */
 function makeLegacyProject(): MceProject {
-  const legacyOutputsKey = 'physic_paint_' + 'outputs';
   return {
     version: 15,
     name: 'Legacy Project',
@@ -363,11 +366,12 @@ function makeLegacyProject(): MceProject {
     modified_at: '2026-01-01',
     sequences: [],
     images: [],
-    [legacyOutputsKey]: [{ layer_id: 'layer-1', frames: [] }],
   };
 }
 
-/** v1.0 project: no legacy outputs, no cache refs, no physic-paint layers. */
+const CLEAN_PROJECT_ID = '3f2b7c1e-9a4d-4c8b-8f0e-2d6a5b4c3d2e';
+
+/** A v1.0 package manifest: the current `formatVersion` + the package identity. */
 function makeCleanProject(): MceProject {
   return {
     version: 16,
@@ -379,7 +383,30 @@ function makeCleanProject(): MceProject {
     modified_at: '2026-01-01',
     sequences: [],
     images: [],
+    formatVersion: 1,
+    projectId: CLEAN_PROJECT_ID,
+    efxPaint: {},
   };
+}
+
+/**
+ * A deep snapshot of every store an open can touch. A refused open that had
+ * half-applied anything would show up here as a diff — the Phase 45
+ * hybrid-state failure this gate exists to prevent (T-52.2-25).
+ */
+function openStateSnapshot(): unknown {
+  return structuredClone({
+    name: projectStore.name.value,
+    fps: projectStore.fps.value,
+    width: projectStore.width.value,
+    height: projectStore.height.value,
+    filePath: projectStore.filePath.value,
+    dirPath: projectStore.dirPath.value,
+    isDirty: projectStore.isDirty.value,
+    scriptLibraryAuthority: projectStore.scriptLibraryAuthority.value,
+    projectContextId: projectStore.projectContextId.value,
+    sequences: sequenceStore.sequences.value,
+  });
 }
 
 describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
@@ -400,7 +427,8 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
     vi.spyOn(projectStore, 'closeProject');
   });
 
-  it('rejects a legacy project with a blocking dialog and zero downstream invocation', async () => {
+  it('rejects a pre-52.2 project with a blocking dialog and zero downstream invocation', async () => {
+    const before = openStateSnapshot();
     ipcProjectOpen.mockResolvedValue({ ok: true, data: makeLegacyProject() });
 
     await projectStore.openProject('/project/legacy.mce');
@@ -421,6 +449,23 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
     // The previously open project state is untouched (no hydration).
     expect(projectStore.name.value).toBe('Untitled Project');
     expect(sequenceStore.sequences.value).toHaveLength(0);
+    // ...and the whole state is DEEP-equal to its pre-call value: a refusal
+    // that half-applied anything would fail here (T-52.2-25).
+    expect(openStateSnapshot()).toStrictEqual(before);
+  });
+
+  it('a refused open leaves an already-open project deep-unchanged (T-52.2-25)', async () => {
+    // A live project first: the refused open must not half-overwrite it.
+    await projectStore.openProject('/project/clean.mce');
+    const live = openStateSnapshot();
+    expect(projectStore.name.value).toBe('Clean Project');
+
+    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeLegacyProject() });
+    await projectStore.openProject('/project/legacy.mce');
+
+    expect(dialogMessage).toHaveBeenCalledTimes(1);
+    // Same live project, byte for byte: no partial load, no hybrid state.
+    expect(openStateSnapshot()).toStrictEqual(live);
   });
 
   it('opens a clean project through the normal hydration path exactly as today', async () => {
@@ -457,9 +502,15 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
     expect(projectStore.name.value).toBe('Untitled Project');
   });
 
-  it('the gate predicate itself is the pure scan from 45-03 (structure-discriminated)', () => {
-    expect(findLegacyPhysicPaintRejection(makeLegacyProject())).toEqual({ kind: 'legacy-physic-paint-outputs' });
-    expect(findLegacyPhysicPaintRejection(makeCleanProject())).toBeNull();
+  it('the gate predicate itself is the pure formatVersion scan (52.2-08 D-08)', () => {
+    expect(findPackageFormatRejection(makeLegacyProject(), { pathKind: 'directory' }))
+      .toEqual({ kind: 'missing-format-version' });
+    expect(findPackageFormatRejection(makeCleanProject(), { pathKind: 'directory' })).toBeNull();
+    // The other half of the contract: a plain file is the pre-52.2 layout, and
+    // the layout decides before the content is judged — `openProject` passes
+    // 'directory' because a package open reads a directory (plan 11).
+    expect(findPackageFormatRejection(makeCleanProject(), { pathKind: 'file' }))
+      .toEqual({ kind: 'old-project-layout' });
   });
 });
 
@@ -583,7 +634,6 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(saveCall).toHaveLength(2);
     const [savedProject, stagedManifestPath] = saveCall as [EfxPaintPackageManifest, string];
     expect(stagedManifestPath).toMatch(/^\/project\/\.efx-paint-package-staging-[^/]+\/project\.mce$/);
-    expect(('physic_paint_' + 'outputs') in savedProject).toBe(false);
     // D-04: the manifest is a pure index — the layer content lives in its own
     // sub-file, never in the project file.
     expect(savedProject.efx_paint_documents).toBeUndefined();
@@ -633,7 +683,6 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(destination).toBe('/project/new.mce');
     expect(manifest.formatVersion).toBe(1);
     expect(manifest.efx_paint_documents).toBeUndefined();
-    expect(('physic_paint_' + 'outputs') in manifest).toBe(false);
     // The destination package published the same files the manifest indexes.
     expect(Object.keys(readJson('/project/layers/layer-1.json')).length).toBeGreaterThan(0);
     // A freshly saved v1.0 project must surface in Recents (R4).

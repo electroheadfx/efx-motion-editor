@@ -24,14 +24,9 @@ import { describe, expect, it } from 'vitest';
  *   - app/src/efx-paint/document/__fixtures__/* (legacy-shaped committed fixtures)
  *   - app/src/efx-paint/efxPaintCleanBreakContract.test.ts (this file)
  *
- * Carrier check: 'physic_paint_outputs' remains present as the OPAQUE
- * presence carrier for the gate (45-02 design) — declared in
- * models/project.rs and types/project.ts, referenced by the gate module and
- * its fixtures, and named by the Rust carrier mechanics (the struct
- * construction in commands/project.rs and the opaque round-trip proof in
- * project_io.rs, where the field must be named to construct/assert the
- * struct). It must never appear in a TS reader, renderer, or serializer
- * (stores/lib/components) or in any other test file.
+ * 52.2-08: the former carrier allowlist is gone — the pre-52.2 opaque paint
+ * carrier is deleted from both models, so the clean-break surface has one
+ * fewer loophole and this file one fewer exemption.
  */
 
 const APP_ROOT = resolve(__dirname, '../..');
@@ -105,6 +100,9 @@ const FRAME_TRANSPORT_FORBIDDEN_TOKENS = [
  *     response body degrades to a JSON number array on macOS (~33 MB
  *     marshalled per 1920x1080 frame, ~3.4 s measured 2026-09-11); the
  *     request leg stays raw (webpFrameCodec.ts);
+ *   - the package media response leg (52.2-08): `ipcEfxPaintReadFrameMedia`
+ *     decodes the base64 body the native per-key read command returns — the
+ *     read-back leg plan 09 resolves pixels from `payload.media` through;
  *   - this contract file (it must name the tokens to detect them).
  */
 const FRAME_TRANSPORT_ALLOWLIST = new Set([
@@ -113,21 +111,11 @@ const FRAME_TRANSPORT_ALLOWLIST = new Set([
   'app/src/lib/webpFrameCodec.ts',
   'app/src/types/physicPaint.ts',
   'app/src/components/physic-paint/roto/physicsPaintRotoScriptThumbnail.ts',
+  'app/src/lib/ipc.ts',
   'app/src/efx-paint/efxPaintCleanBreakContract.test.ts',
 ]);
 
 const FIXTURES_DIR = 'app/src/efx-paint/document/__fixtures__';
-
-/** Files allowed to reference the 'physic_paint_outputs' carrier token. */
-const CARRIER_ALLOWLIST = new Set([
-  'app/src-tauri/src/models/project.rs',
-  'app/src/types/project.ts',
-  'app/src/efx-paint/document/efxPaintCleanBreak.ts',
-  'app/src/efx-paint/document/efxPaintCleanBreak.test.ts',
-  'app/src/efx-paint/efxPaintCleanBreakContract.test.ts',
-  'app/src-tauri/src/commands/project.rs',
-  'app/src-tauri/src/services/project_io.rs',
-]);
 
 function walkFiles(dir: string): string[] {
   const files: string[] = [];
@@ -254,16 +242,6 @@ describe('DOC-04 clean-break grep contract', () => {
     expect(
       matches,
       `Legacy persistence/format surface still reachable (deletion checklist):\n${formatMatches(matches)}`,
-    ).toEqual([]);
-  });
-
-  it('confines the physic_paint_outputs carrier to its declared locations', () => {
-    const matches = scanForTokens(['physic_paint_outputs'], (relPath) =>
-      CARRIER_ALLOWLIST.has(relPath) || relPath.startsWith(`${FIXTURES_DIR}/`),
-    );
-    expect(
-      matches,
-      `physic_paint_outputs carrier referenced outside its declared locations (reader/renderer/serializer?):\n${formatMatches(matches)}`,
     ).toEqual([]);
   });
 
