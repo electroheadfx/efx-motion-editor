@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-03-PLAN.md (shared numeric stepper sweep)
-last_updated: "2026-09-12T15:11:49.113Z"
+stopped_at: Completed 52.2-04-PLAN.md
+last_updated: "2026-09-12T15:22:10.161Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 7d1f423150d4e4cf6ec1aff4512ac2cd5ae1161d
+state_head: 4530896a732cc9bc7be697c865131ff781a416bd
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 52
+  completed_plans: 53
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 4 of 16
+Plan: 5 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -111,6 +111,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P01 | 8min | 3 tasks | 9 files |
 | Phase 52.2 P02 | 22min | 3 tasks | 22 files |
 | Phase 52.2 P03 | 63min | 3 tasks | 11 files |
+| Phase 52.2 P04 | 9 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -267,6 +268,9 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-02: one record type, two carriers — bytes is optional with media (FrameMediaReference: frames/<layerId>/<keyId>.webp + 64-hex digest) as the alternative. buildPhysicPaintRotoPayloadContentToken is total over both shapes (byte token | media digest) so revision/equality/dedup never dereference the raster carrier; requirePhysicPaintRotoInlineBytes throws at every runtime pixel projection (Law 1).
 - [Phase 52.2]: 52.2-03: numeric fields use one shared NumericStepper (type=text + inputMode=decimal, single clamp+round commit path, hold-to-repeat 400ms/60ms); per-field step/min/max preserved; numericStepperSweep source-scan contract over 6 files with a length-asserted list
 - [Phase 52.2]: 52.2-03: typed values commit on blur/Enter + -/+ buttons (shared gesture) instead of per keystroke; ColorPickerModal channel commits take a single-channel override; the Hold Frames popover reads its field text back on close so an uncommitted typed value is not lost
+- [Phase 52.2]: 52.2-04: the solo content start is a lazy getter (getSoloContentStart) returning null when no solo is active — arming the pill does not re-render the Studio, so a captured value would be stale at Play press; null keeps the Phase 51 play-from-cursor branch byte-for-byte
+- [Phase 52.2]: 52.2-04: the solo content start is resolved once and assigned to BOTH frameIndexRef and loopStartIndexRef — the wrap branch reads loopStartIndexRef, so the single assignment is what makes every loop iteration return to the isolated content start (D-22)
+- [Phase 52.2]: 52.2-04: one Studio closure (resolveSessionSoloWindow) serves both the playback filter (getSoloWindow) and the D-21 content start, so the pil's window derivation and the start seam can never drift; row-S reads the document soloed tracks + physicPaintStore.getRotoRealKeyRecords filtered to those ids, capacity = composite end frame
 
 ### Pending Todos
 
@@ -318,6 +322,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T15:11:42.382Z
-Stopped at: Completed 52.2-03-PLAN.md (shared numeric stepper sweep)
+Last session: 2026-09-12T15:22:08.562Z
+Stopped at: Completed 52.2-04-PLAN.md
 Resume file: None
