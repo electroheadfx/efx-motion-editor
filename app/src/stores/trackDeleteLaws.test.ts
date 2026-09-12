@@ -10,6 +10,11 @@ import {
   stableSegment,
   type EfxPaintDocumentSaveInput,
 } from '../lib/efxPaintPersistence';
+import {
+  buildMachineCacheRelativePath,
+  isSafeMachineCacheRelativePath,
+  resolveMachineCachePath,
+} from '../lib/efxPaintPackage';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import {
   commitDeleteTrack,
@@ -44,6 +49,8 @@ const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 const PROJECT_DIR = '/project/root';
+/** The machine-local derived-frame cache root (D-05) — never the project dir. */
+const MACHINE_CACHE_ROOT = '/machine/frame-cache/project-root';
 
 function exchangeGeneration(projectDir: string, stagingBasename: string): void {
   const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
@@ -509,6 +516,31 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     }
     return new Map([[LAYER, { document, frames: framesPerTrack, deletions: takePendingTrackDeletions(LAYER) }]]);
   }
+
+  it('emits a machine-relative deletion directory and machine-relative survivor refs (52.2-07 Task 2, D-05)', () => {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+      else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+
+    // The deletion directory is machine-relative and is addressed against the
+    // machine cache root, never against the project directory.
+    const deletedDir = `efx-paint/${stableSegment(LAYER)}/${TRACK_B}`;
+    expect(takePendingTrackDeletions(LAYER)).toEqual([deletedDir]);
+    expect(isSafeMachineCacheRelativePath(deletedDir)).toBe(true);
+    expect(resolveMachineCachePath(MACHINE_CACHE_ROOT, deletedDir)).toBe(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
+
+    // The delete projection re-emits the survivor's refs in the same shape.
+    const survivor = getDocument(LAYER)!.tracks.find((track) => track.id === TRACK_A)!;
+    expect(Object.keys(survivor.frames).map(Number)).toEqual([10]);
+    for (const [appFrame, ref] of Object.entries(survivor.frames)) {
+      expect(ref.cachePath).toBe(buildMachineCacheRelativePath(LAYER, TRACK_A, Number(appFrame)));
+      expect(isSafeMachineCacheRelativePath(ref.cachePath)).toBe(true);
+      expect(resolveMachineCachePath(MACHINE_CACHE_ROOT, ref.cachePath)).toBe(`${MACHINE_CACHE_ROOT}/${ref.cachePath}`);
+    }
+  });
 
   it('removes the deleted track sidecar directory at commit; no survivor directory is touched', async () => {
     seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {

@@ -24,6 +24,11 @@ import {
   stableSegment,
   stageEfxPaintPackageSave,
 } from './efxPaintPersistence';
+import {
+  buildMachineCacheRelativePath,
+  isSafeMachineCacheRelativePath,
+  resolveMachineCachePath,
+} from './efxPaintPackage';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -515,6 +520,150 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const writtenPaths = secondWrites.map(([path]) => String(path));
     expect(writtenPaths.some((path) => path.includes('frame-000000-0000'))).toBe(true);
     expect(writtenPaths.some((path) => path.includes('frame-000001-0000'))).toBe(true);
+  });
+});
+
+describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-05)', () => {
+  const CACHE_ROOT = '/machine/frame-cache/project-1';
+  const MACHINE_LAYER = 'layer-machine';
+
+  /** Move a staging generation to its canonical name under the machine cache root. */
+  function exchangeCacheGeneration(cacheRoot: string, stagingBasename: string): void {
+    const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+    const canonicalRoot = `${cacheRoot}/efx-paint`;
+    for (const key of Array.from(files.keys())) {
+      if (!key.startsWith(`${stagingRoot}/`)) continue;
+      const bytes = files.get(key);
+      files.delete(key);
+      if (bytes !== undefined) files.set(`${canonicalRoot}${key.slice(stagingRoot.length)}`, bytes);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) {
+        dirs.delete(key);
+        dirs.add(`${canonicalRoot}${key.slice(stagingRoot.length)}`);
+      }
+    }
+  }
+
+  /** One layer document carrying a single Paint frame ref plus its runtime bytes. */
+  function makeFrameSaveInput(cachePathFor: (trackId: string) => string, deletions?: readonly string[]) {
+    const document = createEfxPaintDocument(MACHINE_LAYER);
+    const track = document.tracks[0];
+    const cachePath = cachePathFor(track.id);
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([[MACHINE_LAYER, {
+      document: { ...document, tracks: [{ ...track, frames: { 0: { cachePath, width: 100, height: 50 } } }] },
+      frames: new Map([[track.id, new Map([[0, { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AQID'), width: 100, height: 50 }]])]]),
+      ...(deletions !== undefined ? { deletions } : {}),
+    }]]);
+    return { documents, trackId: track.id, frameRef: cachePath };
+  }
+
+  beforeEach(async () => {
+    files.clear();
+    dirs.clear();
+    vi.clearAllMocks();
+    const { exists } = await import('@tauri-apps/plugin-fs');
+    vi.mocked(exists).mockImplementation(async (path) => dirs.has(String(path)) || files.has(String(path)));
+    publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+      exchangeCacheGeneration(cacheRoot, stagingBasename);
+      return { ok: true, data: { accepted: true, transactionId: crypto.randomUUID(), replacedExisting: false } };
+    });
+    settlePhysicPaintCacheGeneration.mockResolvedValue({
+      ok: true,
+      data: { accepted: true, cleanupStatus: 'complete' },
+    });
+    hardlinkPhysicPaintCacheFrames.mockResolvedValue({ ok: true, data: { accepted: true, missing: [] } });
+  });
+
+  it('the cache-path guard accepts machine-relative references and refuses the legacy package-relative shape', () => {
+    const reference = buildMachineCacheRelativePath('layer-x', 'track-1', 0);
+    expect(reference).toBe(`efx-paint/${stableSegment('layer-x')}/track-1/frame-0000.webp`);
+    expect(isSafeMachineCacheRelativePath(reference)).toBe(true);
+    expect(isSafeEfxPaintCachePath(reference)).toBe(true);
+    // The track-deletion directory is the same shape one segment shallower.
+    expect(isSafeEfxPaintCachePath(`efx-paint/${stableSegment('layer-x')}/track-1`)).toBe(true);
+    // Every legacy and machine-local spelling is refused.
+    expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x/track-1/frame-0000.webp')).toBe(false);
+    expect(isSafeEfxPaintCachePath('/machine/frame-cache/project-1/efx-paint/layer-x/frame.webp')).toBe(false);
+    expect(isSafeEfxPaintCachePath('efx-paint/../frame.webp')).toBe(false);
+    expect(isSafeEfxPaintCachePath('efx-paint/layer-x\\frame.webp')).toBe(false);
+    expect(isSafeEfxPaintCachePath('efx-paint')).toBe(false);
+    expect(isSafeEfxPaintCachePath(42)).toBe(false);
+  });
+
+  it('resolves a produced reference to the same machine-local identity across two calls', () => {
+    const reference = buildMachineCacheRelativePath('layer-x', 'track-1', 7);
+    expect(resolveMachineCachePath(CACHE_ROOT, reference)).toBe(`${CACHE_ROOT}/${reference}`);
+    expect(resolveMachineCachePath(CACHE_ROOT, reference)).toBe(resolveMachineCachePath(CACHE_ROOT, reference));
+    expect(resolveMachineCachePath(CACHE_ROOT, 'cache/efx-paint/layer-x/track-1/frame-0007.webp')).toBeNull();
+    expect(resolveMachineCachePath('', reference)).toBeNull();
+  });
+
+  it('stages and publishes the derived-frame cache against the machine cache root, never the project directory', async () => {
+    const { documents, frameRef } = makeFrameSaveInput((trackId) => buildMachineCacheRelativePath(MACHINE_LAYER, trackId, 0));
+    const writeProject = vi.fn(async () => {});
+
+    await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
+
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([path]) => String(path));
+    expect(writtenPaths.length).toBeGreaterThan(0);
+    expect(writtenPaths.every((path) => path.startsWith(`${CACHE_ROOT}/.efx-paint-staging-`))).toBe(true);
+    expect(writtenPaths.some((path) => path.endsWith(`/${frameRef}`))).toBe(true);
+    // The published canonical generation lives under the machine cache root.
+    expect(files.has(`${CACHE_ROOT}/${frameRef}`)).toBe(true);
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledWith(
+      CACHE_ROOT,
+      expect.stringMatching(/^\.efx-paint-staging-[0-9a-f-]{36}$/),
+    );
+    expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
+      CACHE_ROOT,
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
+      'commit',
+    );
+    // Nothing is addressed under the package directory (D-05).
+    expect(Array.from(files.keys()).every((key) => !key.startsWith('/project'))).toBe(true);
+    expect(Array.from(dirs).every((key) => !key.startsWith('/project'))).toBe(true);
+  });
+
+  it('skips the derived-frame cache leg when no cache root is supplied (D-14 best-effort)', async () => {
+    const { documents } = makeFrameSaveInput((trackId) => buildMachineCacheRelativePath(MACHINE_LAYER, trackId, 0));
+    const writeProject = vi.fn(async () => {});
+
+    await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+
+    expect(writeProject).toHaveBeenCalledOnce();
+    expect((writeProject.mock.calls[0] as unknown[])[1]).toBeNull();
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+    expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(settlePhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(hardlinkPhysicPaintCacheFrames).not.toHaveBeenCalled();
+  });
+
+  it('refuses a layer document carrying a legacy package-relative cache reference before staging it', async () => {
+    const { documents } = makeFrameSaveInput('cache/efx-paint/layer-machine/track-1/frame-0000.webp');
+    const writeProject = vi.fn(async () => {});
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+
+    await expect(
+      saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT),
+    ).rejects.toThrow(/not a machine-relative reference/);
+
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+    expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(writeProject).not.toHaveBeenCalled();
+  });
+
+  it('refuses a deletion directory that is not machine-relative', async () => {
+    const { documents } = makeFrameSaveInput(
+      (trackId) => buildMachineCacheRelativePath(MACHINE_LAYER, trackId, 0),
+      ['cache/efx-paint/seg/track-legacy'],
+    );
+
+    await expect(
+      saveEfxPaintDocumentsWithProjectWrite('/project', documents, async () => {}, CACHE_ROOT),
+    ).rejects.toThrow(/is not a safe cache path/);
   });
 });
 

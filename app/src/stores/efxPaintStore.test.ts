@@ -12,7 +12,12 @@ import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDoc
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, PhotoReferenceTrack } from '../efx-paint/document/efxPaintDocument';
 import type { FrameMediaReference } from '../lib/efxPaintPackage';
-import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
+import {
+  buildFrameMediaRelativePath,
+  buildMachineCacheRelativePath,
+  isSafeMachineCacheRelativePath,
+  resolveMachineCachePath,
+} from '../lib/efxPaintPackage';
 import type { PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { PhysicPaintRotoMediaProjectionError } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { deriveEfxPaintBackgroundResolution, resolveEfxPaintBackgroundFrame } from '../efx-paint/compositor/efxPaintBackgroundResolution';
@@ -267,6 +272,57 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
     hydrateRuntimeFromDocument(projected, new Map([[TEST_TRACK_ID, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID)]]));
     expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
+  });
+});
+
+describe('52.2-07 Task 2: derived-frame cache references are machine-relative (D-05)', () => {
+  const TEST_CACHE_ROOT = '/machine/frame-cache/layer-machine';
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setEfxPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    reset();
+  });
+
+  it('serializeRuntimeIntoDocument emits one machine-relative reference per runtime frame', () => {
+    const document = makeTrackDocument('layer-M');
+    registerDocument(document);
+    physicPaintStore.setFrame('layer-M', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    physicPaintStore.setFrame('layer-M', TEST_TRACK_ID, 3, makeFrame(1, 3));
+
+    const projected = serializeRuntimeIntoDocument('layer-M');
+    const track = projected.tracks[0];
+
+    // The producer emits the plan-02 shape, exactly and deterministically.
+    expect(track.frames[0].cachePath).toBe(buildMachineCacheRelativePath('layer-M', TEST_TRACK_ID, 0));
+    expect(track.frames[3].cachePath).toBe(buildMachineCacheRelativePath('layer-M', TEST_TRACK_ID, 3));
+    expect(track.frames[0].cachePath).toMatch(/^efx-paint\//);
+    for (const frame of Object.values(track.frames)) {
+      expect(isSafeMachineCacheRelativePath(frame.cachePath)).toBe(true);
+    }
+    // The machine-local identity resolves under the cache root, never the package.
+    const resolved0 = resolveMachineCachePath(TEST_CACHE_ROOT, track.frames[0].cachePath);
+    const resolved3 = resolveMachineCachePath(TEST_CACHE_ROOT, track.frames[3].cachePath);
+    expect(resolved0).toBe(`${TEST_CACHE_ROOT}/${buildMachineCacheRelativePath('layer-M', TEST_TRACK_ID, 0)}`);
+    expect(resolved0).not.toBe(resolved3);
+    // Two calls produce the same identity (deterministic, idempotent).
+    expect(resolveMachineCachePath(TEST_CACHE_ROOT, track.frames[0].cachePath)).toBe(resolved0);
+  });
+
+  it('the runtime projection behind duplicateTrack emits the same machine-relative shape for the copy', () => {
+    const document = makeTrackDocument('layer-D');
+    registerDocument(document);
+    physicPaintStore.setFrame('layer-D', TEST_TRACK_ID, 2, makeFrame(0, 2));
+
+    const duplicated = duplicateTrack('layer-D', TEST_TRACK_ID) as { ok: true; trackId: string };
+    expect(duplicated.ok).toBe(true);
+    const copy = getDocument('layer-D')!.tracks.find((track) => track.id === duplicated.trackId)!;
+
+    expect(copy.frames[2].cachePath).toBe(buildMachineCacheRelativePath('layer-D', duplicated.trackId, 2));
+    expect(isSafeMachineCacheRelativePath(copy.frames[2].cachePath)).toBe(true);
+    expect(resolveMachineCachePath(TEST_CACHE_ROOT, copy.frames[2].cachePath))
+      .toBe(`${TEST_CACHE_ROOT}/${copy.frames[2].cachePath}`);
   });
 });
 

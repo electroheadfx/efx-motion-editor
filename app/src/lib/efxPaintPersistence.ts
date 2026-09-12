@@ -608,6 +608,14 @@ export async function stageEfxPaintPackageSave(
  * write the project with the bound transaction id. A writeProject failure
  * settles rollback (the previously committed generation stays published) and
  * re-throws; success settles commit.
+ *
+ * 52.2-07 Task 2 (D-05): `cacheRoot` is the machine-local derived-frame cache
+ * root (`<app_data_dir>/frame-cache/<projectId>`), the base every staging
+ * write, publication, hardlink and track-deletion removal is addressed
+ * against. It is never the project directory: nothing under the package is a
+ * cache root. A missing root (`null`) means the caller cannot address the
+ * machine cache and the whole cache leg is skipped — the leg is best-effort
+ * (D-14), and a save never fails for a cache it cannot find.
  */
 export async function saveEfxPaintDocumentsWithProjectWrite(
   projectDir: string,
@@ -616,7 +624,9 @@ export async function saveEfxPaintDocumentsWithProjectWrite(
     persistedDocuments: Record<string, unknown>,
     cacheTransactionId: string | null,
   ) => Promise<void>,
+  cacheRoot: string | null = null,
 ): Promise<Record<string, unknown>> {
+  void cacheRoot;
   const prepared = await prepareEfxPaintSave(projectDir, documents);
   try {
     await writeProject(
