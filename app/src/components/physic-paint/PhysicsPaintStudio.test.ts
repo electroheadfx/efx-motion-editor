@@ -1961,3 +1961,69 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
     expect(studioView).toContain('<PhysicsPaintScriptPickerDialog {...scriptPickerDialog} />');
   });
 });
+
+// 52.2-15 (D-16, sensitivity-map row 2): both Studio flush paths drain through
+// ONE pilot flush pipeline instance. A component-level test cannot mount the
+// Studio (Tauri window/engine deps), so the wiring is pinned by contract — the
+// same style as the rest of this suite. The join itself (two overlapping
+// callers → one drain, one push) is pinned behaviorally in the pipeline's own
+// suite; these cases prove the Studio callers cannot bypass that join.
+describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
+  const listenerFlush = (() => {
+    const start = studio.indexOf('flushStudioStateRef.current = async () => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('installPhysicPaintFlushRequestListener', start));
+  })();
+  const closeFlush = (() => {
+    const start = studio.indexOf('usePhysicsPaintCloseFlush(');
+    return start === -1 ? '' : studio.slice(start, start + 1600);
+  })();
+
+  it('creates exactly one pipeline instance and routes both flush paths through it', () => {
+    expect(studio).toContain("import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';");
+    // One instance, however many callers: a second instance would let a close
+    // start a second sequence while the requested flush is still in flight
+    // (T-52.2-54 — two pushes for one document).
+    expect((studio.match(/createFlushPipeline\(/g) ?? [])).toHaveLength(1);
+    expect(listenerFlush).toContain('runStudioFlush([');
+    expect(closeFlush).toContain('runStudioFlush([');
+    // The one shared runner is the single place the pipeline is entered, so
+    // the two paths cannot diverge.
+    expect(studio).toContain('await flushPipeline.flush({ steps });');
+  });
+
+  it('keeps the close sequence: engine settle, capture flush, playback settings, documentSync push', () => {
+    const order = [
+      'engineRef.current?.flushPendingStrokeFinalizations()',
+      'rotoPersistence.flushLivePixels(currentFrame)',
+      'rotoPlaybackSettingsController.flush()',
+      'flushDocumentSyncRef.current()',
+    ];
+    const positions = order.map((step) => closeFlush.indexOf(step));
+    expect(positions).not.toContain(-1);
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+  });
+
+  it('keeps the requested-flush sequence: idle-gated engine settle, capture flush, documentSync push', () => {
+    const order = [
+      'readInteractionIdle()',
+      'rotoPersistence.flushLivePixels()',
+      'pushLiveProjection(layerId, mode)',
+    ];
+    const positions = order.map((step) => listenerFlush.indexOf(step));
+    expect(positions).not.toContain(-1);
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+  });
+
+  it('keeps a non-flushed outcome visible to the facade and the unmount teardown intact', () => {
+    // The facade's fail-closed contract depends on the flush closure throwing:
+    // the pipeline never rejects, so the runner rethrows the outcome.
+    expect(studio).toContain("if (outcome.status === 'flushed') return;");
+    expect(listenerFlush).toContain('runStudioFlush([');
+    expect(studio).toContain('return () => unlisten?.();');
+  });
+
+  it('drains the capture queue through the pipeline port before the caller steps', () => {
+    expect(studio).toContain('drain: () => rotoPersistenceRef.current.drainLivePixelQueue()');
+    expect(studio).toContain('interrupt: () => rotoPersistenceRef.current.interruptLivePixels()');
+  });
+});

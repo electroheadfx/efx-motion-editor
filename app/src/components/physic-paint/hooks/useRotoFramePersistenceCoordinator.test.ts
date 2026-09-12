@@ -492,3 +492,44 @@ describe('Roto capture robustness — no stale fallback reload (regression-refre
     expect(shouldReloadRotoFrameAfterFailedCapture()).toBe(false);
   });
 });
+
+// 52.2-15 (D-16, sensitivity-map row 4): the delivery retry is scheduled through
+// the pilot's bounded-turn queue instead of re-entering the delivery chain
+// inline. The hook cannot be mounted here (no preact test renderer is installed
+// and no new package may be added), so the scheduler wiring is pinned by
+// contract; the retry UNIT stays what plan 10 narrowed — the per-identity
+// entry — and the queue changes only who schedules it, never what is sent.
+describe('52.2-15 delivery retry scheduler (D-16, sensitivity-map row 4)', () => {
+  const flushLivePixelsSource = (() => {
+    const start = coordinatorSource.indexOf('const flushLivePixels = useCallback(');
+    return start === -1 ? '' : coordinatorSource.slice(start, coordinatorSource.indexOf('const syncCurrentPhysicalDocument', start));
+  })();
+
+  it('schedules the retry through the pilot bounded-turn queue', () => {
+    expect(coordinatorSource).toContain("import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';");
+    expect(flushLivePixelsSource).toContain('beginFlush()');
+    expect(flushLivePixelsSource).toContain('await queue.submit({');
+    // A bare inline re-queue is the ad-hoc path this replaces: the retry work
+    // must be the queue turn's produce, not a statement in the flush loop.
+    expect(flushLivePixelsSource).not.toContain('      queueParentPayload(currentIdentity, failed.payload);\n');
+  });
+
+  it('re-schedules only the narrowed per-identity unit — never a whole document payload', () => {
+    // The turn's produce re-schedules exactly the failed entry's payload for
+    // the re-validated current identity (plan 10's narrowed unit).
+    expect(flushLivePixelsSource).toContain('produce: () => queueParentPayload(currentIdentity, failed.payload),');
+    expect(flushLivePixelsSource).toContain('failedParentPayloadRef.current.get(key)');
+    // No document-wide re-send can hide in the retry: nothing in the retry path
+    // projects the runtime frames or the live projection.
+    expect(flushLivePixelsSource).not.toContain('latestFramesRef');
+    expect(flushLivePixelsSource).not.toContain('pushLiveProjection');
+    expect(flushLivePixelsSource).not.toContain('recordsAsRuntimeFrames');
+  });
+
+  it('exposes the capture queue as the flush pipeline port (forced drain + interrupt)', () => {
+    expect(coordinatorSource).toContain('drainLivePixelQueue');
+    expect(coordinatorSource).toContain('interruptLivePixels');
+    expect(coordinatorSource).toContain('await livePixelTransactionsRef.current.flush();');
+    expect(coordinatorSource).toContain('livePixelTransactionsRef.current.interrupt();');
+  });
+});
