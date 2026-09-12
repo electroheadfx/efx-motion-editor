@@ -26,7 +26,7 @@ export type { PhysicPaintRotoInterpolationMode } from '../components/physic-pain
 
 import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
 export { isWebpBytes, isPngBytes, buildFrameBytesToken };
-import type { FrameMediaReference } from '../lib/efxPaintPackage';
+import { parseFrameMediaReference, type FrameMediaReference } from '../lib/efxPaintPackage';
 
 export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
 export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';
@@ -724,27 +724,117 @@ function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): R
  * The bridge carries the layer document as references + metadata; a frame's
  * pixels ride in the `changedBytes` channel, keyed by the very digest that
  * identifies them, and only for a digest the receiver does not already hold.
+ * So the steady-state sync of an N-key layer carries N short entries and zero
+ * rasters, and a one-frame edit carries exactly one raster however many keys
+ * reference that digest (`PAYLOAD` never rides alongside `media`: ownership of
+ * the pixels stays unambiguous).
  */
 export interface PhysicPaintRotoRealKeyTransferEntry {
   readonly keyId: string;
   readonly appFrame: number;
   readonly media: FrameMediaReference;
-  /** RED stub — replaced by the digest-keyed byte channel in the GREEN commit. */
+  /**
+   * Digest → raster, for the digests this sync is actually shipping. Every key
+   * is a 64 lower-case hex SHA-256 and the entry's own `media.digest` MUST be
+   * present: the channel's whole contract is that a receiver can decide what it
+   * needs from the digest alone, without inspecting values. Values are the live
+   * `Uint8Array` or its canonical base64 form.
+   */
   readonly changedBytes?: Readonly<Record<string, string | Uint8Array>>;
 }
 
-/** RED stub (52.2-10 Task 1): the real fail-closed guard lands in GREEN. */
-export function isPhysicPaintRotoRealKeyTransferEntry(
-  _value: unknown,
-): _value is PhysicPaintRotoRealKeyTransferEntry {
-  return false;
+/** 52.2-10 (D-12): the exact member set — an entry with any other key is refused. */
+const REAL_KEY_TRANSFER_ENTRY_KEYS = ['keyId', 'appFrame', 'media', 'changedBytes'] as const;
+const FRAME_MEDIA_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
+
+function base64ToBytes(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
 }
 
-/** RED stub (52.2-10 Task 1): the real canonical serializer lands in GREEN. */
+/** A byte-channel value is a rendered WebP, live or in its canonical base64 form. */
+function isTransferByteChannelValue(value: unknown): boolean {
+  if (value instanceof Uint8Array) return isWebpBytes(value);
+  if (typeof value !== 'string') return false;
+  const bytes = base64ToBytes(value);
+  return bytes !== null && isWebpBytes(bytes);
+}
+
+/**
+ * Fail-closed guard for {@link PhysicPaintRotoRealKeyTransferEntry} (D-12).
+ *
+ * Rejects non-records, unknown members (including a `payload`/`bytes` carrier
+ * smuggled in beside the reference — the exact ambiguity D-12 exists to kill),
+ * malformed identity, and any media reference `parseFrameMediaReference` would
+ * refuse. A `changedBytes` channel must be non-empty, keyed only by digests,
+ * carry the entry's own digest, and hold only rendered WebP bytes: an entry
+ * that ships bytes under a digest it does not reference cannot deduplicate by
+ * digest, so it is refused outright.
+ */
+export function isPhysicPaintRotoRealKeyTransferEntry(
+  value: unknown,
+): value is PhysicPaintRotoRealKeyTransferEntry {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, REAL_KEY_TRANSFER_ENTRY_KEYS)) return false;
+  if (!isBoundedPhysicalKeyId(value.keyId)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  let media: FrameMediaReference;
+  try {
+    media = parseFrameMediaReference(value.media, 'transferEntry.media');
+  } catch {
+    return false;
+  }
+  if (value.changedBytes === undefined) return true;
+  if (!isRecord(value.changedBytes)) return false;
+  const changedBytes = value.changedBytes as Record<string, unknown>;
+  const digests = Object.keys(changedBytes);
+  if (digests.length === 0) return false;
+  if (!digests.every((digest) => FRAME_MEDIA_DIGEST_PATTERN.test(digest))) return false;
+  if (!Object.prototype.hasOwnProperty.call(changedBytes, media.digest)) return false;
+  return digests.every((digest) => isTransferByteChannelValue(changedBytes[digest]));
+}
+
+/**
+ * Canonical stable JSON form for one validated transfer entry (D-12): the
+ * reference first, and any changed raster as base64 under a digest-sorted
+ * channel, so the same entry always produces the same bytes on the wire.
+ * Throws on a malformed entry — a caller never ships an unvalidated entry.
+ */
 export function serializePhysicPaintRotoRealKeyTransferEntry(
-  _entry: PhysicPaintRotoRealKeyTransferEntry,
+  entry: PhysicPaintRotoRealKeyTransferEntry,
 ): string {
-  return '{}';
+  if (!isPhysicPaintRotoRealKeyTransferEntry(entry)) {
+    throw new Error('PhysicPaintRotoRealKeyTransferEntry: malformed transfer entry.');
+  }
+  const canonical: Record<string, unknown> = {
+    keyId: entry.keyId,
+    appFrame: entry.appFrame,
+    media: canonicalFrameMediaReference(entry.media),
+  };
+  if (entry.changedBytes !== undefined) {
+    const channel: Record<string, string> = {};
+    for (const digest of Object.keys(entry.changedBytes).sort()) {
+      const value = entry.changedBytes[digest];
+      channel[digest] = typeof value === 'string'
+        ? bytesToBase64(base64ToBytes(value) as Uint8Array)
+        : bytesToBase64(value);
+    }
+    canonical.changedBytes = channel;
+  }
+  return JSON.stringify(canonical);
+}
+
+/** The one canonical media-reference form: dimensions appear together or not at all. */
+function canonicalFrameMediaReference(media: FrameMediaReference): Record<string, unknown> {
+  return media.width === undefined
+    ? { relativePath: media.relativePath, digest: media.digest }
+    : { relativePath: media.relativePath, digest: media.digest, width: media.width, height: media.height };
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
