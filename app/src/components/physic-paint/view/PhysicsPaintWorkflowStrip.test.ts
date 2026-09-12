@@ -191,7 +191,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // button owns on/off per track.
     expect(code).not.toContain('physics-paint-roto-interpolation-toggle');
     expect(code).not.toContain('Disable generated in-betweens');
-    expect(code).toContain('aria-label="Empty frames between real keys"');
+    // 52.2-03 (D-23): the field is a NumericStepper now, so the accessible
+    // name travels as its ariaLabel prop.
+    expect(code).toContain('ariaLabel="Empty frames between real keys"');
     expect(code).toContain('onOnionChange');
     expect(code).toContain('onInsertRotoFrame');
     expect(code).toContain('onDeleteRotoFrame');
@@ -713,7 +715,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const pillEnd = code.indexOf('</form>', pillIndex);
     const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
     const iconIndex = pill.indexOf('<AlignHorizontalSpaceAround');
-    const inputIndex = pill.indexOf('aria-label="Empty frames between real keys"');
+    const inputIndex = pill.indexOf('ariaLabel="Empty frames between real keys"');
     expect(iconIndex).toBeGreaterThanOrEqual(0);
     expect(inputIndex).toBeGreaterThan(iconIndex);
     expect(pill).toContain('>Apply</button>');
@@ -1132,8 +1134,10 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const form = header.slice(spacingIndex, formEnd === -1 ? header.length : formEnd);
     expect(form.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(form).not.toContain('title=');
-    expect(form).toContain('aria-disabled={!props.canApplyForceSpacing');
-    expect(form).toContain('aria-label="Empty frames between real keys"');
+    // 52.2-03 (D-23): the guarded pattern now travels as NumericStepper props
+    // (camelCase in source) — no native disabled lands in the form markup.
+    expect(form).toContain('ariaDisabled={!props.canApplyForceSpacing');
+    expect(form).toContain('ariaLabel="Empty frames between real keys"');
     expect(form).toContain('aria-label="Apply force spacing"');
     expect(form).toContain('>Apply</button>');
     expect(header).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");

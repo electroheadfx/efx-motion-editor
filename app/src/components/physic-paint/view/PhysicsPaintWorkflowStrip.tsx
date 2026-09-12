@@ -68,6 +68,7 @@ import {
   setPushCommitInFlight,
   togglePushTool,
 } from './physicsPaintPushArmedTool';
+import { NumericStepper } from '../../shared/NumericStepper';
 import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
@@ -839,7 +840,8 @@ interface PhysicsPaintWorkflowStaticChromeProps {
    *  nothing (popover byte-identical to 43.5). The popover never creates or
    *  modifies the set — this is a pure read of the Plan 01 mapper output. */
   forceSpacingScopeLine: string | null;
-  onForceSpacingInput?: (event: Event) => void;
+  /** The stepper emits the committed field value (D-23/D-24). */
+  onForceSpacingInput?: (value: string) => void;
   onForceSpacingSubmit?: (event: Event) => void;
   /** 260905-dso: relocated buffer Apply/Clear ports + derived availability for
    *  the toolbox popover's third "Actions" section. The handlers are the
@@ -1099,8 +1101,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       window.removeEventListener('keydown', onEscapeKeyDown, true);
     };
   }, [toolboxOpen]);
-  function handleRotoPlaybackFpsInput(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
+  // D-23/D-24: the shared − [field] + stepper owns the fps step 0.5 and its
+  // 1–60 clamp; this handler keeps the old finite-value guard.
+  function handleRotoPlaybackFpsChange(value: number) {
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
   }
   return (
@@ -1180,7 +1183,33 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             <PhysicsPaintStyledTooltip visible={audioPreviewTooltip.visible} region="bottom">{props.audioPreviewEnabled ? 'Audio preview On — click to mute monitoring' : 'Audio preview Off — click to hear monitoring'}</PhysicsPaintStyledTooltip>
           </span>
         ) : null}
-        <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
+        <label class="physics-paint-roto-fps-control"><span>fps</span><NumericStepper
+          value={props.playbackFps || props.projectFps || 1}
+          onChange={handleRotoPlaybackFpsChange}
+          step={0.5}
+          min={1}
+          max={60}
+          disabled={!props.ready}
+          ariaLabel="Cached Roto playback frames per second"
+          class="physics-paint-roto-fps-stepper"
+          inputStyle={{
+            width: '40px',
+            height: '24px',
+            padding: '2px 4px',
+            border: '1px solid #747980',
+            borderRadius: '3px',
+            backgroundColor: '#5a5c5f',
+            color: '#f8fafc',
+            fontWeight: 700,
+          }}
+          buttonStyle={{
+            width: '22px',
+            height: '24px',
+            border: '1px solid #747980',
+            backgroundColor: '#5a5c5f',
+            color: '#f8fafc',
+          }}
+        /></label>
       </div>
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       <span
@@ -1231,20 +1260,21 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 >
                   <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
                   <span class="physics-paint-roto-key-icon-label">Key spacing</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={props.forceSpacingInput}
-                    aria-label="Empty frames between real keys"
-                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
-                    aria-describedby={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
+                  <NumericStepper
+                    value={Number.isFinite(Number(props.forceSpacingInput)) ? Number(props.forceSpacingInput) : 0}
+                    onChange={(value) => {
+                      if (!props.canApplyForceSpacing) return;
+                      props.onForceSpacingInput?.(String(value));
+                    }}
+                    step={1}
+                    min={0}
+                    ariaLabel="Empty frames between real keys"
+                    ariaDisabled={!props.canApplyForceSpacing}
+                    ariaDescribedBy={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
                     onFocus={forceSpacingTooltip.onFocus}
                     onBlur={forceSpacingTooltip.onBlur}
-                    onInput={(event) => {
-                      if (!props.canApplyForceSpacing) return;
-                      props.onForceSpacingInput?.(event);
-                    }}
+                    inputStyle={{ width: '34px', padding: '2px 4px' }}
+                    buttonStyle={{ width: '18px', height: '18px' }}
                   />
                   <button
                     type="submit"
@@ -3049,8 +3079,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 43.5-02 Task 2: the relocated Key Spacing form lives inside the memoized
   // static chrome, so the handlers it wires must keep stable identity (same
   // guard bodies as the bottom-row version — byte-identical behavior).
-  const handleForceSpacingInput = useCallback((event: Event) => {
-    physicalActions?.setForceSpacingInput((event.currentTarget as HTMLInputElement).value);
+  const handleForceSpacingInput = useCallback((value: string) => {
+    physicalActions?.setForceSpacingInput(value);
   }, [physicalActions]);
 
   const handleForceSpacingSubmit = useCallback((event: Event) => {

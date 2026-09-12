@@ -40,6 +40,14 @@ export interface NumericStepperProps {
   disabled?: boolean;
   /** Renders `aria-disabled` on the field (the Studio guarded-pattern contract). */
   ariaDisabled?: boolean;
+  /**
+   * Runs in addition to the stepper's own focus/blur handling — the Studio
+   * guarded-pattern sites hang their styled tooltip off the field's focus.
+   */
+  onFocus?: (event?: FocusEvent) => void;
+  onBlur?: () => void;
+  /** Extra description id for the field (Studio guarded-reason copy). */
+  ariaDescribedBy?: string;
   class?: string;
   inputClass?: string;
   inputStyle?: JSX.CSSProperties;
@@ -117,6 +125,9 @@ export function NumericStepper({
   ariaLabel,
   disabled = false,
   ariaDisabled,
+  onFocus,
+  onBlur,
+  ariaDescribedBy,
   class: className,
   inputClass,
   inputStyle,
@@ -227,10 +238,15 @@ export function NumericStepper({
         disabled={disabled}
         aria-label={ariaLabel}
         aria-disabled={ariaDisabled ? 'true' : undefined}
-        onFocus={() => startCoalescing()}
+        aria-describedby={ariaDescribedBy}
+        onFocus={(event) => {
+          startCoalescing();
+          onFocus?.(event);
+        }}
         onBlur={(event) => {
           commitInput(event.currentTarget);
           stopCoalescing();
+          onBlur?.();
         }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
