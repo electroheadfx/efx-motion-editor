@@ -86,6 +86,7 @@ import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '.
 import {
   PhysicPaintRotoMediaProjectionError,
   toPersistedRotoRecords,
+  toRuntimeRotoRecords,
   type PhysicPaintRotoMediaReferenceResolver,
 } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { getPhysicsPaintWorkingSize } from '../components/physic-paint/engine/physicsPaintCanvasSizing';
@@ -826,6 +827,51 @@ function _validateRotoPhysicalLayerPublication(
   return _sameRotoPhysicalOperationLease(active, token)
     ? { ok: true }
     : { ok: false, reason: 'mismatched-token' };
+}
+
+/**
+ * Fail-closed carrier guard for a hydrate-time roto document (52.2-06,
+ * T-52.2-19). Every record the store is about to install must carry EXACTLY
+ * ONE raster carrier: `media` for a reference-only (on-disk) record, `bytes`
+ * for a live runtime projection. The canonical parser refuses a payload with
+ * neither, but generically and without naming the record — this guard runs
+ * first and names the offending keyId, over BOTH persisted collections, so a
+ * malformed document is actionable rather than a bare "malformed record".
+ */
+function _assertRotoPhysicalDocumentCarriers(physical: unknown): void {
+  if (typeof physical !== 'object' || physical === null) return;
+  const document = physical as { realKeyRecords?: unknown; groupOverrideRecords?: unknown };
+  for (const collection of [document.realKeyRecords, document.groupOverrideRecords]) {
+    if (!Array.isArray(collection)) continue;
+    for (const entry of collection) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const record = entry as { keyId?: unknown; payload?: unknown };
+      if (typeof record.payload !== 'object' || record.payload === null) continue;
+      const payload = record.payload as { bytes?: unknown; media?: unknown };
+      if (payload.bytes === undefined && payload.media === undefined) {
+        throw new Error(
+          `PhysicPaintRotoPhysicalDocument: roto record "${typeof record.keyId === 'string' ? record.keyId : '?'}" carries neither a media reference nor inline raster bytes.`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * The publishable runtime frame a duplicated/pasted key owes the runtime, or
+ * null when the record cannot supply one (52.2-06, T-52.2-20). A record with a
+ * media reference and no inline bytes has no pixels in the runtime yet — plan
+ * 09 resolves them from the package — and a missing/zero raster dimension
+ * would publish an invisible `width: 0` frame.
+ */
+function _resolveRotoPublishFrameSource(
+  payload: PhysicPaintRotoRealKeyPayload,
+): { bytes: Uint8Array; width: number; height: number } | null {
+  const bytes = payload.bytes;
+  const width = payload.width;
+  const height = payload.height;
+  if (bytes === undefined || width === undefined || width <= 0 || height === undefined || height <= 0) return null;
+  return { bytes, width, height };
 }
 
 // --- Physical structural read memo (46-01 track-keyed, 46-07) ---
@@ -2077,6 +2123,10 @@ export type RotoTrackSelectionFailureReason =
   | 'missing-key'
   | 'partial-loop-overlap'
   | 'apply-failed'
+  // 52.2-06 (T-52.2-20): a pasted/duplicated key whose pixels are not in the
+  // runtime (reference-only record) cannot publish a frame — refusal, never an
+  // invisible `width: 0` key.
+  | 'unresolved-key-pixels'
   | RotoRailSetPasteFailureReason
   | 'empty-set'
   | 'malformed-member'
@@ -2583,6 +2633,7 @@ export const physicPaintStore = {
       for (const [frame, value] of payload.frames) trackFrames.set(frame, value);
     }
     if (payload.rotoPhysical) {
+      _assertRotoPhysicalDocumentCarriers(payload.rotoPhysical);
       const physical = parsePhysicPaintRotoPhysicalDocument(payload.rotoPhysical);
       // (46-01 TRK-03) per-track revisions bump WITHOUT the dirty callback —
       // the caller owns project-dirty signaling for installs.
@@ -2594,9 +2645,13 @@ export const physicPaintStore = {
       });
       if (!projection.ok) throw new Error(projection.failure.text);
       const recordMap = _getOrCreateTrackRecords(layerId, trackId);
-      for (const record of physical.realKeyRecords) recordMap.set(record.keyId, record);
+      // 52.2-06 (D-06): BOTH collections are projected to the runtime shape —
+      // a reference-only record is rebuilt as a media-only record (no byte
+      // buffer is allocated for pixels the package will supply), and the
+      // group-override map is not a secondary concern.
+      for (const record of toRuntimeRotoRecords(physical.realKeyRecords)) recordMap.set(record.keyId, record);
       const groupOverrideMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
-      for (const record of physical.groupOverrideRecords ?? []) groupOverrideMap.set(record.keyId, record);
+      for (const record of toRuntimeRotoRecords(physical.groupOverrideRecords ?? [])) groupOverrideMap.set(record.keyId, record);
       _getOrCreateLayerTrackMap(_rotoGroupOverrideRecords, layerId).set(trackId, groupOverrideMap);
       _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(physical.interpolation));
       _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, physical.scriptMotion);
@@ -4027,7 +4082,7 @@ export const physicPaintStore = {
     });
     if (!pasted.ok) return { ok: false, reason: pasted.reason };
     const applied = _applyRotoTrackPaste(this, layerId, targetTrackId, document, pasted.proposal);
-    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    if (!applied.ok) return { ok: false, reason: applied.reason };
     return { ok: true, impact: pasted.impact };
   },
 
@@ -4052,7 +4107,7 @@ export const physicPaintStore = {
     });
     if (!duplicated.ok) return { ok: false, reason: duplicated.reason };
     const applied = _applyRotoTrackPaste(this, layerId, trackId, document, duplicated.proposal);
-    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    if (!applied.ok) return { ok: false, reason: applied.reason };
     return { ok: true, impact: duplicated.impact };
   },
 
@@ -4138,7 +4193,7 @@ export const physicPaintStore = {
     });
     if (!pasted.ok) return { ok: false, reason: pasted.reason };
     const applied = _applyRotoTrackPaste(this, layerId, toTrackId, destinationDocument, pasted.proposal);
-    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    if (!applied.ok) return { ok: false, reason: applied.reason };
     // Delete half second: the source loses the moved items exactly like a cut.
     const carriedLoopIds = new Set(
       copied.payload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
@@ -4202,7 +4257,20 @@ function _applyRotoTrackPaste(
   trackId: string,
   priorDocument: PhysicPaintRotoPhysicalDocument,
   proposal: PhysicPaintRotoPhysicalDocument,
-): { ok: true } | { ok: false; reason: string } {
+): { ok: true } | { ok: false; reason: RotoTrackSelectionFailureReason } {
+  const existingKeyIds = new Set(priorDocument.realKeyRecords.map((record) => record.keyId));
+  const freshRecords = proposal.realKeyRecords.filter((record) => !existingKeyIds.has(record.keyId));
+  // 52.2-06 (T-52.2-20): every fresh key publishes its own runtime frame. A
+  // reference-only record (reopened document) has no pixels in the runtime
+  // yet, so publishing would have to write an empty `width: 0` frame — an
+  // invisible key. Refuse BEFORE any mutation; plan 09 resolves pixels from
+  // the package's media reference and can lift this refusal.
+  const frameSources = new Map<string, { bytes: Uint8Array; width: number; height: number }>();
+  for (const record of freshRecords) {
+    const source = _resolveRotoPublishFrameSource(record.payload);
+    if (source === null) return { ok: false, reason: 'unresolved-key-pixels' };
+    frameSources.set(record.keyId, source);
+  }
   const recordsResult = store.replaceRotoPhysicalRecords(
     layerId,
     trackId,
@@ -4210,20 +4278,20 @@ function _applyRotoTrackPaste(
     proposal.interpolation,
     proposal.capacity,
   );
-  if (!recordsResult.ok) return { ok: false, reason: recordsResult.error };
+  if (!recordsResult.ok) return { ok: false, reason: 'apply-failed' };
   const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, proposal.loopClips);
-  if (!loopsResult.ok) return { ok: false, reason: loopsResult.error };
+  if (!loopsResult.ok) return { ok: false, reason: 'apply-failed' };
   const breaksResult = store.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId, proposal.incomingInterpolationBreakKeyIds);
-  if (!breaksResult.ok) return { ok: false, reason: breaksResult.error };
-  const existingKeyIds = new Set(priorDocument.realKeyRecords.map((record) => record.keyId));
-  for (const record of proposal.realKeyRecords) {
-    if (existingKeyIds.has(record.keyId)) continue;
+  if (!breaksResult.ok) return { ok: false, reason: 'apply-failed' };
+  for (const record of freshRecords) {
+    const source = frameSources.get(record.keyId);
+    if (source === undefined) continue;
     store.upsertRealRotoKeyFrame(layerId, trackId, record.appFrame, {
       frameIndex: 0,
       appFrame: record.appFrame,
-      bytes: requirePhysicPaintRotoInlineBytes(record.payload),
-      width: record.payload.width ?? 0,
-      height: record.payload.height ?? 0,
+      bytes: source.bytes,
+      width: source.width,
+      height: source.height,
     });
   }
   return { ok: true };
