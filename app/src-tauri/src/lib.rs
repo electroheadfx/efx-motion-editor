@@ -25,6 +25,7 @@ use commands::project;
 use commands::script_library;
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
@@ -120,6 +121,21 @@ struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
 /// Display-sleep assertion held while the physics-paint window is open (see
 /// display_sleep.rs). Dropped when the window is destroyed.
 struct DisplaySleepGuardState(Mutex<Option<display_sleep::DisplaySleepGuard>>);
+
+/// Cold-start buffer for macOS open-document URLs (52.2-11, D-03).
+///
+/// LaunchServices can deliver `RunEvent::Opened` BEFORE the main webview has
+/// installed its `opened` listener, and the event is not replayed, so a
+/// double-clicked package would be lost. URLs that arrive before the frontend
+/// says it is ready are buffered here and drained exactly once by the
+/// `opened_urls` command; `ready` flips on that drain, so every later event is
+/// emitted live instead. A URL is therefore never buffered and emitted for the
+/// same delivery, and the frontend queue dedupes even if it were.
+#[derive(Default)]
+struct OpenedUrlsState {
+    buffered: Mutex<Vec<String>>,
+    ready: std::sync::atomic::AtomicBool,
+}
 
 #[derive(serde::Serialize)]
 struct PhysicsPaintWindowLaunchResult {
@@ -481,10 +497,52 @@ fn efxasset_allowed_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// 52.2-11 (D-03): the cold-start half of the open-document handshake —
+/// return and clear the buffered URLs, and switch the native side to live
+/// `opened` emission for the rest of the run.
+#[tauri::command]
+async fn opened_urls(state: tauri::State<'_, OpenedUrlsState>) -> Result<Vec<String>, String> {
+    state.ready.store(true, Ordering::SeqCst);
+    let mut buffered = state
+        .buffered
+        .lock()
+        .map_err(|error| format!("Could not read the opened-URL buffer: {error}"))?;
+    Ok(std::mem::take(&mut *buffered))
+}
+
+/// Deliver one `RunEvent` to the URL buffer/emitter (52.2-11, D-03).
+///
+/// `RunEvent::Opened` exists only on macOS/iOS/Android, so the non-Apple arm is
+/// a no-op that keeps the Windows/Linux build warning-free.
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+fn handle_run_event(app_handle: &tauri::AppHandle, event: &tauri::RunEvent) {
+    use tauri::Manager;
+
+    if let tauri::RunEvent::Opened { urls } = event {
+        let Some(state) = app_handle.try_state::<OpenedUrlsState>() else {
+            return;
+        };
+        let paths: Vec<String> = urls.iter().map(|url| url.to_string()).collect();
+        if state.ready.load(Ordering::SeqCst) {
+            if let Err(error) = app_handle.emit("opened", paths) {
+                println!("[52.2-11] opened-URL emit failed: {error}");
+            }
+        } else if let Ok(mut buffered) = state.buffered.lock() {
+            buffered.extend(paths);
+        } else {
+            println!("[52.2-11] opened-URL buffer poisoned; delivery dropped");
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+fn handle_run_event(_app_handle: &tauri::AppHandle, _event: &tauri::RunEvent) {}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(PhysicsPaintLaunchState(Mutex::new(None)))
         .manage(DisplaySleepGuardState(Mutex::new(None)))
+        .manage(OpenedUrlsState::default())
         .manage(window_occlusion::OcclusionStopFlag::default())
         .manage(services::script_library::ScriptLibraryState::default())
         .plugin(tauri_plugin_shell::init())
@@ -872,9 +930,11 @@ pub fn run() {
             export::export_cleanup_file,
             get_physics_paint_launch_context,
             open_physics_paint_window,
+            opened_urls,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| handle_run_event(app_handle, &event));
 }
 
 #[cfg(test)]

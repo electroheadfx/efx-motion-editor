@@ -15,6 +15,10 @@
  * suffix and the `file` scheme). Format validity is plan 08's refusal gate, so
  * a plain file ending in `.mce` is accepted here as a legacy-layout candidate
  * and judged there — never silently dropped (T-52.2-37).
+ *
+ * It also owns the one conversion between the two path forms this feature has:
+ * the user- and OS-facing PACKAGE (`Name.mce`, a directory) and the manifest
+ * file inside it that `projectStore` loads (`toPackageManifestPath`).
  */
 
 /** A `scheme://` URL other than `file://` can never name a local package. */
@@ -74,6 +78,37 @@ export interface OpenedUrlQueue {
   push(urls: readonly string[]): void;
   /** Return the pending paths in arrival order and clear the queue. */
   drain(): string[];
+}
+
+/**
+ * The manifest file name inside a package. Single source is
+ * `EFX_PAINT_PACKAGE_MANIFEST_FILE` in `efxPaintPersistence.ts`; it is repeated
+ * here as a literal so this module stays import-free (the unit tests, the
+ * Studio bundle and the rescue script all load it without the persistence
+ * graph). `packageAssociationContract.test.ts` and the persistence tests pin
+ * the value on the writing side.
+ */
+const PACKAGE_MANIFEST_FILE = 'project.mce';
+
+/**
+ * Convert the path a user or the OS names — the PACKAGE, a directory called
+ * `Name.mce` — into the path every `projectStore` call loads: the manifest
+ * inside it.
+ *
+ * The store's convention is "the path names a file inside the package, and its
+ * directory is the package root" (`openProject` reads the file it is handed and
+ * takes its dirname as the package directory; `saveProjectAs` writes the
+ * package at its dirname), so both the open and save-as legs pass through here.
+ *
+ * A path that already names the manifest, or that does not end in `.mce` at
+ * all, is returned unchanged — the refusal gate, not this function, judges
+ * whether a path is a real project.
+ */
+export function toPackageManifestPath(path: string): string {
+  if (path.endsWith(`/${PACKAGE_MANIFEST_FILE}`) || !/\.mce$/i.test(path)) {
+    return path;
+  }
+  return `${path}/${PACKAGE_MANIFEST_FILE}`;
 }
 
 /**

@@ -14,7 +14,7 @@
  * path ending in `.mce` is deliberately accepted and left to the gate.
  */
 import { describe, expect, it } from 'vitest';
-import { createOpenedUrlQueue, normalizeOpenedUrl } from './openedProjectUrls';
+import { createOpenedUrlQueue, normalizeOpenedUrl, toPackageManifestPath } from './openedProjectUrls';
 
 describe('normalizeOpenedUrl', () => {
   it('decodes a file:// URL to a filesystem path with percent-escapes resolved', () => {
@@ -94,5 +94,24 @@ describe('createOpenedUrlQueue', () => {
     queue.push(['/Users/someone/Dev/notes.txt', '']);
     expect(queue.drain()).toEqual([]);
     expect(queue.drain()).toEqual([]);
+  });
+});
+
+describe('toPackageManifestPath', () => {
+  it('names the manifest inside a package the user or the OS handed us', () => {
+    expect(toPackageManifestPath('/Users/someone/Dev/Proj.mce')).toBe(
+      '/Users/someone/Dev/Proj.mce/project.mce',
+    );
+  });
+
+  it('leaves a path that already names the manifest untouched', () => {
+    expect(toPackageManifestPath('/Users/someone/Dev/Proj.mce/project.mce')).toBe(
+      '/Users/someone/Dev/Proj.mce/project.mce',
+    );
+  });
+
+  it('leaves a path that does not end in .mce untouched, for the refusal gate to judge', () => {
+    expect(toPackageManifestPath('/Users/someone/Dev/untitled')).toBe('/Users/someone/Dev/untitled');
+    expect(toPackageManifestPath('/project/clean.mce.json')).toBe('/project/clean.mce.json');
   });
 });

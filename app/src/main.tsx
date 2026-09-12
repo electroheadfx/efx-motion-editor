@@ -2,12 +2,15 @@ import './index.css';
 import {render} from 'preact';
 import {getCurrentWindow} from '@tauri-apps/api/window';
 import {listen} from '@tauri-apps/api/event';
+import {invoke} from '@tauri-apps/api/core';
 import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
 import {initTheme} from './lib/themeManager';
 import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {startAutoSave} from './lib/autoSave';
 import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
+import {createOpenedUrlQueue, toPackageManifestPath} from './lib/openedProjectUrls';
+import {projectStore} from './stores/projectStore';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
@@ -173,6 +176,39 @@ if (window.location.pathname === '/physics-paint') {
     listen('menu:close-project', () => { handleCloseProject(); });
 
     listen('menu:export', () => { uiStore.setEditorMode('export'); });
+
+    // 52.2-11 (D-03): a `.mce` package double-clicked in Finder. macOS delivers
+    // the document through `RunEvent::Opened`; the native side EMITS it live on
+    // the `opened` channel once this listener exists, and BUFFERS it for the
+    // cold start (the event fires before the webview is alive) for the one
+    // `opened_urls` drain below. Both channels feed ONE queue, so a URL that
+    // arrives twice cannot open the project twice; the guard + open path is the
+    // menu open's (52.2-11 Task 3).
+    const openedUrlQueue = createOpenedUrlQueue();
+    const openPackageFromPath = async (openedPath: string): Promise<void> => {
+      const guard = await guardUnsavedChanges();
+      if (guard === 'cancelled') return;
+      try {
+        // The OS names the PACKAGE directory; the store loads the manifest in it.
+        await projectStore.openProject(toPackageManifestPath(openedPath));
+      } catch (err) {
+        console.error('Failed to open project:', err);
+      }
+    };
+    const applyOpenedUrls = async (urls: readonly string[]): Promise<void> => {
+      openedUrlQueue.push(urls);
+      for (const openedPath of openedUrlQueue.drain()) {
+        await openPackageFromPath(openedPath);
+      }
+    };
+    await listen<string[]>('opened', (event) => {
+      applyOpenedUrls(event.payload).catch((err) => {
+        console.error('Failed to open a package delivered by the OS:', err);
+      });
+    });
+    // Cold start: drain the buffer exactly once. This call also flips the
+    // native side to live emission, so nothing is delivered twice.
+    await applyOpenedUrls(await invoke<string[]>('opened_urls'));
 
     // Guard window close: show unsaved-changes dialog and prevent close on Cancel
     getCurrentWindow().onCloseRequested(async (event) => {
