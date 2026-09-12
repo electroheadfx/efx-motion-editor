@@ -1,19 +1,33 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision, parsePhysicPaintRotoPhysicalDocument } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
 import {
+  EFX_PAINT_PACKAGE_STAGING_PREFIX,
   buildEfxPaintFrameCachePath,
+  createPackageStagingBasename,
   isSafeEfxPaintCachePath,
   loadEfxPaintDocuments,
   saveEfxPaintDocumentsWithProjectWrite,
   stableSegment,
+  stageEfxPaintPackageSave,
 } from './efxPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
+// 52.2-05 Task 3: the package transaction surface + the manifest write.
+const ipcProjectSave = vi.hoisted(() => vi.fn());
+const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const recoverEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+// The real `./ipc` module is loaded through `importActual` for the transport
+// assertions below, so the Tauri invoke boundary is the mocked seam there.
+const invoke = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
@@ -46,7 +60,14 @@ vi.mock('./ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
+  ipcProjectSave,
+  bindEfxPaintPackageTransaction,
+  publishEfxPaintPackageTransaction,
+  settleEfxPaintPackageTransaction,
+  recoverEfxPaintPackageTransaction,
 }));
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
@@ -485,5 +506,177 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const writtenPaths = secondWrites.map(([path]) => String(path));
     expect(writtenPaths.some((path) => path.includes('frame-000000-0000'))).toBe(true);
     expect(writtenPaths.some((path) => path.includes('frame-000001-0000'))).toBe(true);
+  });
+});
+
+// --- 52.2-05 Task 3: the package transaction transport (D-10) -------------
+
+const PACKAGE_STAGING_SHAPE = /^\.efx-paint-package-staging-[0-9a-f-]{36}$/;
+
+describe('the package transaction transport (52.2-05 Task 3)', () => {
+  async function realIpc() {
+    return vi.importActual<typeof import('./ipc')>('./ipc');
+  }
+
+  beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue(null);
+  });
+
+  it('binds the staged file set over the package root and the staging basename', async () => {
+    const ipc = await realIpc();
+    const binding = {
+      transactionId: 'txn-pkg-1',
+      aggregateDigest: 'a'.repeat(64),
+      entries: [{ path: 'project.mce', sha256: 'b'.repeat(64), hadOriginal: true }],
+    };
+    invoke.mockResolvedValue(binding);
+
+    const result = await ipc.bindEfxPaintPackageTransaction(
+      '/package',
+      '.efx-paint-package-staging-abc',
+      ['project.mce'],
+    );
+
+    expect(invoke).toHaveBeenCalledWith('bind_efx_paint_package_transaction', {
+      packageRoot: '/package',
+      stagingBasename: '.efx-paint-package-staging-abc',
+      paths: ['project.mce'],
+    });
+    // Bind returns the aggregate digest with the per-entry list.
+    expect(result).toEqual({ ok: true, data: binding });
+  });
+
+  it('publishes, settles and recovers over the package root with no caller-supplied destination root', async () => {
+    const ipc = await realIpc();
+
+    await ipc.publishEfxPaintPackageTransaction('/package', 'txn-pkg-1');
+    await ipc.settleEfxPaintPackageTransaction('/package', 'txn-pkg-1', 'commit');
+    await ipc.settleEfxPaintPackageTransaction('/package', 'txn-pkg-1', 'rollback');
+    await ipc.recoverEfxPaintPackageTransaction('/package');
+
+    expect(invoke.mock.calls).toEqual([
+      ['publish_efx_paint_package_transaction', { packageRoot: '/package', transactionId: 'txn-pkg-1' }],
+      ['settle_efx_paint_package_transaction', { packageRoot: '/package', transactionId: 'txn-pkg-1', action: 'commit' }],
+      ['settle_efx_paint_package_transaction', { packageRoot: '/package', transactionId: 'txn-pkg-1', action: 'rollback' }],
+      ['recover_efx_paint_package_transaction', { packageRoot: '/package' }],
+    ]);
+    // The staging root is derived in Rust (T-52.2-14): no call carries one.
+    for (const [, args] of invoke.mock.calls as Array<[string, Record<string, unknown>]>) {
+      expect(Object.keys(args).sort()).not.toContain('destinationRoot');
+      expect(Object.keys(args).sort()).not.toContain('stagingRoot');
+      expect(JSON.stringify(args)).not.toContain('/package/');
+    }
+  });
+
+  it('addresses the machine cache root and carries a soft failure as a non-fatal field', async () => {
+    const ipc = await realIpc();
+    invoke.mockResolvedValueOnce('/machine/frame-cache/PID');
+    const softFailure = {
+      accepted: false,
+      transactionId: '',
+      replacedExisting: false,
+      diagnostic: 'the cache root is read-only',
+    };
+    invoke.mockResolvedValueOnce(softFailure);
+
+    const root = await ipc.resolvePhysicPaintCacheRoot('PID');
+    const publication = await ipc.publishPhysicPaintCacheGeneration(
+      '/machine/frame-cache/PID',
+      '.efx-paint-staging-x',
+    );
+
+    expect(invoke.mock.calls[0]).toEqual(['resolve_physic_paint_cache_root', { projectId: 'PID' }]);
+    expect(root).toEqual({ ok: true, data: '/machine/frame-cache/PID' });
+    expect(invoke.mock.calls[1]).toEqual([
+      'publish_physic_paint_cache_generation',
+      { cacheRoot: '/machine/frame-cache/PID', stagingBasename: '.efx-paint-staging-x' },
+    ]);
+    expect(publication).toEqual({ ok: true, data: softFailure });
+  });
+});
+
+// --- 52.2-05 Task 3: the staged manifest write (D-10) --------------------
+
+describe('the staged package save seam (52.2-05 Task 3)', () => {
+  const project = { name: 'demo' } as unknown as Parameters<typeof stageEfxPaintPackageSave>[0];
+
+  beforeEach(() => {
+    files.clear();
+    dirs.clear();
+    vi.clearAllMocks();
+    ipcProjectSave.mockResolvedValue({ ok: true, data: null });
+    bindEfxPaintPackageTransaction.mockResolvedValue({
+      ok: true,
+      data: { transactionId: 'txn-pkg-9', aggregateDigest: 'c'.repeat(64), entries: [] },
+    });
+  });
+
+  it('mints a Rust-shaped staging basename and keeps the literal in sync with the Rust prefix', () => {
+    expect(createPackageStagingBasename()).toMatch(PACKAGE_STAGING_SHAPE);
+    expect(createPackageStagingBasename()).not.toBe(createPackageStagingBasename());
+    // One prefix, two readers: the Rust bind is the authority that refuses a
+    // mismatch, so the literals must stay identical.
+    const rust = readFileSync(
+      fileURLToPath(new URL('../../src-tauri/src/services/efx_paint_media.rs', import.meta.url)),
+      'utf8',
+    );
+    expect(rust).toContain(`pub const PACKAGE_STAGING_PREFIX: &str = "${EFX_PAINT_PACKAGE_STAGING_PREFIX}";`);
+  });
+
+  it('writes the manifest at the derived staged path and binds it as a one-entry set', async () => {
+    const staged = await stageEfxPaintPackageSave(project, '/package');
+
+    expect(staged.stagingBasename).toMatch(PACKAGE_STAGING_SHAPE);
+    expect(ipcProjectSave).toHaveBeenCalledWith(
+      project,
+      `/package/${staged.stagingBasename}/project.mce`,
+    );
+    // The manifest write accepts the optional cache transaction id without
+    // forwarding it (dead by design until plan 07/09 remove the declaration).
+    expect(ipcProjectSave.mock.calls[0]).toHaveLength(2);
+    expect(bindEfxPaintPackageTransaction).toHaveBeenCalledWith(
+      '/package',
+      staged.stagingBasename,
+      ['project.mce'],
+    );
+    // Exactly the package root, the basename and the set: no destination root.
+    expect(bindEfxPaintPackageTransaction.mock.calls[0]).toHaveLength(3);
+    expect(staged.transactionId).toBe('txn-pkg-9');
+    expect(staged.aggregateDigest).toBe('c'.repeat(64));
+  });
+
+  it('expresses an already-staged file set as the same one-entry-set call', async () => {
+    await stageEfxPaintPackageSave(project, '/package', ['layers/L1.json', 'frames/L1/K1.webp']);
+
+    expect(bindEfxPaintPackageTransaction).toHaveBeenCalledWith(
+      '/package',
+      expect.stringMatching(PACKAGE_STAGING_SHAPE),
+      ['project.mce', 'layers/L1.json', 'frames/L1/K1.webp'],
+    );
+  });
+
+  it('reports the authoritative save as committed when the cache leg soft-fails (D-14)', async () => {
+    const document = createEfxPaintDocument('layer-soft');
+    const frameRef = buildEfxPaintFrameCachePath('layer-soft', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
+    const track = document.tracks[0];
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-soft', {
+      document: { ...document, tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }] },
+      frames: new Map([[track.id, new Map([[0, { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AQID'), width: 100, height: 50 }]])]]),
+    }]]);
+    publishPhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: true,
+      data: { accepted: false, transactionId: '', replacedExisting: false, diagnostic: 'the cache root is read-only' },
+    });
+    const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
+
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+
+    // The authoritative write still runs and the save is reported committed.
+    expect(writeProject).toHaveBeenCalledOnce();
+    expect(writeProject.mock.calls[0][1]).toBeNull();
+    expect(persisted['layer-soft']).toBeDefined();
+    // No live transaction exists, so nothing is settled.
+    expect(settlePhysicPaintCacheGeneration).not.toHaveBeenCalled();
   });
 });
