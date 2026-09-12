@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals';
+import { finalizationLifecycle, isFinalizationSettledState } from '../pilot/finalizationMachine';
 
 /**
  * 52.1 (gesture-idle scheduler): a single source of truth for "is the user
@@ -11,14 +12,22 @@ import { signal } from '@preact/signals';
  * emitTo ran mid-stroke. This module gates all of that heavy work on ONE idle
  * transition.
  *
- * STATE MACHINE (not a lone timer — a long drag must never go idle mid-gesture):
+ * 52.2-14 (D-16 pilot): the lifecycle itself now lives in the declared machine
+ * (`physic-paint/pilot/finalizationMachine.ts`) so the capture queue and the
+ * flush path read the same states this signal projects. This module keeps what
+ * it always owned — the pointer set, the wall-clock arming and the re-arm rule
+ * — and every public export is unchanged:
+ *
  *   - `activePointers` tracks every pointer that has gone down but not yet
- *     up/cancelled (engine pointerdown/up/cancel + each drag hook's down/up).
- *   - `interactionIdle` flips true ONLY when `activePointers.size === 0` AND
- *     GESTURE_IDLE_WINDOW_MS of silence have elapsed since the last
- *     down/move/up/cancel. A 2s drag re-arms the timer on throttled pointermove
- *     and is additionally blocked by the non-empty pointer set, so it can never
- *     flip idle mid-drag.
+ *     up/cancelled (engine pointerdown/up/cancel + each drag hook's down/up);
+ *     the machine receives the resulting count, never the raw set.
+ *   - `interactionIdle` flips true ONLY when the lifecycle is settled (zero
+ *     active pointers AND GESTURE_IDLE_WINDOW_MS of silence since the last
+ *     down/move/up/cancel) — the machine's idle/draining/flushing states. A 2s
+ *     drag re-arms the timer on throttled pointermove and is additionally
+ *     blocked by the non-empty pointer set, so it can never flip idle
+ *     mid-drag. The write is a projection of the machine snapshot: one write
+ *     per transition, never a per-consumer derivation.
  *
  * FLUSH TRIGGERS (every path that must drain queued captures + documentSync):
  *   1. Idle        — this scheduler flips `interactionIdle` (normal path).
@@ -50,21 +59,31 @@ let lastMoveRearm = 0;
 /** Wall-clock of the last pointer down/move/up/cancel — the capture producer's quiet-window clock (52.1 Part 3). -Infinity = no interaction yet (always quiet). */
 let lastInteractionAt = Number.NEGATIVE_INFINITY;
 
+/**
+ * The projection: the idle boolean IS the machine's settled set, so every
+ * consumer reads one signal that the lifecycle wrote, not a rule it re-derived.
+ * `peek()` keeps this effect from subscribing to the signal it writes.
+ */
+finalizationLifecycle.state.subscribe((state) => {
+  const settled = isFinalizationSettledState(state);
+  if (interactionIdle.peek() === settled) return;
+  interactionIdle.value = settled;
+  if (!settled) return;
+  for (const listener of idleListeners) listener();
+});
+
 function armIdleTimer(): void {
   if (idleTimer !== null) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     idleTimer = null;
-    if (activePointers.size === 0) {
-      interactionIdle.value = true;
-      for (const listener of idleListeners) listener();
-    }
+    if (activePointers.size === 0) finalizationLifecycle.idleWindowElapsed();
   }, GESTURE_IDLE_WINDOW_MS);
 }
 
 /** pointerdown — a new pointer is active; the gate closes. */
 export function beginInteraction(pointerId: number): void {
   activePointers.add(pointerId);
-  interactionIdle.value = false;
+  finalizationLifecycle.pointerDown(activePointers.size);
   lastInteractionAt = performance.now();
   armIdleTimer();
 }
@@ -75,14 +94,13 @@ export function markInteractionActive(): void {
   lastInteractionAt = now;
   if (now - lastMoveRearm < GESTURE_MOVE_REARM_THROTTLE_MS) return;
   lastMoveRearm = now;
-  interactionIdle.value = false;
   armIdleTimer();
 }
 
 /** pointerup / pointercancel — a pointer is no longer active. */
 export function endInteraction(pointerId: number): void {
   activePointers.delete(pointerId);
-  interactionIdle.value = false;
+  finalizationLifecycle.pointerUp(activePointers.size);
   lastInteractionAt = performance.now();
   armIdleTimer();
 }
