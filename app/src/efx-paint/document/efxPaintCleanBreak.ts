@@ -1,35 +1,55 @@
 /**
- * Clean-break rejection gate predicate (Phase 45-03).
+ * Clean-break refusal gate (Phase 45-03, reworked by 52.2-08 / D-08).
  *
- * v1.0.0 intentionally does not open, migrate, or render pre-v1.0 EFX Physic
- * Paint data (D-04/D-05). This module is the single parse-time gate: a pure,
- * contract-testable scan over the raw parsed `.mce` JSON, run before any UI
- * or store hydration (D-06, Pitfall F2).
+ * v1.0.0 intentionally does not open, migrate, or render pre-52.2 projects.
+ * The project is a package (`Name.mce/` directory whose `project.mce` manifest
+ * carries `formatVersion`), so this module is the single parse-time gate: a
+ * pure, contract-testable scan over the raw parsed manifest JSON, run before
+ * any UI or store hydration (D-06, Pitfall F2 / RESEARCH Pitfall 10).
  *
- * The predicate is deliberately structure-discriminated so the app's own new
- * v1.0 projects (which also contain `'physic-paint'` layers) are never
- * rejected: a `'physic-paint'` layer is only a trigger when the top-level
- * `efx_paint_documents` map has no entry for its layer id.
+ * What changed in 52.2 (D-04/D-08): the gate no longer scans for a legacy
+ * paint-output carrier — the format is discriminated by `formatVersion`, the
+ * ONE literal shared with the writer (`PKG_FORMAT_VERSION`, imported from
+ * `app/src/lib/efxPaintPackage.ts`) and by the path layout (a plain file was
+ * the pre-52.2 shape: `<dir>/<name>.mce` used to be a file, never a package).
  *
- * Contract (D-05/D-06/D-07):
- * - Pure: never mutates the parsed project, never reads sidecar files, never
+ * Contract (D-05/D-06/D-07/D-08):
+ * - Pure: never mutates the parsed manifest, never reads sidecar files, never
  *   touches the filesystem, never performs IPC.
- * - Fail-closed scan: non-record input returns null — the gate scans, it does
- *   not throw; true parse corruption remains the existing open/serde concern.
- * - Fixed precedence: outputs → cache-reference → documentless-layer; the
- *   FIRST matching reason is returned.
+ * - Non-throwing scan: any input (null, array, string, nested garbage) returns
+ *   a reason or null — it never raises. True parse corruption stays the
+ *   open/serde concern.
+ * - Fixed precedence, documented and deterministic: an unreadable/absent
+ *   manifest first, then the plain-file layout, then the format version
+ *   (absent ⇒ older format; different ⇒ mismatch naming found and required).
+ *   The FIRST matching reason is returned; the same input always yields the
+ *   same reason.
  * - Reasons are terminal: no auto-fix, migration hint, converter branch, or
- *   stripped-copy suggestion (D-07).
+ *   stripped-copy suggestion (D-07). The dialog copy is identical for every
+ *   reason.
  */
 
-/** Legacy cache directory prefix the gate scans for (physicPaintPersistence.ts:17). */
-const PHYSIC_PAINT_CACHE_PREFIX = 'cache/physic-paint';
+import { PKG_FORMAT_VERSION } from '../../lib/efxPaintPackage';
 
-/** Typed reason a pre-v1.0 project is rejected, consumed by the 45-05 dialog. */
+/**
+ * Typed reason a pre-52.2 project is rejected, consumed by the 45-05 dialog.
+ * The name is retained for the dialog contract (`efxPaintRejectionDialog.ts`);
+ * every kind it can carry is a package-format rejection.
+ */
 export type LegacyPhysicPaintRejection =
-  | { readonly kind: 'legacy-physic-paint-outputs' }
-  | { readonly kind: 'legacy-physic-paint-cache-reference'; readonly path: string }
-  | { readonly kind: 'physic-paint-layer-without-document'; readonly layerId: string };
+  | { readonly kind: 'not-a-package-manifest' }
+  | { readonly kind: 'old-project-layout' }
+  | { readonly kind: 'missing-format-version' }
+  | { readonly kind: 'unsupported-format-version'; readonly found: number; readonly required: number };
+
+/**
+ * What the caller knows about the path it is opening without doing any IO
+ * (the gate itself never touches the filesystem).
+ */
+export interface PackageFormatGateOptions {
+  /** `'file'` is the pre-52.2 layout (`<dir>/<name>.mce` was a plain file). */
+  readonly pathKind: 'file' | 'directory';
+}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -38,94 +58,36 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Scan every string value in the project JSON (depth-first, insertion order)
- * for the legacy `cache/physic-paint` prefix and report the first offending
- * path, or null when none exists.
- */
-function findLegacyCacheReference(value: unknown): string | null {
-  if (typeof value === 'string') {
-    return value.startsWith(PHYSIC_PAINT_CACHE_PREFIX) ? value : null;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findLegacyCacheReference(item);
-      if (found !== null) return found;
-    }
-    return null;
-  }
-  if (isPlainRecord(value)) {
-    for (const key of Object.keys(value)) {
-      const found = findLegacyCacheReference(value[key]);
-      if (found !== null) return found;
-    }
-    return null;
-  }
-  return null;
-}
-
-/** Resolve the layer id a `'physic-paint'` layer is keyed by (source.layer_id, falling back to layer.id). */
-function resolvePhysicPaintLayerId(layer: Record<string, unknown>): string {
-  const source = isPlainRecord(layer.source) ? layer.source : null;
-  const sourceLayerId =
-    source && typeof source.layer_id === 'string' && source.layer_id.length > 0
-      ? source.layer_id
-      : null;
-  if (sourceLayerId !== null) return sourceLayerId;
-  return typeof layer.id === 'string' && layer.id.length > 0 ? layer.id : '';
-}
-
-/**
- * Collect every `'physic-paint'` layer across all sequences and return the
- * first whose layer id has no top-level `efx_paint_documents` entry, or null
- * when every physic-paint layer is backed by a document (Pitfall F2).
- */
-function findDocumentlessPhysicPaintLayer(project: Record<string, unknown>): string | null {
-  const documents = isPlainRecord(project.efx_paint_documents) ? project.efx_paint_documents : null;
-  const sequences = project.sequences;
-  if (!Array.isArray(sequences)) return null;
-  for (const sequence of sequences) {
-    if (!isPlainRecord(sequence)) continue;
-    const layers = sequence.layers;
-    if (!Array.isArray(layers)) continue;
-    for (const layer of layers) {
-      if (!isPlainRecord(layer)) continue;
-      if (layer.type !== 'physic-paint') continue;
-      const layerId = resolvePhysicPaintLayerId(layer);
-      if (documents === null || !Object.prototype.hasOwnProperty.call(documents, layerId)) {
-        return layerId;
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Return the first legacy Physic Paint rejection reason for a raw parsed
- * `.mce` project, or null when the project passes the gate.
+ * Return the first package-format rejection reason for a raw parsed `.mce`
+ * manifest, or null when the project passes the gate.
  *
- * Fixed precedence: non-empty `physic_paint_outputs` → legacy cache reference
- * → `'physic-paint'` layer without a v1.0 document entry.
+ * Fixed precedence:
+ *  1. an unreadable/absent manifest (`not-a-package-manifest`);
+ *  2. a plain-file path (`old-project-layout` — the pre-52.2 layout, no
+ *     package directory to read);
+ *  3. an absent or non-numeric `formatVersion` (`missing-format-version` —
+ *     the older format, which predates the package manifest);
+ *  4. a different `formatVersion` (`unsupported-format-version`, naming the
+ *     found value and `PKG_FORMAT_VERSION`).
  */
-export function findLegacyPhysicPaintRejection(
-  project: unknown,
+export function findPackageFormatRejection(
+  manifest: unknown,
+  options: PackageFormatGateOptions,
 ): LegacyPhysicPaintRejection | null {
-  if (!isPlainRecord(project)) return null;
+  // 1. Unreadable/absent manifest: nothing below can be judged.
+  if (!isPlainRecord(manifest)) return { kind: 'not-a-package-manifest' };
 
-  // Trigger 1: non-empty physic_paint_outputs array at top level (D-06).
-  if (Array.isArray(project.physic_paint_outputs) && project.physic_paint_outputs.length > 0) {
-    return { kind: 'legacy-physic-paint-outputs' };
-  }
+  // 2. The layout: a plain file is the pre-52.2 shape, whatever it claims.
+  if (options.pathKind === 'file') return { kind: 'old-project-layout' };
 
-  // Trigger 2: any legacy cache/physic-paint path reference anywhere in the JSON.
-  const cacheReference = findLegacyCacheReference(project);
-  if (cacheReference !== null) {
-    return { kind: 'legacy-physic-paint-cache-reference', path: cacheReference };
-  }
+  // 3. No usable format version: a pre-52.2 project file.
+  const formatVersion = manifest.formatVersion;
+  if (typeof formatVersion !== 'number') return { kind: 'missing-format-version' };
 
-  // Trigger 3: a 'physic-paint' layer with no v1.0 document entry (F2 discrimination).
-  const layerId = findDocumentlessPhysicPaintLayer(project);
-  if (layerId !== null) {
-    return { kind: 'physic-paint-layer-without-document', layerId };
+  // 4. A different package format: name both values so a future migration can
+  //    be diagnosed from the typed reason.
+  if (formatVersion !== PKG_FORMAT_VERSION) {
+    return { kind: 'unsupported-format-version', found: formatVersion, required: PKG_FORMAT_VERSION };
   }
 
   return null;
