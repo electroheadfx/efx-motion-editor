@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-06-PLAN.md
-last_updated: "2026-09-12T16:04:06.392Z"
+stopped_at: Completed 52.2-07-PLAN.md
+last_updated: "2026-09-12T17:07:03.675Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 3e238558cb70b19e4f1ee8a84f7eb9e732dccbf1
+state_head: e6360cb51b3b0c926ddaea91ec758df683cf9a74
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 55
+  completed_plans: 56
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 7 of 16
+Plan: 8 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -114,6 +114,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P04 | 9 | 3 tasks | 6 files |
 | Phase 52.2 P05 | 25min | 3 tasks | 9 files |
 | Phase 52.2 P06 | 11min | 3 tasks | 8 files |
+| Phase 52.2 P07 | 54min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -281,6 +282,9 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-06: resolveRef is OPTIONAL on serializeRuntimeIntoDocument — the roto media projection engages only when the package-write caller supplies digests; live Studio push, sibling sync and undo paths keep bytes
 - [Phase 52.2]: 52.2-06: toRuntimeRotoRecords passes a live bytes-carrying record through untouched and rebuilds a media-carrying one as an immutable media-only record — never allocates a byte buffer
 - [Phase 52.2]: 52.2-06: hydrate refuses a carrier-less roto record by keyId BEFORE the canonical parse (the parser's refusal is generic and cannot name the record)
+- [Phase 52.2]: The staged media path joins the bound set: the publish set IS the bound set, so no reference can outlive its bytes (T-52.2-21)
+- [Phase 52.2]: An empty change set returns without touching the package but still runs the derived-frame cache leg — a repaint moves frames without moving document tokens (D-11/D-14)
+- [Phase 52.2]: Both save call sites pass project + path only; the dead cache transaction id parameter is scheduled for removal in plan 09 Task 1
 
 ### Pending Todos
 
@@ -332,6 +336,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T16:04:04.838Z
-Stopped at: Completed 52.2-06-PLAN.md
+Last session: 2026-09-12T17:06:53.101Z
+Stopped at: Completed 52.2-07-PLAN.md
 Resume file: None
