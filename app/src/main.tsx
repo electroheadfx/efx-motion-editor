@@ -208,7 +208,13 @@ if (window.location.pathname === '/physics-paint') {
     });
     // Cold start: drain the buffer exactly once. This call also flips the
     // native side to live emission, so nothing is delivered twice.
-    await applyOpenedUrls(await invoke<string[]>('opened_urls'));
+    try {
+      await applyOpenedUrls(await invoke<string[]>('opened_urls'));
+    } catch (err) {
+      // Fail-soft like the live `opened` listener above: a missing native
+      // command must not abort the rest of startup (close guard, shortcuts).
+      console.error('Failed to drain OS-delivered packages:', err);
+    }
 
     // Guard window close: show unsaved-changes dialog and prevent close on Cancel
     getCurrentWindow().onCloseRequested(async (event) => {
