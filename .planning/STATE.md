@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-13-PLAN.md
-last_updated: "2026-09-12T20:58:25.927Z"
+stopped_at: Completed 52.2-14-PLAN.md
+last_updated: "2026-09-12T21:48:02.416Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 4d6a4f47af3cc7fb417ff701b96689dd5b831804
+state_head: 973c7624091fb159c1c0414025132e55657f9d12
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 62
+  completed_plans: 63
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 14 of 16
+Plan: 15 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -121,6 +121,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P11 | 16min | 3 tasks | 9 files |
 | Phase 52.2 P12 | 1h53min | 3 tasks | 10 files |
 | Phase 52.2 P13 | 7 | 4 tasks | 35 files |
+| Phase 52.2 P14 | 46 min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -311,6 +312,10 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-13: chunk budget raised 1320 -> 1340 kB (measured 1,326.36 + ~13.6 kB headroom) — pre/post-install builds emitted the byte-identical index-knu_IwqL.js main chunk, so the pinned xstate/effect install's delta is 0.00 kB and the raise is attributed to the already-landed 52.2 format work (plans 08-12), never to pilot code
 - [Phase 52.2]: 52.2-13: xstate 6.0.0-alpha.53 + effect 4.0.0-rc.115 installed --save-exact and left unimported (zero imports in app/src); pilot library imports stay behind the PhysicsPaintStudio lazy boundary. Pilot-start re-verification (D-15) recorded in SPECS/async-conventions.md: pins unchanged, five v6 breaking changes recorded (guard signature last), no Preact binding, @effect/platform still absent for v4
 - [Phase 52.2]: 52.2-13: scripts/verify-async-api-surface.ts is the installed-surface API gate (D-17) — the doc's import bindings, cited-but-not-imported names, removed-creator absence and dotted members all resolve against the shipped .d.ts; audit result zero unresolved names, zero corrections; effect-ts skill 0.6.5 installed (v4 default, upstream effect@4.0.0-beta.92 older than the pin, so the installed .d.ts is authoritative)
+- [Phase 52.2]: Failures are data, not fiber death: Effect v4 tryPromise's catch maps into the typed ERROR channel, so produce/commit run as never-rejecting Effect.promise thunks returning a discriminated result
+- [Phase 52.2]: The machine's wait IS the yield: the queue always awaits waitUntilDrainable (a macrotask when already drainable) so a turn never produces ahead of work submitted later in the same task
+- [Phase 52.2]: Settle-through interruption: interrupt() cancels live turns but each turn resolves its own settlement promise, and a cancelled turn's commit is never called
+- [Phase 52.2]: D-19 proven by measurement: main chunk byte-stable at 1,326.43 kB (budget 1340); the only xstate/effect imports in app/src are the two pilot modules; app/src/lib untouched
 
 ### Pending Todos
 
@@ -363,6 +368,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T20:58:24.334Z
-Stopped at: Completed 52.2-13-PLAN.md
+Last session: 2026-09-12T21:48:00.885Z
+Stopped at: Completed 52.2-14-PLAN.md
 Resume file: None
