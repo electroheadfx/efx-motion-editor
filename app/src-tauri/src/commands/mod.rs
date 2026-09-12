@@ -1,5 +1,6 @@
 pub mod config;
 pub mod debug_capture;
+pub mod efx_paint_media;
 pub mod export;
 pub mod frame_codec;
 pub mod image;

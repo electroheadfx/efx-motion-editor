@@ -1,3 +1,4 @@
+pub mod efx_paint_media;
 pub mod ffmpeg;
 pub mod frame_codec;
 pub mod image_pool;

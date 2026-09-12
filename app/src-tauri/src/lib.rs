@@ -4,7 +4,9 @@ mod models;
 mod services;
 mod window_occlusion;
 
+pub use commands::efx_paint_media as efx_paint_media_command;
 pub use commands::physic_paint_cache as physic_paint_cache_command;
+pub use services::efx_paint_media;
 pub use services::physic_paint_cache;
 
 #[doc(hidden)]
@@ -12,6 +14,7 @@ pub mod script_library_test_support;
 
 use commands::config;
 use commands::debug_capture;
+use commands::efx_paint_media as efx_paint_media_commands;
 use commands::export;
 use commands::frame_codec as frame_codec_commands;
 use commands::image;
@@ -832,6 +835,8 @@ pub fn run() {
             physic_paint_cache_commands::hardlink_physic_paint_cache_frames,
             frame_codec_commands::encode_webp_frame,
             frame_codec_commands::decode_webp_frame,
+            efx_paint_media_commands::efx_paint_write_frame_media,
+            efx_paint_media_commands::efx_paint_read_frame_media,
             debug_capture::write_debug_capture,
             config::config_get_theme,
             config::config_set_theme,

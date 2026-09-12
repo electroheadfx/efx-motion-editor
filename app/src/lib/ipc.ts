@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { base64ToBytes } from './webpBytes';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
 import type { PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
@@ -355,6 +356,63 @@ export function hardlinkPhysicPaintCacheFrames(
     'hardlink_physic_paint_cache_frames',
     { projectDir, stagingBasename, unchangedPaths },
   );
+}
+
+// --- Package frame media commands (52.2-01, D-02/D-07/D-13) ---
+
+export interface EfxPaintFrameMediaWriteResult {
+  relativePath: string;
+  digest: string;
+  byteLength: number;
+}
+
+export interface EfxPaintFrameMediaReadResult {
+  bytes: Uint8Array;
+  digest: string;
+}
+
+/**
+ * Write one real key's raster to the package `frames/` tree (or into the save
+ * transaction's staging root when `stagingBasename` is supplied). The bytes
+ * cross as the raw invoke body — never a JSON number array — and the resolved
+ * `relativePath` is always the canonical `frames/<layerId>/<keyId>.webp`.
+ */
+export async function ipcEfxPaintWriteFrameMedia(
+  packageDir: string,
+  layerId: string,
+  keyId: string,
+  bytes: Uint8Array,
+  stagingBasename?: string,
+): Promise<Result<EfxPaintFrameMediaWriteResult>> {
+  const headers: Record<string, string> = { packageDir, layerId, keyId };
+  if (stagingBasename !== undefined) headers.stagingBasename = stagingBasename;
+  try {
+    const data = await invoke<EfxPaintFrameMediaWriteResult>('efx_paint_write_frame_media', bytes, { headers });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+/**
+ * Read one real key's raster back. The Rust side returns base64 (a raw
+ * response body degrades to a JSON number array on macOS — see
+ * `webpFrameCodec.ts`), decoded here to a `Uint8Array`.
+ */
+export async function ipcEfxPaintReadFrameMedia(
+  packageDir: string,
+  relativePath: string,
+): Promise<Result<EfxPaintFrameMediaReadResult>> {
+  try {
+    const data = await invoke<{ relativePath: string; digest: string; byteLength: number; bytesBase64: string }>(
+      'efx_paint_read_frame_media',
+      undefined,
+      { headers: { packageDir, relativePath } },
+    );
+    return { ok: true, data: { bytes: base64ToBytes(data.bytesBase64), digest: data.digest } };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 }
 
 // --- Image commands ---
