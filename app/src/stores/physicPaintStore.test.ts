@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import { frameLru } from '../lib/frameLru';
@@ -6,7 +7,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -38,6 +39,17 @@ vi.mock('../lib/webpFrameCodec', () => ({
     for (let index = 0; index < seed.length; index += 1) bytes[32 + index] = seed.charCodeAt(index) & 0xff;
     return bytes;
   }),
+}));
+
+// 52.2-09 Task 3 (D-13): the media READ leg crosses the Tauri boundary through
+// `ipcEfxPaintReadFrameMedia` (a leaf in `lib/efxPaintMediaRead`). Mock that one
+// member and keep the rest of the module real — the store's own `assetUrl`
+// import must stay untouched.
+const { readFrameMediaMock } = vi.hoisted(() => ({ readFrameMediaMock: vi.fn() }));
+
+vi.mock('../lib/ipc', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/ipc')>()),
+  ipcEfxPaintReadFrameMedia: readFrameMediaMock,
 }));
 
 const decodeFlatLog = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
@@ -2541,6 +2553,300 @@ describe('physicPaintStore', () => {
       await flushDecode();
 
       expect(frameLru.has(frame5Token)).toBe(true);
+    });
+
+    // -----------------------------------------------------------------------
+    // 52.2-09 Task 3 (D-13, T-52.2-29/31/32): a REOPENED package holds
+    // REFERENCE-ONLY roto records — no inline bytes in either collection — so
+    // the compositor seam must resolve the persisted media reference on demand:
+    // read → digest verify → decode → LRU keyed by DIGEST. A missing file draws
+    // the Phase 49 slate (named in the missing report); a digest mismatch is
+    // refused without a bitmap and without reusing another frame's raster.
+    // A reference names no collection, so both reach this one seam.
+    // -----------------------------------------------------------------------
+    describe('52.2-09 Task 3: on-demand media decode at the compositor seam', () => {
+      const MEDIA_LAYER = 'media-layer';
+      const MEDIA_TRACK = 'track-a';
+      const PACKAGE_DIR = '/package';
+      const INTERPOLATION = { enabled: false, mode: 'duplicate' as const };
+      const OVERRIDE_KEY_ID = 'override-phase-1';
+
+      const digestOf = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+
+      function mediaRef(keyId: string, digest: string) {
+        return { relativePath: buildFrameMediaRelativePath(MEDIA_LAYER, keyId), digest, width: 4, height: 3 };
+      }
+
+      function mediaRecord(keyId: string, appFrame: number, reference: unknown) {
+        return {
+          kind: 'real-key' as const,
+          keyId,
+          appFrame,
+          payload: { frameIndex: 0, appFrame, media: reference, width: 4, height: 3 },
+        };
+      }
+
+      /** Canonical finite Group carrying one override (the on-disk reference rule). */
+      function groupLoopClip(overrideKeyId: string) {
+        return {
+          loopId: 'loop-phase',
+          placementStart: 10,
+          sourceKeyIds: ['key-1'],
+          repeat: 3,
+          mode: 'progressive' as const,
+          syncState: 'modified' as const,
+          provenanceState: 'attached' as const,
+          phaseOrigin: 10,
+          originalEndExclusive: 13,
+          visibleRanges: [{ start: 10, endExclusive: 13 }],
+          frameOverrides: [{ appFrame: 11, keyId: overrideKeyId }],
+        };
+      }
+
+      function installReferenceOnly(
+        realKeyRecords: readonly unknown[],
+        groupOverrideRecords: readonly unknown[] = [],
+        loopClips: readonly unknown[] = [],
+      ): void {
+        physicPaintStore.installRuntimeStateFromDocument(MEDIA_LAYER, MEDIA_TRACK, {
+          trackId: MEDIA_TRACK,
+          frames: new Map(),
+          rotoPhysical: {
+            capacity: 32,
+            realKeyRecords,
+            groupOverrideRecords,
+            interpolation: INTERPOLATION,
+            scriptMotion: { deformation: 0, position: 0 },
+            background: null,
+            selectedKeyId: null,
+            cursorAppFrame: 0,
+            loopClips,
+            incomingInterpolationBreakKeyIds: [],
+            revision: buildPhysicPaintRotoPhysicalRevision(
+              realKeyRecords as never,
+              INTERPOLATION,
+              loopClips as never,
+              [],
+              groupOverrideRecords as never,
+            ),
+          } as never,
+        });
+      }
+
+      /** The native read succeeds, returning the bytes the reference names. */
+      function ipcReads(bytes: Uint8Array): void {
+        readFrameMediaMock.mockResolvedValue({ ok: true, data: { bytes, digest: digestOf(bytes) } });
+      }
+
+      beforeEach(() => {
+        _setPhysicPaintPackageDirProvider(() => PACKAGE_DIR);
+        readFrameMediaMock.mockReset();
+        registerDocument(flatDocument([flatTrack(MEDIA_TRACK)]));
+      });
+
+      afterEach(() => {
+        _setPhysicPaintPackageDirProvider(null);
+      });
+
+      it('a real-key media reference yields a bitmap the first time the compositor needs it', async () => {
+        const bytes = testWebpBytes('media-key-1');
+        const reference = mediaRef('key-1', digestOf(bytes));
+        installReferenceOnly([mediaRecord('key-1', 0, reference)]);
+        ipcReads(bytes);
+
+        // The installed record carries a REFERENCE — never an inline payload.
+        const installed = physicPaintStore.getRotoRealKeyRecords(MEDIA_LAYER, MEDIA_TRACK)[0];
+        expect('bytes' in installed.payload).toBe(false);
+
+        // Pending tick: the read is in flight, so the flatten is conservative —
+        // never a fabricated raster.
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+
+        await flushDecode();
+        expect(readFrameMediaMock).toHaveBeenCalledTimes(1);
+        expect(readFrameMediaMock).toHaveBeenCalledWith(PACKAGE_DIR, 'frames/media-layer/key-1.webp');
+
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        expect(record).not.toBeNull();
+        expect(record!.missing).toEqual([]);
+        expect(decodeFlatLog(await record!.encodeBytes())).toContain('draw(');
+      });
+
+      it('a GROUP-OVERRIDE media reference resolves through the same seam and yields a bitmap', async () => {
+        const sourceBytes = testWebpBytes('media-source-key');
+        const overrideBytes = testWebpBytes('media-override');
+        const overridePath = buildFrameMediaRelativePath(MEDIA_LAYER, OVERRIDE_KEY_ID);
+        installReferenceOnly(
+          [mediaRecord('key-1', 0, mediaRef('key-1', digestOf(sourceBytes)))],
+          [mediaRecord(OVERRIDE_KEY_ID, 11, mediaRef(OVERRIDE_KEY_ID, digestOf(overrideBytes)))],
+          [groupLoopClip(OVERRIDE_KEY_ID)],
+        );
+        readFrameMediaMock.mockImplementation(async (_packageDir: string, relativePath: string) => (
+          relativePath === overridePath
+            ? { ok: true, data: { bytes: overrideBytes, digest: digestOf(overrideBytes) } }
+            : { ok: true, data: { bytes: sourceBytes, digest: digestOf(sourceBytes) } }
+        ));
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 11)).toBeNull();
+        await flushDecode();
+
+        // The override's OWN media file is what the seam read — the second
+        // collection is not a decode-path afterthought.
+        expect(readFrameMediaMock).toHaveBeenCalledWith(PACKAGE_DIR, overridePath);
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 11);
+        expect(record).not.toBeNull();
+        expect(record!.missing).toEqual([]);
+        expect(decodeFlatLog(await record!.encodeBytes())).toContain('draw(');
+      });
+
+      it('a missing media file draws the slate path, naming the unresolved reference', async () => {
+        const reference = mediaRef('key-missing', digestOf(testWebpBytes('never-written')));
+        installReferenceOnly([mediaRecord('key-missing', 0, reference)]);
+        readFrameMediaMock.mockResolvedValue({ ok: false, error: { kind: 'missing' } });
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+        await flushDecode();
+
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        expect(record).not.toBeNull();
+        // The Phase 49 missing-source branch by NAME — transparent track pixels
+        // plus a report entry carrying the reference — never a blank bitmap.
+        expect(record!.missing).toEqual([{ trackId: MEDIA_TRACK, frame: 0, missingRefs: [reference.relativePath] }]);
+        expect(decodeFlatLog(await record!.encodeBytes())).not.toContain('draw(');
+        expect(getFrameMediaVerdict(reference.digest)).toBe('missing');
+      });
+
+      it('a GROUP-OVERRIDE whose media file is missing stays on the slate path, named', async () => {
+        const sourceBytes = testWebpBytes('media-source-key');
+        const missingReference = mediaRef(OVERRIDE_KEY_ID, digestOf(testWebpBytes('never-written-override')));
+        installReferenceOnly(
+          [mediaRecord('key-1', 0, mediaRef('key-1', digestOf(sourceBytes)))],
+          [mediaRecord(OVERRIDE_KEY_ID, 11, missingReference)],
+          [groupLoopClip(OVERRIDE_KEY_ID)],
+        );
+        readFrameMediaMock.mockImplementation(async (_packageDir: string, relativePath: string) => (
+          relativePath === missingReference.relativePath
+            ? { ok: false, error: { kind: 'missing' } }
+            : { ok: true, data: { bytes: sourceBytes, digest: digestOf(sourceBytes) } }
+        ));
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 11)).toBeNull();
+        await flushDecode();
+
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 11);
+        expect(record).not.toBeNull();
+        expect(record!.missing).toEqual([{ trackId: MEDIA_TRACK, frame: 11, missingRefs: [missingReference.relativePath] }]);
+        expect(getFrameMediaVerdict(missingReference.digest)).toBe('missing');
+      });
+
+      it('a second frame referencing the same digest is served from the LRU with no IPC traffic', async () => {
+        const sharedBytes = testWebpBytes('shared-raster');
+        const digest = digestOf(sharedBytes);
+        installReferenceOnly([
+          mediaRecord('key-1', 0, mediaRef('key-1', digest)),
+          mediaRecord('key-2', 3, mediaRef('key-2', digest)),
+        ]);
+        ipcReads(sharedBytes);
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+        await flushDecode();
+        const first = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        expect(first?.missing).toEqual([]);
+        expect(readFrameMediaMock).toHaveBeenCalledTimes(1);
+
+        // The second key names a DIFFERENT file holding the same raster. The LRU
+        // is keyed by digest, so it resolves synchronously with no second read
+        // (T-52.2-31: the same raster decodes once however many keys name it).
+        const second = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 3);
+        expect(second).not.toBeNull();
+        expect(second!.missing).toEqual([]);
+        expect(decodeFlatLog(await second!.encodeBytes())).toContain('draw(');
+        expect(readFrameMediaMock).toHaveBeenCalledTimes(1);
+      });
+
+      it('a digest mismatch refuses the frame and never reuses another frame\'s bitmap', async () => {
+        const goodBytes = testWebpBytes('good-raster');
+        const expectedBytes = testWebpBytes('expected-tampered-raster');
+        const tamperedBytes = testWebpBytes('tampered-raster');
+        const goodReference = mediaRef('key-good', digestOf(goodBytes));
+        const tamperedReference = mediaRef('key-tampered', digestOf(expectedBytes));
+        installReferenceOnly([
+          mediaRecord('key-good', 0, goodReference),
+          mediaRecord('key-tampered', 3, tamperedReference),
+        ]);
+        readFrameMediaMock.mockImplementation(async (_packageDir: string, relativePath: string) => (
+          relativePath === tamperedReference.relativePath
+            ? { ok: true, data: { bytes: tamperedBytes, digest: digestOf(tamperedBytes) } }
+            : { ok: true, data: { bytes: goodBytes, digest: digestOf(goodBytes) } }
+        ));
+
+        // Frame 0 resolves first: its bitmap is live in the LRU when the
+        // tampered frame is requested.
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+        await flushDecode();
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)?.missing).toEqual([]);
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 3)).toBeNull();
+        await flushDecode();
+
+        const record = physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 3);
+        expect(record).not.toBeNull();
+        expect(record!.missing).toEqual([{ trackId: MEDIA_TRACK, frame: 3, missingRefs: [tamperedReference.relativePath] }]);
+        // Nothing was cached under the tampered digest, and the frame drew no
+        // pixels — so the good frame's bitmap was never reused for it (T-52.2-29).
+        expect(frameLru.has(tamperedReference.digest)).toBe(false);
+        expect(decodeFlatLog(await record!.encodeBytes())).not.toContain('draw(');
+        expect(getFrameMediaVerdict(tamperedReference.digest)).toBe('digest-mismatch');
+      });
+
+      it('records a terminal verdict so a failed read is not re-issued on every compositor tick', async () => {
+        const expectedBytes = testWebpBytes('expected-raster');
+        const tamperedBytes = testWebpBytes('tampered-raster');
+        const reference = mediaRef('key-1', digestOf(expectedBytes));
+        installReferenceOnly([mediaRecord('key-1', 0, reference)]);
+        readFrameMediaMock.mockResolvedValue({ ok: true, data: { bytes: tamperedBytes, digest: digestOf(tamperedBytes) } });
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+        await flushDecode();
+        expect(getFrameMediaVerdict(reference.digest)).toBe('digest-mismatch');
+
+        // Two more ticks: the recorded refusal answers them without another read.
+        physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        await flushDecode();
+        expect(readFrameMediaMock).toHaveBeenCalledTimes(1);
+      });
+
+      it('bumps the version clock when the media decode lands (the compositor repaints)', async () => {
+        const bytes = testWebpBytes('media-key-1');
+        installReferenceOnly([mediaRecord('key-1', 0, mediaRef('key-1', digestOf(bytes)))]);
+        ipcReads(bytes);
+
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)).toBeNull();
+        const whilePending = physicPaintVersion.value;
+        await flushDecode();
+
+        expect(physicPaintVersion.value).toBeGreaterThan(whilePending);
+        expect(physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0)?.missing).toEqual([]);
+      });
+
+      it('never fabricates an inline payload or a runtime frame to fill a missing media file', async () => {
+        const reference = mediaRef('key-missing', digestOf(testWebpBytes('never-written')));
+        installReferenceOnly([mediaRecord('key-missing', 0, reference)]);
+        readFrameMediaMock.mockResolvedValue({ ok: false, error: { kind: 'missing' } });
+
+        physicPaintStore.getFlattenedFrame(MEDIA_LAYER, 0);
+        await flushDecode();
+
+        // No placeholder buffer is ever allocated to fill the frame, and the
+        // persisted reference is preserved verbatim.
+        expect(physicPaintStore.getFrames(MEDIA_LAYER, MEDIA_TRACK).size).toBe(0);
+        expect(physicPaintStore.getFrame(MEDIA_LAYER, MEDIA_TRACK, 0)).toBeNull();
+        const record = physicPaintStore.getRotoRealKeyRecords(MEDIA_LAYER, MEDIA_TRACK)[0];
+        expect('bytes' in record.payload).toBe(false);
+        expect(record.payload.media?.relativePath).toBe(reference.relativePath);
+        expect(getFrameMediaVerdict(reference.digest)).toBe('missing');
+      });
     });
   });
 });

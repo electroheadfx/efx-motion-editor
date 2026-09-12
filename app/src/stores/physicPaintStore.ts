@@ -4,6 +4,12 @@ import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApply
 import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanvasRegistry';
 import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 import { frameLru } from '../lib/frameLru';
+// 52.2-09 Task 3 (D-13): the READ leg of the package media pair. The resolver
+// (GREEN) takes the LRU, the injected decode and the package root as
+// parameters, so the store keeps ownership of the LRU budget and the
+// two-format sniff.
+import type { FrameMediaRefusalReason } from '../lib/efxPaintMediaRead';
+import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
@@ -446,6 +452,19 @@ export function _setPhysicPaintCompositorSizeProvider(cb: (() => { width: number
   _compositorSizeProvider = cb;
 }
 
+/**
+ * 52.2-09 Task 3 (D-13): the package root the media read leg resolves a
+ * persisted `frames/<layerId>/<keyId>.webp` reference against. Injected from
+ * projectStore (the opened package's own directory) on the
+ * `_setPhysicPaintCompositorSizeProvider` pattern, because the store cannot
+ * import projectStore without an ESM module-body cycle. Null means "no package
+ * root this session" — a media reference then resolves to nothing.
+ */
+let _packageDirProvider: (() => string | null) | null = null;
+export function _setPhysicPaintPackageDirProvider(cb: (() => string | null) | null): void {
+  _packageDirProvider = cb;
+}
+
 /** Per-layer flattened memo (D-08/CMP-04) + per-track raster memo (D-07). */
 const _flattenedMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintFlattenedFrameRecord>>();
 const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>>();
@@ -454,6 +473,22 @@ const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrack
 const _compositorDecodeLoading = new Set<string>();
 /** In-flight decode promises (52.1-05 D-13): lets the export preload await completion. */
 const _compositorDecodePromises = new Map<string, Promise<ImageBitmap | null>>();
+
+/**
+ * 52.2-09 Task 3 (D-13, T-52.2-29/32): the terminal NON-bitmap outcome recorded
+ * for one persisted media digest — a resolved bitmap lives in the frame LRU, so
+ * only the failures need a verdict. Recording them keeps a missing or refused
+ * read from being re-issued on every compositor tick, and makes a refusal
+ * (corrupt file) observable instead of silent. Guarded by digest, so a tampered
+ * file can never be served from a previous frame's bitmap.
+ */
+export type FrameMediaVerdict = 'missing' | FrameMediaRefusalReason;
+const _frameMediaVerdicts = new Map<string, FrameMediaVerdict>();
+/** In-flight media reads, keyed by digest — the duplicate-kick guard. */
+const _frameMediaResolutionPromises = new Map<string, Promise<void>>();
+export function getFrameMediaVerdict(digest: string): FrameMediaVerdict | null {
+  return _frameMediaVerdicts.get(digest) ?? null;
+}
 
 /**
  * Background sourceRef → dataUrl registry (48-04 port wiring; Phase 49's import
@@ -1212,6 +1247,18 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   return null;
 }
 
+/**
+ * 52.2-09 Task 3 (D-13) — RED stub: the compositor seam recognizes a
+ * reference-only payload but the media read leg is not wired yet, so with a
+ * package root in hand the frame stays pending (GREEN lands the read, the
+ * named missing ref and the digest verdicts).
+ */
+function _resolveMediaRasterResolution(media: FrameMediaReference): EfxPaintTrackContentResolution | null {
+  const packageDir = _packageDirProvider?.() ?? null;
+  if (packageDir !== null) return null;
+  return { kind: 'missing', missingRefs: [media.relativePath] };
+}
+
 async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
   // Telemetry (stall diagnosis): the JS-observed invoke wall time covers the
   // request-body handoff + codec + Rust base64 encode + response JSON string
@@ -1369,6 +1416,15 @@ function _preResolveTrackContent(
     if (!source) return { kind: 'missing', missingRefs: [] };
     if (source.kind === 'loop-placeholder') {
       return { kind: 'missing', missingRefs: source.missingSourceKeyIds ?? source.sourceKeyIds ?? [] };
+    }
+    // 52.2-09 Task 3 (D-13): a REOPENED package holds reference-only records —
+    // the pixels live in `frames/<layerId>/<keyId>.webp`, never inline — so a
+    // media-carrying payload resolves through the media seam instead of the
+    // inline-bytes assertion (which stays the runtime-record contract). Both
+    // roto collections reach this ONE seam: a reference names no collection.
+    const media = source.renderedFrame.media;
+    if (source.renderedFrame.bytes === undefined && media !== undefined) {
+      return _resolveMediaRasterResolution(media);
     }
     const bytes = requirePhysicPaintRotoInlineBytes(source.renderedFrame);
     // G-52-8 (FIX 3): decode-once across the whole app — launch hydration
@@ -2971,7 +3027,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -3006,6 +3062,11 @@ export const physicPaintStore = {
     _trackRasterMemo.clear();
     _compositorDecodeLoading.clear();
     _compositorDecodePromises.clear();
+    // 52.2-09 Task 3: the media verdicts are per-session runtime state too — a
+    // verdict recorded for a previous project's digest must not silence a read
+    // in the next one.
+    _frameMediaVerdicts.clear();
+    _frameMediaResolutionPromises.clear();
     frameLru.clear();
     _backgroundSourceImages.clear();
     _referenceSourceImages.clear();
