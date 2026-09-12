@@ -12,6 +12,7 @@ import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { useRotoReferenceController } from './useRotoReferenceController';
 import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoordinator';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
+import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -301,6 +302,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         || currentRecord.appFrame !== identity.appFrame
         || currentRevision !== identity.contentRevision) return;
       await inputRef.current.sendCachePayload(payload);
+      // 52.2-10 (D-12, T-52.2-35): the frame's bytes just reached the main
+      // window through the apply channel, so the sender's claim about the
+      // receiver's frame store must now be truthful for that content digest —
+      // the next document sync withholds it, and a retry after a partial
+      // success re-ships only what the receiver actually lacks.
+      if (payload.kind === 'apply-canvas' && payload.renderedFrame.bytes instanceof Uint8Array) {
+        await markEfxPaintDocumentSyncFrameDelivered(
+          identity.layerId,
+          trackId,
+          identity.keyId,
+          payload.renderedFrame.bytes,
+        ).catch(() => undefined);
+      }
       parentDeliveryErrorRef.current.delete(deliveryKey);
       failedParentPayloadRef.current.delete(deliveryKey);
       if (profiling) recordPhysicsPaintPerformance({ stage: 'bridge-delivery', category: 'async-elapsed', durationMs: performance.now() - deliveryStartedAt, timestamp: performance.now(), mutationId, sourceFrame: identity.appFrame });

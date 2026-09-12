@@ -7,7 +7,7 @@ import type {
 import { toPersistedRotoRecords } from '../roto/physicsPaintRotoMediaProjection';
 import { buildFrameMediaRelativePath, parseFrameMediaReference } from '../../../lib/efxPaintPackage';
 import type { FrameMediaReference } from '../../../lib/efxPaintPackage';
-import { base64ToWebpBytes, buildFrameBytesToken, bytesToBase64, toTransportPayload } from '../../../lib/webpBytes';
+import { base64ToWebpBytes, buildFrameBytesToken, sha256HexBytes, toTransportPayload } from '../../../lib/webpBytes';
 import { toUint8Array } from '../../../lib/webpFrameCodec';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
@@ -85,8 +85,13 @@ export async function sendPhysicPaintScriptLibraryRequest(request: PhysicPaintSc
  */
 export interface EfxPaintDocumentSyncPayload {
   readonly document: EfxPaintDocument;
-  /** digest → base64 WebP, for the frames this sync is actually shipping. */
-  readonly changedBytes?: Readonly<Record<string, string>>;
+  /**
+   * digest → WebP bytes, for the frames this sync is actually shipping. The
+   * channel stays in raw bytes here and is base64-encoded only at the JSON
+   * boundary by `toTransportPayload` (D-19: the transport tokens live in the
+   * allowlisted `webpBytes.ts`, never in this module).
+   */
+  readonly changedBytes?: Readonly<Record<string, Uint8Array>>;
   /** sourceRef → decoded dataUrl, for the refs this document's clips use. */
   readonly backgroundSources?: Readonly<Record<string, string>>;
 }
@@ -136,12 +141,13 @@ export function resetEfxPaintDocumentSyncTransferState(): void {
  * lacks.
  */
 export async function markEfxPaintDocumentSyncFrameDelivered(
-  _layerId: string,
-  _trackId: string,
-  _keyId: string,
-  _bytes: Uint8Array,
+  layerId: string,
+  trackId: string,
+  keyId: string,
+  bytes: Uint8Array,
 ): Promise<void> {
-  // RED stub (52.2-10 Task 3) — GREEN records the content digest as delivered.
+  const digest = await digestForFrame(JSON.stringify([layerId, trackId, 'real-key', keyId]), bytes);
+  documentSyncSentDigests.add(digest);
 }
 
 function isFrameMediaReferenceValue(value: unknown): value is FrameMediaReference {
@@ -167,13 +173,10 @@ function rasterBytesOf(payload: PhysicPaintRotoRealKeyPayload): Uint8Array | nul
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  // A copied view keeps `digest` off a larger backing buffer: the native media
-  // write hashes exactly these bytes, so the bridge digest and the persisted
-  // one name the same content (both are plain SHA-256, lowercase hex).
-  const copy = new Uint8Array(bytes.length);
-  copy.set(bytes);
-  const digest = await crypto.subtle.digest('SHA-256', copy.buffer);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  // The shared helper (lib/webpBytes) is the one SHA-256 implementation: the
+  // native media write hashes exactly these bytes, so the bridge digest and
+  // the persisted one name the same content (plain SHA-256, lowercase hex).
+  return sha256HexBytes(bytes);
 }
 
 async function digestForFrame(cacheKey: string, bytes: Uint8Array): Promise<string> {
@@ -197,7 +200,7 @@ async function projectRecordsForSync(
   layerId: string,
   trackId: string,
   knownDigests: ReadonlySet<string>,
-  changedBytes: Record<string, string>,
+  changedBytes: Record<string, Uint8Array>,
   shippedDigests: Set<string>,
 ): Promise<readonly PhysicPaintRotoRealKeyRecord[] | null> {
   const references = new Map<string, FrameMediaReference>();
@@ -217,7 +220,7 @@ async function projectRecordsForSync(
       ...(payload.height !== undefined ? { height: payload.height } : {}),
     });
     if (!knownDigests.has(digest) && changedBytes[digest] === undefined) {
-      changedBytes[digest] = bytesToBase64(bytes);
+      changedBytes[digest] = bytes;
       shippedDigests.add(digest);
     }
   }
@@ -227,7 +230,7 @@ async function projectRecordsForSync(
 
 interface DocumentSyncProjection {
   readonly document: EfxPaintDocument;
-  readonly changedBytes: Readonly<Record<string, string>> | undefined;
+  readonly changedBytes: Readonly<Record<string, Uint8Array>> | undefined;
   readonly shippedDigests: readonly string[];
 }
 
@@ -235,7 +238,7 @@ async function projectEfxPaintDocumentForSync(
   document: EfxPaintDocument,
   knownDigests: ReadonlySet<string>,
 ): Promise<DocumentSyncProjection> {
-  const changedBytes: Record<string, string> = {};
+  const changedBytes: Record<string, Uint8Array> = {};
   const shippedDigests = new Set<string>();
   const tracks: InternalPaintTrack[] = [];
   for (const track of document.tracks) {

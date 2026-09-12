@@ -3,7 +3,7 @@ import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
-import { fromTransportPayload, toTransportPayload } from './webpBytes';
+import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
@@ -56,6 +56,8 @@ import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
   physicPaintStore,
+  hasFrameMediaBytes,
+  installFrameMediaBytes,
   registerBackgroundSourceImage,
   type PhysicPaintRotoPhysicalOperationLeaseToken,
 } from '../stores/physicPaintStore';
@@ -107,6 +109,14 @@ export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-res
  */
 export const PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT = 'physic-paint:image-library-request';
 export const PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT = 'physic-paint:image-library-result';
+/**
+ * 52.2-10 (D-12): main→Studio frame-media request. With the document crossing
+ * reference-shaped, the main window is the receiving side of the digest-keyed
+ * byte channel; when it lacks content (a reloaded window, a fresh install) it
+ * names the digests it needs on this event rather than forcing a full re-ship
+ * (T-52.2-35 — the request is per digest, never the whole document).
+ */
+export const PHYSIC_PAINT_FRAME_MEDIA_REQUEST_EVENT = 'physic-paint:frame-media-request';
 
 /**
  * Structural twin of usePhysicsPaintParentBridge's PhysicsPaintBridgeMode —
@@ -452,6 +462,17 @@ async function applyPhysicPaintPayloadWithPublicationLease(
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
       result = await physicPaintStore.applyCanvas(payload);
+      if (result.ok && payload.renderedFrame.bytes instanceof Uint8Array) {
+        // 52.2-10 (D-12): the receiver materialized this raster, so its content
+        // digest is now receiver-held — the same claim the Studio's coordinator
+        // marks on its side. A later document sync answers "already held"
+        // instead of re-shipping the bytes (T-52.2-35).
+        const appliedBytes = payload.renderedFrame.bytes;
+        trackDocumentSyncFrameInstall(
+          sha256HexBytes(appliedBytes).then((digest) =>
+            (_documentSyncFramePorts ?? _defaultDocumentSyncFramePorts).install(digest, appliedBytes)),
+        );
+      }
     } else if (payload.kind === 'update-roto-interpolation-settings') {
       const generatedFrames = await physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);
       result = successResult(payload, generatedFrames.length);
@@ -2918,6 +2939,40 @@ export interface PhysicPaintDocumentSyncFramePorts {
 }
 
 let _documentSyncFramePorts: PhysicPaintDocumentSyncFramePorts | null = null;
+/** Digests already asked for this window's lifetime — one request per digest. */
+const _documentSyncRequestedDigests = new Set<string>();
+/** In-flight installs kicked by a sync or by the apply path's digest install. */
+const _documentSyncPendingInstalls = new Set<Promise<void>>();
+
+function trackDocumentSyncFrameInstall(install: Promise<unknown>): void {
+  const tracked = install.then(() => undefined, () => undefined);
+  _documentSyncPendingInstalls.add(tracked);
+  void tracked.finally(() => { _documentSyncPendingInstalls.delete(tracked); });
+}
+
+function requestDocumentSyncFrameMedia(digests: readonly string[]): void {
+  if (digests.length === 0) return;
+  // main→Studio: the receiver names exactly the digests it lacks; the Studio's
+  // marks (its delivered set) are the other half of the same knowledge. The
+  // responder rides the sender's queue (pilot scope, plan 14) — this emit is
+  // the protocol signal, delivered on the same Tauri channel as the flush
+  // round-trip. A non-Tauri window has no bridge to ask.
+  void (async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_FRAME_MEDIA_REQUEST_EVENT, { digests });
+    } catch {
+      // Bridge unavailable — the next Studio push re-evaluates from its marks.
+    }
+  })();
+}
+
+const _defaultDocumentSyncFramePorts: PhysicPaintDocumentSyncFramePorts = {
+  has: (digest) => hasFrameMediaBytes(digest),
+  install: (digest, bytes) => installFrameMediaBytes(bytes, digest),
+  request: (digests) => requestDocumentSyncFrameMedia(digests),
+};
 
 /**
  * 52.2-10 (D-12): swap the receiver's digest-store ports. Pass `null` to return
@@ -2934,8 +2989,8 @@ export function _setPhysicPaintDocumentSyncFramePorts(ports: PhysicPaintDocument
  * state, like the transport's delivered-digest claim.
  */
 export function resetPhysicPaintDocumentSyncFrameState(): void {
-  // RED stub (52.2-10 Task 3) — GREEN clears the requested-digest set.
-  void _documentSyncFramePorts;
+  _documentSyncRequestedDigests.clear();
+  _documentSyncPendingInstalls.clear();
 }
 
 /**
@@ -2944,7 +2999,83 @@ export function resetPhysicPaintDocumentSyncFrameState(): void {
  * recorded on the store's verdict map, not thrown at the caller.
  */
 export async function awaitPendingPhysicPaintFrameMediaInstalls(): Promise<void> {
-  // RED stub (52.2-10 Task 3) — GREEN drains the tracked install set.
+  while (_documentSyncPendingInstalls.size > 0) {
+    await Promise.allSettled([..._documentSyncPendingInstalls]);
+  }
+}
+
+/**
+ * 52.2-10 (D-12): the digests a reference-shaped document names, from BOTH
+ * roto collections — the same two the plan-06 projection writes and the
+ * plan-09 resolver reads (a reference names no collection, so neither may be
+ * skipped when deciding what the receiver lacks).
+ */
+function collectDocumentSyncReferencedDigests(document: EfxPaintDocument): string[] {
+  const digests = new Set<string>();
+  for (const track of document.tracks) {
+    const roto = track.rotoPhysical;
+    if (!roto) continue;
+    for (const collection of [roto.realKeyRecords, roto.groupOverrideRecords ?? []]) {
+      for (const record of collection) {
+        const digest = record.payload.media?.digest;
+        if (typeof digest === 'string' && digest.length > 0) digests.add(digest);
+      }
+    }
+  }
+  return [...digests];
+}
+
+/**
+ * 52.2-10 (D-12, T-52.2-33/34/35): the receiver's decision for one arriving
+ * document sync — what it lacks (one request per digest, ever) and what the
+ * byte channel actually delivered (verified installs only). Runs BEFORE the
+ * document's revision guard: a re-pushed unchanged document may still carry
+ * bytes the receiver lost.
+ */
+function applyDocumentSyncFrameMedia(
+  document: EfxPaintDocument,
+  changedBytes: unknown,
+): void {
+  const ports = _documentSyncFramePorts ?? _defaultDocumentSyncFramePorts;
+  const missing: string[] = [];
+  for (const digest of collectDocumentSyncReferencedDigests(document)) {
+    let held = false;
+    try {
+      held = ports.has(digest);
+    } catch {
+      held = false;
+    }
+    if (held || _documentSyncRequestedDigests.has(digest)) continue;
+    _documentSyncRequestedDigests.add(digest);
+    missing.push(digest);
+  }
+  if (missing.length > 0) {
+    try {
+      ports.request(missing);
+    } catch {
+      // The request channel is best-effort: a failed ask must not break the
+      // document apply, and the digest stays marked so it is not re-asked
+      // on every tick (the retry law, T-52.2-35).
+    }
+  }
+  if (!changedBytes || typeof changedBytes !== 'object' || Array.isArray(changedBytes)) return;
+  for (const [digest, encoded] of Object.entries(changedBytes as Record<string, unknown>)) {
+    if (typeof encoded !== 'string' || encoded.length === 0) continue;
+    // The transport base64-decodes the WebP payload; the magic-byte guard is
+    // the same one every bytes field crosses with (never a JSON index object).
+    const bytes = base64ToWebpBytes(encoded);
+    if (bytes === null) continue;
+    let held = false;
+    try {
+      held = ports.has(digest);
+    } catch {
+      held = false;
+    }
+    // Never re-install what the receiver holds: a re-delivered retry is
+    // idempotent because the install is skipped, not because it is repeated.
+    if (held) continue;
+    trackDocumentSyncFrameInstall(ports.install(digest, bytes));
+  }
 }
 
 /**
@@ -2967,7 +3098,7 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // "no Bg render" symptom). registerBackgroundSourceImage is a no-op for an
       // already-identical byte.
       const incoming = payload && typeof payload === 'object' && !Array.isArray(payload)
-        ? payload as { document?: unknown; backgroundSources?: unknown }
+        ? payload as { document?: unknown; backgroundSources?: unknown; changedBytes?: unknown }
         : {};
       if (incoming.backgroundSources && typeof incoming.backgroundSources === 'object') {
         for (const [ref, encoded] of Object.entries(incoming.backgroundSources)) {
@@ -2981,6 +3112,10 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // base64 (emitTo JSON). Decode back to Uint8Array before the canonical
       // parser so the in-memory shape matches the direct path.
       const document = parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload));
+      // 52.2-10 (D-12): the digest decision runs BEFORE the revision guard —
+      // a re-pushed UNCHANGED document may still carry (or need) bytes, and
+      // the guard below would otherwise return before the byte channel is read.
+      applyDocumentSyncFrameMedia(document, incoming.changedBytes);
       const current = getEfxPaintDocument(document.parentLayerId);
       if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
       registerEfxPaintDocument(document);

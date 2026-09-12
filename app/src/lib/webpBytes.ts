@@ -103,6 +103,21 @@ export function buildFrameBytesToken(bytes: Uint8Array): string {
 }
 
 /**
+ * 52.2-10 (D-12, T-52.2-33/34): SHA-256 of the exact bytes as lowercase hex —
+ * the digest the native media write persists (`format!("{:x}",
+ * Sha256::digest(bytes))`), so the bridge digest, the persisted reference
+ * digest and the on-disk read digest all name the same content. A copied view
+ * keeps the hash off a larger backing buffer (the native write hashes exactly
+ * these bytes, never a slice's neighbours).
+ */
+export async function sha256HexBytes(bytes: Uint8Array): Promise<string> {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', copy.buffer);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * 52.1 (D-05) transport boundary: Tauri `emitTo` serializes event payloads as
  * JSON, and `JSON.stringify` turns a `Uint8Array` into an index object
  * (`{"0":82,"1":73,...}`) — the parent-side validators then reject the frame

@@ -2,6 +2,7 @@ import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanvasRegistry';
+import { sha256HexBytes } from '../lib/webpBytes';
 import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 import { frameLru } from '../lib/frameLru';
 // 52.2-09 Task 3 (D-13): the READ leg of the package media pair. The resolver
@@ -497,8 +498,13 @@ export function getFrameMediaVerdict(digest: string): FrameMediaVerdict | null {
  * landing half of the bridge's digest-keyed byte channel. The 52.2-09 read leg
  * answers the SAME question (`hasFrameMediaBytes`) from the frame LRU; this map
  * is what makes that answer true for a raster that arrived over the bridge
- * instead of from a package file, with no decode and no file read.
+ * instead of from a package file, with no decode and no file read. Bytes are
+ * kept UNDECODED here and move into the LRU only when the compositor seam
+ * actually needs the frame — a bridged raster never pays a decode it may never
+ * display, and one decode serves every key that references the digest.
  */
+const _frameMediaBytes = new Map<string, Uint8Array>();
+
 export type FrameMediaInstallResult =
   | Readonly<{ ok: true }>
   | Readonly<{ ok: false; reason: FrameMediaRefusalReason }>;
@@ -508,23 +514,36 @@ export type FrameMediaInstallResult =
  * bridged-bytes map only — never a decode, never a file read (T-52.2-35: this
  * answer is what keeps a retry storm from re-pulling the document).
  */
-export function hasFrameMediaBytes(_digest: string): boolean {
-  // RED stub (52.2-10 Task 3) — GREEN consults frameLru + _frameMediaBytes.
-  return false;
+export function hasFrameMediaBytes(digest: string): boolean {
+  return frameLru.has(digest) || _frameMediaBytes.has(digest);
 }
 
 /**
  * Install bridged raster bytes under their content digest. `expectedDigest`
  * claims the content; the digest is recomputed from the bytes and a mismatch
  * is refused and recorded, never applied (T-52.2-33/34 — the digest is the
- * identity AND the verification, same law as the disk read path).
+ * identity AND the verification, same law as the disk read path). On a match
+ * the bytes supersede any earlier verdict for that digest, and the flattened
+ * memo is cleared + the version clock bumped so a frame waiting on this
+ * reference re-renders (the registerBackgroundSourceImage arrival idiom).
  */
 export async function installFrameMediaBytes(
-  _bytes: Uint8Array,
-  _expectedDigest?: string,
+  bytes: Uint8Array,
+  expectedDigest?: string,
 ): Promise<FrameMediaInstallResult> {
-  // RED stub (52.2-10 Task 3) — GREEN hashes, verifies, and stores the bytes.
-  return { ok: false, reason: 'io' };
+  const digest = await sha256HexBytes(bytes);
+  if (expectedDigest !== undefined && expectedDigest !== digest) {
+    // The claimed digest is what identified this entry; record the refusal
+    // against the CLAIM so the seam answers missing for it without a read,
+    // and never store the tampered bytes under any key.
+    _frameMediaVerdicts.set(expectedDigest, 'digest-mismatch');
+    return { ok: false, reason: 'digest-mismatch' };
+  }
+  _frameMediaVerdicts.delete(digest);
+  _frameMediaBytes.set(digest, bytes);
+  _flattenedMemo.clear();
+  physicPaintVersion.value++;
+  return { ok: true };
 }
 
 /**
@@ -1309,6 +1328,34 @@ function _resolveMediaRasterResolution(media: FrameMediaReference): EfxPaintTrac
   if (cached) return { kind: 'content', raster: cached };
   const verdict = _frameMediaVerdicts.get(media.digest);
   if (verdict !== undefined) return { kind: 'missing', missingRefs: [media.relativePath] };
+  // 52.2-10 (D-12): bytes that arrived over the bridge's digest-keyed channel
+  // resolve HERE, in memory — the package file is never consulted for a digest
+  // the receiver already holds (T-52.2-35). Decoding is still lazy: the frame
+  // enters the LRU only when the compositor actually needs it, through the same
+  // two-format sniff as every other decode (one implementation).
+  const bridgedBytes = _frameMediaBytes.get(media.digest);
+  if (bridgedBytes !== undefined) {
+    if (!_frameMediaResolutionPromises.has(media.digest)) {
+      const promise = (async (): Promise<void> => {
+        try {
+          const bitmap = await _decodeFrameBytesByFormat(bridgedBytes, 'draw');
+          frameLru.put(media.digest, bitmap, bitmap.width, bitmap.height);
+          // The LRU now owns the decoded handle — drop the byte copy so a
+          // bridged frame is never held twice (eviction then answers false,
+          // and a later sync may legitimately re-ship it).
+          _frameMediaBytes.delete(media.digest);
+        } catch {
+          recordPhysicsPaintPerformanceCounter('decode.fail');
+          _frameMediaVerdicts.set(media.digest, 'decode-failed');
+        } finally {
+          _frameMediaResolutionPromises.delete(media.digest);
+          physicPaintVersion.value++;
+        }
+      })();
+      _frameMediaResolutionPromises.set(media.digest, promise);
+    }
+    return null;
+  }
   if (!_frameMediaResolutionPromises.has(media.digest)) {
     const packageDir = _packageDirProvider?.() ?? null;
     if (packageDir === null) {
@@ -3125,7 +3172,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && _frameMediaBytes.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -3165,6 +3212,9 @@ export const physicPaintStore = {
     // in the next one.
     _frameMediaVerdicts.clear();
     _frameMediaResolutionPromises.clear();
+    // 52.2-10 (D-12): bridged bytes are a claim about THIS session's window
+    // pair; a new project must not inherit them.
+    _frameMediaBytes.clear();
     frameLru.clear();
     _backgroundSourceImages.clear();
     _referenceSourceImages.clear();
