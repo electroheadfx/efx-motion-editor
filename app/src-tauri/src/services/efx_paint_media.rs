@@ -620,4 +620,137 @@ mod tests {
         assert_eq!(entries, vec!["K1.webp".to_string()]);
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
+
+    // --- quick-260913-05k: the package `layers/` IO leg ---------------------
+
+    #[test]
+    fn layer_relative_path_parser_is_the_single_shared_scheme() {
+        assert_eq!(
+            parse_layer_relative_path("layers/L1.json").expect("layer path"),
+            "L1.json"
+        );
+        for crafted in [
+            "layers/a/b.json",
+            "layers/.json",
+            "layers/L1.txt",
+            "layers/L1",
+            "frames/L1/K1.webp",
+            "L1.json",
+            "",
+        ] {
+            assert!(
+                parse_layer_relative_path(crafted).is_err(),
+                "expected refusal: {crafted}"
+            );
+        }
+    }
+
+    #[test]
+    fn layer_file_write_creates_the_staging_tree_and_reports_the_byte_length() {
+        let package = fixture_package("layer-write");
+        let basename = format!("{PACKAGE_STAGING_PREFIX}{}", Uuid::new_v4());
+        let contents = br#"{"version":1,"tracks":[]}"#;
+
+        let result =
+            write_package_layer_file(&package, &basename, "layers/L1.json", contents)
+                .expect("layer file write");
+
+        assert_eq!(result.byte_length, contents.len() as u64);
+        assert_eq!(
+            fs::read(package.join(&basename).join("layers/L1.json")).expect("staged layer file"),
+            contents
+        );
+        // The canonical tree is never touched by a staged write: only the
+        // transaction's publish may reach `layers/<layerId>.json` (D-10).
+        assert!(!package.join(PACKAGE_LAYERS_ROOT).exists());
+        // No temp sibling survives the atomic write.
+        let entries: Vec<String> = fs::read_dir(package.join(&basename).join("layers"))
+            .expect("staged layers directory")
+            .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(entries, vec!["L1.json".to_string()]);
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn layer_file_write_refuses_crafted_paths_and_creates_nothing_outside_the_package() {
+        let outer = std::env::temp_dir()
+            .join(format!("efx-paint-layer-guard-{}", Uuid::new_v4()));
+        let package = outer.join("Pkg.mce");
+        fs::create_dir_all(&package).expect("fixture package directory");
+        let basename = format!("{PACKAGE_STAGING_PREFIX}{}", Uuid::new_v4());
+
+        // A separator beyond the `layers/` prefix and a non-json leaf are
+        // unsupported/wrong-extension refusals; absolute paths, `..` traversal
+        // and a path outside the `layers/` tree are refusals too.
+        for crafted in [
+            "layers/a/b.json",
+            "layers/L1.json/../../escaped.json",
+            "layers/L1.txt",
+            "layers/.json",
+            "frames/L1/K1.webp",
+            "L1.json",
+            "/absolute/L1.json",
+            "../escaped.json",
+            "",
+        ] {
+            assert!(
+                write_package_layer_file(&package, &basename, crafted, b"payload").is_err(),
+                "expected refusal: {crafted}"
+            );
+        }
+        // A basename that is not a staging generation name is refused.
+        assert!(write_package_layer_file(
+            &package,
+            ".efx-paint-staging-legacy",
+            "layers/L1.json",
+            b"payload"
+        )
+        .is_err());
+
+        // Nothing was created outside the package root — and no staging
+        // generation was minted for a refused write at all.
+        let entries: Vec<String> = fs::read_dir(&outer)
+            .expect("outer fixture")
+            .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(entries, vec!["Pkg.mce".to_string()]);
+        assert!(!package.join(&basename).exists());
+        fs::remove_dir_all(outer).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn layer_file_read_returns_text_and_maps_absent_and_irregular_leaves() {
+        let package = fixture_package("layer-read");
+        fs::create_dir_all(package.join(PACKAGE_LAYERS_ROOT)).expect("layers directory");
+        fs::write(package.join("layers/L1.json"), br#"{"ok":true}"#).expect("canonical layer file");
+
+        assert_eq!(
+            read_package_layer_file(&package, "layers/L1.json").expect("layer file read"),
+            r#"{"ok":true}"#
+        );
+        // An absent leaf is `Missing` — the same variant the frame-media read
+        // maps (the caller turns it into the "missing its layer file" copy).
+        assert_eq!(
+            read_package_layer_file(&package, "layers/absent.json").unwrap_err(),
+            rejected(EfxPaintMediaRejection::Missing)
+        );
+        // A level inside the package that is not a regular file is refused.
+        fs::create_dir_all(package.join("layers/L2.json")).expect("directory leaf");
+        assert_eq!(
+            read_package_layer_file(&package, "layers/L2.json").unwrap_err(),
+            rejected(EfxPaintMediaRejection::NotARegularFile)
+        );
+        // The lock stays locked: the read cannot be widened to another tree,
+        // and the shape guards refuse before any filesystem call.
+        assert_eq!(
+            read_package_layer_file(&package, "frames/L1/K1.webp").unwrap_err(),
+            rejected(EfxPaintMediaRejection::UnsupportedPackagePath)
+        );
+        assert_eq!(
+            read_package_layer_file(&package, "layers/../escape.json").unwrap_err(),
+            rejected(EfxPaintMediaRejection::PathEscape)
+        );
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
 }

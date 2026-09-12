@@ -422,6 +422,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
+    // --- quick-260913-05k: the staged manifest path needs no renderer mkdir --
+
+    #[test]
+    fn test_save_creates_a_missing_parent_directory() {
+        let test_dir = std::env::temp_dir().join("efx_test_save_creates_parent");
+        let _ = std::fs::remove_dir_all(&test_dir);
+
+        let project = MceProject {
+            version: 1,
+            name: "Staged Manifest".into(),
+            fps: 24,
+            width: 1920,
+            height: 1080,
+            created_at: "2026-09-13T00:00:00Z".into(),
+            modified_at: "2026-09-13T00:00:00Z".into(),
+            sequences: vec![],
+            images: vec![],
+            audio_tracks: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
+            format_version: Some(1),
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
+        };
+
+        // A package save hands the manifest its STAGING path, and the renderer
+        // no longer pre-creates the staging root (quick-260913-05k): neither
+        // the staging directory nor the package directory exists yet.
+        let staged = test_dir
+            .join(".efx-paint-package-staging-fixture")
+            .join("project.mce");
+        save_project(
+            &project,
+            staged.to_str().unwrap(),
+            test_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        assert!(staged.exists());
+        let reopened = open_project(staged.to_str().unwrap()).unwrap();
+        assert_eq!(reopened.name, "Staged Manifest");
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
     #[test]
     fn test_make_relative_and_absolute() {
         let abs = "/Users/me/project/images/photo.jpg";

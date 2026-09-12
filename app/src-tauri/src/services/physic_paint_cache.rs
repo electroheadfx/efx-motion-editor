@@ -1574,4 +1574,68 @@ mod tests {
         assert!(!test_dir.join(".physic-paint-transaction.json").exists());
         std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
     }
+
+    // --- quick-260913-05k: the package staging discard ----------------------
+
+    #[test]
+    fn discard_package_staging_generation_removes_it_and_is_idempotent() {
+        let package = std::env::temp_dir()
+            .join(format!("efx-test-package-discard-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&package).expect("fixture package directory");
+        let basename = format!("{PACKAGE_STAGING_PREFIX}{}", Uuid::new_v4());
+        let staging = package.join(&basename);
+        std::fs::create_dir_all(staging.join("layers")).expect("staged layers directory");
+        std::fs::write(staging.join("layers/L1.json"), b"{}").expect("staged layer file");
+        std::fs::write(staging.join("project.mce"), b"{}").expect("staged manifest");
+
+        discard_package_staging_generation(&package, &basename).expect("first discard");
+
+        // The WHOLE generation goes, and nothing else does.
+        assert!(!staging.exists());
+        assert!(package.exists());
+        // Idempotent: an absent generation is Ok, never an error — the save
+        // catch calls this on a path that may never have been staged.
+        discard_package_staging_generation(&package, &basename).expect("second discard");
+        std::fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn discard_package_staging_generation_refuses_crafted_names_and_foreign_targets() {
+        let package = std::env::temp_dir()
+            .join(format!("efx-test-package-discard-guard-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&package).expect("fixture package directory");
+        // A sibling outside the package: whatever a basename claims, the
+        // discard must never reach it (T-260913-05k-03).
+        let sibling = package
+            .parent()
+            .expect("temp dir")
+            .join(format!("efx-test-package-sibling-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&sibling).expect("sibling directory");
+        std::fs::write(sibling.join("keep.txt"), b"keep").expect("sibling file");
+        let canonical_package = fs::canonicalize(&package).expect("canonical package root");
+
+        for crafted in [
+            ".efx-paint-staging-legacy".to_string(),
+            format!("{PACKAGE_STAGING_PREFIX}../evil"),
+            PACKAGE_STAGING_PREFIX.to_string(),
+            "/tmp/.efx-paint-package-staging-abs".to_string(),
+            format!("{PACKAGE_STAGING_PREFIX}child/path"),
+        ] {
+            assert!(
+                discard_package_staging_generation(&canonical_package, &crafted).is_err(),
+                "expected refusal: {crafted}"
+            );
+        }
+
+        // A target whose canonical parent is not the canonical package root: a
+        // valid-looking staging basename that is a SYMLINK to the sibling. The
+        // parent check refuses it and the sibling survives untouched.
+        let basename = format!("{PACKAGE_STAGING_PREFIX}{}", Uuid::new_v4());
+        std::os::unix::fs::symlink(&sibling, package.join(&basename)).expect("staging symlink");
+        assert!(discard_package_staging_generation(&canonical_package, &basename).is_err());
+        assert!(sibling.join("keep.txt").exists());
+
+        std::fs::remove_dir_all(&sibling).expect("sibling cleanup");
+        std::fs::remove_dir_all(package).expect("fixture cleanup");
+    }
 }

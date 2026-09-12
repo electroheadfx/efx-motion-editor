@@ -17,7 +17,13 @@ const invoke = vi.hoisted(() => vi.fn());
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
-import { ipcEfxPaintReadFrameMedia, ipcEfxPaintWriteFrameMedia } from './ipc';
+import {
+  discardEfxPaintPackageStaging,
+  ipcEfxPaintReadFrameMedia,
+  ipcEfxPaintReadPackageLayerFile,
+  ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
+} from './ipc';
 
 const FIXTURE_FRAME_BYTES = Uint8Array.from([
   0x52, 0x49, 0x46, 0x46, 0x1e, 0x00, 0x00, 0x00, // RIFF + size
@@ -155,5 +161,90 @@ describe('ipc package frame media (52.2-01)', () => {
     const result = await ipcEfxPaintWriteFrameMedia(PACKAGE_DIR, '../L1', 'K1', FIXTURE_FRAME_BYTES);
 
     expect(result).toEqual({ ok: false, error: { kind: 'refused', rejection: 'unsafeId' } });
+  });
+});
+
+/**
+ * quick-260913-05k: the package `layers/` IO leg and the staging discard. Every
+ * `.mce` package file operation is an app-defined command — plugin-fs is never
+ * driven on a package path — so the wrapper contract is the only seam the
+ * persistence module sees.
+ */
+describe('ipc package layer file IO + staging discard (quick-260913-05k)', () => {
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  it('writes a layer sub-file with the exact command name and argument keys', async () => {
+    invoke.mockResolvedValueOnce(null);
+
+    const contents = '{"version":1,"tracks":[]}';
+    const result = await ipcEfxPaintWritePackageLayerFile(
+      PACKAGE_DIR, STAGING_BASENAME, 'layers/L1.json', contents,
+    );
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('write_efx_paint_package_layer_file', {
+      packageDir: PACKAGE_DIR,
+      stagingBasename: STAGING_BASENAME,
+      layerFile: 'layers/L1.json',
+      contents,
+    });
+    expect(result).toEqual({ ok: true, data: null });
+  });
+
+  it('reads a layer sub-file back as text through its exact command name and keys', async () => {
+    invoke.mockResolvedValueOnce('{"version":1}');
+
+    const result = await ipcEfxPaintReadPackageLayerFile(PACKAGE_DIR, 'layers/L1.json');
+
+    expect(invoke).toHaveBeenCalledWith('read_efx_paint_package_layer_file', {
+      packageDir: PACKAGE_DIR,
+      layerFile: 'layers/L1.json',
+    });
+    expect(result).toEqual({ ok: true, data: '{"version":1}' });
+  });
+
+  it('keeps a missing layer file as the distinct missing signal, not a refusal', async () => {
+    invoke.mockRejectedValueOnce('missing');
+
+    const result = await ipcEfxPaintReadPackageLayerFile(PACKAGE_DIR, 'layers/L1.json');
+
+    expect(result).toEqual({ ok: false, error: { kind: 'missing' } });
+  });
+
+  it('maps a layer-write refusal through the shared taxonomy', async () => {
+    invoke.mockRejectedValueOnce('unsupportedPackagePath');
+
+    const result = await ipcEfxPaintWritePackageLayerFile(
+      PACKAGE_DIR, STAGING_BASENAME, 'frames/L1/K1.webp', '{}',
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: 'refused', rejection: 'unsupportedPackagePath' },
+    });
+  });
+
+  it('discards a staging generation through its exact command name and keys', async () => {
+    invoke.mockResolvedValueOnce(null);
+
+    const result = await discardEfxPaintPackageStaging(PACKAGE_DIR, STAGING_BASENAME);
+
+    expect(invoke).toHaveBeenCalledWith('discard_efx_paint_package_staging', {
+      packageDir: PACKAGE_DIR,
+      stagingBasename: STAGING_BASENAME,
+    });
+    expect(result).toEqual({ ok: true, data: null });
+  });
+
+  it('reports a discard failure as a plain error string (best-effort cleanup)', async () => {
+    invoke.mockRejectedValueOnce('The package staging root must be a direct child directory');
+
+    const result = await discardEfxPaintPackageStaging(PACKAGE_DIR, STAGING_BASENAME);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('direct child directory');
   });
 });
