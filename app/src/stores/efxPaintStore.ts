@@ -20,6 +20,9 @@ import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxP
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 52.2-06 (D-06/D-07): the serialize seam takes its media authority from the
+// caller (plan 07's save funnel); the store never invents a digest.
+import type { PhysicPaintRotoMediaReferenceResolver } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
@@ -1646,12 +1649,24 @@ export function reset(): void {
  * Roto state is carried as-is per track. `documentRevision` bumps by one only
  * when the projected content actually changed (the fingerprint includes the
  * current docrev, so the comparison is made on the same revision).
+ *
+ * 52.2-06 (D-06/D-07): `resolveRef` is the media authority for the records
+ * this document will hold — the package-write funnel (plan 07) supplies one
+ * digest per key, and BOTH persisted roto collections are then projected to
+ * `frames/<layerId>/<keyId>.webp` references before the roto revision is
+ * computed. Without a resolver the live runtime records pass through
+ * unchanged (the Studio live-push, sibling-sync and undo paths keep their
+ * bytes). With one, a key that has runtime bytes and no reference throws
+ * `PhysicPaintRotoMediaProjectionError` — never a silent payload fallback.
  */
-export function serializeRuntimeIntoDocument(layerId: string): EfxPaintDocument {
+export function serializeRuntimeIntoDocument(
+  layerId: string,
+  resolveRef?: PhysicPaintRotoMediaReferenceResolver,
+): EfxPaintDocument {
   const document = getDocument(layerId);
   if (!document) throw new Error(`No EFX Paint document for layer "${layerId}".`);
   const tracks = document.tracks.map((track) => {
-    const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+    const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id, resolveRef);
     const frames: Record<number, CachedFrameReference> = {};
     for (const [appFrame, frame] of runtime.frames) {
       frames[appFrame] = {

@@ -80,6 +80,14 @@ import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPa
 import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 52.2-06 (D-06/D-07): the persist seam's media projection. Both roto
+// collections are projected through the same pure functions — the store does
+// not learn which collection a record came from.
+import {
+  PhysicPaintRotoMediaProjectionError,
+  toPersistedRotoRecords,
+  type PhysicPaintRotoMediaReferenceResolver,
+} from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { getPhysicsPaintWorkingSize } from '../components/physic-paint/engine/physicsPaintCanvasSizing';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -1982,19 +1990,50 @@ function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operation
 }
 
 /**
+ * Project one runtime record collection into its persisted (media-reference)
+ * shape when the caller supplied a resolver (52.2-06, D-06/D-07). No resolver
+ * means the live Studio path: records pass through with their bytes, exactly
+ * as before this plan. A supplied resolver makes the projection mandatory —
+ * an unresolved key throws rather than producing a record without media.
+ */
+function _projectRotoRecordsForPersistence(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  resolveRef: PhysicPaintRotoMediaReferenceResolver | undefined,
+): readonly PhysicPaintRotoRealKeyRecord[] {
+  if (resolveRef === undefined) return records;
+  const projected = toPersistedRotoRecords(records, resolveRef);
+  if (!projected.ok) throw new PhysicPaintRotoMediaProjectionError(projected.failure);
+  return projected.records;
+}
+
+/**
  * Build the canonical v1.0 rotoPhysical document payload for one layer, or
  * null when the layer has no physical Roto state. Consumed by the v1.0
  * document projection (extractRuntimeStateForDocument) so the serialized
  * payload is always schema-valid. Reads the module maps directly (the
  * `_resolveRotoPhysicalStructural` idiom) and mirrors the getRoto* accessor
  * derivations exactly.
+ *
+ * 52.2-06 (D-06): when `resolveRef` is supplied, BOTH persisted roto
+ * collections are projected to media references BEFORE the revision is
+ * computed, so the persisted revision is a function of the references (plan
+ * 02's reference-total encoding) and no payload byte is read on this path.
+ * Projecting only `realKeyRecords` would leave group overrides carrying an
+ * inline raster into the sub-file, and the on-disk parser refuses the whole
+ * layer — not one lost key.
  */
-function _buildRotoPhysicalDocumentForLayer(layerId: string, trackId: string): PhysicPaintRotoPhysicalDocument | null {
+function _buildRotoPhysicalDocumentForLayer(
+  layerId: string,
+  trackId: string,
+  resolveRef?: PhysicPaintRotoMediaReferenceResolver,
+): PhysicPaintRotoPhysicalDocument | null {
   const recordMap = _rotoRealKeyRecords.get(layerId)?.get(trackId);
   if (!recordMap) return null;
   const realKeyRecords = Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
   const groupOverrideRecords = Array.from(_rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? [])
     .sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
+  const persistedRealKeyRecords = _projectRotoRecordsForPersistence(realKeyRecords, resolveRef);
+  const persistedGroupOverrideRecords = _projectRotoRecordsForPersistence(groupOverrideRecords, resolveRef);
   const interpolation = _rotoPhysicalInterpolationState.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
   const capacity = _rotoPhysicalCapacity.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
   const selectedCandidate = _rotoPhysicalSelectedKeyId.get(layerId)?.get(trackId) ?? null;
@@ -2007,19 +2046,19 @@ function _buildRotoPhysicalDocumentForLayer(layerId: string, trackId: string): P
     ?? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY;
   return parsePhysicPaintRotoPhysicalDocument({
     capacity,
-    realKeyRecords,
-    groupOverrideRecords,
+    realKeyRecords: persistedRealKeyRecords,
+    groupOverrideRecords: persistedGroupOverrideRecords,
     interpolation,
     scriptMotion: _rotoPhysicalScriptMotion.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
     background: _rotoBackgroundMetadata.get(layerId)?.get(trackId) ?? null,
     selectedKeyId,
     cursorAppFrame,
     revision: buildPhysicPaintRotoPhysicalRevision(
-      realKeyRecords,
+      persistedRealKeyRecords,
       interpolation,
       loopClips,
       incomingInterpolationBreakKeyIds,
-      groupOverrideRecords,
+      persistedGroupOverrideRecords,
     ),
     loopClips,
     incomingInterpolationBreakKeyIds,
@@ -2488,10 +2527,19 @@ export const physicPaintStore = {
    * (Phase 45-04 Task 2, 46-01 track-scoped). The rotoPhysical payload is
    * rebuilt through the canonical parser so the document always carries a
    * schema-valid, revision-consistent record.
+   *
+   * 52.2-06: `resolveRef` is the package-write caller's media authority (plan
+   * 07's save funnel). Supplied, both roto collections are projected to media
+   * references and an unresolved key throws; omitted, the live runtime records
+   * pass through unchanged for the in-memory Studio projection.
    */
-  extractRuntimeStateForDocument(layerId: string, trackId: string): EfxPaintRuntimeProjection {
+  extractRuntimeStateForDocument(
+    layerId: string,
+    trackId: string,
+    resolveRef?: PhysicPaintRotoMediaReferenceResolver,
+  ): EfxPaintRuntimeProjection {
     const frames = new Map(_frames.get(layerId)?.get(trackId) ?? []);
-    return { trackId, frames, rotoPhysical: _buildRotoPhysicalDocumentForLayer(layerId, trackId) };
+    return { trackId, frames, rotoPhysical: _buildRotoPhysicalDocumentForLayer(layerId, trackId, resolveRef) };
   },
 
   /**

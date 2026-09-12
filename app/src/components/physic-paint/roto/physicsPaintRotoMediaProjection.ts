@@ -47,6 +47,25 @@ export type PhysicPaintRotoMediaProjectionResult =
 export type PhysicPaintRotoMediaReferenceResolver = (keyId: string) => FrameMediaReference | undefined;
 
 /**
+ * Shipping vehicle for {@link PhysicPaintRotoMediaProjectionFailure} at seams
+ * whose contract is a return value (`serializeRuntimeIntoDocument` returns a
+ * document, so a failed projection can only be signalled by throwing). The
+ * failure itself stays inspectable on `failure`; the message names the key so
+ * a log or a caller-side catch is actionable without unwrapping.
+ */
+export class PhysicPaintRotoMediaProjectionError extends Error {
+  readonly failure: PhysicPaintRotoMediaProjectionFailure;
+
+  constructor(failure: PhysicPaintRotoMediaProjectionFailure) {
+    super(
+      `Roto media reference unresolved for key "${failure.keyId}" — a persisted record cannot carry an inline raster payload.`,
+    );
+    this.name = 'PhysicPaintRotoMediaProjectionError';
+    this.failure = failure;
+  }
+}
+
+/**
  * Build the media-carrying payload explicitly from allowlisted members only —
  * never by spreading the runtime payload, so no raster field can survive a
  * projection even if one is added to the runtime shape later.
