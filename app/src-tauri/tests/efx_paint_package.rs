@@ -385,3 +385,68 @@ fn media_write_path_stays_inside_the_staging_root() {
     assert!(staged.starts_with(fs::canonicalize(&staged_root).expect("canonical staging root")));
     fs::remove_dir_all(package).expect("fixture cleanup");
 }
+
+#[test]
+fn read_reports_missing_for_an_absent_frame() {
+    let package = fixture_package("read-missing");
+
+    assert_eq!(
+        rejection(
+            read_frame_media(&package, "frames/L1/K1.webp").expect_err("an absent frame is refused")
+        ),
+        EfxPaintMediaRejection::Missing,
+        "an absent frame is the Phase 49 slate path, never a refusal class"
+    );
+    fs::remove_dir_all(package).expect("fixture cleanup");
+}
+
+#[test]
+fn read_digest_follows_the_bytes_on_disk_not_the_write_result() {
+    let package = fixture_package("read-disk-digest");
+    let write =
+        write_frame_media(&package, None, "L1", "K1", FIXTURE_FRAME_BYTES).expect("media write");
+    let replaced = b"RIFF\x1e\x00\x00\x00WEBPVP8L\x12\x00\x00\x00efx-paint-media-replaced-2";
+    fs::write(canonical_media_path(&package), replaced).expect("replaced payload");
+
+    let read = read_frame_media(&package, "frames/L1/K1.webp").expect("media read");
+
+    assert_ne!(
+        read.digest, write.digest,
+        "the read-side digest must be computed from disk, never cached from the write"
+    );
+    assert_eq!(read.digest, digest_bytes(replaced));
+    assert_eq!(read.bytes, replaced);
+    fs::remove_dir_all(package).expect("fixture cleanup");
+}
+
+#[cfg(unix)]
+#[test]
+fn read_refuses_a_symlink_that_escapes_the_package() {
+    use std::os::unix::fs::symlink;
+
+    let package = fixture_package("read-symlink-escape");
+    let outside = package.with_extension("outside.webp");
+    fs::write(&outside, FIXTURE_FRAME_BYTES).expect("outside fixture file");
+    fs::create_dir_all(package.join("frames/L1")).expect("media directory");
+    symlink(&outside, canonical_media_path(&package)).expect("escaping symlink");
+
+    assert_eq!(
+        rejection(read_frame_media(&package, "frames/L1/K1.webp").expect_err("symlink refused")),
+        EfxPaintMediaRejection::PathEscape,
+        "a symlink resolving outside the package must never be read (T-52.2-02)"
+    );
+    fs::remove_dir_all(package).expect("fixture cleanup");
+    fs::remove_file(outside).expect("outside fixture cleanup");
+}
+
+#[test]
+fn read_refuses_a_directory_at_the_media_path() {
+    let package = fixture_package("read-directory");
+    fs::create_dir_all(canonical_media_path(&package)).expect("directory at the media path");
+
+    assert_eq!(
+        rejection(read_frame_media(&package, "frames/L1/K1.webp").expect_err("directory refused")),
+        EfxPaintMediaRejection::NotARegularFile
+    );
+    fs::remove_dir_all(package).expect("fixture cleanup");
+}
