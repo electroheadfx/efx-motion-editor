@@ -111,10 +111,19 @@ export interface EfxPaintDocumentSaveInput {
 /**
  * One layer's load result: the validated document plus hydrated runtime
  * frames keyed per track (trackId → appFrame → frame, 46-02).
+ *
+ * `frames` is EMPTY under the package format: a `PhysicPaintRenderedFrame`
+ * requires `bytes`, the package carries references only (D-07) and no code path
+ * reads a derived-frame cache FILE (D-14) — so the load installs no placeholder
+ * buffer claiming to be content. `cacheLocations` carries the derived-frame
+ * location the persisted machine-RELATIVE reference recomputes to
+ * (trackId → appFrame → machine-local path, D-05); a null root or an absent
+ * file yields no entry (the frame re-derives).
  */
 export interface EfxPaintLoadedDocument {
   readonly document: EfxPaintDocument;
   readonly frames: ReadonlyMap<string, ReadonlyMap<number, PhysicPaintRenderedFrame>>;
+  readonly cacheLocations: ReadonlyMap<string, ReadonlyMap<number, string>>;
 }
 
 type PendingWrite = { readonly path: string; readonly bytes: Uint8Array };
@@ -1193,7 +1202,35 @@ export async function loadEfxPaintDocuments(
       }
       frames.set(track.id, trackFrames);
     }
-    loaded.set(layerId, { document, frames });
+    loaded.set(layerId, { document, frames, cacheLocations: new Map() });
   }
   return loaded;
+}
+
+/**
+ * The package load input (52.2-09 Task 2, D-13).
+ *
+ * `manifest` is the parsed `project.mce` the open leg already holds, typed
+ * `unknown` on purpose: the manifest is Rust-authored data, so its `efxPaint`
+ * index is validated here rather than trusted through a type.
+ */
+export interface EfxPaintPackageLoadInput {
+  /** The opened package root — `project.mce`'s own directory. */
+  readonly packageDir: string;
+  /** The parsed manifest; only its `efxPaint` index is interpreted. */
+  readonly manifest: unknown;
+  /**
+   * The machine-local derived-frame cache root the session resolved (D-05), or
+   * null when it could not be resolved — then no location is recomputed and
+   * every frame re-derives (D-14).
+   */
+  readonly machineCacheRoot: string | null;
+}
+
+export async function loadEfxPaintPackage(
+  _input: EfxPaintPackageLoadInput,
+): Promise<ReadonlyMap<string, EfxPaintLoadedDocument>> {
+  // RED stub (52.2-09 Task 2): returns an empty map so every new case fails on
+  // its own assertion. Replaced by the real manifest walk in the GREEN commit.
+  return new Map();
 }

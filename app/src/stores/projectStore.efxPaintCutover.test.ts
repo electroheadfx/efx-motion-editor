@@ -608,6 +608,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
             document,
             // 46-02: the load carrier is per-track (trackId → appFrame → frame).
             frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]),
+            cacheLocations: new Map(),
           });
         }
         return loaded;
@@ -886,7 +887,11 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
         if (!persistedMap) return loaded;
         for (const [layerId, value] of Object.entries(persistedMap)) {
           const document = value as EfxPaintDocument;
-          loaded.set(layerId, { document, frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]) });
+          loaded.set(layerId, {
+            document,
+            frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]),
+            cacheLocations: new Map(),
+          });
         }
         return loaded;
       },
@@ -951,6 +956,7 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
         [TRACK_A, new Map([[5, frameA]])],
         [TRACK_B, new Map([[5, frameB]])],
       ]),
+      cacheLocations: new Map(),
     }]]));
     ipcProjectOpen.mockResolvedValue({
       ok: true,

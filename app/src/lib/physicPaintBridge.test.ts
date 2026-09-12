@@ -3208,7 +3208,11 @@ describe('physicPaintBridge', async () => {
     // carrier is per-track (trackId → appFrame → frame) since 46-02.
     const document = serializeRuntimeIntoDocument('hydrated-phys-layer');
     const frames = physicPaintStore.getFrames('hydrated-phys-layer', TEST_TRACK_ID);
-    const loadedDocuments = new Map([['hydrated-phys-layer', { document, frames: new Map([[TEST_TRACK_ID, frames]]) }]]);
+    const loadedDocuments = new Map([['hydrated-phys-layer', {
+      document,
+      frames: new Map([[TEST_TRACK_ID, frames]]),
+      cacheLocations: new Map(),
+    }]]);
 
     projectStore.closeProject();
     projectStore.hydrateFromMce(serialized, '/tmp/efx-physic-paint-test', loadedDocuments);
