@@ -19,10 +19,13 @@ import {
   isPhysicPaintActionTransactionPrepareRequest,
   isPhysicPaintActionTransactionResult,
   isPhysicPaintActionTransactionTokenRequest,
+  isPhysicPaintRotoRealKeyTransferEntry,
   isWebpBytes,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
   serializePhysicPaintRotoPhysicalEditIntent,
+  serializePhysicPaintRotoRealKeyTransferEntry,
 } from './physicPaint';
+import { bytesToBase64 } from '../lib/webpBytes';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
@@ -603,6 +606,108 @@ describe('physic paint payload contracts', () => {
   it('validates namespaced frame-sync messages', () => {
     expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 12 })).toBe(true);
     expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: -1 })).toBe(false);
+  });
+});
+
+describe('52.2-10 bridge transfer entries (D-12)', () => {
+  const DIGEST_A = 'a'.repeat(64);
+  const DIGEST_B = 'b'.repeat(64);
+  const DIGEST_C = 'c'.repeat(64);
+  const mediaReference = (keyId: string, digest: string, dimensions = true) => ({
+    relativePath: `frames/layer-1/${keyId}.webp`,
+    digest,
+    ...(dimensions ? { width: 1000, height: 650 } : {}),
+  });
+
+  it('serializes an unchanged real-key entry as a reference with no raster-sized string', () => {
+    const entry = { keyId: 'key-A', appFrame: 3, media: mediaReference('key-A', DIGEST_A) };
+    expect(isPhysicPaintRotoRealKeyTransferEntry(entry)).toBe(true);
+    const serialized = serializePhysicPaintRotoRealKeyTransferEntry(entry);
+    expect(JSON.parse(serialized)).toEqual({
+      keyId: 'key-A',
+      appFrame: 3,
+      media: { relativePath: 'frames/layer-1/key-A.webp', digest: DIGEST_A, width: 1000, height: 650 },
+    });
+    // The whole point of D-12: nothing raster-sized crosses in the steady state.
+    const strings = serialized.match(/"[^"]*"/g) ?? [];
+    expect(strings.every((value) => value.length <= 256)).toBe(true);
+  });
+
+  it('carries a changed frame bytes in a separate digest-keyed field and keeps the digest in the canonical form', () => {
+    const bytes = testWebpBytes('52.2-10-changed');
+    const entry = {
+      keyId: 'key-A',
+      appFrame: 3,
+      media: mediaReference('key-A', DIGEST_A),
+      changedBytes: { [DIGEST_A]: bytes },
+    };
+    expect(isPhysicPaintRotoRealKeyTransferEntry(entry)).toBe(true);
+    const serialized = serializePhysicPaintRotoRealKeyTransferEntry(entry);
+    const parsed = JSON.parse(serialized) as { changedBytes?: Record<string, string> };
+    expect(parsed.changedBytes?.[DIGEST_A]).toBe(bytesToBase64(bytes));
+    expect(serialized).toContain(DIGEST_A);
+    // Stable: the canonical form of the same changed entry serializes identically.
+    expect(serializePhysicPaintRotoRealKeyTransferEntry(entry)).toBe(serialized);
+  });
+
+  it('is byte-identical across two serializations of the same unchanged entry and of its re-parsed form', () => {
+    const entry = { keyId: 'key-B', appFrame: 9, media: mediaReference('key-B', DIGEST_B, false) };
+    const first = serializePhysicPaintRotoRealKeyTransferEntry(entry);
+    const second = serializePhysicPaintRotoRealKeyTransferEntry({ ...entry });
+    expect(second).toBe(first);
+    expect(serializePhysicPaintRotoRealKeyTransferEntry(JSON.parse(first))).toBe(first);
+  });
+
+  it('refuses an entry carrying both a media reference and a payload for the same key (ambiguous ownership)', () => {
+    const entry = { keyId: 'key-A', appFrame: 3, media: mediaReference('key-A', DIGEST_A) };
+    expect(isPhysicPaintRotoRealKeyTransferEntry({
+      ...entry,
+      payload: { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('ambiguous') },
+    })).toBe(false);
+    // Unknown members are refused outright, whatever they carry.
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, bytes: testWebpBytes('loose') })).toBe(false);
+  });
+
+  it('refuses malformed identity, reference, and byte-channel shapes', () => {
+    const entry = { keyId: 'key-A', appFrame: 3, media: mediaReference('key-A', DIGEST_A) };
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, keyId: '' })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, appFrame: -1 })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ keyId: 'key-A', appFrame: 3 })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, media: { ...entry.media, digest: 'not-a-digest' } })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, media: { ...entry.media, relativePath: 'frames/../escape.webp' } })).toBe(false);
+    // A byte channel keyed by something that is not a digest, or one that
+    // omits the entry's own digest, cannot deduplicate by digest alone.
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: { 'not-a-digest': testWebpBytes('x') } })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: { [DIGEST_C]: testWebpBytes('x') } })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: {} })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: { [DIGEST_A]: '' } })).toBe(false);
+    // A malformed entry never serializes.
+    expect(() => serializePhysicPaintRotoRealKeyTransferEntry({ ...entry, appFrame: -1 })).toThrow();
+  });
+
+  it('keeps the paste-group entry key set fail-closed against a both-carrier payload', () => {
+    // The pre-existing physical-edit payload validators keep their exact key
+    // sets: carrying a media reference AND bytes for the same key is refused.
+    const bothCarriers = {
+      frameIndex: 0,
+      appFrame: 3,
+      bytes: testWebpBytes('both'),
+      media: mediaReference('key-A', DIGEST_A),
+    };
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'insert-empty-segment',
+      destinationAppFrame: 3,
+      insertedKeyId: 'blank-3',
+      blankPayload: bothCarriers,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'paste-key-group',
+      destinationAppFrame: 3,
+      entries: [
+        { payload: { frameIndex: 0, appFrame: 3, media: mediaReference('key-A', DIGEST_A) }, sourceAppFrame: 3, sourceKeyId: 'key-A', newKeyId: 'paste-A' },
+        { payload: { frameIndex: 0, appFrame: 7, bytes: testWebpBytes('pasted'), media: mediaReference('key-C', DIGEST_C) }, sourceAppFrame: 7, sourceKeyId: 'key-C', newKeyId: 'paste-C' },
+      ],
+    })).toBe(false);
   });
 });
 

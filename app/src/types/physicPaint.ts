@@ -26,6 +26,7 @@ export type { PhysicPaintRotoInterpolationMode } from '../components/physic-pain
 
 import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
 export { isWebpBytes, isPngBytes, buildFrameBytesToken };
+import type { FrameMediaReference } from '../lib/efxPaintPackage';
 
 export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
 export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';
@@ -715,6 +716,35 @@ function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): R
   return payload.width === undefined
     ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes }
     : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes, width: payload.width, height: payload.height };
+}
+
+/**
+ * 52.2-10 (D-12): one real-key TRANSFER ENTRY crossing the Studio→main bridge.
+ *
+ * The bridge carries the layer document as references + metadata; a frame's
+ * pixels ride in the `changedBytes` channel, keyed by the very digest that
+ * identifies them, and only for a digest the receiver does not already hold.
+ */
+export interface PhysicPaintRotoRealKeyTransferEntry {
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly media: FrameMediaReference;
+  /** RED stub — replaced by the digest-keyed byte channel in the GREEN commit. */
+  readonly changedBytes?: Readonly<Record<string, string | Uint8Array>>;
+}
+
+/** RED stub (52.2-10 Task 1): the real fail-closed guard lands in GREEN. */
+export function isPhysicPaintRotoRealKeyTransferEntry(
+  _value: unknown,
+): _value is PhysicPaintRotoRealKeyTransferEntry {
+  return false;
+}
+
+/** RED stub (52.2-10 Task 1): the real canonical serializer lands in GREEN. */
+export function serializePhysicPaintRotoRealKeyTransferEntry(
+  _entry: PhysicPaintRotoRealKeyTransferEntry,
+): string {
+  return '{}';
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
