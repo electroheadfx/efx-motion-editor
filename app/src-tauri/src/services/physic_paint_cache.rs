@@ -1,13 +1,46 @@
+//! 52.2-05 (D-10, D-05, D-14): the save transactions.
+//!
+//! The filename is historical — 45-01 built the disposable cache generation
+//! here — and D-10 EXTENDS this machinery rather than replacing it, so the
+//! module now owns two clearly separated transactions:
+//!
+//! * the AUTHORITATIVE package transaction (`bind_package_transaction` /
+//!   `publish_package_transaction` / `settle_package_transaction` /
+//!   `recover_package_transaction`). Its bound set is exactly the package file
+//!   set — `project.mce`, `layers/<layerId>.json` and
+//!   `frames/<layerId>/<keyId>.webp` — every path passing plan 01's
+//!   bound-path guard, and the staging root lives INSIDE the package so every
+//!   exchange is same-volume and atomic. The aggregate digest is
+//!   order-independent, and nothing canonical moves outside `publish`.
+//! * the DISPOSABLE machine-local cache generation (the directory swap the
+//!   module was built for). It no longer binds a project write: a marker found
+//!   at open always rolls back, because re-derivation is always safe (D-14)
+//!   and committing a generation derived from an uncommitted save could
+//!   publish wrong pixels.
+//!
+//! The two share neither a marker, a digest nor a guard: a cache path can
+//! never be bound to the package transaction (`efx-paint/...` is refused by
+//! the bound-path guard), and no package path can reach the cache leg.
+
+use crate::services::efx_paint_media::{
+    digest_file, resolve_package_bound_path, validate_package_staging_basename,
+    EfxPaintMediaError, PACKAGE_STAGING_PREFIX,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 const CANONICAL_CACHE_BASENAME: &str = "efx-paint";
 const STAGING_PREFIX: &str = ".efx-paint-staging-";
 const ACTIVE_TRANSACTION_BASENAME: &str = ".physic-paint-transaction.json";
+/// The authoritative package transaction's marker, at the package root.
+const PACKAGE_TRANSACTION_BASENAME: &str = ".efx-paint-package-transaction.json";
+/// The portable exchange's retained-previous-bytes carrier (non-macOS only;
+/// the macOS branch swaps in one `renameatx_np` call and needs no carrier).
+const PACKAGE_SWAP_CARRIER_PREFIX: &str = ".efx-paint-package-swap-";
 const TRANSACTION_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,7 +70,7 @@ pub struct CacheHardlink {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum CacheTransactionPhase {
+enum TransactionPhase {
     Published,
     RollingBack,
 }
@@ -48,9 +81,54 @@ struct CacheTransactionMarker {
     transaction_id: String,
     staging_basename: String,
     replaced_existing: bool,
-    phase: CacheTransactionPhase,
-    project_file_path: Option<String>,
-    expected_project_digest: Option<String>,
+    phase: TransactionPhase,
+}
+
+/// One file bound to the authoritative package transaction (D-10): the
+/// package-relative path, the SHA-256 of the STAGED bytes that will land, and
+/// whether the canonical path already existed when the set was bound.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoundFile {
+    pub path: String,
+    pub sha256: String,
+    pub had_original: bool,
+}
+
+/// The result of binding a package transaction: the transaction identity, the
+/// order-independent aggregate digest over the path-sorted entry list, and
+/// that list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageBinding {
+    pub transaction_id: String,
+    pub aggregate_digest: String,
+    pub entries: Vec<BoundFile>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackagePublication {
+    pub transaction_id: String,
+    pub published: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageSettlementAction {
+    Commit,
+    Rollback,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageSettlement {
+    pub cleanup_deferred: bool,
+    pub cleanup_diagnostic: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct PackageTransactionMarker {
+    version: u32,
+    transaction_id: String,
+    staging_basename: String,
+    phase: TransactionPhase,
+    expected_files: Vec<BoundFile>,
 }
 
 pub fn publish_cache_generation(
@@ -111,9 +189,7 @@ pub fn publish_cache_generation(
             transaction_id: transaction_id.clone(),
             staging_basename: staging_basename.to_string(),
             replaced_existing,
-            phase: CacheTransactionPhase::Published,
-            project_file_path: None,
-            expected_project_digest: None,
+            phase: TransactionPhase::Published,
         };
         write_marker(&cache_parent, &marker)?;
 
@@ -144,39 +220,212 @@ pub fn publish_cache_generation(
     }
 }
 
-pub fn bind_cache_transaction_to_project_write(
-    project_dir: &Path,
-    project_file_path: &Path,
-    project_bytes: &[u8],
-    transaction_id: &str,
-) -> Result<(), String> {
-    validate_transaction_id(transaction_id)?;
-    let project_root = resolve_project_root(project_dir)?;
-    let cache_parent = resolve_cache_parent(&project_root)?;
-    let mut marker = require_matching_marker(&cache_parent, transaction_id)?;
-    if marker.phase != CacheTransactionPhase::Published {
-        return Err("Physics Paint cache transaction is already rolling back".to_string());
+/// Bind the authoritative package transaction (D-10): hash every STAGED file,
+/// record whether its canonical path already existed, and persist the
+/// path-sorted entry list plus its aggregate digest in the package marker.
+///
+/// The staging basename is validated with plan 01's Rust-owned rule and the
+/// staging root is DERIVED here from the canonicalized package root — the
+/// caller never supplies a destination root, so plan 01's containment guard
+/// cannot be bypassed. `None` of the bound files is touched: every canonical
+/// path keeps its pre-save bytes until `publish_package_transaction` runs.
+pub fn bind_package_transaction(
+    package_dir: &Path,
+    staging_basename: &str,
+    paths: &[String],
+) -> Result<PackageBinding, String> {
+    validate_package_staging_basename(staging_basename).map_err(|error| {
+        format!(
+            "package transaction bind refused staging basename \"{staging_basename}\": {}",
+            error.label()
+        )
+    })?;
+    let package_root = resolve_project_root(package_dir)?;
+    let staging_root = resolve_package_staging_root(&package_root, staging_basename)?;
+
+    if paths.is_empty() {
+        return Err("package transaction bind requires at least one bound file".to_string());
+    }
+    let mut entries = Vec::with_capacity(paths.len());
+    for relative in paths {
+        entries.push(bind_package_entry(&package_root, &staging_root, relative)?);
+    }
+    entries.sort_by(|left, right| left.path.cmp(&right.path));
+    for pair in entries.windows(2) {
+        if pair[0].path == pair[1].path {
+            return Err(format!(
+                "package transaction bind refused duplicate path \"{}\"",
+                pair[0].path
+            ));
+        }
+    }
+    let aggregate_digest = aggregate_package_digest(&entries);
+
+    if let Some(marker) = read_package_marker(&package_root)? {
+        if marker.staging_basename == staging_basename {
+            if marker.expected_files == entries {
+                // An identical re-bind is a no-op: the transaction keeps its
+                // identity, its staging generation and its digest.
+                return Ok(PackageBinding {
+                    transaction_id: marker.transaction_id,
+                    aggregate_digest: aggregate_package_digest(&marker.expected_files),
+                    entries: marker.expected_files,
+                });
+            }
+            return Err(format!(
+                "package transaction is already bound to a different file set (\"{}\")",
+                first_differing_path(&marker.expected_files, &entries)
+            ));
+        }
+        // A marker for ANOTHER staging generation means a crashed save. Resolve
+        // it to the pre-save package first (never stack two transactions), then
+        // refuse so the caller retries against the settled package.
+        recover_package_transaction(&package_root)?;
+        return Err(format!(
+            "package transaction for staging generation \"{}\" was recovered; retry the bind",
+            marker.staging_basename
+        ));
     }
 
-    let normalized_project_path = normalize_project_file_path(&project_root, project_file_path)?;
-    let digest = digest_bytes(project_bytes);
-    let normalized_project_path = normalized_project_path.to_string_lossy().into_owned();
-    match (&marker.project_file_path, &marker.expected_project_digest) {
-        (None, None) => {
-            marker.project_file_path = Some(normalized_project_path);
-            marker.expected_project_digest = Some(digest);
-            write_marker(&cache_parent, &marker)?;
-        }
-        (Some(existing_path), Some(existing_digest))
-            if existing_path == &normalized_project_path && existing_digest == &digest => {}
-        _ => {
-            return Err(
-                "Physics Paint cache transaction is already bound to a different project write"
-                    .to_string(),
-            );
-        }
+    cleanup_stale_package_staging_generations(&package_root, Some(staging_basename));
+    let transaction_id = Uuid::new_v4().to_string();
+    let marker = PackageTransactionMarker {
+        version: TRANSACTION_VERSION,
+        transaction_id: transaction_id.clone(),
+        staging_basename: staging_basename.to_string(),
+        phase: TransactionPhase::Published,
+        expected_files: entries.clone(),
+    };
+    write_package_marker(&package_root, &marker)?;
+    write_synced_file(
+        &transaction_sentinel_path(&staging_root, &transaction_id),
+        transaction_id.as_bytes(),
+    )
+    .map_err(|error| format!("Could not create the package transaction sentinel: {error}"))?;
+    sync_directory(&staging_root)
+        .map_err(|error| format!("Could not synchronize the package staging root: {error}"))?;
+
+    Ok(PackageBinding {
+        transaction_id,
+        aggregate_digest,
+        entries,
+    })
+}
+
+/// Publish every bound file into its canonical path, in path-sorted order.
+/// Where a canonical file exists the previous bytes are RETAINED at the staged
+/// path (that retention is the rollback copy); where it does not exist the
+/// staged file is renamed into place. A kill between two published files
+/// leaves the marker behind, so `recover_package_transaction` restores the
+/// pre-save package.
+pub fn publish_package_transaction(
+    package_dir: &Path,
+    transaction_id: &str,
+) -> Result<PackagePublication, String> {
+    validate_transaction_id(transaction_id)?;
+    let package_root = resolve_project_root(package_dir)?;
+    let marker = require_matching_package_marker(&package_root, transaction_id)?;
+    if marker.phase != TransactionPhase::Published {
+        return Err("A rolling-back package transaction cannot publish".to_string());
     }
-    Ok(())
+    let staging_root = resolve_package_staging_root(&package_root, &marker.staging_basename)?;
+    if !has_transaction_sentinel(&staging_root, transaction_id)? {
+        return Err(
+            "The package transaction sentinel is missing from its staging generation".to_string(),
+        );
+    }
+
+    let mut published = 0;
+    for entry in &marker.expected_files {
+        let staged = resolve_package_bound_path(&staging_root, &entry.path)
+            .map_err(|error| package_path_refusal("publish", &entry.path, &error))?;
+        let canonical = resolve_package_bound_path(&package_root, &entry.path)
+            .map_err(|error| package_path_refusal("publish", &entry.path, &error))?;
+        let staged_digest = digest_file(&staged)
+            .map_err(|error| package_io_refusal("publish", &entry.path, &error.message))?;
+        if staged_digest != entry.sha256 {
+            return Err(format!(
+                "package transaction publish refused \"{}\": the staged bytes changed since bind",
+                entry.path
+            ));
+        }
+        let canonical_exists = fs::symlink_metadata(&canonical).is_ok();
+        if canonical_exists != entry.had_original {
+            return Err(format!(
+                "package transaction publish refused \"{}\": the canonical path appeared or vanished since bind",
+                entry.path
+            ));
+        }
+        let carrier = package_swap_carrier_path(&staging_root, entry, transaction_id);
+        if canonical_exists {
+            atomic_exchange_paths(&staged, &canonical, &carrier).map_err(|error| {
+                format!("Could not publish package file \"{}\": {error}", entry.path)
+            })?;
+        } else {
+            if let Some(parent) = canonical.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!("Could not create the package file parent: {error}")
+                })?;
+            }
+            fs::rename(&staged, &canonical).map_err(|error| {
+                format!("Could not publish package file \"{}\": {error}", entry.path)
+            })?;
+        }
+        sync_published_file(&canonical)?;
+        published += 1;
+    }
+    sync_directory(&package_root)
+        .map_err(|error| format!("Could not synchronize the package root: {error}"))?;
+    Ok(PackagePublication {
+        transaction_id: transaction_id.to_string(),
+        published,
+    })
+}
+
+/// Settle the package transaction. Commit verifies EVERY bound canonical file
+/// against its recorded digest and refuses, naming the offending path, on any
+/// drift — a commit is the only way the staged set becomes authoritative.
+/// Rollback restores the pre-save package: a retained previous copy is moved
+/// back, a file the transaction created is removed, and a canonical file a
+/// third party wrote since the publish is left alone.
+pub fn settle_package_transaction(
+    package_dir: &Path,
+    transaction_id: &str,
+    action: PackageSettlementAction,
+) -> Result<PackageSettlement, String> {
+    validate_transaction_id(transaction_id)?;
+    let package_root = resolve_project_root(package_dir)?;
+    let marker = require_matching_package_marker(&package_root, transaction_id)?;
+    match action {
+        PackageSettlementAction::Commit => commit_package_transaction(&package_root, &marker),
+        PackageSettlementAction::Rollback => rollback_package_transaction(&package_root, marker),
+    }
+}
+
+/// The open-time path: with a marker present, roll FORWARD only when EVERY
+/// bound canonical file hashes to its recorded digest; otherwise roll back to
+/// the pre-save package. That single rule is the whole crash story — a partial
+/// publish, an interrupted commit and a killed process all land either on the
+/// committed package or on the pre-save package, never on a mixed one.
+pub fn recover_package_transaction(
+    package_dir: &Path,
+) -> Result<Option<PackageSettlement>, String> {
+    if !package_dir.exists() {
+        return Ok(None);
+    }
+    let package_root = resolve_project_root(package_dir)?;
+    let Some(marker) = read_package_marker(&package_root)? else {
+        cleanup_stale_package_staging_generations(&package_root, None);
+        return Ok(None);
+    };
+    let settlement = if marker.phase == TransactionPhase::RollingBack {
+        finish_package_rollback(&package_root, &marker)?
+    } else if marker_matches_canonical(&package_root, &marker)? {
+        commit_package_transaction(&package_root, &marker)?
+    } else {
+        rollback_package_transaction(&package_root, marker)?
+    };
+    Ok(Some(settlement))
 }
 
 pub fn settle_cache_generation(
@@ -196,14 +445,11 @@ pub fn settle_cache_generation(
         let project_root = resolve_project_root(project_dir)?;
         let cache_parent = resolve_cache_parent(&project_root)?;
         let marker = require_matching_marker(&cache_parent, transaction_id)?;
+        // 52.2-05 Task 1 clause (f): the cache generation no longer binds a
+        // project write, so a Rollback always restores the previous generation
+        // — no durable-bytes comparison can commit an uncommitted generation.
         match action {
             CacheSettlementAction::Commit => commit_transaction(&cache_parent, &marker),
-            CacheSettlementAction::Rollback
-                if marker.phase == CacheTransactionPhase::Published
-                    && project_file_matches_marker(&project_root, &marker)? =>
-            {
-                commit_transaction(&cache_parent, &marker)
-            }
             CacheSettlementAction::Rollback => rollback_transaction(&cache_parent, marker),
         }
     }
@@ -288,10 +534,11 @@ pub fn recover_cache_transaction(project_dir: &Path) -> Result<Option<CacheSettl
             return Ok(None);
         };
 
-        let settlement = if marker.phase == CacheTransactionPhase::RollingBack {
+        // Re-derivation is always safe (D-05/D-14), so an uncommitted cache
+        // generation is ALWAYS rolled back: committing a generation derived
+        // from an uncommitted save could publish wrong pixels.
+        let settlement = if marker.phase == TransactionPhase::RollingBack {
             finish_rollback(&cache_parent, &marker)
-        } else if project_file_matches_marker(&project_root, &marker)? {
-            commit_transaction(&cache_parent, &marker)
         } else {
             rollback_transaction(&cache_parent, marker)
         }?;
@@ -303,16 +550,8 @@ fn commit_transaction(
     cache_parent: &Path,
     marker: &CacheTransactionMarker,
 ) -> Result<CacheSettlement, String> {
-    if marker.phase != CacheTransactionPhase::Published {
+    if marker.phase != TransactionPhase::Published {
         return Err("A rolling-back Physics Paint cache transaction cannot commit".to_string());
-    }
-    let project_root = cache_parent
-        .parent()
-        .ok_or_else(|| "Physics Paint cache parent has no project authority".to_string())?;
-    if !project_file_matches_marker(project_root, marker)? {
-        return Err(
-            "Physics Paint cache commit does not match the durable project bytes".to_string(),
-        );
     }
 
     let canonical_path = cache_parent.join(CANONICAL_CACHE_BASENAME);
@@ -349,8 +588,8 @@ fn rollback_transaction(
     cache_parent: &Path,
     mut marker: CacheTransactionMarker,
 ) -> Result<CacheSettlement, String> {
-    if marker.phase == CacheTransactionPhase::Published {
-        marker.phase = CacheTransactionPhase::RollingBack;
+    if marker.phase == TransactionPhase::Published {
+        marker.phase = TransactionPhase::RollingBack;
         write_marker(cache_parent, &marker)?;
     }
     finish_rollback(cache_parent, &marker)
@@ -431,24 +670,6 @@ fn finish_rollback(
     Ok(cleanup_settlement(diagnostics))
 }
 
-fn project_file_matches_marker(
-    project_root: &Path,
-    marker: &CacheTransactionMarker,
-) -> Result<bool, String> {
-    let (Some(project_file_path), Some(expected_digest)) = (
-        marker.project_file_path.as_deref(),
-        marker.expected_project_digest.as_deref(),
-    ) else {
-        return Ok(false);
-    };
-    let project_file_path =
-        normalize_project_file_path(project_root, Path::new(project_file_path))?;
-    if !project_file_path.is_file() {
-        return Ok(false);
-    }
-    Ok(digest_file(&project_file_path)? == expected_digest)
-}
-
 fn resolve_project_root(project_dir: &Path) -> Result<PathBuf, String> {
     fs::canonicalize(project_dir)
         .map_err(|error| format!("Could not resolve Physics Paint project directory: {error}"))
@@ -463,24 +684,6 @@ fn resolve_cache_parent(project_root: &Path) -> Result<PathBuf, String> {
     Ok(cache_parent)
 }
 
-fn normalize_project_file_path(
-    project_root: &Path,
-    project_file_path: &Path,
-) -> Result<PathBuf, String> {
-    let parent = project_file_path
-        .parent()
-        .ok_or_else(|| "Physics Paint project file has no parent directory".to_string())?;
-    let resolved_parent = fs::canonicalize(parent)
-        .map_err(|error| format!("Could not resolve Physics Paint project file parent: {error}"))?;
-    if resolved_parent != project_root {
-        return Err("Physics Paint project file escapes project authority".to_string());
-    }
-    let file_name = project_file_path
-        .file_name()
-        .ok_or_else(|| "Physics Paint project file has no filename".to_string())?;
-    Ok(resolved_parent.join(file_name))
-}
-
 fn ensure_direct_child_directory(path: &Path, parent: &Path, label: &str) -> Result<(), String> {
     if path.parent() != Some(parent) || !path.is_dir() {
         return Err(format!("{label} must be a direct sibling directory"));
@@ -490,6 +693,494 @@ fn ensure_direct_child_directory(path: &Path, parent: &Path, label: &str) -> Res
 
 fn marker_path(cache_parent: &Path) -> PathBuf {
     cache_parent.join(ACTIVE_TRANSACTION_BASENAME)
+}
+
+// --- 52.2-05 authoritative package transaction helpers -------------------
+
+fn package_marker_path(package_root: &Path) -> PathBuf {
+    package_root.join(PACKAGE_TRANSACTION_BASENAME)
+}
+
+/// Derive the staging root from the canonicalized package root (never from a
+/// caller-supplied root) and require it to be a direct child directory: the
+/// same-volume requirement that keeps every exchange atomic.
+fn resolve_package_staging_root(
+    package_root: &Path,
+    staging_basename: &str,
+) -> Result<PathBuf, String> {
+    let staging_path = package_root.join(staging_basename);
+    let resolved = fs::canonicalize(&staging_path)
+        .map_err(|error| format!("Could not resolve the package staging root: {error}"))?;
+    if resolved.parent() != Some(package_root) || !resolved.is_dir() {
+        return Err("The package staging root must be a direct child directory".to_string());
+    }
+    Ok(resolved)
+}
+
+fn package_bind_refusal(relative: &str, error: &EfxPaintMediaError) -> String {
+    format!(
+        "package transaction bind refused \"{relative}\": {}",
+        error.label()
+    )
+}
+
+fn package_path_refusal(action: &str, relative: &str, error: &EfxPaintMediaError) -> String {
+    format!(
+        "package transaction {action} refused \"{relative}\": {}",
+        error.label()
+    )
+}
+
+fn package_io_refusal(action: &str, relative: &str, message: &str) -> String {
+    format!("package transaction {action} refused \"{relative}\": {message}")
+}
+
+/// Hash one STAGED bound file — so the recorded digest is exactly the bytes
+/// that will land — and record whether its canonical path already existed.
+fn bind_package_entry(
+    package_root: &Path,
+    staging_root: &Path,
+    relative: &str,
+) -> Result<BoundFile, String> {
+    let canonical = resolve_package_bound_path(package_root, relative)
+        .map_err(|error| package_bind_refusal(relative, &error))?;
+    let staged = resolve_package_bound_path(staging_root, relative)
+        .map_err(|error| package_bind_refusal(relative, &error))?;
+    let staged_metadata = fs::symlink_metadata(&staged).map_err(|error| {
+        format!("package transaction bind refused \"{relative}\": the staged file is unreadable ({error})")
+    })?;
+    if !staged_metadata.file_type().is_file() || staged_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "package transaction bind refused \"{relative}\": the staged entry is not a regular file"
+        ));
+    }
+    let sha256 = digest_file(&staged)
+        .map_err(|error| package_io_refusal("bind", relative, &error.message))?;
+    let had_original = match fs::symlink_metadata(&canonical) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "package transaction bind refused \"{relative}\": the canonical entry is not a regular file"
+                ));
+            }
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(format!(
+                "package transaction bind refused \"{relative}\": the canonical path is unreadable ({error})"
+            ));
+        }
+    };
+    Ok(BoundFile {
+        path: relative.to_string(),
+        sha256,
+        had_original,
+    })
+}
+
+/// The aggregate digest (D-10): SHA-256 over the UTF-8 concatenation of
+/// `"{path}\0{sha256}\n"` for each entry in path-sorted order. Deterministic
+/// and order-independent, so two discovery orders of the same file set bind
+/// the same string — one string to compare.
+fn aggregate_package_digest(entries: &[BoundFile]) -> String {
+    let mut hasher = Sha256::new();
+    for entry in entries {
+        hasher.update(entry.path.as_bytes());
+        hasher.update([0_u8]);
+        hasher.update(entry.sha256.as_bytes());
+        hasher.update(b"\n");
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// The first path at which two sorted entry lists disagree, preferring the
+/// path the new list carries so the refusal reads as "this is not bound".
+fn first_differing_path(existing: &[BoundFile], requested: &[BoundFile]) -> String {
+    for index in 0..existing.len().max(requested.len()) {
+        match (existing.get(index), requested.get(index)) {
+            (Some(left), Some(right)) if left == right => continue,
+            (_, Some(right)) => return right.path.clone(),
+            (Some(left), None) => return left.path.clone(),
+            (None, None) => break,
+        }
+    }
+    String::new()
+}
+
+fn canonical_entry_digest(canonical: &Path) -> Option<String> {
+    if !canonical.is_file() {
+        return None;
+    }
+    digest_file(canonical).ok()
+}
+
+fn marker_matches_canonical(
+    package_root: &Path,
+    marker: &PackageTransactionMarker,
+) -> Result<bool, String> {
+    for entry in &marker.expected_files {
+        let canonical = resolve_package_bound_path(package_root, &entry.path)
+            .map_err(|error| package_path_refusal("recovery", &entry.path, &error))?;
+        if canonical_entry_digest(&canonical).as_deref() != Some(entry.sha256.as_str()) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn commit_package_transaction(
+    package_root: &Path,
+    marker: &PackageTransactionMarker,
+) -> Result<PackageSettlement, String> {
+    if marker.phase != TransactionPhase::Published {
+        return Err("A rolling-back package transaction cannot commit".to_string());
+    }
+    for entry in &marker.expected_files {
+        let canonical = resolve_package_bound_path(package_root, &entry.path)
+            .map_err(|error| package_path_refusal("commit", &entry.path, &error))?;
+        let Some(digest) = canonical_entry_digest(&canonical) else {
+            return Err(format!(
+                "package transaction commit refused: \"{}\" is missing or unreadable",
+                entry.path
+            ));
+        };
+        if digest != entry.sha256 {
+            return Err(format!(
+                "package transaction commit refused: \"{}\" does not match its recorded digest",
+                entry.path
+            ));
+        }
+    }
+
+    remove_package_marker(package_root)?;
+    let mut diagnostics = Vec::new();
+    collect_cleanup_error(
+        fs::remove_dir_all(package_root.join(&marker.staging_basename)),
+        "obsolete package staging generation",
+        &mut diagnostics,
+    );
+    collect_cleanup_error(
+        sync_directory(package_root),
+        "package root synchronization",
+        &mut diagnostics,
+    );
+    Ok(package_cleanup_settlement(diagnostics))
+}
+
+fn rollback_package_transaction(
+    package_root: &Path,
+    mut marker: PackageTransactionMarker,
+) -> Result<PackageSettlement, String> {
+    if marker.phase == TransactionPhase::Published {
+        marker.phase = TransactionPhase::RollingBack;
+        write_package_marker(package_root, &marker)?;
+    }
+    finish_package_rollback(package_root, &marker)
+}
+
+/// Restore the pre-save package, then remove the marker LAST so an interrupted
+/// rollback is re-entered from the marker instead of leaving a half-restored
+/// package with nothing pointing at it (the re-entry converges).
+fn finish_package_rollback(
+    package_root: &Path,
+    marker: &PackageTransactionMarker,
+) -> Result<PackageSettlement, String> {
+    let staging_root = package_root.join(&marker.staging_basename);
+    for entry in &marker.expected_files {
+        restore_bound_entry(package_root, &staging_root, entry, &marker.transaction_id)?;
+    }
+    sync_directory(package_root)
+        .map_err(|error| format!("Could not synchronize the rolled-back package: {error}"))?;
+    remove_package_marker(package_root)?;
+
+    let mut diagnostics = Vec::new();
+    collect_cleanup_error(
+        fs::remove_dir_all(&staging_root),
+        "uncommitted package staging generation",
+        &mut diagnostics,
+    );
+    collect_cleanup_error(
+        sync_directory(package_root),
+        "package root synchronization",
+        &mut diagnostics,
+    );
+    Ok(package_cleanup_settlement(diagnostics))
+}
+
+/// Restore one bound file to its pre-save state.
+///
+/// The published state is identifiable by digest: a canonical file that
+/// hashes to the recorded digest holds THIS transaction's bytes, and the
+/// previous bytes are retained at the staged path (the exchange moved them
+/// there). A canonical file that does not match was never published — or was
+/// replaced by a third party after the publish — and is left alone: a stale
+/// rollback must never fight a newer write it did not make.
+fn restore_bound_entry(
+    package_root: &Path,
+    staging_root: &Path,
+    entry: &BoundFile,
+    transaction_id: &str,
+) -> Result<(), String> {
+    let canonical = resolve_package_bound_path(package_root, &entry.path)
+        .map_err(|error| package_path_refusal("rollback", &entry.path, &error))?;
+    let staged = staging_root.join(&entry.path);
+    let carrier = package_swap_carrier_path(staging_root, entry, transaction_id);
+    if carrier.exists() {
+        // A portable-path exchange was interrupted after the canonical file
+        // moved aside: the previous bytes are in the carrier.
+        remove_if_present(&canonical)?;
+        fs::rename(&carrier, &canonical).map_err(|error| {
+            format!(
+                "Could not restore package file \"{}\" from its retained copy: {error}",
+                entry.path
+            )
+        })?;
+        if staged.is_file() {
+            fs::remove_file(&staged).map_err(|error| {
+                format!("Could not drop the unpublished package file: {error}")
+            })?;
+        }
+        return Ok(());
+    }
+    if entry.had_original {
+        if canonical_entry_digest(&canonical).as_deref() == Some(entry.sha256.as_str()) {
+            if !staged.is_file() {
+                return Err(format!(
+                    "package transaction rollback cannot restore \"{}\": its retained copy is gone",
+                    entry.path
+                ));
+            }
+            atomic_exchange_paths(&staged, &canonical, &carrier).map_err(|error| {
+                format!("Could not roll back package file \"{}\": {error}", entry.path)
+            })?;
+        }
+    } else if canonical_entry_digest(&canonical).as_deref() == Some(entry.sha256.as_str()) {
+        // This transaction created the file: remove it, never a file it did not
+        // create (the digest is the proof of authorship).
+        fs::remove_file(&canonical).map_err(|error| {
+            format!("Could not remove the uncommitted package file: {error}")
+        })?;
+    }
+    Ok(())
+}
+
+fn package_swap_carrier_path(
+    staging_root: &Path,
+    entry: &BoundFile,
+    transaction_id: &str,
+) -> PathBuf {
+    let staged = staging_root.join(&entry.path);
+    let parent = staged.parent().unwrap_or(staging_root);
+    parent.join(format!("{PACKAGE_SWAP_CARRIER_PREFIX}{transaction_id}.tmp"))
+}
+
+fn remove_if_present(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Could not remove the package file: {error}")),
+    }
+}
+
+fn sync_published_file(path: &Path) -> Result<(), String> {
+    File::open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| format!("Could not synchronize the published package file: {error}"))?;
+    if let Some(parent) = path.parent() {
+        sync_directory(parent).map_err(|error| {
+            format!("Could not synchronize the published package directory: {error}")
+        })?;
+    }
+    Ok(())
+}
+
+fn write_package_marker(
+    package_root: &Path,
+    marker: &PackageTransactionMarker,
+) -> Result<(), String> {
+    validate_package_marker(package_root, marker)?;
+    let bytes = serde_json::to_vec(marker).map_err(|error| {
+        format!("Could not serialize the package transaction marker: {error}")
+    })?;
+    let marker_path = package_marker_path(package_root);
+    let temp_path = package_root.join(format!("{PACKAGE_TRANSACTION_BASENAME}.tmp"));
+    write_synced_file(&temp_path, &bytes).map_err(|error| {
+        format!("Could not write the package transaction marker: {error}")
+    })?;
+    fs::rename(&temp_path, &marker_path).map_err(|error| {
+        format!("Could not publish the package transaction marker: {error}")
+    })?;
+    sync_directory(package_root)
+        .map_err(|error| format!("Could not synchronize the package transaction marker: {error}"))
+}
+
+fn read_package_marker(
+    package_root: &Path,
+) -> Result<Option<PackageTransactionMarker>, String> {
+    let path = package_marker_path(package_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("Could not read the package transaction marker: {error}"))?;
+    let marker: PackageTransactionMarker = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("Could not parse the package transaction marker: {error}"))?;
+    validate_package_marker(package_root, &marker)?;
+    Ok(Some(marker))
+}
+
+fn require_matching_package_marker(
+    package_root: &Path,
+    transaction_id: &str,
+) -> Result<PackageTransactionMarker, String> {
+    let marker = read_package_marker(package_root)?
+        .ok_or_else(|| "The package transaction is no longer active".to_string())?;
+    if marker.transaction_id != transaction_id {
+        return Err(
+            "The package transaction identity does not match the active binding".to_string(),
+        );
+    }
+    Ok(marker)
+}
+
+fn remove_package_marker(package_root: &Path) -> Result<(), String> {
+    fs::remove_file(package_marker_path(package_root)).map_err(|error| {
+        format!("Could not settle the package transaction marker: {error}")
+    })?;
+    sync_directory(package_root).map_err(|error| {
+        format!("Could not synchronize the package transaction settlement: {error}")
+    })
+}
+
+/// A marker on disk is untrusted input (T-52.2-14): every entry's path is run
+/// back through plan 01's bound-path guard against the package root and every
+/// digest must be 64 LOWER-case hex, and the list must be sorted and unique.
+/// A doctored marker can therefore only refuse — it can never redirect a write.
+fn validate_package_marker(
+    package_root: &Path,
+    marker: &PackageTransactionMarker,
+) -> Result<(), String> {
+    if marker.version != TRANSACTION_VERSION {
+        return Err("Unsupported package transaction marker version".to_string());
+    }
+    validate_transaction_id(&marker.transaction_id)?;
+    validate_package_staging_basename(&marker.staging_basename).map_err(|error| {
+        format!(
+            "Invalid package transaction staging basename: {}",
+            error.label()
+        )
+    })?;
+    if marker.expected_files.is_empty() {
+        return Err("Package transaction marker has no bound files".to_string());
+    }
+    let mut previous: Option<&str> = None;
+    for entry in &marker.expected_files {
+        resolve_package_bound_path(package_root, &entry.path)
+            .map_err(|error| package_path_refusal("marker", &entry.path, &error))?;
+        if !is_lower_hex_64(&entry.sha256) {
+            return Err(format!(
+                "Package transaction marker digest for \"{}\" is not 64 lower-case hex characters",
+                entry.path
+            ));
+        }
+        if let Some(previous) = previous {
+            if previous >= entry.path.as_str() {
+                return Err(
+                    "Package transaction marker entries are not path-sorted and unique".to_string(),
+                );
+            }
+        }
+        previous = Some(entry.path.as_str());
+    }
+    Ok(())
+}
+
+fn is_lower_hex_64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn package_cleanup_settlement(diagnostics: Vec<String>) -> PackageSettlement {
+    if diagnostics.is_empty() {
+        PackageSettlement {
+            cleanup_deferred: false,
+            cleanup_diagnostic: None,
+        }
+    } else {
+        PackageSettlement {
+            cleanup_deferred: true,
+            cleanup_diagnostic: Some(format!(
+                "Package transaction settlement completed; cleanup was deferred: {}",
+                diagnostics.join("; ")
+            )),
+        }
+    }
+}
+
+fn cleanup_stale_package_staging_generations(package_root: &Path, except: Option<&str>) {
+    let Ok(entries) = fs::read_dir(package_root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with(PACKAGE_STAGING_PREFIX) || except == Some(name.as_ref()) {
+            continue;
+        }
+        let _ = fs::remove_dir_all(entry.path());
+    }
+    let _ = sync_directory(package_root);
+}
+
+/// The atomic per-FILE exchange. On macOS it is the shipped single
+/// `renameatx_np(RENAME_SWAP)` call; elsewhere it is a three-rename carrier
+/// dance whose end state is identical (the published bytes at `right`, the
+/// previously retained bytes at `left`), which is what keeps the AUTHORITATIVE
+/// transaction working off macOS too.
+#[cfg(target_os = "macos")]
+fn atomic_exchange_paths(left: &Path, right: &Path, carrier: &Path) -> std::io::Result<()> {
+    let _ = carrier;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let left = CString::new(left.as_os_str().as_bytes()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Package staging path contains an interior NUL byte",
+        )
+    })?;
+    let right = CString::new(right.as_os_str().as_bytes()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Package canonical path contains an interior NUL byte",
+        )
+    })?;
+
+    let result = unsafe {
+        libc::renameatx_np(
+            libc::AT_FDCWD,
+            left.as_ptr(),
+            libc::AT_FDCWD,
+            right.as_ptr(),
+            libc::RENAME_SWAP,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn atomic_exchange_paths(left: &Path, right: &Path, carrier: &Path) -> std::io::Result<()> {
+    fs::rename(right, carrier)?;
+    fs::rename(left, right)?;
+    fs::rename(carrier, left)?;
+    Ok(())
 }
 
 fn transaction_sentinel_path(generation: &Path, transaction_id: &str) -> PathBuf {
@@ -558,14 +1249,6 @@ fn validate_marker(marker: &CacheTransactionMarker) -> Result<(), String> {
     }
     validate_transaction_id(&marker.transaction_id)?;
     validate_staging_basename(&marker.staging_basename)?;
-    if marker.project_file_path.is_some() != marker.expected_project_digest.is_some() {
-        return Err("Physics Paint cache transaction project binding is incomplete".to_string());
-    }
-    if let Some(digest) = marker.expected_project_digest.as_deref() {
-        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err("Physics Paint cache transaction project digest is invalid".to_string());
-        }
-    }
     Ok(())
 }
 
@@ -621,28 +1304,6 @@ fn has_transaction_sentinel(generation: &Path, transaction_id: &str) -> Result<b
         return Err("Physics Paint transaction sentinel identity is invalid".to_string());
     }
     Ok(true)
-}
-
-fn digest_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
-fn digest_file(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|error| {
-        format!("Could not open Physics Paint project file for verification: {error}")
-    })?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer).map_err(|error| {
-            format!("Could not read Physics Paint project file for verification: {error}")
-        })?;
-        if read == 0 {
-            break;
-        }
-        digest.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
 }
 
 fn write_synced_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -837,21 +1498,15 @@ mod tests {
         let project_path = test_dir.join("project.mce");
         std::fs::write(&project_path, project_bytes).expect("project file");
 
-        // First generation committed into cache/efx-paint (bound to the
-        // project write, matching the durable project bytes).
+        // First generation committed into cache/efx-paint. 52.2-05: the cache
+        // generation no longer binds a project write, so an explicit Commit is
+        // the only path that keeps a published generation.
         let first_staging = format!(".efx-paint-staging-{}", Uuid::new_v4());
         let first_dir = test_dir.join("cache").join(&first_staging);
         std::fs::create_dir_all(&first_dir).expect("staging cache");
         std::fs::write(first_dir.join("old.png"), b"old").expect("staged frame");
         let first =
             publish_cache_generation(&test_dir, &first_staging).expect("first publication");
-        bind_cache_transaction_to_project_write(
-            &test_dir,
-            &project_path,
-            project_bytes,
-            &first.transaction_id,
-        )
-        .expect("bind first");
         settle_cache_generation(&test_dir, &first.transaction_id, CacheSettlementAction::Commit)
             .expect("first commit");
         assert!(test_dir.join("cache/efx-paint/old.png").exists());

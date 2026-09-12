@@ -1,5 +1,4 @@
 use crate::models::project::MceProject;
-use crate::services::physic_paint_cache::bind_cache_transaction_to_project_write;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
@@ -61,9 +60,10 @@ pub fn save_project(
         .sync_all()
         .map_err(|e| format!("Failed to synchronize temp file: {}", e))?;
 
-    if let Some(transaction_id) = physic_paint_cache_transaction_id {
-        bind_cache_transaction_to_project_write(project_root, file_path, &json, transaction_id)?;
-    }
+    // 52.2-05 Task 1: the project write no longer binds the cache generation —
+    // the two transactions are independent (the cache leg is best-effort, D-14)
+    // and the parameter is retired in Task 2.
+    let _ = physic_paint_cache_transaction_id;
 
     fs::rename(&tmp_path, file_path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
     File::open(project_root)
@@ -169,10 +169,6 @@ mod tests {
     use crate::models::project::{
         MceImageRef, MceLayer, MceLayerSource, MceLayerTransform, MceSequence,
     };
-    use crate::services::physic_paint_cache::{
-        publish_cache_generation, recover_cache_transaction,
-    };
-    use uuid::Uuid;
 
     #[test]
     fn test_create_project_dir_creates_subdirectories() {
@@ -390,57 +386,6 @@ mod tests {
         assert!(!saved.contains("physic_paint_outputs"));
 
         let _ = std::fs::remove_dir_all(&test_dir);
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn project_save_binds_cache_transaction_for_open_time_commit_recovery() {
-        let test_dir =
-            std::env::temp_dir().join(format!("efx_test_cache_project_save_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(test_dir.join("cache/efx-paint")).expect("canonical cache");
-        std::fs::write(test_dir.join("cache/efx-paint/old.png"), b"old").expect("old cache");
-        let staging_basename = format!(".efx-paint-staging-{}", Uuid::new_v4());
-        let staging = test_dir.join("cache").join(&staging_basename);
-        std::fs::create_dir_all(&staging).expect("staging cache");
-        std::fs::write(staging.join("new.png"), b"new").expect("new cache");
-        let publication =
-            publish_cache_generation(&test_dir, &staging_basename).expect("cache publication");
-        let project = MceProject {
-            version: 1,
-            name: "Cache Transaction".into(),
-            fps: 24,
-            width: 1920,
-            height: 1080,
-            created_at: "2026-08-12T00:00:00Z".into(),
-            modified_at: "2026-08-12T00:00:00Z".into(),
-            sequences: vec![],
-            images: vec![],
-            audio_tracks: vec![],
-            physic_paint_outputs: vec![],
-            efx_paint_documents: std::collections::HashMap::new(),
-        };
-        let project_path = test_dir.join("project.mce");
-
-        save_project(
-            &project,
-            project_path.to_str().unwrap(),
-            test_dir.to_str().unwrap(),
-            Some(&publication.transaction_id),
-        )
-        .expect("project save");
-        recover_cache_transaction(&test_dir).expect("open-time recovery");
-
-        assert!(test_dir.join("cache/efx-paint/new.png").exists());
-        assert!(!test_dir.join("cache/efx-paint/old.png").exists());
-        assert!(!staging.exists());
-        assert!(!test_dir
-            .join("cache/.physic-paint-transaction.json")
-            .exists());
-        assert_eq!(
-            open_project(project_path.to_str().unwrap()).unwrap().name,
-            project.name
-        );
-        std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
     }
 
     #[test]

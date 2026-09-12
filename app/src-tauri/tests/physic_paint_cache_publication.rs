@@ -16,7 +16,7 @@ use efx_motion_editor_lib::efx_paint_media::{digest_bytes, PACKAGE_STAGING_PREFI
 use efx_motion_editor_lib::physic_paint_cache::{
     bind_package_transaction, publish_cache_generation, publish_package_transaction,
     recover_cache_transaction, recover_package_transaction, settle_cache_generation,
-    settle_package_transaction, BoundFile, CacheSettlementAction, PackageBinding,
+    settle_package_transaction, CacheSettlementAction, PackageBinding,
     PackageSettlementAction,
 };
 use efx_motion_editor_lib::physic_paint_cache_command::{
@@ -139,14 +139,6 @@ fn write_canonical(package: &Path, relative: &str, bytes: &[u8]) {
 
 fn bound_paths(paths: &[&str]) -> Vec<String> {
     paths.iter().map(|path| (*path).to_string()).collect()
-}
-
-fn bind_entries<'a>(binding: &'a PackageBinding, path: &str) -> &'a BoundFile {
-    binding
-        .entries
-        .iter()
-        .find(|entry| entry.path == path)
-        .unwrap_or_else(|| panic!("missing bound entry {path}"))
 }
 
 fn assert_package_settled(package: &Path) {
