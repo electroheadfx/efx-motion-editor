@@ -27,6 +27,7 @@ import {physicPaintStore, _setPhysicPaintMarkDirtyCallback, _setPhysicPaintCompo
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
+import {recordPhysicsPaintPerformance} from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
 import {loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
@@ -722,6 +723,7 @@ export const projectStore = {
     if (!currentFilePath) return; // Cannot save without a file path
 
     isSaving.value = true;
+    const saveStartedAtMs = performance.now();
     try {
       const project = buildMceProject();
 
@@ -749,6 +751,7 @@ export const projectStore = {
       // Studio's main thread at 52.1 sizes) and fires from inside the user's
       // next stroke — the autosave's freshness guarantee doesn't need it.
       if (!options?.skipPaintFlush) await requestPhysicPaintFlush();
+      const serializeStartedAtMs = performance.now();
       const documents = buildEfxPaintDocuments();
       await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {
         const result = await ipcProjectSave({
@@ -756,6 +759,13 @@ export const projectStore = {
           efx_paint_documents: persistedDocuments,
         }, currentFilePath, cacheTransactionId);
         if (!result.ok) throw new Error(result.error);
+      });
+      recordPhysicsPaintPerformance({
+        stage: 'persist.serialize',
+        category: 'async-elapsed',
+        durationMs: performance.now() - serializeStartedAtMs,
+        timestamp: performance.now(),
+        branch: options?.skipPaintFlush === true ? 'autosave' : 'manual',
       });
       if (!options?.deferScriptAuthority && !scriptLibraryAuthority.peek()) await bindScriptLibraryAuthority(currentFilePath);
       isDirty.value = false;
@@ -768,6 +778,13 @@ export const projectStore = {
       });
       await setLastProjectPath(currentFilePath);
     } finally {
+      recordPhysicsPaintPerformance({
+        stage: 'persist.total',
+        category: 'async-elapsed',
+        durationMs: performance.now() - saveStartedAtMs,
+        timestamp: performance.now(),
+        branch: options?.skipPaintFlush === true ? 'autosave' : 'manual',
+      });
       isSaving.value = false;
     }
   },

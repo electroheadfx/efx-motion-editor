@@ -30,6 +30,8 @@ export class FrameLru {
   private readonly entries = new Map<string, FrameLruEntry>();
   private totalBytes = 0;
   private clock = 0;
+  private capacityEvictionTotal = 0;
+  private explicitEvictionTotal = 0;
 
   constructor(private readonly byteCeiling: number = FRAME_LRU_BYTE_CEILING) {}
 
@@ -83,12 +85,28 @@ export class FrameLru {
     if (!entry) return;
     this.entries.delete(key);
     this.totalBytes -= entry.byteSize;
+    this.explicitEvictionTotal += 1;
     entry.bitmap.close();
   }
 
   /** Current decoded byte total (diagnostics). */
   get byteTotal(): number {
     return this.totalBytes;
+  }
+
+  /** Live entry count (diagnostics). */
+  get entryCount(): number {
+    return this.entries.size;
+  }
+
+  /** Evictions caused by byte-ceiling pressure in `evictIfNeeded` (diagnostics). */
+  get capacityEvictionCount(): number {
+    return this.capacityEvictionTotal;
+  }
+
+  /** Entries closed by an explicit `evict()` call (diagnostics). */
+  get explicitEvictionCount(): number {
+    return this.explicitEvictionTotal;
   }
 
   /** Evict every entry, closing each bitmap (reset/teardown). */
@@ -110,6 +128,7 @@ export class FrameLru {
       if (!victim) break; // every entry is pinned — nothing evictable
       this.entries.delete(victim.key);
       this.totalBytes -= victim.byteSize;
+      this.capacityEvictionTotal += 1;
       victim.bitmap.close();
     }
   }

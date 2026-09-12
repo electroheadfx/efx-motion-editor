@@ -13,6 +13,7 @@ type AnyVNode = VNode<Record<string, any>>;
 
 const performanceMocks = vi.hoisted(() => ({
   recordCounter: vi.fn(),
+  recordDecode: vi.fn(),
 }));
 
 let runtime = new PreactHookRuntime();
@@ -31,6 +32,7 @@ vi.mock('@efxlab/efx-physic-paint/preact', () => ({
 
 vi.mock('../performance/physicsPaintPerformanceTrace', () => ({
   recordPhysicsPaintPerformanceCounter: performanceMocks.recordCounter,
+  recordPhysicsPaintDecodeSample: performanceMocks.recordDecode,
 }));
 
 import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';

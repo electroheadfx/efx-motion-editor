@@ -5,6 +5,7 @@ import { toUint8Array } from '../../../lib/webpFrameCodec';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
+import { recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 
 /** sessionStorage key for the crash-recovery document checkpoint (survives reload). */
 export const PHYSIC_PAINT_SESSION_DOCUMENT_KEY = 'efx-paint-session-document';
@@ -97,8 +98,22 @@ export async function sendEfxPaintDocumentSync(
     // 52.1 (D-05): emitTo serializes as JSON, turning the document's real-key
     // `bytes` (Uint8Array) into index objects. Convert bytes -> base64 so the
     // main-window parser sees the canonical string form.
+    const encodeStartedAtMs = performance.now();
     const encoded = toTransportPayload(payload);
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.docSyncEncode',
+      category: 'sync-cpu',
+      durationMs: performance.now() - encodeStartedAtMs,
+      timestamp: performance.now(),
+    });
+    const emitStartedAtMs = performance.now();
     await eventApi.emitTo('main', PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, encoded);
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.docSyncEmit',
+      category: 'async-elapsed',
+      durationMs: performance.now() - emitStartedAtMs,
+      timestamp: performance.now(),
+    });
     return;
   }
   if (bridgeMode === 'Browser fallback') {
@@ -152,8 +167,22 @@ export async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPaylo
     // 52.1 (D-05): emitTo serializes as JSON, which turns Uint8Array frame
     // bytes into index objects. Convert bytes -> base64 so the parent-side
     // validators see the canonical string form instead of a corrupted array.
+    const encodeStartedAtMs = performance.now();
     const encoded = toTransportPayload(payload);
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.applyEncode',
+      category: 'sync-cpu',
+      durationMs: performance.now() - encodeStartedAtMs,
+      timestamp: performance.now(),
+    });
+    const emitStartedAtMs = performance.now();
     await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, encoded);
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.applyEmit',
+      category: 'async-elapsed',
+      durationMs: performance.now() - emitStartedAtMs,
+      timestamp: performance.now(),
+    });
     return;
   }
 

@@ -582,7 +582,11 @@ export function PhysicsPaintStudio() {
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
+      const propagationStartedAtMs = performance.now();
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+      requestAnimationFrame(() => {
+        recordPhysicsPaintPerformance({ stage: 'studio.startFramePropagation', category: 'async-elapsed', durationMs: performance.now() - propagationStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
+      });
     });
   }, [rotoUiFlushScheduler, setLaunchContext]);
   const handleRequestSoleOccurrenceDeleteWarning = useCallback((target: SoleOccurrenceDeleteTarget) => {
@@ -1664,7 +1668,10 @@ export function PhysicsPaintStudio() {
     // 52.1-04 (D-10): neighbor prewarm on playhead advance — decode N+1, N+2,
     // N-1 into the single 512 MB LRU so scrub cold-misses are covered (D-03).
     prefetchNeighbors: (appFrame) => {
-      if (launchContext) prefetchNeighborFrames(launchContext.layerId, appFrame);
+      if (!launchContext) return;
+      const prefetchStartedAtMs = performance.now();
+      prefetchNeighborFrames(launchContext.layerId, appFrame);
+      recordPhysicsPaintPerformance({ stage: 'nav.prefetchNeighbors', category: 'sync-cpu', durationMs: performance.now() - prefetchStartedAtMs, timestamp: performance.now(), sourceFrame: appFrame });
     },
     keyUtilities: {
       currentFrame,
@@ -2266,6 +2273,10 @@ export function PhysicsPaintStudio() {
   }, [engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
+    const navigationSyncStartedAtMs = performance.now();
+    const destinationKind = launchContext
+      ? physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind ?? 'none'
+      : 'no-launch';
     // A new navigation resets the status capsule: the previous operation's
     // rejection/success text no longer applies once the playhead moves, so the
     // capsule falls back to the ambient frame context ("Empty frame • Frame N").
@@ -2292,22 +2303,29 @@ export function PhysicsPaintStudio() {
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
+      const flushFinalizationsStartedAtMs = performance.now();
       engine?.flushPendingStrokeFinalizations();
+      recordPhysicsPaintPerformance({ stage: 'nav.flushStrokeFinalizations', category: 'sync-cpu', durationMs: performance.now() - flushFinalizationsStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       // 52.1 (paint-loss fix + scrub regression): snapshot the live canvas
       // SYNCHRONOUSLY before engine.clear() so the flush's produce (which runs
       // on the microtask) reuses this copy instead of re-reading the cleared
       // canvas. The canvas paint below stays in the navigation intent tick —
       // it must NOT block on the flush's encode + parent push, or the scrub
       // release settle stalls (the "image scrub no work" regression).
+      const snapshotStartedAtMs = performance.now();
       rotoPersistence.snapshotLivePixels(currentFrame);
+      recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
       setCachedRotoReferenceUrl(null);
+      const clearAndLoadStartedAtMs = performance.now();
       if (engine) {
         (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
         (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       }
+      recordPhysicsPaintPerformance({ stage: 'nav.engineClearLoad', category: 'sync-cpu', durationMs: performance.now() - clearAndLoadStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
+      recordPhysicsPaintPerformance({ stage: 'nav.preAwait', category: 'sync-cpu', durationMs: performance.now() - navigationSyncStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
       try {
         await flushPromise;
       } catch {
@@ -2326,11 +2344,13 @@ export function PhysicsPaintStudio() {
       // 47 close-out UAT round 9: read the LIVE active track — after a track
       // switch the launch snapshot still points at the previous track.
       if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind === 'generated') {
+        const postFlushRepaintStartedAtMs = performance.now();
         setCachedRotoReferenceUrl(null);
         (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
         (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        recordPhysicsPaintPerformance({ stage: 'nav.postFlushRepaint', category: 'sync-cpu', durationMs: performance.now() - postFlushRepaintStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       }
     }
     // 38.1 D-04: the startFrame update — the full-Studio-render driver via
@@ -2338,7 +2358,9 @@ export function PhysicsPaintStudio() {
     // Studio render per animation frame showing the LATEST frame.
     scheduleRotoStartFramePropagation(frame);
     pendingFrameSyncRef.current = frame;
+    const frameSyncStartedAtMs = performance.now();
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
+    recordPhysicsPaintPerformance({ stage: 'nav.frameSync', category: 'async-elapsed', durationMs: performance.now() - frameSyncStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
     // 260902-cfa (D-02): the single audio funnel for the seek path — active →
     // re-anchor + playAtCursor full audio seek-restart at the new cursor;
     // idle → positionedAt silent re-anchor. D-02 amendment: while the ruler
@@ -3802,6 +3824,7 @@ export function PhysicsPaintStudio() {
   }
   const documentSyncPushGuard = documentSyncPushGuardRef.current;
   const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback'): Promise<void> | null => {
+    const pushStartedAtMs = performance.now();
     const document = documentSyncPushGuard.evaluate(
       () => {
         try {
@@ -3812,6 +3835,12 @@ export function PhysicsPaintStudio() {
       },
       () => efxPaintVersion.peek(),
     );
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.docSyncSerialize',
+      category: 'sync-cpu',
+      durationMs: performance.now() - pushStartedAtMs,
+      timestamp: performance.now(),
+    });
     if (!document) return null;
     // 49-06 (UAT round 11): carry the runtime background source bytes to the
     // main window — ITS registry is only hydrated at project load, so a clip
@@ -3830,17 +3859,31 @@ export function PhysicsPaintStudio() {
     // child when the window goes black. sessionStorage survives the reload, so
     // the Studio rehydrates from THIS document instead of the stale launch
     // context — the session survives (bounded by the push debounce).
+    const checkpointStartedAtMs = performance.now();
     try {
       sessionStorage.setItem(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(document));
     } catch {
       // Quota exceeded — the launch-context fallback still applies on reload.
     }
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.docSyncCheckpoint',
+      category: 'sync-cpu',
+      durationMs: performance.now() - checkpointStartedAtMs,
+      timestamp: performance.now(),
+    });
     return sendEfxPaintDocumentSync(
       document,
       mode,
       Object.keys(backgroundSources).length > 0 ? backgroundSources : undefined,
     ).catch((error) => {
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
+    }).finally(() => {
+      recordPhysicsPaintPerformance({
+        stage: 'bridge.docSyncTotal',
+        category: 'async-elapsed',
+        durationMs: performance.now() - pushStartedAtMs,
+        timestamp: performance.now(),
+      });
     });
   };
   // 52.1 (gesture-idle scheduler): STRUCTURAL mutations only SET a dirty flag;

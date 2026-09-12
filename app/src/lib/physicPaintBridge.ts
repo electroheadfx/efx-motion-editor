@@ -4,6 +4,7 @@ import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { fromTransportPayload, toTransportPayload } from './webpBytes';
+import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import {
@@ -2957,7 +2958,17 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
     try {
       const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
       const unlisten = await eventApi.listen?.(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, (event) => {
-        applyDocument(event.payload);
+        const receiveStartedAtMs = performance.now();
+        try {
+          applyDocument(event.payload);
+        } finally {
+          recordPhysicsPaintPerformance({
+            stage: 'bridge.docReceive',
+            category: 'sync-cpu',
+            durationMs: performance.now() - receiveStartedAtMs,
+            timestamp: performance.now(),
+          });
+        }
       });
       if (unlisten) return unlisten;
     } catch (error) {

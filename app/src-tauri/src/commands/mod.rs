@@ -1,4 +1,5 @@
 pub mod config;
+pub mod debug_capture;
 pub mod export;
 pub mod frame_codec;
 pub mod image;

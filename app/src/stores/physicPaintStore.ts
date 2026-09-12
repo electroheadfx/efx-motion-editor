@@ -7,7 +7,7 @@ import { frameLru } from '../lib/frameLru';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
-import { type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
+import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
 // efxPaintStore document registry. The efxPaintStore ↔ physicPaintStore import
@@ -1114,12 +1114,23 @@ function _getOrCreateCompositorMemo<K, V>(outer: Map<string, EfxPaintKeyedMemo<K
  * bridge, never stored (D-13).
  */
 
+/** True while `prefetchNeighborFrames` runs — attributes decode telemetry. */
+let _decodeOriginIsPrefetch = false;
+
 function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   const token = buildFrameBytesToken(bytes);
   const cached = frameLru.get(token);
-  if (cached) return cached;
-  if (_compositorDecodeLoading.has(token)) return null;
+  if (cached) {
+    recordPhysicsPaintPerformanceCounter('decode.lruHit');
+    return cached;
+  }
+  if (_compositorDecodeLoading.has(token)) {
+    recordPhysicsPaintPerformanceCounter('decode.inflightSkip');
+    return null;
+  }
   _compositorDecodeLoading.add(token);
+  recordPhysicsPaintPerformanceCounter('decode.lruMiss');
+  const decodeOrigin: 'draw' | 'prefetch' = _decodeOriginIsPrefetch ? 'prefetch' : 'draw';
   const promise = (async (): Promise<ImageBitmap | null> => {
     try {
       // Two-format law: real keys are VP8L (Rust codec); display-only derived
@@ -1128,12 +1139,13 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
       const isWebp = bytes.length >= 16
         && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x4c;
       const bitmap = isWebp
-        ? await _decodeWebpToBitmap(bytes)
-        : await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }));
+        ? await _decodeWebpToBitmap(bytes, decodeOrigin)
+        : await _decodePngBytesToBitmap(bytes, decodeOrigin);
       frameLru.put(token, bitmap, bitmap.width, bitmap.height);
       return bitmap;
     } catch {
       // Decode failed — leave the token uncached so a later query retries.
+      recordPhysicsPaintPerformanceCounter('decode.fail');
       return null;
     } finally {
       _compositorDecodeLoading.delete(token);
@@ -1145,8 +1157,17 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   return null;
 }
 
-async function _decodeWebpToBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
-  const { width, height, rgba } = await decodeWebpFrame({ bytes });
+async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
+  // Telemetry (stall diagnosis): the JS-observed invoke wall time covers the
+  // request-body handoff + codec + Rust base64 encode + response JSON string
+  // transfer + JS parse; codecMs isolates the pure codec. The convert step is
+  // the base64 decode (rgba arrives as Uint8Array) + the ImageData view; bitmap
+  // covers the premultiplied upload.
+  const ipcStartedAt = performance.now();
+  const { width, height, rgba, codecMs } = await decodeWebpFrame({ bytes });
+  const ipcEndedAt = performance.now();
+  const rgbaIsJsonArray = Array.isArray(rgba);
+  const convertStartedAt = performance.now();
   const imageData = new ImageData(
     rgba instanceof Uint8Array
       ? new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.byteLength)
@@ -1154,6 +1175,7 @@ async function _decodeWebpToBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
     width,
     height,
   );
+  const convertEndedAt = performance.now();
   // 52.1 (washed-out regression): premultiply AT bitmap creation. drawImage
   // only ever consumes premultiplied data, and WKWebView draws a
   // straight-alpha-flagged ('none') bitmap AS IF premultiplied — every
@@ -1161,7 +1183,39 @@ async function _decodeWebpToBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
   // Hydrated keys escaped because they draw from rotoAlphaCanvasRegistry
   // canvases (browser-decoded blob, already premultiplied); a freshly applied
   // key misses the registry and lands here, so only its new strokes washed out.
-  return createImageBitmap(imageData, { premultiplyAlpha: 'premultiply' });
+  const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: 'premultiply' });
+  const bitmapEndedAt = performance.now();
+  recordPhysicsPaintDecodeSample({
+    path: 'webp',
+    origin,
+    ipcMs: ipcEndedAt - ipcStartedAt,
+    codecMs: typeof codecMs === 'number' ? codecMs : -1,
+    convertMs: convertEndedAt - convertStartedAt,
+    bitmapMs: bitmapEndedAt - convertEndedAt,
+    width,
+    height,
+    inputBytes: bytes.length,
+    rgbaIsJsonArray,
+  });
+  return bitmap;
+}
+
+async function _decodePngBytesToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
+  const startedAt = performance.now();
+  const bitmap = await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }));
+  recordPhysicsPaintDecodeSample({
+    path: 'png',
+    origin,
+    ipcMs: 0,
+    codecMs: -1,
+    convertMs: 0,
+    bitmapMs: performance.now() - startedAt,
+    width: bitmap.width,
+    height: bitmap.height,
+    inputBytes: bytes.length,
+    rgbaIsJsonArray: false,
+  });
+  return bitmap;
 }
 
 /**
@@ -1306,13 +1360,20 @@ function _resolveBackgroundSourceImage(sourceRef: string): ImageBitmap | null {
 export function prefetchNeighborFrames(layerId: string, appFrame: number): void {
   const efxDocument = getEfxPaintDocument(layerId);
   if (!efxDocument) return;
+  recordPhysicsPaintPerformanceCounter('prefetch.call');
   const participating = participatingPaintTracks(efxDocument);
-  for (const offset of [-1, 1, 2]) {
-    const targetFrame = appFrame + offset;
-    if (targetFrame < 0) continue;
-    for (const track of participating) {
-      _preResolveTrackContent(layerId, track.id, targetFrame);
+  const previousOrigin = _decodeOriginIsPrefetch;
+  _decodeOriginIsPrefetch = true;
+  try {
+    for (const offset of [-1, 1, 2]) {
+      const targetFrame = appFrame + offset;
+      if (targetFrame < 0) continue;
+      for (const track of participating) {
+        _preResolveTrackContent(layerId, track.id, targetFrame);
+      }
     }
+  } finally {
+    _decodeOriginIsPrefetch = previousOrigin;
   }
 }
 
@@ -1817,9 +1878,11 @@ function _regenerateGeneratedRotoCache(layerId: string, trackId: string, setting
     const targetDisplayOccupiedByRealKey = Array.from(metadata.values()).some((frame) => frame.source === 'real-key' && (frame.displayFrame ?? frame.appFrame) === targetFrame);
     if (targetDisplayOccupiedByRealKey) continue;
     _removeBackgroundOnlyRotoSupport(layerId, trackId, [targetFrame]);
+    const enumerateRenderStartedAtMs = performance.now();
     const rendered = settings.mode === 'duplicate'
       ? renderDuplicateRotoInterpolationFrame(from, targetFrame, settings)
       : renderBlendedRotoInterpolationFrame(from, to, targetFrame, displayEntry.t, settings);
+    recordPhysicsPaintPerformance({ stage: 'generated.renderEnumerate', category: 'sync-cpu', durationMs: performance.now() - enumerateRenderStartedAtMs, timestamp: performance.now(), sourceFrame: targetFrame });
     if (!rendered) throw new Error('Generated Roto alpha sources are unavailable.');
     const generatedFrame = {
       ...rendered,
@@ -1856,12 +1919,23 @@ function _getOrRenderGeneratedRotoFrame(
 ): PhysicPaintRenderedFrame | null {
   const cached = _generatedRenderSourceCache.get(cacheRevision);
   if (cached) {
+    recordPhysicsPaintPerformanceCounter('generated.cacheHit');
     return cached;
   }
+  recordPhysicsPaintPerformanceCounter('generated.cacheMiss');
   const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode };
+  const renderStartedAtMs = performance.now();
   const rendered = mode === 'duplicate'
     ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
     : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, t, settings);
+  recordPhysicsPaintPerformance({
+    stage: 'generated.render',
+    category: 'sync-cpu',
+    durationMs: performance.now() - renderStartedAtMs,
+    timestamp: performance.now(),
+    sourceFrame: appFrame,
+    branch: mode,
+  });
   if (!rendered) {
     return null;
   }

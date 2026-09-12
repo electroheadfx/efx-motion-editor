@@ -11,6 +11,7 @@ pub use services::physic_paint_cache;
 pub mod script_library_test_support;
 
 use commands::config;
+use commands::debug_capture;
 use commands::export;
 use commands::frame_codec as frame_codec_commands;
 use commands::image;
@@ -831,6 +832,7 @@ pub fn run() {
             physic_paint_cache_commands::hardlink_physic_paint_cache_frames,
             frame_codec_commands::encode_webp_frame,
             frame_codec_commands::decode_webp_frame,
+            debug_capture::write_debug_capture,
             config::config_get_theme,
             config::config_set_theme,
             config::config_get_canvas_bg,
