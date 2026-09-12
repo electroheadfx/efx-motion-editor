@@ -10,7 +10,11 @@ import {
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
-import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, PhotoReferenceTrack } from '../efx-paint/document/efxPaintDocument';
+import type { FrameMediaReference } from '../lib/efxPaintPackage';
+import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
+import type { PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { PhysicPaintRotoMediaProjectionError } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { deriveEfxPaintBackgroundResolution, resolveEfxPaintBackgroundFrame } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
@@ -263,6 +267,237 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
     hydrateRuntimeFromDocument(projected, new Map([[TEST_TRACK_ID, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID)]]));
     expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
+  });
+});
+
+describe('serializeRuntimeIntoDocument media projection (52.2-06 Task 2)', () => {
+  const TEST_LAYER = 'layer-L';
+
+  const mediaRef = (keyId: string, digestCharacter = 'a'): FrameMediaReference => ({
+    relativePath: buildFrameMediaRelativePath(TEST_LAYER, keyId),
+    digest: digestCharacter.repeat(64),
+    width: 10,
+    height: 10,
+  });
+
+  const resolverFor = (entries: ReadonlyArray<readonly [string, FrameMediaReference]>) => {
+    const byKeyId = new Map(entries);
+    return (keyId: string) => byKeyId.get(keyId);
+  };
+
+  const payloadKeys = (payload: object) => Object.keys(payload).sort();
+  const PROJECTED_KEYS = ['appFrame', 'frameIndex', 'height', 'media', 'width'];
+
+  /** A canonical finite Group: one override is valid only when a loop clip references it. */
+  const groupLoopClip = {
+    loopId: 'loop-phase',
+    placementStart: 10,
+    sourceKeyIds: ['key-1', 'key-2'],
+    repeat: 3,
+    mode: 'progressive' as const,
+    syncState: 'modified' as const,
+    provenanceState: 'attached' as const,
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: [{ start: 10, endExclusive: 16 }],
+    frameOverrides: [{ appFrame: 11, keyId: 'override-phase-1' }],
+  };
+
+  function seedRoto(
+    realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    options: { groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[]; loopClips?: readonly unknown[] } = {},
+  ): void {
+    const groupOverrideRecords = options.groupOverrideRecords ?? [];
+    const loopClips = (options.loopClips ?? []) as never;
+    const result = physicPaintStore.replaceRotoPhysicalDocument(TEST_LAYER, TEST_TRACK_ID, {
+      capacity: 32,
+      realKeyRecords,
+      groupOverrideRecords,
+      interpolation: PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+      scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        realKeyRecords,
+        PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+        loopClips,
+        [],
+        groupOverrideRecords,
+      ),
+    });
+    expect(result.ok).toBe(true);
+  }
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setEfxPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    reset();
+  });
+
+  it('serializes every real key with a media reference and no raster payload, and the plan-02 parser accepts it', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([
+      ['key-1', mediaRef('key-1')],
+      ['key-2', mediaRef('key-2', 'b')],
+    ]));
+
+    const records = projected.tracks[0].rotoPhysical!.realKeyRecords;
+    expect(records.map((record) => record.keyId)).toEqual(['key-1', 'key-2']);
+    expect(payloadKeys(records[0].payload)).toEqual(PROJECTED_KEYS);
+    expect('bytes' in records[0].payload).toBe(false);
+    expect(records[0].payload.media?.relativePath).toBe('frames/layer-L/key-1.webp');
+    expect(records[0].payload.media?.digest).toBe('a'.repeat(64));
+    expect(records[1].payload.media?.digest).toBe('b'.repeat(64));
+    // The contract that matters: the on-disk door parses the produced document.
+    expect(() => parseEfxPaintDocument(projected, 'reference-only')).not.toThrow();
+  });
+
+  it('projects BOTH roto collections: groupOverrideRecords carries media and neither collection carries a raster payload', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)], {
+      groupOverrideRecords: [rotoRecord('override-phase-1', 11)],
+      loopClips: [groupLoopClip],
+    });
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([
+      ['key-1', mediaRef('key-1')],
+      ['key-2', mediaRef('key-2')],
+      ['override-phase-1', mediaRef('override-phase-1', 'c')],
+    ]));
+
+    const physical = projected.tracks[0].rotoPhysical!;
+    expect(physical.groupOverrideRecords?.map((record) => record.keyId)).toEqual(['override-phase-1']);
+    expect(payloadKeys(physical.groupOverrideRecords![0].payload)).toEqual(PROJECTED_KEYS);
+    expect(physical.groupOverrideRecords![0].payload.media?.relativePath).toBe('frames/layer-L/override-phase-1.webp');
+    expect(physical.realKeyRecords.every((record) => !('bytes' in record.payload))).toBe(true);
+    expect(physical.groupOverrideRecords!.every((record) => !('bytes' in record.payload))).toBe(true);
+    expect(() => parseEfxPaintDocument(projected, 'reference-only')).not.toThrow();
+  });
+
+  it('fails the serialize with the typed failure naming an unresolved real key', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)]);
+    const resolve = resolverFor([['key-1', mediaRef('key-1')]]);
+
+    expect(() => serializeRuntimeIntoDocument(TEST_LAYER, resolve)).toThrow(/key-2/);
+    let caught: unknown;
+    try {
+      serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(PhysicPaintRotoMediaProjectionError);
+    expect((caught as PhysicPaintRotoMediaProjectionError).failure).toEqual({
+      kind: 'unresolved-media-reference',
+      keyId: 'key-2',
+    });
+  });
+
+  it('fails the serialize with the typed failure naming an unresolved group override keyId', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)], {
+      groupOverrideRecords: [rotoRecord('override-phase-1', 11)],
+      loopClips: [groupLoopClip],
+    });
+    const resolve = resolverFor([['key-1', mediaRef('key-1')], ['key-2', mediaRef('key-2')]]);
+
+    expect(() => serializeRuntimeIntoDocument(TEST_LAYER, resolve)).toThrow(/override-phase-1/);
+  });
+
+  it('computes the persisted revision from the projected records, not from the runtime payload bytes', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([
+      ['key-1', mediaRef('key-1')],
+      ['key-2', mediaRef('key-2')],
+    ]));
+
+    const physical = projected.tracks[0].rotoPhysical!;
+    const projectedRevision = buildPhysicPaintRotoPhysicalRevision(
+      physical.realKeyRecords,
+      physical.interpolation,
+      physical.loopClips,
+      physical.incomingInterpolationBreakKeyIds,
+      physical.groupOverrideRecords,
+    );
+    const runtimeRevision = buildPhysicPaintRotoPhysicalRevision(
+      [rotoRecord('key-1', 0), rotoRecord('key-2', 3)],
+      PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+      PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+      PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+      [],
+    );
+    expect(physical.revision).toBe(projectedRevision);
+    expect(physical.revision).not.toBe(runtimeRevision);
+  });
+
+  it('leaves keys with no raster at all untouched and never calls the resolver for an empty layer', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    const resolve = vi.fn(() => undefined);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+
+    expect(projected.tracks[0].rotoPhysical).toBeNull();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('copies both sourceFrameRefs arrays verbatim for a layer carrying a loop clip and a photo reference (D-06 Law-1)', () => {
+    const base = makeTrackDocument(TEST_LAYER);
+    const loopClip: FrameLoopClip = {
+      id: 'loop-hold-1',
+      startFrame: 0,
+      sourceFrameRefs: ['key-1', 'key-2'],
+      repeat: { mode: 'infinite' },
+      sourceKind: 'playscript-hold',
+      revision: 0,
+    };
+    const photoReference: PhotoReferenceTrack = {
+      id: 'ref-1',
+      sourceFrameRefs: ['img-a', 'img-b'],
+      revision: 0,
+      visibleInStudio: true,
+      opacity: 1,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: false,
+    };
+    registerDocument({ ...base, tracks: [{ ...base.tracks[0], loopClips: [loopClip] }], photoReference });
+    seedRoto([rotoRecord('key-1', 0)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([['key-1', mediaRef('key-1')]]));
+
+    expect(projected.tracks[0].loopClips[0].sourceFrameRefs).toEqual(['key-1', 'key-2']);
+    expect(projected.photoReference?.sourceFrameRefs).toEqual(['img-a', 'img-b']);
+    expect(payloadKeys(projected.tracks[0].rotoPhysical!.realKeyRecords[0].payload)).toEqual(PROJECTED_KEYS);
+  });
+
+  it('serializes twice without a runtime change into equal documents (determinism)', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0)]);
+    const resolve = resolverFor([['key-1', mediaRef('key-1')]]);
+
+    const first = serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+    const second = serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+
+    expect(second).toEqual(first);
+    expect(second.documentRevision).toBe(first.documentRevision);
+  });
+
+  it('without a resolver keeps the live bytes-carrying records (Studio live-push path unchanged)', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER);
+
+    const payload = projected.tracks[0].rotoPhysical!.realKeyRecords[0].payload;
+    expect(payload.bytes).toBeInstanceOf(Uint8Array);
+    expect('media' in payload).toBe(false);
   });
 });
 
