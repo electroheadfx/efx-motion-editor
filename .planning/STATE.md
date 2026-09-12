@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-07-PLAN.md
-last_updated: "2026-09-12T17:07:03.675Z"
+stopped_at: Completed 52.2-08-PLAN.md
+last_updated: "2026-09-12T17:27:29.185Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: e6360cb51b3b0c926ddaea91ec758df683cf9a74
+state_head: eee2ca26a4affb482fee290a407ff91bf8a7281b
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 56
+  completed_plans: 57
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 8 of 16
+Plan: 9 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -115,6 +115,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P05 | 25min | 3 tasks | 9 files |
 | Phase 52.2 P06 | 11min | 3 tasks | 8 files |
 | Phase 52.2 P07 | 54min | 3 tasks | 13 files |
+| Phase 52.2 P08 | ~45min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -285,6 +286,10 @@ Recent decisions affecting current work:
 - [Phase 52.2]: The staged media path joins the bound set: the publish set IS the bound set, so no reference can outlive its bytes (T-52.2-21)
 - [Phase 52.2]: An empty change set returns without touching the package but still runs the derived-frame cache leg — a repaint moves frames without moving document tokens (D-11/D-14)
 - [Phase 52.2]: Both save call sites pass project + path only; the dead cache transaction id parameter is scheduled for removal in plan 09 Task 1
+- [Phase 52.2]: 52.2-08: the refusal gate keys on formatVersion with four terminal reasons in fixed precedence (not-a-package-manifest → old-project-layout → missing-format-version → unsupported-format-version{found,required}); all four render the identical blocking no-recourse dialog; the openProject call site passes pathKind:'directory'
+- [Phase 52.2]: 52.2-08: the Rust MceProject had to declare formatVersion/projectId/efxPaint in the same task as the carrier deletion — serde drops undeclared keys, so without them plan 07's manifest would lose all three on every save
+- [Phase 52.2]: 52.2-08: efx_paint_documents is kept in both models and in openProject's read (unreachable behind the gate) — plan 09 Task 2 deletes it together with wiring the layers/<layerId>.json reader; app/src/lib/ipc.ts joined the frame-transport allowlist because base64ToBytes is the package media read leg plan 09 depends on
+- [Phase 52.2]: 52.2-08: the rescue converter emits empty documentRevision/compositeRevision (the codebase's 'recompute' sentinel — the canonical revisions need the app's parser graph) and drops pre-52.2 derived-frame cache refs (machine-local, D-14) rather than rewriting them
 
 ### Pending Todos
 
@@ -336,6 +341,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T17:06:53.101Z
-Stopped at: Completed 52.2-07-PLAN.md
+Last session: 2026-09-12T17:27:27.707Z
+Stopped at: Completed 52.2-08-PLAN.md
 Resume file: None
