@@ -24,6 +24,11 @@ const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 // ipc surface owns its whole transaction + cache-root resolution.
 const ipcResolvePhysicPaintCacheRoot = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+// quick-260913-05k: the package-IO boundary — the layer sub-file write/read
+// and the staging discard are app commands, not fs-plugin calls.
+const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
+const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
+const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
 const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
@@ -53,6 +58,9 @@ vi.mock('../lib/ipc', () => ({
   hardlinkPhysicPaintCacheFrames,
   resolvePhysicPaintCacheRoot: ipcResolvePhysicPaintCacheRoot,
   ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
+  ipcEfxPaintReadPackageLayerFile,
+  discardEfxPaintPackageStaging,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
   settleEfxPaintPackageTransaction,
@@ -110,17 +118,17 @@ const rotoRecord = (keyId: string, appFrame: number) => ({
 const MACHINE_CACHE_ROOT = '/machine/frame-cache/scratch-project';
 
 /**
- * The bytes the package save staged for one layer's sub-file (52.2-07 D-04/D-09:
- * the layer content lives in `layers/<layerId>.json`, never in the manifest).
+ * The document the package save staged for one layer's sub-file (52.2-07
+ * D-04/D-09: the layer content lives in `layers/<layerId>.json`, never in the
+ * manifest). Since quick-260913-05k the sub-file reaches the package through
+ * the Rust command wrapper, so the IPC arguments are the witness.
  */
 function stagedLayerDocument(layerId: string): Record<string, unknown> {
-  const suffix = `/layers/${layerId}.json`;
-  const writes = fsWriteFile.mock.calls as unknown as unknown[][];
-  const write = [...writes]
-    .reverse()
-    .find((call) => typeof call[0] === 'string' && (call[0] as string).endsWith(suffix));
-  if (write === undefined) throw new Error(`no staged write ends with ${suffix}`);
-  return JSON.parse(new TextDecoder().decode(write[1] as Uint8Array)) as Record<string, unknown>;
+  const layerFile = `layers/${layerId}.json`;
+  const writes = ipcEfxPaintWritePackageLayerFile.mock.calls as unknown as [string, string, string, string][];
+  const write = [...writes].reverse().find((call) => call[2] === layerFile);
+  if (write === undefined) throw new Error(`no staged write for ${layerFile}`);
+  return JSON.parse(write[3]) as Record<string, unknown>;
 }
 
 /**
@@ -131,11 +139,17 @@ function stagedLayerDocument(layerId: string): Record<string, unknown> {
 function installPackageSaveMocks(): void {
   ipcResolvePhysicPaintCacheRoot.mockReset();
   ipcEfxPaintWriteFrameMedia.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockReset();
+  ipcEfxPaintReadPackageLayerFile.mockReset();
+  discardEfxPaintPackageStaging.mockReset();
   bindEfxPaintPackageTransaction.mockReset();
   publishEfxPaintPackageTransaction.mockReset();
   settleEfxPaintPackageTransaction.mockReset();
   hardlinkPhysicPaintCacheFrames.mockReset();
   ipcResolvePhysicPaintCacheRoot.mockResolvedValue({ ok: true, data: MACHINE_CACHE_ROOT });
+  ipcEfxPaintWritePackageLayerFile.mockResolvedValue({ ok: true, data: null });
+  ipcEfxPaintReadPackageLayerFile.mockResolvedValue({ ok: false, error: { kind: 'missing' } });
+  discardEfxPaintPackageStaging.mockResolvedValue({ ok: true, data: null });
   ipcEfxPaintWriteFrameMedia.mockImplementation(
     async (_packageDir: string, layerId: string, keyId: string, bytes: Uint8Array) => ({
       ok: true,

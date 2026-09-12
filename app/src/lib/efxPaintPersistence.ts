@@ -12,9 +12,20 @@
  * emitted file carries an image payload or a machine-local path (Law 1, D-05,
  * D-07).
  *
+ * quick-260913-05k: every PACKAGE file operation here — staging-root
+ * creation, the `layers/<layerId>.json` write, the staging discard and the
+ * layer read — goes through an app-defined Rust command. The fs plugin's scope
+ * covers appdata only, so driving a package path through it failed with
+ * `forbidden path: …/.efx-paint-package-staging-<uuid>`; app commands carry no
+ * capability scope. The contract scan in
+ * `app/src/efx-paint/efxPaintPackageIoBoundary.test.ts` fails closed on any
+ * renderer plugin-fs call outside the machine-cache functions below.
+ *
  * A second, MACHINE-LOCAL and best-effort leg stages derived-frame sidecars
  * under `<app_data_dir>/frame-cache/<projectId>` (D-05, D-14). It never rides
- * the authoritative transaction and a cache failure never fails the save.
+ * the authoritative transaction and a cache failure never fails the save. It
+ * is the ONLY plugin-fs surface left in this module: its paths are under the
+ * appdata root, which the capability grants (`fs:scope-appdata-recursive`).
  * IMMUTABILITY LAW (52.1 a2): canonical sidecars under `<cache root>/efx-paint/`
  * are NEVER written in place. They are replaced only by the native atomic
  * directory swap (`publish_physic_paint_cache_generation`). Incremental
@@ -31,7 +42,7 @@
  * ASVS V12).
  */
 
-import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import {
@@ -56,8 +67,11 @@ import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/ph
 import type { MceProject } from '../types/project';
 import {
   bindEfxPaintPackageTransaction,
+  discardEfxPaintPackageStaging,
   hardlinkPhysicPaintCacheFrames,
+  ipcEfxPaintReadPackageLayerFile,
   ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
   projectSave as ipcProjectSave,
   publishEfxPaintPackageTransaction,
   publishPhysicPaintCacheGeneration,
@@ -404,10 +418,13 @@ interface PreparedPackageLayer {
 }
 
 /**
- * A per-key media write the native command refused (D-13). The failure CLASS
+ * A staged package write the native command refused (D-13). The failure CLASS
  * is preserved — `missing` is the Phase 49 slate path, `refused` fails closed,
- * `io` covers everything else — and the layer/key pair is carried, so a caller
- * can route and name the refusal without re-deriving which record it was.
+ * `io` covers everything else — and the layer/record pair is carried, so a
+ * caller can route and name the refusal without re-deriving which record it
+ * was. `keyId` names the record: a key identity for a frame media write
+ * (one keyId owns one media file), the layer sub-file path for the
+ * `layers/<layerId>.json` write (quick-260913-05k).
  */
 export class EfxPaintMediaWriteError extends Error {
   readonly layerId: string;
@@ -415,7 +432,7 @@ export class EfxPaintMediaWriteError extends Error {
   readonly failure: EfxPaintMediaFailure;
 
   constructor(layerId: string, keyId: string, failure: EfxPaintMediaFailure) {
-    super(`EFX Paint frame media write failed for layer "${layerId}" key "${keyId}" (${failure.kind}).`);
+    super(`EFX Paint package write failed for layer "${layerId}" record "${keyId}" (${failure.kind}).`);
     this.name = 'EfxPaintMediaWriteError';
     this.layerId = layerId;
     this.keyId = keyId;
@@ -1053,12 +1070,10 @@ export async function savePackage(
   let cacheLeg: PreparedEfxPaintCacheLeg | null = null;
 
   try {
-    // The staging ROOT is derived here from the package root the caller owns —
-    // never a destination root handed to Rust, whose own bind derives it from
-    // the package root anyway (T-52.2-14).
-    await mkdir(stagingRoot, { recursive: true });
-
-    let layersDirectoryEnsured = false;
+    // The staging ROOT is DERIVED IN RUST from the package root the caller
+    // owns — the renderer never supplies a destination root (T-52.2-14). It is
+    // provisioned by the first staged write (quick-260913-05k), so there is no
+    // renderer mkdir on the package path here.
     for (const layer of layers) {
       const layerChanged = changedTokens.has(layer.layerToken)
         || layer.frames.some((frame) => changedTokens.has(frame.token));
@@ -1094,15 +1109,14 @@ export async function savePackage(
       // complete for this layer by now, and a miss is the projection's typed
       // failure rather than a record without media.
       const layersStartedAtMs = performance.now();
-      if (!layersDirectoryEnsured) {
-        await mkdir(`${stagingRoot}/${EFX_PAINT_LAYERS_DIR}`, { recursive: true });
-        layersDirectoryEnsured = true;
-      }
       const projected = projectLayerDocument(layer.document, (keyId) => mediaRefs.get(keyId));
-      await writeFile(
-        `${stagingRoot}/${layer.layerFile}`,
-        new TextEncoder().encode(JSON.stringify(projected)),
+      const write = await ipcEfxPaintWritePackageLayerFile(
+        packageDir,
+        stagingBasename,
+        layer.layerFile,
+        JSON.stringify(projected),
       );
+      if (!write.ok) throw new EfxPaintMediaWriteError(layer.layerId, layer.layerFile, write.error);
       stagedPaths.push(layer.layerFile);
       metrics.layersMs += performance.now() - layersStartedAtMs;
     }
@@ -1131,7 +1145,10 @@ export async function savePackage(
     metrics.commitMs = performance.now() - commitStartedAtMs;
   } catch (error) {
     await settlePreparedEfxPaintCacheLeg(cacheRoot, cacheLeg, 'rollback');
-    await removeStagingGeneration(stagingRoot);
+    // The staged generation is discarded through its native command; a non-ok
+    // result is ignored exactly as the previous helper swallowed it, because
+    // canonical publication state is determined only by the transaction.
+    await discardEfxPaintPackageStaging(packageDir, stagingBasename);
     throw error;
   }
 
@@ -1229,14 +1246,20 @@ export async function loadEfxPaintPackage(
     ) {
       throw new Error(`EFX Paint package: layer "${layerId}" has an unsafe layer file path.`);
     }
-    const layerPath = `${input.packageDir}/${layerFile}`;
-    if (!(await exists(layerPath))) {
-      throw new Error(`EFX Paint package: layer "${layerId}" is missing its layer file "${layerFile}".`);
+    // The read is a native command (quick-260913-05k): plugin-fs cannot reach
+    // a package path. The two user-facing copies are unchanged — an absent
+    // sub-file keeps "missing", everything else "unreadable".
+    const read = await ipcEfxPaintReadPackageLayerFile(input.packageDir, layerFile);
+    if (!read.ok) {
+      throw new Error(
+        read.error.kind === 'missing'
+          ? `EFX Paint package: layer "${layerId}" is missing its layer file "${layerFile}".`
+          : `EFX Paint package: layer "${layerId}" has an unreadable layer file.`,
+      );
     }
-    const bytes = await readFile(layerPath);
     let value: unknown;
     try {
-      value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+      value = JSON.parse(read.data) as unknown;
     } catch {
       throw new Error(`EFX Paint package: layer "${layerId}" has an unreadable layer file.`);
     }

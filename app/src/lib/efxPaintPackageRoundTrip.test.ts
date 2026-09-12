@@ -27,6 +27,11 @@ import { testWebpBytes } from '../testUtils/testWebpBytes';
 const ipcProjectSave = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 const ipcEfxPaintReadFrameMedia = vi.hoisted(() => vi.fn());
+// quick-260913-05k: the package-IO boundary — the layer sub-file write/read
+// and the staging discard travel through app commands, never the fs plugin.
+const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
+const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
+const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
 const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
@@ -40,6 +45,9 @@ vi.mock('./ipc', () => ({
   projectSave: ipcProjectSave,
   ipcEfxPaintWriteFrameMedia,
   ipcEfxPaintReadFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
+  ipcEfxPaintReadPackageLayerFile,
+  discardEfxPaintPackageStaging,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
   settleEfxPaintPackageTransaction,
@@ -140,6 +148,27 @@ function installMocks(): void {
   ipcProjectSave.mockImplementation(async (project: unknown, path: string) => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, new TextEncoder().encode(JSON.stringify(project)));
+    return { ok: true, data: null };
+  });
+
+  // The Rust command wrappers over the same REAL temp dirs: the write
+  // provisions the staging tree, the read is the load leg's only access to a
+  // layer sub-file, and the discard removes the staged generation.
+  ipcEfxPaintWritePackageLayerFile.mockImplementation(
+    async (packageDir: string, stagingBasename: string, layerFile: string, contents: string) => {
+      const target = join(packageDir, stagingBasename, layerFile);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, new TextEncoder().encode(contents));
+      return { ok: true, data: null };
+    },
+  );
+  ipcEfxPaintReadPackageLayerFile.mockImplementation(async (packageDir: string, layerFile: string) => {
+    const target = join(packageDir, layerFile);
+    if (!existsSync(target)) return { ok: false, error: { kind: 'missing' } };
+    return { ok: true, data: readFileSync(target, 'utf8') };
+  });
+  discardEfxPaintPackageStaging.mockImplementation(async (packageDir: string, stagingBasename: string) => {
+    rmSync(join(packageDir, stagingBasename), { recursive: true, force: true });
     return { ok: true, data: null };
   });
 
@@ -354,10 +383,17 @@ describe('efxPaintPackageRoundTrip: the on-disk package contract (52.2-09, D-05/
     const layerText = new TextDecoder().decode(readPackageFile(fixture.root, buildLayerFileRelativePath(fixture.rotoLayerId)));
     expect(layerText).not.toContain(fixture.cacheRoot);
     expect(layerText).not.toContain(fixture.root);
-    // D-14: nothing reads a cache file. The only reads are layer sub-files.
+    // D-14: nothing reads a cache file, and the plugin-fs readFile is never
+    // reached on the open path at all (quick-260913-05k): the only reads are
+    // layer sub-files, through the Rust command wrapper.
     const readPaths = fsReadFile.mock.calls.map(([path]) => String(path));
-    expect(readPaths.every((path) => path.endsWith('.json'))).toBe(true);
-    expect(readPaths.some((path) => path.includes('/efx-paint/'))).toBe(false);
+    expect(readPaths).toEqual([]);
+    const layerReads = ipcEfxPaintReadPackageLayerFile.mock.calls as unknown as [string, string][];
+    expect(layerReads.length).toBeGreaterThan(0);
+    for (const [packageDir, layerFile] of layerReads) {
+      expect(packageDir).toBe(fixture.root);
+      expect(layerFile).toMatch(/^layers\/.+\.json$/);
+    }
   });
 
   it('treats an absent cache file as a non-error — the derived frame re-derives (D-14)', async () => {
@@ -450,13 +486,20 @@ describe('efxPaintPackageRoundTrip: the on-disk package contract (52.2-09, D-05/
     await saveFixture(fixture);
     const canonicalBefore = canonicalFilesOf(fixture.root);
     fsWriteFile.mockClear();
+    ipcEfxPaintWritePackageLayerFile.mockClear();
+    ipcEfxPaintWriteFrameMedia.mockClear();
+    ipcProjectSave.mockClear();
 
     const second = await saveFixture(fixture);
 
     // An EMPTY write list, not a reduced one (D-11): the change set is what is
-    // written, and a no-op save touches no disk at all.
+    // written, and a no-op save touches no disk at all — neither through the
+    // plugin-fs cache leg nor through any package-IO command.
     expect(second.changedFiles).toEqual([]);
     expect(fsWriteFile).not.toHaveBeenCalled();
+    expect(ipcEfxPaintWritePackageLayerFile).not.toHaveBeenCalled();
+    expect(ipcEfxPaintWriteFrameMedia).not.toHaveBeenCalled();
+    expect(ipcProjectSave).not.toHaveBeenCalled();
     expect(canonicalFilesOf(fixture.root)).toEqual(canonicalBefore);
 
     // Changing one key's bytes rewrites that media file and its sub-file, plus

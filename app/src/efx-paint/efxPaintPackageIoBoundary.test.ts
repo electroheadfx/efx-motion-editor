@@ -178,6 +178,16 @@ function callSites(scan: Scan, token: string): IdentifierCall[] {
   return sites;
 }
 
+/** Every line carrying the bare token, declaration included. */
+function occurrenceLines(scan: Scan, token: string): number[] {
+  const pattern = new RegExp(`\\b${token}\\b`, 'g');
+  const lines: number[] = [];
+  for (let index = 0; index < scan.lines.length; index += 1) {
+    if (pattern.test(scan.lines[index])) lines.push(index + 1);
+  }
+  return lines;
+}
+
 /** The names one module imports from the fs plugin (empty when it imports none). */
 function pluginFsImportNames(path: string): string[] {
   const source = stripComments(readFileSync(path, 'utf8')).join('\n');
@@ -222,10 +232,11 @@ describe('package-IO boundary contract (quick-260913-05k)', () => {
       'removeStagingGeneration may only be called from the machine-cache legs; the package leg discards '
         + 'its staging generation through discardEfxPaintPackageStaging. Offending sites:',
     ).toEqual([]);
+    const occurrences = occurrenceLines(scan, 'removeStagingGeneration');
     expect(
-      sites.length,
-      `removeStagingGeneration must occur exactly twice (its declaration plus one machine-cache call); `
-        + `found ${sites.length} call sites: ${sites.map(describeCall).join(', ')}`,
+      occurrences.length,
+      'removeStagingGeneration must occur exactly twice (its declaration plus one machine-cache '
+        + `call); found ${occurrences.length} occurrences on lines ${occurrences.join(', ')}`,
     ).toBe(2);
   });
 

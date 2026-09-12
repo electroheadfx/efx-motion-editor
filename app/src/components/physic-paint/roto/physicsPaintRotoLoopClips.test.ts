@@ -6,6 +6,11 @@ const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+// quick-260913-05k: the package-IO boundary — the layer sub-file write/read
+// and the staging discard are app commands, not fs-plugin calls.
+const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
+const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
+const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
 const projectSave = vi.hoisted(() => vi.fn());
 const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
@@ -49,6 +54,31 @@ function installPackageIpcMocks(): void {
   bindEfxPaintPackageTransaction.mockReset();
   publishEfxPaintPackageTransaction.mockReset();
   settleEfxPaintPackageTransaction.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockReset();
+  ipcEfxPaintReadPackageLayerFile.mockReset();
+  discardEfxPaintPackageStaging.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockImplementation(
+    async (packageDir: string, stagingBasename: string, layerFile: string, contents: string) => {
+      files.set(`${packageDir}/${stagingBasename}/${layerFile}`, new TextEncoder().encode(contents));
+      dirs.add(`${packageDir}/${stagingBasename}`);
+      return { ok: true, data: null };
+    },
+  );
+  ipcEfxPaintReadPackageLayerFile.mockImplementation(async (packageDir: string, layerFile: string) => {
+    const bytes = files.get(`${packageDir}/${layerFile}`);
+    if (bytes === undefined) return { ok: false, error: { kind: 'missing' } };
+    return { ok: true, data: new TextDecoder().decode(bytes) };
+  });
+  discardEfxPaintPackageStaging.mockImplementation(async (packageDir: string, stagingBasename: string) => {
+    const root = `${packageDir}/${stagingBasename}`;
+    for (const key of Array.from(files.keys())) {
+      if (key === root || key.startsWith(`${root}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === root || key.startsWith(`${root}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
   ipcEfxPaintWriteFrameMedia.mockImplementation(
     async (packageDir: string, layerId: string, keyId: string, bytes: Uint8Array, stagingBasename?: string) => {
       const relativePath = buildFrameMediaRelativePath(layerId, keyId);
@@ -102,6 +132,9 @@ vi.mock('../../../lib/ipc', () => ({
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
   ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
+  ipcEfxPaintReadPackageLayerFile,
+  discardEfxPaintPackageStaging,
   projectSave,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
