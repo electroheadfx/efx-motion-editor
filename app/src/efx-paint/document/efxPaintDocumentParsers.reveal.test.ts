@@ -119,3 +119,70 @@ describe('reveal rail record round-trip through the physical-level parser (52-02
     expect(() => parsePhysicPaintRotoPhysicalDocument(document)).toThrow();
   });
 });
+
+describe('reveal-baked key through the persisted door (52.2-02, D-01 / D-07)', () => {
+  const MEDIA_DIGEST = 'c'.repeat(64);
+
+  /**
+   * A reveal-BAKED real key (Phase 52 D-01): the reveal rail produced it by
+   * baking the reference into a real key, so it is an ORDINARY real key and its
+   * payload is an ordinary persisted media reference — no reveal-specific
+   * branch, no special case.
+   */
+  const bakedKey = (keyId: string, appFrame: number) => ({
+    kind: 'real-key' as const,
+    keyId,
+    appFrame,
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      media: { relativePath: `frames/layer-abc/${keyId}.webp`, digest: MEDIA_DIGEST, width: 10, height: 10 },
+    },
+  });
+
+  function persistedRotoDocument() {
+    const realKeyRecords = [bakedKey('k1', 0), bakedKey('k2', 3)];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const revision = buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, []);
+    return {
+      capacity: 600,
+      realKeyRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision,
+      incomingInterpolationBreakKeyIds: [],
+    };
+  }
+
+  function documentWithRoto(rotoPhysical: unknown): Record<string, unknown> {
+    const document = JSON.parse(JSON.stringify(createEfxPaintDocument('layer-abc'))) as Record<string, unknown> & {
+      tracks: Record<string, unknown>[];
+    };
+    document.tracks[0].rotoPhysical = rotoPhysical;
+    return document;
+  }
+
+  it('parses a baked key through the same media-reference path as any other real key', () => {
+    const parsed = parseEfxPaintDocument(documentWithRoto(persistedRotoDocument()), 'reference-only');
+    const records = parsed.tracks[0].rotoPhysical!.realKeyRecords;
+    expect(records).toHaveLength(2);
+    expect(records[0].payload.media).toEqual({
+      relativePath: 'frames/layer-abc/k1.webp',
+      digest: MEDIA_DIGEST,
+      width: 10,
+      height: 10,
+    });
+    expect(records[0].payload).not.toHaveProperty('bytes');
+    expect(records[1].appFrame).toBe(3);
+  });
+
+  it('refuses a baked key that still carries an inline raster payload in persisted mode (Law 1)', () => {
+    const leaked = { ...persistedRotoDocument(), realKeyRecords: [
+      { ...bakedKey('k1', 0), payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('baked'), width: 10, height: 10 } },
+    ] };
+    expect(() => parseEfxPaintDocument(documentWithRoto(leaked), 'reference-only')).toThrow(/malformed real-key record/);
+  });
+});
