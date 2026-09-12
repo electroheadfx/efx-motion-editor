@@ -1,8 +1,11 @@
 use crate::models::project::{MceProject, ProjectData};
+use crate::services::efx_paint_media::{
+    read_package_layer_file, write_package_layer_file, EfxPaintMediaError,
+};
 use crate::services::physic_paint_cache::{
-    bind_package_transaction, publish_package_transaction, recover_cache_transaction,
-    recover_package_transaction, settle_package_transaction, PackagePublication, PackageRecovery,
-    PackageSettlement, PackageSettlementAction,
+    bind_package_transaction, discard_package_staging_generation, publish_package_transaction,
+    recover_cache_transaction, recover_package_transaction, settle_package_transaction,
+    PackagePublication, PackageRecovery, PackageSettlement, PackageSettlementAction,
 };
 use crate::services::project_io;
 use crate::services::script_library::ScriptLibraryState;
@@ -180,6 +183,54 @@ pub fn recover_efx_paint_package_transaction(
             cleanup_diagnostic: None,
         },
     })
+}
+
+/// Write one layer sub-file into the package staging generation
+/// (quick-260913-05k). The renderer used to drive this through the fs plugin,
+/// whose scope covers appdata only — an app-defined command carries no
+/// capability, so the package path needs none. The destination root is derived
+/// in Rust from the package root; the caller supplies only the validated
+/// staging basename and the package-relative `layers/<layerId>.json`.
+#[command(async)]
+pub fn write_efx_paint_package_layer_file(
+    package_dir: String,
+    staging_basename: String,
+    layer_file: String,
+    contents: String,
+) -> Result<(), EfxPaintMediaError> {
+    write_package_layer_file(
+        std::path::Path::new(&package_dir),
+        &staging_basename,
+        &layer_file,
+        contents.as_bytes(),
+    )?;
+    Ok(())
+}
+
+/// Read one layer sub-file back as text (quick-260913-05k). The text — never a
+/// raw response body, which degrades to a JSON number array on macOS — is
+/// parsed by the caller through the fail-closed on-disk door.
+#[command(async)]
+pub fn read_efx_paint_package_layer_file(
+    package_dir: String,
+    layer_file: String,
+) -> Result<String, EfxPaintMediaError> {
+    read_package_layer_file(std::path::Path::new(&package_dir), &layer_file)
+}
+
+/// Discard a package staging generation left behind by a failed save
+/// (quick-260913-05k). Best-effort by contract: the caller swallows a failure
+/// exactly as it swallowed the plugin-fs removal before, and canonical
+/// publication state is determined only by the transaction's own result.
+#[command]
+pub fn discard_efx_paint_package_staging(
+    package_dir: String,
+    staging_basename: String,
+) -> Result<(), String> {
+    discard_package_staging_generation(
+        std::path::Path::new(&package_dir),
+        &staging_basename,
+    )
 }
 
 /// Save As: the destination file set is staged, published and settled through

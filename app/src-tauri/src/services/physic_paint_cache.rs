@@ -747,6 +747,32 @@ fn resolve_package_staging_root(
     Ok(resolved)
 }
 
+/// Discard one package staging generation (quick-260913-05k). The save's catch
+/// arm calls this when the transaction never committed: the staged files are
+/// unreachable canonical state, so removing them is best-effort cleanup.
+///
+/// Fail-closed guards, in order: the basename must be a staging generation
+/// name (`validate_package_staging_basename`), the project root is
+/// canonicalized, and the target must be a direct child DIRECTORY of that
+/// canonical root — `resolve_package_staging_root` canonicalizes it, so a
+/// symlink pointing anywhere else is refused rather than followed. Only that
+/// resolved directory is ever removed, and an absent generation is Ok: the
+/// caller may discard a generation it never created.
+pub fn discard_package_staging_generation(
+    package_root: &Path,
+    staging_basename: &str,
+) -> Result<(), String> {
+    validate_package_staging_basename(staging_basename)
+        .map_err(|error| format!("package staging discard refused: {}", error.label()))?;
+    let root = resolve_project_root(package_root)?;
+    if !root.join(staging_basename).exists() {
+        return Ok(());
+    }
+    let resolved = resolve_package_staging_root(&root, staging_basename)?;
+    fs::remove_dir_all(&resolved)
+        .map_err(|error| format!("Could not remove the package staging root: {error}"))
+}
+
 fn package_bind_refusal(relative: &str, error: &EfxPaintMediaError) -> String {
     format!(
         "package transaction bind refused \"{relative}\": {}",

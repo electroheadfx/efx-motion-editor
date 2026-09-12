@@ -57,6 +57,15 @@ pub fn save_project(
         .map_err(|e| format!("Failed to serialize project: {}", e))?;
     let file_path = Path::new(file_path);
     let project_root = Path::new(project_root);
+    // quick-260913-05k: the renderer no longer pre-creates the package staging
+    // root, so the manifest write provisions the parent it is handed (skipped
+    // for a bare file name with no parent directory).
+    if let Some(parent) = file_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create the project directory: {}", e))?;
+        }
+    }
     let tmp_path = file_path.with_extension(format!(
         "{}.tmp",
         file_path

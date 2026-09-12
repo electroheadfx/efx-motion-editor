@@ -568,6 +568,67 @@ export async function ipcEfxPaintReadFrameMedia(
   }
 }
 
+// --- Package layer file commands (quick-260913-05k) ---
+
+/**
+ * Write one `layers/<layerId>.json` sub-file into the package staging
+ * generation. App-defined commands carry no capability scope, so this is the
+ * route that keeps every `.mce` package path off the fs plugin (whose scope
+ * covers appdata only). The destination root is derived in Rust from
+ * `packageDir` plus the validated `stagingBasename`.
+ */
+export async function ipcEfxPaintWritePackageLayerFile(
+  packageDir: string,
+  stagingBasename: string,
+  layerFile: string,
+  contents: string,
+): Promise<Result<null, EfxPaintMediaFailure>> {
+  try {
+    await invoke<null>('write_efx_paint_package_layer_file', {
+      packageDir,
+      stagingBasename,
+      layerFile,
+      contents,
+    });
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+/**
+ * Read one `layers/<layerId>.json` sub-file back as text. A `String` return,
+ * never a raw byte body: the raw shape degrades to a JSON number array over
+ * IPC on macOS (see `webpFrameCodec.ts`).
+ */
+export async function ipcEfxPaintReadPackageLayerFile(
+  packageDir: string,
+  layerFile: string,
+): Promise<Result<string, EfxPaintMediaFailure>> {
+  try {
+    const contents = await invoke<string>('read_efx_paint_package_layer_file', {
+      packageDir,
+      layerFile,
+    });
+    return { ok: true, data: contents };
+  } catch (error) {
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+/**
+ * Discard a package staging generation left behind by a failed save. The
+ * failure is a plain string — the caller swallows it exactly as the previous
+ * plugin-fs removal was swallowed, because canonical publication state is
+ * determined only by the transaction's own result.
+ */
+export async function discardEfxPaintPackageStaging(
+  packageDir: string,
+  stagingBasename: string,
+): Promise<Result<null>> {
+  return safeInvoke<null>('discard_efx_paint_package_staging', { packageDir, stagingBasename });
+}
+
 // --- Image commands ---
 export async function imageGetInfo(path: string): Promise<Result<ImageInfo>> {
   return safeInvoke<ImageInfo>('image_get_info', { path });

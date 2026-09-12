@@ -204,18 +204,9 @@ pub fn resolve_package_bound_path(
     if relative == PACKAGE_MANIFEST_BASENAME {
         return resolve_bound_leaf(&root, &[PACKAGE_MANIFEST_BASENAME]);
     }
-    if let Some(remainder) = relative.strip_prefix(&format!("{PACKAGE_LAYERS_ROOT}/")) {
-        let segments: Vec<&str> = remainder.split('/').collect();
-        if segments.len() != 1 || segments[0].is_empty() {
-            return Err(rejected(EfxPaintMediaRejection::UnsupportedPackagePath));
-        }
-        let stem = segments[0]
-            .strip_suffix(&format!(".{LAYER_FILE_EXTENSION}"))
-            .filter(|stem| !stem.is_empty());
-        if stem.is_none() {
-            return Err(rejected(EfxPaintMediaRejection::WrongExtension));
-        }
-        return resolve_bound_leaf(&root, &[PACKAGE_LAYERS_ROOT, segments[0]]);
+    if relative.starts_with(&format!("{PACKAGE_LAYERS_ROOT}/")) {
+        let file_name = parse_layer_relative_path(relative)?;
+        return resolve_bound_leaf(&root, &[PACKAGE_LAYERS_ROOT, file_name]);
     }
     if relative.starts_with(&format!("{FRAME_MEDIA_ROOT}/")) {
         let (layer_id, key_id) = parse_media_relative_path(relative)?;
@@ -354,6 +345,107 @@ pub fn read_frame_media(
     })
 }
 
+/// The outcome of one staged layer write. The destination is always
+/// `<package>/<staging basename>/layers/<layerId>.json` — the canonical
+/// `layers/` tree is reached only through the transaction's publish.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageLayerFileWriteResult {
+    pub byte_length: u64,
+}
+
+/// Write one layer sub-file into the save transaction's staging generation
+/// (quick-260913-05k). The destination root is DERIVED here from the package
+/// root plus the validated basename — the renderer supplies only the basename,
+/// never a destination root (T-52.2-14) — and the staging tree (root and its
+/// `layers/` directory) is created by this call, so the caller writes nothing
+/// on the package path itself.
+///
+/// Every refusal is typed and happens before anything is created: the basename
+/// must be a staging generation name and `layer_file` must pass the shape
+/// rules plus the shared `layers/` parser, so a crafted path can neither
+/// escape the package nor mint a generation.
+pub fn write_package_layer_file(
+    package_dir: &Path,
+    staging_basename: &str,
+    layer_file: &str,
+    contents: &[u8],
+) -> Result<PackageLayerFileWriteResult, EfxPaintMediaError> {
+    validate_package_staging_basename(staging_basename)?;
+    validate_package_relative_path_shape(layer_file)?;
+    let file_name = parse_layer_relative_path(layer_file)?;
+    let root = canonical_package_root(package_dir)?;
+    let staged = root.join(staging_basename);
+    fs::create_dir_all(&staged).map_err(|error| {
+        io_error(format!("Could not create the package staging root: {error}"))
+    })?;
+    let canonical_staging = fs::canonicalize(&staged).map_err(|error| {
+        io_error(format!("Could not resolve the package staging root: {error}"))
+    })?;
+    if canonical_staging.parent() != Some(root.as_path()) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
+    }
+    let layers_dir = canonical_staging.join(PACKAGE_LAYERS_ROOT);
+    fs::create_dir_all(&layers_dir).map_err(|error| {
+        io_error(format!("Could not create the staged layers directory: {error}"))
+    })?;
+    let canonical_layers = fs::canonicalize(&layers_dir).map_err(|error| {
+        io_error(format!("Could not resolve the staged layers directory: {error}"))
+    })?;
+    if canonical_layers.parent() != Some(canonical_staging.as_path()) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
+    }
+    write_atomically(&canonical_layers.join(file_name), contents)?;
+    Ok(PackageLayerFileWriteResult {
+        byte_length: contents.len() as u64,
+    })
+}
+
+/// Read one layer sub-file back as TEXT (quick-260913-05k). The layers lock is
+/// the read side of the same shared parser: exactly `layers/<layerId>.json`,
+/// canonicalized level by level below the canonicalized package root and
+/// re-checked with `starts_with`, so no symlink or crafted segment can widen
+/// the read. An absent leaf is `Missing` — the caller keeps its own
+/// missing-file copy — and an irregular one keeps the bound guard's refusals.
+///
+/// The text is returned as a `String`, never as bytes: a raw response body
+/// degrades to a JSON number array over IPC on macOS (the same constraint the
+/// frame-media read records).
+pub fn read_package_layer_file(
+    package_dir: &Path,
+    layer_file: &str,
+) -> Result<String, EfxPaintMediaError> {
+    validate_package_relative_path_shape(layer_file)?;
+    let file_name = parse_layer_relative_path(layer_file)?;
+    let root = canonical_package_root(package_dir)?;
+    let candidate = resolve_bound_leaf(&root, &[PACKAGE_LAYERS_ROOT, file_name])?;
+    let canonical = match fs::canonicalize(&candidate) {
+        Ok(canonical) => canonical,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(rejected(EfxPaintMediaRejection::Missing));
+        }
+        Err(error) => {
+            return Err(io_error(format!(
+                "Could not resolve the layer file: {error}"
+            )));
+        }
+    };
+    if !canonical.starts_with(&root) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
+    }
+    if !canonical.is_file() {
+        return Err(rejected(EfxPaintMediaRejection::NotARegularFile));
+    }
+    if canonical.extension().and_then(|extension| extension.to_str())
+        != Some(LAYER_FILE_EXTENSION)
+    {
+        return Err(rejected(EfxPaintMediaRejection::WrongExtension));
+    }
+    let bytes = fs::read(&canonical)
+        .map_err(|error| io_error(format!("Could not read the layer file: {error}")))?;
+    String::from_utf8(bytes)
+        .map_err(|error| io_error(format!("Could not decode the layer file as UTF-8: {error}")))
+}
+
 /// The shared relative-path shape rules (the Rust twin of plan 02's
 /// `isSafePackageRelativePath`): no leading `/` or `\`, no `\` anywhere, no
 /// NUL, no Windows drive letter or UNC prefix, no empty/`.`/`..` segment.
@@ -400,6 +492,29 @@ fn parse_media_relative_path(relative: &str) -> Result<(&str, &str), EfxPaintMed
         .filter(|stem| !stem.is_empty())
         .ok_or_else(|| rejected(EfxPaintMediaRejection::WrongExtension))?;
     Ok((segments[0], key_id))
+}
+
+/// Parses a `layers/` relative path into its validated bare file name
+/// (`<stem>.json`), or a typed rejection: not under `layers/` at all
+/// (`UnsupportedPackagePath`), not exactly one segment below it
+/// (`UnsupportedPackagePath`), or a non-`.json` leaf / an empty stem
+/// (`WrongExtension`). ONE parser serves the bound-path guard and the
+/// layer read/write service, so the accept-set cannot drift between them.
+fn parse_layer_relative_path(relative: &str) -> Result<&str, EfxPaintMediaError> {
+    let remainder = relative
+        .strip_prefix(&format!("{PACKAGE_LAYERS_ROOT}/"))
+        .ok_or_else(|| rejected(EfxPaintMediaRejection::UnsupportedPackagePath))?;
+    let segments: Vec<&str> = remainder.split('/').collect();
+    if segments.len() != 1 || segments[0].is_empty() {
+        return Err(rejected(EfxPaintMediaRejection::UnsupportedPackagePath));
+    }
+    let stem = segments[0]
+        .strip_suffix(&format!(".{LAYER_FILE_EXTENSION}"))
+        .filter(|stem| !stem.is_empty());
+    if stem.is_none() {
+        return Err(rejected(EfxPaintMediaRejection::WrongExtension));
+    }
+    Ok(segments[0])
 }
 
 fn validate_media_id(value: &str) -> Result<(), EfxPaintMediaError> {
