@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-02-PLAN.md
-last_updated: "2026-09-12T14:54:43.668Z"
+stopped_at: Completed 52.2-03-PLAN.md (shared numeric stepper sweep)
+last_updated: "2026-09-12T15:11:49.113Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: fbf9c0ff27755dd89314a0d55f10fb03dd267a31
+state_head: 7d1f423150d4e4cf6ec1aff4512ac2cd5ae1161d
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 51
+  completed_plans: 52
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 3 of 16
+Plan: 4 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -110,6 +110,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.1 P06 | 0min | 2 tasks | 6 files |
 | Phase 52.2 P01 | 8min | 3 tasks | 9 files |
 | Phase 52.2 P02 | 22min | 3 tasks | 22 files |
+| Phase 52.2 P03 | 63min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -264,6 +265,8 @@ Recent decisions affecting current work:
 - [Phase 52.2]: Two-guard asymmetry: the media lock stays frames/ + .webp-only; the save transaction's resolve_package_bound_path carries its own allowlist and delegates every frames/ entry back to the media code path.
 - [Phase 52.2]: Rule 3 deviation (52.2-02): the persisted payload mode is selected at the on-disk read door (loadEfxPaintDocuments), not inside parseEfxPaintDocument — the same entry point validates live in-memory documents on the save/fingerprint/launch paths, so an unconditional rule caused 116 failures. payloadMode defaults to 'runtime'; exactly one non-test call site passes 'reference-only'.
 - [Phase 52.2]: 52.2-02: one record type, two carriers — bytes is optional with media (FrameMediaReference: frames/<layerId>/<keyId>.webp + 64-hex digest) as the alternative. buildPhysicPaintRotoPayloadContentToken is total over both shapes (byte token | media digest) so revision/equality/dedup never dereference the raster carrier; requirePhysicPaintRotoInlineBytes throws at every runtime pixel projection (Law 1).
+- [Phase 52.2]: 52.2-03: numeric fields use one shared NumericStepper (type=text + inputMode=decimal, single clamp+round commit path, hold-to-repeat 400ms/60ms); per-field step/min/max preserved; numericStepperSweep source-scan contract over 6 files with a length-asserted list
+- [Phase 52.2]: 52.2-03: typed values commit on blur/Enter + -/+ buttons (shared gesture) instead of per keystroke; ColorPickerModal channel commits take a single-channel override; the Hold Frames popover reads its field text back on close so an uncommitted typed value is not lost
 
 ### Pending Todos
 
@@ -274,6 +277,7 @@ None yet.
 - Research flags for planning: exact `.mce` v1.0 schema field-level design (Phase 45), opacity/blend application order + full pixel acceptance matrix enumeration (Phase 48), track-aware `paintVersion` reactivity model (Phase 46).
 - v0.9.0 audit-accepted tech debt and deferred items carried forward (see Deferred Items below).
 - 52.2-02 leaves 8 round-trip tests red by design until plan 07's writer projects media references: efxPaintPersistence.test.ts (1, owned by plans 07/09) and 7 in files NO phase plan lists — physicsPaintRotoLoopClips.test.ts (5) and physicsPaintRotoGroupParity.test.ts (2). Plans 07 and 09 both carry a 'full suite green' exit criterion, which is where this surfaces.
+- 52.2-03: vitest run exits 1 on 9 pre-existing failures (roto persistence x7, base64ToBytes frame-transport token in app/src/lib/ipc.ts, efxPaintPersistence base64) — identical at the plan base 15e680cc; not introduced by this plan, owners must clear them before /gsd-ship
 
 ### Quick Tasks Completed
 
@@ -314,6 +318,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T14:54:42.077Z
-Stopped at: Completed 52.2-02-PLAN.md
+Last session: 2026-09-12T15:11:42.382Z
+Stopped at: Completed 52.2-03-PLAN.md (shared numeric stepper sweep)
 Resume file: None
