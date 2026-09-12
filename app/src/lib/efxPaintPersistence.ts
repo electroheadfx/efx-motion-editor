@@ -38,12 +38,29 @@ import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
+import type { MceProject } from '../types/project';
 import { toTransportPayload } from './webpBytes';
-import { hardlinkPhysicPaintCacheFrames, publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
+import {
+  bindEfxPaintPackageTransaction,
+  hardlinkPhysicPaintCacheFrames,
+  projectSave as ipcProjectSave,
+  publishPhysicPaintCacheGeneration,
+  settlePhysicPaintCacheGeneration,
+} from './ipc';
 
 export const EFX_PAINT_CACHE_DIR = 'cache/efx-paint';
 export const EFX_PAINT_CACHE_PARENT_DIR = 'cache';
 export const EFX_PAINT_STAGING_PREFIX = '.efx-paint-staging-';
+
+/**
+ * The package staging-root name rule, kept byte-identical to the Rust
+ * `PACKAGE_STAGING_PREFIX` in `services/efx_paint_media.rs` (one prefix, two
+ * readers): the caller NAMES the staging generation, and the Rust bind is the
+ * authority that refuses a basename it does not recognize.
+ */
+export const EFX_PAINT_PACKAGE_STAGING_PREFIX = '.efx-paint-package-staging-';
+/** The manifest file name inside the package (D-02). */
+export const EFX_PAINT_PACKAGE_MANIFEST_FILE = 'project.mce';
 
 /**
  * One layer's save input: the document plus the runtime frame bytes to stage.
@@ -148,6 +165,17 @@ async function ensureDir(path: string): Promise<void> {
 
 function createStagingBasename(): string {
   return `${EFX_PAINT_STAGING_PREFIX}${crypto.randomUUID()}`;
+}
+
+/**
+ * The package staging basename (52.2-05 Task 3). The caller names the
+ * generation; the root the staged files land in is derived in Rust from the
+ * package root, so no caller-supplied destination root ever crosses the
+ * boundary (T-52.2-14). The basename is minted here — beside the cache
+ * basename — so both prefixes have exactly one TS reader.
+ */
+export function createPackageStagingBasename(): string {
+  return `${EFX_PAINT_PACKAGE_STAGING_PREFIX}${crypto.randomUUID()}`;
 }
 
 async function removeStagingGeneration(path: string): Promise<void> {
@@ -336,10 +364,16 @@ async function prepareEfxPaintSave(
 
     const publication = await publishPhysicPaintCacheGeneration(projectDir, stagingBasename);
     if (!publication.ok) throw new Error(publication.error);
+    // D-14: the cache leg is best-effort and reports a refusal SOFTLY
+    // (`accepted: false` plus a diagnostic). There is then no cache
+    // transaction to settle and the published canonical generation is left
+    // exactly as it was — the authoritative save still commits.
     return {
       persistedDocuments,
       fingerprint,
-      publication: { transactionId: publication.data.transactionId },
+      publication: publication.data.accepted
+        ? { transactionId: publication.data.transactionId }
+        : null,
       removeCanonicalAfterCommit: false,
       deletions,
       frameTokens,
@@ -391,6 +425,54 @@ async function settlePreparedEfxPaintSave(
       savedFrameTokens.set(key, token);
     }
   }
+}
+
+/**
+ * The staged package save seam (52.2-05 Task 3, D-10).
+ *
+ * Plan 07 drives the package funnel through here: every changed authoritative
+ * file is first staged under `<package>/<staging basename>/` — the manifest by
+ * this call, layer sub-files and frame media through their own writers — and
+ * then the whole set is bound in ONE call. The single-file case is the same
+ * call with nothing yet staged: the manifest alone, as a one-entry set, never
+ * a parallel code path.
+ *
+ * Publish, settle and recover are the `ipc.ts` wrappers, each taking this
+ * package root plus this staging basename; the staging ROOT is derived in
+ * Rust, so the caller never supplies a destination root (T-52.2-14).
+ */
+export interface EfxPaintStagedPackageSave {
+  readonly packageRoot: string;
+  readonly stagingBasename: string;
+  /** The staged manifest path the project write landed at, inside the staging root. */
+  readonly stagedManifestPath: string;
+  readonly transactionId: string;
+  readonly aggregateDigest: string;
+}
+
+export async function stageEfxPaintPackageSave(
+  project: MceProject,
+  packageRoot: string,
+  stagedPaths: readonly string[] = [],
+): Promise<EfxPaintStagedPackageSave> {
+  const stagingBasename = createPackageStagingBasename();
+  const stagedManifestPath = `${packageRoot}/${stagingBasename}/${EFX_PAINT_PACKAGE_MANIFEST_FILE}`;
+  const write = await ipcProjectSave(project, stagedManifestPath);
+  if (!write.ok) throw new Error(write.error);
+  const bound = await bindEfxPaintPackageTransaction(
+    packageRoot,
+    stagingBasename,
+    // One set, deduplicated: the manifest can never be bound twice.
+    Array.from(new Set([EFX_PAINT_PACKAGE_MANIFEST_FILE, ...stagedPaths])),
+  );
+  if (!bound.ok) throw new Error(bound.error);
+  return {
+    packageRoot,
+    stagingBasename,
+    stagedManifestPath,
+    transactionId: bound.data.transactionId,
+    aggregateDigest: bound.data.aggregateDigest,
+  };
 }
 
 /**

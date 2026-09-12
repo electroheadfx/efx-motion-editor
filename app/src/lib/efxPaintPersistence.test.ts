@@ -60,7 +60,7 @@ vi.mock('./ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
-  ipcProjectSave,
+  projectSave: ipcProjectSave,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
   settleEfxPaintPackageTransaction,

@@ -47,25 +47,34 @@ export async function projectCreate(name: string, fps: number, dirPath: string):
   return safeInvoke<MceProject>('project_create', { name, fps, dirPath });
 }
 
+/**
+ * Write the manifest to the path it is handed. 52.2-05 Task 2 (D-10) removed
+ * the project write's cache binding, so the trailing id is ACCEPTED for arity
+ * only and never forwarded: `projectStore.ts` still passes it and is owned by
+ * plan 07, which rewires the call site; plan 09 deletes the declaration from
+ * both project-save wrappers. Nothing may leave it in shipped code.
+ */
 export async function projectSave(
   project: MceProject,
   filePath: string,
   physicPaintCacheTransactionId: string | null = null,
 ): Promise<Result<null>> {
-  return safeInvoke<null>('project_save', { project, filePath, physicPaintCacheTransactionId });
+  void physicPaintCacheTransactionId;
+  return safeInvoke<null>('project_save', { project, filePath });
 }
 
+/** Same accepted-but-not-forwarded trailing id as `projectSave`. */
 export async function projectSaveAsWithScriptLibrary(
   project: MceProject,
   sourceFilePath: string,
   destinationFilePath: string,
   physicPaintCacheTransactionId: string | null = null,
 ): Promise<Result<ScriptLibraryMigrationResult>> {
+  void physicPaintCacheTransactionId;
   return safeInvoke('project_save_as_with_script_library', {
     project,
     sourceFilePath,
     destinationFilePath,
-    physicPaintCacheTransactionId,
   });
 }
 
@@ -308,54 +317,152 @@ export async function pathExists(filePath: string): Promise<Result<boolean>> {
   return safeInvoke<boolean>('path_exists', { filePath });
 }
 
+// --- Machine-local derived-frame cache (52.2-05 Task 2/3, D-05/D-14) ------
+//
+// Every wrapper here addresses the MACHINE cache root
+// (`<app_data_dir>/frame-cache/<projectId>`), never a package directory. The
+// leg is BEST-EFFORT: a cache-side failure arrives as `accepted: false` plus a
+// `diagnostic` and never as a rejected promise, so no cache error can fail or
+// roll back an authoritative save.
+
+/**
+ * The cache-side outcome. `accepted: false` is a typed SOFT failure (D-14):
+ * non-fatal, always accompanied by a `diagnostic`, never a raised error.
+ */
 export interface PhysicPaintCachePublicationResult {
-  accepted: true;
+  accepted: boolean;
   transactionId: string;
   replacedExisting: boolean;
+  diagnostic?: string;
 }
 
 export interface PhysicPaintCacheSettlementResult {
-  accepted: true;
+  accepted: boolean;
   cleanupStatus: 'complete' | 'deferred';
   cleanupDiagnostic?: string;
 }
 
+/** Resolve `<app_data_dir>/frame-cache/<projectId>`; the ONLY cache-root constructor. */
+export function resolvePhysicPaintCacheRoot(projectId: string): Promise<Result<string>> {
+  return safeInvoke<string>('resolve_physic_paint_cache_root', { projectId });
+}
+
 export function publishPhysicPaintCacheGeneration(
-  projectDir: string,
+  cacheRoot: string,
   stagingBasename: string,
 ): Promise<Result<PhysicPaintCachePublicationResult>> {
   return safeInvoke<PhysicPaintCachePublicationResult>(
     'publish_physic_paint_cache_generation',
-    { projectDir, stagingBasename },
+    { cacheRoot, stagingBasename },
   );
 }
 
 export function settlePhysicPaintCacheGeneration(
-  projectDir: string,
+  cacheRoot: string,
   transactionId: string,
   action: 'commit' | 'rollback',
 ): Promise<Result<PhysicPaintCacheSettlementResult>> {
   return safeInvoke<PhysicPaintCacheSettlementResult>(
     'settle_physic_paint_cache_generation',
-    { projectDir, transactionId, action },
+    { cacheRoot, transactionId, action },
   );
 }
 
 export interface PhysicPaintCacheHardlinkResult {
-  accepted: true;
+  accepted: boolean;
   /** Relative frame paths whose canonical sidecar was missing and must be written fresh. */
   missing: string[];
+  diagnostic?: string;
 }
 
 export function hardlinkPhysicPaintCacheFrames(
-  projectDir: string,
+  cacheRoot: string,
   stagingBasename: string,
   unchangedPaths: string[],
 ): Promise<Result<PhysicPaintCacheHardlinkResult>> {
   return safeInvoke<PhysicPaintCacheHardlinkResult>(
     'hardlink_physic_paint_cache_frames',
-    { projectDir, stagingBasename, unchangedPaths },
+    { cacheRoot, stagingBasename, unchangedPaths },
   );
+}
+
+// --- Authoritative package transaction (52.2-05 Task 2/3, D-10) -----------
+//
+// The wrapper surface mirrors the native commands one-for-one. Each call takes
+// the PACKAGE root plus the staging basename; the staging root itself is
+// derived in Rust from the two (T-52.2-14), so the renderer never supplies a
+// destination root.
+
+/** One bound file as the renderer reads it (camelCase wire shape). */
+export interface BoundEfxPaintPackageFile {
+  path: string;
+  sha256: string;
+  hadOriginal: boolean;
+}
+
+/** Bind result: one transaction identity plus one order-independent aggregate digest. */
+export interface BoundEfxPaintPackageFileSet {
+  transactionId: string;
+  aggregateDigest: string;
+  entries: BoundEfxPaintPackageFile[];
+}
+
+export function bindEfxPaintPackageTransaction(
+  packageRoot: string,
+  stagingBasename: string,
+  paths: string[],
+): Promise<Result<BoundEfxPaintPackageFileSet>> {
+  return safeInvoke<BoundEfxPaintPackageFileSet>('bind_efx_paint_package_transaction', {
+    packageRoot,
+    stagingBasename,
+    paths,
+  });
+}
+
+export interface EfxPaintPackagePublicationResult {
+  transactionId: string;
+  published: number;
+}
+
+export function publishEfxPaintPackageTransaction(
+  packageRoot: string,
+  transactionId: string,
+): Promise<Result<EfxPaintPackagePublicationResult>> {
+  return safeInvoke<EfxPaintPackagePublicationResult>('publish_efx_paint_package_transaction', {
+    packageRoot,
+    transactionId,
+  });
+}
+
+export interface EfxPaintPackageSettlementResult {
+  cleanupDeferred: boolean;
+  cleanupDiagnostic?: string;
+}
+
+export function settleEfxPaintPackageTransaction(
+  packageRoot: string,
+  transactionId: string,
+  action: 'commit' | 'rollback',
+): Promise<Result<EfxPaintPackageSettlementResult>> {
+  return safeInvoke<EfxPaintPackageSettlementResult>('settle_efx_paint_package_transaction', {
+    packageRoot,
+    transactionId,
+    action,
+  });
+}
+
+export interface EfxPaintPackageRecoveryResult {
+  recovered: boolean;
+  cleanupDeferred: boolean;
+  cleanupDiagnostic?: string;
+}
+
+export function recoverEfxPaintPackageTransaction(
+  packageRoot: string,
+): Promise<Result<EfxPaintPackageRecoveryResult>> {
+  return safeInvoke<EfxPaintPackageRecoveryResult>('recover_efx_paint_package_transaction', {
+    packageRoot,
+  });
 }
 
 // --- Package frame media commands (52.2-01, D-02/D-07/D-13) ---
