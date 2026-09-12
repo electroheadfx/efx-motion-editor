@@ -19,6 +19,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import {
   EFX_PAINT_FRAMES_DIR,
   EFX_PAINT_LAYERS_DIR,
@@ -341,8 +342,14 @@ describe('package manifest assembly (D-04)', () => {
  * than a value that silently reaches a package file.
  */
 describe('collectPackageCacheRefs (D-05)', () => {
-  const layerDocument = (frames: Record<number, unknown>) => ({
+  const layerDocument = (
+    frames: Record<number, { readonly cachePath?: unknown; readonly width?: unknown; readonly height?: unknown }>,
+  ) => ({
     tracks: [{ id: 'T1', frames }],
+  });
+
+  it('accepts the real document model with no adapter', () => {
+    expect(collectPackageCacheRefs([createEfxPaintDocument('layer-abc')])).toEqual([]);
   });
 
   it('returns every persisted cache reference in the layer documents', () => {

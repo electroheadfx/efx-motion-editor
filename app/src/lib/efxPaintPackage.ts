@@ -18,7 +18,10 @@
  * with the same identity.
  *
  * Break note (D-08): pre-52.2 packages are refused upstream by the
- * `formatVersion` gate; there is no back-compat branch here.
+ * `formatVersion` gate; there is no back-compat branch here — a pre-52.2
+ * `efx_paint_documents` carrier is dropped from the manifest rather than
+ * migrated, and a pre-52.2 `cache/efx-paint/...` reference is a refusal in
+ * `collectPackageCacheRefs` rather than a value that is normalized.
  */
 
 /** The one format version literal: the manifest carries it, nothing duplicates it. */
@@ -35,12 +38,31 @@ export interface EfxPaintLayerIndexEntry {
   readonly compositeRevision: string;
 }
 
-/** The `project.mce` manifest: main-editor project passthrough plus the package index (D-04). */
-export interface EfxPaintPackageManifest {
+/**
+ * The `project.mce` manifest: main-editor project passthrough plus the package
+ * index (D-04). The project fields are carried verbatim and are not restated
+ * here — this module owns the package's own keys, never the main editor's
+ * schema, which is why no `MceProject` import exists.
+ */
+export type EfxPaintPackageManifest = Readonly<Record<string, unknown>> & {
   readonly formatVersion: typeof PKG_FORMAT_VERSION;
   readonly projectId: string;
   readonly efxPaint: Readonly<Record<string, EfxPaintLayerIndexEntry>>;
-}
+};
+
+/**
+ * The layer-content field names the manifest must never carry (D-04): a layer
+ * sub-file owns them. They are refused rather than stripped because their
+ * presence means a layer document was passed where the project belongs.
+ */
+const MANIFEST_FORBIDDEN_LAYER_KEYS = ['tracks', 'background', 'photoReference'] as const;
+
+/**
+ * The main-editor carrier the package format replaces (D-04): the layerId →
+ * document map is now `layers/<layerId>.json`, so the manifest drops it
+ * instead of shipping layer content in the project file.
+ */
+const MANIFEST_LEGACY_LAYER_CARRIER = 'efx_paint_documents';
 
 /** The stable-hash segment algorithm `efxPaintPersistence.ts` has used since 45-01. */
 function sanitizeSegment(value: string): string {
@@ -218,4 +240,99 @@ const PROJECT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
  */
 export function isProjectId(value: unknown): value is string {
   return typeof value === 'string' && PROJECT_ID_PATTERN.test(value);
+}
+
+/** The three inputs `buildPackageManifest` assembles from — all pure values. */
+export interface EfxPaintPackageManifestInput {
+  /** The main-editor project fields, carried through untouched. */
+  readonly project: Readonly<Record<string, unknown>>;
+  /** `layerId` → its sub-file entry (D-04). */
+  readonly layerIndex: Readonly<Record<string, EfxPaintLayerIndexEntry>>;
+  /** The package identity used as the machine cache-root key (D-05). */
+  readonly projectId: string;
+}
+
+/**
+ * Assemble the `project.mce` manifest (D-04): the main editor's project fields
+ * passed through, plus `efxPaint` (the layer index), `formatVersion` and
+ * `projectId`. Pure over plain objects, so the writer in plan 07 calls it
+ * without touching a store.
+ *
+ * Two layer-content rules are enforced here rather than trusted:
+ * the legacy `efx_paint_documents` carrier is DROPPED — its content is now the
+ * layer sub-files, and shipping it would put a document back inside the
+ * project file; and a project carrying `tracks`/`background`/`photoReference`
+ * throws, because those names mean a layer document reached this call.
+ */
+export function buildPackageManifest(input: EfxPaintPackageManifestInput): EfxPaintPackageManifest {
+  const { project, layerIndex, projectId } = input;
+  for (const key of MANIFEST_FORBIDDEN_LAYER_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(project, key)) {
+      throw new Error(
+        `buildPackageManifest: project carries layer content in "${key}"; layer content belongs in the layer sub-file (D-04).`,
+      );
+    }
+  }
+  const manifestFields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(project)) {
+    if (key === MANIFEST_LEGACY_LAYER_CARRIER) continue;
+    manifestFields[key] = value;
+  }
+  manifestFields.formatVersion = PKG_FORMAT_VERSION;
+  manifestFields.projectId = projectId;
+  manifestFields.efxPaint = layerIndex;
+  return Object.freeze(manifestFields) as EfxPaintPackageManifest;
+}
+
+/**
+ * A layer sub-file's persisted cache-reference site (D-05), declared
+ * structurally so this module keeps its no-import rule while accepting the
+ * document model's `EfxPaintDocument` verbatim. Only `cachePath` is
+ * interpreted; `width`/`height` are named because the persisted record is a
+ * `CachedFrameReference` and the shape is documented where it is walked.
+ */
+export interface EfxPaintCacheRefDocument {
+  readonly tracks: readonly {
+    readonly frames?: Readonly<Record<number, {
+      readonly cachePath?: unknown;
+      readonly width?: unknown;
+      readonly height?: unknown;
+    }>>;
+  }[];
+}
+
+/**
+ * Collect every persisted cache reference in the given layer documents (D-05)
+ * and refuse any value that is not machine-relative.
+ *
+ * This is the enforcement point plan 07 runs over each changed layer document
+ * immediately before that document is serialized into a layer sub-file: the
+ * legacy `cache/efx-paint/...` shape and every absolute path are refusals
+ * here, so a machine-coupled reference cannot reach a package at all. The
+ * offending value is named in the message so a pre-52.2 package is
+ * diagnosable. A frame with no `cachePath` is not a reference and is skipped;
+ * a present-but-invalid value is never silently accepted.
+ */
+export function collectPackageCacheRefs(
+  layerDocuments: Iterable<EfxPaintCacheRefDocument>,
+): readonly string[] {
+  const references: string[] = [];
+  for (const document of layerDocuments) {
+    for (const track of document.tracks) {
+      const frames = track.frames;
+      if (frames === undefined) continue;
+      for (const frame of Object.values(frames)) {
+        const cachePath = frame?.cachePath;
+        if (cachePath === undefined) continue;
+        if (!isSafeMachineCacheRelativePath(cachePath)) {
+          throw new Error(
+            `collectPackageCacheRefs: "${String(cachePath)}" is not a machine-relative reference `
+            + `(expected an ${EFX_PAINT_MACHINE_CACHE_DIR}/... path); the legacy cache/efx-paint/... shape cannot be written into a package (D-05).`,
+          );
+        }
+        references.push(cachePath);
+      }
+    }
+  }
+  return Object.freeze(references);
 }
