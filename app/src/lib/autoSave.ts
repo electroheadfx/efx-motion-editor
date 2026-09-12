@@ -4,6 +4,7 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {imageStore} from '../stores/imageStore';
 import {efxPaintVersion} from '../stores/efxPaintStore';
 import {physicPaintVersion} from '../stores/physicPaintStore';
+import {clearIoFailureLatch, reportLatchedIoFailure} from './projectIoFailureDialog';
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -21,6 +22,9 @@ function paintVersionsChanged(): boolean {
 }
 
 function recordSaved(): void {
+  // quick-260913-05k: a save that lands re-arms the failure latch, so a later
+  // failure streak shows its own modal instead of inheriting this one's silence.
+  clearIoFailureLatch('save');
   lastSavedEfxPaintVersion = efxPaintVersion.value;
   lastSavedPhysicPaintVersion = physicPaintVersion.value;
   nonPaintDirty = false;
@@ -31,7 +35,9 @@ function scheduleSave() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     if (projectStore.filePath.value && projectStore.isDirty.value && (paintVersionsChanged() || nonPaintDirty)) {
-      void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved);
+      void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved, (error) => {
+        reportLatchedIoFailure('save', error);
+      });
     }
   }, 2000); // 2-second debounce
 }
@@ -72,7 +78,9 @@ export function startAutoSave(): void {
   // Periodic save every 60 seconds as safety net
   intervalId = setInterval(() => {
     if (projectStore.filePath.value && projectStore.isDirty.value && (paintVersionsChanged() || nonPaintDirty)) {
-      void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved);
+      void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved, (error) => {
+        reportLatchedIoFailure('save', error);
+      });
     }
   }, 60_000);
 }

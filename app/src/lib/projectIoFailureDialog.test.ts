@@ -91,6 +91,18 @@ describe('showProjectIoFailureDialog', () => {
     expect(body).toContain('open the project');
     expect(body).toContain('ENOENT: no such file or directory');
   });
+
+  it('never rejects when the modal itself cannot be shown', async () => {
+    // Callers are catch blocks and fire-and-forget handlers (main.tsx's drain):
+    // a dialog plugin that rejects must not become a NEW unhandled rejection.
+    dialogMessage.mockRejectedValueOnce(new Error('window.__TAURI_INTERNALS__.invoke is not a function'));
+
+    await expect(showProjectIoFailureDialog('open', new Error('drain failed'))).resolves.toBeUndefined();
+
+    clearIoFailureLatch('save');
+    reportLatchedIoFailure('save', new Error('save failed'));
+    await Promise.resolve();
+  });
 });
 
 describe('reportLatchedIoFailure', () => {

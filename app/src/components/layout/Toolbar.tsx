@@ -3,6 +3,7 @@ import {useState, useRef, useEffect} from 'preact/hooks';
 import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
+import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
 import {toPackageManifestPath} from '../../lib/openedProjectUrls';
 import {NewProjectDialog} from '../project/NewProjectDialog';
 import {blurStore} from '../../stores/blurStore';
@@ -51,6 +52,7 @@ export function Toolbar() {
         await projectStore.openProject(toPackageManifestPath(selected));
       } catch (err) {
         console.error('Failed to open project:', err);
+        await showProjectIoFailureDialog('open', err);
       }
     }
   };
@@ -72,6 +74,7 @@ export function Toolbar() {
           await projectStore.saveProjectAs(toPackageManifestPath(filePath));
         } catch (err) {
           console.error('Failed to save project:', err);
+          await showProjectIoFailureDialog('save', err);
         }
       }
     } else {
@@ -79,6 +82,7 @@ export function Toolbar() {
         await projectStore.saveProject();
       } catch (err) {
         console.error('Failed to save project:', err);
+        await showProjectIoFailureDialog('save', err);
       }
     }
   };

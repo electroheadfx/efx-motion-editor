@@ -10,6 +10,7 @@ import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {startAutoSave} from './lib/autoSave';
 import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
 import {createOpenedUrlQueue, toPackageManifestPath} from './lib/openedProjectUrls';
+import {reportLatchedIoFailure, showProjectIoFailureDialog} from './lib/projectIoFailureDialog';
 import {projectStore} from './stores/projectStore';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
@@ -193,6 +194,7 @@ if (window.location.pathname === '/physics-paint') {
         await projectStore.openProject(toPackageManifestPath(openedPath));
       } catch (err) {
         console.error('Failed to open project:', err);
+        await showProjectIoFailureDialog('open', err);
       }
     };
     const applyOpenedUrls = async (urls: readonly string[]): Promise<void> => {
@@ -204,6 +206,8 @@ if (window.location.pathname === '/physics-paint') {
     await listen<string[]>('opened', (event) => {
       applyOpenedUrls(event.payload).catch((err) => {
         console.error('Failed to open a package delivered by the OS:', err);
+        // The callback is not async — surface the failure without awaiting it.
+        void showProjectIoFailureDialog('open', err);
       });
     });
     // Cold start: drain the buffer exactly once. This call also flips the
@@ -214,6 +218,9 @@ if (window.location.pathname === '/physics-paint') {
       // Fail-soft like the live `opened` listener above: a missing native
       // command must not abort the rest of startup (close guard, shortcuts).
       console.error('Failed to drain OS-delivered packages:', err);
+      // Latched: the cold-start drain runs once, but the per-URL open failures
+      // inside it already reported — one modal per streak, not one per URL.
+      reportLatchedIoFailure('open', err);
     }
 
     // Guard window close: show unsaved-changes dialog and prevent close on Cancel
