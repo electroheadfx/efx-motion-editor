@@ -26,6 +26,7 @@ import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/docu
 import { buildEfxPaintTrackRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  requirePhysicPaintRotoInlineBytes,
   type PhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoAuthorityResult } from '../types/physicPaint';
@@ -539,7 +540,7 @@ function normalizeTrackDocument(trackId: string): {
   const frameByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record.appFrame]));
   const records = [...document.realKeyRecords]
     .sort((left, right) => left.appFrame - right.appFrame)
-    .map((record) => ({ appFrame: record.appFrame, bytes: record.payload.bytes }));
+    .map((record) => ({ appFrame: record.appFrame, bytes: requirePhysicPaintRotoInlineBytes(record.payload) }));
   const loops = [...document.loopClips]
     .sort((left, right) => left.placementStart - right.placementStart)
     .map((clip) => ({

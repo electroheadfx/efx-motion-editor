@@ -114,6 +114,66 @@ export function buildFrameMediaRelativePath(layerId: string, keyId: string): str
 }
 
 /**
+ * The media reference a persisted raster owes its package (D-02, D-07): where
+ * the pixels live, relative to the package root, plus the SHA-256 of the exact
+ * bytes written there. This is the shape plans 06 and 09 import — the model
+ * never owns it, so the dependency edge stays model-to-package.
+ */
+export interface FrameMediaReference {
+  readonly relativePath: string;
+  readonly digest: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+const FRAME_MEDIA_KEYS = new Set(['relativePath', 'digest', 'width', 'height']);
+const FRAME_MEDIA_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
+
+function isPositiveIntegerOrAbsent(value: unknown): boolean {
+  return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value > 0);
+}
+
+/**
+ * Fail-closed parser for {@link FrameMediaReference} (T-52.2-05). `path` names
+ * the reference's location in the message only; no filesystem call is ever
+ * made here, so a refusal costs nothing and leaves nothing behind.
+ *
+ * Rejects non-records, unknown members, a `relativePath` that is not a safe
+ * package-relative `frames/<layerId>/<keyId>.webp` reference, a `digest` that
+ * is not 64 lower-case hex characters, and non-positive `width`/`height`.
+ */
+export function parseFrameMediaReference(value: unknown, path: string = 'media'): FrameMediaReference {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${path}: expected a media reference record.`);
+  }
+  const record = value as Record<string, unknown>;
+  if (!Object.keys(record).every((key) => FRAME_MEDIA_KEYS.has(key))) {
+    throw new Error(`${path}: unknown members; expected exactly relativePath, digest, width, height.`);
+  }
+  const relativePath = record.relativePath;
+  if (
+    !isSafePackageRelativePath(relativePath)
+    || !relativePath.startsWith(`${EFX_PAINT_FRAMES_DIR}/`)
+    || !relativePath.endsWith('.webp')
+  ) {
+    throw new Error(`${path}: relativePath must be a safe frames/<layerId>/<keyId>.webp reference.`);
+  }
+  const digest = record.digest;
+  if (typeof digest !== 'string' || !FRAME_MEDIA_DIGEST_PATTERN.test(digest)) {
+    throw new Error(`${path}: digest must be 64 lower-case hex characters.`);
+  }
+  if (!isPositiveIntegerOrAbsent(record.width) || !isPositiveIntegerOrAbsent(record.height)) {
+    throw new Error(`${path}: width and height must be positive integers when present.`);
+  }
+  return Object.freeze({
+    relativePath,
+    digest,
+    ...(record.width !== undefined ? { width: record.width as number } : {}),
+    ...(record.height !== undefined ? { height: record.height as number } : {}),
+  });
+}
+
+/**
  * `efx-paint/<stableSegment(layerId)>/<trackId>/frame-NNNN.webp` — the
  * machine-RELATIVE derived-frame cache reference (D-05, D-14). The persisted
  * value is relative to `${app_data_dir}/frame-cache/<projectId>/`, so the very

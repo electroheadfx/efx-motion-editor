@@ -44,6 +44,7 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
@@ -78,7 +79,7 @@ import {
 import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
 import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
-import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { getPhysicsPaintWorkingSize } from '../components/physic-paint/engine/physicsPaintCanvasSizing';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -932,8 +933,8 @@ function _getTrackBytesTokens(layerId: string, trackId: string): Set<string> {
   _collectFrameBytesTokens(_frames.get(layerId)?.get(trackId)?.values() ?? [], tokens);
   _collectFrameBytesTokens(_rotoCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], tokens);
   _collectFrameBytesTokens(_rotoGeneratedCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], tokens);
-  for (const record of _rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildFrameBytesToken(record.payload.bytes));
-  for (const record of _rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildFrameBytesToken(record.payload.bytes));
+  for (const record of _rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildPhysicPaintRotoPayloadContentToken(record.payload));
+  for (const record of _rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildPhysicPaintRotoPayloadContentToken(record.payload));
   return tokens;
 }
 
@@ -955,12 +956,12 @@ function _isBytesTokenReferenced(token: string): boolean {
   }
   for (const layerTracks of _rotoRealKeyRecords.values()) {
     for (const trackRecords of layerTracks.values()) {
-      for (const record of trackRecords.values()) if (buildFrameBytesToken(record.payload.bytes) === token) return true;
+      for (const record of trackRecords.values()) if (buildPhysicPaintRotoPayloadContentToken(record.payload) === token) return true;
     }
   }
   for (const layerTracks of _rotoGroupOverrideRecords.values()) {
     for (const trackRecords of layerTracks.values()) {
-      for (const record of trackRecords.values()) if (buildFrameBytesToken(record.payload.bytes) === token) return true;
+      for (const record of trackRecords.values()) if (buildPhysicPaintRotoPayloadContentToken(record.payload) === token) return true;
     }
   }
   return false;
@@ -1315,7 +1316,7 @@ function _preResolveTrackContent(
     if (source.kind === 'loop-placeholder') {
       return { kind: 'missing', missingRefs: source.missingSourceKeyIds ?? source.sourceKeyIds ?? [] };
     }
-    const bytes = source.renderedFrame.bytes;
+    const bytes = requirePhysicPaintRotoInlineBytes(source.renderedFrame);
     // G-52-8 (FIX 3): decode-once across the whole app — launch hydration
     // already decoded this exact payload off the main thread into the alpha
     // canvas registry, so the compositor reuses that canvas instead of paying
@@ -1811,6 +1812,23 @@ function _blendAlphaBytes(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFram
   return _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame, secondKeyFrame, t);
 }
 
+/**
+ * 52.2-02 (D-07): project a runtime real-key payload into the rendered-frame
+ * shape the interpolation renderers consume. A payload carries exactly one
+ * raster carrier, and these renderers read pixels, so the inline carrier is
+ * asserted here — a reference-only payload never reaches a generated-cell
+ * render, which is a runtime-only derivation.
+ */
+function _toRenderedPayloadFrame(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRenderedFrame {
+  return {
+    frameIndex: payload.frameIndex,
+    appFrame: payload.appFrame,
+    bytes: requirePhysicPaintRotoInlineBytes(payload),
+    ...(payload.width !== undefined ? { width: payload.width } : {}),
+    ...(payload.height !== undefined ? { height: payload.height } : {}),
+  };
+}
+
 export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
   return _withGeneratedAppFrame({
     frameIndex: 0,
@@ -1926,8 +1944,8 @@ function _getOrRenderGeneratedRotoFrame(
   const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode };
   const renderStartedAtMs = performance.now();
   const rendered = mode === 'duplicate'
-    ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-    : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, t, settings);
+    ? renderDuplicateRotoInterpolationFrame(_toRenderedPayloadFrame(left.payload), appFrame, settings)
+    : renderBlendedRotoInterpolationFrame(_toRenderedPayloadFrame(left.payload), _toRenderedPayloadFrame(right.payload), appFrame, t, settings);
   recordPhysicsPaintPerformance({
     stage: 'generated.render',
     category: 'sync-cpu',
@@ -3811,7 +3829,7 @@ export const physicPaintStore = {
     const currentRevision = this.getRotoPhysicalContentRevision(layerId, trackId);
     const current = _rotoRealKeyRecords.get(layerId)?.get(trackId)?.get(keyId) ?? null;
     const reject = (error: string): { ok: false; error: string } => {
-      _pruneUnreferencedRotoAlphaCanvases([buildFrameBytesToken(payload.bytes)]);
+      _pruneUnreferencedRotoAlphaCanvases([buildPhysicPaintRotoPayloadContentToken(payload)]);
       return { ok: false, error };
     };
     if (!currentRevision || currentRevision !== expectedContentRevision || !current) return reject('Physical identity or content revision changed.');
@@ -3833,7 +3851,7 @@ export const physicPaintStore = {
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(trackId, new Map(validated.map((record) => [record.keyId, record])));
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases([buildFrameBytesToken(current.payload.bytes)]);
+    _pruneUnreferencedRotoAlphaCanvases([buildPhysicPaintRotoPayloadContentToken(current.payload)]);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId, diagnostics);
     return { ok: true, changed: true, contentRevision: nextRevision };
@@ -4155,7 +4173,7 @@ function _applyRotoTrackPaste(
     store.upsertRealRotoKeyFrame(layerId, trackId, record.appFrame, {
       frameIndex: 0,
       appFrame: record.appFrame,
-      bytes: record.payload.bytes,
+      bytes: requirePhysicPaintRotoInlineBytes(record.payload),
       width: record.payload.width ?? 0,
       height: record.payload.height ?? 0,
     });

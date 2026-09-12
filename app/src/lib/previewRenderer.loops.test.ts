@@ -9,6 +9,7 @@ import {
 import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
@@ -383,7 +384,7 @@ describe('preview linked-generated cache identity', () => {
       layerId: LAYER,
       frame: source.appFrame,
       cacheKey: `physic-paint:${LAYER}:physical:${source.cacheRevision}`,
-      renderedFrame: source.renderedFrame,
+      renderedFrame: { ...source.renderedFrame, bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame) },
     });
 
     expect(first.sourceCycleId).toBe(getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']));

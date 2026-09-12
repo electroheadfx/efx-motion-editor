@@ -693,9 +693,25 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
  * canonical form carries the bytes as base64 — a stable string for the action
  * transaction records and the Rust boundary hash. The validator accepts this
  * canonical form alongside the live Uint8Array form.
+ *
+ * 52.2-02 (D-07, Law 1): a payload carries exactly one raster carrier. A
+ * reference-only payload has no pixels to encode, so its canonical form carries
+ * the media reference instead — the bytes branch below is unchanged for every
+ * payload that carries `bytes`, so no existing canonical value or boundary hash
+ * moves.
  */
 function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): Record<string, unknown> {
-  const bytes = typeof payload.bytes === 'string' ? payload.bytes : bytesToBase64(payload.bytes);
+  const media = payload.media;
+  if (media !== undefined) {
+    const reference = media.width === undefined
+      ? { relativePath: media.relativePath, digest: media.digest }
+      : { relativePath: media.relativePath, digest: media.digest, width: media.width, height: media.height };
+    return payload.width === undefined
+      ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, media: reference }
+      : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, media: reference, width: payload.width, height: payload.height };
+  }
+  const inline = payload.bytes as Uint8Array | string;
+  const bytes = typeof inline === 'string' ? inline : bytesToBase64(inline);
   return payload.width === undefined
     ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes }
     : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes, width: payload.width, height: payload.height };

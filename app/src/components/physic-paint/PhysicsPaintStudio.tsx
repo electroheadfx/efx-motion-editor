@@ -36,7 +36,7 @@ import {
   deleteBackgroundClip,
   type TrackMutationResult,
 } from '../../stores/efxPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -1682,6 +1682,9 @@ export function PhysicsPaintStudio() {
       canvasSize: { width: canvasWidth, height: canvasHeight },
       realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
         ...record.payload,
+        // 52.2-02 (D-07): a runtime cache frame needs pixels; the inline raster
+        // carrier is asserted here (a reference-only payload is a persisted shape).
+        bytes: requirePhysicPaintRotoInlineBytes(record.payload),
         source: 'real-key',
       })),
       cachedRotoFrames: latestRotoFramesRef.current,

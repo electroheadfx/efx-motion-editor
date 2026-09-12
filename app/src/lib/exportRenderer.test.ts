@@ -12,7 +12,7 @@ import { physicPaintStore } from '../stores/physicPaintStore';
 import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PreviewPhysicPaintFrameSource, PreviewRenderer } from './previewRenderer';
 import { preloadExportImages, renderGlobalFrame } from './exportRenderer';
 import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
@@ -88,7 +88,9 @@ function collectPhysicalFrameSources(layers: readonly Layer[], frame: number): P
   const paintLayer = layers.find((candidate) => candidate.type === 'physic-paint');
   const layerId = paintLayer?.source.type === 'physic-paint' ? paintLayer.source.layerId : null;
   const source = layerId ? physicPaintStore.getRotoPhysicalRenderSource(layerId, TEST_TRACK_ID, frame) : null;
-  return source && source.kind !== 'loop-placeholder' && layerId ? [{ layerId, frame, renderedFrame: source.renderedFrame }] : [];
+  return source && source.kind !== 'loop-placeholder' && layerId
+    ? [{ layerId, frame, renderedFrame: { ...source.renderedFrame, bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame) } }]
+    : [];
 }
 
 beforeEach(() => {

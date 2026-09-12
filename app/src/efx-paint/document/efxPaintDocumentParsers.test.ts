@@ -215,7 +215,9 @@ function groupClip() {
 }
 
 function groupOverrideDocument(groupOverrideRecords: readonly unknown[]) {
-  const realKeyRecords = [bytesRealKey('src1', 0)];
+  // The ordinary real keys of a PERSISTED document carry media references too,
+  // so the only shape under test in the group-override cases is the override.
+  const realKeyRecords = [mediaRealKey('src1', 0)];
   const loopClips = [groupClip()];
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const revision = (() => {
@@ -406,14 +408,16 @@ describe('the shared content encoding is total over both record shapes (52.2-02)
 
 describe('the on-disk door selects the persisted mode (52.2-02, plan 09 reads through it)', () => {
   it('accepts a layer file whose real-key records carry media references', () => {
-    const parsed = parseEfxPaintDocument(documentWithTrackRoto(physicalDocument([mediaRealKey('k1', 0)])));
+    const parsed = parseEfxPaintDocument(documentWithTrackRoto(physicalDocument([mediaRealKey('k1', 0)])), 'reference-only');
     expect(parsed.tracks[0].rotoPhysical?.realKeyRecords[0].payload.media).toEqual(FRAME_MEDIA);
   });
 
   it('refuses a layer file carrying an inline raster payload in either collection (Law 1)', () => {
     const payloadBytes = { frameIndex: 0, appFrame: 0, bytes: bytesToBase64(testWebpBytes('door')), width: 10, height: 10 };
     const inlineRecord = { kind: 'real-key' as const, keyId: 'k1', appFrame: 0, payload: payloadBytes };
-    expect(() => parseEfxPaintDocument(documentWithTrackRoto(physicalDocument([inlineRecord])))).toThrow();
+    expect(() =>
+      parseEfxPaintDocument(documentWithTrackRoto(physicalDocument([inlineRecord])), 'reference-only'),
+    ).toThrow();
 
     const overrideWithPayload = {
       kind: 'real-key' as const,
@@ -422,7 +426,18 @@ describe('the on-disk door selects the persisted mode (52.2-02, plan 09 reads th
       payload: { ...payloadBytes, appFrame: 5 },
     };
     expect(() =>
-      parseEfxPaintDocument(documentWithTrackRoto(groupOverrideDocument([overrideWithPayload]))),
+      parseEfxPaintDocument(documentWithTrackRoto(groupOverrideDocument([overrideWithPayload])), 'reference-only'),
     ).toThrow();
+  });
+
+  // The save, fingerprint, launch and transport callers hand this same parser a
+  // LIVE in-memory document, whose real-key payloads carry bytes until the save
+  // funnel projects them onto media references. The default mode keeps accepting
+  // that document, so the on-disk refusal above cannot break a save.
+  it('keeps the runtime default for a live in-memory document carrying inline payloads', () => {
+    const payloadBytes = { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('live'), width: 10, height: 10 };
+    const inlineRecord = { kind: 'real-key' as const, keyId: 'k1', appFrame: 0, payload: payloadBytes };
+    const parsed = parseEfxPaintDocument(documentWithTrackRoto(physicalDocument([inlineRecord])));
+    expect(parsed.tracks[0].rotoPhysical?.realKeyRecords[0].payload.bytes).toBeInstanceOf(Uint8Array);
   });
 });

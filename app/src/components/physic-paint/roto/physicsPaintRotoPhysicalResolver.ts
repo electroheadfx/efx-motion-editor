@@ -78,6 +78,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import {
+  buildPhysicPaintRotoPayloadContentToken,
   createPhysicPaintRotoKeyId,
   isPhysicPaintRotoKeyIdentity,
   isPhysicPaintRotoLoopClip,
@@ -91,7 +92,7 @@ import type {
   PhysicPaintRotoPhysicalEditSemanticDelta,
   PhysicPaintRotoPhysicalEditTarget,
 } from '../../../types/physicPaint';
-import { buildFrameBytesToken, PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 export type {
   PhysicPaintRotoLinkedSourceSpacingScope,
   PhysicPaintRotoPhysicalEditIntent,
@@ -496,9 +497,12 @@ function payloadEqualsAtFrame(
   expected: PhysicPaintRotoRealKeyPayload,
   appFrame: number,
 ): boolean {
+  // 52.2-02 (D-07): the content token is total over both payload shapes, so an
+  // identity comparison reads the media digest for a reference-only record
+  // instead of dereferencing pixels that a persisted record does not carry.
   return actual.frameIndex === expected.frameIndex
     && actual.appFrame === appFrame
-    && buildFrameBytesToken(actual.bytes) === buildFrameBytesToken(expected.bytes)
+    && buildPhysicPaintRotoPayloadContentToken(actual) === buildPhysicPaintRotoPayloadContentToken(expected)
     && actual.width === expected.width
     && actual.height === expected.height;
 }

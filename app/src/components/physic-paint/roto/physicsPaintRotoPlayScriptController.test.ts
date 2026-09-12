@@ -30,6 +30,7 @@ import type {
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
+  requirePhysicPaintRotoInlineBytes,
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
 } from './physicsPaintRotoPhysicalModel';
 import {
@@ -962,7 +963,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     // The parent accepted: a fresh authority read now reflects the committed records.
     test.requestAuthority.mockImplementation(async () => authority({
       physicalRecords: first.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
-      frames: first.records.map((record) => ({ ...record.payload, source: 'real-key' as const })),
+      frames: first.records.map((record) => ({ ...record.payload, bytes: requirePhysicPaintRotoInlineBytes(record.payload), source: 'real-key' as const })),
     }));
     await test.controller.openConfirmation();
     test.controller.countText.value = '3';

@@ -17,6 +17,7 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoProjectEquality,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
@@ -26,6 +27,7 @@ import {
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
+  requirePhysicPaintRotoInlineBytes,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -538,7 +540,7 @@ export function expandRotoPhysicalEditRecordRefs(payload: unknown): { payload: u
     }
     const current = physicPaintStore.getRotoRealKeyRecord(layerId, trackId, entry.keyId);
     if (!current) return { error: `Roto physical record ref "${entry.keyId}" is unknown to the parent document.` };
-    if (buildFrameBytesToken(current.payload.bytes) !== entry.refToken) {
+    if (buildPhysicPaintRotoPayloadContentToken(current.payload) !== entry.refToken) {
       return { error: `Roto physical record ref "${entry.keyId}" no longer matches the parent document content.` };
     }
     expanded.push({ keyId: entry.keyId, appFrame: entry.appFrame, payload: { ...current.payload, appFrame: entry.appFrame } });
@@ -556,7 +558,7 @@ async function applyPreparedPhysicPaintPayload(
   }
   payload = expanded.payload;
   if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) return applyPhysicPaintPayload(payload);
-  const preparedTokens = new Set(payload.records.map((record) => buildFrameBytesToken(record.payload.bytes)));
+  const preparedTokens = new Set(payload.records.map((record) => buildPhysicPaintRotoPayloadContentToken(record.payload)));
   try {
     await prepareRotoPhysicalRealKeyFrames(payload.records);
   } catch (error) {
@@ -686,7 +688,14 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     appFrame: record.appFrame,
     payload: record.payload,
   }));
-  const frames = records.map((record) => ({ ...record.payload, source: 'real-key' as const }));
+  // 52.2-02 (D-07): the wire `frames` projection is a runtime shape and needs
+  // pixels, so the inline carrier is asserted here. A reference-only record
+  // never reaches this path — the packed document is built from runtime records.
+  const frames = records.map((record) => ({
+    ...record.payload,
+    bytes: requirePhysicPaintRotoInlineBytes(record.payload),
+    source: 'real-key' as const,
+  }));
   return {
     operationId: request.operationId,
     ok: true,
@@ -880,7 +889,7 @@ function samePhysicalRecord(
     && left.appFrame === right.appFrame
     && left.payload.frameIndex === right.payload.frameIndex
     && left.payload.appFrame === right.payload.appFrame
-    && buildFrameBytesToken(left.payload.bytes) === buildFrameBytesToken(right.payload.bytes)
+    && buildPhysicPaintRotoPayloadContentToken(left.payload) === buildPhysicPaintRotoPayloadContentToken(right.payload)
     && left.payload.width === right.payload.width
     && left.payload.height === right.payload.height;
 }
@@ -904,7 +913,7 @@ function sameApplyPayloadRecords(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && buildFrameBytesToken(record.payload.bytes) === buildFrameBytesToken(candidate.payload.bytes)
+      && buildPhysicPaintRotoPayloadContentToken(record.payload) === buildPhysicPaintRotoPayloadContentToken(candidate.payload)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -1009,7 +1018,11 @@ async function isCanonicalBlankRotoPayload(
   payload: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyPayload,
   destinationAppFrame: number,
 ): Promise<boolean> {
-  if (payload.frameIndex !== 0
+  // 52.2-02 (D-07): a blank-delta check compares pixels, so a reference-only
+  // payload (which carries none) cannot be the canonical blank frame.
+  const payloadBytes = payload.bytes;
+  if (payloadBytes === undefined
+    || payload.frameIndex !== 0
     || payload.appFrame !== destinationAppFrame
     || !Number.isInteger(payload.width)
     || !Number.isInteger(payload.height)
@@ -1021,7 +1034,7 @@ async function isCanonicalBlankRotoPayload(
     canvas.width = payload.width as number;
     canvas.height = payload.height as number;
     const blankBytes = await encodeCanvasAsWebp(canvas);
-    return buildFrameBytesToken(payload.bytes) === buildFrameBytesToken(blankBytes);
+    return buildFrameBytesToken(payloadBytes) === buildFrameBytesToken(blankBytes);
   } catch {
     return false;
   }

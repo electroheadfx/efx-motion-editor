@@ -213,7 +213,9 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     // Load decodes base64 back to a Uint8Array.
     const loaded = await loadEfxPaintDocuments('/project', payload);
     const restored = loaded.get('layer-bytes')!.document;
-    const restoredBytes = restored.tracks[0].rotoPhysical!.realKeyRecords[0].payload.bytes;
+    // 52.2-02: the payload's raster carrier is optional on the shared record
+    // shape, so the inline-bytes assertion is the one that pins it.
+    const restoredBytes = restored.tracks[0].rotoPhysical!.realKeyRecords[0].payload.bytes as Uint8Array;
     expect(restoredBytes).toBeInstanceOf(Uint8Array);
     expect(Array.from(restoredBytes)).toEqual(Array.from(bytes));
   });

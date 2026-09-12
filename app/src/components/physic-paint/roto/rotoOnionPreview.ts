@@ -1,4 +1,5 @@
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import { requirePhysicPaintRotoInlineBytes } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from '../view/physicsPaintWorkflowPresentation';
 import type { PhysicsPaintWorkflowOnionPreviewFrame } from '../view/PhysicsPaintWorkflowStrip';
@@ -127,8 +128,12 @@ export function projectRotoOnionPreviewFrames(input: RotoPhysicalOnionInput | Ro
       && preview.contentRevision === source.contentRevision
       ? preview
       : null;
-    const frame = exactPreview ?? {
+    // 52.2-02 (D-07): an onion projection reads pixels, so the runtime render
+    // source's inline carrier is asserted — a reference-only payload is a
+    // persisted shape and never reaches this runtime projection.
+    const frame: RotoOnionFrame = exactPreview ?? {
       ...source.renderedFrame,
+      bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame),
       appFrame: record.appFrame,
       keyId: record.keyId,
       contentRevision: source.contentRevision,

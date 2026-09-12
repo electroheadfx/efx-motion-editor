@@ -66,6 +66,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoInterpolationState,
@@ -993,11 +994,11 @@ function compactRecordsForTransport(
   records: PhysicPaintRotoPhysicalEditApplyPayload['records'],
   beforeRecords: readonly PhysicPaintRotoRealKeyRecord[],
 ): PhysicPaintRotoPhysicalEditApplyPayload['records'] {
-  const beforeTokens = new Map(beforeRecords.map((record) => [record.keyId, buildFrameBytesToken(record.payload.bytes)]));
+  const beforeTokens = new Map(beforeRecords.map((record) => [record.keyId, buildPhysicPaintRotoPayloadContentToken(record.payload)]));
   let refCount = 0;
   const compacted = records.map((record) => {
     const token = beforeTokens.get(record.keyId);
-    if (token === undefined || token !== buildFrameBytesToken(record.payload.bytes)) return record;
+    if (token === undefined || token !== buildPhysicPaintRotoPayloadContentToken(record.payload)) return record;
     refCount += 1;
     return { keyId: record.keyId, appFrame: record.appFrame, refToken: token };
   });

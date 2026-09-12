@@ -13,6 +13,7 @@
  */
 
 import { parsePhysicPaintRotoPhysicalDocument } from '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoPayloadMode } from '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   EFX_PAINT_DOCUMENT_VERSION,
   type BackgroundFallback,
@@ -187,7 +188,10 @@ function parseLoopClips(value: unknown): readonly FrameLoopClip[] {
   return Object.freeze(value.map(parseFrameLoopClip));
 }
 
-export function parseInternalPaintTrack(value: unknown): InternalPaintTrack {
+export function parseInternalPaintTrack(
+  value: unknown,
+  payloadMode: PhysicPaintRotoPayloadMode = 'runtime',
+): InternalPaintTrack {
   if (!isPlainRecord(value)) {
     throw new Error('InternalPaintTrack: expected a record.');
   }
@@ -218,9 +222,16 @@ export function parseInternalPaintTrack(value: unknown): InternalPaintTrack {
   if (!isNonNegativeInteger(value.revision)) {
     throw new Error('InternalPaintTrack: revision must be a non-negative integer.');
   }
+  // 52.2-02 (D-07, Law 1): the callers that read a PERSISTED layer sub-file off
+  // disk select the persisted payload mode, and this branch is the one place it
+  // is enforced — a persisted layer carrying an inline raster payload in EITHER
+  // roto collection (realKeyRecords or groupOverrideRecords) is refused here.
+  // The default mode stays 'runtime': this same entry point validates a LIVE
+  // in-memory document on the save, fingerprint and launch paths, which carries
+  // bytes until the save funnel projects it onto media references.
   const rotoPhysical = value.rotoPhysical === null
     ? null
-    : parsePhysicPaintRotoPhysicalDocument(value.rotoPhysical);
+    : parsePhysicPaintRotoPhysicalDocument(value.rotoPhysical, payloadMode);
   return Object.freeze({
     id: value.id,
     name: value.name,
@@ -382,8 +393,19 @@ function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
  *
  * Throws a closed validation failure on any invalid input; caller-owned
  * data is never mutated; no ID is ever allocated by this parser.
+ *
+ * `payloadMode` selects the roto payload reading (52.2-02, D-07): the default
+ * `'runtime'` validates a live in-memory document — the shape every save,
+ * fingerprint, launch and transport caller holds, whose real-key payloads carry
+ * their raster inline. The on-disk READ door (`loadEfxPaintDocuments` in
+ * `efxPaintPersistence.ts`) selects `'reference-only'`, which is the phase's
+ * Law 1 enforcement: a persisted layer carrying an inline raster payload in
+ * either roto collection is refused. No runtime caller passes it.
  */
-export function parseEfxPaintDocument(value: unknown): EfxPaintDocument {
+export function parseEfxPaintDocument(
+  value: unknown,
+  payloadMode: PhysicPaintRotoPayloadMode = 'runtime',
+): EfxPaintDocument {
   if (!isPlainRecord(value)) {
     throw new Error('EfxPaintDocument: expected a record.');
   }
@@ -408,7 +430,7 @@ export function parseEfxPaintDocument(value: unknown): EfxPaintDocument {
   if (!isNonEmptyString(value.activeTrackId)) {
     throw new Error('EfxPaintDocument: activeTrackId must be a non-empty string.');
   }
-  const tracks = Object.freeze(value.tracks.map(parseInternalPaintTrack));
+  const tracks = Object.freeze(value.tracks.map((track) => parseInternalPaintTrack(track, payloadMode)));
   const seenTrackIds = new Set<string>();
   for (const track of tracks) {
     if (seenTrackIds.has(track.id)) {

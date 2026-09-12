@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import { requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
@@ -255,8 +256,12 @@ export function rejectRotoLoopPlaceholderSource(
 }
 
 export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
+  // 52.2-02 (D-07): a runtime cache frame needs pixels, so the inline carrier is
+  // asserted. A reference-only record is a persisted shape and never reaches
+  // this projection — the document here was built from in-memory runtime records.
   return document.realKeyRecords.map((record) => ({
     ...record.payload,
+    bytes: requirePhysicPaintRotoInlineBytes(record.payload),
     appFrame: record.appFrame,
     source: 'real-key' as const,
     keyId: record.keyId,

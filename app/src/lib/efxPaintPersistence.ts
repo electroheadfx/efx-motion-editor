@@ -443,7 +443,12 @@ export async function loadEfxPaintDocuments(
     throw new Error('EFX Paint documents must be a record.');
   }
   for (const [layerId, value] of Object.entries(persistedMap)) {
-    const document = parseEfxPaintDocument(value);
+    // 52.2-02 (D-07, Law 1): this is the on-disk READ door, so it selects the
+    // persisted payload mode — a layer sub-file carrying an inline raster
+    // payload in either roto collection is refused here. Every other caller of
+    // `parseEfxPaintDocument` validates a live in-memory document and keeps the
+    // 'runtime' default.
+    const document = parseEfxPaintDocument(value, 'reference-only');
     const frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
     for (const track of document.tracks) {
       const trackFrames = new Map<number, PhysicPaintRenderedFrame>();

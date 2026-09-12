@@ -46,6 +46,7 @@ import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
+  requirePhysicPaintRotoInlineBytes,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoLoopClip,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -5732,7 +5733,7 @@ describe('Phase 43.2 leased source-phase Paint parent tracer', async () => {
       expect(physicPaintVersion.peek()).toBe(beforeVersion);
       expect(rotoPhysicalRevision.peek()).toBe(beforePhysicalRevision);
       expect(physicPaintStore.getRotoPhysicalRenderSource(test.layer.id, TEST_TRACK_ID, 0)).toEqual(beforeRenderSource);
-      expect(hasRotoAlphaCanvasFrame(test.acceptedDocument.realKeyRecords[0].payload.bytes, { width: 1000, height: 650 })).toBe(true);
+      expect(hasRotoAlphaCanvasFrame(requirePhysicPaintRotoInlineBytes(test.acceptedDocument.realKeyRecords[0].payload), { width: 1000, height: 650 })).toBe(true);
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
     },
   );
