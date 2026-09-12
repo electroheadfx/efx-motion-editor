@@ -2641,7 +2641,10 @@ describe('physicPaintStore', () => {
       beforeEach(() => {
         _setPhysicPaintPackageDirProvider(() => PACKAGE_DIR);
         readFrameMediaMock.mockReset();
-        registerDocument(flatDocument([flatTrack(MEDIA_TRACK)]));
+        // `flatDocument` keys the document by `parentLayerId`; the seam resolves
+        // the layer through `getEfxPaintDocument(layerId)`, so the fixture must
+        // live under the layer id this describe queries.
+        registerDocument({ ...flatDocument([flatTrack(MEDIA_TRACK)]), parentLayerId: MEDIA_LAYER });
       });
 
       afterEach(() => {

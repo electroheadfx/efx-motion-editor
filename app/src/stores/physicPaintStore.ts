@@ -5,10 +5,12 @@ import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanva
 import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 import { frameLru } from '../lib/frameLru';
 // 52.2-09 Task 3 (D-13): the READ leg of the package media pair. The resolver
-// (GREEN) takes the LRU, the injected decode and the package root as
-// parameters, so the store keeps ownership of the LRU budget and the
-// two-format sniff.
-import type { FrameMediaRefusalReason } from '../lib/efxPaintMediaRead';
+// takes the LRU, the injected decode and the package root as parameters, so the
+// store keeps ownership of the LRU budget and the two-format sniff.
+import {
+  resolveFrameMediaBitmap,
+  type FrameMediaRefusalReason,
+} from '../lib/efxPaintMediaRead';
 import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
@@ -1223,14 +1225,7 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
   const decodeOrigin: 'draw' | 'prefetch' = _decodeOriginIsPrefetch ? 'prefetch' : 'draw';
   const promise = (async (): Promise<ImageBitmap | null> => {
     try {
-      // Two-format law: real keys are VP8L (Rust codec); display-only derived
-      // frames (interpolation blends) are PNG. Sniff the magic bytes — never
-      // feed PNG bytes to the Rust WebP decoder.
-      const isWebp = bytes.length >= 16
-        && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x4c;
-      const bitmap = isWebp
-        ? await _decodeWebpToBitmap(bytes, decodeOrigin)
-        : await _decodePngBytesToBitmap(bytes, decodeOrigin);
+      const bitmap = await _decodeFrameBytesByFormat(bytes, decodeOrigin);
       frameLru.put(token, bitmap, bitmap.width, bitmap.height);
       return bitmap;
     } catch {
@@ -1248,15 +1243,76 @@ function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
 }
 
 /**
- * 52.2-09 Task 3 (D-13) — RED stub: the compositor seam recognizes a
- * reference-only payload but the media read leg is not wired yet, so with a
- * package root in hand the frame stays pending (GREEN lands the read, the
- * named missing ref and the digest verdicts).
+ * Two-format law (52.1): real keys are VP8L (Rust codec); display-only derived
+ * frames (interpolation blends) are PNG. Sniff the magic bytes — never feed PNG
+ * bytes to the Rust WebP decoder. One implementation, shared by the inline
+ * decode path and the media path, so the sniff cannot drift between them.
+ */
+async function _decodeFrameBytesByFormat(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
+  const isWebp = bytes.length >= 16
+    && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x4c;
+  return isWebp
+    ? await _decodeWebpToBitmap(bytes, origin)
+    : await _decodePngBytesToBitmap(bytes, origin);
+}
+
+/**
+ * 52.2-09 Task 3 (D-13, T-52.2-29/31/32): resolve one persisted media
+ * reference for the compositor seam. The bitmap it yields is cached in the
+ * shared 512 MB frame LRU under the reference DIGEST — the resolver's key, so
+ * the same raster referenced by several keys decodes once.
+ *
+ * A terminal non-bitmap outcome (missing file, digest mismatch, refusal) is
+ * recorded by digest and reported as the Phase 49 MISSING branch, naming the
+ * reference: transparent pixels plus a report entry, never a placeholder
+ * bitmap. The first request kicks the async read off and returns null this
+ * tick; the version-clock bump in `finally` re-fires subscribers when it
+ * lands (the 52.1 decode idiom).
  */
 function _resolveMediaRasterResolution(media: FrameMediaReference): EfxPaintTrackContentResolution | null {
-  const packageDir = _packageDirProvider?.() ?? null;
-  if (packageDir !== null) return null;
-  return { kind: 'missing', missingRefs: [media.relativePath] };
+  const cached = frameLru.get(media.digest);
+  if (cached) return { kind: 'content', raster: cached };
+  const verdict = _frameMediaVerdicts.get(media.digest);
+  if (verdict !== undefined) return { kind: 'missing', missingRefs: [media.relativePath] };
+  if (!_frameMediaResolutionPromises.has(media.digest)) {
+    const packageDir = _packageDirProvider?.() ?? null;
+    if (packageDir === null) {
+      // No package root this session — there is no file the reference could
+      // name, so the frame is honest missing content (never a fabricated one).
+      _frameMediaVerdicts.set(media.digest, 'missing');
+      return { kind: 'missing', missingRefs: [media.relativePath] };
+    }
+    const promise = resolveFrameMediaBitmap({
+      packageDir,
+      reference: media,
+      // The LRU interface is structural: the frame LRU already owns the byte
+      // budget and `bitmap.close()` on eviction, so media frames share the one
+      // cache and one eviction policy (T-52.2-31, D-10/D-12).
+      lru: frameLru,
+      decode: async (bytes) => {
+        try {
+          return await _decodeFrameBytesByFormat(bytes, 'draw');
+        } catch {
+          recordPhysicsPaintPerformanceCounter('decode.fail');
+          return null;
+        }
+      },
+    }).then((resolution) => {
+      // A 'bitmap' outcome is already in the LRU; only the failures need a
+      // durable verdict so the next tick does not re-issue the read.
+      if (resolution.kind !== 'bitmap') {
+        _frameMediaVerdicts.set(media.digest, resolution.kind === 'missing' ? 'missing' : resolution.reason);
+      }
+    }).catch(() => {
+      // An unexpected transport failure is an `io` refusal — never a bitmap.
+      _frameMediaVerdicts.set(media.digest, 'io');
+    }).finally(() => {
+      _frameMediaResolutionPromises.delete(media.digest);
+      physicPaintVersion.value++;
+    });
+    _frameMediaResolutionPromises.set(media.digest, promise);
+  }
+  return null;
 }
 
 async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
@@ -1325,9 +1381,16 @@ async function _decodePngBytesToBitmap(bytes: Uint8Array, origin: 'draw' | 'pref
  * after triggering the per-frame decodes so the render loop's getFlattenedFrame
  * returns the baked raster — a cold LRU miss must never render a frame with a
  * silently missing layer.
+ *
+ * 52.2-09 Task 3: the persisted-media reads are in-flight work of the same
+ * kind — an export that awaited only the inline decodes would bake a frame
+ * whose reopened real key was still being read from the package.
  */
 export function awaitPendingDecodes(): Promise<void> {
-  return Promise.all([..._compositorDecodePromises.values()]).then(() => undefined);
+  return Promise.all([
+    ..._compositorDecodePromises.values(),
+    ..._frameMediaResolutionPromises.values(),
+  ]).then(() => undefined);
 }
 
 /**
