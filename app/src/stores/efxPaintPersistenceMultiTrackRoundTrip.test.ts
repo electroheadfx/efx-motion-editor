@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { FrameMediaReference } from '../lib/efxPaintPackage';
+import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { _setPhysicPaintMarkDirtyCallback, physicPaintStore } from './physicPaintStore';
 import {
@@ -48,6 +51,22 @@ const rotoRecord = (keyId: string, appFrame: number) => ({
   appFrame,
   payload: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(keyId), width: 10, height: 10 },
 });
+
+// 52.2-06: the package-side media references the save funnel hands the
+// projection (plan 07 supplies the same shape from the native write).
+const RESOLVED_MEDIA: Readonly<Record<string, FrameMediaReference>> = Object.fromEntries(
+  ['key-1', 'key-2', 'override-phase-1', 'new-key-1', 'new-key-2'].map((keyId, index) => [
+    keyId,
+    {
+      relativePath: buildFrameMediaRelativePath('layer-L', keyId),
+      digest: String(index + 1).repeat(64),
+      width: 10,
+      height: 10,
+    } satisfies FrameMediaReference,
+  ]),
+);
+
+const resolveMedia = (keyId: string): FrameMediaReference | undefined => RESOLVED_MEDIA[keyId];
 
 describe('47-01: multi-track persistence round-trip (user scenario — added track + paint survive save/load)', () => {
   beforeEach(() => {
@@ -168,5 +187,102 @@ describe('50-06: photo reference track round-trip (REF-05 — save/reopen preser
     // Idempotency: serialize → hydrate → serialize is stable (REF-05 probe).
     const reserialized = serializeRuntimeIntoDocument('layer-L');
     expect(reserialized.photoReference).toEqual(parsed.photoReference);
+  });
+});
+
+describe('52.2-06: reference-only multi-track round trip (D-06/D-07)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setEfxPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    reset();
+  });
+
+  it('preserves keyId, appFrame and track attribution for real keys AND group overrides', () => {
+    const document = makeTrackDocument('layer-L');
+    registerDocument(document);
+    const added = addTrack('layer-L');
+    expect(added.ok).toBe(true);
+    const newTrackId = added.ok ? added.trackId : '';
+
+    // Track 1: two real keys plus a canonical finite Group carrying one override.
+    const trackOneRecords = [rotoRecord('key-1', 0), rotoRecord('key-2', 3)];
+    const overrideRecord = rotoRecord('override-phase-1', 11);
+    const groupLoop = {
+      loopId: 'loop-phase',
+      placementStart: 10,
+      sourceKeyIds: ['key-1', 'key-2'],
+      repeat: 3,
+      mode: 'progressive' as const,
+      syncState: 'modified' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 10,
+      originalEndExclusive: 16,
+      visibleRanges: [{ start: 10, endExclusive: 16 }],
+      frameOverrides: [{ appFrame: 11, keyId: 'override-phase-1' }],
+    };
+    const trackOne = physicPaintStore.replaceRotoPhysicalDocument('layer-L', TEST_TRACK_ID, {
+      capacity: 32,
+      realKeyRecords: trackOneRecords,
+      groupOverrideRecords: [overrideRecord],
+      interpolation: { enabled: false, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      loopClips: [groupLoop],
+      incomingInterpolationBreakKeyIds: [],
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        trackOneRecords,
+        { enabled: false, mode: 'duplicate' },
+        [groupLoop],
+        [],
+        [overrideRecord],
+      ),
+    });
+    expect(trackOne.ok).toBe(true);
+
+    // Track 2: two real keys, no overrides.
+    physicPaintStore.setFrame('layer-L', newTrackId, 0, makeFrame(0, 0));
+    physicPaintStore.setFrame('layer-L', newTrackId, 4, makeFrame(1, 4));
+    const replaced = physicPaintStore.replaceRotoPhysicalRecords(
+      'layer-L', newTrackId,
+      [rotoRecord('new-key-1', 0), rotoRecord('new-key-2', 4)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    expect(replaced.ok).toBe(true);
+
+    // Save boundary: the resolver-driven projection, then the on-disk door.
+    const projected = serializeRuntimeIntoDocument('layer-L', resolveMedia);
+    const parsed = parseEfxPaintDocument(projected, 'reference-only');
+    expect(parsed.tracks).toHaveLength(2);
+    expect(parsed.tracks.every((track) => track.rotoPhysical?.realKeyRecords.every((record) => !('bytes' in record.payload)))).toBe(true);
+
+    // Reopen boundary: hydrate the reference-only document back into runtime.
+    const frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
+    for (const track of parsed.tracks) {
+      const trackFrames = new Map<number, PhysicPaintRenderedFrame>();
+      for (const appFrame of Object.keys(track.frames).map(Number)) {
+        trackFrames.set(appFrame, { frameIndex: 0, appFrame, bytes: pngDataUrl(`${track.id}-${appFrame}`), width: 10, height: 10 });
+      }
+      frames.set(track.id, trackFrames);
+    }
+    physicPaintStore.reset();
+    hydrateRuntimeFromDocument(parsed, frames);
+
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID).map((record) => [record.keyId, record.appFrame]))
+      .toEqual([['key-1', 0], ['key-2', 3]]);
+    expect(physicPaintStore.getRotoGroupOverrideRecords('layer-L', TEST_TRACK_ID).map((record) => [record.keyId, record.appFrame]))
+      .toEqual([['override-phase-1', 11]]);
+    expect(physicPaintStore.getRotoRealKeyRecords('layer-L', newTrackId).map((record) => [record.keyId, record.appFrame]))
+      .toEqual([['new-key-1', 0], ['new-key-2', 4]]);
+    const hydratedPayloads = [
+      ...physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID),
+      ...physicPaintStore.getRotoGroupOverrideRecords('layer-L', TEST_TRACK_ID),
+      ...physicPaintStore.getRotoRealKeyRecords('layer-L', newTrackId),
+    ].map((record) => record.payload);
+    expect(hydratedPayloads.every((payload) => !('bytes' in payload))).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalContentRevision('layer-L', TEST_TRACK_ID)).toBeTruthy();
   });
 });

@@ -15,6 +15,7 @@ import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/ph
 import { deriveEfxPaintFlattenedCacheKey } from '../efx-paint/compositor/efxPaintCompositeCache';
 import { resetProjectPaperRasterForTests } from '../lib/projectPaperRaster';
 import { testPngBytes, testWebpBytes } from '../testUtils/testWebpBytes';
+import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
 import { encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 
 // 52.1-04 (D-13): the decode path invokes the Rust `decode_webp_frame` command
@@ -2541,5 +2542,163 @@ describe('physicPaintStore', () => {
 
       expect(frameLru.has(frame5Token)).toBe(true);
     });
+  });
+});
+
+describe('52.2-06: reference-only roto records across the hydrate seam (D-06/D-07)', () => {
+  const LAYER = 'layer-ref';
+  const TRACK = TEST_TRACK_ID;
+  const INTERPOLATION = { enabled: false, mode: 'duplicate' as const };
+
+  const mediaRef = (keyId: string, digestCharacter = 'a') => ({
+    relativePath: buildFrameMediaRelativePath(LAYER, keyId),
+    digest: digestCharacter.repeat(64),
+    width: 10,
+    height: 10,
+  });
+
+  const mediaRecord = (keyId: string, appFrame: number, digestCharacter = 'a') => ({
+    kind: 'real-key' as const,
+    keyId,
+    appFrame,
+    payload: { frameIndex: 0, appFrame, media: mediaRef(keyId, digestCharacter), width: 10, height: 10 },
+  });
+
+  const bytesRecord = (keyId: string, appFrame: number) => ({
+    kind: 'real-key' as const,
+    keyId,
+    appFrame,
+    payload: { frameIndex: 0, appFrame, bytes: testWebpBytes(keyId), width: 10, height: 10 },
+  });
+
+  /** Canonical finite Group carrying one override (the on-disk reference rule). */
+  const groupLoopClip = (overrideKeyId: string) => ({
+    loopId: 'loop-phase',
+    placementStart: 10,
+    sourceKeyIds: ['key-1'],
+    repeat: 3,
+    mode: 'progressive' as const,
+    syncState: 'modified' as const,
+    provenanceState: 'attached' as const,
+    phaseOrigin: 10,
+    originalEndExclusive: 13,
+    visibleRanges: [{ start: 10, endExclusive: 13 }],
+    frameOverrides: [{ appFrame: 11, keyId: overrideKeyId }],
+  });
+
+  function install(physical: unknown): void {
+    physicPaintStore.installRuntimeStateFromDocument(LAYER, TRACK, {
+      trackId: TRACK,
+      frames: new Map(),
+      rotoPhysical: physical as never,
+    });
+  }
+
+  function referenceOnlyPhysical(
+    realKeyRecords: readonly unknown[],
+    groupOverrideRecords: readonly unknown[] = [],
+    loopClips: readonly unknown[] = [],
+  ): Record<string, unknown> {
+    return {
+      capacity: 32,
+      realKeyRecords,
+      groupOverrideRecords,
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        realKeyRecords as never,
+        INTERPOLATION,
+        loopClips as never,
+        [],
+        groupOverrideRecords as never,
+      ),
+    };
+  }
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('installs reference-only records in BOTH collections without allocating a byte buffer', () => {
+    install(referenceOnlyPhysical(
+      [mediaRecord('key-1', 0)],
+      [mediaRecord('override-phase-1', 11)],
+      [groupLoopClip('override-phase-1')],
+    ));
+
+    const realKeys = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK);
+    expect(realKeys.map((record) => [record.keyId, record.appFrame])).toEqual([['key-1', 0]]);
+    expect('bytes' in realKeys[0].payload).toBe(false);
+    expect(realKeys[0].payload.media?.relativePath).toBe('frames/layer-ref/key-1.webp');
+
+    const overrides = physicPaintStore.getRotoGroupOverrideRecords(LAYER, TRACK);
+    expect(overrides.map((record) => [record.keyId, record.appFrame])).toEqual([['override-phase-1', 11]]);
+    expect('bytes' in overrides[0].payload).toBe(false);
+    expect(overrides[0].payload.media?.relativePath).toBe('frames/layer-ref/override-phase-1.webp');
+  });
+
+  it('refuses a group-override record carrying neither media nor bytes, naming the keyId', () => {
+    const broken = {
+      kind: 'real-key' as const,
+      keyId: 'override-broken',
+      appFrame: 11,
+      payload: { frameIndex: 0, appFrame: 11, width: 10, height: 10 },
+    };
+
+    expect(() => install({
+      ...referenceOnlyPhysical([mediaRecord('key-1', 0)], [], []),
+      groupOverrideRecords: [broken],
+      loopClips: [groupLoopClip('override-broken')],
+      revision: 'unused-the-carrier-guard-fires-first',
+    })).toThrow(/override-broken/);
+    expect(physicPaintStore.getRotoGroupOverrideRecords(LAYER, TRACK)).toEqual([]);
+  });
+
+  it('recomputes the content revision for a reference-only document without reading a byte buffer', () => {
+    install(referenceOnlyPhysical(
+      [mediaRecord('key-1', 0), mediaRecord('key-2', 3)],
+      [mediaRecord('override-phase-1', 11)],
+      [groupLoopClip('override-phase-1')],
+    ));
+
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TRACK);
+
+    expect(typeof revision).toBe('string');
+    expect(revision).toBeTruthy();
+    expect(physicPaintStore.getRotoPhysicalInterpolationState(LAYER, TRACK)).toEqual(INTERPOLATION);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK)).toHaveLength(1);
+  });
+
+  it('refuses to publish an empty frame for a duplicated key with no inline pixels', () => {
+    install(referenceOnlyPhysical([mediaRecord('key-1', 0)]));
+
+    const duplicated = physicPaintStore.duplicateTrackFrames(LAYER, TRACK, [0]);
+
+    expect(duplicated.ok).toBe(false);
+    if (duplicated.ok) throw new Error('reference-only duplicate must be refused');
+    expect(duplicated.reason).toBe('unresolved-key-pixels');
+    // Fail closed with zero mutation: no extra key, no width-0 runtime frame.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK)).toHaveLength(1);
+    expect(physicPaintStore.getFrames(LAYER, TRACK).size).toBe(0);
+  });
+
+  it('publishes a fresh frame from the available inline runtime source for a duplicated key', () => {
+    install(referenceOnlyPhysical([bytesRecord('key-1', 0)]));
+
+    const duplicated = physicPaintStore.duplicateTrackFrames(LAYER, TRACK, [0]);
+
+    expect(duplicated.ok).toBe(true);
+    const frames = [...physicPaintStore.getFrames(LAYER, TRACK).values()];
+    expect(frames.length).toBeGreaterThan(0);
+    for (const frame of frames) {
+      expect(frame.width).toBeGreaterThan(0);
+      expect(frame.height).toBeGreaterThan(0);
+    }
   });
 });
