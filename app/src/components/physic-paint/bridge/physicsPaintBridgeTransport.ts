@@ -75,6 +75,16 @@ export interface EfxPaintDocumentSyncPayload {
   readonly backgroundSources?: Readonly<Record<string, string>>;
 }
 
+/** 52.2-10 RED stub — the digest-keyed byte channel lands in GREEN. */
+export interface EfxPaintDocumentSyncOptions {
+  readonly knownDigests?: Iterable<string>;
+}
+
+/** 52.2-10 RED stub (D-12): the real send-cache reset lands in GREEN. */
+export function resetEfxPaintDocumentSyncTransferState(): void {
+  // Intentionally empty: GREEN replaces this with the transfer-state reset.
+}
+
 /**
  * 47-01: child→main document sync. The Studio window owns its own
  * efxPaintStore instance; track CRUD (add/rename/reorder/duplicate/delete,
@@ -88,7 +98,9 @@ export async function sendEfxPaintDocumentSync(
   document: EfxPaintDocument,
   bridgeMode: PhysicsPaintBridgeMode,
   backgroundSources?: Readonly<Record<string, string>>,
+  options?: EfxPaintDocumentSyncOptions,
 ): Promise<void> {
+  void options; // RED stub (52.2-10 Task 2): the known-digest set lands in GREEN.
   const payload: EfxPaintDocumentSyncPayload = backgroundSources
     ? { document, backgroundSources }
     : { document };
