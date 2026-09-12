@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-09-PLAN.md
-last_updated: "2026-09-12T18:01:17.558Z"
+stopped_at: Completed 52.2-10-PLAN.md
+last_updated: "2026-09-12T18:34:03.060Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 8d0e04097a32b4c1e786e234edf01d94fa992a7c
+state_head: f7576f3f140e02ed939edd5c4590a13997f33095
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 58
+  completed_plans: 59
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 10 of 16
+Plan: 11 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -117,6 +117,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P07 | 54min | 3 tasks | 13 files |
 | Phase 52.2 P08 | ~45min | 3 tasks | 12 files |
 | Phase 52.2 P09 | ~31 min | 3 tasks | 14 files |
+| Phase 52.2 P10 | 30min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -293,6 +294,9 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-08: the rescue converter emits empty documentRevision/compositeRevision (the codebase's 'recompute' sentinel — the canonical revisions need the app's parser graph) and drops pre-52.2 derived-frame cache refs (machine-local, D-14) rather than rewriting them
 - [Phase 52.2]: 52.2-09: media LRU keyed by persisted digest (same raster referenced by several keys decodes once); mismatch refused before decode and before any LRU write
 - [Phase 52.2]: 52.2-09: missing/refused media draws the Phase 49 slate with the reference named — never an invented placeholder; verdicts are terminal per digest so failed reads are not re-issued per tick
+- [Phase 52.2]: 52.2-10: the receiver's digest decision runs BEFORE the document's revision guard — a re-pushed unchanged document may still carry bytes the receiver lost
+- [Phase 52.2]: 52.2-10: bridged raster bytes are held undecoded in _frameMediaBytes and enter the frame LRU only when the compositor actually needs the frame (byte copy dropped on decode)
+- [Phase 52.2]: 52.2-10: the main→Studio frame-media request ships as a Tauri-guarded protocol signal only — the responder rides the sender's queue, deferred to plan 14 (pilot)
 
 ### Pending Todos
 
@@ -344,6 +348,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T18:01:15.983Z
-Stopped at: Completed 52.2-09-PLAN.md
+Last session: 2026-09-12T18:34:01.537Z
+Stopped at: Completed 52.2-10-PLAN.md
 Resume file: None
