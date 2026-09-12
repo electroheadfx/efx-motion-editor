@@ -4,17 +4,17 @@ milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
-status: pending
-stopped_at: Phase 52.2 context gathered
-last_updated: "2026-09-12T13:01:32.419Z"
-last_activity: 2026-09-11
-last_activity_desc: "Quick 260911-s1j closed — native UAT PASSED 2026-09-11 (amended pass, folds the 260911-sli rows); .mce package-format decision locked: Phase 52.2 before 53, autosave quick cancelled"
-state_head: 91e0fc45707cab4ea4898c69228db6b9cf363a16
+status: executing
+stopped_at: Completed 52.2-01-PLAN.md
+last_updated: "2026-09-12T14:26:41.159Z"
+last_activity: 2026-09-12
+last_activity_desc: Phase 52.2 execution started
+state_head: c6bb6efae9882147d24cb457b5f704c215c5a3af
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 49
+  completed_plans: 50
   percent: 55
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 52.2 (Project package format — references only) — READY TO EXECUTE
-Plan: 7 of 7
-Status: Closed 2026-09-09
-Last activity: 2026-09-11 — Completed quick task 260911-s1j (native UAT PASSED 2026-09-11 — folds the 260911-sli badge rows + the 260911-g1g 3-track rows) — supersedes the 260911-sli badge surface
+Phase: 52.2 (Project package format — references only) — EXECUTING
+Plan: 2 of 16
+Status: Ready to execute
+Last activity: 2026-09-12 — Phase 52.2 execution started
 
 Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
@@ -108,6 +108,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.1 P04 | 19 | 4 tasks | 9 files |
 | Phase 52.1 P05 | 0min | 2 tasks | 7 files |
 | Phase 52.1 P06 | 0min | 2 tasks | 6 files |
+| Phase 52.2 P01 | 8min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -257,6 +258,9 @@ Recent decisions affecting current work:
 - [Phase 52.1 close]: Plan-04 TDD deviation (tests bundled inside feat commits, no RED-first history) receives a conscious `--force-mvp-gate` override at phase close, on the record (52.1-04-SUMMARY "Phase-close override" + 52.1-07-SUMMARY)
 - [Phase 52.1 close]: The chunk budget stays at 1300 kB — NOT raised. Main chunk 1305.11 kB (13.68 kB over the 1291.43 kB baseline). Attribution via a pre-phase baseline build against the bumped node_modules (1296.24 kB): ~4.8 kB dep bumps (+ intervening quicks) + ~8.9 kB 52.1 feature code — the overage is NOT purely dep-bumps-only; documented and left red pending user sign-off on any future raise
 - [Phase 52.1 close]: Plan-07 native roto UAT signed off on feeling (drag, paint-burst, general fluidity); the numeric docSync count was declined by the user — validation recorded as feeling-based
+- [Phase 52.2]: Rule 3: tauri 2.11.5 Response has no header API — the frame-media read leg returns a base64 JSON envelope with bytesBase64 instead of bytes+response headers; plans 07/09 build on this wire contract (coverage item D6, human review).
+- [Phase 52.2]: One uniform EfxPaintMediaError (Rejected variant | Io) serialized as a single fixed label so no path or io detail reaches the renderer.
+- [Phase 52.2]: Two-guard asymmetry: the media lock stays frames/ + .webp-only; the save transaction's resolve_package_bound_path carries its own allowlist and delegates every frames/ entry back to the media code path.
 
 ### Pending Todos
 
@@ -306,6 +310,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T11:05:15.269Z
-Stopped at: Phase 52.2 context gathered
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/52.2-project-package-format-references-only/52.2-CONTEXT.md
+Last session: 2026-09-12T14:26:39.542Z
+Stopped at: Completed 52.2-01-PLAN.md
+Resume file: None

@@ -469,13 +469,13 @@ Plans:
 **Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
 **Requirements**: TBD (D-01..D-26 locked decisions)
 **Depends on:** Phase 52
-**Plans:** 16 plans
+**Plans:** 1/16 plans executed
 
 Plans:
 
 **Wave 1** *(independent — native media IPC, package contract, UI sweeps)*
 
-- [ ] 52.2-01-PLAN.md — Tracer: prefix-locked Rust frame-media read/write commands + TS IPC taxonomy
+- [x] 52.2-01-PLAN.md — Tracer: prefix-locked Rust frame-media read/write commands + TS IPC taxonomy
 - [ ] 52.2-02-PLAN.md — Package layout contract (manifest, layer paths, machine-cache paths, media references)
 - [ ] 52.2-03-PLAN.md — `− [field] +` numeric steppers swept across main editor and Studio
 - [ ] 52.2-04-PLAN.md — Solo play starts at content start and every loop wrap returns there
