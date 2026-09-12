@@ -13,6 +13,7 @@ import { useRotoReferenceController } from './useRotoReferenceController';
 import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoordinator';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
+import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -280,6 +281,17 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const failedParentPayloadRef = useRef<Map<string, { identity: RotoLivePixelIdentity; payload: PhysicPaintApplyPayload }>>(new Map());
   const parentOperationRevisionRef = useRef(0);
   const previousLaunchRef = useRef<{ launchId: string; layerId: string } | null>(null);
+  // 52.2-15 (D-16, sensitivity-map row 4): the delivery retry is scheduled
+  // through the pilot's bounded-turn queue instead of re-entering the delivery
+  // chain inline. The queue owns concurrency; this hook keeps owning identity —
+  // the retry unit stays the per-identity entry plan 10 narrowed, never a whole
+  // payload. Lazily created: a ref argument would build the queue on every
+  // Studio render and discard all but the first.
+  const deliveryRetryQueueRef = useRef<FinalizationQueue | null>(null);
+  const deliveryRetryQueue = (): FinalizationQueue => {
+    if (deliveryRetryQueueRef.current === null) deliveryRetryQueueRef.current = createFinalizationQueue();
+    return deliveryRetryQueueRef.current;
+  };
   const inputRef = useRef(input);
   inputRef.current = input;
 
@@ -575,8 +587,22 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         failedParentPayloadRef.current.delete(key);
         continue;
       }
-      queueParentPayload(currentIdentity, failed.payload);
-      await parentDeliveryRef.current.get(key);
+      // 52.2-15 (D-16): the retry is one pilot-queue turn — the queue owns the
+      // scheduling (bounded, never-rejecting settlement), this loop keeps the
+      // identity check above and the outcome check below. The turn's produce
+      // re-schedules exactly the narrowed unit (this identity's recorded
+      // payload), never a whole document; its commit waits out that unit's
+      // delivery chain so the error check right after reads a settled result.
+      const queue = deliveryRetryQueue();
+      const release = queue.beginFlush();
+      try {
+        await queue.submit({
+          produce: () => queueParentPayload(currentIdentity, failed.payload),
+          commit: () => parentDeliveryRef.current.get(key),
+        });
+      } finally {
+        release();
+      }
       if (parentDeliveryErrorRef.current.has(key)) throw parentDeliveryErrorRef.current.get(key);
     }
   }, [getCurrentIdentity, queueParentPayload, resolveFrameIdentityInput]);
@@ -597,6 +623,17 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     if (launch) publishCurrentDocument(launch.layerId, launch.operationId);
   }, [editBuffer, publishCurrentDocument, reference.resetCachedRotoReference]);
 
+  // 52.2-15 (D-16, sensitivity-map row 2): the flush pipeline's queue port. The
+  // forced drain opens the capture gate and settles the gesture's queued
+  // captures before the pipeline runs its caller steps; the interrupt cancels
+  // the live produce/commit turns, so a cancelled capture never commits.
+  const drainLivePixelQueue = useCallback(async (): Promise<void> => {
+    await livePixelTransactionsRef.current.flush();
+  }, []);
+  const interruptLivePixels = useCallback((): void => {
+    livePixelTransactionsRef.current.interrupt();
+  }, []);
+
   return {
     editBuffer,
     confirmedFramesRef,
@@ -606,6 +643,8 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     invalidateLivePixels,
     snapshotLivePixels,
     flushLivePixels,
+    drainLivePixelQueue,
+    interruptLivePixels,
     hasPendingLivePixels: () => livePixelTransactionsRef.current.hasPending() || parentDeliveryRef.current.size > 0 || parentDeliveryErrorRef.current.size > 0,
     removeCachedFrame,
     clearCurrentFrame,

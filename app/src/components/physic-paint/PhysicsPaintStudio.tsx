@@ -100,6 +100,7 @@ import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_
 import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
 import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
 import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
+import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -1878,14 +1879,44 @@ export function PhysicsPaintStudio() {
   // These refs are assigned after documentSyncDirty/pushLiveProjection are built.
   const pendingDocumentSyncRef = useRef<() => boolean>(() => false);
   const flushDocumentSyncRef = useRef<() => Promise<void>>(async () => {});
+  // 52.2-15 (D-16, sensitivity-map rows 2 and 4): ONE flush pipeline owns both
+  // Studio flush paths. The requested-flush listener and the close block hand
+  // it their existing step sequences, so a close landing while a requested
+  // flush is in flight JOINS that drain instead of starting a second sequence
+  // and pushing the document twice (T-52.2-54). The queue port dereferences the
+  // live coordinator through a ref — the hook's closures are rebuilt per render.
+  const rotoPersistenceRef = useRef(rotoPersistence);
+  rotoPersistenceRef.current = rotoPersistence;
+  const flushPipelineRef = useRef<FlushPipeline | null>(null);
+  if (flushPipelineRef.current === null) {
+    flushPipelineRef.current = createFlushPipeline({
+      queue: {
+        drain: () => rotoPersistenceRef.current.drainLivePixelQueue(),
+        interrupt: () => rotoPersistenceRef.current.interruptLivePixels(),
+      },
+    });
+  }
+  const flushPipeline = flushPipelineRef.current;
+  // The pipeline never rejects (a failed drain is an outcome), so the shared
+  // runner rethrows for the callers whose contract is a rejection: the facade's
+  // fail-closed catch and the close hook's error path both depend on it.
+  const runStudioFlush = async (steps: ReadonlyArray<FlushStep>): Promise<void> => {
+    const outcome = await flushPipeline.flush({ steps });
+    if (outcome.status === 'flushed') return;
+    throw outcome.error ?? new Error(`Physics Paint flush did not complete (${outcome.status})`);
+  };
   usePhysicsPaintCloseFlush(
     () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels() || rotoPlaybackSettingsController.hasPending() || pendingDocumentSyncRef.current()),
     async () => {
       if (workflowMode !== 'roto') return;
-      engineRef.current?.flushPendingStrokeFinalizations();
-      await rotoPersistence.flushLivePixels(currentFrame);
-      await rotoPlaybackSettingsController.flush();
-      await flushDocumentSyncRef.current();
+      // The four steps and their order are unchanged; the pipeline now owns the
+      // drain they run inside and the outcome-to-rejection translation.
+      await runStudioFlush([
+        () => { engineRef.current?.flushPendingStrokeFinalizations(); },
+        () => rotoPersistence.flushLivePixels(currentFrame),
+        () => rotoPlaybackSettingsController.flush(),
+        () => flushDocumentSyncRef.current(),
+      ]);
     },
     // 41-05 (D-08): audio engine release runs unconditionally on close,
     // before the hasPending gate — closing the window always stops and
@@ -4016,14 +4047,25 @@ export function PhysicsPaintStudio() {
     // the capture queue (copied at stroke end), and the interactive finalizer
     // drains the queue cooperatively once the gesture ends, so skip the drain
     // whenever a gesture is in flight; idle flushes keep the full contract.
-    if (readInteractionIdle()) engineRef.current?.flushPendingStrokeFinalizations();
-    await rotoPersistence.flushLivePixels();
-    if (!documentSyncDirty.peek()) return;
-    const layerId = launchContext?.layerId;
-    const mode = bridgeModeRef.current;
-    if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
-      await pushLiveProjection(layerId, mode);
-    }
+    //
+    // 52.2-15 (D-16): the steps below are unchanged; they now run inside the
+    // Studio's one flush pipeline, which first waits out the gesture's queued
+    // captures (the drain cannot race a capture still producing) and hands the
+    // same drain to a concurrent close instead of running a second sequence.
+    await runStudioFlush([
+      () => {
+        if (readInteractionIdle()) engineRef.current?.flushPendingStrokeFinalizations();
+      },
+      () => rotoPersistence.flushLivePixels(),
+      async () => {
+        if (!documentSyncDirty.peek()) return;
+        const layerId = launchContext?.layerId;
+        const mode = bridgeModeRef.current;
+        if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+          await pushLiveProjection(layerId, mode);
+        }
+      },
+    ]);
   };
   useEffect(() => {
     let unlisten: (() => void) | undefined;
