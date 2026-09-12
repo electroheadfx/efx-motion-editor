@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-05-PLAN.md
-last_updated: "2026-09-12T15:50:47.909Z"
+stopped_at: Completed 52.2-06-PLAN.md
+last_updated: "2026-09-12T16:04:06.392Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 66bd72839d07fc709125561c7dbf461377770592
+state_head: 3e238558cb70b19e4f1ee8a84f7eb9e732dccbf1
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 54
+  completed_plans: 55
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 6 of 16
+Plan: 7 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -113,6 +113,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P03 | 63min | 3 tasks | 11 files |
 | Phase 52.2 P04 | 9 | 3 tasks | 6 files |
 | Phase 52.2 P05 | 25min | 3 tasks | 9 files |
+| Phase 52.2 P06 | 11min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -277,6 +278,9 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-05: Save As holds ONE transaction open across the active-path migration (publish → migrate → commit | rollback), so a migration failure restores the previous destination through the transaction's own rollback (T-52.2-18)
 - [Phase 52.2]: 52.2-05: physicPaintCacheTransactionId is dead by design in both TS project-save signatures — plan 07 Task 3 stops passing it, plan 09 deletes the declaration; nothing may leave it in shipped code
 - [Phase 52.2]: 52.2-05: the cache producers' conversion to the machine cache root (efxPaintStore.ts + the efxPaintPersistence.ts guard) is plan 07 Task 2 and was deliberately not pre-empted
+- [Phase 52.2]: 52.2-06: resolveRef is OPTIONAL on serializeRuntimeIntoDocument — the roto media projection engages only when the package-write caller supplies digests; live Studio push, sibling sync and undo paths keep bytes
+- [Phase 52.2]: 52.2-06: toRuntimeRotoRecords passes a live bytes-carrying record through untouched and rebuilds a media-carrying one as an immutable media-only record — never allocates a byte buffer
+- [Phase 52.2]: 52.2-06: hydrate refuses a carrier-less roto record by keyId BEFORE the canonical parse (the parser's refusal is generic and cannot name the record)
 
 ### Pending Todos
 
@@ -328,6 +332,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T15:50:33.934Z
-Stopped at: Completed 52.2-05-PLAN.md
+Last session: 2026-09-12T16:04:04.838Z
+Stopped at: Completed 52.2-06-PLAN.md
 Resume file: None

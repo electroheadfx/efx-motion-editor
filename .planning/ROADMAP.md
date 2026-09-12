@@ -469,7 +469,7 @@ Plans:
 **Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
 **Requirements**: TBD (D-01..D-26 locked decisions)
 **Depends on:** Phase 52
-**Plans:** 5/16 plans executed
+**Plans:** 6/16 plans executed
 
 Plans:
 
@@ -483,7 +483,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1)*
 
 - [x] 52.2-05-PLAN.md — Multi-file save transaction + machine-local cache relocation
-- [ ] 52.2-06-PLAN.md — Roto real-key records become media references (persist + hydrate)
+- [x] 52.2-06-PLAN.md — Roto real-key records become media references (persist + hydrate)
 
 **Wave 3** *(blocked on Wave 2)*
 
