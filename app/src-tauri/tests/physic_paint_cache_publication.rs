@@ -15,14 +15,16 @@
 use efx_motion_editor_lib::efx_paint_media::{digest_bytes, PACKAGE_STAGING_PREFIX};
 use efx_motion_editor_lib::physic_paint_cache::{
     bind_package_transaction, publish_cache_generation, publish_package_transaction,
-    recover_cache_transaction, recover_package_transaction, settle_cache_generation,
-    settle_package_transaction, CacheSettlementAction, PackageBinding,
-    PackageSettlementAction,
+    recover_cache_transaction, recover_package_transaction, resolve_machine_cache_root,
+    settle_cache_generation, settle_package_transaction, CacheSettlementAction, PackageBinding,
+    PackageSettlementAction, MACHINE_CACHE_DIR,
 };
 use efx_motion_editor_lib::physic_paint_cache_command::{
     publish_physic_paint_cache_generation, settle_physic_paint_cache_generation,
     PhysicPaintCacheCleanupStatus, PhysicPaintCacheSettlementAction,
 };
+use efx_motion_editor_lib::project_io;
+use efx_motion_editor_lib::MceProject;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,7 +35,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 const STAGING_BASENAME: &str = ".efx-paint-staging-test";
-const TRANSACTION_MARKER: &str = "cache/.physic-paint-transaction.json";
+/// 52.2-05 Task 2: the cache marker sits at the MACHINE cache root, not inside
+/// the package (`<app_data_dir>/frame-cache/<projectId>/`).
+const TRANSACTION_MARKER: &str = ".physic-paint-transaction.json";
 const PACKAGE_STAGING_BASENAME: &str = ".efx-paint-package-staging-test-generation";
 const PACKAGE_MARKER: &str = ".efx-paint-package-transaction.json";
 
@@ -46,16 +50,16 @@ fn fixture_dir(tag: &str) -> PathBuf {
         "efx-physic-paint-cache-{tag}-{}-{nonce}",
         std::process::id()
     ));
-    fs::create_dir_all(root.join("cache")).expect("fixture cache directory");
+    fs::create_dir_all(&root).expect("fixture machine cache root");
     root
 }
 
-fn canonical_dir(project_dir: &Path) -> PathBuf {
-    project_dir.join("cache/efx-paint")
+fn canonical_dir(cache_root: &Path) -> PathBuf {
+    cache_root.join("efx-paint")
 }
 
-fn staging_dir(project_dir: &Path) -> PathBuf {
-    project_dir.join("cache").join(STAGING_BASENAME)
+fn staging_dir(cache_root: &Path) -> PathBuf {
+    cache_root.join(STAGING_BASENAME)
 }
 
 fn write_generation(path: &Path, generation: &str) {
@@ -1234,4 +1238,255 @@ fn package_bind_recovers_a_stale_generation_before_refusing() {
     assert_ne!(retry.transaction_id, first.transaction_id);
     assert_eq!(retry.entries.len(), 1);
     fs::remove_dir_all(package).expect("fixture cleanup");
+}
+
+// --- 52.2-05 Task 2: package layout, staged manifest, machine cache root ---
+
+fn manifest_project(name: &str) -> MceProject {
+    MceProject {
+        version: 1,
+        name: name.into(),
+        fps: 24,
+        width: 1920,
+        height: 1080,
+        created_at: "2026-09-12T00:00:00Z".into(),
+        modified_at: "2026-09-12T00:00:00Z".into(),
+        sequences: vec![],
+        images: vec![],
+        audio_tracks: vec![],
+        physic_paint_outputs: vec![],
+        efx_paint_documents: std::collections::HashMap::new(),
+    }
+}
+
+#[test]
+fn package_creation_produces_layers_and_frames_without_a_package_cache() {
+    let root = package_fixture("package-layout");
+    let package = root.join("MyProject.mce.d");
+    project_io::create_project_dir(package.to_str().expect("utf8 package path"))
+        .expect("package directory creation");
+
+    assert!(package.join("layers").is_dir(), "layers/ must exist");
+    assert!(package.join("frames").is_dir(), "frames/ must exist");
+    assert!(package.join("images").is_dir(), "images/ stays authoritative");
+    assert!(package.join("images/.thumbs").is_dir());
+    assert!(package.join("paint").is_dir());
+    assert!(package.join("scripts").is_dir());
+    // D-05/T-52.2-17: no derived data directory inside the package.
+    assert!(
+        !package.join("cache").exists(),
+        "a package must carry no cache/ directory"
+    );
+    fs::remove_dir_all(root).expect("fixture cleanup");
+}
+
+#[test]
+fn manifest_write_lands_at_the_staged_path_and_leaves_the_canonical_manifest_untouched() {
+    let package = package_fixture("staged-manifest");
+    write_canonical(&package, "project.mce", b"old-manifest");
+    let staging_root = package_staging(&package);
+    fs::create_dir_all(&staging_root).expect("staging root");
+    let staged_manifest = staging_root.join("project.mce");
+
+    project_io::save_project(
+        &manifest_project("Staged"),
+        staged_manifest.to_str().expect("utf8 staged path"),
+        staging_root.to_str().expect("utf8 staging root"),
+    )
+    .expect("staged manifest write");
+
+    assert!(staged_manifest.is_file(), "the manifest lands where handed");
+    assert!(
+        !staging_root.join("project.mce.tmp").exists(),
+        "the temp+rename idiom leaves no half file behind"
+    );
+    assert_eq!(
+        fs::read(canonical_file(&package, "project.mce")).expect("canonical manifest readable"),
+        b"old-manifest",
+        "the canonical manifest is untouched until the transaction publishes"
+    );
+    fs::remove_dir_all(package).expect("fixture cleanup");
+}
+
+#[test]
+fn refused_package_save_leaves_every_authoritative_file_byte_identical() {
+    let package = package_fixture("refused-save");
+    write_canonical(&package, "project.mce", b"old-manifest");
+    write_canonical(&package, "layers/L1.json", b"{\"layer\":\"old\"}");
+    write_canonical(&package, "frames/L1/K1.webp", b"old-frame");
+    let snapshot = [
+        ("project.mce", b"old-manifest".as_slice()),
+        ("layers/L1.json", b"{\"layer\":\"old\"}".as_slice()),
+        ("frames/L1/K1.webp", b"old-frame".as_slice()),
+    ];
+
+    stage_file(&package, "project.mce", b"new-manifest");
+    stage_file(&package, "layers/L1.json", b"{\"layer\":\"new\"}");
+    stage_file(&package, "frames/L1/K1.webp", b"new-frame");
+    stage_file(&package, "frames/L1/K2.webp", b"brand-new-frame");
+    let binding = bind_package_transaction(
+        &package,
+        PACKAGE_STAGING_BASENAME,
+        &bound_paths(&[
+            "project.mce",
+            "layers/L1.json",
+            "frames/L1/K1.webp",
+            "frames/L1/K2.webp",
+        ]),
+    )
+    .expect("package bind");
+
+    // A refusal mid-save: one staged file drifted after the bind, so the
+    // publish refuses before moving any canonical file.
+    fs::write(
+        package_staging(&package).join("frames/L1/K1.webp"),
+        b"torn-stage",
+    )
+    .expect("torn staged bytes");
+    assert!(
+        publish_package_transaction(&package, &binding.transaction_id).is_err(),
+        "a drifted staged file must refuse the publish"
+    );
+
+    for (relative, expected) in snapshot {
+        assert_eq!(
+            fs::read(canonical_file(&package, relative)).expect("canonical file readable"),
+            expected,
+            "{relative} must keep its pre-save bytes after a refused save"
+        );
+    }
+    assert!(
+        !canonical_file(&package, "frames/L1/K2.webp").exists(),
+        "a file that did not exist before the save is still absent"
+    );
+
+    settle_package_transaction(
+        &package,
+        &binding.transaction_id,
+        PackageSettlementAction::Rollback,
+    )
+    .expect("rollback after a refused save");
+    assert_package_settled(&package);
+    fs::remove_dir_all(package).expect("fixture cleanup");
+}
+
+#[test]
+fn machine_cache_root_resolves_under_app_data_and_never_inside_the_package() {
+    let project_id = Uuid::new_v4().to_string();
+    let app_data = Path::new("/Users/tester/Library/Application Support/efx-motion-editor");
+
+    let root = resolve_machine_cache_root(app_data, &project_id);
+
+    assert_eq!(MACHINE_CACHE_DIR, "frame-cache");
+    assert_eq!(root, app_data.join("frame-cache").join(&project_id));
+    // D-05: the canonical generation lives at `<root>/efx-paint` — the same
+    // place the cache leg publishes into — never inside the package directory.
+    assert_eq!(canonical_dir(&root), root.join("efx-paint"));
+    assert!(
+        !canonical_dir(&root).starts_with("/Users/tester/Projects/MyProject"),
+        "a package path must never be the cache root"
+    );
+    assert!(
+        root.to_string_lossy().contains("frame-cache"),
+        "the machine root is named, not inline: {root:?}"
+    );
+}
+
+#[test]
+fn cache_failure_is_soft_while_the_authoritative_commit_succeeds() {
+    let package = package_fixture("soft-cache");
+    // A cache root whose parent is an existing FILE cannot be created, which is
+    // the shape of any cache-side failure (T-52.2-16).
+    let blocker = package.join("blocker");
+    fs::write(&blocker, b"not a directory").expect("blocker file");
+    let cache_root = blocker.join("frame-cache").join(Uuid::new_v4().to_string());
+
+    let cache = publish_physic_paint_cache_generation(
+        cache_root.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+    )
+    .expect("a cache failure is reported, not raised");
+    assert!(!cache.accepted, "the cache failure is not accepted");
+    assert!(
+        cache.diagnostic.is_some(),
+        "the soft failure carries a diagnostic the caller records"
+    );
+
+    // D-14: the authoritative transaction is entirely unaffected.
+    write_canonical(&package, "project.mce", b"old-manifest");
+    stage_file(&package, "project.mce", b"new-manifest");
+    let binding = bind_package_transaction(
+        &package,
+        PACKAGE_STAGING_BASENAME,
+        &bound_paths(&["project.mce"]),
+    )
+    .expect("package bind");
+    publish_package_transaction(&package, &binding.transaction_id).expect("package publish");
+    settle_package_transaction(
+        &package,
+        &binding.transaction_id,
+        PackageSettlementAction::Commit,
+    )
+    .expect("the authoritative commit still succeeds");
+    assert_eq!(
+        fs::read(canonical_file(&package, "project.mce")).expect("committed manifest"),
+        b"new-manifest"
+    );
+    assert_package_settled(&package);
+    fs::remove_dir_all(package).expect("fixture cleanup");
+}
+
+#[test]
+fn invoke_handler_registers_the_package_transaction_and_machine_cache_commands() {
+    let source = include_str!("../src/lib.rs");
+    for command in [
+        "project::bind_efx_paint_package_transaction",
+        "project::publish_efx_paint_package_transaction",
+        "project::settle_efx_paint_package_transaction",
+        "project::recover_efx_paint_package_transaction",
+        "physic_paint_cache_commands::resolve_physic_paint_cache_root",
+    ] {
+        assert!(source.contains(command), "lib.rs must register {command}");
+    }
+}
+
+#[test]
+fn project_open_runs_the_package_recovery_beside_the_cache_recovery() {
+    let source = include_str!("../src/commands/project.rs");
+    assert!(
+        source.contains("recover_cache_transaction"),
+        "the existing cache recovery stays"
+    );
+    assert!(
+        source.contains("recover_package_transaction"),
+        "the package recovery joins it at open time"
+    );
+    // The manifest command surface carries no cache transaction id any more:
+    // the cache leg no longer binds a project write (Task 1 clause (f)).
+    assert!(
+        !source.contains("physic_paint_cache_transaction_id"),
+        "the project save commands must not carry a cache transaction id"
+    );
+    // Save As drives the destination through the one transaction, rollback
+    // included (T-52.2-18).
+    for call in [
+        "bind_package_transaction",
+        "publish_package_transaction",
+        "settle_package_transaction",
+    ] {
+        assert!(source.contains(call), "Save As must use {call}");
+    }
+}
+
+#[test]
+fn manifest_write_source_no_longer_carries_a_cache_transaction_id() {
+    let source = include_str!("../src/services/project_io.rs");
+    assert!(
+        !source.contains("physic_paint_cache_transaction_id"),
+        "the manifest write must not carry the retired cache transaction id"
+    );
+    assert!(
+        source.contains("layers") && source.contains("frames"),
+        "the package layout is created here"
+    );
 }
