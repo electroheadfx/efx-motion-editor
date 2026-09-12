@@ -105,9 +105,6 @@ const savedDocumentCache = new Map<string, Record<string, unknown>>();
 const savedFrameTokens = new Map<string, string>();
 
 // --- 52.2-07 Task 1 (D-11): the file-keyed change-token model -------------
-// RED signatures only: the bodies are implemented in the GREEN commit, so the
-// new cases fail on their own assertions while every pre-existing case stays
-// green.
 
 /** The three kinds of authoritative file a package save can rewrite. */
 export type PackageFileTokenKind = 'manifest' | 'layer' | 'frame';
@@ -121,11 +118,24 @@ export type PackageFileTokenKind = 'manifest' | 'layer' | 'frame';
  * `groupOverrideRecords`, and one keyId placed at several frames owns exactly
  * one media file.
  */
+export function packageFileToken(kind: 'manifest'): string;
+export function packageFileToken(kind: 'layer', layerId: string): string;
+export function packageFileToken(kind: 'frame', layerId: string, keyId: string): string;
 export function packageFileToken(kind: PackageFileTokenKind, layerId?: string, keyId?: string): string {
-  void kind;
-  void layerId;
-  void keyId;
-  return 'not-implemented';
+  if (kind === 'manifest') return 'manifest';
+  if (kind === 'layer') {
+    if (typeof layerId !== 'string' || layerId.length === 0) {
+      throw new Error('packageFileToken: a layer token needs its layerId.');
+    }
+    return `layer:${layerId}`;
+  }
+  if (kind === 'frame') {
+    if (typeof layerId !== 'string' || layerId.length === 0 || typeof keyId !== 'string' || keyId.length === 0) {
+      throw new Error('packageFileToken: a frame token needs its layerId and keyId.');
+    }
+    return `frame:${layerId}:${keyId}`;
+  }
+  throw new Error(`packageFileToken: unknown token kind "${String(kind)}".`);
 }
 
 /** One changed authoritative file: its token plus the value it must be saved at. */
@@ -135,56 +145,90 @@ export interface PackageChangedFile {
 }
 
 /**
- * The changed files between two token maps, sorted by token so the write set
- * is deterministic. A token absent from `previousTokens` counts as changed (the
- * first save against an empty map returns the complete set).
+ * The changed files between two token maps, sorted by token so the write set is
+ * deterministic. Values are opaque: the payload content token of a key's media
+ * for `frame:` tokens, the layer document's revision token for `layer:`, the
+ * manifest's own revision for `manifest`. A token absent from `previousTokens`
+ * counts as changed, so the first save against an empty map returns the
+ * complete set and an identical input returns an empty set.
  */
 export function computeChangedFiles(
   previousTokens: ReadonlyMap<string, string>,
   nextTokens: ReadonlyMap<string, string>,
 ): readonly PackageChangedFile[] {
-  void previousTokens;
-  void nextTokens;
-  return [];
+  const changed: PackageChangedFile[] = [];
+  for (const [token, value] of nextTokens) {
+    if (previousTokens.get(token) !== value) changed.push(Object.freeze({ token, value }));
+  }
+  changed.sort((left, right) => (left.token < right.token ? -1 : left.token > right.token ? 1 : 0));
+  return Object.freeze(changed);
 }
 
 /**
  * One roto document's media-bearing collections, structurally typed so this
- * module owns no roto import.
+ * module owns no roto import. `appFrame` is accepted and deliberately ignored:
+ * a key's placement is not part of its media identity (one keyId, one file).
  */
 export interface PackageRotoMediaSource {
-  readonly realKeyRecords?: readonly { readonly keyId: string }[];
-  readonly groupOverrideRecords?: readonly { readonly keyId: string }[];
+  readonly realKeyRecords?: readonly { readonly keyId: string; readonly appFrame?: number }[];
+  readonly groupOverrideRecords?: readonly { readonly keyId: string; readonly appFrame?: number }[];
 }
 
 /**
  * Every keyId a layer's media files are keyed by: BOTH persisted roto
  * collections of every source (track), deduplicated by keyId — one keyId placed
- * at several frames is ONE media file — and sorted. A keyId carried by both
- * collections of one document is refused: it would make one record's
- * `frames/<layerId>/<keyId>.webp` silently overwrite the other's.
+ * at several frames is ONE media file — and sorted so the write set is
+ * deterministic. A keyId carried by both collections of one document is refused
+ * before any media is written: the two records would share one
+ * `frames/<layerId>/<keyId>.webp` and one record's pixels would silently
+ * overwrite the other's.
  */
 export function collectLayerMediaKeyIds(sources: Iterable<PackageRotoMediaSource>): readonly string[] {
-  void sources;
-  return [];
-}
-
-/** The last committed token map — the baseline the next save compares against. */
-export function getPackageFileTokens(): ReadonlyMap<string, string> {
-  return new Map();
+  const keyIds = new Set<string>();
+  for (const source of sources) {
+    const ordinaryKeyIds = new Set<string>();
+    for (const record of source.realKeyRecords ?? []) ordinaryKeyIds.add(record.keyId);
+    for (const record of source.groupOverrideRecords ?? []) {
+      if (ordinaryKeyIds.has(record.keyId)) {
+        throw new Error(
+          `EFX Paint package media keyId "${record.keyId}" is shared by realKeyRecords and groupOverrideRecords; one keyId owns exactly one media file.`,
+        );
+      }
+      keyIds.add(record.keyId);
+    }
+    for (const keyId of ordinaryKeyIds) keyIds.add(keyId);
+  }
+  return Object.freeze(Array.from(keyIds).sort());
 }
 
 /**
- * Adopt a save's token map on commit, or drop it on rollback (the committed
- * map stays, so the files the failed save had staged are still changed and the
- * next save re-writes them).
+ * The last committed token map — the baseline the next save compares against
+ * (D-11). Populated only by a committed save; empty after a restart, which
+ * forces a complete first save (the fail-closed default).
+ */
+const packageFileTokens = new Map<string, string>();
+
+/** The last committed token map, read-only for the caller. */
+export function getPackageFileTokens(): ReadonlyMap<string, string> {
+  return packageFileTokens;
+}
+
+/**
+ * Adopt a save's token map on commit, or drop it on rollback.
+ *
+ * Commit replaces the baseline with the saved set, so a second identical save
+ * finds an empty change set. Rollback keeps the previous baseline: the files
+ * the failed save had staged are still different from what is committed under
+ * the canonical paths, so the next save re-writes exactly them.
  */
 export function settlePackageFileTokens(
   action: 'commit' | 'rollback',
   nextTokens?: ReadonlyMap<string, string>,
 ): void {
-  void action;
-  void nextTokens;
+  if (action === 'rollback') return;
+  if (!nextTokens) throw new Error('settlePackageFileTokens: a commit needs the saved token map.');
+  packageFileTokens.clear();
+  for (const [token, value] of nextTokens) packageFileTokens.set(token, value);
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

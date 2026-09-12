@@ -802,6 +802,11 @@ describe('per-file change tokens (52.2-07 Task 1, D-11)', () => {
       [layerToken, 'docrev-1'],
       [frameToken('key-a'), contentToken('a1')],
     ]);
+    // A same-shaped input whose one value drifted is NOT empty, so the empty
+    // result below is a real comparison rather than a constant.
+    const drift = new Map(next);
+    drift.set(frameToken('key-a'), contentToken('a2'));
+    expect(computeChangedFiles(next, drift).map((entry) => entry.token)).toEqual([frameToken('key-a')]);
 
     expect(computeChangedFiles(next, next)).toEqual([]);
   });
