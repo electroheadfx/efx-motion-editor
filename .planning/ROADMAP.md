@@ -466,14 +466,51 @@ Plans:
 
 ### Phase 52.2: Project package format — references only (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
+**Requirements**: TBD (D-01..D-26 locked decisions)
 **Depends on:** Phase 52
-**Plans:** 0 plans
+**Plans:** 15 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 52.2 to break down)
+**Wave 1** *(independent — native media IPC, package contract, UI sweeps)*
+
+- [ ] 52.2-01-PLAN.md — Tracer: prefix-locked Rust frame-media read/write commands + TS IPC taxonomy
+- [ ] 52.2-02-PLAN.md — Package layout contract (manifest, layer paths, machine-cache paths, media references)
+- [ ] 52.2-03-PLAN.md — `− [field] +` numeric steppers swept across main editor and Studio
+- [ ] 52.2-04-PLAN.md — Solo play starts at content start and every loop wrap returns there
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 52.2-05-PLAN.md — Multi-file save transaction + machine-local cache relocation
+- [ ] 52.2-06-PLAN.md — Roto real-key records become media references (persist + hydrate)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 52.2-07-PLAN.md — Package save: per-file change tokens, media-then-manifest ordering
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 52.2-08-PLAN.md — Pre-52.2 refusal gate + clean break (no legacy carrier field)
+- [ ] 52.2-10-PLAN.md — Bridge retargeted to references + digest-keyed byte channel
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 52.2-09-PLAN.md — Read-back leg: digest-verified lazy media decode on reopen
+- [ ] 52.2-11-PLAN.md — macOS document-package treatment (`Info.plist`, open handling, dialogs)
+- [ ] 52.2-12-PLAN.md — Async conventions doc (Gate 2) + gated render counters
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [ ] 52.2-13-PLAN.md — Pilot preconditions: re-verify + pin libraries, re-measure the chunk budget
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [ ] 52.2-14-PLAN.md — Async pilot: stroke-finalization machine + bounded-turn finalization queue
+
+**Wave 8** *(blocked on Wave 7)*
+
+- [ ] 52.2-15-PLAN.md — Bundled native UAT (Gates 4/5) + D-25 re-measurement record
 
 ### Phase 52.1: Modern frame runtime + native HD paint (INSERTED)
 
