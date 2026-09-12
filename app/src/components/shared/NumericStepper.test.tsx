@@ -299,7 +299,12 @@ const SWEPT_COMPONENT_PATHS = [
   'src/components/sidebar/PaintProperties.tsx',
   'src/components/sidebar/InlineColorPicker.tsx',
   'src/components/shared/ColorPickerModal.tsx',
+  'src/components/physic-paint/view/PhysicsPaintTopBar.tsx',
+  'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx',
 ];
+
+/** The Studio workflow strip keeps the fps field on a 0.5 step (D-24). */
+const STUDIO_FPS_ARIA_LABEL = 'Cached Roto playback frames per second';
 
 /** The raw native numeric input element this sweep retires (D-23). */
 const RAW_NATIVE_NUMERIC_INPUT = /type="number"/;
@@ -321,7 +326,7 @@ describe('numericStepperSweep', () => {
 
   it('scans the expected swept component list', () => {
     expect(SWEPT_COMPONENT_PATHS.filter((relPath) => /\.test\.tsx$/.test(relPath))).toEqual([]);
-    expect(scannedPaths).toHaveLength(4);
+    expect(scannedPaths).toHaveLength(6);
   });
 
   it('leaves no raw native numeric input on a swept surface', () => {
@@ -355,5 +360,14 @@ describe('numericStepperSweep', () => {
       offenders,
       `A swept field lost its own step (D-24: fps 0.5, everything else keeps its current step):\n${offenders.join('\n')}`,
     ).toEqual([]);
+  });
+
+  it('keeps the Studio fps field on a 0.5 step while other fields keep 1', () => {
+    const relPath = 'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx';
+    const fps = stepperElements(readSweptSource(relPath)).find((element) =>
+      element.includes(`ariaLabel="${STUDIO_FPS_ARIA_LABEL}"`),
+    );
+    expect(fps, `No NumericStepper for "${STUDIO_FPS_ARIA_LABEL}" in ${relPath}`).toBeDefined();
+    expect(fps, 'The fps field must keep step 0.5 (D-24)').toMatch(/step=\{0\.5\}/);
   });
 });
