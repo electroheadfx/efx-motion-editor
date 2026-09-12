@@ -46,6 +46,13 @@ export const PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES = [
   'render.workflowStrip',
   'render.workflowStaticChrome',
   'render.rotoTimelineCellButton',
+  // 52.2 D-18 render-churn inventory (declared here, counted through
+  // renderCounters.ts): a counter absent from this list reads as zero through
+  // the snapshot the native capture uses, so the three surfaces the pilot is
+  // judged on must stay declared.
+  'render.tracksStrip',
+  'render.rightPanel',
+  'render.canvas',
   'observer.canvasStack.resize.install',
   'observer.canvasStack.resize.cleanup',
   'observer.canvasStack.mutation.install',
