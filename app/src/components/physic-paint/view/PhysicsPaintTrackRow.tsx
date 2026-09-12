@@ -48,6 +48,7 @@ import type {
 } from '../hooks/usePhysicsPaintBackgroundClipDrag';
 import type { BackgroundClipResizeApi } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
+import { countRender } from '../performance/renderCounters';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
@@ -476,6 +477,11 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
  * Background row, reading the SAME frameCells through the row's trackId.
  */
 export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
+  // 52.2 D-18 (render-churn inventory): count REAL renders of the tracks strip
+  // — this row is the strip's repeating unit. First statement, before any
+  // signal read, so the count is unconditional and the row's reactive reads are
+  // untouched; `countRender` is a no-op while the profile gate is off.
+  countRender('tracksStrip');
   const {
     trackId,
     layerId,

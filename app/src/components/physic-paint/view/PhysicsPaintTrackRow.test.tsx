@@ -15,8 +15,12 @@
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
+import {
+  clearPhysicsPaintPerformance,
+  snapshotPhysicsPaintPerformance,
+} from '../performance/physicsPaintPerformanceTrace';
 import {
   _setPhysicPaintMarkDirtyCallback,
   physicPaintStore,
@@ -574,5 +578,44 @@ describe('PhysicsPaintTrackColumnStrip — 50-UAT photo/reference camera icon (S
     const camera = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-column-photo'))[0];
     (camera.props as { onClick: () => void }).onClick();
     expect(onOpenReference).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PhysicsPaintTrackRow — 52.2-12 render counters (D-18)', () => {
+  const profileStorage = new Map<string, string>();
+
+  beforeEach(() => {
+    profileStorage.clear();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => profileStorage.get(key) ?? null,
+      },
+    });
+    clearPhysicsPaintPerformance();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearPhysicsPaintPerformance();
+  });
+
+  it('counts real row renders through render.tracksStrip only while profiling is enabled', () => {
+    // Gate off: the row renders normally but records nothing.
+    render();
+    render();
+    expect(snapshotPhysicsPaintPerformance().counters['render.tracksStrip']).toBe(0);
+
+    // Gate on: each materialized row render increments the counter exactly once.
+    profileStorage.set('efx.physicsPaint.profile', '1');
+    render();
+    render();
+    render();
+    expect(snapshotPhysicsPaintPerformance().counters['render.tracksStrip']).toBe(3);
+
+    // Clearing the profile window resets the surface counter to its zero row.
+    clearPhysicsPaintPerformance();
+    expect(snapshotPhysicsPaintPerformance().counters['render.tracksStrip']).toBe(0);
+    render();
+    expect(snapshotPhysicsPaintPerformance().counters['render.tracksStrip']).toBe(1);
   });
 });

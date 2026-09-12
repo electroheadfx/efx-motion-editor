@@ -1067,7 +1067,7 @@ describe('Canvas navigation render localization', () => {
   it('keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack', () => {
     expect(canvasMount).toContain('export function PhysicsPaintCanvasMount(');
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMount);');
+    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
     expect(studioView).not.toContain('<PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />');

@@ -13,7 +13,22 @@
 // PhysicsPaintRightPanel(props) directly through a hook-runtime harness.
 // Keeping compat out of that module's import graph preserves the
 // direct-invocation contract.
+//
+// 52.2 D-18 (render-churn inventory): the memo boundary counts REAL renders of
+// the panel — the increment runs only when the shallow compare fails, so it
+// measures churn rather than parent renders. `countRender` is a no-op while the
+// profile gate is off. This module is a `.ts` file, so the counted boundary
+// delegates through createElement: a direct `PhysicsPaintRightPanel(props)`
+// call would bind the panel's hooks to this wrapper's component instance.
+import type { ComponentProps } from 'preact';
+import { createElement } from 'preact';
 import { memo } from 'preact/compat';
+import { countRender } from '../performance/renderCounters';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 
-export const MemoizedPhysicsPaintRightPanel = memo(PhysicsPaintRightPanel);
+function PhysicsPaintRightPanelRenderCounted(props: ComponentProps<typeof PhysicsPaintRightPanel>) {
+  countRender('rightPanel');
+  return createElement(PhysicsPaintRightPanel, props);
+}
+
+export const MemoizedPhysicsPaintRightPanel = memo(PhysicsPaintRightPanelRenderCounted);
