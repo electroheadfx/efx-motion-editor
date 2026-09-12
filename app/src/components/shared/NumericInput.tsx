@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'preact/hooks';
+import { useCallback } from 'preact/hooks';
 import { blurStore } from '../../stores/blurStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
+import { NumericStepper } from './NumericStepper';
 
-/** Small numeric input with local editing state -- commits on Enter/blur, reverts on Escape.
- *  Label is draggable: click-drag left/right on the label to scrub the value by step increments. */
+/** Small numeric input with the shared − [field] + treatment (52.2-03 D-23/D-24).
+ *  Label is draggable: click-drag left/right on the label to scrub the value by step increments.
+ *  The field itself (display format, clamp, commit on Enter/blur) lives in NumericStepper. */
 export function NumericInput({
   label,
   value,
@@ -19,39 +21,6 @@ export function NumericInput({
   max?: number;
   onChange: (val: number) => void;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [localValue, setLocalValue] = useState('');
-
-
-  const formatDisplay = useCallback(
-    (v: number) => {
-      if (step >= 1) return String(Math.round(v));
-      // Show up to 3 decimals, strip trailing zeros
-      const fixed = v.toFixed(3);
-      return fixed.replace(/\.?0+$/, '') || '0';
-    },
-    [step],
-  );
-
-  const commitValue = useCallback(() => {
-    const parsed = parseFloat(localValue);
-    if (!isNaN(parsed)) {
-      let clamped = parsed;
-      if (min != null) clamped = Math.max(min, clamped);
-      if (max != null) clamped = Math.min(max, clamped);
-      if (clamped !== value) {
-        onChange(clamped);
-      }
-    }
-    setIsEditing(false);
-    stopCoalescing();
-  }, [localValue, min, max, value, onChange]);
-
-  const revertValue = useCallback(() => {
-    setIsEditing(false);
-    stopCoalescing();
-  }, []);
-
   // Label drag-to-scrub: drag left/right on label to change value
   const handleLabelPointerDown = useCallback((e: PointerEvent) => {
     e.preventDefault();
@@ -104,32 +73,25 @@ export function NumericInput({
       >
         {label}
       </span>
-      <input
-        type="number"
+      <NumericStepper
+        class="flex-1 min-w-0"
+        value={value}
+        onChange={onChange}
         step={step}
         min={min}
         max={max}
-        value={isEditing ? localValue : formatDisplay(value)}
-        class="flex-1 min-w-0 w-full rounded outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        style={{fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)', backgroundColor: 'var(--sidebar-input-bg)', borderRadius: '4px', padding: '6px 10px'}}
-        onFocus={() => {
-          setIsEditing(true);
-          setLocalValue(formatDisplay(value));
-          startCoalescing();
+        ariaLabel={label}
+        inputClass="flex-1 min-w-0 w-full rounded outline-none"
+        inputStyle={{
+          fontSize: '12px',
+          fontWeight: 400,
+          color: 'var(--sidebar-text-primary)',
+          backgroundColor: 'var(--sidebar-input-bg)',
+          borderRadius: '4px',
+          padding: '6px 10px',
+          border: 'none',
+          textAlign: 'left',
         }}
-        onInput={(e) => {
-          setLocalValue((e.target as HTMLInputElement).value);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            commitValue();
-            (e.target as HTMLInputElement).blur();
-          } else if (e.key === 'Escape') {
-            revertValue();
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        onBlur={commitValue}
       />
     </div>
   );
