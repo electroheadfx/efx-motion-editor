@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: "53"
+current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: pending
 stopped_at: Completed 52.1-07-SUMMARY.md
-last_updated: "2026-09-12T05:59:00.000Z"
+last_updated: "2026-09-12T06:20:44.485Z"
 last_activity: 2026-09-11
 last_activity_desc: "Quick 260911-s1j closed — native UAT PASSED 2026-09-11 (amended pass, folds the 260911-sli rows); .mce package-format decision locked: Phase 52.2 before 53, autosave quick cancelled"
-state_head: c29d0e5b
+state_head: c97aaca8190e315668b1f60de5daf32f45f1adda
 progress:
-  total_phases: 10
-  completed_phases: 5
+  total_phases: 11
+  completed_phases: 6
   total_plans: 49
   completed_plans: 49
-  percent: 50
+  percent: 55
 ---
 
 # Project State
@@ -25,7 +25,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
+**Current focus:** Phase 52.2 — Project package format — references only
 
 ## Current Position
 
@@ -34,7 +34,7 @@ Plan: 7 of 7
 Status: Closed 2026-09-09
 Last activity: 2026-09-11 — Completed quick task 260911-s1j (native UAT PASSED 2026-09-11 — folds the 260911-sli badge rows + the 260911-g1g 3-track rows) — supersedes the 260911-sli badge surface
 
-Progress: [████████████████████] 49/49 plans ([█████░░░░░] 50%)
+Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
 ## Performance Metrics
 
@@ -289,6 +289,7 @@ None yet.
 
 - Phase 51 edited: marked delivered via quicks 260902-cfa + 260902-cfa-amendments (no full phase cycle)
 - Phase 52.1 inserted after Phase 52: Modern frame runtime + native HD paint (URGENT)
+- Phase 52.2 inserted after Phase 52: Project package format — references only: sidecar .webp media files + per-layer manifests; absorbs and cancels the autosave quick (URGENT)
 
 ## Deferred Items
 

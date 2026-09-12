@@ -464,6 +464,17 @@ Plans:
 - [x] 52-04-PLAN.md — "Reveal with script…" modal entry
 - [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
+### Phase 52.2: Project package format — references only (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 52
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 52.2 to break down)
+
 ### Phase 52.1: Modern frame runtime + native HD paint (INSERTED)
 
 **Goal:** Replace the base64-dataUrl frame runtime with a bytes/ImageBitmap runtime, move PNG→WebP-lossless encode/decode into Rust, lazy-load sidecars behind a byte-budgeted LRU, and raise the working-resolution cap 1000→1920 — so HD projects paint at native resolution without main-thread jank or heap blowup.
