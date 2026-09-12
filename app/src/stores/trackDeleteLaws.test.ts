@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -5,17 +6,20 @@ import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDoc
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
-  saveEfxPaintDocumentsWithProjectWrite,
+  savePackage,
+  settlePackageFileTokens,
   stableSegment,
   type EfxPaintDocumentSaveInput,
 } from '../lib/efxPaintPersistence';
 import {
+  buildFrameMediaRelativePath,
   buildMachineCacheRelativePath,
   EFX_PAINT_MACHINE_CACHE_DIR,
   isSafeMachineCacheRelativePath,
   resolveMachineCachePath,
 } from '../lib/efxPaintPackage';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import type { MceProject } from '../types/project';
 import {
   commitDeleteTrack,
   getDocument,
@@ -46,11 +50,141 @@ import {
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
+// 52.2-07 Task 3: the save is the package funnel, so every site below drives
+// the REAL `savePackage` — the package transaction surface and the manifest
+// write are the mocked seam.
+const ipcProjectSave = vi.hoisted(() => vi.fn());
+const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 const PROJECT_DIR = '/project/root';
+/** The manifest projectId: the machine cache root's key (D-05). */
+const PACKAGE_PROJECT_ID = '44444444-4444-4444-8444-444444444444';
 /** The machine-local derived-frame cache root (D-05) — never the project dir. */
 const MACHINE_CACHE_ROOT = '/machine/frame-cache/project-root';
+
+function testProject(): MceProject {
+  return {
+    version: 13,
+    name: 'delete-laws',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    created_at: '2026-01-01T00:00:00Z',
+    modified_at: '2026-01-01T00:00:00Z',
+    sequences: [],
+    images: [],
+  };
+}
+
+/**
+ * The package-transaction surface, simulated over the same in-memory
+ * filesystem the fs mock owns: a bind registers the staged set, a publish
+ * copies each bound staged path to its canonical path, a settle cleans the
+ * staging generation up.
+ */
+const activePackageTransactions = new Map<
+  string,
+  { readonly packageRoot: string; readonly stagingBasename: string; readonly paths: readonly string[] }
+>();
+
+function registerActivePackageTransaction(
+  transactionId: string,
+  packageRoot: string,
+  stagingBasename: string,
+  paths: readonly string[],
+): void {
+  activePackageTransactions.set(transactionId, { packageRoot, stagingBasename, paths });
+}
+
+interface PackageTransactionHooks {
+  /**
+   * Runs at COMMIT time — inside the package transaction's publish, which the
+   * save reaches after the cache leg's prepare and before its settle. This is
+   * the only window in which the sidecar dirs can be (re)seeded after the
+   * generation exchange, and it is exactly when the fs remove() must fire.
+   */
+  readonly onPublish?: () => void;
+  /** Refuse the publish with this error, the way the native command would. */
+  readonly publishFailure?: string;
+}
+
+function installPackageTransactionMocks(hooks?: PackageTransactionHooks): void {
+  activePackageTransactions.clear();
+  // `mockClear` (the shared beforeEach) drops calls but keeps implementations
+  // AND the one-shot queue, so a `mockResolvedValueOnce` from a previous case
+  // would leak into this one. Reset first, then install.
+  ipcEfxPaintWriteFrameMedia.mockReset();
+  ipcProjectSave.mockReset();
+  bindEfxPaintPackageTransaction.mockReset();
+  publishEfxPaintPackageTransaction.mockReset();
+  settleEfxPaintPackageTransaction.mockReset();
+  ipcEfxPaintWriteFrameMedia.mockImplementation(
+    async (packageDir: string, layerId: string, keyId: string, bytes: Uint8Array, stagingBasename?: string) => {
+      const relativePath = buildFrameMediaRelativePath(layerId, keyId);
+      const root = stagingBasename === undefined ? packageDir : `${packageDir}/${stagingBasename}`;
+      files.set(`${root}/${relativePath}`, bytes);
+      return {
+        ok: true,
+        data: {
+          relativePath,
+          digest: createHash('sha256').update(bytes).digest('hex'),
+          byteLength: bytes.length,
+        },
+      };
+    },
+  );
+  ipcProjectSave.mockImplementation(async (project: MceProject, path: string) => {
+    files.set(path, new TextEncoder().encode(JSON.stringify(project)));
+    return { ok: true, data: null };
+  });
+  bindEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, stagingBasename: string, paths: string[]) => {
+      const transactionId = crypto.randomUUID();
+      registerActivePackageTransaction(transactionId, packageRoot, stagingBasename, paths);
+      return {
+        ok: true,
+        data: {
+          transactionId,
+          aggregateDigest: createHash('sha256').update(paths.join(' ')).digest('hex'),
+          entries: [],
+        },
+      };
+    },
+  );
+  publishEfxPaintPackageTransaction.mockImplementation(async (packageRoot: string, transactionId: string) => {
+    hooks?.onPublish?.();
+    if (hooks?.publishFailure !== undefined) return { ok: false, error: hooks.publishFailure };
+    const transaction = activePackageTransactions.get(transactionId);
+    if (!transaction) return { ok: false, error: 'inactive transaction' };
+    let published = 0;
+    for (const path of transaction.paths) {
+      const staged = files.get(`${transaction.packageRoot}/${transaction.stagingBasename}/${path}`);
+      if (staged === undefined) continue;
+      files.set(`${packageRoot}/${path}`, staged);
+      published += 1;
+    }
+    return { ok: true, data: { transactionId, published } };
+  });
+  settleEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, transactionId: string, _action: 'commit' | 'rollback') => {
+      const transaction = activePackageTransactions.get(transactionId);
+      if (!transaction) return { ok: false, error: 'inactive transaction' };
+      activePackageTransactions.delete(transactionId);
+      const stagingRoot = `${packageRoot}/${transaction.stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      for (const key of Array.from(dirs)) {
+        if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
+      }
+      return { ok: true, data: { cleanupDeferred: false } };
+    },
+  );
+}
 
 function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
   const stagingRoot = `${cacheRoot}/${stagingBasename}`;
@@ -82,6 +216,11 @@ vi.mock('../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
+  projectSave: ipcProjectSave,
+  bindEfxPaintPackageTransaction,
+  publishEfxPaintPackageTransaction,
+  settleEfxPaintPackageTransaction,
+  ipcEfxPaintWriteFrameMedia,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -468,6 +607,11 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     files.clear();
     dirs.clear();
     vi.clearAllMocks();
+    // The committed token baseline is process state, not per-test state: a
+    // stale map from the previous case would make this case's save look
+    // unchanged and skip its writes (and its cache leg).
+    settlePackageFileTokens('commit', new Map());
+    installPackageTransactionMocks();
     const activeTransactions = new Map<string, string>();
     publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
       const transactionId = crypto.randomUUID();
@@ -555,18 +699,26 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     const removeMock = vi.mocked(remove);
     removeMock.mockClear();
 
-    // The sidecar dirs exist on disk when the transaction commits — the
-    // publish mock's generation exchange wipes the canonical root, so they
-    // are (re)seeded in the writeProject callback that runs between prepare
-    // and the commit arm, which is exactly when the fs remove() must fire.
-    // 52.2-07 (D-05): both live under the MACHINE cache root; nothing under
-    // the project directory is ever addressed as a cache root.
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
-      dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
-      dirs.add(`${MACHINE_CACHE_ROOT}/${survivorDir}`);
-      files.set(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`, new Uint8Array([1]));
-    }, MACHINE_CACHE_ROOT);
-    expect(persisted).toBeDefined();
+    // The sidecar dirs exist on disk when the transaction commits — the cache
+    // leg's generation exchange wipes the canonical root during prepare, so
+    // they are (re)seeded in the package transaction's publish, which runs
+    // after that prepare and before the cache leg's settle — exactly when the
+    // fs remove() must fire. 52.2-07 (D-05): both live under the MACHINE cache
+    // root; nothing under the project directory is ever addressed as a cache.
+    installPackageTransactionMocks({
+      onPublish: () => {
+        dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
+        dirs.add(`${MACHINE_CACHE_ROOT}/${survivorDir}`);
+        files.set(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`, new Uint8Array([1]));
+      },
+    });
+    const persisted = await savePackage(PROJECT_DIR, {
+      project: testProject(),
+      documents: buildSaveInput(),
+      projectId: PACKAGE_PROJECT_ID,
+      cacheRoot: MACHINE_CACHE_ROOT,
+    });
+    expect(persisted.changedFiles.length).toBeGreaterThan(0);
     expect(removeMock).toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${deletedDir}`, { recursive: true });
     expect(removeMock).not.toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${survivorDir}`, { recursive: true });
     expect(dirs.has(`${MACHINE_CACHE_ROOT}/${deletedDir}`)).toBe(false);
@@ -586,19 +738,33 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     const removeMock = vi.mocked(remove);
     removeMock.mockClear();
 
-    await expect(
-      saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
+    // The package transaction REFUSES at publish: the save rolls back and
+    // rethrows before the cache leg ever reaches its commit arm.
+    installPackageTransactionMocks({
+      onPublish: () => {
         // The sidecar dir exists on disk when the failing write happens.
         dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
         files.set(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`, new Uint8Array([1]));
-        throw new Error('write failed');
-      }, MACHINE_CACHE_ROOT),
-    ).rejects.toThrow('write failed');
-    // Rollback never removes: the deletion list is settled only by the
-    // commit arm (the mock generation exchange wipes on-disk state, so the
-    // fs remove() call contract is the authoritative assertion).
+      },
+      publishFailure: 'publish refused',
+    });
+    await expect(
+      savePackage(PROJECT_DIR, {
+        project: testProject(),
+        documents: buildSaveInput(),
+        projectId: PACKAGE_PROJECT_ID,
+        cacheRoot: MACHINE_CACHE_ROOT,
+      }),
+    ).rejects.toThrow('publish refused');
+    // Rollback never removes the deletion dir: the deletion list is settled
+    // only by the commit arm (the mock generation exchange wipes on-disk
+    // state, so the fs remove() call contract is the authoritative assertion).
+    // The only removals a rolled-back save performs are the staging-generation
+    // cleanups of the two legs.
     expect(removeMock).not.toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${deletedDir}`, { recursive: true });
-    expect(removeMock).not.toHaveBeenCalled();
+    for (const call of removeMock.mock.calls as unknown as unknown[][]) {
+      expect(String(call[0])).not.toContain(deletedDir);
+    }
   });
 
   it('clears the pending deletion list on read — a second save is a no-op deletion-wise', async () => {
@@ -617,8 +783,13 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     const { remove } = await import('@tauri-apps/plugin-fs');
     const removeMock = vi.mocked(remove);
     removeMock.mockClear();
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {}, MACHINE_CACHE_ROOT);
-    expect(persisted).toBeDefined();
+    const persisted = await savePackage(PROJECT_DIR, {
+      project: testProject(),
+      documents: buildSaveInput(),
+      projectId: PACKAGE_PROJECT_ID,
+      cacheRoot: MACHINE_CACHE_ROOT,
+    });
+    expect(persisted.changedFiles.length).toBeGreaterThan(0);
     expect(removeMock).not.toHaveBeenCalled();
     expect(takePendingTrackDeletions(LAYER)).toEqual([]);
   });

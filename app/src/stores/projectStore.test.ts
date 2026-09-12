@@ -12,19 +12,31 @@ import { testWebpBytes } from '../testUtils/testWebpBytes';
 const TEST_TRACK_ID = 'track-1';
 
 /** Create a minimal AudioTrack for testing */
-describe('EFX Paint project/cache save transaction (45-05)', () => {
-  it('keeps Save and Save As project writes inside the v1.0 document cache callback', () => {
+describe('EFX Paint package save transaction (52.2-07)', () => {
+  it('routes Save and Save As through the package save with the project and the package path only', () => {
     const source = readFileSync(fileURLToPath(new URL('./projectStore.ts', import.meta.url)), 'utf8');
     const saveStart = source.indexOf('async saveProject(options?');
     const saveAsStart = source.indexOf('async saveProjectAs(newFilePath');
     const saveSource = source.slice(saveStart, saveAsStart);
     const saveAsSource = source.slice(saveAsStart, source.indexOf('/** Open a project', saveAsStart));
 
-    expect(saveSource).toContain('await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {');
-    expect(saveSource).toContain('}, currentFilePath, cacheTransactionId);');
-    expect(saveAsSource).toContain('await saveEfxPaintDocumentsWithProjectWrite(parentDir, documents, async (persistedDocuments, cacheTransactionId) => {');
-    expect(saveAsSource).toContain('newFilePath,\n            cacheTransactionId,');
-    expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);');
+    // Both call sites hand the package root and the write set to the ONE
+    // package funnel — the manifest is assembled inside it (D-09).
+    expect(saveSource).toContain('await savePackageWithTelemetry(projectDir, documents, branch);');
+    expect(saveAsSource).toContain("const manifest = await savePackageWithTelemetry(parentDir, documents, 'manual');");
+
+    // The funnel passes the project and the package path to the package save,
+    // plus the package identity and the machine-local cache root. The cache
+    // transaction id plan 05 Task 3 left dead is gone from every call site —
+    // never forwarded, never a placeholder argument (T-52.2-21).
+    const helperStart = source.indexOf('async function savePackageWithTelemetry(');
+    const helperSource = source.slice(helperStart, source.indexOf('function buildMceProject', helperStart));
+    expect(helperSource).toContain('await savePackage(packageDir, {');
+    expect(helperSource).toContain('project: buildMceProject(),');
+    expect(helperSource).toContain('documents,');
+    expect(helperSource).toContain('projectId: projectId.value,');
+    expect(helperSource).not.toContain('cacheTransactionId');
+    expect(source).not.toContain('cacheTransactionId');
     // One save path only: no legacy physic-paint persistence remains in projectStore.
     expect(source).not.toContain('savePhysicPaintDataWithProjectWrite');
     expect(source).not.toContain('physic_paint_' + 'outputs' + ': await savePhysicPaintData(');

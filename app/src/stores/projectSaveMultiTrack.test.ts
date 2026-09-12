@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { settlePackageFileTokens } from '../lib/efxPaintPersistence';
+import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
 import { _setEfxPaintMarkDirtyCallback, addTrack, registerDocument, reset as resetEfxPaint } from './efxPaintStore';
@@ -16,6 +19,13 @@ const ipcScriptLibraryBindSavedProject = vi.hoisted(() => vi.fn());
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
+// 52.2-07 Task 3: the real save now drives the package funnel, so the mocked
+// ipc surface owns its whole transaction + cache-root resolution.
+const ipcResolvePhysicPaintCacheRoot = vi.hoisted(() => vi.fn());
+const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishPhysicPaintProjectContext = vi.hoisted(() => vi.fn());
 const addRecentProject = vi.hoisted(() => vi.fn());
 const setLastProjectPath = vi.hoisted(() => vi.fn());
@@ -40,6 +50,11 @@ vi.mock('../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
+  resolvePhysicPaintCacheRoot: ipcResolvePhysicPaintCacheRoot,
+  ipcEfxPaintWriteFrameMedia,
+  bindEfxPaintPackageTransaction,
+  publishEfxPaintPackageTransaction,
+  settleEfxPaintPackageTransaction,
 }));
 
 vi.mock('../lib/physicPaintBridge', () => ({
@@ -81,6 +96,58 @@ const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFra
   height: 50,
 });
 
+/** The machine-local derived-frame cache root (D-05/D-14). */
+const MACHINE_CACHE_ROOT = '/machine/frame-cache/multi-track-project';
+
+/**
+ * The bytes the package save staged for one layer's sub-file (52.2-07 D-04/D-09:
+ * the layer content lives in `layers/<layerId>.json`, never in the manifest).
+ */
+function stagedLayerDocument(layerId: string): Record<string, unknown> {
+  const suffix = `/layers/${layerId}.json`;
+  const writes = fsWriteFile.mock.calls as unknown as unknown[][];
+  const write = [...writes]
+    .reverse()
+    .find((call) => typeof call[0] === 'string' && (call[0] as string).endsWith(suffix));
+  if (write === undefined) throw new Error(`no staged write ends with ${suffix}`);
+  return JSON.parse(new TextDecoder().decode(write[1] as Uint8Array)) as Record<string, unknown>;
+}
+
+/**
+ * The package transaction + cache surface of the mocked ipc module. `mockClear`
+ * alone would keep a previous case's one-shot queue, so each mock is reset
+ * before its implementation is installed.
+ */
+function installPackageSaveMocks(): void {
+  ipcResolvePhysicPaintCacheRoot.mockReset();
+  ipcEfxPaintWriteFrameMedia.mockReset();
+  bindEfxPaintPackageTransaction.mockReset();
+  publishEfxPaintPackageTransaction.mockReset();
+  settleEfxPaintPackageTransaction.mockReset();
+  hardlinkPhysicPaintCacheFrames.mockReset();
+  ipcResolvePhysicPaintCacheRoot.mockResolvedValue({ ok: true, data: MACHINE_CACHE_ROOT });
+  ipcEfxPaintWriteFrameMedia.mockImplementation(
+    async (_packageDir: string, layerId: string, keyId: string, bytes: Uint8Array) => ({
+      ok: true,
+      data: {
+        relativePath: buildFrameMediaRelativePath(layerId, keyId),
+        digest: createHash('sha256').update(bytes).digest('hex'),
+        byteLength: bytes.length,
+      },
+    }),
+  );
+  bindEfxPaintPackageTransaction.mockResolvedValue({
+    ok: true,
+    data: { transactionId: 'pkg-tx-1', aggregateDigest: 'aggregate-digest', entries: [] },
+  });
+  publishEfxPaintPackageTransaction.mockResolvedValue({
+    ok: true,
+    data: { transactionId: 'pkg-tx-1', published: 2 },
+  });
+  settleEfxPaintPackageTransaction.mockResolvedValue({ ok: true, data: { cleanupDeferred: false } });
+  hardlinkPhysicPaintCacheFrames.mockResolvedValue({ ok: true, data: { accepted: true, missing: [] } });
+}
+
 describe('47-01: real saveProject persists a child-added track (main-window document sync surface)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -97,8 +164,15 @@ describe('47-01: real saveProject persists a child-added track (main-window docu
     fsMkdir.mockResolvedValue(undefined);
     fsWriteFile.mockResolvedValue(undefined);
     fsRemove.mockResolvedValue(undefined);
-    publishPhysicPaintCacheGeneration.mockResolvedValue({ ok: true, data: { transactionId: 'tx-1' } });
+    publishPhysicPaintCacheGeneration.mockResolvedValue({
+      ok: true,
+      data: { accepted: true, transactionId: 'tx-1', replacedExisting: false },
+    });
     settlePhysicPaintCacheGeneration.mockResolvedValue({ ok: true, data: null });
+    installPackageSaveMocks();
+    // The committed change baseline is process state: a stale map from a
+    // previous case would make this case's save look unchanged and skip it.
+    settlePackageFileTokens('commit', new Map());
     ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
     addRecentProject.mockResolvedValue(undefined);
     setLastProjectPath.mockResolvedValue(undefined);
@@ -143,9 +217,18 @@ describe('47-01: real saveProject persists a child-added track (main-window docu
     await projectStore.saveProject();
 
     expect(ipcProjectSave).toHaveBeenCalledTimes(1);
-    const payload = ipcProjectSave.mock.calls[0][0] as Record<string, unknown>;
-    const documents = payload.efx_paint_documents as Record<string, unknown>;
-    const document = documents[LAYER_ID] as { tracks: Array<{ id: string; frames: Record<string, unknown> }> };
+    // The manifest write takes the manifest and the staged path only; the
+    // layer content moved into its own sub-file (D-04: a pure index).
+    const saveCall = ipcProjectSave.mock.calls[0] as unknown[];
+    expect(saveCall).toHaveLength(2);
+    const [manifest, stagedManifestPath] = saveCall as [Record<string, unknown>, string];
+    expect(stagedManifestPath).toMatch(
+      /^\/project\/\.efx-paint-package-staging-[^/]+\/project\.mce$/,
+    );
+    expect(manifest.efx_paint_documents).toBeUndefined();
+    const document = stagedLayerDocument(LAYER_ID) as {
+      tracks: Array<{ id: string; frames: Record<string, unknown> }>;
+    };
     expect(document.tracks).toHaveLength(2);
     const trackIds = document.tracks.map((track) => track.id);
     expect(trackIds).toContain(TEST_TRACK_ID);

@@ -1,18 +1,22 @@
 /**
- * Phase 45-05 cutover test suite: the v1.0 EFX Paint document funnel.
+ * Phase 45-05 cutover test suite: the v1.0 EFX Paint document funnel, run
+ * end-to-end through the 52.2-07 package save.
  *
  * Task 1 (gate): openProject refuses pre-v1.0 projects end-to-end with a
  * blocking no-recourse dialog and zero store mutation (D-05/D-07, Pitfall F4).
- * Task 2 (save/load): both save paths persist efx_paint_documents through the
- * v1.0 two-resource transaction; open hydrates documents into efxPaintStore;
- * closeProject resets the store (DOC-05).
+ * Task 2 (save/load): both save paths drive the REAL `savePackage` — the
+ * manifest, the layer sub-files and the media reach their canonical paths
+ * through one package transaction — and open hydrates documents into
+ * efxPaintStore; closeProject resets the store (DOC-05).
  * Task 3 (creation): AddFxMenu registers one spec-shaped document per
  * physic-paint layer (DOC-01/DOC-02).
  *
- * The ipc / persistence / dialog / fs modules are fully mocked; the real
- * stores run so hydration effects are observable.
+ * The ipc / dialog / fs modules are mocked at their Tauri boundary and the
+ * loader is mocked for the open leg; the real persistence funnel and the real
+ * stores run, so what this suite asserts is what the app writes.
  */
 
+import { createHash } from 'node:crypto';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -21,11 +25,14 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { findLegacyPhysicPaintRejection } from '../efx-paint/document/efxPaintCleanBreak';
 import { LEGACY_PHYSIC_PAINT_REJECTED_COPY } from '../lib/efxPaintRejectionDialog';
-import type { EfxPaintDocumentSaveInput, EfxPaintLoadedDocument } from '../lib/efxPaintPersistence';
+import { settlePackageFileTokens } from '../lib/efxPaintPersistence';
+import type { EfxPaintLoadedDocument } from '../lib/efxPaintPersistence';
+import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
+import type { EfxPaintPackageManifest } from '../lib/efxPaintPackage';
 import type { MceProject } from '../types/project';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import * as efxPaintStoreModule from './efxPaintStore';
-import { physicPaintStore } from './physicPaintStore';
+import { mountTrackRuntime, physicPaintStore } from './physicPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -68,8 +75,12 @@ const ipcScriptLibraryClearActiveProject = vi.hoisted(() => vi.fn());
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
+const ipcResolvePhysicPaintCacheRoot = vi.hoisted(() => vi.fn());
+const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const loadPhysicPaintData = vi.hoisted(() => vi.fn());
-const saveEfxPaintDocumentsWithProjectWrite = vi.hoisted(() => vi.fn());
 const loadEfxPaintDocuments = vi.hoisted(() => vi.fn());
 const prepareRotoPhysicalDocumentPngs = vi.hoisted(() => vi.fn());
 const startAutoSave = vi.hoisted(() => vi.fn());
@@ -82,6 +93,15 @@ const cleanupOrphanedPaintFiles = vi.hoisted(() => vi.fn());
 const dialogMessage = vi.hoisted(() => vi.fn());
 const fsReadFile = vi.hoisted(() => vi.fn());
 
+/** The in-memory package filesystem the fs mock owns. */
+const files = new Map<string, Uint8Array>();
+const dirs = new Set<string>();
+/** Every write the save performed, in order — the staging generation is gone
+ *  by the time a case asserts, so the journal is the only witness. */
+const writeJournal: Array<{ readonly path: string; readonly bytes: Uint8Array }> = [];
+/** The machine-local derived-frame cache root (D-05/D-14). */
+const CACHE_ROOT = '/machine/frame-cache/cutover-project';
+
 vi.mock('../lib/ipc', () => ({
   projectCreate: ipcProjectCreate,
   projectSave: ipcProjectSave,
@@ -93,13 +113,17 @@ vi.mock('../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
+  resolvePhysicPaintCacheRoot: ipcResolvePhysicPaintCacheRoot,
+  ipcEfxPaintWriteFrameMedia,
+  bindEfxPaintPackageTransaction,
+  publishEfxPaintPackageTransaction,
+  settleEfxPaintPackageTransaction,
 }));
 
-// Keep the real module (efxPaintStore needs the real buildEfxPaintFrameCachePath)
-// and override only the two funnel functions exercised by projectStore.
+// Keep the real module — 52.2-07 Task 3 exercises the REAL `savePackage` — and
+// override only the loader the open leg takes.
 vi.mock('../lib/efxPaintPersistence', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/efxPaintPersistence')>()),
-  saveEfxPaintDocumentsWithProjectWrite,
   loadEfxPaintDocuments,
 }));
 
@@ -129,7 +153,200 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   readFile: fsReadFile,
+  exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
+  mkdir: vi.fn(async (path: string) => { dirs.add(path); }),
+  remove: vi.fn(async (path: string) => {
+    for (const key of Array.from(files.keys())) {
+      if (key === path || key.startsWith(`${path}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs.keys())) {
+      if (key === path || key.startsWith(`${path}/`)) dirs.delete(key);
+    }
+  }),
+  writeFile: vi.fn(async (path: string, contents: Uint8Array) => {
+    writeJournal.push({ path, bytes: contents });
+    files.set(path, contents);
+  }),
 }));
+
+// --- The package transaction surface, over the same in-memory filesystem ---
+
+const activePackageTransactions = new Map<
+  string,
+  { readonly packageRoot: string; readonly stagingBasename: string; readonly paths: readonly string[] }
+>();
+
+function registerActivePackageTransaction(
+  transactionId: string,
+  packageRoot: string,
+  stagingBasename: string,
+  paths: readonly string[],
+): void {
+  activePackageTransactions.set(transactionId, { packageRoot, stagingBasename, paths });
+}
+
+function installPackageTransactionMocks(): void {
+  activePackageTransactions.clear();
+  // `mockClear` (the shared beforeEach) drops calls but keeps implementations
+  // AND the one-shot queue, so a `mockResolvedValueOnce` from a previous case
+  // would leak into this one. Reset first, then install.
+  ipcEfxPaintWriteFrameMedia.mockReset();
+  ipcProjectSave.mockReset();
+  bindEfxPaintPackageTransaction.mockReset();
+  publishEfxPaintPackageTransaction.mockReset();
+  settleEfxPaintPackageTransaction.mockReset();
+  ipcEfxPaintWriteFrameMedia.mockImplementation(
+    async (packageDir: string, layerId: string, keyId: string, bytes: Uint8Array, stagingBasename?: string) => {
+      const relativePath = buildFrameMediaRelativePath(layerId, keyId);
+      const root = stagingBasename === undefined ? packageDir : `${packageDir}/${stagingBasename}`;
+      writeJournal.push({ path: `${root}/${relativePath}`, bytes });
+      files.set(`${root}/${relativePath}`, bytes);
+      return {
+        ok: true,
+        data: {
+          relativePath,
+          digest: createHash('sha256').update(bytes).digest('hex'),
+          byteLength: bytes.length,
+        },
+      };
+    },
+  );
+  ipcProjectSave.mockImplementation(async (project: MceProject, path: string) => {
+    writeJournal.push({ path, bytes: new TextEncoder().encode(JSON.stringify(project)) });
+    files.set(path, new TextEncoder().encode(JSON.stringify(project)));
+    return { ok: true, data: null };
+  });
+  bindEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, stagingBasename: string, paths: string[]) => {
+      const transactionId = crypto.randomUUID();
+      registerActivePackageTransaction(transactionId, packageRoot, stagingBasename, paths);
+      return {
+        ok: true,
+        data: {
+          transactionId,
+          aggregateDigest: createHash('sha256').update(paths.join(' ')).digest('hex'),
+          entries: [],
+        },
+      };
+    },
+  );
+  publishEfxPaintPackageTransaction.mockImplementation(async (packageRoot: string, transactionId: string) => {
+    const transaction = activePackageTransactions.get(transactionId);
+    if (!transaction) return { ok: false, error: 'inactive transaction' };
+    let published = 0;
+    for (const path of transaction.paths) {
+      const staged = files.get(`${transaction.packageRoot}/${transaction.stagingBasename}/${path}`);
+      if (staged === undefined) continue;
+      files.set(`${packageRoot}/${path}`, staged);
+      published += 1;
+    }
+    return { ok: true, data: { transactionId, published } };
+  });
+  settleEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, transactionId: string, _action: 'commit' | 'rollback') => {
+      const transaction = activePackageTransactions.get(transactionId);
+      if (!transaction) return { ok: false, error: 'inactive transaction' };
+      activePackageTransactions.delete(transactionId);
+      const stagingRoot = `${packageRoot}/${transaction.stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      for (const key of Array.from(dirs)) {
+        if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
+      }
+      return { ok: true, data: { cleanupDeferred: false } };
+    },
+  );
+}
+
+/**
+ * The machine-local derived-frame cache leg (D-05/D-14), over the same
+ * in-memory filesystem: a resolve, an atomic generation swap, and the
+ * hardlink of unchanged sidecars. It never rides the authoritative set.
+ */
+function installCacheLegMocks(): void {
+  const activeTransactions = new Map<string, string>();
+  publishPhysicPaintCacheGeneration.mockReset();
+  settlePhysicPaintCacheGeneration.mockReset();
+  hardlinkPhysicPaintCacheFrames.mockReset();
+  ipcResolvePhysicPaintCacheRoot.mockReset();
+  ipcResolvePhysicPaintCacheRoot.mockResolvedValue({ ok: true, data: CACHE_ROOT });
+  publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    const replacedExisting = dirs.has(`${cacheRoot}/efx-paint`);
+    const transactionId = crypto.randomUUID();
+    activeTransactions.set(transactionId, stagingBasename);
+    exchangeGeneration(cacheRoot, stagingBasename);
+    return { ok: true, data: { accepted: true, transactionId, replacedExisting } };
+  });
+  settlePhysicPaintCacheGeneration.mockImplementation(
+    async (cacheRoot: string, transactionId: string, action: 'commit' | 'rollback') => {
+      const stagingBasename = activeTransactions.get(transactionId);
+      if (!stagingBasename) return { ok: false, error: 'inactive transaction' };
+      if (action === 'rollback') exchangeGeneration(cacheRoot, stagingBasename);
+      const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      activeTransactions.delete(transactionId);
+      return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
+    },
+  );
+  hardlinkPhysicPaintCacheFrames.mockImplementation(
+    async (cacheRoot: string, stagingBasename: string, unchangedPaths: string[]) => {
+      const canonicalRoot = `${cacheRoot}/efx-paint`;
+      const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+      const missing: string[] = [];
+      for (const relative of unchangedPaths) {
+        const bytes = files.get(`${canonicalRoot}/${relative}`);
+        if (bytes === undefined) missing.push(relative);
+        else files.set(`${stagingRoot}/${relative}`, bytes);
+      }
+      return { ok: true, data: { accepted: true, missing } };
+    },
+  );
+}
+
+/**
+ * Every per-test piece of package state: the in-memory disk and the module's
+ * committed token baseline. The baseline is process state, so a stale map from
+ * the previous case would make this case's save look unchanged and skip its
+ * writes.
+ */
+function clearPackageDisk(): void {
+  files.clear();
+  dirs.clear();
+  writeJournal.length = 0;
+  settlePackageFileTokens('commit', new Map());
+}
+
+/** Read one JSON file out of the in-memory package. */
+function readJson(path: string): Record<string, unknown> {
+  const bytes = files.get(path);
+  if (bytes === undefined) throw new Error(`missing file: ${path}`);
+  return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+}
+
+/** The bytes of the last staged write whose path ends with `suffix`. */
+function lastWrite(suffix: string): string {
+  const entry = [...writeJournal].reverse().find((write) => write.path.endsWith(suffix));
+  if (entry === undefined) throw new Error(`no write ends with ${suffix}`);
+  return new TextDecoder().decode(entry.bytes);
+}
+
+function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
+  const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+  const canonicalRoot = `${cacheRoot}/efx-paint`;
+  const stagingFiles = Array.from(files.entries())
+    .filter(([key]) => key.startsWith(`${stagingRoot}/`))
+    .map(([key, value]) => [`${canonicalRoot}${key.slice(stagingRoot.length)}`, value] as const);
+  const canonicalFiles = Array.from(files.entries())
+    .filter(([key]) => key.startsWith(`${canonicalRoot}/`))
+    .map(([key, value]) => [`${stagingRoot}${key.slice(canonicalRoot.length)}`, value] as const);
+  for (const key of Array.from(files.keys())) {
+    if (key.startsWith(`${stagingRoot}/`) || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
+  }
+  for (const [key, value] of [...stagingFiles, ...canonicalFiles]) files.set(key, value);
+}
 
 // --- Fixtures ---
 
@@ -281,6 +498,32 @@ function addPhysicPaintLayer(layerId: string): void {
   });
 }
 
+/**
+ * Register a document on `layerId` and seed one REAL roto key carrying raster
+ * bytes — the authoritative media the package save writes. A document with no
+ * roto records has no authoritative media at all (its frames are derived-frame
+ * cache references), which is exactly the D-09 split this fixture exercises on
+ * both sides.
+ */
+function seedRotoKeyWithMedia(layerId: string, keyId: string, tag: string, appFrame = 0): void {
+  addPhysicPaintLayer(layerId);
+  efxPaintStoreModule.registerDocument(makeTrackDocument(layerId));
+  mountTrackRuntime(layerId, TEST_TRACK_ID);
+  const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+    layerId,
+    TEST_TRACK_ID,
+    [{
+      kind: 'real-key',
+      keyId,
+      appFrame,
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes(btoa(tag)), width: 4, height: 4 },
+    }],
+    { enabled: false, mode: 'duplicate' },
+    24,
+  );
+  if (!seeded.ok) throw new Error(`Seed failed for ${layerId}: ${seeded.error}`);
+}
+
 describe('45-05 Task 2: v1.0 document save/load funnel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -290,6 +533,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     efxPaintStoreModule.reset();
     projectStore.filePath.value = null;
     projectStore.dirPath.value = null;
+    clearPackageDisk();
     ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
     ipcProjectSave.mockResolvedValue({ ok: true, data: null });
     ipcProjectSaveAsWithScriptLibrary.mockResolvedValue({ ok: true, data: { diagnostics: [] } });
@@ -301,20 +545,8 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     cleanupOrphanedPaintFiles.mockResolvedValue(undefined);
     loadPhysicPaintData.mockResolvedValue([]);
     prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
-    // Mirror the real two-resource transaction: empty documents → no
-    // publication (null transaction id); otherwise a bound transaction id.
-    saveEfxPaintDocumentsWithProjectWrite.mockImplementation(
-      async (
-        _projectDir: string,
-        documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
-        writeProject: (payload: Record<string, unknown>, transactionId: string | null) => Promise<void>,
-      ) => {
-        const persisted: Record<string, unknown> = {};
-        for (const [layerId, input] of documents) persisted[layerId] = input.document;
-        await writeProject(persisted, documents.size === 0 ? null : 'txn-45-05');
-        return persisted;
-      },
-    );
+    installPackageTransactionMocks();
+    installCacheLegMocks();
     loadEfxPaintDocuments.mockImplementation(
       async (_projectId: string, persistedMap: Record<string, unknown> | undefined) => {
         const loaded = new Map<string, EfxPaintLoadedDocument>();
@@ -333,7 +565,7 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     vi.spyOn(projectStore, 'closeProject');
   });
 
-  it('saveProject persists efx_paint_documents keyed by layer id and never emits the legacy outputs field', async () => {
+  it('saveProject stages the package and commits manifest + layer sub-file through one transaction', async () => {
     addPhysicPaintLayer('layer-1');
     efxPaintStoreModule.registerDocument(makeTrackDocument('layer-1'));
     physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
@@ -342,25 +574,48 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
 
     await projectStore.saveProject();
 
-    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
-    const [projectDir, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
-      string,
-      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
-    ];
-    expect(projectDir).toBe('/project');
-    expect(documents.size).toBe(1);
-    const input = documents.get('layer-1');
-    expect(input).toBeDefined();
-    // The runtime frame was projected into the document's default track.
-    expect(input!.document.tracks[0].frames[0].cachePath).toMatch(/^cache\/efx-paint\//);
+    // The manifest write takes the project and the PATH ONLY — the dead cache
+    // transaction id plan 05 left behind is gone from both call sites
+    // (52.2-07 Task 3; the assertion at ipcProjectSave.mock.calls[0] below is
+    // the retarget of the three-argument destructuring).
     expect(ipcProjectSave).toHaveBeenCalledTimes(1);
-    const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
-    expect(savedProject.efx_paint_documents?.['layer-1']).toBeDefined();
+    const saveCall = ipcProjectSave.mock.calls[0] as unknown[];
+    expect(saveCall).toHaveLength(2);
+    const [savedProject, stagedManifestPath] = saveCall as [EfxPaintPackageManifest, string];
+    expect(stagedManifestPath).toMatch(/^\/project\/\.efx-paint-package-staging-[^/]+\/project\.mce$/);
     expect(('physic_paint_' + 'outputs') in savedProject).toBe(false);
-    expect(transactionId).toBe('txn-45-05');
+    // D-04: the manifest is a pure index — the layer content lives in its own
+    // sub-file, never in the project file.
+    expect(savedProject.efx_paint_documents).toBeUndefined();
+    expect(savedProject.formatVersion).toBe(1);
+    expect(savedProject.projectId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(savedProject.efxPaint).toEqual({ 'layer-1': expect.objectContaining({ layerFile: 'layers/layer-1.json' }) });
+
+    // The staged set reached its canonical paths only through the transaction:
+    // bound once, published, committed.
+    expect(bindEfxPaintPackageTransaction).toHaveBeenCalledTimes(1);
+    const [, stagingBasename, boundPaths] = bindEfxPaintPackageTransaction.mock.calls[0] as [string, string, string[]];
+    expect(stagingBasename).toMatch(/^\.efx-paint-package-staging-/);
+    expect(boundPaths).toContain('project.mce');
+    expect(boundPaths).toContain('layers/layer-1.json');
+    expect(publishEfxPaintPackageTransaction).toHaveBeenCalledTimes(1);
+    expect(settleEfxPaintPackageTransaction.mock.calls[0]?.[2]).toBe('commit');
+    expect(readJson('/project/project.mce')).toMatchObject({ formatVersion: 1 });
+    const publishedLayer = readJson('/project/layers/layer-1.json');
+    expect(publishedLayer).toMatchObject({ parentLayerId: 'layer-1' });
+    // 52.2-07 Task 2: the runtime frame was projected into the document's
+    // default track as a MACHINE-RELATIVE reference — never the legacy
+    // package-relative `cache/efx-paint/...` shape (T-52.2-56).
+    const publishedTracks = publishedLayer.tracks as Array<{ frames: Record<string, { cachePath: string }> }>;
+    const cachePath = Object.values(publishedTracks[0].frames)[0].cachePath;
+    expect(cachePath).toMatch(/^efx-paint\//);
+    expect(cachePath.startsWith('/')).toBe(false);
+    // Nothing canonical is written outside the transaction: the canonical
+    // package root holds no staging generation.
+    for (const path of files.keys()) expect(path).not.toContain('/.efx-paint-package-staging-');
   });
 
-  it('saveProjectAs performs the identical v1.0 switch on its call path', async () => {
+  it('saveProjectAs performs the identical package switch on its call path', async () => {
     addPhysicPaintLayer('layer-1');
     efxPaintStoreModule.registerDocument(makeTrackDocument('layer-1'));
     physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
@@ -369,19 +624,18 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
 
     await projectStore.saveProjectAs('/project/new.mce');
 
-    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
     expect(ipcProjectSaveAsWithScriptLibrary).toHaveBeenCalledTimes(1);
-    const [projectForSave, source, destination, transactionId] = ipcProjectSaveAsWithScriptLibrary.mock.calls[0] as [
-      MceProject,
-      string,
-      string,
-      string | null,
-    ];
+    // Retargeted from the four-tuple: the cache transaction id is gone.
+    const saveAsCall = ipcProjectSaveAsWithScriptLibrary.mock.calls[0] as unknown[];
+    expect(saveAsCall).toHaveLength(3);
+    const [manifest, source, destination] = saveAsCall as [EfxPaintPackageManifest, string, string];
     expect(source).toBe('/project/old.mce');
     expect(destination).toBe('/project/new.mce');
-    expect(transactionId).toBe('txn-45-05');
-    expect(projectForSave.efx_paint_documents?.['layer-1']).toBeDefined();
-    expect(('physic_paint_' + 'outputs') in projectForSave).toBe(false);
+    expect(manifest.formatVersion).toBe(1);
+    expect(manifest.efx_paint_documents).toBeUndefined();
+    expect(('physic_paint_' + 'outputs') in manifest).toBe(false);
+    // The destination package published the same files the manifest indexes.
+    expect(Object.keys(readJson('/project/layers/layer-1.json')).length).toBeGreaterThan(0);
     // A freshly saved v1.0 project must surface in Recents (R4).
     expect(addRecentProject).toHaveBeenCalledTimes(1);
     expect(addRecentProject).toHaveBeenCalledWith(expect.objectContaining({ path: '/project/new.mce' }));
@@ -424,21 +678,133 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(efxPaintStoreModule.hasDocument('layer-1')).toBe(false);
   });
 
-  it('a save with no physic-paint layers passes an empty document map and skips staging', async () => {
+  it('a save with no physic-paint layers still commits a manifest with an empty layer index', async () => {
     projectStore.filePath.value = '/project/file.mce';
     projectStore.dirPath.value = '/project';
 
     await projectStore.saveProject();
 
-    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
-    const [, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
+    // The manifest is still staged (its own token changed), but it indexes no
+    // layer and carries no layer content — not even an empty carrier object.
+    expect(ipcProjectSave).toHaveBeenCalledTimes(1);
+    const [savedProject] = ipcProjectSave.mock.calls[0] as [EfxPaintPackageManifest, string];
+    expect(savedProject.efxPaint).toEqual({});
+    expect(savedProject.efx_paint_documents).toBeUndefined();
+    // No layer sub-file is staged or published for a layer-less project.
+    expect([...files.keys()].some((path) => path.includes('/layers/'))).toBe(false);
+  });
+
+  it('a second identical save is a true no-op: no bind, no publish, no manifest write (D-11/T-52.2-23)', async () => {
+    addPhysicPaintLayer('layer-1');
+    efxPaintStoreModule.registerDocument(makeTrackDocument('layer-1'));
+    physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+    const canonicalBefore = files.get('/project/layers/layer-1.json');
+    ipcProjectSave.mockClear();
+    bindEfxPaintPackageTransaction.mockClear();
+    publishEfxPaintPackageTransaction.mockClear();
+    settleEfxPaintPackageTransaction.mockClear();
+    writeJournal.length = 0;
+
+    await projectStore.saveProject();
+
+    expect(ipcProjectSave).not.toHaveBeenCalled();
+    expect(bindEfxPaintPackageTransaction).not.toHaveBeenCalled();
+    expect(publishEfxPaintPackageTransaction).not.toHaveBeenCalled();
+    expect(settleEfxPaintPackageTransaction).not.toHaveBeenCalled();
+    expect(writeJournal).toHaveLength(0);
+    expect(files.get('/project/layers/layer-1.json')).toEqual(canonicalBefore);
+  });
+
+  it('every media write carries the staging basename and no request targets a canonical frames/ path', async () => {
+    seedRotoKeyWithMedia('layer-1', 'key-1', 'media@0');
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+
+    const writeCalls = ipcEfxPaintWriteFrameMedia.mock.calls as unknown as unknown[][];
+    expect(writeCalls).toHaveLength(1);
+    const [packageDir, layerId, keyId, bytes, stagingBasename] = writeCalls[0] as [
       string,
-      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+      string,
+      string,
+      Uint8Array,
+      string,
     ];
-    expect(documents.size).toBe(0);
-    const [savedProject, , transactionId] = ipcProjectSave.mock.calls[0] as [MceProject, string, string | null];
-    expect(savedProject.efx_paint_documents).toEqual({});
-    expect(transactionId).toBeNull();
+    expect(packageDir).toBe('/project');
+    expect(layerId).toBe('layer-1');
+    expect(keyId).toBe('key-1');
+    expect(bytes.length).toBeGreaterThan(0);
+    // The write is addressed AT THE STAGING GENERATION: the basename rides the
+    // call, so no request can land on a canonical frames/ path (D-10).
+    expect(stagingBasename).toMatch(/^\.efx-paint-package-staging-/);
+    // No write in the whole save targeted a canonical frames/ path: the media
+    // bytes landed inside the staging generation and nowhere else.
+    const mediaWrite = writeJournal.find((write) => write.path.includes('/frames/layer-1/key-1.webp'));
+    expect(mediaWrite?.path).toMatch(
+      /^\/project\/\.efx-paint-package-staging-[^/]+\/frames\/layer-1\/key-1\.webp$/,
+    );
+    // The media reached its canonical path only through the publish step.
+    expect(files.has('/project/frames/layer-1/key-1.webp')).toBe(true);
+    expect(writeJournal.filter((write) => write.path.startsWith('/project/frames/'))).toHaveLength(0);
+  });
+
+  it('the declared package surface carries no payload or machine-local path (the staged strings this save produced)', async () => {
+    addPhysicPaintLayer('layer-1');
+    const document = makeTrackDocument('layer-1');
+    efxPaintStoreModule.registerDocument(document);
+    physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    await projectStore.saveProject();
+
+    const stagedSubFile = lastWrite('/layers/layer-1.json');
+    // T-52.2-22: no raster payload rides emitted JSON — a base64 run of 512+
+    // characters is the shape a leaked raster takes.
+    expect(stagedSubFile).not.toMatch(/[A-Za-z0-9+/]{512,}={0,2}/);
+    // No absolute, backslash or drive-letter path survives into the package.
+    expect(stagedSubFile).not.toMatch(/"\/[^"]*"/);
+    expect(stagedSubFile).not.toContain('\\\\');
+    expect(stagedSubFile).not.toMatch(/[A-Za-z]:[\\/]/);
+    // The persisted sub-file is what the read-back leg reopens: media
+    // references only, both roto collections.
+    const persisted = JSON.parse(stagedSubFile) as Record<string, unknown>;
+    expect(persisted.parentLayerId).toBe('layer-1');
+  });
+
+  it('a refused package publish leaves the canonical package byte-identical (T-52.2-21)', async () => {
+    seedRotoKeyWithMedia('layer-1', 'key-1', 'first@0');
+    projectStore.filePath.value = '/project/file.mce';
+    projectStore.dirPath.value = '/project';
+
+    // First save commits the package.
+    await projectStore.saveProject();
+    const packageSnapshot = new Map(
+      [...files.entries()].filter(([path]) => path.startsWith('/project/')),
+    );
+    expect(packageSnapshot.size).toBeGreaterThan(0);
+
+    // The second save changes an authoritative key (new bytes → new token),
+    // then the publish refuses.
+    seedRotoKeyWithMedia('layer-1', 'key-1', 'second@0');
+    const writesBefore = writeJournal.length;
+    publishEfxPaintPackageTransaction.mockImplementationOnce(async () => ({ ok: false, error: 'publish refused' }));
+
+    await expect(projectStore.saveProject()).rejects.toThrow('publish refused');
+
+    // Byte-identical: the staged writes never reached a canonical path, and
+    // the staging generation was cleaned up.
+    const packageAfter = new Map([...files.entries()].filter(([path]) => path.startsWith('/project/')));
+    expect(packageAfter).toEqual(packageSnapshot);
+    expect(writeJournal.length).toBeGreaterThan(writesBefore);
+    for (const path of files.keys()) expect(path).not.toContain('/.efx-paint-package-staging-');
+    const settleCalls = settleEfxPaintPackageTransaction.mock.calls as unknown as unknown[][];
+    expect(settleCalls[settleCalls.length - 1]?.[2]).toBe('rollback');
   });
 });
 
@@ -451,6 +817,7 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     efxPaintStoreModule.reset();
     projectStore.filePath.value = null;
     projectStore.dirPath.value = null;
+    clearPackageDisk();
     ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
     ipcProjectSave.mockResolvedValue({ ok: true, data: null });
     ipcProjectSaveAsWithScriptLibrary.mockResolvedValue({ ok: true, data: { diagnostics: [] } });
@@ -462,18 +829,8 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     cleanupOrphanedPaintFiles.mockResolvedValue(undefined);
     loadPhysicPaintData.mockResolvedValue([]);
     prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
-    saveEfxPaintDocumentsWithProjectWrite.mockImplementation(
-      async (
-        _projectDir: string,
-        documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
-        writeProject: (payload: Record<string, unknown>, transactionId: string | null) => Promise<void>,
-      ) => {
-        const persisted: Record<string, unknown> = {};
-        for (const [layerId, input] of documents) persisted[layerId] = input.document;
-        await writeProject(persisted, documents.size === 0 ? null : 'txn-46-02');
-        return persisted;
-      },
-    );
+    installPackageTransactionMocks();
+    installCacheLegMocks();
     loadEfxPaintDocuments.mockImplementation(
       async (_projectId: string, persistedMap: Record<string, unknown> | undefined) => {
         const loaded = new Map<string, EfxPaintLoadedDocument>();
@@ -500,18 +857,24 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
 
     await projectStore.saveProject();
 
-    expect(saveEfxPaintDocumentsWithProjectWrite).toHaveBeenCalledTimes(1);
-    const [, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
-      string,
-      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
-    ];
-    const input = documents.get('layer-2t');
-    expect(input).toBeDefined();
-    // 46-02: the frame carrier is per-track (trackId → appFrame → frame);
-    // both tracks own a frame at the same appFrame without collision.
-    expect(input!.frames.size).toBe(2);
-    expect(input!.frames.get(TRACK_A)?.get(1)?.bytes).toBe(frameA.bytes);
-    expect(input!.frames.get(TRACK_B)?.get(1)?.bytes).toBe(frameB.bytes);
+    // 46-02: both tracks own a frame at the same appFrame, and the package
+    // save writes each one against its own track-keyed machine-relative
+    // reference — never against a shared or colliding path.
+    const publishedLayer = readJson('/project/layers/layer-2t.json');
+    const tracks = publishedLayer.tracks as Array<{ id: string; frames: Record<string, { cachePath: string }> }>;
+    expect(tracks).toHaveLength(2);
+    expect(Object.values(tracks[0].frames)[0].cachePath).toMatch(
+      new RegExp(`^efx-paint/layer-2t-[0-9a-f]+/${TRACK_A}/frame-0001\\.webp$`),
+    );
+    expect(Object.values(tracks[1].frames)[0].cachePath).toContain(`/${TRACK_B}/`);
+    // The derived-frame bytes never reach the package (D-05: the package
+    // carries references, never rendered sidecars).
+    expect([...files.keys()].some((path) => path.includes('/project/frames/'))).toBe(false);
+    // The runtime carriers themselves are per-track (TRACK-03).
+    const runtimeA = physicPaintStore.getFrames('layer-2t', TRACK_A).get(1);
+    const runtimeB = physicPaintStore.getFrames('layer-2t', TRACK_B).get(1);
+    expect(runtimeA?.bytes).toBe(frameA.bytes);
+    expect(runtimeB?.bytes).toBe(frameB.bytes);
   });
 
   it('hydrates per-track frames into their own runtime maps on open', async () => {
@@ -552,7 +915,7 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     expect(physicPaintStore.getFrames('layer-h', TRACK_B).get(5)?.bytes).toBe(frameB.bytes);
   });
 
-  it('regression: a single-track document keys the save input frames under the single track id', async () => {
+  it('regression: a single-track document is written under its single track id', async () => {
     addPhysicPaintLayer('layer-s');
     efxPaintStoreModule.registerDocument(makeTrackDocument('layer-s'));
     physicPaintStore.setFrame('layer-s', TEST_TRACK_ID, 3, makeFrame(1, 3));
@@ -561,14 +924,12 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
 
     await projectStore.saveProject();
 
-    const [, documents] = saveEfxPaintDocumentsWithProjectWrite.mock.calls[0] as [
-      string,
-      ReadonlyMap<string, EfxPaintDocumentSaveInput>,
-    ];
-    const input = documents.get('layer-s');
-    expect(input).toBeDefined();
-    expect(input!.frames.size).toBe(1);
-    expect(input!.frames.get(TEST_TRACK_ID)?.get(3)?.bytes).toEqual(makeFrame(1, 3).bytes);
+    const publishedLayer = readJson('/project/layers/layer-s.json');
+    const tracks = publishedLayer.tracks as Array<{ id: string; frames: Record<string, { cachePath: string }> }>;
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].id).toBe(TEST_TRACK_ID);
+    expect(Object.keys(tracks[0].frames)).toEqual(['3']);
+    expect(physicPaintStore.getFrames('layer-s', TEST_TRACK_ID).get(3)?.bytes).toEqual(makeFrame(1, 3).bytes);
   });
 });
 

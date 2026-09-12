@@ -34,8 +34,27 @@ export interface MceProject {
    * undefined/absent (Rust omits the empty field on serialization).
    */
   physic_paint_outputs?: unknown[];
-  /** v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust). */
+  /**
+   * v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust).
+   *
+   * 52.2-07 (D-04): the package format no longer ships layer content inside the
+   * project file — each layer now lives in its own `layers/<layerId>.json`
+   * sub-file and each raster in `frames/<layerId>/<keyId>.webp`. The field is
+   * left on the type because pre-52.2 projects still carry it on the way in and
+   * plan 08 owns the refusal gate and its removal.
+   */
   efx_paint_documents?: Record<string, unknown>;
+  /**
+   * The package format version (D-04), carried by the manifest and read by
+   * plan 08's refusal gate. Absent on a pre-52.2 project.
+   */
+  formatVersion?: number;
+  /**
+   * The package identity (D-05): a 36-character lower-case UUID carried IN the
+   * manifest — never derived from the file path — so the same package keeps the
+   * same identity (and therefore the same disposable cache) on another machine.
+   */
+  projectId?: string;
 }
 
 /** Runtime project shape: identical to the persisted MceProject (v1.0). */

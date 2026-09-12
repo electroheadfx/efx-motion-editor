@@ -6,7 +6,7 @@ import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequen
 import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
 import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
-import {projectCreate, projectSave as ipcProjectSave, projectSaveAsWithScriptLibrary, projectOpen as ipcProjectOpen, projectMigrateTempImages, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject} from '../lib/ipc';
+import {projectCreate, projectSaveAsWithScriptLibrary, projectOpen as ipcProjectOpen, projectMigrateTempImages, resolvePhysicPaintCacheRoot, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
 import {audioStore, _setAudioMarkDirtyCallback} from './audioStore';
@@ -29,8 +29,9 @@ import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {recordPhysicsPaintPerformance} from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
-import {loadEfxPaintDocuments, saveEfxPaintDocumentsWithProjectWrite} from '../lib/efxPaintPersistence';
+import {loadEfxPaintDocuments, savePackage} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
+import {isProjectId} from '../lib/efxPaintPackage';
 import {findLegacyPhysicPaintRejection} from '../efx-paint/document/efxPaintCleanBreak';
 import {showLegacyPhysicPaintRejectionDialog} from '../lib/efxPaintRejectionDialog';
 import {
@@ -66,8 +67,32 @@ const isSaving = signal(false);
 const scriptLibraryAuthority = signal<string | null>(null);
 const projectContextId = signal(crypto.randomUUID());
 
+/**
+ * The package identity (52.2-07, D-05): the manifest's `projectId`, and the key
+ * the machine-local derived-frame cache root is resolved from. Minted for a new
+ * project, ADOPTED from the manifest on open (so a package keeps its identity —
+ * and therefore its disposable cache — wherever it is opened), and rotated on
+ * close so the next project can never resolve the previous one's cache.
+ */
+const projectId = signal<string>(crypto.randomUUID());
+
 function rotateProjectContext(): void {
   projectContextId.value = crypto.randomUUID();
+}
+
+function rotateProjectId(): void {
+  projectId.value = crypto.randomUUID();
+}
+
+/**
+ * The machine-local derived-frame cache root for the current package
+ * (`<app_data_dir>/frame-cache/<projectId>`). Best-effort by contract (D-14):
+ * a resolution failure returns null, the save skips the whole cache leg, and
+ * the authoritative package save still commits.
+ */
+async function resolveCacheRoot(): Promise<string | null> {
+  const result = await resolvePhysicPaintCacheRoot(projectId.value);
+  return result.ok ? result.data : null;
 }
 
 async function publishScriptLibraryContext(): Promise<void> {
@@ -130,6 +155,49 @@ function buildEfxPaintDocuments(): Map<string, EfxPaintDocumentSaveInput> {
     });
   }
   return documents;
+}
+
+function recordSaveStage(stage: string, durationMs: number, branch: 'autosave' | 'manual'): void {
+  recordPhysicsPaintPerformance({
+    stage,
+    category: 'async-elapsed',
+    durationMs,
+    timestamp: performance.now(),
+    branch,
+  });
+}
+
+/**
+ * Run one package save (52.2-07 Task 3, D-09/D-10/D-11) and record its
+ * per-file telemetry (T-52.2-24). `packageDir` is the package root — the
+ * project folder itself. The manifest is assembled inside the persistence
+ * service from `buildMceProject()` plus the package identity, and reaches its
+ * canonical path only through the package transaction, exactly like every
+ * layer sub-file and media file. The four stages are reported separately so a
+ * regression to one whole-project serialize shows up as a single dominant term
+ * instead of hiding inside one opaque total.
+ *
+ * Returns the committed manifest — the project as persisted.
+ */
+async function savePackageWithTelemetry(
+  packageDir: string,
+  documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+  branch: 'autosave' | 'manual',
+): Promise<MceProject> {
+  const result = await savePackage(packageDir, {
+    project: buildMceProject(),
+    documents,
+    projectId: projectId.value,
+    cacheRoot: await resolveCacheRoot(),
+  });
+  recordSaveStage('persist.media', result.metrics.mediaMs, branch);
+  recordSaveStage('persist.layers', result.metrics.layersMs, branch);
+  recordSaveStage('persist.manifest', result.metrics.manifestMs, branch);
+  recordSaveStage('persist.commit', result.metrics.commitMs, branch);
+  // The manifest IS the persisted project (the main-editor fields plus
+  // `formatVersion`/`projectId`/`efxPaint`); Save As hands it to the script
+  // library migration, which stages the same project shape.
+  return result.manifest as unknown as MceProject;
 }
 
 function buildMceProject(): RuntimeMceProject {
@@ -682,6 +750,9 @@ export const projectStore = {
     rotateProjectContext();
     // Close any existing project first (resets all stores, stops engines/timers)
     projectStore.closeProject();
+    // A new project gets its own package identity (D-05): the manifest carries
+    // it and the machine-local cache root is derived from it.
+    rotateProjectId();
 
     const result = await projectCreate(projectName, projectFps, projectDirPath);
     if (!result.ok) {
@@ -724,9 +795,8 @@ export const projectStore = {
 
     isSaving.value = true;
     const saveStartedAtMs = performance.now();
+    const branch = options?.skipPaintFlush === true ? 'autosave' : 'manual';
     try {
-      const project = buildMceProject();
-
       // Save paint sidecar files before .mce (per Pitfall 5: write paint files first)
       const currentDir = dirPath.value;
       if (currentDir) {
@@ -751,22 +821,10 @@ export const projectStore = {
       // Studio's main thread at 52.1 sizes) and fires from inside the user's
       // next stroke — the autosave's freshness guarantee doesn't need it.
       if (!options?.skipPaintFlush) await requestPhysicPaintFlush();
-      const serializeStartedAtMs = performance.now();
+      // The write set is computed AFTER the flush, so the Studio's pending
+      // post-gesture work is what gets persisted (never stale content).
       const documents = buildEfxPaintDocuments();
-      await saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async (persistedDocuments, cacheTransactionId) => {
-        const result = await ipcProjectSave({
-          ...project,
-          efx_paint_documents: persistedDocuments,
-        }, currentFilePath, cacheTransactionId);
-        if (!result.ok) throw new Error(result.error);
-      });
-      recordPhysicsPaintPerformance({
-        stage: 'persist.serialize',
-        category: 'async-elapsed',
-        durationMs: performance.now() - serializeStartedAtMs,
-        timestamp: performance.now(),
-        branch: options?.skipPaintFlush === true ? 'autosave' : 'manual',
-      });
+      await savePackageWithTelemetry(projectDir, documents, branch);
       if (!options?.deferScriptAuthority && !scriptLibraryAuthority.peek()) await bindScriptLibraryAuthority(currentFilePath);
       isDirty.value = false;
 
@@ -808,29 +866,26 @@ export const projectStore = {
 
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     try {
-      const project = buildMceProject();
       // 52.1: drain the Studio's queued post-gesture work before serializing.
       await requestPhysicPaintFlush();
       const documents = buildEfxPaintDocuments();
-      await saveEfxPaintDocumentsWithProjectWrite(parentDir, documents, async (persistedDocuments, cacheTransactionId) => {
-        const projectForSave: MceProject = {
-          ...project,
-          efx_paint_documents: persistedDocuments,
-        };
-        if (previousFilePath && previousFilePath !== newFilePath) {
-          const transaction = await projectSaveAsWithScriptLibrary(
-            projectForSave,
-            previousFilePath,
-            newFilePath,
-            cacheTransactionId,
-          );
-          if (!transaction.ok) throw new Error(transaction.error);
-          if (transaction.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', transaction.data.diagnostics);
-        } else {
-          const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);
-          if (!result.ok) throw new Error(result.error);
-        }
-      });
+      // The destination package: manifest, layer sub-files and media all reach
+      // their canonical paths through the destination's own transaction, so a
+      // refusal leaves the previous destination (or its absence) untouched.
+      const manifest = await savePackageWithTelemetry(parentDir, documents, 'manual');
+      if (previousFilePath && previousFilePath !== newFilePath) {
+        // The script-library migration is its own native step: it moves the
+        // active library from the source project to the destination and
+        // re-publishes the manifest it is handed (byte-identical to the one the
+        // package transaction just published) under its own transaction.
+        const transaction = await projectSaveAsWithScriptLibrary(
+          manifest,
+          previousFilePath,
+          newFilePath,
+        );
+        if (!transaction.ok) throw new Error(transaction.error);
+        if (transaction.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', transaction.data.diagnostics);
+      }
       batch(() => {
         dirPath.value = parentDir;
         filePath.value = newFilePath;
@@ -884,6 +939,12 @@ export const projectStore = {
     batch(() => {
       filePath.value = openFilePath;
       dirPath.value = projectRoot;
+      // Adopt the package's own identity (D-05) so the derived-frame cache root
+      // this session resolves is the one the package was written against. A
+      // manifest without a usable `projectId` (a pre-52.2 project, which plan
+      // 08's gate refuses before this point) mints a fresh one: a brand-new
+      // cache root is the fail-closed default, never another package's cache.
+      projectId.value = isProjectId(result.data.projectId) ? result.data.projectId : crypto.randomUUID();
     });
 
     hydrateFromMce(runtimeProject, projectRoot, loadedDocuments);
@@ -908,6 +969,10 @@ export const projectStore = {
   /** Close the current project and reset all stores */
   closeProject(options?: { preservePreparedRotoCanvases?: boolean }) {
     rotateProjectContext();
+    // A closed project's package identity must never key the next project's
+    // derived-frame cache: a fresh UUID makes the next cache root a brand-new
+    // directory rather than a stale, disposable-but-readable one.
+    rotateProjectId();
     clearScriptLibraryAuthority();
     // 1. Stop engines and timers FIRST (prevents orphaned operations)
     stopAutoSave();
