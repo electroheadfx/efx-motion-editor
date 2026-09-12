@@ -1,6 +1,7 @@
 import {useState, useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
 import {pathExists} from '../../lib/ipc';
+import {toPackageManifestPath} from '../../lib/openedProjectUrls';
 import {getRecentProjects, removeRecentProject, updateRecentProjectPath, type RecentProject} from '../../lib/appConfig';
 import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
 import {projectStore} from '../../stores/projectStore';
@@ -166,7 +167,7 @@ export function WelcomeScreen() {
     if (selected && typeof selected === 'string') {
       setIsOpening(true);
       try {
-        await projectStore.openProject(selected);
+        await projectStore.openProject(toPackageManifestPath(selected));
       } catch (err) {
         console.error('Failed to open project:', err);
         await showProjectIoFailureDialog('open', err);
@@ -180,7 +181,7 @@ export function WelcomeScreen() {
     if (!project.available) return;
     setIsOpening(true);
     try {
-      await projectStore.openProject(project.path);
+      await projectStore.openProject(toPackageManifestPath(project.path));
     } catch (err) {
       console.error('Failed to open recent project:', err);
       await showProjectIoFailureDialog('open', err);

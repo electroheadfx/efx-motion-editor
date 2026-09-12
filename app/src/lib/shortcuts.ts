@@ -6,6 +6,7 @@ import {findPrevSequenceStart, findNextSequenceStart} from './sequenceNav';
 import {trackLayouts} from './frameMap';
 import {undo, redo} from './history';
 import {guardUnsavedChanges} from './unsavedGuard';
+import {toPackageManifestPath} from './openedProjectUrls';
 import {cycleTheme} from './themeManager';
 import {projectStore} from '../stores/projectStore';
 import {uiStore} from '../stores/uiStore';
@@ -97,7 +98,7 @@ export async function handleOpenProject(): Promise<void> {
   });
   if (selected && typeof selected === 'string') {
     try {
-      await projectStore.openProject(selected);
+      await projectStore.openProject(toPackageManifestPath(selected));
     } catch (err) {
       console.error('Failed to open project:', err);
       await showProjectIoFailureDialog('open', err);
