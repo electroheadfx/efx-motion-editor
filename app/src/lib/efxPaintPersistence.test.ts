@@ -3,12 +3,21 @@ import { fileURLToPath } from 'node:url';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
-import { buildPhysicPaintRotoPhysicalRevision, parsePhysicPaintRotoPhysicalDocument } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoPayloadContentToken,
+  buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
 import {
   EFX_PAINT_PACKAGE_STAGING_PREFIX,
   buildEfxPaintFrameCachePath,
+  collectLayerMediaKeyIds,
+  computeChangedFiles,
   createPackageStagingBasename,
+  getPackageFileTokens,
+  packageFileToken,
+  settlePackageFileTokens,
   isSafeEfxPaintCachePath,
   loadEfxPaintDocuments,
   saveEfxPaintDocumentsWithProjectWrite,
@@ -678,5 +687,178 @@ describe('the staged package save seam (52.2-05 Task 3)', () => {
     expect(persisted['layer-soft']).toBeDefined();
     // No live transaction exists, so nothing is settled.
     expect(settlePhysicPaintCacheGeneration).not.toHaveBeenCalled();
+  });
+});
+
+// --- 52.2-07 Task 1: per-file change tokens (D-11) -----------------------
+
+describe('per-file change tokens (52.2-07 Task 1, D-11)', () => {
+  const LAYER = 'layer-1';
+  const layerToken = packageFileToken('layer', LAYER);
+  const manifestToken = packageFileToken('manifest');
+  const frameToken = (keyId: string) => packageFileToken('frame', LAYER, keyId);
+  const contentToken = (seed: string, appFrame = 1) =>
+    buildPhysicPaintRotoPayloadContentToken({ frameIndex: 0, appFrame, bytes: testWebpBytes(seed) });
+
+  beforeEach(() => {
+    settlePackageFileTokens('commit', new Map());
+  });
+
+  it('keys the token space frame:<layerId>:<keyId>, layer:<layerId>, manifest', () => {
+    expect(packageFileToken('manifest')).toBe('manifest');
+    expect(packageFileToken('layer', 'layer-1')).toBe('layer:layer-1');
+    expect(packageFileToken('frame', 'layer-1', 'key-7')).toBe('frame:layer-1:key-7');
+  });
+
+  it('a keyId placed at two different appFrames yields ONE token and ONE media write', () => {
+    const keyIds = collectLayerMediaKeyIds([
+      {
+        realKeyRecords: [
+          { keyId: 'key-9', appFrame: 2 },
+          { keyId: 'key-9', appFrame: 5 },
+        ],
+        groupOverrideRecords: [],
+      },
+    ]);
+
+    // The keyId is the identity; the placements are not. A frame-keyed token
+    // would emit two entries here (and two writes of identical media).
+    expect(keyIds).toEqual(['key-9']);
+    expect(keyIds.map((keyId) => frameToken(keyId))).toEqual(['frame:layer-1:key-9']);
+  });
+
+  it('a group-override keyId yields the same frame token shape as a real key, with no collection marker', () => {
+    const keyIds = collectLayerMediaKeyIds([
+      {
+        realKeyRecords: [{ keyId: 'real-1', appFrame: 1 }],
+        groupOverrideRecords: [{ keyId: 'ovr-1', appFrame: 3 }],
+      },
+    ]);
+
+    expect(keyIds.map((keyId) => frameToken(keyId))).toEqual([
+      'frame:layer-1:ovr-1',
+      'frame:layer-1:real-1',
+    ]);
+    expect(packageFileToken('frame', LAYER, 'ovr-1')).toBe('frame:layer-1:ovr-1');
+  });
+
+  it('refuses a keyId shared by the two roto collections of one document, naming the keyId', () => {
+    expect(() => collectLayerMediaKeyIds([
+      { realKeyRecords: [{ keyId: 'key-x' }], groupOverrideRecords: [{ keyId: 'key-x' }] },
+    ])).toThrow(/key-x/);
+  });
+
+  it('changing one group override returns exactly its media token plus its layer token', () => {
+    const before = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('real-1'), contentToken('real-1')],
+      [frameToken('ovr-1'), contentToken('ovr-before', 3)],
+    ]);
+    const after = new Map(before);
+    after.set(frameToken('ovr-1'), contentToken('ovr-after', 3));
+    after.set(layerToken, 'docrev-2');
+
+    expect(computeChangedFiles(before, after).map((entry) => entry.token)).toEqual([
+      frameToken('ovr-1'),
+      layerToken,
+    ]);
+  });
+
+  it('returns only the entries whose token value differs, sorted by token', () => {
+    const before = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('key-a'), contentToken('a1')],
+      [frameToken('key-b'), contentToken('b1')],
+    ]);
+    const after = new Map(before);
+    after.set(frameToken('key-a'), contentToken('a2'));
+
+    expect(computeChangedFiles(before, after)).toEqual([
+      { token: frameToken('key-a'), value: contentToken('a2') },
+    ]);
+  });
+
+  it('the first save against an empty token map returns the complete set', () => {
+    const next = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('key-a'), contentToken('a1')],
+      [frameToken('key-b'), contentToken('b1')],
+    ]);
+
+    expect(computeChangedFiles(new Map(), next).map((entry) => entry.token)).toEqual([
+      frameToken('key-a'),
+      frameToken('key-b'),
+      layerToken,
+      manifestToken,
+    ]);
+  });
+
+  it('a second save with identical input returns an empty set', () => {
+    const next = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('key-a'), contentToken('a1')],
+    ]);
+
+    expect(computeChangedFiles(next, next)).toEqual([]);
+  });
+
+  it('changing one key bytes returns exactly its media token plus its layer token', () => {
+    const before = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('key-a'), contentToken('a1')],
+      [frameToken('key-b'), contentToken('b1')],
+    ]);
+    const after = new Map(before);
+    after.set(frameToken('key-a'), contentToken('a2'));
+    after.set(layerToken, 'docrev-2');
+
+    expect(computeChangedFiles(before, after).map((entry) => entry.token)).toEqual([
+      frameToken('key-a'),
+      layerToken,
+    ]);
+  });
+
+  it('renaming a track inside one layer returns exactly that layer token, never the manifest', () => {
+    const before = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('key-a'), contentToken('a1')],
+    ]);
+    const after = new Map(before);
+    after.set(layerToken, 'docrev-2');
+
+    const changed = computeChangedFiles(before, after).map((entry) => entry.token);
+    expect(changed).toEqual([layerToken]);
+    expect(changed).not.toContain(manifestToken);
+  });
+
+  it('the token map survives a settle and is dropped on rollback, so a failed save re-writes what it staged', () => {
+    const committed = new Map<string, string>([
+      [manifestToken, 'manifest-1'],
+      [layerToken, 'docrev-1'],
+      [frameToken('key-a'), contentToken('a1')],
+    ]);
+    settlePackageFileTokens('commit', committed);
+
+    expect(getPackageFileTokens()).toEqual(committed);
+    expect(computeChangedFiles(getPackageFileTokens(), committed)).toEqual([]);
+
+    const staged = new Map(committed);
+    staged.set(frameToken('key-a'), contentToken('a2'));
+    staged.set(layerToken, 'docrev-2');
+    settlePackageFileTokens('rollback', staged);
+
+    // The pending map was dropped: the last committed map is still the
+    // baseline, so every file the failed save had staged is still changed.
+    expect(getPackageFileTokens()).toEqual(committed);
+    expect(computeChangedFiles(getPackageFileTokens(), staged).map((entry) => entry.token)).toEqual([
+      frameToken('key-a'),
+      layerToken,
+    ]);
   });
 });

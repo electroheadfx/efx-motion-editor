@@ -104,6 +104,89 @@ const savedDocumentCache = new Map<string, Record<string, unknown>>();
  */
 const savedFrameTokens = new Map<string, string>();
 
+// --- 52.2-07 Task 1 (D-11): the file-keyed change-token model -------------
+// RED signatures only: the bodies are implemented in the GREEN commit, so the
+// new cases fail on their own assertions while every pre-existing case stays
+// green.
+
+/** The three kinds of authoritative file a package save can rewrite. */
+export type PackageFileTokenKind = 'manifest' | 'layer' | 'frame';
+
+/**
+ * The file-identity token for one authoritative package file:
+ * `frame:<layerId>:<keyId>` (one media file per key identity, D-09),
+ * `layer:<layerId>` (one sub-file per layer, D-09) or `manifest` (the one
+ * `project.mce`). Identity is the keyId — never the appFrame and never a
+ * collection marker: keyIds are unique across `realKeyRecords` and
+ * `groupOverrideRecords`, and one keyId placed at several frames owns exactly
+ * one media file.
+ */
+export function packageFileToken(kind: PackageFileTokenKind, layerId?: string, keyId?: string): string {
+  void kind;
+  void layerId;
+  void keyId;
+  return 'not-implemented';
+}
+
+/** One changed authoritative file: its token plus the value it must be saved at. */
+export interface PackageChangedFile {
+  readonly token: string;
+  readonly value: string;
+}
+
+/**
+ * The changed files between two token maps, sorted by token so the write set
+ * is deterministic. A token absent from `previousTokens` counts as changed (the
+ * first save against an empty map returns the complete set).
+ */
+export function computeChangedFiles(
+  previousTokens: ReadonlyMap<string, string>,
+  nextTokens: ReadonlyMap<string, string>,
+): readonly PackageChangedFile[] {
+  void previousTokens;
+  void nextTokens;
+  return [];
+}
+
+/**
+ * One roto document's media-bearing collections, structurally typed so this
+ * module owns no roto import.
+ */
+export interface PackageRotoMediaSource {
+  readonly realKeyRecords?: readonly { readonly keyId: string }[];
+  readonly groupOverrideRecords?: readonly { readonly keyId: string }[];
+}
+
+/**
+ * Every keyId a layer's media files are keyed by: BOTH persisted roto
+ * collections of every source (track), deduplicated by keyId — one keyId placed
+ * at several frames is ONE media file — and sorted. A keyId carried by both
+ * collections of one document is refused: it would make one record's
+ * `frames/<layerId>/<keyId>.webp` silently overwrite the other's.
+ */
+export function collectLayerMediaKeyIds(sources: Iterable<PackageRotoMediaSource>): readonly string[] {
+  void sources;
+  return [];
+}
+
+/** The last committed token map — the baseline the next save compares against. */
+export function getPackageFileTokens(): ReadonlyMap<string, string> {
+  return new Map();
+}
+
+/**
+ * Adopt a save's token map on commit, or drop it on rollback (the committed
+ * map stays, so the files the failed save had staged are still changed and the
+ * next save re-writes them).
+ */
+export function settlePackageFileTokens(
+  action: 'commit' | 'rollback',
+  nextTokens?: ReadonlyMap<string, string>,
+): void {
+  void action;
+  void nextTokens;
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
