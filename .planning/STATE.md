@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-04-PLAN.md
-last_updated: "2026-09-12T15:22:10.161Z"
+stopped_at: Completed 52.2-05-PLAN.md
+last_updated: "2026-09-12T15:50:47.909Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 4530896a732cc9bc7be697c865131ff781a416bd
+state_head: 66bd72839d07fc709125561c7dbf461377770592
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 53
+  completed_plans: 54
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 5 of 16
+Plan: 6 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -112,6 +112,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P02 | 22min | 3 tasks | 22 files |
 | Phase 52.2 P03 | 63min | 3 tasks | 11 files |
 | Phase 52.2 P04 | 9 | 3 tasks | 6 files |
+| Phase 52.2 P05 | 25min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -271,6 +272,11 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-04: the solo content start is a lazy getter (getSoloContentStart) returning null when no solo is active — arming the pill does not re-render the Studio, so a captured value would be stale at Play press; null keeps the Phase 51 play-from-cursor branch byte-for-byte
 - [Phase 52.2]: 52.2-04: the solo content start is resolved once and assigned to BOTH frameIndexRef and loopStartIndexRef — the wrap branch reads loopStartIndexRef, so the single assignment is what makes every loop iteration return to the isolated content start (D-22)
 - [Phase 52.2]: 52.2-04: one Studio closure (resolveSessionSoloWindow) serves both the playback filter (getSoloWindow) and the D-21 content start, so the pil's window derivation and the start seam can never drift; row-S reads the document soloed tracks + physicPaintStore.getRotoRealKeyRecords filtered to those ids, capacity = composite end frame
+- [Phase 52.2]: 52.2-05: the cache leg no longer binds a project write at all — a cache marker found at open is always rolled back, and no project write carries a cache transaction id (D-05/D-14)
+- [Phase 52.2]: 52.2-05: marker/entry structs stay snake_case because the marker's on-disk shape is untrusted input; the renderer-facing DTOs are camelCase command structs (BoundPackageFileSet)
+- [Phase 52.2]: 52.2-05: Save As holds ONE transaction open across the active-path migration (publish → migrate → commit | rollback), so a migration failure restores the previous destination through the transaction's own rollback (T-52.2-18)
+- [Phase 52.2]: 52.2-05: physicPaintCacheTransactionId is dead by design in both TS project-save signatures — plan 07 Task 3 stops passing it, plan 09 deletes the declaration; nothing may leave it in shipped code
+- [Phase 52.2]: 52.2-05: the cache producers' conversion to the machine cache root (efxPaintStore.ts + the efxPaintPersistence.ts guard) is plan 07 Task 2 and was deliberately not pre-empted
 
 ### Pending Todos
 
@@ -322,6 +328,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T15:22:08.562Z
-Stopped at: Completed 52.2-04-PLAN.md
+Last session: 2026-09-12T15:50:33.934Z
+Stopped at: Completed 52.2-05-PLAN.md
 Resume file: None
