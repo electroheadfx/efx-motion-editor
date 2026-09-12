@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 import { CAPTURE_PRODUCE_QUIET_MS, createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
+import { FINALIZATION_TURN_CONCURRENCY } from '../pilot/finalizationQueue';
 import { beginInteraction, endInteraction, GESTURE_IDLE_WINDOW_MS, interactionIdle } from '../bridge/gestureIdleScheduler';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
@@ -218,6 +219,69 @@ describe('Roto live pixel cache transactions', () => {
 
     expect(remove).toHaveBeenCalledOnce();
     expect(commit).not.toHaveBeenCalled();
+  });
+});
+
+describe('Roto live pixel cache transactions — bounded turns and interruption (52.2-14)', () => {
+  /** Real-timer helper: each round flushes every pending macrotask and microtask. */
+  const settle = async (rounds = 4): Promise<void> => {
+    for (let round = 0; round < rounds; round += 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  };
+
+  it('cancels an in-flight capture on interrupt so its commit never runs', async () => {
+    const encoding = deferred<string>();
+    const commit = vi.fn();
+    const produce = vi.fn(() => encoding.promise);
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({ sourceFrame: 7, produce, commit });
+    await settle();
+    expect(produce).toHaveBeenCalledOnce();
+
+    transactions.interrupt();
+    // The encode settles AFTER the interrupt: a cancelled capture must be
+    // unable to commit, which the promise-per-key map could not express.
+    encoding.resolve('stale-pixels');
+    await settle();
+
+    await expect(work).resolves.toBe(false);
+    expect(commit).not.toHaveBeenCalled();
+    expect(transactions.hasPending(7)).toBe(false);
+  });
+
+  it('runs captures at bounded concurrency and keeps every commit outcome', async () => {
+    const gates = [0, 1, 2].map(() => deferred<void>());
+    const produced: number[] = [];
+    const committed: number[] = [];
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const works = gates.map((gate, index) => transactions.capture({
+      sourceFrame: index,
+      produce: async () => {
+        produced.push(index);
+        await gate.promise;
+        return `frame-${index}`;
+      },
+      commit: (value) => {
+        committed.push(index);
+      },
+    }));
+
+    await settle();
+    expect(produced).toHaveLength(FINALIZATION_TURN_CONCURRENCY);
+
+    gates[0].resolve();
+    await settle();
+    expect(produced).toHaveLength(FINALIZATION_TURN_CONCURRENCY + 1);
+
+    gates[1].resolve();
+    gates[2].resolve();
+    await settle();
+    await expect(Promise.all(works)).resolves.toEqual([true, true, true]);
+    expect([...committed].sort()).toEqual([0, 1, 2]);
+    expect(transactions.hasPending()).toBe(false);
   });
 });
 
