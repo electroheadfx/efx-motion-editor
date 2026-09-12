@@ -6,8 +6,10 @@ mod window_occlusion;
 
 pub use commands::efx_paint_media as efx_paint_media_command;
 pub use commands::physic_paint_cache as physic_paint_cache_command;
+pub use models::project::MceProject;
 pub use services::efx_paint_media;
 pub use services::physic_paint_cache;
+pub use services::project_io;
 
 #[doc(hidden)]
 pub mod script_library_test_support;
@@ -812,6 +814,10 @@ pub fn run() {
             project::project_open,
             project::project_migrate_temp_images,
             project::path_exists,
+            project::bind_efx_paint_package_transaction,
+            project::publish_efx_paint_package_transaction,
+            project::settle_efx_paint_package_transaction,
+            project::recover_efx_paint_package_transaction,
             script_library::script_library_bind_saved_project,
             script_library::script_library_clear_active_project,
             script_library::script_library_scan,
@@ -830,6 +836,7 @@ pub fn run() {
             script_library::script_library_encode_thumbnail_webp,
             image::image_get_info,
             image::import_images,
+            physic_paint_cache_commands::resolve_physic_paint_cache_root,
             physic_paint_cache_commands::publish_physic_paint_cache_generation,
             physic_paint_cache_commands::settle_physic_paint_cache_generation,
             physic_paint_cache_commands::hardlink_physic_paint_cache_frames,

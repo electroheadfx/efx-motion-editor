@@ -35,6 +35,11 @@ use uuid::Uuid;
 
 const CANONICAL_CACHE_BASENAME: &str = "efx-paint";
 const STAGING_PREFIX: &str = ".efx-paint-staging-";
+/// The machine-local derived-frame cache directory name (D-05): the cache root
+/// is `<app_data_dir>/frame-cache/<projectId>`. It is derived from the app data
+/// dir, never from a package path, so no derived file can be committed to a
+/// package (T-52.2-17).
+pub const MACHINE_CACHE_DIR: &str = "frame-cache";
 const ACTIVE_TRANSACTION_BASENAME: &str = ".physic-paint-transaction.json";
 /// The authoritative package transaction's marker, at the package root.
 const PACKAGE_TRANSACTION_BASENAME: &str = ".efx-paint-package-transaction.json";
@@ -87,6 +92,9 @@ struct CacheTransactionMarker {
 /// One file bound to the authoritative package transaction (D-10): the
 /// package-relative path, the SHA-256 of the STAGED bytes that will land, and
 /// whether the canonical path already existed when the set was bound.
+///
+/// Serialized snake_case because it is the package marker's on-disk entry
+/// shape; the command layer maps it to its own camelCase DTO for the renderer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoundFile {
     pub path: String,
@@ -104,22 +112,45 @@ pub struct PackageBinding {
     pub entries: Vec<BoundFile>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PackagePublication {
     pub transaction_id: String,
     pub published: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PackageSettlementAction {
     Commit,
     Rollback,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PackageSettlement {
     pub cleanup_deferred: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cleanup_diagnostic: Option<String>,
+}
+
+/// The open-time recovery report: whether a transaction was resolved and how
+/// its cleanup went.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageRecovery {
+    pub recovered: bool,
+    pub cleanup_deferred: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleanup_diagnostic: Option<String>,
+}
+
+/// The machine-local derived-frame cache root (D-05): a pure path join over
+/// the app data dir the caller resolved from Tauri, keyed by the package's own
+/// manifest `project_id`. No filesystem call, and no package path is ever an
+/// input, so a caller cannot address a cache location from the package.
+pub fn resolve_machine_cache_root(app_data_dir: &Path, project_id: &str) -> PathBuf {
+    app_data_dir.join(MACHINE_CACHE_DIR).join(project_id)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,22 +163,21 @@ struct PackageTransactionMarker {
 }
 
 pub fn publish_cache_generation(
-    project_dir: &Path,
+    cache_root: &Path,
     staging_basename: &str,
 ) -> Result<CachePublication, String> {
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (project_dir, staging_basename);
+        let _ = (cache_root, staging_basename);
         return Err("Physics Paint cache publication is supported only on macOS".to_string());
     }
 
     #[cfg(target_os = "macos")]
     {
         validate_staging_basename(staging_basename)?;
-        let project_root = resolve_project_root(project_dir)?;
-        let cache_parent = resolve_cache_parent(&project_root)?;
+        let cache_parent = resolve_machine_cache_parent(cache_root)?;
         if marker_path(&cache_parent).exists() {
-            recover_cache_transaction(&project_root)?;
+            recover_cache_transaction(&cache_parent)?;
         }
         if marker_path(&cache_parent).exists() {
             return Err("A Physics Paint cache transaction is already active".to_string());
@@ -429,21 +459,20 @@ pub fn recover_package_transaction(
 }
 
 pub fn settle_cache_generation(
-    project_dir: &Path,
+    cache_root: &Path,
     transaction_id: &str,
     action: CacheSettlementAction,
 ) -> Result<CacheSettlement, String> {
     validate_transaction_id(transaction_id)?;
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (project_dir, action);
+        let _ = (cache_root, action);
         return Err("Physics Paint cache settlement is supported only on macOS".to_string());
     }
 
     #[cfg(target_os = "macos")]
     {
-        let project_root = resolve_project_root(project_dir)?;
-        let cache_parent = resolve_cache_parent(&project_root)?;
+        let cache_parent = resolve_machine_cache_parent(cache_root)?;
         let marker = require_matching_marker(&cache_parent, transaction_id)?;
         // 52.2-05 Task 1 clause (f): the cache generation no longer binds a
         // project write, so a Rollback always restores the previous generation
@@ -470,21 +499,20 @@ pub fn settle_cache_generation(
 /// same-volume constraint and the caller's full-re-stage fallback keep the
 /// behaviour correct regardless of filesystem.
 pub fn hardlink_cache_frames(
-    project_dir: &Path,
+    cache_root: &Path,
     staging_basename: &str,
     unchanged_paths: &[String],
 ) -> Result<CacheHardlink, String> {
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (project_dir, staging_basename, unchanged_paths);
+        let _ = (cache_root, staging_basename, unchanged_paths);
         return Err("Physics Paint cache hardlink is supported only on macOS".to_string());
     }
 
     #[cfg(target_os = "macos")]
     {
         validate_staging_basename(staging_basename)?;
-        let project_root = resolve_project_root(project_dir)?;
-        let cache_parent = resolve_cache_parent(&project_root)?;
+        let cache_parent = resolve_machine_cache_parent(cache_root)?;
         let canonical_path = cache_parent.join(CANONICAL_CACHE_BASENAME);
         let staging_path = cache_parent.join(staging_basename);
 
@@ -514,21 +542,19 @@ pub fn hardlink_cache_frames(
     }
 }
 
-pub fn recover_cache_transaction(project_dir: &Path) -> Result<Option<CacheSettlement>, String> {
+pub fn recover_cache_transaction(cache_root: &Path) -> Result<Option<CacheSettlement>, String> {
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = project_dir;
+        let _ = cache_root;
         return Ok(None);
     }
 
     #[cfg(target_os = "macos")]
     {
-        let project_root = resolve_project_root(project_dir)?;
-        let cache_parent_path = project_root.join("cache");
-        if !cache_parent_path.exists() {
+        if !cache_root.exists() {
             return Ok(None);
         }
-        let cache_parent = resolve_cache_parent(&project_root)?;
+        let cache_parent = resolve_machine_cache_parent(cache_root)?;
         let Some(marker) = read_marker(&cache_parent)? else {
             cleanup_stale_staging_generations(&cache_parent, None);
             return Ok(None);
@@ -675,13 +701,17 @@ fn resolve_project_root(project_dir: &Path) -> Result<PathBuf, String> {
         .map_err(|error| format!("Could not resolve Physics Paint project directory: {error}"))
 }
 
-fn resolve_cache_parent(project_root: &Path) -> Result<PathBuf, String> {
-    let cache_parent = fs::canonicalize(project_root.join("cache"))
-        .map_err(|error| format!("Could not resolve Physics Paint cache parent: {error}"))?;
-    if cache_parent.parent() != Some(project_root) {
-        return Err("Physics Paint cache parent escapes project authority".to_string());
-    }
-    Ok(cache_parent)
+/// The machine cache parent IS the caller-supplied root (D-05): the root is
+/// `<app_data_dir>/frame-cache/<projectId>`, so the canonical generation lives
+/// at `<root>/efx-paint` and every staging generation is a direct child of the
+/// root. It is created on demand — a missing root is not an error, it is a
+/// first publication — and no package path is ever consulted to find it.
+fn resolve_machine_cache_parent(cache_root: &Path) -> Result<PathBuf, String> {
+    fs::create_dir_all(cache_root).map_err(|error| {
+        format!("Could not create the Physics Paint machine cache root: {error}")
+    })?;
+    fs::canonicalize(cache_root)
+        .map_err(|error| format!("Could not resolve Physics Paint machine cache root: {error}"))
 }
 
 fn ensure_direct_child_directory(path: &Path, parent: &Path, label: &str) -> Result<(), String> {
@@ -1469,21 +1499,22 @@ mod tests {
     fn publish_stages_and_publishes_into_efx_paint_cache() {
         let test_dir =
             std::env::temp_dir().join(format!("efx_test_cache_publish_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
+        // 52.2-05 Task 2: the first argument IS the machine cache root.
+        std::fs::create_dir_all(&test_dir).expect("machine cache root");
         let staging_basename = format!(".efx-paint-staging-{}", Uuid::new_v4());
-        let staging = test_dir.join("cache").join(&staging_basename);
+        let staging = test_dir.join(&staging_basename);
         std::fs::create_dir_all(&staging).expect("staging cache");
         std::fs::write(staging.join("frame.png"), b"frame").expect("staged frame");
 
         let publication =
             publish_cache_generation(&test_dir, &staging_basename).expect("cache publication");
 
-        // The staged generation is published into cache/efx-paint; the staging
+        // The staged generation is published into <root>/efx-paint; the staging
         // dir is consumed; the transaction marker records the active publication.
-        assert!(test_dir.join("cache/efx-paint/frame.png").exists());
+        assert!(test_dir.join("efx-paint/frame.png").exists());
         assert!(!staging.exists());
-        assert!(!test_dir.join("cache").join("physic-paint").exists());
-        assert!(test_dir.join("cache/.physic-paint-transaction.json").exists());
+        assert!(!test_dir.join("physic-paint").exists());
+        assert!(test_dir.join(".physic-paint-transaction.json").exists());
         assert!(!publication.transaction_id.is_empty());
         std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
     }
@@ -1493,41 +1524,38 @@ mod tests {
     fn settle_commit_swaps_and_rollback_restores_previous_generation() {
         let test_dir =
             std::env::temp_dir().join(format!("efx_test_cache_settle_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
-        let project_bytes = b"{\"version\":1,\"name\":\"settle\"}";
-        let project_path = test_dir.join("project.mce");
-        std::fs::write(&project_path, project_bytes).expect("project file");
+        std::fs::create_dir_all(&test_dir).expect("machine cache root");
 
-        // First generation committed into cache/efx-paint. 52.2-05: the cache
+        // First generation committed into <root>/efx-paint. 52.2-05: the cache
         // generation no longer binds a project write, so an explicit Commit is
         // the only path that keeps a published generation.
         let first_staging = format!(".efx-paint-staging-{}", Uuid::new_v4());
-        let first_dir = test_dir.join("cache").join(&first_staging);
+        let first_dir = test_dir.join(&first_staging);
         std::fs::create_dir_all(&first_dir).expect("staging cache");
         std::fs::write(first_dir.join("old.png"), b"old").expect("staged frame");
         let first =
             publish_cache_generation(&test_dir, &first_staging).expect("first publication");
         settle_cache_generation(&test_dir, &first.transaction_id, CacheSettlementAction::Commit)
             .expect("first commit");
-        assert!(test_dir.join("cache/efx-paint/old.png").exists());
+        assert!(test_dir.join("efx-paint/old.png").exists());
 
         // Second generation replaces it, then rollback restores the first and
         // removes the staging dir.
         let second_staging = format!(".efx-paint-staging-{}", Uuid::new_v4());
-        let second_dir = test_dir.join("cache").join(&second_staging);
+        let second_dir = test_dir.join(&second_staging);
         std::fs::create_dir_all(&second_dir).expect("staging cache");
         std::fs::write(second_dir.join("new.png"), b"new").expect("staged frame");
         let second =
             publish_cache_generation(&test_dir, &second_staging).expect("second publication");
-        assert!(test_dir.join("cache/efx-paint/new.png").exists());
-        assert!(!test_dir.join("cache/efx-paint/old.png").exists());
+        assert!(test_dir.join("efx-paint/new.png").exists());
+        assert!(!test_dir.join("efx-paint/old.png").exists());
 
         settle_cache_generation(&test_dir, &second.transaction_id, CacheSettlementAction::Rollback)
             .expect("rollback");
-        assert!(test_dir.join("cache/efx-paint/old.png").exists());
-        assert!(!test_dir.join("cache/efx-paint/new.png").exists());
+        assert!(test_dir.join("efx-paint/old.png").exists());
+        assert!(!test_dir.join("efx-paint/new.png").exists());
         assert!(!second_dir.exists());
-        assert!(!test_dir.join("cache/.physic-paint-transaction.json").exists());
+        assert!(!test_dir.join(".physic-paint-transaction.json").exists());
         std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
     }
 
@@ -1536,14 +1564,14 @@ mod tests {
     fn publish_rejects_crafted_staging_basename_without_escaping_root() {
         let test_dir =
             std::env::temp_dir().join(format!("efx_test_cache_crafted_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(test_dir.join("cache")).expect("cache parent");
+        std::fs::create_dir_all(&test_dir).expect("machine cache root");
         for crafted in [".efx-paint-staging-../evil", "/tmp/.efx-paint-staging-evil"] {
             let result = publish_cache_generation(&test_dir, crafted);
             assert!(result.is_err(), "expected rejection: {crafted}");
         }
         // Nothing escaped the v1.0 root: no canonical cache, no marker.
-        assert!(!test_dir.join("cache/efx-paint").exists());
-        assert!(!test_dir.join("cache/.physic-paint-transaction.json").exists());
+        assert!(!test_dir.join("efx-paint").exists());
+        assert!(!test_dir.join(".physic-paint-transaction.json").exists());
         std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
     }
 }

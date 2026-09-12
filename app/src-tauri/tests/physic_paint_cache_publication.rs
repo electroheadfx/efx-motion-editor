@@ -284,11 +284,19 @@ fn rollback_replay_after_commit_is_rejected_without_mutating_canonical() {
         project.to_string_lossy().into_owned(),
         publication.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
-    );
+    )
+    .expect("a cache settlement never fails its caller (D-14)");
 
+    // The refusal is a SOFT failure (D-14): `accepted: false` plus a
+    // diagnostic, never a raised error, so no cache-side problem can fail the
+    // authoritative save.
     assert!(
-        replay.is_err(),
+        !replay.accepted,
         "a settled publication must not be replayable"
+    );
+    assert!(
+        replay.cleanup_diagnostic.is_some(),
+        "a refused settlement must carry a diagnostic"
     );
     assert_generation(&canonical_dir(&project), "new");
     fs::remove_dir_all(project).expect("fixture cleanup");
@@ -300,7 +308,7 @@ fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
     let project = fixture_dir("delayed-rollback");
     let first_staging = ".efx-paint-staging-first";
     let second_staging = ".efx-paint-staging-second";
-    write_generation(&project.join("cache").join(first_staging), "g1");
+    write_generation(&project.join(first_staging), "g1");
 
     let first = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
@@ -314,7 +322,7 @@ fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
     )
     .expect("first commit");
 
-    write_generation(&project.join("cache").join(second_staging), "g2");
+    write_generation(&project.join(second_staging), "g2");
     let second = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         second_staging.to_string(),
@@ -325,19 +333,25 @@ fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
         project.to_string_lossy().into_owned(),
         first.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
-    );
+    )
+    .expect("a cache settlement never fails its caller (D-14)");
 
     assert!(
-        delayed.is_err(),
+        !delayed.accepted,
         "an older publication cannot settle a newer one"
     );
+    assert!(
+        delayed.cleanup_diagnostic.is_some(),
+        "a refused settlement must carry a diagnostic"
+    );
     assert_generation(&canonical_dir(&project), "g2");
-    settle_physic_paint_cache_generation(
+    let second_rollback = settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         second.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
     )
     .expect("second rollback");
+    assert!(second_rollback.accepted);
     assert_generation(&canonical_dir(&project), "g1");
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
@@ -442,7 +456,7 @@ fn failed_exchange_leaves_the_old_canonical_generation_unchanged() {
     let project = fixture_dir("exchange-failure");
     write_generation(&canonical_dir(&project), "old");
     write_generation(&staging_dir(&project), "new");
-    let cache_parent = project.join("cache");
+    let cache_parent = project.clone();
     let original_mode = fs::metadata(&cache_parent)
         .expect("cache metadata")
         .permissions()

@@ -3,14 +3,19 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 
-/// Create the project directory with images/, images/.thumbs/, videos/, paint/, and cache/ subdirectories.
+/// Create the package directory (52.2-05, D-04/D-05): `images/`,
+/// `images/.thumbs/`, `videos/`, `paint/`, `scripts/` plus the authoritative
+/// package layout `layers/` and `frames/`. No `cache/` is created inside the
+/// package — derived frames live in the machine-local cache root (D-05), so a
+/// package carries authoritative content only.
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
     let thumbs_dir = images_dir.join(".thumbs");
     let videos_dir = base.join("videos");
     let paint_dir = base.join("paint");
-    let efx_paint_cache_dir = base.join("cache").join("efx-paint");
+    let layers_dir = base.join("layers");
+    let frames_dir = base.join("frames");
     let scripts_dir = base.join("scripts");
 
     fs::create_dir_all(&thumbs_dir)
@@ -22,8 +27,11 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     fs::create_dir_all(&paint_dir)
         .map_err(|e| format!("Failed to create paint directory: {}", e))?;
 
-    fs::create_dir_all(&efx_paint_cache_dir)
-        .map_err(|e| format!("Failed to create EFX Paint cache directory: {}", e))?;
+    fs::create_dir_all(&layers_dir)
+        .map_err(|e| format!("Failed to create layers directory: {}", e))?;
+
+    fs::create_dir_all(&frames_dir)
+        .map_err(|e| format!("Failed to create frames directory: {}", e))?;
 
     fs::create_dir_all(&scripts_dir)
         .map_err(|e| format!("Failed to create scripts directory: {}", e))?;
@@ -32,12 +40,18 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
 }
 
 /// Save project to .mce file using atomic write (temp file + rename).
-/// The project_root is the directory containing the .mce file.
+///
+/// `file_path` is the path this call is HANDED: during a package save that is
+/// `<pkg>/<staging-basename>/project.mce`, because the manifest is a staged
+/// participant of the package transaction (52.2-05 D-10) exactly like every
+/// `layers/*.json` and `frames/*.webp` file. The temp+rename idiom stays so an
+/// interrupted write leaves no half file at that path. Nothing here binds,
+/// publishes or settles the transaction — the caller owns the transaction and
+/// the manifest is bound by its `BoundFile` entry.
 pub fn save_project(
     project: &MceProject,
     file_path: &str,
     project_root: &str,
-    physic_paint_cache_transaction_id: Option<&str>,
 ) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(project)
         .map_err(|e| format!("Failed to serialize project: {}", e))?;
@@ -59,11 +73,6 @@ pub fn save_project(
     temp_file
         .sync_all()
         .map_err(|e| format!("Failed to synchronize temp file: {}", e))?;
-
-    // 52.2-05 Task 1: the project write no longer binds the cache generation —
-    // the two transactions are independent (the cache leg is best-effort, D-14)
-    // and the parameter is retired in Task 2.
-    let _ = physic_paint_cache_transaction_id;
 
     fs::rename(&tmp_path, file_path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
     File::open(project_root)
@@ -178,10 +187,14 @@ mod tests {
         assert!(test_dir.join("images").exists());
         assert!(test_dir.join("images/.thumbs").exists());
         assert!(test_dir.join("paint").exists());
-        // The v1.0 cache directory is created for new projects...
-        assert!(test_dir.join("cache/efx-paint").exists());
-        // ...and the legacy cache directory is never created (DOC-04). The
-        // legacy dir literal is split so the DOC-04 grep contract stays green.
+        assert!(test_dir.join("scripts").exists());
+        // 52.2-05 (D-04): the authoritative package layout.
+        assert!(test_dir.join("layers").exists());
+        assert!(test_dir.join("frames").exists());
+        // 52.2-05 (D-05, T-52.2-17): NO cache/ inside the package — derived
+        // frames live in the machine-local cache root. The legacy dir literal
+        // is split so the DOC-04 grep contract stays green.
+        assert!(!test_dir.join("cache").exists());
         assert!(!test_dir.join("cache").join("physic-paint").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -203,7 +216,10 @@ mod tests {
             std::fs::read(legacy_cache_dir.join("old.png")).unwrap(),
             b"legacy"
         );
-        assert!(test_dir.join("cache/efx-paint").exists());
+        // 52.2-05: the package layout is created; no package-local cache is.
+        assert!(test_dir.join("layers").exists());
+        assert!(test_dir.join("frames").exists());
+        assert!(!test_dir.join("cache").join("efx-paint").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
@@ -286,7 +302,7 @@ mod tests {
 
         let mce_path = test_dir.join("test.mce");
         let project_root = test_dir.to_str().unwrap();
-        save_project(&project, mce_path.to_str().unwrap(), project_root, None).unwrap();
+        save_project(&project, mce_path.to_str().unwrap(), project_root).unwrap();
 
         assert!(mce_path.exists());
 
@@ -377,7 +393,6 @@ mod tests {
             &project,
             mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
-            None,
         )
         .unwrap();
 
@@ -424,7 +439,6 @@ mod tests {
             &project,
             mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
-            None,
         )
         .unwrap();
 
@@ -632,7 +646,6 @@ mod tests {
             &project,
             mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
-            None,
         )
         .unwrap();
 
