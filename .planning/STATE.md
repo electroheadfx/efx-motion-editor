@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-11-PLAN.md
-last_updated: "2026-09-12T18:50:22.512Z"
+stopped_at: Completed 52.2-12-PLAN.md
+last_updated: "2026-09-12T20:44:57.881Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: a87c70d819a81b4c5f7c9f1b7d76ad7e7b30dc52
+state_head: 256a3edd24dfffd88f74f006bb343df974fd2c1e
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 60
+  completed_plans: 61
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 12 of 16
+Plan: 13 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -119,6 +119,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P09 | ~31 min | 3 tasks | 14 files |
 | Phase 52.2 P10 | 30min | 3 tasks | 10 files |
 | Phase 52.2 P11 | 16min | 3 tasks | 9 files |
+| Phase 52.2 P12 | 1h53min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -301,6 +302,11 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-11: the .mce document-type declaration lives in exactly ONE file (app/src-tauri/Info.plist) — Tauri's plist merge is a shallow top-level overwrite and bundle.fileAssociations cannot express LSTypeIsPackage
 - [Phase 52.2]: 52.2-11: toPackageManifestPath is the single package-directory -> manifest-file conversion (OS/dialog paths name the package, projectStore reads the file inside it); shortcuts.ts:95 + WelcomeScreen.tsx:168 still pass raw paths — deferred-items, no scheduled owner
 - [Phase 52.2]: 52.2-11: the Finder one-icon/double-click and the rfd dialog package treatment stay PENDING until plan 52.2-16's bundled UAT (tauri dev carries no Info.plist)
+- [Phase 52.2]: Gate 2 CLOSED 2026-09-12: SPECS/async-conventions.md approved; plans 52.2-13 and 52.2-14 unblocked; no XState/Effect code or dependency exists
+- [Phase 52.2]: XState v6 alpha 6.0.0-alpha.53 stands per locked D-15; plan 13 re-verifies dist-tags + breaking changes at pilot start; SPECS/phase-52.3-async-conventions.md is superseded and void (user-owned deletion)
+- [Phase 52.2]: Void-numbers branch resolved: if the post-format re-capture already meets T1-T3, the pilot is admitted on T4/T5 + inspectability (rows 1-4 architectural problems survive the format change, answering D-17(a)); the honest-failure clause then evaluates T4 + T5 only
+- [Phase 52.2]: Verdict table approved as-is; NEITHER ('neither library here, and nowhere yet') remains the default everywhere else
+- [Phase 52.2]: BEFORE render-churn capture is a user-side action on the current dev build (efx.physicsPaint.profile), to run before any pilot code lands (plan 52.2-14)
 
 ### Pending Todos
 
@@ -312,6 +318,7 @@ None yet.
 - v0.9.0 audit-accepted tech debt and deferred items carried forward (see Deferred Items below).
 - 52.2-02 leaves 8 round-trip tests red by design until plan 07's writer projects media references: efxPaintPersistence.test.ts (1, owned by plans 07/09) and 7 in files NO phase plan lists — physicsPaintRotoLoopClips.test.ts (5) and physicsPaintRotoGroupParity.test.ts (2). Plans 07 and 09 both carry a 'full suite green' exit criterion, which is where this surfaces.
 - 52.2-03: vitest run exits 1 on 9 pre-existing failures (roto persistence x7, base64ToBytes frame-transport token in app/src/lib/ipc.ts, efxPaintPersistence base64) — identical at the plan base 15e680cc; not introduced by this plan, owners must clear them before /gsd-ship
+- BEFORE render-churn capture pending - owner: user. Run the SPECS/async-conventions.md section 7 protocol on the current dev build (render.tracksStrip/rightPanel/canvas through window.__EFX_PHYSICS_PAINT_PROFILE__.snapshot().counters) before plan 52.2-14 pilot code lands.
 
 ### Quick Tasks Completed
 
@@ -352,6 +359,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T18:50:20.974Z
-Stopped at: Completed 52.2-11-PLAN.md
+Last session: 2026-09-12T20:44:56.328Z
+Stopped at: Completed 52.2-12-PLAN.md
 Resume file: None
