@@ -159,7 +159,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     const track = projected.tracks[0];
     expect(track.id).toBe(document.activeTrackId);
     expect(Object.keys(track.frames).map(Number).sort()).toEqual([0, 3]);
-    expect(track.frames[0].cachePath).toMatch(/^cache\/efx-paint\//);
+    expect(track.frames[0].cachePath).toMatch(/^efx-paint\//);
     expect(track.frames[0].width).toBe(100);
     expect(track.frames[0].height).toBe(50);
     expect(track.rotoPhysical?.realKeyRecords.map((record) => record.keyId)).toEqual(['key-1']);
@@ -175,7 +175,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
       ...document,
       tracks: [{
         ...track,
-        frames: { 0: { cachePath: 'cache/efx-paint/layer_L-abc/frame-000000-0000.png', width: 100, height: 50 } },
+        frames: { 0: { cachePath: buildMachineCacheRelativePath('layer-L', TEST_TRACK_ID, 0), width: 100, height: 50 } },
         rotoPhysical: {
           capacity: 10,
           realKeyRecords: records,
@@ -313,7 +313,14 @@ describe('52.2-07 Task 2: derived-frame cache references are machine-relative (D
   it('the runtime projection behind duplicateTrack emits the same machine-relative shape for the copy', () => {
     const document = makeTrackDocument('layer-D');
     registerDocument(document);
-    physicPaintStore.setFrame('layer-D', TEST_TRACK_ID, 2, makeFrame(0, 2));
+    // A duplicated track copies its roto real keys — and each freshly pasted
+    // key publishes its own runtime frame, which is the frame the copy's
+    // projection must re-reference.
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      'layer-D', TEST_TRACK_ID, [rotoRecord('key-d-1', 2)], { enabled: false, mode: 'duplicate' }, 10,
+    );
+    expect(seeded.ok).toBe(true);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-D', TEST_TRACK_ID, 2, makeFrame(0, 2));
 
     const duplicated = duplicateTrack('layer-D', TEST_TRACK_ID) as { ok: true; trackId: string };
     expect(duplicated.ok).toBe(true);

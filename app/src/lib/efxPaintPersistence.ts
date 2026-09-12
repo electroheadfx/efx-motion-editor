@@ -1,24 +1,27 @@
 /**
  * v1.0 EFX Paint document persistence service (Phase 45-04).
  *
- * The TS side of DOC-05: saving a v1.0 document stages PNG sidecars under
- * `cache/efx-paint` via a `.efx-paint-staging-<uuid>` basename, writes the
- * `.mce` with the bound cache transaction, and settles commit/rollback —
- * the proven two-resource transaction shape copied from
+ * The TS side of DOC-05: saving a v1.0 document stages derived-frame sidecars
+ * under the MACHINE-LOCAL cache root via a `.efx-paint-staging-<uuid>`
+ * basename, writes the `.mce` with the bound cache transaction, and settles
+ * commit/rollback — the proven two-resource transaction shape copied from
  * `savePhysicPaintDataWithProjectWrite` (physicPaintPersistence.ts:320-340).
- * The native publish/settle commands were re-pointed at `cache/efx-paint` in
- * 45-02 and are reused as-is (same command surface, T-45-06).
+ * 52.2-07 (D-05): that root is `<app_data_dir>/frame-cache/<projectId>`, never
+ * the project directory, and it is supplied by the caller; the native
+ * publish/settle/hardlink commands (plan 05) take it as their own input and
+ * address the `efx-paint/` generation under it (T-45-06).
  *
  * The persisted payload is the layerId → EfxPaintDocument map (the document
- * model's track frames are CachedFrameReference sidecar refs; the runtime
- * frame bytes travel alongside the documents in the save input and are
- * staged as sidecars). Loading validates every document through the
- * fail-closed `parseEfxPaintDocument` (T-45-13) and reads the sidecar PNGs
- * back through the plugin-fs idiom, guarding every path with
- * `isSafeEfxPaintCachePath` (T-45-11, ASVS V12).
+ * model's track frames are CachedFrameReference sidecar refs carrying a
+ * machine-relative `efx-paint/<stableSegment>/<trackId>/frame-NNNN.webp`
+ * reference; the runtime frame bytes travel alongside the documents in the
+ * save input and are staged as sidecars). Loading validates every document
+ * through the fail-closed `parseEfxPaintDocument` (T-45-13) and reads the
+ * sidecar frames back through the plugin-fs idiom, guarding every reference
+ * with plan 02's `isSafeMachineCacheRelativePath` (T-45-11, ASVS V12).
  *
- * IMMUTABILITY LAW (52.1 a2): canonical sidecars under `cache/efx-paint/` are
- * NEVER written in place. They are replaced only by the native atomic
+ * IMMUTABILITY LAW (52.1 a2): canonical sidecars under `<cache root>/efx-paint/`
+ * are NEVER written in place. They are replaced only by the native atomic
  * directory swap (`publish_physic_paint_cache_generation`). Incremental
  * staging hardlinks unchanged sidecars into the staging generation, so any
  * future in-place writer would silently alias through those hardlinks and
@@ -47,9 +50,15 @@ import {
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
 } from './ipc';
+// 52.2-07 (D-05): the machine-relative reference, its guard and its one
+// absolute-path constructor all come from plan 02 — no second copy here.
+import {
+  collectPackageCacheRefs,
+  EFX_PAINT_MACHINE_CACHE_DIR,
+  isSafeMachineCacheRelativePath,
+  resolveMachineCachePath,
+} from './efxPaintPackage';
 
-export const EFX_PAINT_CACHE_DIR = 'cache/efx-paint';
-export const EFX_PAINT_CACHE_PARENT_DIR = 'cache';
 export const EFX_PAINT_STAGING_PREFIX = '.efx-paint-staging-';
 
 /**
@@ -66,10 +75,11 @@ export const EFX_PAINT_PACKAGE_MANIFEST_FILE = 'project.mce';
  * One layer's save input: the document plus the runtime frame bytes to stage.
  * Frames are carried per track (trackId → appFrame → frame) so two tracks may
  * persist frames at the same appFrame without collision (46-02, edge TRK-03
- * ordering resolved explicit). `deletions` lists relative sidecar directories
- * under `cache/efx-paint/` to remove in the same transaction as the save
- * (46-05 TRK-07 D-15) — the commit arm removes them, rollback never touches
- * them. Every entry must pass `isSafeEfxPaintCachePath`.
+ * ordering resolved explicit). `deletions` lists machine-relative sidecar
+ * directories under `efx-paint/` to remove in the same transaction as the save
+ * (46-05 TRK-07 D-15, 52.2-07 D-05) — the commit arm removes them from the
+ * machine cache root, rollback never touches them. Every entry must pass
+ * `isSafeMachineCacheRelativePath`.
  */
 export interface EfxPaintDocumentSaveInput {
   readonly document: EfxPaintDocument;
@@ -251,39 +261,16 @@ export function stableSegment(value: string): string {
   return `${sanitizeSegment(value)}-${(hash >>> 0).toString(16)}`;
 }
 
-function frameFileName(frame: Pick<PhysicPaintRenderedFrame, 'appFrame' | 'frameIndex'>): string {
-  const appFrame = String(frame.appFrame).padStart(6, '0');
-  const frameIndex = String(frame.frameIndex).padStart(4, '0');
-  return `frame-${appFrame}-${frameIndex}.webp`;
-}
-
 /**
- * Deterministic canonical sidecar path for one runtime frame. The projection
- * writes these into the document's CachedFrameReference records; the save
- * path stages the bytes at the matching staging path and the loader reads
- * them back from the canonical path after publication. The trackId segment
- * (a raw UUID — safe charset) sits between the stable layer segment and the
- * file name so track deletion can address exactly its own sidecars (D-15);
- * every emitted path continues to pass `isSafeEfxPaintCachePath` (T-46-04,
- * ASVS V12).
+ * A machine-relative cache reference minus its `efx-paint/` generation
+ * prefix — the path shape plan 05's cache transaction addresses (the Rust
+ * side joins it onto the canonical generation AND onto the staging
+ * generation; see `hardlink_cache_frames`). Staging writes use it so a staged
+ * file lands at the same generation-relative location the canonical swap will
+ * publish.
  */
-export function buildEfxPaintFrameCachePath(
-  layerId: string,
-  trackId: string,
-  frame: Pick<PhysicPaintRenderedFrame, 'appFrame' | 'frameIndex'>,
-): string {
-  return `${EFX_PAINT_CACHE_DIR}/${stableSegment(layerId)}/${trackId}/${frameFileName(frame)}`;
-}
-
-/**
- * Prefix-locked sidecar path guard (T-45-11, ASVS V12): the path must live
- * under `cache/efx-paint/`, contain no backslash, no absolute prefix, no NUL,
- * and no empty/dot segments.
- */
-export function isSafeEfxPaintCachePath(cachePath: unknown): cachePath is string {
-  if (typeof cachePath !== 'string' || !cachePath.startsWith(`${EFX_PAINT_CACHE_DIR}/`)) return false;
-  if (cachePath.includes('\\') || cachePath.startsWith('/') || cachePath.includes('\0')) return false;
-  return cachePath.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+function generationRelativeCachePath(cacheRef: string): string {
+  return cacheRef.slice(EFX_PAINT_MACHINE_CACHE_DIR.length + 1);
 }
 
 async function ensureDir(path: string): Promise<void> {
@@ -355,18 +342,18 @@ function buildEfxPaintSaveFingerprint(
 }
 
 async function stageFrame(
-  projectDir: string,
-  stagingRelativeRoot: string,
+  cacheRoot: string,
+  stagingBasename: string,
   write: PendingWrite,
   ensuredDirectories: Set<string>,
 ): Promise<void> {
-  const stagingRelativePath = `${stagingRelativeRoot}${write.path.slice(EFX_PAINT_CACHE_DIR.length)}`;
+  const stagingRelativePath = `${stagingBasename}/${generationRelativeCachePath(write.path)}`;
   const directory = stagingRelativePath.slice(0, stagingRelativePath.lastIndexOf('/'));
   if (!ensuredDirectories.has(directory)) {
-    await mkdir(`${projectDir}/${directory}`, { recursive: true });
+    await mkdir(`${cacheRoot}/${directory}`, { recursive: true });
     ensuredDirectories.add(directory);
   }
-  await writeFile(`${projectDir}/${stagingRelativePath}`, write.bytes);
+  await writeFile(`${cacheRoot}/${stagingRelativePath}`, write.bytes);
 }
 
 /**
@@ -375,29 +362,35 @@ async function stageFrame(
  * canonical and staging dirs are not on the same volume, or the filesystem
  * forbids hardlinks) degrades to a full re-stage of every unchanged frame;
  * a missing source (ENOENT) is written fresh for that frame only.
+ *
+ * 52.2-07 (D-05): the root passed to the native hardlink is the machine cache
+ * root and every path handed over is GENERATION-relative (the reference minus
+ * its `efx-paint/` prefix) — the Rust side joins it onto both the canonical
+ * `efx-paint/` generation and the staging generation under that same root.
  */
 async function hardlinkUnchangedFrames(
-  projectDir: string,
+  cacheRoot: string,
   stagingBasename: string,
   unchangedFrames: ReadonlyArray<{ cachePath: string; bytes: Uint8Array }>,
 ): Promise<PendingWrite[]> {
   const byRelativePath = new Map<string, Uint8Array>();
   for (const frame of unchangedFrames) {
-    byRelativePath.set(frame.cachePath.slice(EFX_PAINT_CACHE_DIR.length + 1), frame.bytes);
+    byRelativePath.set(generationRelativeCachePath(frame.cachePath), frame.bytes);
   }
-  const result = await hardlinkPhysicPaintCacheFrames(projectDir, stagingBasename, Array.from(byRelativePath.keys()));
+  const result = await hardlinkPhysicPaintCacheFrames(cacheRoot, stagingBasename, Array.from(byRelativePath.keys()));
   if (!result.ok) {
     return unchangedFrames.map((frame) => ({ path: frame.cachePath, bytes: frame.bytes }));
   }
   const missing = new Set(result.data.missing);
   return unchangedFrames
-    .filter((frame) => missing.has(frame.cachePath.slice(EFX_PAINT_CACHE_DIR.length + 1)))
+    .filter((frame) => missing.has(generationRelativeCachePath(frame.cachePath)))
     .map((frame) => ({ path: frame.cachePath, bytes: frame.bytes }));
 }
 
 async function prepareEfxPaintSave(
   projectDir: string,
   documents: ReadonlyMap<string, EfxPaintDocumentSaveInput> | undefined,
+  cacheRoot: string | null,
 ): Promise<PreparedEfxPaintSave> {
   if (!documents || documents.size === 0) {
     return {
@@ -410,12 +403,17 @@ async function prepareEfxPaintSave(
     };
   }
 
-  // 46-05 D-15: every deletion dir must live under cache/efx-paint and pass
-  // the segment rules before it may ride the transaction (ASVS V12).
+  // 46-05 D-15 / 52.2-07 D-05: every deletion dir is machine-relative and must
+  // pass the segment rules before it may ride the transaction (ASVS V12).
+  // 52.2-07 (D-05, T-52.2-56): every layer document in the set is scanned for
+  // its persisted cache references BEFORE anything is staged or cached — a
+  // legacy `cache/efx-paint/...` shape (or an absolute path) is a refusal here,
+  // so a machine-coupled reference can never reach a package.
   const deletions: string[] = [];
   for (const input of documents.values()) {
+    collectPackageCacheRefs([input.document]);
     for (const deletion of input.deletions ?? []) {
-      if (!isSafeEfxPaintCachePath(deletion)) {
+      if (!isSafeMachineCacheRelativePath(deletion)) {
         throw new Error(`EFX Paint deletion "${deletion}" is not a safe cache path.`);
       }
       if (!deletions.includes(deletion)) deletions.push(deletion);
@@ -471,25 +469,40 @@ async function prepareEfxPaintSave(
     persistedDocuments[layerId] = toTransportPayload(document);
   }
 
+  // D-14 (52.2-07): with no machine cache root the caller cannot address the
+  // derived-frame cache at all, so the whole cache leg is skipped — the
+  // document payload still persists and the save never fails for a cache it
+  // cannot find. `removeCanonicalAfterCommit` is false: there is no canonical
+  // generation this save is entitled to remove.
+  if (cacheRoot === null) {
+    return {
+      persistedDocuments,
+      fingerprint,
+      publication: null,
+      removeCanonicalAfterCommit: false,
+      deletions,
+      frameTokens,
+    };
+  }
+
   const stagingBasename = createStagingBasename();
-  const stagingRelativeRoot = `${EFX_PAINT_CACHE_PARENT_DIR}/${stagingBasename}`;
-  const stagingRoot = `${projectDir}/${stagingRelativeRoot}`;
-  await ensureDir(`${projectDir}/${EFX_PAINT_CACHE_PARENT_DIR}`);
+  const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+  await ensureDir(cacheRoot);
 
   try {
     await mkdir(stagingRoot, { recursive: true });
     const ensuredDirectories = new Set<string>();
     for (const write of changedWrites) {
-      await stageFrame(projectDir, stagingRelativeRoot, write, ensuredDirectories);
+      await stageFrame(cacheRoot, stagingBasename, write, ensuredDirectories);
     }
     if (unchangedFrames.length > 0) {
-      const framesToWrite = await hardlinkUnchangedFrames(projectDir, stagingBasename, unchangedFrames);
+      const framesToWrite = await hardlinkUnchangedFrames(cacheRoot, stagingBasename, unchangedFrames);
       for (const write of framesToWrite) {
-        await stageFrame(projectDir, stagingRelativeRoot, write, ensuredDirectories);
+        await stageFrame(cacheRoot, stagingBasename, write, ensuredDirectories);
       }
     }
 
-    const publication = await publishPhysicPaintCacheGeneration(projectDir, stagingBasename);
+    const publication = await publishPhysicPaintCacheGeneration(cacheRoot, stagingBasename);
     if (!publication.ok) throw new Error(publication.error);
     // D-14: the cache leg is best-effort and reports a refusal SOFTLY
     // (`accepted: false` plus a diagnostic). There is then no cache
@@ -512,13 +525,15 @@ async function prepareEfxPaintSave(
 }
 
 async function settlePreparedEfxPaintSave(
-  projectDir: string,
+  cacheRoot: string | null,
   prepared: PreparedEfxPaintSave,
   action: 'commit' | 'rollback',
 ): Promise<void> {
   if (prepared.publication) {
+    // A publication exists only when the save had a root to publish under.
+    if (cacheRoot === null) throw new Error('EFX Paint cache settlement without a machine cache root.');
     const result = await settlePhysicPaintCacheGeneration(
-      projectDir,
+      cacheRoot,
       prepared.publication.transactionId,
       action,
     );
@@ -529,19 +544,27 @@ async function settlePreparedEfxPaintSave(
     // transaction as the save — settled only at commit, after the canonical
     // publication, before the cache record. A removal failure is
     // non-authoritative: the transaction already committed and the stale
-    // directory is unreferenced by the fresh document.
-    for (const deletion of prepared.deletions) {
-      const deletionPath = `${projectDir}/${deletion}`;
-      if (!(await exists(deletionPath))) continue;
-      try {
-        await remove(deletionPath, { recursive: true });
-      } catch {
-        // Non-authoritative cleanup failure: the commit stands.
+    // directory is unreferenced by the fresh document. 52.2-07 (D-05): the
+    // deletion is a machine-relative reference resolved against the machine
+    // cache root — never the project directory.
+    if (cacheRoot !== null) {
+      for (const deletion of prepared.deletions) {
+        const deletionPath = resolveMachineCachePath(cacheRoot, deletion);
+        if (deletionPath === null) continue;
+        if (!(await exists(deletionPath))) continue;
+        try {
+          await remove(deletionPath, { recursive: true });
+        } catch {
+          // Non-authoritative cleanup failure: the commit stands.
+        }
       }
-    }
-    if (prepared.removeCanonicalAfterCommit) {
-      const existingRootDir = `${projectDir}/${EFX_PAINT_CACHE_DIR}`;
-      if (await exists(existingRootDir)) await remove(existingRootDir, { recursive: true });
+      if (prepared.removeCanonicalAfterCommit) {
+        // The canonical generation ROOT (a directory, not a reference): the
+        // reference guard requires a path under `efx-paint/`, so this join is
+        // spelled here rather than through `resolveMachineCachePath`.
+        const existingRootDir = `${cacheRoot}/${EFX_PAINT_MACHINE_CACHE_DIR}`;
+        if (await exists(existingRootDir)) await remove(existingRootDir, { recursive: true });
+      }
     }
     savedDocumentCache.clear();
     if (prepared.fingerprint) {
@@ -626,25 +649,24 @@ export async function saveEfxPaintDocumentsWithProjectWrite(
   ) => Promise<void>,
   cacheRoot: string | null = null,
 ): Promise<Record<string, unknown>> {
-  void cacheRoot;
-  const prepared = await prepareEfxPaintSave(projectDir, documents);
+  const prepared = await prepareEfxPaintSave(projectDir, documents, cacheRoot);
   try {
     await writeProject(
       prepared.persistedDocuments,
       prepared.publication?.transactionId ?? null,
     );
   } catch (error) {
-    await settlePreparedEfxPaintSave(projectDir, prepared, 'rollback');
+    await settlePreparedEfxPaintSave(cacheRoot, prepared, 'rollback');
     throw error;
   }
-  await settlePreparedEfxPaintSave(projectDir, prepared, 'commit');
+  await settlePreparedEfxPaintSave(cacheRoot, prepared, 'commit');
   return prepared.persistedDocuments;
 }
 
 /**
  * Load the persisted layerId → document map. Every document passes the
  * fail-closed parser before any store hydration (T-45-13); every sidecar path
- * is guarded by `isSafeEfxPaintCachePath` (T-45-11, T-46-04). D-08: the load
+ * is guarded by `isSafeMachineCacheRelativePath` (T-45-11, T-46-04). D-08: the load
  * is refs-only — each frame carries its canonical `cachePath` ref with empty
  * bytes, and the decode path fetches the WebP sidecar on demand (never an
  * eager per-frame readFile on open). Frame refs are carried per track
@@ -673,7 +695,7 @@ export async function loadEfxPaintDocuments(
       const trackFrames = new Map<number, PhysicPaintRenderedFrame>();
       for (const [frameNumber, ref] of Object.entries(track.frames)) {
         const appFrame = Number(frameNumber);
-        if (!isSafeEfxPaintCachePath(ref.cachePath)) {
+        if (!isSafeMachineCacheRelativePath(ref.cachePath)) {
           throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has an unsafe sidecar path.`);
         }
         trackFrames.set(appFrame, {

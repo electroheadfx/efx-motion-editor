@@ -11,24 +11,31 @@ import {
 import type { EfxPaintDocumentSaveInput } from './efxPaintPersistence';
 import {
   EFX_PAINT_PACKAGE_STAGING_PREFIX,
-  buildEfxPaintFrameCachePath,
   collectLayerMediaKeyIds,
   computeChangedFiles,
   createPackageStagingBasename,
   getPackageFileTokens,
   packageFileToken,
   settlePackageFileTokens,
-  isSafeEfxPaintCachePath,
   loadEfxPaintDocuments,
   saveEfxPaintDocumentsWithProjectWrite,
   stableSegment,
   stageEfxPaintPackageSave,
 } from './efxPaintPersistence';
 import {
+  buildFrameMediaRelativePath,
   buildMachineCacheRelativePath,
   isSafeMachineCacheRelativePath,
   resolveMachineCachePath,
 } from './efxPaintPackage';
+import { toPersistedRotoRecords } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
+
+/**
+ * The machine-local derived-frame cache root (52.2-07 D-05). Every
+ * derived-frame path in this suite is addressed against it — the project
+ * directory is never a cache root.
+ */
+const CACHE_ROOT = '/machine/frame-cache/project-1';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -45,9 +52,9 @@ const invoke = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
-function exchangeGeneration(projectDir: string, stagingBasename: string): void {
-  const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
-  const canonicalRoot = `${projectDir}/cache/efx-paint`;
+function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
+  const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+  const canonicalRoot = `${cacheRoot}/efx-paint`;
   const stagingFiles = Array.from(files.entries())
     .filter(([key]) => key.startsWith(`${stagingRoot}/`))
     .map(([key, value]) => [`${canonicalRoot}${key.slice(stagingRoot.length)}`, value] as const);
@@ -117,21 +124,21 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const { exists } = await import('@tauri-apps/plugin-fs');
     vi.mocked(exists).mockImplementation(async (path) => dirs.has(String(path)) || files.has(String(path)));
     const activeTransactions = new Map<string, string>();
-    publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
-      const replacedExisting = dirs.has(`${projectDir}/cache/efx-paint`);
+    publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+      const replacedExisting = dirs.has(`${cacheRoot}/efx-paint`);
       const transactionId = crypto.randomUUID();
       activeTransactions.set(transactionId, stagingBasename);
-      exchangeGeneration(projectDir, stagingBasename);
+      exchangeGeneration(cacheRoot, stagingBasename);
       return {
         ok: true,
         data: { accepted: true, transactionId, replacedExisting },
       };
     });
-    settlePhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, transactionId: string, action: 'commit' | 'rollback') => {
+    settlePhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, transactionId: string, action: 'commit' | 'rollback') => {
       const stagingBasename = activeTransactions.get(transactionId);
       if (!stagingBasename) return { ok: false, error: 'inactive transaction' };
-      if (action === 'rollback') exchangeGeneration(projectDir, stagingBasename);
-      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+      if (action === 'rollback') exchangeGeneration(cacheRoot, stagingBasename);
+      const stagingRoot = `${cacheRoot}/${stagingBasename}`;
       for (const key of Array.from(files.keys())) {
         if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
       }
@@ -141,9 +148,9 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
       activeTransactions.delete(transactionId);
       return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
     });
-    hardlinkPhysicPaintCacheFrames.mockImplementation(async (projectDir: string, stagingBasename: string, unchangedPaths: string[]) => {
-      const canonicalRoot = `${projectDir}/cache/efx-paint`;
-      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+    hardlinkPhysicPaintCacheFrames.mockImplementation(async (cacheRoot: string, stagingBasename: string, unchangedPaths: string[]) => {
+      const canonicalRoot = `${cacheRoot}/efx-paint`;
+      const stagingRoot = `${cacheRoot}/${stagingBasename}`;
       const missing: string[] = [];
       for (const relative of unchangedPaths) {
         const source = `${canonicalRoot}/${relative}`;
@@ -161,7 +168,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('round-trips a document through staging/commit and restores identity on load', async () => {
     const document = createEfxPaintDocument('layer-x');
-    const frameRef = buildEfxPaintFrameCachePath('layer-x', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildMachineCacheRelativePath('layer-x', document.tracks[0].id, 0);
     const track = document.tracks[0];
     const withFrame = {
       ...document,
@@ -176,20 +183,20 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
 
-    // Sidecar writes occur under cache/.efx-paint-staging-<uuid>.
+    // Sidecar writes occur under the machine cache root's staging generation.
     const { writeFile } = await import('@tauri-apps/plugin-fs');
-    expect(vi.mocked(writeFile).mock.calls.every(([path]) => String(path).startsWith('/project/cache/.efx-paint-staging-'))).toBe(true);
+    expect(vi.mocked(writeFile).mock.calls.every(([path]) => String(path).startsWith(`${CACHE_ROOT}/.efx-paint-staging-`))).toBe(true);
     // After publication the canonical path holds the staged bytes.
-    expect(files.has(`/project/${frameRef}`)).toBe(true);
+    expect(files.has(`${CACHE_ROOT}/${frameRef}`)).toBe(true);
     // writeProject receives the efx_paint_documents payload + transaction id.
     expect(writeProject).toHaveBeenCalledOnce();
     const [payload, transactionId] = writeProject.mock.calls[0] as [Record<string, unknown>, string | null];
     expect(transactionId).toMatch(/^[0-9a-f-]{36}$/);
     expect(payload['layer-x']).toBeDefined();
     // Settle commit fires.
-    expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith('/project', transactionId, 'commit');
+    expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(CACHE_ROOT, transactionId, 'commit');
     // The persisted payload is the document payload.
     expect(persisted['layer-x']).toBeDefined();
 
@@ -209,7 +216,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(restoredFrame?.bytes).toEqual(new Uint8Array(0));
   });
 
-  it('round-trips real-key record bytes as base64 in the persisted JSON (52.1 D-05)', async () => {
+  it('round-trips reference-only real-key records with no raster payload in the persisted JSON (52.2 D-07, Law 1)', async () => {
     const document = createEfxPaintDocument('layer-bytes');
     const track = document.tracks[0];
     const bytes = testWebpBytes('real-key-bytes');
@@ -217,15 +224,26 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const records = [
       { keyId: 'key-1', appFrame: 0, kind: 'real-key' as const, payload: { frameIndex: 0, appFrame: 0, bytes, width: 2, height: 2 } },
     ];
+    // 52.2-07 (D-07, Law 1): the document that reaches the save is already
+    // reference-only — the pixels live at frames/<layerId>/<keyId>.webp and the
+    // record carries the media reference instead of the raster payload.
+    const mediaRef = {
+      relativePath: buildFrameMediaRelativePath('layer-bytes', 'key-1'),
+      digest: 'a'.repeat(64),
+      width: 2,
+      height: 2,
+    };
+    const projected = toPersistedRotoRecords(records, (keyId) => (keyId === 'key-1' ? mediaRef : undefined));
+    if (!projected.ok) throw new Error('fixture projection failed');
     const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
       capacity: 24,
-      realKeyRecords: records,
+      realKeyRecords: projected.records,
       interpolation,
       scriptMotion: { deformation: 0, position: 0 },
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
+      revision: buildPhysicPaintRotoPhysicalRevision(projected.records, interpolation, []),
       loopClips: [],
       incomingInterpolationBreakKeyIds: [],
     });
@@ -236,30 +254,31 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
-    await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
 
     const [payload] = writeProject.mock.calls[0] as [Record<string, unknown>, string | null];
-    const persistedTrack = (payload['layer-bytes'] as { tracks: Array<{ rotoPhysical: { realKeyRecords: Array<{ payload: { bytes: unknown } }> } }> }).tracks[0];
-    const persistedBytes = persistedTrack.rotoPhysical.realKeyRecords[0].payload.bytes;
-    // The persisted JSON form carries bytes as base64, never a Uint8Array index object.
-    expect(typeof persistedBytes).toBe('string');
-    expect(persistedBytes).not.toContain('"0"');
+    const persistedTrack = (payload['layer-bytes'] as { tracks: Array<{ rotoPhysical: { realKeyRecords: Array<{ payload: { bytes?: unknown; media?: { relativePath: string } } }> } }> }).tracks[0];
+    const persistedPayload = persistedTrack.rotoPhysical.realKeyRecords[0].payload;
+    // The persisted record carries the package reference and no raster payload.
+    expect(persistedPayload.media?.relativePath).toBe('frames/layer-bytes/key-1.webp');
+    expect(persistedPayload.bytes).toBeUndefined();
+    // Byte-level scan: the exact raster payload is nowhere in the emitted JSON.
+    expect(JSON.stringify(payload)).not.toContain(Buffer.from(bytes).toString('base64'));
 
-    // Load decodes base64 back to a Uint8Array.
+    // The on-disk door accepts the reference-only form and installs a
+    // media-carrying record with no byte buffer.
     const loaded = await loadEfxPaintDocuments('/project', payload);
     const restored = loaded.get('layer-bytes')!.document;
-    // 52.2-02: the payload's raster carrier is optional on the shared record
-    // shape, so the inline-bytes assertion is the one that pins it.
-    const restoredBytes = restored.tracks[0].rotoPhysical!.realKeyRecords[0].payload.bytes as Uint8Array;
-    expect(restoredBytes).toBeInstanceOf(Uint8Array);
-    expect(Array.from(restoredBytes)).toEqual(Array.from(bytes));
+    const restoredPayload = restored.tracks[0].rotoPhysical!.realKeyRecords[0].payload;
+    expect(restoredPayload.media?.relativePath).toBe('frames/layer-bytes/key-1.webp');
+    expect(restoredPayload.bytes).toBeUndefined();
   });
 
   it('loads refs only — no per-frame sidecar readFile on open (D-08)', async () => {
     const document = createEfxPaintDocument('layer-lazy');
     const track = document.tracks[0];
-    const frameRef = buildEfxPaintFrameCachePath('layer-lazy', track.id, { appFrame: 0, frameIndex: 0 });
-    files.set(`/project/${frameRef}`, testWebpBytes('AQID'));
+    const frameRef = buildMachineCacheRelativePath('layer-lazy', track.id, 0);
+    files.set(`${CACHE_ROOT}/${frameRef}`, testWebpBytes('AQID'));
     const payload = { 'layer-lazy': {
       ...document,
       tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
@@ -285,26 +304,27 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     expect(loaded.size).toBe(0);
   });
 
-  it('isSafeEfxPaintCachePath accepts canonical sidecar paths and rejects traversal', () => {
-    const good = buildEfxPaintFrameCachePath('layer-x', 'track-1', { appFrame: 0, frameIndex: 0 });
-    expect(isSafeEfxPaintCachePath(good)).toBe(true);
-    expect(isSafeEfxPaintCachePath('/cache/efx-paint/layer-x/frame-000000-0000.png')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/efx-paint/../frame.png')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/efx-paint/./frame.png')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/efx-paint//frame.png')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x\\frame.png')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x/frame.png\0')).toBe(false);
+  it('the machine-relative guard accepts produced references and rejects traversal', () => {
+    const good = buildMachineCacheRelativePath('layer-x', 'track-1', 0);
+    expect(isSafeMachineCacheRelativePath(good)).toBe(true);
+    expect(isSafeMachineCacheRelativePath('/efx-paint/layer-x/frame-0000.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint/../frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint/./frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint//frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint/layer-x\\frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint/layer-x/frame.webp\0')).toBe(false);
     // The legacy cache directory prefix is rejected (DOC-04: the legacy
     // surface does not exist; the literal is split so the contract audit
     // stays green while the negative guard remains).
-    expect(isSafeEfxPaintCachePath('cache/' + 'physic-paint' + '/layer-x/frame.png')).toBe(false);
-    expect(isSafeEfxPaintCachePath('cache/efx-paint')).toBe(false);
-    expect(isSafeEfxPaintCachePath(42)).toBe(false);
+    expect(isSafeMachineCacheRelativePath('cache/' + 'physic-paint' + '/layer-x/frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('cache/efx-paint/layer-x/frame-0000.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint')).toBe(false);
+    expect(isSafeMachineCacheRelativePath(42)).toBe(false);
   });
 
   it('saving the same unchanged document twice skips sidecar staging on the second save', async () => {
     const document = createEfxPaintDocument('layer-idem');
-    const frameRef = buildEfxPaintFrameCachePath('layer-idem', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildMachineCacheRelativePath('layer-idem', document.tracks[0].id, 0);
     const track = document.tracks[0];
     const withFrame = {
       ...document,
@@ -316,12 +336,12 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     }]]);
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
-    const first = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    const first = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
     const { writeFile } = await import('@tauri-apps/plugin-fs');
     const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
     expect(firstWriteCount).toBeGreaterThan(0);
 
-    const second = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    const second = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
     expect(second).toEqual(first);
     expect(vi.mocked(writeFile).mock.calls.length).toBe(firstWriteCount);
     expect(writeProject).toHaveBeenCalledTimes(2);
@@ -329,7 +349,7 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
 
   it('rolls back the staged generation and keeps the prior committed generation when the project write throws', async () => {
     const document = createEfxPaintDocument('layer-rollback');
-    const frameRef = buildEfxPaintFrameCachePath('layer-rollback', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildMachineCacheRelativePath('layer-rollback', document.tracks[0].id, 0);
     const track = document.tracks[0];
     const withFrame = {
       ...document,
@@ -341,41 +361,42 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     }]]);
 
     // First save commits a generation.
-    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID')), async () => {});
-    expect(files.has(`/project/${frameRef}`)).toBe(true);
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID')), async () => {}, CACHE_ROOT);
+    expect(files.has(`${CACHE_ROOT}/${frameRef}`)).toBe(true);
 
     // Second save stages new bytes, then the project write throws.
     await expect(saveEfxPaintDocumentsWithProjectWrite(
       '/project',
       makeDocuments(testWebpBytes('BAID')),
       async () => { throw new Error('forced project save failure'); },
+      CACHE_ROOT,
     )).rejects.toThrow('forced project save failure');
 
     expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
-      '/project',
+      CACHE_ROOT,
       expect.stringMatching(/^[0-9a-f-]{36}$/),
       'rollback',
     );
     // The prior committed generation remains published with its original bytes.
     const { readFile } = await import('@tauri-apps/plugin-fs');
-    expect(Array.from(await readFile(`/project/${frameRef}`))).toEqual(Array.from(testWebpBytes('AQID')));
+    expect(Array.from(await readFile(`${CACHE_ROOT}/${frameRef}`))).toEqual(Array.from(testWebpBytes('AQID')));
     // The staging generation is gone.
     expect(Array.from(files.keys()).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
     expect(Array.from(dirs).some((key) => key.includes('.efx-paint-staging-'))).toBe(false);
   });
 
-  it('embeds the trackId in the canonical cache path and the guard accepts it', () => {
-    const path = buildEfxPaintFrameCachePath('layer-x', 'track-y', { appFrame: 7, frameIndex: 3 });
-    expect(path).toBe(`cache/efx-paint/${stableSegment('layer-x')}/track-y/frame-000007-0003.webp`);
-    expect(isSafeEfxPaintCachePath(path)).toBe(true);
+  it('embeds the trackId in the machine-relative cache reference and the guard accepts it', () => {
+    const path = buildMachineCacheRelativePath('layer-x', 'track-y', 7);
+    expect(path).toBe(`efx-paint/${stableSegment('layer-x')}/track-y/frame-0007.webp`);
+    expect(isSafeMachineCacheRelativePath(path)).toBe(true);
   });
 
   it('stages two tracks at the same appFrame without collision and loads both back', async () => {
     const document = createEfxPaintDocument('layer-2t');
     const trackA = document.tracks[0];
     const trackB = { ...trackA, id: 'track-b', order: 1 };
-    const pathA = buildEfxPaintFrameCachePath('layer-2t', trackA.id, { appFrame: 5, frameIndex: 0 });
-    const pathB = buildEfxPaintFrameCachePath('layer-2t', trackB.id, { appFrame: 5, frameIndex: 0 });
+    const pathA = buildMachineCacheRelativePath('layer-2t', trackA.id, 5);
+    const pathB = buildMachineCacheRelativePath('layer-2t', trackB.id, 5);
     expect(pathA).not.toBe(pathB);
     const withFrames = {
       ...document,
@@ -393,11 +414,11 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     }]]);
     const writeProject = vi.fn(async () => {});
 
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
 
     // Both tracks' sidecars staged at their own track paths.
-    expect(files.has(`/project/${pathA}`)).toBe(true);
-    expect(files.has(`/project/${pathB}`)).toBe(true);
+    expect(files.has(`${CACHE_ROOT}/${pathA}`)).toBe(true);
+    expect(files.has(`${CACHE_ROOT}/${pathB}`)).toBe(true);
     // Load restores per-track frames at the same appFrame without a throw.
     const loaded = await loadEfxPaintDocuments('/project', persisted);
     const restored = loaded.get('layer-2t')!;
@@ -409,10 +430,10 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const document = createEfxPaintDocument('layer-pt');
     const trackA = document.tracks[0];
     const trackB = { ...trackA, id: 'track-b', order: 1 };
-    const pathA = buildEfxPaintFrameCachePath('layer-pt', trackA.id, { appFrame: 1, frameIndex: 0 });
-    const pathB = buildEfxPaintFrameCachePath('layer-pt', trackB.id, { appFrame: 2, frameIndex: 0 });
-    files.set(`/project/${pathA}`, testWebpBytes('AQID'));
-    files.set(`/project/${pathB}`, testWebpBytes('BAUG'));
+    const pathA = buildMachineCacheRelativePath('layer-pt', trackA.id, 1);
+    const pathB = buildMachineCacheRelativePath('layer-pt', trackB.id, 2);
+    files.set(`${CACHE_ROOT}/${pathA}`, testWebpBytes('AQID'));
+    files.set(`${CACHE_ROOT}/${pathB}`, testWebpBytes('BAUG'));
     const payload = { 'layer-pt': {
       ...document,
       tracks: [
@@ -434,7 +455,9 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
     const payload = { 'layer-unsafe': {
       ...document,
       tracks: [
-        { ...track, frames: { 0: { cachePath: '/cache/efx-paint/seg/frame-000000-0000.png', width: 10, height: 10 } } },
+        // 52.2-07 (D-05): the legacy package-relative shape is not a
+        // machine-relative reference, so the read door refuses it.
+        { ...track, frames: { 0: { cachePath: 'cache/efx-paint/seg/frame-0000.webp', width: 10, height: 10 } } },
       ],
     } };
 
@@ -454,8 +477,8 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
   it('re-stages only changed frames and hardlinks unchanged frames (52.1 a2)', async () => {
     const document = createEfxPaintDocument('layer-incr');
     const track = document.tracks[0];
-    const frameRefA = buildEfxPaintFrameCachePath('layer-incr', track.id, { appFrame: 0, frameIndex: 0 });
-    const frameRefB = buildEfxPaintFrameCachePath('layer-incr', track.id, { appFrame: 1, frameIndex: 0 });
+    const frameRefA = buildMachineCacheRelativePath('layer-incr', track.id, 0);
+    const frameRefB = buildMachineCacheRelativePath('layer-incr', track.id, 1);
     const withFrames = {
       ...document,
       tracks: [{ ...track, frames: {
@@ -471,29 +494,32 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
       ])]]),
     }]]);
 
-    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')), async () => {});
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')), async () => {}, CACHE_ROOT);
     const { writeFile } = await import('@tauri-apps/plugin-fs');
     const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
     expect(firstWriteCount).toBeGreaterThan(0);
 
-    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')), async () => {});
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')), async () => {}, CACHE_ROOT);
 
     const secondWrites = vi.mocked(writeFile).mock.calls.slice(firstWriteCount);
     const writtenPaths = secondWrites.map(([path]) => String(path));
-    expect(writtenPaths.some((path) => path.includes('frame-000000-0000'))).toBe(true);
-    expect(writtenPaths.some((path) => path.includes('frame-000001-0000'))).toBe(false);
+    expect(writtenPaths.some((path) => path.includes('frame-0000'))).toBe(true);
+    expect(writtenPaths.some((path) => path.includes('frame-0001'))).toBe(false);
     expect(hardlinkPhysicPaintCacheFrames).toHaveBeenCalled();
     const hardlinkArgs = hardlinkPhysicPaintCacheFrames.mock.calls[0] as [string, string, string[]];
-    expect(hardlinkArgs[2]).toContain(frameRefB.slice('cache/efx-paint/'.length));
-    expect(files.has(`/project/${frameRefA}`)).toBe(true);
-    expect(files.has(`/project/${frameRefB}`)).toBe(true);
+    // The hardlink carries the machine cache root and a GENERATION-relative
+    // path (the reference minus its `efx-paint/` prefix), never the project dir.
+    expect(hardlinkArgs[0]).toBe(CACHE_ROOT);
+    expect(hardlinkArgs[2]).toContain(frameRefB.slice('efx-paint/'.length));
+    expect(files.has(`${CACHE_ROOT}/${frameRefA}`)).toBe(true);
+    expect(files.has(`${CACHE_ROOT}/${frameRefB}`)).toBe(true);
   });
 
   it('falls back to full re-stage when hardlink fails (52.1 a2)', async () => {
     const document = createEfxPaintDocument('layer-fallback');
     const track = document.tracks[0];
-    const frameRefA = buildEfxPaintFrameCachePath('layer-fallback', track.id, { appFrame: 0, frameIndex: 0 });
-    const frameRefB = buildEfxPaintFrameCachePath('layer-fallback', track.id, { appFrame: 1, frameIndex: 0 });
+    const frameRefA = buildMachineCacheRelativePath('layer-fallback', track.id, 0);
+    const frameRefB = buildMachineCacheRelativePath('layer-fallback', track.id, 1);
     const withFrames = {
       ...document,
       tracks: [{ ...track, frames: {
@@ -509,22 +535,21 @@ describe('saveEfxPaintDocumentsWithProjectWrite / loadEfxPaintDocuments', () => 
       ])]]),
     }]]);
 
-    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')), async () => {});
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')), async () => {}, CACHE_ROOT);
     const { writeFile } = await import('@tauri-apps/plugin-fs');
     const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
 
     hardlinkPhysicPaintCacheFrames.mockResolvedValueOnce({ ok: false, error: 'EXDEV' });
-    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')), async () => {});
+    await saveEfxPaintDocumentsWithProjectWrite('/project', makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')), async () => {}, CACHE_ROOT);
 
     const secondWrites = vi.mocked(writeFile).mock.calls.slice(firstWriteCount);
     const writtenPaths = secondWrites.map(([path]) => String(path));
-    expect(writtenPaths.some((path) => path.includes('frame-000000-0000'))).toBe(true);
-    expect(writtenPaths.some((path) => path.includes('frame-000001-0000'))).toBe(true);
+    expect(writtenPaths.some((path) => path.includes('frame-0000'))).toBe(true);
+    expect(writtenPaths.some((path) => path.includes('frame-0001'))).toBe(true);
   });
 });
 
 describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-05)', () => {
-  const CACHE_ROOT = '/machine/frame-cache/project-1';
   const MACHINE_LAYER = 'layer-machine';
 
   /** Move a staging generation to its canonical name under the machine cache root. */
@@ -579,16 +604,15 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
     const reference = buildMachineCacheRelativePath('layer-x', 'track-1', 0);
     expect(reference).toBe(`efx-paint/${stableSegment('layer-x')}/track-1/frame-0000.webp`);
     expect(isSafeMachineCacheRelativePath(reference)).toBe(true);
-    expect(isSafeEfxPaintCachePath(reference)).toBe(true);
     // The track-deletion directory is the same shape one segment shallower.
-    expect(isSafeEfxPaintCachePath(`efx-paint/${stableSegment('layer-x')}/track-1`)).toBe(true);
+    expect(isSafeMachineCacheRelativePath(`efx-paint/${stableSegment('layer-x')}/track-1`)).toBe(true);
     // Every legacy and machine-local spelling is refused.
-    expect(isSafeEfxPaintCachePath('cache/efx-paint/layer-x/track-1/frame-0000.webp')).toBe(false);
-    expect(isSafeEfxPaintCachePath('/machine/frame-cache/project-1/efx-paint/layer-x/frame.webp')).toBe(false);
-    expect(isSafeEfxPaintCachePath('efx-paint/../frame.webp')).toBe(false);
-    expect(isSafeEfxPaintCachePath('efx-paint/layer-x\\frame.webp')).toBe(false);
-    expect(isSafeEfxPaintCachePath('efx-paint')).toBe(false);
-    expect(isSafeEfxPaintCachePath(42)).toBe(false);
+    expect(isSafeMachineCacheRelativePath('cache/efx-paint/layer-x/track-1/frame-0000.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('/machine/frame-cache/project-1/efx-paint/layer-x/frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint/../frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint/layer-x\\frame.webp')).toBe(false);
+    expect(isSafeMachineCacheRelativePath('efx-paint')).toBe(false);
+    expect(isSafeMachineCacheRelativePath(42)).toBe(false);
   });
 
   it('resolves a produced reference to the same machine-local identity across two calls', () => {
@@ -609,7 +633,10 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
     const writtenPaths = vi.mocked(writeFile).mock.calls.map(([path]) => String(path));
     expect(writtenPaths.length).toBeGreaterThan(0);
     expect(writtenPaths.every((path) => path.startsWith(`${CACHE_ROOT}/.efx-paint-staging-`))).toBe(true);
-    expect(writtenPaths.some((path) => path.endsWith(`/${frameRef}`))).toBe(true);
+    // The staged location is the generation-relative path (the reference minus
+    // its `efx-paint/` prefix); only the published generation carries the
+    // reference's own prefix.
+    expect(writtenPaths.some((path) => path.endsWith(`/${frameRef.slice('efx-paint/'.length)}`))).toBe(true);
     // The published canonical generation lives under the machine cache root.
     expect(files.has(`${CACHE_ROOT}/${frameRef}`)).toBe(true);
     expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledWith(
@@ -642,7 +669,7 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
   });
 
   it('refuses a layer document carrying a legacy package-relative cache reference before staging it', async () => {
-    const { documents } = makeFrameSaveInput('cache/efx-paint/layer-machine/track-1/frame-0000.webp');
+    const { documents } = makeFrameSaveInput(() => 'cache/efx-paint/layer-machine/track-1/frame-0000.webp');
     const writeProject = vi.fn(async () => {});
     const { writeFile } = await import('@tauri-apps/plugin-fs');
 
@@ -816,7 +843,7 @@ describe('the staged package save seam (52.2-05 Task 3)', () => {
 
   it('reports the authoritative save as committed when the cache leg soft-fails (D-14)', async () => {
     const document = createEfxPaintDocument('layer-soft');
-    const frameRef = buildEfxPaintFrameCachePath('layer-soft', document.tracks[0].id, { appFrame: 0, frameIndex: 0 });
+    const frameRef = buildMachineCacheRelativePath('layer-soft', document.tracks[0].id, 0);
     const track = document.tracks[0];
     const documents = new Map<string, EfxPaintDocumentSaveInput>([['layer-soft', {
       document: { ...document, tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }] },
@@ -828,11 +855,17 @@ describe('the staged package save seam (52.2-05 Task 3)', () => {
     });
     const writeProject = vi.fn(async (_payload: Record<string, unknown>, _transactionId: string | null) => {});
 
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject);
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite('/project', documents, writeProject, CACHE_ROOT);
 
     // The authoritative write still runs and the save is reported committed.
     expect(writeProject).toHaveBeenCalledOnce();
     expect(writeProject.mock.calls[0][1]).toBeNull();
+    // The soft refusal came from the cache leg actually running (not from a
+    // skipped leg): the leg was addressed against the machine cache root.
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledWith(
+      CACHE_ROOT,
+      expect.stringMatching(/^\.efx-paint-staging-[0-9a-f-]{36}$/),
+    );
     expect(persisted['layer-soft']).toBeDefined();
     // No live transaction exists, so nothing is settled.
     expect(settlePhysicPaintCacheGeneration).not.toHaveBeenCalled();

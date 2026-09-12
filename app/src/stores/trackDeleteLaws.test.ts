@@ -5,13 +5,13 @@ import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDoc
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
-  EFX_PAINT_CACHE_DIR,
   saveEfxPaintDocumentsWithProjectWrite,
   stableSegment,
   type EfxPaintDocumentSaveInput,
 } from '../lib/efxPaintPersistence';
 import {
   buildMachineCacheRelativePath,
+  EFX_PAINT_MACHINE_CACHE_DIR,
   isSafeMachineCacheRelativePath,
   resolveMachineCachePath,
 } from '../lib/efxPaintPackage';
@@ -52,9 +52,9 @@ const PROJECT_DIR = '/project/root';
 /** The machine-local derived-frame cache root (D-05) — never the project dir. */
 const MACHINE_CACHE_ROOT = '/machine/frame-cache/project-root';
 
-function exchangeGeneration(projectDir: string, stagingBasename: string): void {
-  const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
-  const canonicalRoot = `${projectDir}/cache/efx-paint`;
+function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
+  const stagingRoot = `${cacheRoot}/${stagingBasename}`;
+  const canonicalRoot = `${cacheRoot}/efx-paint`;
   const stagingFiles = Array.from(files.entries())
     .filter(([key]) => key.startsWith(`${stagingRoot}/`))
     .map(([key, value]) => [`${canonicalRoot}${key.slice(stagingRoot.length)}`, value] as const);
@@ -469,17 +469,17 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     dirs.clear();
     vi.clearAllMocks();
     const activeTransactions = new Map<string, string>();
-    publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
+    publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
       const transactionId = crypto.randomUUID();
       activeTransactions.set(transactionId, stagingBasename);
-      exchangeGeneration(projectDir, stagingBasename);
+      exchangeGeneration(cacheRoot, stagingBasename);
       return { ok: true, data: { accepted: true, transactionId, replacedExisting: true } };
     });
-    settlePhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, transactionId: string, action: 'commit' | 'rollback') => {
+    settlePhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, transactionId: string, action: 'commit' | 'rollback') => {
       const stagingBasename = activeTransactions.get(transactionId);
       if (!stagingBasename) return { ok: false, error: 'inactive transaction' };
-      if (action === 'rollback') exchangeGeneration(projectDir, stagingBasename);
-      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+      if (action === 'rollback') exchangeGeneration(cacheRoot, stagingBasename);
+      const stagingRoot = `${cacheRoot}/${stagingBasename}`;
       for (const key of Array.from(files.keys())) {
         if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
       }
@@ -489,9 +489,9 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       activeTransactions.delete(transactionId);
       return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
     });
-    hardlinkPhysicPaintCacheFrames.mockImplementation(async (projectDir: string, stagingBasename: string, unchangedPaths: string[]) => {
-      const canonicalRoot = `${projectDir}/cache/efx-paint`;
-      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+    hardlinkPhysicPaintCacheFrames.mockImplementation(async (cacheRoot: string, stagingBasename: string, unchangedPaths: string[]) => {
+      const canonicalRoot = `${cacheRoot}/efx-paint`;
+      const stagingRoot = `${cacheRoot}/${stagingBasename}`;
       const missing: string[] = [];
       for (const relative of unchangedPaths) {
         const source = `${canonicalRoot}/${relative}`;
@@ -547,8 +547,8 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
       else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
     });
-    const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
-    const survivorDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_A}`;
+    const deletedDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
+    const survivorDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_A}`;
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
     const { remove } = await import('@tauri-apps/plugin-fs');
@@ -559,17 +559,19 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     // publish mock's generation exchange wipes the canonical root, so they
     // are (re)seeded in the writeProject callback that runs between prepare
     // and the commit arm, which is exactly when the fs remove() must fire.
+    // 52.2-07 (D-05): both live under the MACHINE cache root; nothing under
+    // the project directory is ever addressed as a cache root.
     const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
-      dirs.add(`${PROJECT_DIR}/${deletedDir}`);
-      dirs.add(`${PROJECT_DIR}/${survivorDir}`);
-      files.set(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`, new Uint8Array([1]));
-    });
+      dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
+      dirs.add(`${MACHINE_CACHE_ROOT}/${survivorDir}`);
+      files.set(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`, new Uint8Array([1]));
+    }, MACHINE_CACHE_ROOT);
     expect(persisted).toBeDefined();
-    expect(removeMock).toHaveBeenCalledWith(`${PROJECT_DIR}/${deletedDir}`, { recursive: true });
-    expect(removeMock).not.toHaveBeenCalledWith(`${PROJECT_DIR}/${survivorDir}`, { recursive: true });
-    expect(dirs.has(`${PROJECT_DIR}/${deletedDir}`)).toBe(false);
-    expect(files.has(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`)).toBe(false);
-    expect(dirs.has(`${PROJECT_DIR}/${survivorDir}`)).toBe(true);
+    expect(removeMock).toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${deletedDir}`, { recursive: true });
+    expect(removeMock).not.toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${survivorDir}`, { recursive: true });
+    expect(dirs.has(`${MACHINE_CACHE_ROOT}/${deletedDir}`)).toBe(false);
+    expect(files.has(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`)).toBe(false);
+    expect(dirs.has(`${MACHINE_CACHE_ROOT}/${survivorDir}`)).toBe(true);
   });
 
   it('rollback keeps the deleted track sidecar directory (nothing removed outside the committed transaction)', async () => {
@@ -577,7 +579,7 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
       else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
     });
-    const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
+    const deletedDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
     const { remove } = await import('@tauri-apps/plugin-fs');
@@ -587,15 +589,15 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     await expect(
       saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {
         // The sidecar dir exists on disk when the failing write happens.
-        dirs.add(`${PROJECT_DIR}/${deletedDir}`);
-        files.set(`${PROJECT_DIR}/${deletedDir}/frame-000000-0000.png`, new Uint8Array([1]));
+        dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
+        files.set(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`, new Uint8Array([1]));
         throw new Error('write failed');
-      }),
+      }, MACHINE_CACHE_ROOT),
     ).rejects.toThrow('write failed');
     // Rollback never removes: the deletion list is settled only by the
     // commit arm (the mock generation exchange wipes on-disk state, so the
     // fs remove() call contract is the authoritative assertion).
-    expect(removeMock).not.toHaveBeenCalledWith(`${PROJECT_DIR}/${deletedDir}`, { recursive: true });
+    expect(removeMock).not.toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${deletedDir}`, { recursive: true });
     expect(removeMock).not.toHaveBeenCalled();
   });
 
@@ -604,8 +606,8 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
       else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
     });
-    const deletedDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
-    dirs.add(`${PROJECT_DIR}/${deletedDir}`);
+    const deletedDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
+    dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
     expect(takePendingTrackDeletions(LAYER)).toEqual([deletedDir]);
@@ -615,7 +617,7 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     const { remove } = await import('@tauri-apps/plugin-fs');
     const removeMock = vi.mocked(remove);
     removeMock.mockClear();
-    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {});
+    const persisted = await saveEfxPaintDocumentsWithProjectWrite(PROJECT_DIR, buildSaveInput(), async () => {}, MACHINE_CACHE_ROOT);
     expect(persisted).toBeDefined();
     expect(removeMock).not.toHaveBeenCalled();
     expect(takePendingTrackDeletions(LAYER)).toEqual([]);
