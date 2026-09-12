@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1320 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1340 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1320 desktop budget').toBe(1320);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1340 desktop budget').toBe(1340);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1320 desktop budget',
+    'emits no chunk-size warning at the 1340 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -222,11 +222,20 @@ describe('production vite build', () => {
       //   + 52.1 feature code (runtime/LRU/WebP)     +8.9 kB
       //   = current main chunk                      1305.11 kB
       // Budget raised 1300 → 1320 (measured value + ~14.9 kB headroom).
+      // Measured 2026-09-12: 1326.36 kB after the already-landed 52.2
+      // package-format work (plans 08-12; the 52.2-07 / 52.2-10 points in the
+      // trail above record the climb). Plan 52.2-13 Task 3 proved the pinned
+      // pilot-dependency install contributed 0.00 kB: the pre-install and
+      // post-install builds emitted the byte-identical index-knu_IwqL.js main
+      // chunk (same content hash), the deps staying unimported behind the
+      // PhysicsPaintStudio lazy boundary. Budget raised 1320 → 1340 (measured
+      // value + ~13.6 kB headroom) for the landed format work, not for
+      // anticipated pilot code.
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1320 desktop budget',
+        'no chunk-size warning may be emitted at the 1340 desktop budget',
       ).toBe(0);
     },
   );

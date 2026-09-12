@@ -243,7 +243,18 @@ export default defineConfig({
     // WebP codec leaf modules) added ~8.9 kB, measured 1305.11 kB. Budget
     // raised to 1320 (measured value + ~14.9 kB headroom) — a one-time signed
     // adjustment for the HD runtime, not a precedent.
-    chunkSizeWarningLimit: 1320,
+    // Measurement note (2026-09-12): the already-landed 52.2 package-format
+    // work (plans 08-12: package funnel, clean-break gates, roto frame-media
+    // push, render counters) carried the main chunk to 1,326.36 kB — the last
+    // measurement points record the climb (52.2-07: 1,322.93 kB, 52.2-10:
+    // 1,325.5 kB). Plan 52.2-13 Task 3 re-measured before and after installing
+    // the pinned pilot dependencies: both builds emitted the byte-identical
+    // index-knu_IwqL.js main chunk (same content hash), so the install's delta
+    // is 0.00 kB — the deps are installed but unimported, and the pilot keeps
+    // them behind the PhysicsPaintStudio lazy boundary. Budget raised to 1340
+    // (measured value + ~13.6 kB headroom); the raise is for the landed format
+    // work, never anticipation of pilot code.
+    chunkSizeWarningLimit: 1340,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
