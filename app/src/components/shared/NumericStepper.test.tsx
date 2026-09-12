@@ -6,6 +6,8 @@
  * directly and its vnodes are walked, so handlers are driven with plain event
  * objects and the hold-to-repeat lifecycle is proven with fake timers.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NUMERIC_STEPPER_REPEAT_DELAY_MS,
@@ -274,5 +276,84 @@ describe('NumericStepper — shared − [field] + treatment (D-23/D-24)', () => 
     pointerDown(plus!);
     vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_DELAY_MS + NUMERIC_STEPPER_REPEAT_INTERVAL_MS);
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * D-23/D-24 adoption contract: the numeric-stepper sweep.
+ *
+ * Source-scan contract (same file-reading idiom as
+ * `efx-paint/efxPaintCleanBreakContract.test.ts`): every swept component must
+ * render its numeric fields through the shared `− [field] +` treatment, and no
+ * raw native numeric input may reappear on a swept surface. The scan list is
+ * asserted by length so a future narrowing shows up as a changed assertion
+ * rather than a silent pass (T-52.2-10).
+ *
+ * `.test.tsx` paths are excluded from the scan: this file owns the pattern
+ * strings, so its own text must never be scanned.
+ */
+const APP_ROOT = resolve(__dirname, '../../..');
+
+const SWEPT_COMPONENT_PATHS = [
+  'src/components/sequence/KeyPhotoStrip.tsx',
+  'src/components/sidebar/PaintProperties.tsx',
+  'src/components/sidebar/InlineColorPicker.tsx',
+  'src/components/shared/ColorPickerModal.tsx',
+];
+
+/** The raw native numeric input element this sweep retires (D-23). */
+const RAW_NATIVE_NUMERIC_INPUT = /type="number"/;
+
+/** The shared treatment a swept file must reference. */
+const SHARED_STEPPER_REFERENCE = /NumericStepper|NumericInput/;
+
+function readSweptSource(relPath: string): string {
+  return readFileSync(resolve(APP_ROOT, relPath), 'utf8');
+}
+
+/** Every `<NumericStepper ... />` element rendered by a swept file. */
+function stepperElements(source: string): string[] {
+  return source.match(/<NumericStepper[\s\S]*?\/>/g) ?? [];
+}
+
+describe('numericStepperSweep', () => {
+  const scannedPaths = SWEPT_COMPONENT_PATHS.filter((relPath) => !/\.test\.tsx$/.test(relPath));
+
+  it('scans the expected swept component list', () => {
+    expect(SWEPT_COMPONENT_PATHS.filter((relPath) => /\.test\.tsx$/.test(relPath))).toEqual([]);
+    expect(scannedPaths).toHaveLength(4);
+  });
+
+  it('leaves no raw native numeric input on a swept surface', () => {
+    const offenders = scannedPaths.filter((relPath) =>
+      RAW_NATIVE_NUMERIC_INPUT.test(readSweptSource(relPath)),
+    );
+    expect(
+      offenders,
+      `Raw native numeric input reintroduced — render through NumericStepper instead:\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('renders every swept file through the shared stepper treatment', () => {
+    const missing = scannedPaths.filter(
+      (relPath) => !SHARED_STEPPER_REFERENCE.test(readSweptSource(relPath)),
+    );
+    expect(
+      missing,
+      `Swept file no longer renders through NumericStepper/NumericInput:\n${missing.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('declares an explicit step on every NumericStepper element in a swept file', () => {
+    const offenders: string[] = [];
+    for (const relPath of scannedPaths) {
+      for (const element of stepperElements(readSweptSource(relPath))) {
+        if (!/step=\{/.test(element)) offenders.push(`${relPath}: ${element.replace(/\s+/g, ' ')}`);
+      }
+    }
+    expect(
+      offenders,
+      `A swept field lost its own step (D-24: fps 0.5, everything else keeps its current step):\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 });
