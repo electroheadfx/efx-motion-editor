@@ -46,6 +46,14 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
      * untouched (D-18, Pitfall 3).
      */
     getSoloWindow?: () => SoloPlaybackWindow | null;
+    /**
+     * D-20/D-21/D-22 (52.2-04): the solo content start at Play press time —
+     * null (or absent) when no solo is active. The Studio derives it from the
+     * armed session pill window or the persisted row-S soloed tracks; the
+     * coordinator only forwards it to the cached-playback hook, which anchors
+     * the start AND loop-wrap refs there.
+     */
+    getSoloContentStart?: () => number | null;
     onStart: (frameCount: number) => void;
     onFrame: (frameIndex: number, appFrame: number) => void;
     setIsPlaying: (isPlaying: boolean) => void;
@@ -105,6 +113,7 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
     },
     setIsPlaying: input.playback.setIsPlaying,
     getCurrentAppFrame: input.playback.getCurrentAppFrame,
+    getSoloContentStart: input.playback.getSoloContentStart,
   });
 
   const requestNavigation = useCallback(async (targetFrame: number) => {

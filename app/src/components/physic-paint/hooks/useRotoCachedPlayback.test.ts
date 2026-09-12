@@ -1106,7 +1106,29 @@ describe('solo content start (D-20..D-22)', () => {
   it('start() anchors BOTH the frame and loop refs at the solo content start (D-20/D-22)', () => {
     vi.useFakeTimers();
     installWindowTimers();
-    const { harness, onFrame } = createSoloHarness(() => 9);
+    const onFrame = vi.fn();
+    const anchorsAtFirstTick: Array<{ frameIndex: unknown; loopStart: unknown }> = [];
+    const harness = createHarness({
+      initialSettings: { loop: false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => soloFrames,
+      getCurrentAppFrame: () => 10,
+      getSoloContentStart: () => 9,
+      onStart: vi.fn(),
+      onFrame: (frameIndex, appFrame) => {
+        // The first tick fires BEFORE the hook advances frameIndexRef, so this
+        // is the moment the two anchors are still the same value (D-22).
+        if (anchorsAtFirstTick.length === 0) {
+          const anchors = harness.anchors();
+          anchorsAtFirstTick.push({
+            frameIndex: anchors.frameIndex.current,
+            loopStart: anchors.loopStart.current,
+          });
+        }
+        onFrame(frameIndex, appFrame);
+      },
+      setIsPlaying: vi.fn(),
+    });
 
     let playback = harness.render();
     playback.start();
@@ -1114,10 +1136,13 @@ describe('solo content start (D-20..D-22)', () => {
 
     expect(playback.isActive).toBe(true);
     expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    expect(anchorsAtFirstTick[0]).toEqual({ frameIndex: 1, loopStart: 1 });
+    expect(anchorsAtFirstTick[0]!.frameIndex).toBe(anchorsAtFirstTick[0]!.loopStart);
+    // Post-tick: the loop anchor holds the solo start index (the D-22 wrap
+    // target) and the frame index advanced from that same base.
     const anchors = harness.anchors();
-    expect(anchors.frameIndex.current).toBe(1);
     expect(anchors.loopStart.current).toBe(1);
-    expect(anchors.frameIndex.current).toBe(anchors.loopStart.current);
+    expect(anchors.frameIndex.current).toBe(2);
     vi.useRealTimers();
   });
 
