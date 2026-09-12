@@ -312,17 +312,39 @@ pub fn write_frame_media(
     })
 }
 
-/// Guarded read: the media lock plus, on the read side, a canonicalized leaf
-/// so the bytes come from a file that is actually inside the package.
+/// Guarded read: the media lock, then a canonicalized leaf so the bytes can
+/// only come from a regular `.webp` file that is actually inside the package.
+/// The canonicalized leaf is what defeats a symlink swapped in after the write
+/// (T-52.2-02): an escaping link resolves outside the root (`PathEscape`), a
+/// level inside the package that is not a regular file is `NotARegularFile`,
+/// and an absent leaf is `Missing` — the Phase 49 slate path, never a refusal.
 pub fn read_frame_media(
     package_dir: &Path,
     relative_path: &str,
 ) -> Result<FrameMediaReadResult, EfxPaintMediaError> {
-    let path = resolve_package_media_path(package_dir, relative_path)?;
-    if !path.exists() {
-        return Err(rejected(EfxPaintMediaRejection::Missing));
+    let candidate = resolve_package_media_path(package_dir, relative_path)?;
+    let root = canonical_package_root(package_dir)?;
+    let canonical = match fs::canonicalize(&candidate) {
+        Ok(canonical) => canonical,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(rejected(EfxPaintMediaRejection::Missing));
+        }
+        Err(error) => {
+            return Err(io_error(format!(
+                "Could not resolve the frame media file: {error}"
+            )));
+        }
+    };
+    if !canonical.starts_with(&root) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
     }
-    let bytes = fs::read(&path)
+    if !canonical.is_file() {
+        return Err(rejected(EfxPaintMediaRejection::NotARegularFile));
+    }
+    if canonical.extension().and_then(|extension| extension.to_str()) != Some(MEDIA_EXTENSION) {
+        return Err(rejected(EfxPaintMediaRejection::WrongExtension));
+    }
+    let bytes = fs::read(&canonical)
         .map_err(|error| io_error(format!("Could not read the frame media file: {error}")))?;
     Ok(FrameMediaReadResult {
         relative_path: relative_path.to_string(),
