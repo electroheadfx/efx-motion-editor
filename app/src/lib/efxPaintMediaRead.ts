@@ -19,6 +19,7 @@
  * - the input is a reference, so a real key's media and a group override's
  *   media resolve through the identical path with no collection branch.
  */
+import { ipcEfxPaintReadFrameMedia } from './ipc';
 import type { EfxPaintMediaRejectionLabel } from './ipc';
 import type { FrameMediaReference } from './efxPaintPackage';
 
@@ -71,11 +72,40 @@ export interface FrameMediaResolveInput {
 /**
  * Resolve one media reference: LRU (by digest) → native read → digest
  * verification → decode → LRU write under the verified digest.
+ *
+ * Nothing is cached before the digest is verified: every failure path
+ * (`missing`, a native refusal, `io`, a digest mismatch, a decode failure)
+ * returns without touching the LRU, so a later attempt retries from scratch
+ * and a tampered file can never be served from the cache (T-52.2-29).
  */
-export async function resolveFrameMediaBitmap(
-  _input: FrameMediaResolveInput,
-): Promise<FrameMediaResolution> {
-  // RED stub (52.2-09 Task 1): the flow lands in the GREEN commit; until then
-  // every case in efxPaintMediaRead.test.ts fails on its own assertion.
-  return { kind: 'refused', reason: 'notARegularFile' };
+export async function resolveFrameMediaBitmap(input: FrameMediaResolveInput): Promise<FrameMediaResolution> {
+  const { packageDir, reference, lru, decode } = input;
+
+  const cached = lru.get(reference.digest);
+  if (cached) {
+    return { kind: 'bitmap', bitmap: cached, width: cached.width, height: cached.height };
+  }
+
+  const result = await ipcEfxPaintReadFrameMedia(packageDir, reference.relativePath);
+  if (!result.ok) {
+    if (result.error.kind === 'missing') return { kind: 'missing' };
+    return {
+      kind: 'refused',
+      reason: result.error.kind === 'refused' ? result.error.rejection : 'io',
+    };
+  }
+
+  // The digest the native read computed over the bytes it just read (JS cannot
+  // hash the file itself) — compared BEFORE any decode and BEFORE any cache
+  // write. The persisted reference's own digest was validated as 64 lower-case
+  // hex by `parseFrameMediaReference` before it ever reached this module.
+  if (result.data.digest !== reference.digest) {
+    return { kind: 'refused', reason: 'digest-mismatch' };
+  }
+
+  const bitmap = await decode(result.data.bytes);
+  if (bitmap === null) return { kind: 'refused', reason: 'decode-failed' };
+
+  lru.put(reference.digest, bitmap, bitmap.width, bitmap.height);
+  return { kind: 'bitmap', bitmap, width: bitmap.width, height: bitmap.height };
 }

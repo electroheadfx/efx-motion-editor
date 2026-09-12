@@ -233,7 +233,9 @@ describe('efxPaintMediaRead: digest-verified, LRU-backed resolution (52.2-09, D-
       if (failure.error !== undefined) ipcFails(failure.error);
       else ipcReads(failure.bytes as Uint8Array);
       const outcome = await resolve(referenceFor(KEY_PATH, verifiedBytes), fake, failure.decode);
-      expect(outcome.kind).toBe('refused');
+      // `missing` is its own honest outcome (the slate path), the rest are
+      // refusals — the invariant shared by all of them is the empty cache.
+      expect(outcome.kind).not.toBe('bitmap');
       expect(fake.puts).toHaveLength(0);
     }
   });

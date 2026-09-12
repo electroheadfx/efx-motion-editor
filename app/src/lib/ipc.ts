@@ -49,28 +49,23 @@ export async function projectCreate(name: string, fps: number, dirPath: string):
 
 /**
  * Write the manifest to the path it is handed. 52.2-05 Task 2 (D-10) removed
- * the project write's cache binding, so the trailing id is ACCEPTED for arity
- * only and never forwarded: `projectStore.ts` still passes it and is owned by
- * plan 07, which rewires the call site; plan 09 deletes the declaration from
- * both project-save wrappers. Nothing may leave it in shipped code.
+ * the project write's cache binding, so no cache transaction id crosses this
+ * wrapper at all (52.2-09: the accepted-but-not-forwarded trailing parameter is
+ * deleted, not shimmed).
  */
 export async function projectSave(
   project: MceProject,
   filePath: string,
-  physicPaintCacheTransactionId: string | null = null,
 ): Promise<Result<null>> {
-  void physicPaintCacheTransactionId;
   return safeInvoke<null>('project_save', { project, filePath });
 }
 
-/** Same accepted-but-not-forwarded trailing id as `projectSave`. */
+/** The Save-As leg of `projectSave`: same arity, same package-only payload. */
 export async function projectSaveAsWithScriptLibrary(
   project: MceProject,
   sourceFilePath: string,
   destinationFilePath: string,
-  physicPaintCacheTransactionId: string | null = null,
 ): Promise<Result<ScriptLibraryMigrationResult>> {
-  void physicPaintCacheTransactionId;
   return safeInvoke('project_save_as_with_script_library', {
     project,
     sourceFilePath,
