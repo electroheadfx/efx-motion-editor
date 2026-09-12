@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  52.2-11 (D-03): the SINGLE source of the `.mce` document-type declaration.
+
+  Tauri merges this file into the generated macOS bundle Info.plist as a
+  SHALLOW top-level overwrite: every key declared here replaces the generated
+  key entirely. The declaration is therefore complete in this one file and is
+  deliberately NOT split into `tauri.conf.json`'s `bundle.fileAssociations`,
+  which cannot express `LSTypeIsPackage` and would create a second, conflicting
+  declaration. `app/src/lib/packageAssociationContract.test.ts` keeps the two
+  files from diverging.
+
+  Not included on purpose: `CFBundleTypeIconFile` — the bundle ships the app
+  icon only, and the contract test refuses a document-icon reference that does
+  not resolve to a declared bundle asset.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>EFX Motion Project</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<!-- The package flag: macOS presents `Name.mce/` as ONE Finder document. -->
+			<key>LSTypeIsPackage</key>
+			<true/>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>mce</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.efxlab.motion-editor.project</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.efxlab.motion-editor.project</string>
+			<key>UTTypeDescription</key>
+			<string>EFX Motion Project</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mce</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>
