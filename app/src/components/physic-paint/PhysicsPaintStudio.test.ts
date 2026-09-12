@@ -714,8 +714,12 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 
   it('gates the solo playback window on the armed signal so a plain rail selection never filters playback (43.6-09)', () => {
-    const portStart = studio.indexOf('getSoloWindow: () => {');
-    const portEnd = studio.indexOf('onStart: (frameCount)', portStart);
+    // 52.2-04 (D-21): the window derivation moved into resolveSessionSoloWindow
+    // so one derivation serves both getSoloWindow and getSoloContentStart; the
+    // port delegates. The disarmed guard must still lead the derivation.
+    expect(studio).toContain('getSoloWindow: () => resolveSessionSoloWindow(),');
+    const portStart = studio.indexOf('const resolveSessionSoloWindow = (): SoloPlaybackWindow | null => {');
+    const portEnd = studio.indexOf('getSoloWindow:', portStart);
     const port = studio.slice(portStart, portEnd);
     expect(portStart).toBeGreaterThanOrEqual(0);
     // 43.6-09: a disarmed solo must return null BEFORE member derivation so
