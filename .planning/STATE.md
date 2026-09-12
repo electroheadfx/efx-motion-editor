@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-14-PLAN.md
-last_updated: "2026-09-12T21:48:02.416Z"
+stopped_at: Completed 52.2-15-PLAN.md
+last_updated: "2026-09-12T22:05:19.375Z"
 last_activity: 2026-09-12
 last_activity_desc: Phase 52.2 execution started
-state_head: 973c7624091fb159c1c0414025132e55657f9d12
+state_head: 247e2e77f54a71357f11d0f14ea142c4ed9149bc
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 63
+  completed_plans: 64
   percent: 55
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 ## Current Position
 
 Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 15 of 16
+Plan: 16 of 16
 Status: Ready to execute
 Last activity: 2026-09-12 — Phase 52.2 execution started
 
@@ -122,6 +122,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P12 | 1h53min | 3 tasks | 10 files |
 | Phase 52.2 P13 | 7 | 4 tasks | 35 files |
 | Phase 52.2 P14 | 46 min | 2 tasks | 15 files |
+| Phase 52.2 P15 | 10min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -316,6 +317,11 @@ Recent decisions affecting current work:
 - [Phase 52.2]: The machine's wait IS the yield: the queue always awaits waitUntilDrainable (a macrotask when already drainable) so a turn never produces ahead of work submitted later in the same task
 - [Phase 52.2]: Settle-through interruption: interrupt() cancels live turns but each turn resolves its own settlement promise, and a cancelled turn's commit is never called
 - [Phase 52.2]: D-19 proven by measurement: main chunk byte-stable at 1,326.43 kB (budget 1340); the only xstate/effect imports in app/src are the two pilot modules; app/src/lib untouched
+- [Phase 52.2]: The pipeline's queue port is a forced capture-queue drain (drain/interrupt), not flushLivePixels: the port settles the gesture's queued captures BEFORE the caller's steps, while parent deliveries and their retries stay inside step 2 (52.2-15).
+- [Phase 52.2]: flush() returns the SAME in-flight promise to every concurrent caller: overlapping requests (or a close during a requested flush) produce one drain, one push and one shared outcome (T-52.2-54, 52.2-15).
+- [Phase 52.2]: The pipeline never rejects - a throwing step resolves failed with the error attached and an interrupted drain resolves interrupted - so the shared Studio runner rethrows for the callers whose contract is a rejection (52.2-15).
+- [Phase 52.2]: Interruption races the forced port drain against an interrupt wake, so a port whose work never settles cannot wedge Save/Export (T-52.2-48); the facade's unchanged 5 s timeout stays the outer bound (52.2-15).
+- [Phase 52.2]: The delivery retry is one beginFlush-wrapped pilot queue turn whose produce re-schedules only the narrowed per-identity entry and whose commit waits out that delivery chain - queue owns concurrency, coordinator keeps owning identity (52.2-15).
 
 ### Pending Todos
 
@@ -368,6 +374,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T21:48:00.885Z
-Stopped at: Completed 52.2-14-PLAN.md
+Last session: 2026-09-12T22:05:17.889Z
+Stopped at: Completed 52.2-15-PLAN.md
 Resume file: None
