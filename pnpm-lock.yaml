@@ -55,6 +55,9 @@ importers:
       bezier-js:
         specifier: ^6.1.4
         version: 6.1.4
+      effect:
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
       fit-curve:
         specifier: ^0.2.0
         version: 0.2.0
@@ -79,6 +82,9 @@ importers:
       tinykeys:
         specifier: ^3.0.0
         version: 3.0.0
+      xstate:
+        specifier: 6.0.0-alpha.53
+        version: 6.0.0-alpha.53
     devDependencies:
       '@efxlab/motion-canvas-ui':
         specifier: 4.0.0
@@ -1396,6 +1402,9 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
+  effect@4.0.0-rc.115:
+    resolution: {integrity: sha512-ogYulZ5ffeOzrJqQrG0XOkDO5lKn2s9KNHhoxJy/6wKUkF0i12dlVXWA9TgsgQ+zV/JzizyG0+XMPepZEQX6vw==}
+
   electron-to-chromium@1.5.302:
     resolution: {integrity: sha512-sM6HAN2LyK82IyPBpznDRqlTQAtuSaO+ShzFiWTvoMJLHyZ+Y39r8VMfHzwbU8MVBzQ4Wdn85+wlZl2TLGIlwg==}
 
@@ -2095,6 +2104,10 @@ packages:
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
 
+  saxes@6.0.0:
+    resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
+    engines: {node: '>=v12.22.7'}
+
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
     hasBin: true
@@ -2436,6 +2449,13 @@ packages:
         optional: true
       utf-8-validate:
         optional: true
+
+  xmlchars@2.2.0:
+    resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
+
+  xstate@6.0.0-alpha.53:
+    resolution: {integrity: sha512-8dbtBI6ihVfNve8wTcmPageNSfgwDa3xX1QbRUDX/6GunNjEfa2ePzImeULU8ma/hcGUvBYlMp0A0gHUxo9vtQ==}
+    hasBin: true
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
@@ -3551,6 +3571,8 @@ snapshots:
 
   ee-first@1.1.1: {}
 
+  effect@4.0.0-rc.115: {}
+
   electron-to-chromium@1.5.302: {}
 
   emoji-regex@8.0.0: {}
@@ -4251,6 +4273,10 @@ snapshots:
 
   safer-buffer@2.1.2: {}
 
+  saxes@6.0.0:
+    dependencies:
+      xmlchars: 2.2.0
+
   semver@6.3.1: {}
 
   semver@7.8.5: {}
@@ -4588,6 +4614,12 @@ snapshots:
   wrappy@1.0.2: {}
 
   ws@8.21.0: {}
+
+  xmlchars@2.2.0: {}
+
+  xstate@6.0.0-alpha.53:
+    dependencies:
+      saxes: 6.0.0
 
   yallist@3.1.1: {}
 
