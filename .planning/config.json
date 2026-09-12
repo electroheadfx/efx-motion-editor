@@ -12,7 +12,8 @@
     "use_worktrees": true,
     "nyquist_validation": true,
     "ai_integration_phase": true,
-    "test_command": "pnpm --filter efx-motion-editor exec vitest run"
+    "test_command": "pnpm --filter efx-motion-editor exec vitest run",
+    "ui_safety_gate": false
   },
   "granularity": "fine",
   "mempalace": {
