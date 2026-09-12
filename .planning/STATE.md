@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 52.2 (Project package format — references only) — EXECUTING
 Plan: 16 of 16
 Status: Ready to execute
-Last activity: 2026-09-12 — Phase 52.2 execution started
+Last activity: 2026-09-13 — Completed quick task 260913-05k: P0 fix — route .mce package file IO through Rust commands (renderer plugin-fs is scope-forbidden on package paths)
 
 Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
@@ -352,6 +352,7 @@ None yet.
 | 260911-s1j | Track-row header redesign — inline controls [grip/eye/S/blend], ⋯ panel + duplicate button retired, orange armed solo/blend, Tools popover Blend toggle removed, document-level interpolation mode (amends 260911-sli) | 2026-09-11 | 6a78f90a | [260911-s1j-track-row-header-redesign-inline-row-con](./quick/260911-s1j-track-row-header-redesign-inline-row-con/) |
 | 260911-jy4 | Close Phase 51 verification gap — AUD-01..04 | 2026-09-11 | 41d4235e | [260911-jy4-close-phase-51-verification-gap-aud-01-0](./quick/260911-jy4-close-phase-51-verification-gap-aud-01-0/) |
 | 260911-sli | Surface armed solo on the track row — standing badge + chip bound to the document solo flag; folds the pending 260911-g1g hide/solo native UAT | 2026-09-11 | 42a22183 | [260911-sli-surface-armed-solo-on-the-track-row](./quick/260911-sli-surface-armed-solo-on-the-track-row/) |
+| 260913-05k | P0 fix: route .mce package file IO through Rust commands (layer write/read + staging discard; plugin-fs restriction on package paths) + blocking save/open failure modal. Native UAT OWED | 2026-09-13 | 99aa5f2d | [260913-05k-p0-fix-route-mce-package-file-io-through](./quick/260913-05k-p0-fix-route-mce-package-file-io-through/) |
 
 ### Roadmap Evolution
 
@@ -374,6 +375,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T22:05:17.889Z
-Stopped at: Completed 52.2-15-PLAN.md
-Resume file: None
+Last session: 2026-09-13T00:32:00.000Z
+Stopped at: Completed quick 260913-05k (P0 package-IO reroute + failure modal); native UAT owed by the user
+Resume file: .planning/quick/260913-05k-p0-fix-route-mce-package-file-io-through/260913-05k-SUMMARY.md
