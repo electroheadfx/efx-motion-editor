@@ -6,10 +6,10 @@ current_phase: "53"
 current_phase_name: Integrated v1.0.0 Acceptance
 status: pending
 stopped_at: Completed 52.1-07-SUMMARY.md
-last_updated: "2026-09-11T18:32:00.000Z"
+last_updated: "2026-09-12T05:59:00.000Z"
 last_activity: 2026-09-11
-last_activity_desc: "Quick 260911-s1j completed — track-row header redesign (inline controls, ⋯ panel + duplicate retired, orange armed states, document-level interpolation mode); native UAT pending, folds the 260911-sli rows"
-state_head: c372e736
+last_activity_desc: "Quick 260911-s1j closed — native UAT PASSED 2026-09-11 (amended pass, folds the 260911-sli rows); .mce package-format decision locked: Phase 52.2 before 53, autosave quick cancelled"
+state_head: c29d0e5b
 progress:
   total_phases: 10
   completed_phases: 5
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 52.1 (Modern frame runtime + native HD paint (INSERTED)) — COMPLETE
 Plan: 7 of 7
 Status: Closed 2026-09-09
-Last activity: 2026-09-11 — Completed quick task 260911-s1j: Track-row header redesign (inline controls; native UAT pending — folds the 260911-sli badge rows + the 260911-g1g 3-track rows) — supersedes the 260911-sli badge surface
+Last activity: 2026-09-11 — Completed quick task 260911-s1j (native UAT PASSED 2026-09-11 — folds the 260911-sli badge rows + the 260911-g1g 3-track rows) — supersedes the 260911-sli badge surface
 
 Progress: [████████████████████] 49/49 plans ([█████░░░░░] 50%)
 

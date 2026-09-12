@@ -9,7 +9,7 @@ date: 2026-09-11
 
 # Quick 260911-s1j — Track-row header redesign (inline controls)
 
-**Status:** Automated-ready — **NATIVE UAT PENDING (user-run, one combined pass)**. The executor does not claim native UAT passed.
+**Status:** Complete — native UAT **PASSED 2026-09-11** (user-run; user: "c'est ok maintenant, le 'Quick: track-row header redesign (amends the 260911-sli surface).' done et pass").
 
 ## Provenance
 
@@ -89,7 +89,9 @@ Orange armed family (both states): `border-color: #f59e0b; background: rgba(245,
 - The Studio test's duplicate-affordance predicate originally matched the action row's unrelated "Duplicate Frame" control; scoped to expanded header cells.
 - `useRotoInterpolationController.ts` is left on disk (now unwired from the Studio) — removing the module was out of this quick's scope.
 
-## Native UAT — PENDING (user-run, combined pass; supersedes the 260911-sli rows)
+## Native UAT — PASSED 2026-09-11 (user-run, combined pass; supersedes the 260911-sli rows)
+
+Result: PASSED — the user confirmed the amended pass ("c'est ok maintenant … done et pass"). The checklist below is what was run; rows 7–8 were superseded by the follow-up fixes recorded above.
 
 1. Two paint tracks, both holding paint: the composite shows both.
 2. Arm solo on the top track via its inline S (always visible — no panel). Expected: S turns ORANGE immediately; the lower track leaves the preview AND playback; un-solo restores everywhere.
@@ -120,9 +122,9 @@ Amended UAT expectations (supersede rows 7–8 above):
 - The Tools popover has **no Interpolation section / mode dropdown** — the mode is fixed on Frame duplicate (a blend-mode project reopens as Frame duplicate); Key Spacing + Actions remain.
 - A track enabled via its row blend button paints the **orange** armed family, matching the armed S.
 
-Gates: full suite exit 0 — 194 files passed (+2 skipped), **3549 passed**, 0 failed; `tsc --noEmit` exit 0. Native UAT still pending for the amended pass.
+Gates: full suite exit 0 — 194 files passed (+2 skipped), **3549 passed**, 0 failed; `tsc --noEmit` exit 0. Native UAT PASSED for the amended pass (2026-09-11).
 
 ---
 
 *Quick: 260911-s1j-track-row-header-redesign-inline-row-con*
-*Completed: 2026-09-11 (native UAT pending)*
+*Completed: 2026-09-11 — native UAT passed 2026-09-11*
