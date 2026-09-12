@@ -264,7 +264,7 @@ describe('Roto live pixel cache transactions — bounded turns and interruption 
         await gate.promise;
         return `frame-${index}`;
       },
-      commit: (value) => {
+      commit: () => {
         committed.push(index);
       },
     }));

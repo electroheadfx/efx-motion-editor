@@ -129,11 +129,15 @@ describe('stroke-finalization queue', () => {
 
     gates[0].resolve();
     await settle();
+    // The backpressured submit advanced past the slot queue — it is producing
+    // now — but it still waits on its own gate before it can settle.
     expect(produced).toHaveLength(FINALIZATION_TURN_CONCURRENCY + 1);
-    expect(lastSettled).toBe(true);
+    expect(lastSettled).toBe(false);
 
     for (const gate of gates) gate.resolve();
     await settle();
+    await expect(Promise.all(works)).resolves.toEqual(works.map(() => 'committed'));
+    expect(lastSettled).toBe(true);
   });
 
   it('cancels in-flight turns on interrupt so a cancelled turn can never commit', async () => {

@@ -1,4 +1,4 @@
-import { onInteractionIdle, readInteractionIdle, readLastInteractionAt } from '../bridge/gestureIdleScheduler';
+import { createFinalizationQueue } from '../pilot/finalizationQueue';
 
 /**
  * 52.1 (Part 3): a capture produces its capture→encode→commit pipeline only
@@ -17,8 +17,8 @@ import { onInteractionIdle, readInteractionIdle, readLastInteractionAt } from '.
  * slows the main thread from the first stroke): at any quiet shorter than their
  * stroke cadence the save fires between strokes and the next stroke lands in
  * its drain. 6000ms collocates the save only at a LONG genuine stop; save /
- * export / navigation / Apply flush pending captures synchronously via
- * forceFlush, so nothing is ever lost.
+ * export / navigation / Apply flush pending captures synchronously through the
+ * queue's beginFlush + drain, so nothing is ever lost.
  */
 export const CAPTURE_PRODUCE_QUIET_MS = 6000;
 
@@ -70,6 +70,11 @@ export interface RotoLivePixelCacheTransactions {
    * no pending capture for the identity.
    */
   snapshot: (identity: RotoLivePixelIdentityInput) => void;
+  /**
+   * 52.2-14 (D-16): cancels the live produce/commit turns — a cancelled capture
+   * can never commit its pixels (the navigation hook plan 15 wires the callers).
+   */
+  interrupt: () => void;
 }
 
 function identityKey(identity: RotoLivePixelIdentityInput): string {
@@ -96,26 +101,11 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
   // synchronously and stores its result so the pending work reuses it.
   const producers = new Map<string, () => unknown>();
   const snapshots = new Map<string, unknown>();
-  // 52.1 (gesture-idle scheduler): the encode (produce) + apply (commit) of a
-  // stroke capture is deferred to the idle transition so it never overlaps the
-  // next gesture. `forceFlush` is set by the navigation/close/save/export flush
-  // paths, which must run the pending captures synchronously.
-  let forceFlush = false;
-  const idleWaiters = new Set<() => void>();
-  onInteractionIdle(() => {
-    for (const resolve of idleWaiters) resolve();
-    idleWaiters.clear();
-  });
-
-  const waitForIdleOrForce = (): Promise<void> => {
-    if (forceFlush) return Promise.resolve();
-    // Preserve the original macrotask yield (setTimeout 0) when already idle so
-    // the encode never runs on the microtask queue ahead of pending input.
-    if (readInteractionIdle()) return new Promise<void>((resolve) => setTimeout(resolve, 0));
-    return new Promise<void>((resolve) => {
-      idleWaiters.add(resolve);
-    });
-  };
+  // 52.2-14 (D-16): the scheduling — the declared lifecycle gate, the quiet
+  // window and the bounded produce/commit turns — now lives in the pilot queue
+  // (one shared gate instead of this module's private flag set). This module
+  // keeps the per-key revision bookkeeping and the perf samples.
+  const queue = createFinalizationQueue();
 
   const invalidate = (identity: RotoLivePixelIdentityInput) => {
     const key = identityKey(identity);
@@ -141,32 +131,37 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         input.recordPerformance?.({ stage: 'cache-revision-check', category: 'sync-cpu', durationMs: 0, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame, outcome });
         return false;
       };
-      const work = (async () => {
-        // Produce waits for idle AND the quiet window (Part 3): a mid-burst
-        // pause (< CAPTURE_PRODUCE_QUIET_MS) re-enters the loop instead of
-        // starting an encode the next stroke would supersede. forceFlush skips
-        // the window — save/export/navigation/close must drain immediately.
-        for (;;) {
-          await waitForIdleOrForce();
-          if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, input.resolveCurrent())) return reject('stale-before-produce');
-          if (forceFlush) break;
-          const quietFor = performance.now() - readLastInteractionAt();
-          if (quietFor >= CAPTURE_PRODUCE_QUIET_MS) break;
-          await new Promise<void>((resolve) => setTimeout(resolve, CAPTURE_PRODUCE_QUIET_MS - quietFor));
-        }
-        const producerStartedAt = input.recordPerformance ? performance.now() : 0;
-        input.recordPerformance?.({ stage: 'cache-task-handoff', category: 'scheduled-wait', durationMs: producerStartedAt - queuedAt, timestamp: producerStartedAt, mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
-        const snapshot = snapshots.get(key) as Promise<T> | T | undefined;
-        const value = await (snapshot ?? input.produce());
-        input.recordPerformance?.({ stage: 'cache-producer', category: 'async-elapsed', durationMs: performance.now() - producerStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
-        const current = input.resolveCurrent();
-        if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, current)) return reject('stale-before-commit');
-        const commitStartedAt = input.recordPerformance ? performance.now() : 0;
-        const committed = await input.commit(value, current);
-        if (committed === false) return reject('commit-rejected');
-        input.recordPerformance?.({ stage: 'cache-accepted-commit', category: 'sync-cpu', durationMs: performance.now() - commitStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: current.appFrame, outcome: 'accepted' });
-        return true;
-      })();
+      const work = queue
+        .submit({
+          // Produce waits for the machine's drain AND the quiet window (Part 3):
+          // a mid-burst pause (< CAPTURE_PRODUCE_QUIET_MS) re-polls instead of
+          // starting an encode the next stroke would supersede. The flush paths
+          // (save/export/navigation/close) open both immediately.
+          quiescenceMs: CAPTURE_PRODUCE_QUIET_MS,
+          isStillWanted: (stage) => {
+            if (revisions.get(key) === pixelRevision && matchesIdentity(input.identity, input.resolveCurrent())) return true;
+            reject(stage === 'before-produce' ? 'stale-before-produce' : 'stale-before-commit');
+            return false;
+          },
+          produce: async () => {
+            const producerStartedAt = input.recordPerformance ? performance.now() : 0;
+            input.recordPerformance?.({ stage: 'cache-task-handoff', category: 'scheduled-wait', durationMs: producerStartedAt - queuedAt, timestamp: producerStartedAt, mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
+            const snapshot = snapshots.get(key) as Promise<T> | T | undefined;
+            const value = await (snapshot ?? input.produce());
+            input.recordPerformance?.({ stage: 'cache-producer', category: 'async-elapsed', durationMs: performance.now() - producerStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
+            return value;
+          },
+          commit: async (value) => {
+            const current = input.resolveCurrent();
+            if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, current)) return reject('stale-before-commit');
+            const commitStartedAt = input.recordPerformance ? performance.now() : 0;
+            const committed = await input.commit(value, current);
+            if (committed === false) return reject('commit-rejected');
+            input.recordPerformance?.({ stage: 'cache-accepted-commit', category: 'sync-cpu', durationMs: performance.now() - commitStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: current.appFrame, outcome: 'accepted' });
+            return true;
+          },
+        })
+        .then((outcome) => outcome === 'committed');
       pending.set(key, work);
       const clearPending = () => {
         // A superseded capture must never touch the LIVE capture's entries:
@@ -195,17 +190,15 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
     },
     revision: (identity) => revisions.get(identityKey(identity)) ?? 0,
     async flush(identity) {
-      forceFlush = true;
-      for (const resolve of idleWaiters) resolve();
-      idleWaiters.clear();
+      const release = queue.beginFlush();
       try {
         if (identity) {
           await pending.get(identityKey(identity));
           return;
         }
-        await Promise.all(pending.values());
+        await queue.drain();
       } finally {
-        forceFlush = false;
+        release();
       }
     },
     hasPending: (identity) => identity ? pending.has(identityKey(identity)) : pending.size > 0,
@@ -215,6 +208,9 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
       const produce = producers.get(key);
       if (!produce) return;
       snapshots.set(key, produce());
+    },
+    interrupt() {
+      queue.interrupt();
     },
   };
 }
