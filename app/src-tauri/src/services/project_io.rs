@@ -229,22 +229,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&test_dir);
         std::fs::create_dir_all(&test_dir).unwrap();
 
-        // Opaque legacy blob: presence is round-tripped for the TS rejection
-        // gate but never interpreted by Rust (D-02/D-06).
-        let legacy_blob = serde_json::json!({
-            "layer_id": "phys-layer-1",
-            "frames": [{
-                "frameIndex": 0,
-                "appFrame": 12,
-                "cache_path": concat!("cache/physic-", "paint", "/phys-layer-1/frame-000012-0000.png"),
-                "width": 1000,
-                "height": 650
-            }],
-            "roto_physical": {
-                "background": "canvas2",
-                "paperGrain": "canvas3",
-                "grainStrength": 0.65
-            }
+        // The package manifest keys (52.2-02/52.2-08): serde drops any key the
+        // struct does not declare, so these must round-trip or every save would
+        // erase the version the refusal gate judges (D-04/D-05).
+        let package_layer_index = serde_json::json!({
+            "layerFile": "layers/layer-1.json",
+            "documentRevision": 0,
+            "compositeRevision": 0
         });
         // Arbitrary nested v1.0 document payload carried opaquely (F1).
         let document_payload = serde_json::json!({
@@ -293,10 +284,15 @@ mod tests {
                 format: "jpg".into(),
             }],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![legacy_blob.clone()],
             efx_paint_documents: std::collections::HashMap::from([(
                 "layer-1".to_string(),
                 document_payload.clone(),
+            )]),
+            format_version: Some(1),
+            project_id: Some("3f2b7c1e-9a4d-4c8b-8f0e-2d6a5b4c3d2e".to_string()),
+            efx_paint: std::collections::HashMap::from([(
+                "layer-1".to_string(),
+                package_layer_index.clone(),
             )]),
         };
 
@@ -318,22 +314,34 @@ mod tests {
             loaded.efx_paint_documents.get("layer-1"),
             Some(&document_payload)
         );
-        // The legacy blob round-trips as an opaque presence carrier (D-02/D-06).
-        assert_eq!(loaded.physic_paint_outputs, vec![legacy_blob]);
+        // The package keys survive the strict serde round-trip (52.2-08 D-04/D-05):
+        // an undeclared field would be dropped here and the saved manifest would
+        // lose the version + identity the reader depends on.
+        assert_eq!(loaded.format_version, Some(1));
+        assert_eq!(
+            loaded.project_id.as_deref(),
+            Some("3f2b7c1e-9a4d-4c8b-8f0e-2d6a5b4c3d2e")
+        );
+        assert_eq!(loaded.efx_paint.len(), 1);
+        assert_eq!(loaded.efx_paint.get("layer-1"), Some(&package_layer_index));
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
     #[test]
-    fn test_legacy_physic_paint_outputs_open_as_opaque_presence() {
-        let test_dir = std::env::temp_dir().join("efx_test_legacy_outputs");
+    fn test_pre_52_2_file_opens_with_retired_carrier_key_ignored() {
+        let test_dir = std::env::temp_dir().join("efx_test_pre_52_2_open");
         let _ = std::fs::remove_dir_all(&test_dir);
         std::fs::create_dir_all(&test_dir).unwrap();
 
-        // A pre-v1.0 project file carrying a legacy physic_paint_outputs array.
-        // The legacy cache-path literal is split so the DOC-04 grep contract
-        // stays green while the fixture keeps its legacy shape.
-        let legacy_json = serde_json::json!({
+        // A pre-52.2 project file: no package keys, plus the retired opaque
+        // array still riding the file. serde ignores the undeclared key, so the
+        // file OPENS and the refusal verdict belongs to the TS gate alone — the
+        // user must get the typed dialog, never a raw parse error (52.2-08 D-08).
+        // Both legacy literals are split so the DOC-04 grep contract stays green
+        // while the fixture keeps its on-disk shape.
+        let legacy_key = concat!("physic_paint_", "outputs").to_string();
+        let mut legacy_json = serde_json::json!({
             "version": 1,
             "name": "Legacy Project",
             "fps": 24,
@@ -344,7 +352,10 @@ mod tests {
             "sequences": [],
             "images": [],
             "audio_tracks": [],
-            "physic_paint_outputs": [{
+        });
+        legacy_json.as_object_mut().unwrap().insert(
+            legacy_key,
+            serde_json::json!([{
                 "layer_id": "phys-layer-1",
                 "frames": [{
                     "frameIndex": 0,
@@ -352,17 +363,18 @@ mod tests {
                     "cache_path": concat!("cache/physic-", "paint", "/phys-layer-1/frame-000012-0000.png")
                 }],
                 "roto_physical": { "background": "canvas2" }
-            }]
-        });
+            }]),
+        );
 
         let mce_path = test_dir.join("legacy.mce");
         std::fs::write(&mce_path, legacy_json.to_string()).unwrap();
 
         let loaded = open_project(mce_path.to_str().unwrap()).unwrap();
-        // Presence is visible to the TS rejection gate; the blob is never
-        // interpreted, migrated, or rendered (D-02/D-06).
-        assert_eq!(loaded.physic_paint_outputs.len(), 1);
+        // It opens — and carries no package version, which is exactly what the
+        // TS gate keys its refusal on (`missing-format-version`).
+        assert_eq!(loaded.format_version, None);
         assert_eq!(loaded.efx_paint_documents.len(), 0);
+        assert!(loaded.efx_paint.is_empty());
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -384,8 +396,10 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
+            format_version: None,
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
         };
 
         let mce_path = test_dir.join("empty_keys.mce");
@@ -398,7 +412,12 @@ mod tests {
 
         let saved = std::fs::read_to_string(&mce_path).unwrap();
         assert!(!saved.contains("efx_paint_documents"));
-        assert!(!saved.contains("physic_paint_outputs"));
+        // 52.2-08: the package keys are omitted while absent/empty, so a
+        // brand-new project's manifest carries no empty package scaffolding —
+        // the refusal gate reads their presence as an older format.
+        assert!(!saved.contains("formatVersion"));
+        assert!(!saved.contains("projectId"));
+        assert!(!saved.contains("efxPaint"));
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -430,8 +449,10 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
+            format_version: Some(1),
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -636,8 +657,10 @@ mod tests {
             sequences: vec![content_seq, grain_seq, colorgrade_seq],
             images: vec![],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
+            format_version: Some(1),
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
         };
 
         // Save

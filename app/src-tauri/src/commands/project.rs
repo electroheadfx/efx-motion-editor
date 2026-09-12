@@ -55,8 +55,12 @@ pub fn project_create(
         sequences: vec![],
         images: vec![],
         audio_tracks: vec![],
-        physic_paint_outputs: vec![],
         efx_paint_documents: std::collections::HashMap::new(),
+        // A brand-new project carries no package keys yet: the first save
+        // stamps `formatVersion` + `projectId` + `efxPaint` (52.2-07).
+        format_version: None,
+        project_id: None,
+        efx_paint: std::collections::HashMap::new(),
     })
 }
 

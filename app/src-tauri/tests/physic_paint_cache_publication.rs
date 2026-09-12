@@ -1268,8 +1268,10 @@ fn manifest_project(name: &str) -> MceProject {
         sequences: vec![],
         images: vec![],
         audio_tracks: vec![],
-        physic_paint_outputs: vec![],
         efx_paint_documents: std::collections::HashMap::new(),
+        format_version: None,
+        project_id: None,
+        efx_paint: std::collections::HashMap::new(),
     }
 }
 

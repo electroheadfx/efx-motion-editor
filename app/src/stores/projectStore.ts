@@ -32,7 +32,7 @@ import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
 import {loadEfxPaintDocuments, savePackage} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
 import {isProjectId} from '../lib/efxPaintPackage';
-import {findLegacyPhysicPaintRejection} from '../efx-paint/document/efxPaintCleanBreak';
+import {findPackageFormatRejection} from '../efx-paint/document/efxPaintCleanBreak';
 import {showLegacyPhysicPaintRejectionDialog} from '../lib/efxPaintRejectionDialog';
 import {
   registerDocument as registerEfxPaintDocument,
@@ -416,9 +416,9 @@ function buildMceProject(): RuntimeMceProject {
       preview_quality: motionBlurStore.previewQuality.peek(),
       export_sub_frames: exportStore.motionBlurSubFrames.peek(),
     },
-    // v1.0: EFX Paint documents are persisted by the save funnel through
-    // saveEfxPaintDocumentsWithProjectWrite; buildMceProject never emits the
-    // legacy physic_paint_outputs carrier (T-45-18, one save path only).
+    // v1.0: EFX Paint documents are persisted by the package save funnel
+    // (savePackage), never by this builder — buildMceProject emits only the
+    // main-editor fields the manifest is built from (D-04, one save path only).
   };
 }
 
@@ -662,10 +662,10 @@ function hydrateFromMce(
     exportStore.setMotionBlurSubFrames(mb?.export_sub_frames ?? 8);
 
     // 6. v1.0 EFX Paint documents: register each into efxPaintStore and
-    //    project its default track into the runtime maps (DOC-05). The legacy
-    //    physic_paint_outputs carrier is never read: the rejection gate
-    //    refuses non-empty carriers before hydration and the Rust side omits
-    //    the empty field, so the runtime project never carries it.
+    //    project its default track into the runtime maps (DOC-05). A pre-52.2
+    //    project never reaches this point — the refusal gate rejects a manifest
+    //    without the current `formatVersion` before hydration (52.2-08) — so
+    //    the documents loaded here always come from the package sub-files.
     for (const [, loaded] of loadedDocuments) {
       registerEfxPaintDocument(loaded.document);
       hydrateEfxPaintRuntimeFromDocument(loaded.document, loaded.frames);
@@ -916,11 +916,13 @@ export const projectStore = {
       throw new Error(result.error);
     }
 
-    // Clean-break gate (D-05/D-07): refuse pre-v1.0 EFX Physic Paint projects
-    // before any sidecar IO, store mutation, or auto-save (Pitfall F4). The
-    // gate is a pure scan over the raw parsed JSON; on rejection the blocking
-    // no-recourse dialog is shown and openProject returns with zero mutation.
-    const rejection = findLegacyPhysicPaintRejection(result.data);
+    // Clean-break gate (D-08): refuse pre-52.2 projects before any sidecar IO,
+    // store mutation, or auto-save (Pitfall F4) — this position IS the
+    // mitigation, moving it reproduces the Phase 45 hybrid-state failure. The
+    // gate is a pure, non-throwing scan over the raw parsed manifest keyed on
+    // `formatVersion` (52.2-08); on rejection the blocking no-recourse dialog
+    // is shown and openProject returns with zero mutation.
+    const rejection = findPackageFormatRejection(result.data, { pathKind: 'directory' });
     if (rejection) {
       await showLegacyPhysicPaintRejectionDialog(rejection);
       return;
