@@ -152,7 +152,7 @@ import {
 import type { RailSetDeleteMember } from '../../../types/physicPaint';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
-  loadEfxPaintDocuments,
+  loadEfxPaintPackage,
   savePackage,
   settlePackageFileTokens,
   type EfxPaintDocumentSaveInput,
@@ -161,10 +161,30 @@ import { buildFrameMediaRelativePath, buildLayerFileRelativePath } from '../../.
 import type { MceProject } from '../../../types/project';
 
 /**
+ * Load one published layer back through the 52.2 package loader (52.2-09):
+ * the manifest's `efxPaint` index is the only layer source, and the sub-file
+ * reaches the loader from the in-memory package the save just wrote.
+ */
+function loadPersistedLayer(projectDir: string, layerId: string) {
+  return loadEfxPaintPackage({
+    packageDir: projectDir,
+    manifest: {
+      efxPaint: {
+        [layerId]: {
+          layerFile: buildLayerFileRelativePath(layerId),
+          documentRevision: '0',
+          compositeRevision: '0',
+        },
+      },
+    },
+    machineCacheRoot: null,
+  });
+}
+
+/**
  * Save one layer through the package write and read its PUBLISHED sub-file
- * back as the payload map `loadEfxPaintDocuments` takes. The derived-frame
- * cache leg is off (no cache root): this suite is about the authoritative
- * layer document.
+ * back as the saved shape. The derived-frame cache leg is off (no cache
+ * root): this suite is about the authoritative layer document.
  */
 async function saveProjectedDocuments(
   projectDir: string,
@@ -476,8 +496,8 @@ describe('Group parity persistence matrix', () => {
       frames: new Map(),
     }]]);
 
-    const persisted = await saveProjectedDocuments('/project', 'parity-layer', documents);
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
+    await saveProjectedDocuments('/project', 'parity-layer', documents);
+    const hydrated = await loadPersistedLayer('/project', 'parity-layer');
     const restored = hydrated.get('parity-layer')?.document.tracks[0].rotoPhysical;
 
     expect(restored?.loopClips).toEqual(document.loopClips);

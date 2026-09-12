@@ -90,17 +90,6 @@ function testProject(): MceProject {
   };
 }
 
-function readJsonFile(path: string): Record<string, unknown> {
-  const bytes = files.get(path);
-  if (bytes === undefined) throw new Error(`missing file: ${path}`);
-  return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-}
-
-/** The PUBLISHED `layers/<layerId>.json` of the package under test. */
-function readLayerFile(packageDir: string, layerId: string): Record<string, unknown> {
-  return readJsonFile(`${packageDir}/${buildLayerFileRelativePath(layerId)}`);
-}
-
 /** A manifest with a layer index over the given layer ids (D-04). */
 function manifestFor(layerIds: readonly string[]): Record<string, unknown> {
   return {

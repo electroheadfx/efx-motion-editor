@@ -29,7 +29,7 @@ import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {recordPhysicsPaintPerformance} from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
-import {loadEfxPaintDocuments, savePackage} from '../lib/efxPaintPersistence';
+import {loadEfxPaintPackage, savePackage} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
 import {isProjectId} from '../lib/efxPaintPackage';
 import {findPackageFormatRejection} from '../efx-paint/document/efxPaintCleanBreak';
@@ -85,14 +85,19 @@ function rotateProjectId(): void {
 }
 
 /**
- * The machine-local derived-frame cache root for the current package
+ * The machine-local derived-frame cache root for one package identity
  * (`<app_data_dir>/frame-cache/<projectId>`). Best-effort by contract (D-14):
  * a resolution failure returns null, the save skips the whole cache leg, and
  * the authoritative package save still commits.
  */
-async function resolveCacheRoot(): Promise<string | null> {
-  const result = await resolvePhysicPaintCacheRoot(projectId.value);
+async function resolveCacheRootFor(cacheProjectId: string): Promise<string | null> {
+  const result = await resolvePhysicPaintCacheRoot(cacheProjectId);
   return result.ok ? result.data : null;
+}
+
+/** The cache root of the CURRENTLY open package. */
+async function resolveCacheRoot(): Promise<string | null> {
+  return resolveCacheRootFor(projectId.value);
 }
 
 async function publishScriptLibraryContext(): Promise<void> {
@@ -928,11 +933,24 @@ export const projectStore = {
       return;
     }
 
-    // Load the v1.0 EFX Paint documents (validated by the fail-closed parser,
-    // sidecar PNGs read back through the guarded plugin-fs idiom) before
-    // replacing the currently open project.
+    // Load the v1.0 EFX Paint package (52.2-09 D-13) before replacing the
+    // currently open project: the manifest's `efxPaint` index is the only layer
+    // source, every layer sub-file passes the fail-closed reference-only
+    // parser, and the returned documents carry media references with no pixel
+    // bytes (the frames map is empty until the compositor decodes on demand).
     const projectRoot = openFilePath.substring(0, openFilePath.lastIndexOf('/'));
-    const loadedDocuments = await loadEfxPaintDocuments(projectRoot, result.data.efx_paint_documents);
+    // Adopt the package's own identity (D-05) BEFORE the load, because the
+    // loader recomputes each derived-frame location against the machine cache
+    // root of THIS package. A manifest without a usable `projectId` (a pre-52.2
+    // project, which plan 08's gate refuses before this point) mints a fresh
+    // one: a brand-new cache root is the fail-closed default, never another
+    // package's cache.
+    const nextProjectId = isProjectId(result.data.projectId) ? result.data.projectId : crypto.randomUUID();
+    const loadedDocuments = await loadEfxPaintPackage({
+      packageDir: projectRoot,
+      manifest: result.data,
+      machineCacheRoot: await resolveCacheRootFor(nextProjectId),
+    });
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
     };
@@ -941,12 +959,7 @@ export const projectStore = {
     batch(() => {
       filePath.value = openFilePath;
       dirPath.value = projectRoot;
-      // Adopt the package's own identity (D-05) so the derived-frame cache root
-      // this session resolves is the one the package was written against. A
-      // manifest without a usable `projectId` (a pre-52.2 project, which plan
-      // 08's gate refuses before this point) mints a fresh one: a brand-new
-      // cache root is the fail-closed default, never another package's cache.
-      projectId.value = isProjectId(result.data.projectId) ? result.data.projectId : crypto.randomUUID();
+      projectId.value = nextProjectId;
     });
 
     hydrateFromMce(runtimeProject, projectRoot, loadedDocuments);

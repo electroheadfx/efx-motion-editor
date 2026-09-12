@@ -31,7 +31,7 @@
  * ASVS V12).
  */
 
-import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import {
@@ -74,6 +74,7 @@ import {
   EFX_PAINT_LAYERS_DIR,
   EFX_PAINT_MACHINE_CACHE_DIR,
   isSafeMachineCacheRelativePath,
+  isSafePackageRelativePath,
   resolveMachineCachePath,
   type EfxPaintLayerIndexEntry,
   type EfxPaintPackageManifest,
@@ -1157,57 +1158,6 @@ export async function savePackage(
 }
 
 /**
- * Load the persisted layerId → document map. Every document passes the
- * fail-closed parser before any store hydration (T-45-13); every sidecar path
- * is guarded by `isSafeMachineCacheRelativePath` (T-45-11, T-46-04). D-08: the load
- * is refs-only — each frame carries its canonical `cachePath` ref with empty
- * bytes, and the decode path fetches the WebP sidecar on demand (never an
- * eager per-frame readFile on open). Frame refs are carried per track
- * (trackId → appFrame → frame) so two tracks may own frames at the same
- * appFrame without collision (46-02, TRK-03). Returns an empty map when the
- * key is absent.
- */
-export async function loadEfxPaintDocuments(
-  _projectRoot: string,
-  persistedMap: Record<string, unknown> | undefined,
-): Promise<ReadonlyMap<string, EfxPaintLoadedDocument>> {
-  const loaded = new Map<string, EfxPaintLoadedDocument>();
-  if (persistedMap === undefined) return loaded;
-  if (!isPlainRecord(persistedMap)) {
-    throw new Error('EFX Paint documents must be a record.');
-  }
-  for (const [layerId, value] of Object.entries(persistedMap)) {
-    // 52.2-02 (D-07, Law 1): this is the on-disk READ door, so it selects the
-    // persisted payload mode — a layer sub-file carrying an inline raster
-    // payload in either roto collection is refused here. Every other caller of
-    // `parseEfxPaintDocument` validates a live in-memory document and keeps the
-    // 'runtime' default.
-    const document = parseEfxPaintDocument(value, 'reference-only');
-    const frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
-    for (const track of document.tracks) {
-      const trackFrames = new Map<number, PhysicPaintRenderedFrame>();
-      for (const [frameNumber, ref] of Object.entries(track.frames)) {
-        const appFrame = Number(frameNumber);
-        if (!isSafeMachineCacheRelativePath(ref.cachePath)) {
-          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has an unsafe sidecar path.`);
-        }
-        trackFrames.set(appFrame, {
-          frameIndex: 0,
-          appFrame,
-          bytes: new Uint8Array(0),
-          cachePath: ref.cachePath,
-          width: ref.width,
-          height: ref.height,
-        });
-      }
-      frames.set(track.id, trackFrames);
-    }
-    loaded.set(layerId, { document, frames, cacheLocations: new Map() });
-  }
-  return loaded;
-}
-
-/**
  * The package load input (52.2-09 Task 2, D-13).
  *
  * `manifest` is the parsed `project.mce` the open leg already holds, typed
@@ -1227,10 +1177,91 @@ export interface EfxPaintPackageLoadInput {
   readonly machineCacheRoot: string | null;
 }
 
-export async function loadEfxPaintPackage(
-  _input: EfxPaintPackageLoadInput,
-): Promise<ReadonlyMap<string, EfxPaintLoadedDocument>> {
-  // RED stub (52.2-09 Task 2): returns an empty map so every new case fails on
-  // its own assertion. Replaced by the real manifest walk in the GREEN commit.
-  return new Map();
+/**
+ * Read one layer sub-file's `layerFile` value out of the manifest's `efxPaint`
+ * index (52.2-09, T-52.2-30). The manifest is Rust-authored data, so the index
+ * is validated rather than trusted through a type: an absent or non-record
+ * `efxPaint` member means "no layers" (a layer-less package opens), while a
+ * present-but-malformed one is refused instead of silently dropped.
+ */
+function readPackageLayerIndex(manifest: unknown): Record<string, unknown> {
+  if (!isPlainRecord(manifest)) {
+    throw new Error('EFX Paint package: the manifest must be a record.');
+  }
+  const index = manifest.efxPaint;
+  if (index === undefined) return {};
+  if (!isPlainRecord(index)) {
+    throw new Error('EFX Paint package: the manifest layer index must be a record.');
+  }
+  return index;
 }
+
+/**
+ * Load a v1.0 package's paint layers (52.2-09 Task 2, D-13): walk the manifest's
+ * `efxPaint` index, read each `layers/<layerId>.json` and return the documents
+ * as persisted — references only, in BOTH roto collections.
+ *
+ * The read is REFS-ONLY by contract: no raster payload is decoded here, no
+ * placeholder buffer is invented (`frames` comes back empty — a
+ * `PhysicPaintRenderedFrame` requires `bytes` and the package carries none,
+ * D-07), and no derived-frame cache FILE is ever read (D-14). Each persisted
+ * machine-RELATIVE cache reference is guarded by
+ * `isSafeMachineCacheRelativePath` and its machine-local location recomputed
+ * with `resolveMachineCachePath` against the root the session resolved (D-05) —
+ * the loader never constructs that root, and an absent cache file is not an
+ * error because the frame re-derives.
+ *
+ * Fail-closed ordering matters (T-52.2-30): every index entry passes
+ * `isSafePackageRelativePath` plus a `layers/` prefix requirement BEFORE any
+ * filesystem call, so a crafted manifest can neither traverse out of the layer
+ * directory nor probe the filesystem with a rejected path.
+ */
+export async function loadEfxPaintPackage(
+  input: EfxPaintPackageLoadInput,
+): Promise<ReadonlyMap<string, EfxPaintLoadedDocument>> {
+  const loaded = new Map<string, EfxPaintLoadedDocument>();
+  const layerIndex = readPackageLayerIndex(input.manifest);
+  for (const [layerId, entry] of Object.entries(layerIndex)) {
+    const layerFile = isPlainRecord(entry) ? entry.layerFile : undefined;
+    if (
+      !isSafePackageRelativePath(layerFile)
+      || !layerFile.startsWith(`${EFX_PAINT_LAYERS_DIR}/`)
+    ) {
+      throw new Error(`EFX Paint package: layer "${layerId}" has an unsafe layer file path.`);
+    }
+    const layerPath = `${input.packageDir}/${layerFile}`;
+    if (!(await exists(layerPath))) {
+      throw new Error(`EFX Paint package: layer "${layerId}" is missing its layer file "${layerFile}".`);
+    }
+    const bytes = await readFile(layerPath);
+    let value: unknown;
+    try {
+      value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    } catch {
+      throw new Error(`EFX Paint package: layer "${layerId}" has an unreadable layer file.`);
+    }
+    // 52.2-02 (D-07, Law 1): this is the on-disk READ door, so it selects the
+    // persisted payload mode — a layer sub-file carrying an inline raster
+    // payload in either roto collection is refused here, and the runtime parser
+    // keeps the 'runtime' default everywhere else.
+    const document = parseEfxPaintDocument(value, 'reference-only');
+    const cacheLocations = new Map<string, Map<number, string>>();
+    for (const track of document.tracks) {
+      const trackLocations = new Map<number, string>();
+      for (const [frameNumber, ref] of Object.entries(track.frames)) {
+        const appFrame = Number(frameNumber);
+        if (!isSafeMachineCacheRelativePath(ref.cachePath)) {
+          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has an unsafe sidecar path.`);
+        }
+        const location = input.machineCacheRoot === null
+          ? null
+          : resolveMachineCachePath(input.machineCacheRoot, ref.cachePath);
+        if (location !== null) trackLocations.set(appFrame, location);
+      }
+      if (trackLocations.size > 0) cacheLocations.set(track.id, trackLocations);
+    }
+    loaded.set(layerId, { document, frames: new Map(), cacheLocations });
+  }
+  return loaded;
+}
+

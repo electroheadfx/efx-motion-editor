@@ -142,7 +142,7 @@ import { proposePhysicPaintRotoGroupFramePaint } from './physicsPaintRotoGroupLi
 import { isPhysicPaintRotoPhysicalEditApplyPayload } from '../../../types/physicPaint';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
-  loadEfxPaintDocuments,
+  loadEfxPaintPackage,
   savePackage,
   settlePackageFileTokens,
   type EfxPaintDocumentSaveInput,
@@ -798,10 +798,10 @@ function testProject(): MceProject {
 }
 
 /**
- * Save through the package write and read back the PUBLISHED layer sub-files
- * as the payload map `loadEfxPaintDocuments` takes. The derived-frame cache
- * leg is off here (no cache root): these cases are about the authoritative
- * layer document, and the machine cache is its own best-effort leg.
+ * Save through the package write and read back the PUBLISHED layer sub-files.
+ * The derived-frame cache leg is off here (no cache root): these cases are
+ * about the authoritative layer document, and the machine cache is its own
+ * best-effort leg.
  */
 async function saveDocuments(
   projectDir: string,
@@ -820,6 +820,39 @@ async function saveDocuments(
     payload[layerId] = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
   }
   return payload;
+}
+
+/**
+ * Load one published layer back through the 52.2 package loader (52.2-09): the
+ * manifest's `efxPaint` index is the only layer source, and the sub-file
+ * reaches the loader from the in-memory package the save just wrote.
+ */
+function loadPersistedLayer(projectDir: string, layerId: string) {
+  return loadEfxPaintPackage({
+    packageDir: projectDir,
+    manifest: {
+      efxPaint: {
+        [layerId]: {
+          layerFile: buildLayerFileRelativePath(layerId),
+          documentRevision: '0',
+          compositeRevision: '0',
+        },
+      },
+    },
+    machineCacheRoot: null,
+  });
+}
+
+/**
+ * Rewrite one published sub-file in the in-memory package before a load, for
+ * the cases that perturb the persisted shape (a member removed, a malformed
+ * value) rather than saving it.
+ */
+function rewriteLayerFile(projectDir: string, layerId: string, value: unknown): void {
+  files.set(
+    `${projectDir}/${buildLayerFileRelativePath(layerId)}`,
+    new TextEncoder().encode(JSON.stringify(value)),
+  );
 }
 
 describe('v1.0 document persistence loopClips save/reopen', () => {
@@ -857,14 +890,14 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
       'placementStart', 'provenanceState', 'repeat', 'sourceKeyIds', 'syncState', 'visibleRanges',
     ]);
 
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
     expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([canonical]);
   });
 
   it('saves and reopens a duplicated linked loop with placement independent from source location', async () => {
     const duplicate = { ...baseLoop(), loopId: 'loop-dup', placementStart: 40 };
-    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([duplicate])));
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
+    await saveDocuments('/project', runtimeOutput(baseDocument([duplicate])));
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
     expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([proposedGroup({
       loopId: 'loop-dup',
       placementStart: 40,
@@ -880,17 +913,21 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
     // term, so the legacy revision stays canonical (D-29, no migration).
     const persisted = await saveDocuments('/project', runtimeOutput(baseDocument()));
     const legacy = jsonRoundTrip(persisted) as typeof persisted;
-    const legacyDocument = (legacy['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical;
-    delete legacyDocument.loopClips;
+    // The sub-file IS the document (never a layerId-keyed map): the rewritten
+    // file must be the layer document itself, or the load fails on the schema
+    // rather than reaching the loopClips-absent path this case exercises.
+    const legacyLayer = legacy['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> };
+    delete legacyLayer.tracks[0].rotoPhysical.loopClips;
+    rewriteLayerFile('/project', 'physic-layer-1', legacyLayer);
 
-    const hydrated = await loadEfxPaintDocuments('/project', legacy);
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
     expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([]);
   });
 
   it('preserves dangling source keyIds verbatim through save and reopen', async () => {
     const dangling = { ...baseLoop(), sourceKeyIds: ['ghost-1', 'ghost-2'] };
-    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([dangling])));
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
+    await saveDocuments('/project', runtimeOutput(baseDocument([dangling])));
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
     expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([{
       ...dangling,
       syncState: 'synchronized',
@@ -904,20 +941,24 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
 
   it('round-trips the infinity repeat state as the explicit string', async () => {
     const infinite = { ...baseLoop(), repeat: 'infinity' as const };
-    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([infinite])));
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
+    await saveDocuments('/project', runtimeOutput(baseDocument([infinite])));
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
     expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips[0].repeat).toBe('infinity');
   });
 
   it('fails closed on a structurally malformed persisted loopClips member', async () => {
     const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([baseLoop()])));
     const malformed = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    (malformed['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical.loopClips = 'loops';
-    await expect(loadEfxPaintDocuments('/project', malformed)).rejects.toThrow();
+    const malformedLayer = malformed['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> };
+    malformedLayer.tracks[0].rotoPhysical.loopClips = 'loops';
+    rewriteLayerFile('/project', 'physic-layer-1', malformedLayer);
+    await expect(loadPersistedLayer('/project', 'physic-layer-1')).rejects.toThrow();
 
     const malformedRecord = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    (malformedRecord['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical.loopClips = [{ ...baseLoop(), canonicalStart: 0 }];
-    await expect(loadEfxPaintDocuments('/project', malformedRecord)).rejects.toThrow();
+    const malformedRecordLayer = malformedRecord['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> };
+    malformedRecordLayer.tracks[0].rotoPhysical.loopClips = [{ ...baseLoop(), canonicalStart: 0 }];
+    rewriteLayerFile('/project', 'physic-layer-1', malformedRecordLayer);
+    await expect(loadPersistedLayer('/project', 'physic-layer-1')).rejects.toThrow();
   });
 });
 

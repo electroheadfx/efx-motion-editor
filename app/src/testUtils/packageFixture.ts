@@ -120,7 +120,7 @@ export function createPackageFixture(label: string): PackageFixture {
   const projectId = crypto.randomUUID();
 
   // --- The `images/` assets (D-06 Law-1): real files, referenced by id ------
-  const imageAssets: MceImageRef[] = ['asset-a', 'asset-b', 'asset-c'].map((name, index) => ({
+  const imageAssets: MceImageRef[] = ['asset-a', 'asset-b', 'asset-c'].map((name) => ({
     id: `${label}-${name}`,
     original_filename: `${name}.webp`,
     relative_path: `images/${label}-${name}.webp`,

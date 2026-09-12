@@ -11,9 +11,9 @@
  * Task 3 (creation): AddFxMenu registers one spec-shaped document per
  * physic-paint layer (DOC-01/DOC-02).
  *
- * The ipc / dialog / fs modules are mocked at their Tauri boundary and the
- * loader is mocked for the open leg; the real persistence funnel and the real
- * stores run, so what this suite asserts is what the app writes.
+ * The ipc / dialog / fs modules are mocked at their Tauri boundary; the real
+ * persistence funnel (save AND the 52.2-09 package loader) and the real stores
+ * run, so what this suite asserts is what the app writes and reads back.
  */
 
 import { createHash } from 'node:crypto';
@@ -26,8 +26,7 @@ import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { findPackageFormatRejection } from '../efx-paint/document/efxPaintCleanBreak';
 import { LEGACY_PHYSIC_PAINT_REJECTED_COPY } from '../lib/efxPaintRejectionDialog';
 import { settlePackageFileTokens } from '../lib/efxPaintPersistence';
-import type { EfxPaintLoadedDocument } from '../lib/efxPaintPersistence';
-import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
+import { buildFrameMediaRelativePath, buildLayerFileRelativePath, buildMachineCacheRelativePath } from '../lib/efxPaintPackage';
 import type { EfxPaintPackageManifest } from '../lib/efxPaintPackage';
 import type { MceProject } from '../types/project';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
@@ -81,7 +80,6 @@ const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const loadPhysicPaintData = vi.hoisted(() => vi.fn());
-const loadEfxPaintDocuments = vi.hoisted(() => vi.fn());
 const prepareRotoPhysicalDocumentPngs = vi.hoisted(() => vi.fn());
 const startAutoSave = vi.hoisted(() => vi.fn());
 const stopAutoSave = vi.hoisted(() => vi.fn());
@@ -120,13 +118,9 @@ vi.mock('../lib/ipc', () => ({
   settleEfxPaintPackageTransaction,
 }));
 
-// Keep the real module — 52.2-07 Task 3 exercises the REAL `savePackage` — and
-// override only the loader the open leg takes.
-vi.mock('../lib/efxPaintPersistence', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/efxPaintPersistence')>()),
-  loadEfxPaintDocuments,
-}));
-
+// Keep the real module: 52.2-07 Task 3 exercises the REAL `savePackage`, and
+// since 52.2-09 the open leg takes the REAL `loadEfxPaintPackage` over the same
+// in-memory package filesystem.
 vi.mock('../components/physic-paint/roto/rotoCanvasFrames', () => ({
   prepareRotoPhysicalDocumentPngs,
 }));
@@ -416,7 +410,7 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
     sequenceStore.reset();
     ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
     loadPhysicPaintData.mockResolvedValue([]);
-    loadEfxPaintDocuments.mockResolvedValue(new Map());
+    ipcResolvePhysicPaintCacheRoot.mockResolvedValue({ ok: true, data: CACHE_ROOT });
     prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
     ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
     ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
@@ -473,7 +467,9 @@ describe('45-05 Task 1: clean-break rejection gate in openProject', () => {
 
     expect(dialogMessage).not.toHaveBeenCalled();
     expect(projectStore.closeProject).toHaveBeenCalledTimes(1);
-    expect(loadEfxPaintDocuments).toHaveBeenCalledTimes(1);
+    // A manifest with an empty `efxPaint` index reads no layer sub-file at all
+    // (52.2-09): the open installs zero documents rather than probing disk.
+    expect(fsReadFile).not.toHaveBeenCalled();
     expect(startAutoSave).toHaveBeenCalledTimes(1);
     expect(ipcScriptLibraryBindSavedProject).toHaveBeenCalledTimes(1);
     expect(addRecentProject).toHaveBeenCalledTimes(1);
@@ -598,22 +594,11 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
     installPackageTransactionMocks();
     installCacheLegMocks();
-    loadEfxPaintDocuments.mockImplementation(
-      async (_projectId: string, persistedMap: Record<string, unknown> | undefined) => {
-        const loaded = new Map<string, EfxPaintLoadedDocument>();
-        if (!persistedMap) return loaded;
-        for (const [layerId, value] of Object.entries(persistedMap)) {
-          const document = value as EfxPaintDocument;
-          loaded.set(layerId, {
-            document,
-            // 46-02: the load carrier is per-track (trackId → appFrame → frame).
-            frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]),
-            cacheLocations: new Map(),
-          });
-        }
-        return loaded;
-      },
-    );
+    fsReadFile.mockImplementation(async (path: string) => {
+      const bytes = files.get(String(path));
+      if (bytes === undefined) throw new Error(`missing file: ${String(path)}`);
+      return bytes;
+    });
     vi.spyOn(projectStore, 'closeProject');
   });
 
@@ -696,26 +681,46 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     expect(projectStore.buildMceProject().version).toBe(16);
   });
 
-  it('openProject hydrates efxPaintStore and projects the default track into the runtime', async () => {
+  it('openProject hydrates efxPaintStore from the layer sub-file the manifest indexes, reference-only', async () => {
     const document = makeTrackDocument('layer-1');
     const track = document.tracks[0];
+    const cachePath = buildMachineCacheRelativePath('layer-1', TEST_TRACK_ID, 0);
     const withFrame = {
       ...document,
-      tracks: [{
-        ...track,
-        frames: { 0: { cachePath: 'cache/efx-paint/layer-1/frame-000000-0000.png', width: 100, height: 50 } },
-      }],
+      tracks: [{ ...track, frames: { 0: { cachePath, width: 100, height: 50 } } }],
     };
+    // The package the open reads: the layer document lives in its own sub-file
+    // and the manifest only INDEXES it (D-04). The frame value is the D-05/D-14
+    // machine-RELATIVE derived-frame reference — never a raster, and never the
+    // legacy package-relative `cache/efx-paint/...` shape.
+    files.set(
+      `/project/${buildLayerFileRelativePath('layer-1')}`,
+      new TextEncoder().encode(JSON.stringify(withFrame)),
+    );
     ipcProjectOpen.mockResolvedValue({
       ok: true,
-      data: { ...makeCleanProject(), efx_paint_documents: { 'layer-1': withFrame } },
+      data: {
+        ...makeCleanProject(),
+        efxPaint: {
+          'layer-1': {
+            layerFile: buildLayerFileRelativePath('layer-1'),
+            documentRevision: '0',
+            compositeRevision: '0',
+          },
+        },
+      },
     });
 
     await projectStore.openProject('/project/v1.mce');
 
-    expect(loadEfxPaintDocuments).toHaveBeenCalledTimes(1);
     expect(efxPaintStoreModule.getDocument('layer-1')).toBeDefined();
-    expect(physicPaintStore.getFrames('layer-1', TEST_TRACK_ID).get(0)?.bytes).toEqual(makeFrame(0, 0).bytes);
+    // The reference survives the round trip verbatim — the open recomputes its
+    // machine-local location, it never rewrites the persisted reference.
+    expect(efxPaintStoreModule.getDocument('layer-1')?.tracks[0].frames[0]?.cachePath).toBe(cachePath);
+    // Reference-only (D-06/D-14): the runtime holds NO frame bytes after an
+    // open. The derived frames re-derive from the cache when the Studio asks
+    // for them, so an open prefetching raster would be a leak, not a speedup.
+    expect(physicPaintStore.getFrames('layer-1', TEST_TRACK_ID).size).toBe(0);
   });
 
   it('closeProject resets efxPaintStore so no document leaks across projects', () => {
@@ -881,21 +886,11 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
     installPackageTransactionMocks();
     installCacheLegMocks();
-    loadEfxPaintDocuments.mockImplementation(
-      async (_projectId: string, persistedMap: Record<string, unknown> | undefined) => {
-        const loaded = new Map<string, EfxPaintLoadedDocument>();
-        if (!persistedMap) return loaded;
-        for (const [layerId, value] of Object.entries(persistedMap)) {
-          const document = value as EfxPaintDocument;
-          loaded.set(layerId, {
-            document,
-            frames: new Map([[document.activeTrackId, new Map([[0, makeFrame(0, 0)]])]]),
-            cacheLocations: new Map(),
-          });
-        }
-        return loaded;
-      },
-    );
+    fsReadFile.mockImplementation(async (path: string) => {
+      const bytes = files.get(String(path));
+      if (bytes === undefined) throw new Error(`missing file: ${String(path)}`);
+      return bytes;
+    });
     vi.spyOn(projectStore, 'closeProject');
   });
 
@@ -931,43 +926,54 @@ describe('46-02 Task 3: per-track frame carriers in the projectStore funnel', ()
     expect(runtimeB?.bytes).toBe(frameB.bytes);
   });
 
-  it('hydrates per-track frames into their own runtime maps on open', async () => {
+  it('hydrates per-track references into their own runtime maps on open, with no raster read', async () => {
     const document = makeMultiTrackDocument('layer-h');
     const trackA = document.tracks[0];
     const trackB = document.tracks[1];
+    const refA = buildMachineCacheRelativePath('layer-h', TRACK_A, 5);
+    const refB = buildMachineCacheRelativePath('layer-h', TRACK_B, 5);
     const withFrames = {
       ...document,
       tracks: [
-        {
-          ...trackA,
-          frames: { 5: { cachePath: `cache/efx-paint/seg-a/${TRACK_A}/frame-000005-0000.png`, width: 10, height: 10 } },
-        },
-        {
-          ...trackB,
-          frames: { 5: { cachePath: `cache/efx-paint/seg-b/${TRACK_B}/frame-000005-0000.png`, width: 20, height: 20 } },
-        },
+        { ...trackA, frames: { 5: { cachePath: refA, width: 10, height: 10 } } },
+        { ...trackB, frames: { 5: { cachePath: refB, width: 20, height: 20 } } },
       ],
     };
-    const frameA = { ...makeFrame(0, 5), bytes: testWebpBytes(btoa('hydrate-a')) };
-    const frameB = { ...makeFrame(0, 5), bytes: testWebpBytes(btoa('hydrate-b')) };
-    loadEfxPaintDocuments.mockResolvedValue(new Map([['layer-h', {
-      document: withFrames,
-      frames: new Map([
-        [TRACK_A, new Map([[5, frameA]])],
-        [TRACK_B, new Map([[5, frameB]])],
-      ]),
-      cacheLocations: new Map(),
-    }]]));
+    files.set(
+      `/project/${buildLayerFileRelativePath('layer-h')}`,
+      new TextEncoder().encode(JSON.stringify(withFrames)),
+    );
     ipcProjectOpen.mockResolvedValue({
       ok: true,
-      data: { ...makeCleanProject(), efx_paint_documents: { 'layer-h': withFrames } },
+      data: {
+        ...makeCleanProject(),
+        efxPaint: {
+          'layer-h': {
+            layerFile: buildLayerFileRelativePath('layer-h'),
+            documentRevision: '0',
+            compositeRevision: '0',
+          },
+        },
+      },
     });
 
     await projectStore.openProject('/project/multi.mce');
 
     expect(efxPaintStoreModule.getDocument('layer-h')).toBeDefined();
-    expect(physicPaintStore.getFrames('layer-h', TRACK_A).get(5)?.bytes).toBe(frameA.bytes);
-    expect(physicPaintStore.getFrames('layer-h', TRACK_B).get(5)?.bytes).toBe(frameB.bytes);
+    // 46-01/46-02 per-track: each track keeps its OWN reference, and the two
+    // parked at the same appFrame never collide on a shared carrier.
+    const installed = efxPaintStoreModule.getDocument('layer-h');
+    expect(installed?.tracks[0].frames[5]?.cachePath).toBe(refA);
+    expect(installed?.tracks[1].frames[5]?.cachePath).toBe(refB);
+    // Reference-only (D-05): neither track's runtime map received prefetched
+    // bytes — the derived frames re-derive from the machine cache on demand.
+    expect(physicPaintStore.getFrames('layer-h', TRACK_A).size).toBe(0);
+    expect(physicPaintStore.getFrames('layer-h', TRACK_B).size).toBe(0);
+    // The layer sub-file is the ONLY file an open reads: no media path and no
+    // machine-cache path is ever touched (the package carries no raster).
+    for (const call of fsReadFile.mock.calls) {
+      expect(String(call[0])).toBe(`/project/${buildLayerFileRelativePath('layer-h')}`);
+    }
   });
 
   it('regression: a single-track document is written under its single track id', async () => {
