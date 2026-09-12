@@ -173,3 +173,99 @@ export function deriveSoloPlaybackWindow(
 
   return Object.freeze({ start, endExclusive, includesFrame }) as SoloPlaybackWindow;
 }
+
+/**
+ * D-20/D-21/D-22: solo playback starts at the BEGINNING of the isolated
+ * content — a review starts at the start of what was isolated.
+ *
+ * Two distinct solo systems feed one rule:
+ *  - the session rail-set pill (`physicsPaintSoloArm.ts` arm + the derived
+ *    `SoloPlaybackWindow`): its `start` IS the content start by construction
+ *    (first selected placement start, D-21 first system);
+ *  - the persisted row-S document track solo (`setTrackSolo` flags): the
+ *    content start is the first painted key across the soloed tracks, falling
+ *    back to project frame 0 when they carry none (D-21 second system).
+ *
+ * Precedence is the session window first, then row-S, then 0 — matching the
+ * pill's own enumeration (which already restricts to its window). The caller
+ * filters `paintedKeyFrames` to the soloed tracks; this resolver never reads
+ * the document, persistence, the bridge, or session paint (pure, matching the
+ * module's existing contract).
+ *
+ * Total function (T-52.2-12): clamped into [0, capacity - 1], a non-finite,
+ * zero, or negative capacity collapses to 0, and no input can throw.
+ */
+export interface DeriveSoloContentStartInput {
+  /** The armed session solo window (pill), or null when the pill is disarmed. */
+  readonly sessionWindow: SoloPlaybackWindow | null;
+  /** Persisted row-S document solo track ids (empty = no row-S solo). */
+  readonly documentSoloTrackIds: readonly string[];
+  /** Painted key appFrames, already filtered to the soloed tracks. */
+  readonly paintedKeyFrames: readonly number[];
+  /** Frame-list capacity (the playback range's frame count). */
+  readonly capacity: number;
+}
+
+/** D-20/D-21: resolve the playback start index for the current solo state. */
+export interface ResolvePlaybackStartIndexInput {
+  /** True while any solo (session pill or persisted row-S) is active. */
+  readonly soloActive: boolean;
+  /** The solo content start (D-21) — unused while `soloActive` is false. */
+  readonly contentStart: number;
+  /** The shared application-frame cursor at Play press time (Phase 51 law). */
+  readonly cursorAppFrame: number;
+  /** The playback enumeration; only `appFrame` is read. */
+  readonly cachedFrames: readonly { readonly appFrame: number }[];
+}
+
+/** Clamp a solo content start into [0, capacity - 1]; degenerate caps → 0. */
+function clampSoloContentStart(value: number, capacity: number): number {
+  const frameCount = Number.isFinite(capacity) ? Math.floor(capacity) : 0;
+  const lastIndex = frameCount > 0 ? frameCount - 1 : 0;
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(Math.floor(value), lastIndex);
+}
+
+export function deriveSoloContentStart(input: DeriveSoloContentStartInput): number {
+  if (!isRecord(input)) return 0;
+  const capacity = typeof input.capacity === 'number' ? input.capacity : 0;
+
+  if (isRecord(input.sessionWindow)) {
+    return clampSoloContentStart(
+      typeof input.sessionWindow.start === 'number' ? input.sessionWindow.start : 0,
+      capacity,
+    );
+  }
+
+  const soloTrackIds = Array.isArray(input.documentSoloTrackIds) ? input.documentSoloTrackIds : [];
+  if (soloTrackIds.length === 0) return 0;
+
+  const paintedFrames = Array.isArray(input.paintedKeyFrames) ? input.paintedKeyFrames : [];
+  let firstPaintedKey = Infinity;
+  for (const appFrame of paintedFrames) {
+    if (Number.isFinite(appFrame)) firstPaintedKey = Math.min(firstPaintedKey, appFrame);
+  }
+  if (firstPaintedKey === Infinity) return 0; // no painted keys → frame 0 (D-21)
+  return clampSoloContentStart(firstPaintedKey, capacity);
+}
+
+/**
+ * D-20/D-22: the playback start index. With no solo active this reproduces the
+ * Phase 51 play-from-cursor law byte-for-byte (the cursor's index, falling back
+ * to index 0); with a solo active it returns the first cached frame at or after
+ * the solo content start, falling back to index 0 when no frame reaches it —
+ * always an index into `cachedFrames`, so no solo value can move the playhead
+ * outside the frame list (T-52.2-11). Total function: an empty frame list
+ * yields 0.
+ */
+export function resolvePlaybackStartIndex(input: ResolvePlaybackStartIndexInput): number {
+  if (!isRecord(input)) return 0;
+  const cachedFrames = Array.isArray(input.cachedFrames) ? input.cachedFrames : [];
+  if (input.soloActive !== true) {
+    const cursorIndex = cachedFrames.findIndex((entry) => entry.appFrame === input.cursorAppFrame);
+    return cursorIndex >= 0 ? cursorIndex : 0;
+  }
+  const contentStart = Number.isFinite(input.contentStart) ? input.contentStart : 0;
+  const soloIndex = cachedFrames.findIndex((entry) => entry.appFrame >= contentStart);
+  return soloIndex >= 0 ? soloIndex : 0;
+}
