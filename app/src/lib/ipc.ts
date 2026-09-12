@@ -372,6 +372,57 @@ export interface EfxPaintFrameMediaReadResult {
 }
 
 /**
+ * The Rust `EfxPaintMediaRejection` labels, verbatim (T-52.2-03). Rust variant
+ * → wire label: `PathEscape` → `pathEscape`, `UnsafeId` → `unsafeId`,
+ * `WrongExtension` → `wrongExtension`, `NotARegularFile` → `notARegularFile`,
+ * `UnsupportedPackagePath` → `unsupportedPackagePath` (and `Missing` →
+ * `missing`, carried by the `EfxPaintMediaFailure` union below).
+ */
+export type EfxPaintMediaRejectionLabel =
+  | 'pathEscape'
+  | 'unsafeId'
+  | 'wrongExtension'
+  | 'notARegularFile'
+  | 'unsupportedPackagePath';
+
+/**
+ * Typed frame-media failure. D-13 gives the classes different product
+ * behavior, so they are never collapsed: `missing` is the Phase 49 slate
+ * path, `refused` fails closed, and `io` covers every other failure.
+ */
+export type EfxPaintMediaFailure =
+  | { kind: 'missing' }
+  | { kind: 'refused'; rejection: EfxPaintMediaRejectionLabel }
+  | { kind: 'io' };
+
+const EFX_PAINT_MEDIA_REJECTION_LABELS: readonly EfxPaintMediaRejectionLabel[] = [
+  'pathEscape',
+  'unsafeId',
+  'wrongExtension',
+  'notARegularFile',
+  'unsupportedPackagePath',
+];
+
+/**
+ * Normalize a Rust error payload into the failure taxonomy. The Rust error
+ * serializes for the wire as one fixed label string, so anything else (an
+ * object payload, a thrown Error, an unknown label) degrades to `io` rather
+ * than masquerading as a rejection. A label that arrives JSON-quoted (the
+ * macOS raw-response string quirk) is unquoted first.
+ */
+function efxPaintMediaFailureFrom(error: unknown): EfxPaintMediaFailure {
+  let label: unknown = error;
+  if (typeof error === 'object' && error !== null && 'label' in error) {
+    label = (error as { label?: unknown }).label;
+  }
+  if (typeof label !== 'string') return { kind: 'io' };
+  const normalized = label.trim().replace(/^"(.*)"$/, '$1');
+  if (normalized === 'missing') return { kind: 'missing' };
+  const rejection = EFX_PAINT_MEDIA_REJECTION_LABELS.find((entry) => entry === normalized);
+  return rejection === undefined ? { kind: 'io' } : { kind: 'refused', rejection };
+}
+
+/**
  * Write one real key's raster to the package `frames/` tree (or into the save
  * transaction's staging root when `stagingBasename` is supplied). The bytes
  * cross as the raw invoke body — never a JSON number array — and the resolved
@@ -383,14 +434,14 @@ export async function ipcEfxPaintWriteFrameMedia(
   keyId: string,
   bytes: Uint8Array,
   stagingBasename?: string,
-): Promise<Result<EfxPaintFrameMediaWriteResult>> {
+): Promise<Result<EfxPaintFrameMediaWriteResult, EfxPaintMediaFailure>> {
   const headers: Record<string, string> = { packageDir, layerId, keyId };
   if (stagingBasename !== undefined) headers.stagingBasename = stagingBasename;
   try {
     const data = await invoke<EfxPaintFrameMediaWriteResult>('efx_paint_write_frame_media', bytes, { headers });
     return { ok: true, data };
   } catch (error) {
-    return { ok: false, error: String(error) };
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
   }
 }
 
@@ -402,7 +453,7 @@ export async function ipcEfxPaintWriteFrameMedia(
 export async function ipcEfxPaintReadFrameMedia(
   packageDir: string,
   relativePath: string,
-): Promise<Result<EfxPaintFrameMediaReadResult>> {
+): Promise<Result<EfxPaintFrameMediaReadResult, EfxPaintMediaFailure>> {
   try {
     const data = await invoke<{ relativePath: string; digest: string; byteLength: number; bytesBase64: string }>(
       'efx_paint_read_frame_media',
@@ -411,7 +462,7 @@ export async function ipcEfxPaintReadFrameMedia(
     );
     return { ok: true, data: { bytes: base64ToBytes(data.bytesBase64), digest: data.digest } };
   } catch (error) {
-    return { ok: false, error: String(error) };
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
   }
 }
 
