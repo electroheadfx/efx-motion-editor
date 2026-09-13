@@ -1031,6 +1031,123 @@ describe('savePackage / loadEfxPaintPackage', () => {
     expect(writtenPaths.some((path) => path.includes('frame-0000'))).toBe(true);
     expect(writtenPaths.some((path) => path.includes('frame-0001'))).toBe(true);
   });
+
+  // --- quick-260913-05k: the cache-leg soft boundary (D-14) ----------------
+  //
+  // UAT row 1 proved the renderer staging mkdir could fail the whole save:
+  // the capability refused it live and the rejection propagated out of the
+  // best-effort leg. D-14 is a law — no cache-side error may fail or roll
+  // back an authoritative save — so every cache-leg failure is recorded as a
+  // degraded leg (warning + discard) and the save commits.
+
+  /** One layer with a single frame ref + runtime bytes (the soft-boundary fixtures). */
+  function softBoundaryDocuments(layerId: string): {
+    readonly documents: Map<string, EfxPaintDocumentSaveInput>;
+    readonly frameRef: string;
+  } {
+    const document = createEfxPaintDocument(layerId);
+    const track = document.tracks[0];
+    const frameRef = buildMachineCacheRelativePath(layerId, track.id, 0);
+    return {
+      frameRef,
+      documents: new Map<string, EfxPaintDocumentSaveInput>([[layerId, {
+        document: {
+          ...document,
+          tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
+        },
+        frames: new Map([[track.id, new Map([[0, {
+          frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AQID'), width: 100, height: 50,
+        }]])]]),
+      }]]),
+    };
+  }
+
+  it('a refused cache staging preparation degrades the leg and never fails the save (D-14)', async () => {
+    const { documents } = softBoundaryDocuments('layer-soft');
+    preparePhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        accepted: false,
+        diagnostic: `forbidden path: /machine/frame-cache/project-1/.efx-paint-staging-<uuid>, maybe it is not allowed on the scope for \`allow-mkdir\` permission`,
+      },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await saveIntoPackage(documents);
+
+    // The authoritative set still committed; the degraded leg staged
+    // nothing, published nothing, settled nothing, and its staging
+    // generation was discarded best-effort.
+    expect(result.changedFiles).toEqual([buildLayerFileRelativePath('layer-soft'), 'project.mce']);
+    expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(settlePhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(discardPhysicPaintCacheStaging).toHaveBeenCalledWith(
+      CACHE_ROOT,
+      expect.stringMatching(/^\.efx-paint-staging-[0-9a-f-]{36}$/),
+    );
+    // The refusal is recorded, never silent.
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    expect(warnings.some((line) => line.includes('cache leg degraded'))).toBe(true);
+    expect(warnings.some((line) => line.includes('forbidden path'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('a rejected staging command degrades the leg the same way (transport failure is cache-side)', async () => {
+    const { documents } = softBoundaryDocuments('layer-transport');
+    preparePhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: false,
+      error: 'invoke failed: prepare_physic_paint_cache_generation',
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await saveIntoPackage(documents);
+
+    expect(result.changedFiles.length).toBeGreaterThan(0);
+    expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    expect(warnings.some((line) => line.includes('cache leg degraded'))).toBe(true);
+    expect(warnings.some((line) => line.includes('invoke failed'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('a refused cache publication is recorded softly and leaves the canonical generation alone (D-14)', async () => {
+    const { documents, frameRef } = softBoundaryDocuments('layer-refuse');
+    publishPhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        accepted: false,
+        transactionId: '',
+        replacedExisting: false,
+        diagnostic: 'the cache root is read-only',
+      },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await saveIntoPackage(documents);
+
+    expect(result.changedFiles).toContain('project.mce');
+    // Nothing published: no canonical generation, no cache transaction.
+    expect(files.has(`${CACHE_ROOT}/${frameRef}`)).toBe(false);
+    expect(settlePhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    expect(warnings.some((line) => line.includes('read-only'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('a cache rollback failure never masks the authoritative save failure (D-14)', async () => {
+    const { documents } = softBoundaryDocuments('layer-mask');
+    publishEfxPaintPackageTransaction.mockResolvedValueOnce({ ok: false, error: 'forced publish failure' });
+    settlePhysicPaintCacheGeneration.mockResolvedValueOnce({ ok: false, error: 'cache rollback refused' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // The AUTHORITATIVE failure is the one that must surface: the cache leg's
+    // own rollback refusal is recorded and swallowed on the way out.
+    await expect(saveIntoPackage(documents)).rejects.toThrow('forced publish failure');
+
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    expect(warnings.some((line) => line.includes('cache rollback refused'))).toBe(true);
+    warn.mockRestore();
+  });
 });
 
 describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-05)', () => {
