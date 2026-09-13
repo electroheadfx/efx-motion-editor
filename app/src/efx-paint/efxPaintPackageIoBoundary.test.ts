@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -14,17 +14,26 @@ import { describe, expect, it } from 'vitest';
  * layer. Package file IO now goes through app-defined Rust commands, which
  * carry no capability scope.
  *
+ * UAT row 1 (2026-09-13) refuted the second half of that reading: the
+ * machine-cache legs were NOT safely in scope. The live build refused
+ * `allow-mkdir` on `<app_data_dir>/frame-cache/<projectId>/.efx-paint-staging-<uuid>`
+ * with the same scope error, and the rejection failed the whole save (a D-14
+ * violation, fixed in the same quick). The persistence module now drives NO
+ * plugin-fs call at all — package AND cache file operations are app-defined
+ * commands — so the module scan is allowlist-free: any plugin-fs call it
+ * finds fails.
+ *
  * The scan is static and comment-stripped (in the style of
  * `efxPaintCleanBreakContract.test.ts`): every plugin-fs identifier call is
- * attributed to its nearest preceding column-0 declaration, and that
- * declaration must be one of the MACHINE-CACHE functions, whose paths live
- * under the appdata cache root and are in the plugin's scope. A call anywhere
- * else fails with the enclosing function, the identifier and the line number —
- * so a reintroduced package-path call names itself.
+ * attributed to its nearest preceding column-0 declaration and reported with
+ * the enclosing function, the identifier and the line number. A second scan
+ * fails any source module that references the fs plugin specifier AND a
+ * machine-cache token — the two must never meet in one file. Static scope
+ * reading has missed twice; these scans pin the class.
  *
- * Positive pins keep the replacement honest: the three Rust-command wrappers
- * must be called from the persistence module, `removeStagingGeneration` may
- * occur exactly twice (declaration + cache leg), and the sibling package
+ * Positive pins keep the replacement honest: the Rust-command wrappers (three
+ * package, four cache) must be called from the persistence module, the
+ * plugin-fs staging helpers are gone outright, and the sibling package
  * modules stay off the plugin entirely.
  */
 
@@ -38,18 +47,11 @@ const MEDIA_READ_MODULE_FILE = resolve(APP_ROOT, 'src/lib/efxPaintMediaRead.ts')
 const PLUGIN_FS_IDENTIFIERS = ['exists', 'mkdir', 'readFile', 'remove', 'writeFile'] as const;
 
 /**
- * The ONLY functions allowed to drive plugin-fs: the machine-local
- * derived-frame cache legs, rooted at `<app_data_dir>/frame-cache/<projectId>`
- * and therefore inside the granted appdata scope. A `.mce` package path never
- * reaches them.
+ * The machine-cache root's spellings (D-05). A module that references any of
+ * these while also referencing the fs plugin specifier is a boundary
+ * violation: cache paths were refused live exactly like package paths.
  */
-const MACHINE_CACHE_ALLOWLIST: ReadonlySet<string> = new Set([
-  'ensureDir',
-  'removeStagingGeneration',
-  'stageFrame',
-  'prepareEfxPaintCacheLeg',
-  'settlePreparedEfxPaintCacheLeg',
-]);
+const MACHINE_CACHE_TOKENS = ['frame-cache', '.efx-paint-staging-', 'MACHINE_CACHE_DIR'] as const;
 
 interface Scan {
   /** Comment-stripped source lines, 1:1 with the file's lines. */
@@ -166,18 +168,6 @@ function describeCall(call: IdentifierCall): string {
   return `${call.enclosing}():${call.line} -> ${call.identifier}()`;
 }
 
-/** The `<token>(` call sites of one helper, with line and enclosing function. */
-function callSites(scan: Scan, token: string): IdentifierCall[] {
-  const pattern = new RegExp(`\\b${token}\\s*\\(`, 'g');
-  const sites: IdentifierCall[] = [];
-  for (let index = 0; index < scan.lines.length; index += 1) {
-    if (pattern.test(scan.lines[index]) && scan.enclosing[index] !== token) {
-      sites.push({ line: index + 1, identifier: token, enclosing: scan.enclosing[index] });
-    }
-  }
-  return sites;
-}
-
 /** Every line carrying the bare token, declaration included. */
 function occurrenceLines(scan: Scan, token: string): number[] {
   const pattern = new RegExp(`\\b${token}\\b`, 'g');
@@ -199,49 +189,81 @@ function pluginFsImportNames(path: string): string[] {
     .filter((name) => name.length > 0);
 }
 
-describe('package-IO boundary contract (quick-260913-05k)', () => {
-  it('keeps every plugin-fs call inside a machine-cache function', () => {
+/** Every non-test `.ts`/`.tsx` module under `app/src`, recursively. */
+function appSourceModules(): string[] {
+  const modules: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(path);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entry.name) || entry.name.includes('.test.')) continue;
+      modules.push(path);
+    }
+  };
+  walk(join(APP_ROOT, 'src'));
+  return modules;
+}
+
+describe('package + cache IO boundary contract (quick-260913-05k)', () => {
+  it('keeps the persistence module off the fs plugin entirely', () => {
     const scan = scanModule(PERSISTENCE_FILE);
-    const violations = pluginFsCalls(scan, PLUGIN_FS_IDENTIFIERS).filter(
-      (call) => !MACHINE_CACHE_ALLOWLIST.has(call.enclosing),
-    );
+    const violations = pluginFsCalls(scan, PLUGIN_FS_IDENTIFIERS);
     expect(
       violations.map(describeCall),
-      'A renderer plugin-fs call on a .mce package path is forbidden (deletion checklist): '
-        + 'package file IO must go through the Rust commands. Offending sites:',
+      'No renderer plugin-fs call may remain in the persistence module: package AND machine-cache '
+        + 'file IO goes through the Rust commands — the appdata scope was refused live on both '
+        + '(forbidden path …/.efx-paint-package-staging-<uuid>, then …/.efx-paint-staging-<uuid>). '
+        + 'Offending sites:',
     ).toEqual([]);
   });
 
-  it('routes the package paths through the Rust command wrappers', () => {
+  it('routes the package and cache paths through the Rust command wrappers', () => {
     const source = readFileSync(PERSISTENCE_FILE, 'utf8');
     for (const wrapper of [
       'ipcEfxPaintWritePackageLayerFile(',
       'ipcEfxPaintReadPackageLayerFile(',
       'discardEfxPaintPackageStaging(',
+      'preparePhysicPaintCacheGeneration(',
+      'stagePhysicPaintCacheFrame(',
+      'discardPhysicPaintCacheStaging(',
+      'removePhysicPaintCacheEntry(',
     ]) {
       expect(source, `the persistence module must call ${wrapper}`).toContain(wrapper);
     }
   });
 
-  it('removes the package-leg staging cleanup call', () => {
+  it('deletes the plugin-fs staging helpers outright', () => {
     const scan = scanModule(PERSISTENCE_FILE);
-    const sites = callSites(scan, 'removeStagingGeneration');
-    const violations = sites.filter((site) => !MACHINE_CACHE_ALLOWLIST.has(site.enclosing));
-    expect(
-      violations.map(describeCall),
-      'removeStagingGeneration may only be called from the machine-cache legs; the package leg discards '
-        + 'its staging generation through discardEfxPaintPackageStaging. Offending sites:',
-    ).toEqual([]);
-    const occurrences = occurrenceLines(scan, 'removeStagingGeneration');
-    expect(
-      occurrences.length,
-      'removeStagingGeneration must occur exactly twice (its declaration plus one machine-cache '
-        + `call); found ${occurrences.length} occurrences on lines ${occurrences.join(', ')}`,
-    ).toBe(2);
+    // The cache legs' plugin-fs helpers: nothing may reintroduce them, under
+    // their old names or as call sites.
+    expect(occurrenceLines(scan, 'removeStagingGeneration')).toEqual([]);
+    expect(occurrenceLines(scan, 'ensureDir')).toEqual([]);
   });
 
-  it('no longer imports readFile from the fs plugin', () => {
-    expect(pluginFsImportNames(PERSISTENCE_FILE)).not.toContain('readFile');
+  it('drops the fs-plugin import entirely', () => {
+    expect(pluginFsImportNames(PERSISTENCE_FILE)).toEqual([]);
+  });
+
+  it('never mixes the fs plugin with a machine-cache path in one module', () => {
+    const violations: string[] = [];
+    for (const path of appSourceModules()) {
+      const source = stripComments(readFileSync(path, 'utf8')).join('\n');
+      if (!source.includes('@tauri-apps/plugin-fs')) continue;
+      const tokens = MACHINE_CACHE_TOKENS.filter((token) => source.includes(token));
+      if (tokens.length > 0) {
+        violations.push(`${relative(APP_ROOT, path)} (${tokens.join(', ')})`);
+      }
+    }
+    expect(
+      violations,
+      'A module referencing the fs plugin must not touch machine-cache paths: the plugin scope '
+        + 'refused them live (`allow-mkdir` on <.efx-paint-staging-*>) and the rejection failed a '
+        + 'save (D-14). Cache IO goes through the prepare/stage/discard/remove app commands. '
+        + 'Offending modules:',
+    ).toEqual([]);
   });
 
   it('keeps the sibling package modules off the fs plugin', () => {
