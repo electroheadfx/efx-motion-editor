@@ -136,6 +136,10 @@ export function usePhysicsPaintLaunchIntegration(input: {
     const hydrationContext = sessionDocument ? { ...context, document: sessionDocument } : context;
     const hydration = await hydrateRotoPhysicalLaunchContext(hydrationContext, physicPaintStore);
     if (!hydration.ok) {
+      // quick-260913-52r (G): a failed launch hydration used to be state-only
+      // (zero console output) — surface it loudly; a Studio that cannot
+      // hydrate must never look like a silently dead window.
+      console.error('[PhysicsPaintStudio] Roto physical launch hydration failed:', hydration.error);
       input.state.setLastError(hydration.error);
       input.state.setApplyStatus('error');
       input.state.setApplyMessage(hydration.error);

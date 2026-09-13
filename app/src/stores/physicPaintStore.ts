@@ -1361,6 +1361,12 @@ function _resolveMediaRasterResolution(media: FrameMediaReference): EfxPaintTrac
     if (packageDir === null) {
       // No package root this session — there is no file the reference could
       // name, so the frame is honest missing content (never a fabricated one).
+      // quick-260913-52r (G): LOUD, once per digest (the verdict short-
+      // circuits later ticks) — a reference that can never resolve is the
+      // exact failure the package format must surface, not hide.
+      console.warn(
+        `[physicPaint] frame media "${media.relativePath}" (digest ${media.digest}) is unresolvable: no package root is available in this window. The frame renders as missing content.`,
+      );
       _frameMediaVerdicts.set(media.digest, 'missing');
       return { kind: 'missing', missingRefs: [media.relativePath] };
     }
@@ -1383,10 +1389,19 @@ function _resolveMediaRasterResolution(media: FrameMediaReference): EfxPaintTrac
       // A 'bitmap' outcome is already in the LRU; only the failures need a
       // durable verdict so the next tick does not re-issue the read.
       if (resolution.kind !== 'bitmap') {
-        _frameMediaVerdicts.set(media.digest, resolution.kind === 'missing' ? 'missing' : resolution.reason);
+        const reason = resolution.kind === 'missing' ? 'missing' : resolution.reason;
+        // quick-260913-52r (G): a failed resolution is LOUD — once per digest,
+        // because the verdict short-circuits every later tick.
+        console.warn(
+          `[physicPaint] frame media "${media.relativePath}" (digest ${media.digest}) could not be resolved: ${reason}. The frame renders as missing content.`,
+        );
+        _frameMediaVerdicts.set(media.digest, reason);
       }
-    }).catch(() => {
+    }).catch((error) => {
       // An unexpected transport failure is an `io` refusal — never a bitmap.
+      console.warn(
+        `[physicPaint] frame media "${media.relativePath}" (digest ${media.digest}) read failed: ${error instanceof Error ? error.message : String(error)}.`,
+      );
       _frameMediaVerdicts.set(media.digest, 'io');
     }).finally(() => {
       _frameMediaResolutionPromises.delete(media.digest);

@@ -58,6 +58,40 @@ export type FrameMediaResolution =
   | { readonly kind: 'missing' }
   | { readonly kind: 'refused'; readonly reason: FrameMediaRefusalReason };
 
+/** The bytes-level result of resolving one media reference (quick-260913-52r G). */
+export type FrameMediaBytesResolution =
+  | { readonly kind: 'bytes'; readonly bytes: Uint8Array }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'refused'; readonly reason: FrameMediaRefusalReason };
+
+/**
+ * quick-260913-52r (G): the bytes-level half of the read-back leg — the same
+ * native read + digest verification as {@link resolveFrameMediaBitmap} with no
+ * decode and no LRU. The open leg materializes the loaded package's frames
+ * through this resolver so the runtime holds bytes for every consumer that
+ * requires them (authority frames projection, launch packing, engine alpha
+ * preparation), while bitmap decoding stays lazy in the compositor seam.
+ */
+export async function resolveFrameMediaBytes(
+  packageDir: string,
+  reference: FrameMediaReference,
+): Promise<FrameMediaBytesResolution> {
+  const result = await ipcEfxPaintReadFrameMedia(packageDir, reference.relativePath);
+  if (!result.ok) {
+    if (result.error.kind === 'missing') return { kind: 'missing' };
+    return {
+      kind: 'refused',
+      reason: result.error.kind === 'refused' ? result.error.rejection : 'io',
+    };
+  }
+  // Same law as the bitmap path: the native digest is compared with the
+  // recorded digest before the bytes are handed to any caller.
+  if (result.data.digest !== reference.digest) {
+    return { kind: 'refused', reason: 'digest-mismatch' };
+  }
+  return { kind: 'bytes', bytes: result.data.bytes };
+}
+
 export interface FrameMediaResolveInput {
   /** The package root the reference is relative to. */
   readonly packageDir: string;
@@ -86,24 +120,13 @@ export async function resolveFrameMediaBitmap(input: FrameMediaResolveInput): Pr
     return { kind: 'bitmap', bitmap: cached, width: cached.width, height: cached.height };
   }
 
-  const result = await ipcEfxPaintReadFrameMedia(packageDir, reference.relativePath);
-  if (!result.ok) {
-    if (result.error.kind === 'missing') return { kind: 'missing' };
-    return {
-      kind: 'refused',
-      reason: result.error.kind === 'refused' ? result.error.rejection : 'io',
-    };
-  }
+  // The bytes resolution carries the native digest verification — nothing is
+  // cached or decoded before the persisted digest is confirmed.
+  const resolved = await resolveFrameMediaBytes(packageDir, reference);
+  if (resolved.kind === 'missing') return { kind: 'missing' };
+  if (resolved.kind === 'refused') return resolved;
 
-  // The digest the native read computed over the bytes it just read (JS cannot
-  // hash the file itself) — compared BEFORE any decode and BEFORE any cache
-  // write. The persisted reference's own digest was validated as 64 lower-case
-  // hex by `parseFrameMediaReference` before it ever reached this module.
-  if (result.data.digest !== reference.digest) {
-    return { kind: 'refused', reason: 'digest-mismatch' };
-  }
-
-  const bitmap = await decode(result.data.bytes);
+  const bitmap = await decode(resolved.bytes);
   if (bitmap === null) return { kind: 'refused', reason: 'decode-failed' };
 
   lru.put(reference.digest, bitmap, bitmap.width, bitmap.height);

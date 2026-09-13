@@ -23,7 +23,7 @@ import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
 import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
-import {physicPaintStore, _setPhysicPaintMarkDirtyCallback, _setPhysicPaintCompositorSizeProvider} from './physicPaintStore';
+import {physicPaintStore, _setPhysicPaintMarkDirtyCallback, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider} from './physicPaintStore';
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
@@ -31,6 +31,8 @@ import {recordPhysicsPaintPerformance} from '../components/physic-paint/performa
 import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
 import {loadEfxPaintPackage, savePackage} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
+import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
+import {materializePackageRotoMediaBytes} from '../lib/efxPaintMediaMaterialize';
 import {isProjectId} from '../lib/efxPaintPackage';
 import {toPackageManifestPath} from '../lib/openedProjectUrls';
 import {findPackageFormatRejection} from '../efx-paint/document/efxPaintCleanBreak';
@@ -438,6 +440,7 @@ function hydrateFromMce(
   project: RuntimeMceProject,
   projectRoot: string,
   loadedDocuments: ReadonlyMap<string, EfxPaintLoadedDocument> = new Map(),
+  runtimeDocuments: ReadonlyMap<string, EfxPaintDocument> = new Map(),
 ) {
   batch(() => {
     // 1. Set projectStore signals
@@ -672,9 +675,14 @@ function hydrateFromMce(
     //    project never reaches this point — the refusal gate rejects a manifest
     //    without the current `formatVersion` before hydration (52.2-08) — so
     //    the documents loaded here always come from the package sub-files.
-    for (const [, loaded] of loadedDocuments) {
+    //    quick-260913-52r (G): the registered document stays REFERENCE-ONLY
+    //    (the persisted shape); the runtime installs its materialized twin —
+    //    every resolvable frame's bytes read and digest-verified at open —
+    //    because the authority, the launch pack and the engine require inline
+    //    bytes (the compositor's lazy seam is not a substitute for them).
+    for (const [layerId, loaded] of loadedDocuments) {
       registerEfxPaintDocument(loaded.document);
-      hydrateEfxPaintRuntimeFromDocument(loaded.document, loaded.frames);
+      hydrateEfxPaintRuntimeFromDocument(runtimeDocuments.get(layerId) ?? loaded.document, loaded.frames);
     }
 
     // 8. Clear dirty flag (just loaded)
@@ -957,6 +965,18 @@ export const projectStore = {
       manifest: result.data,
       machineCacheRoot: await resolveCacheRootFor(nextProjectId),
     });
+    // quick-260913-52r (G): read every referenced frame file BEFORE hydration —
+    // the runtime must hold bytes for the consumers that structurally require
+    // them (authority frames projection, launch pack, engine preparation).
+    // A failed read is loud and per-key; it never blocks the open (the record
+    // stays reference-only and renders the missing-content slate), and it is
+    // never silent.
+    const materialized = await materializePackageRotoMediaBytes(loadedDocuments, projectRoot);
+    for (const failure of materialized.failures) {
+      console.error(
+        `[efxPaintPersistence] reopen: frame media "${failure.relativePath}" (layer ${failure.layerId}, track ${failure.trackId}, ${failure.collection} ${failure.keyId}) is unreadable — ${failure.reason}. The key stays reference-only until its file is restored.`,
+      );
+    }
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
     };
@@ -968,7 +988,7 @@ export const projectStore = {
       projectId.value = nextProjectId;
     });
 
-    hydrateFromMce(runtimeProject, projectRoot, loadedDocuments);
+    hydrateFromMce(runtimeProject, projectRoot, loadedDocuments, materialized.runtimeDocuments);
     await bindScriptLibraryAuthority(openFilePath);
 
     // Update recent projects
@@ -1060,6 +1080,14 @@ _setPhysicPaintMarkDirtyCallback(() => projectStore.markDirty());
 // the size authority for getFlattenedFrame; injected here because the store
 // cannot import projectStore without an ESM module-body cycle).
 _setPhysicPaintCompositorSizeProvider(() => ({width: width.value, height: height.value}));
+// quick-260913-52r (G): the 52.2-09 compositor seam resolves reference-only
+// frames against the open package root through this provider — it was created
+// for exactly this wiring and never installed in production (the only callers
+// were tests), so every reference answered 'missing' with no log. The Studio
+// window keeps `dirPath` null: its pixels arrive as bytes with the launch pack
+// (the open leg materializes them), and this provider serves the main
+// window's lazy composite path.
+_setPhysicPaintPackageDirProvider(() => dirPath.value ?? null);
 
 // Wire efxPaintStore's markDirty callback to projectStore
 // This ensures auto-save notices v1.0 document mutations

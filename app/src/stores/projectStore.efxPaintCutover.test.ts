@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { findPackageFormatRejection } from '../efx-paint/document/efxPaintCleanBreak';
 import { LEGACY_PHYSIC_PAINT_REJECTED_COPY } from '../lib/efxPaintRejectionDialog';
 import { settlePackageFileTokens } from '../lib/efxPaintPersistence';
@@ -76,6 +77,9 @@ const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
 const ipcResolvePhysicPaintCacheRoot = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+// quick-260913-52r (G): the open leg materializes roto media references by
+// reading each frame file through this command.
+const ipcEfxPaintReadFrameMedia = vi.hoisted(() => vi.fn());
 // quick-260913-05k: the package-IO boundary — the layer sub-file write/read
 // and the staging discard are app commands, not fs-plugin calls.
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
@@ -124,6 +128,7 @@ vi.mock('../lib/ipc', () => ({
   hardlinkPhysicPaintCacheFrames,
   resolvePhysicPaintCacheRoot: ipcResolvePhysicPaintCacheRoot,
   ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintReadFrameMedia,
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
@@ -807,6 +812,146 @@ describe('45-05 Task 2: v1.0 document save/load funnel', () => {
     // open. The derived frames re-derive from the cache when the Studio asks
     // for them, so an open prefetching raster would be a leak, not a speedup.
     expect(physicPaintStore.getFrames('layer-1', TEST_TRACK_ID).size).toBe(0);
+  });
+
+  it('openProject materializes roto media references into the runtime while the registered document stays reference-only (quick-260913-52r G)', async () => {
+    const bytes = testWebpBytes('reopen-g');
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const relativePath = buildFrameMediaRelativePath('layer-1', 'key-r');
+    const realKeyRecords = [{
+      kind: 'real-key' as const,
+      keyId: 'key-r',
+      appFrame: 0,
+      payload: {
+        frameIndex: 0,
+        appFrame: 0,
+        media: { relativePath, digest, width: 8, height: 8 },
+        width: 8,
+        height: 8,
+      },
+    }];
+    const document = makeTrackDocument('layer-1');
+    const track = document.tracks[0];
+    const withRoto = {
+      ...document,
+      tracks: [{
+        ...track,
+        rotoPhysical: {
+          capacity: 24,
+          realKeyRecords,
+          groupOverrideRecords: [],
+          interpolation: { enabled: false, mode: 'duplicate' as const },
+          scriptMotion: { deformation: 0, position: 0 },
+          background: null,
+          selectedKeyId: null,
+          cursorAppFrame: 0,
+          loopClips: [],
+          incomingInterpolationBreakKeyIds: [],
+          revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, { enabled: false, mode: 'duplicate' }, [], [], []),
+        },
+      }],
+    };
+    files.set(
+      `/project/${buildLayerFileRelativePath('layer-1')}`,
+      new TextEncoder().encode(JSON.stringify(withRoto)),
+    );
+    ipcProjectOpen.mockResolvedValue({
+      ok: true,
+      data: {
+        ...makeCleanProject(),
+        efxPaint: {
+          'layer-1': {
+            layerFile: buildLayerFileRelativePath('layer-1'),
+            documentRevision: '0',
+            compositeRevision: '0',
+          },
+        },
+      },
+    });
+    ipcEfxPaintReadFrameMedia.mockResolvedValue({ ok: true, data: { bytes, digest } });
+
+    await projectStore.openProject('/project/v1.mce');
+
+    // G: the runtime carries the verified bytes — the authority frames
+    // projection, the launch pack and the engine all require inline bytes.
+    expect(ipcEfxPaintReadFrameMedia).toHaveBeenCalledWith('/project', relativePath);
+    const runtimeRecords = physicPaintStore.getRotoRealKeyRecords('layer-1', TEST_TRACK_ID);
+    expect(runtimeRecords).toHaveLength(1);
+    expect(runtimeRecords[0]!.payload.bytes).toBe(bytes);
+    expect(runtimeRecords[0]!.payload.media).toBeUndefined();
+    // The registered DOCUMENT keeps the persisted reference-only shape — the
+    // materialization is a runtime projection, never a document rewrite.
+    const registered = efxPaintStoreModule.getDocument('layer-1')!;
+    const registeredPayload = registered.tracks[0]!.rotoPhysical!.realKeyRecords[0]!.payload;
+    expect(registeredPayload.media).toBeDefined();
+    expect((registeredPayload as { bytes?: unknown }).bytes).toBeUndefined();
+  });
+
+  it('openProject reports an unreadable frame media reference loudly and keeps the record reference-only (quick-260913-52r G)', async () => {
+    const digest = createHash('sha256').update(testWebpBytes('lost')).digest('hex');
+    const relativePath = buildFrameMediaRelativePath('layer-1', 'key-lost');
+    const realKeyRecords = [{
+      kind: 'real-key' as const,
+      keyId: 'key-lost',
+      appFrame: 0,
+      payload: {
+        frameIndex: 0,
+        appFrame: 0,
+        media: { relativePath, digest, width: 8, height: 8 },
+        width: 8,
+        height: 8,
+      },
+    }];
+    const document = makeTrackDocument('layer-1');
+    const track = document.tracks[0];
+    const withRoto = {
+      ...document,
+      tracks: [{
+        ...track,
+        rotoPhysical: {
+          capacity: 24,
+          realKeyRecords,
+          groupOverrideRecords: [],
+          interpolation: { enabled: false, mode: 'duplicate' as const },
+          scriptMotion: { deformation: 0, position: 0 },
+          background: null,
+          selectedKeyId: null,
+          cursorAppFrame: 0,
+          loopClips: [],
+          incomingInterpolationBreakKeyIds: [],
+          revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, { enabled: false, mode: 'duplicate' }, [], [], []),
+        },
+      }],
+    };
+    files.set(
+      `/project/${buildLayerFileRelativePath('layer-1')}`,
+      new TextEncoder().encode(JSON.stringify(withRoto)),
+    );
+    ipcProjectOpen.mockResolvedValue({
+      ok: true,
+      data: {
+        ...makeCleanProject(),
+        efxPaint: {
+          'layer-1': {
+            layerFile: buildLayerFileRelativePath('layer-1'),
+            documentRevision: '0',
+            compositeRevision: '0',
+          },
+        },
+      },
+    });
+    ipcEfxPaintReadFrameMedia.mockResolvedValue({ ok: false, error: { kind: 'missing' } });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await projectStore.openProject('/project/v1.mce');
+
+    // The failure is surfaced by name — never silent — and the open proceeds.
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(relativePath));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('missing'));
+    const runtimeRecords = physicPaintStore.getRotoRealKeyRecords('layer-1', TEST_TRACK_ID);
+    expect(runtimeRecords[0]!.payload.media).toBeDefined();
+    expect(runtimeRecords[0]!.payload.bytes).toBeUndefined();
+    errorSpy.mockRestore();
   });
 
   it('closeProject resets efxPaintStore so no document leaks across projects', () => {
