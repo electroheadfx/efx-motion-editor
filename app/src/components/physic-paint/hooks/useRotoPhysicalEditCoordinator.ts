@@ -2274,6 +2274,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             ...payload,
             records: compactRecordsForTransport(payload.records, before.records),
           };
+          // quick-260913-52r (H): the parent's commit gate logs its own term
+          // digests on a stale-revision rejection; this child-side line is the
+          // other half of the pair that locates a cross-realm split live.
+          try {
+            portsRef.current.status.logDiagnostic(
+              `Roto physical edit commit revision: expected=${expectedRevision} termDigests=${JSON.stringify(buildPhysicPaintRotoPhysicalTermDigests(currentRecords, currentInterpolation, currentLoopClips, currentIncomingInterpolationBreakKeyIds, currentGroupOverrideRecords))} recordShapes=${JSON.stringify(countPhysicPaintRotoPayloadShapes(currentRecords))}`,
+            );
+          } catch {
+            // Diagnostic only — never blocks the commit.
+          }
           await portsRef.current.bridge.sendPhysicalEditPayload(wirePayload);
         } catch (error) {
           finalizeFailed(pending, before, 'transport', error);

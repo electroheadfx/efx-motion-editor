@@ -1695,6 +1695,16 @@ async function applyPhysicPaintRotoPhysicalMap(
     }
   }
   if (currentRevision !== payload.expectedRevision) {
+    // quick-260913-52r (H): name the divergent side on the next live run —
+    // each realm logs its own per-term digests and carrier census, so the
+    // pair of console lines locates a cross-realm split without a rebuild.
+    try {
+      console.warn(
+        `[physicPaintBridge] Roto physical commit revision mismatch: child=${payload.expectedRevision} parent=${currentRevision} parentTermDigests=${JSON.stringify(buildPhysicPaintRotoPhysicalTermDigests(currentRecords, currentInterpolation, currentLoopClips, currentIncomingInterpolationBreakKeyIds, currentGroupOverrideRecords))} parentRecordShapes=${JSON.stringify(countPhysicPaintRotoPayloadShapes(currentRecords))}`,
+      );
+    } catch {
+      // Diagnostic only — never blocks the rejection.
+    }
     return reject('Roto physical revision became stale before commit.');
   }
   if (payload.records.length > capacity) {

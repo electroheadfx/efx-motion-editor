@@ -7,7 +7,7 @@ import type {
 import { toPersistedRotoRecords } from '../roto/physicsPaintRotoMediaProjection';
 import { buildFrameMediaRelativePath, parseFrameMediaReference } from '../../../lib/efxPaintPackage';
 import type { FrameMediaReference } from '../../../lib/efxPaintPackage';
-import { base64ToWebpBytes, buildFrameBytesToken, sha256HexBytes, toTransportPayload } from '../../../lib/webpBytes';
+import { base64ToWebpBytes, buildFrameBytesToken, fromTransportPayload, sha256HexBytes, toTransportPayload } from '../../../lib/webpBytes';
 import { toUint8Array } from '../../../lib/webpFrameCodec';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
@@ -130,6 +130,40 @@ const documentSyncSentDigests = new Set<string>();
 export function resetEfxPaintDocumentSyncTransferState(): void {
   documentSyncFrameEntries.clear();
   documentSyncSentDigests.clear();
+}
+
+/**
+ * quick-260913-52r (H): the crash-recovery checkpoint crosses the storage
+ * boundary in the TRANSPORT shape — a raw `JSON.stringify` turns the
+ * document's `Uint8Array` payloads into index objects the launch validator
+ * refuses — and is BOUND to the launch operationId that wrote it. Only the
+ * same launch (a watchdog reload of the same window re-fetches the same stored
+ * context, hence the same operationId) may consume it; a checkpoint left by an
+ * earlier Studio session can never substitute a newer launch's carried
+ * document.
+ */
+export function writeEfxPaintSessionDocumentCheckpoint(operationId: string, document: EfxPaintDocument): void {
+  try {
+    sessionStorage.setItem(
+      PHYSIC_PAINT_SESSION_DOCUMENT_KEY,
+      JSON.stringify({ operationId, document: toTransportPayload(document) }),
+    );
+  } catch {
+    // Quota exceeded — the launch-context fallback still applies on reload.
+  }
+}
+
+export function readEfxPaintSessionDocumentCheckpoint(operationId: string): EfxPaintDocument | null {
+  try {
+    const raw = sessionStorage.getItem(PHYSIC_PAINT_SESSION_DOCUMENT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { operationId?: unknown; document?: unknown };
+    if (parsed === null || typeof parsed !== 'object' || parsed.operationId !== operationId) return null;
+    if (parsed.document === undefined) return null;
+    return fromTransportPayload(parsed.document) as EfxPaintDocument;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -96,7 +96,7 @@ import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-import { createPhysicPaintThumbnailNativeEncoder, PHYSIC_PAINT_SESSION_DOCUMENT_KEY, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
 import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
 import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
@@ -3923,13 +3923,12 @@ export function PhysicsPaintStudio() {
     // Crash-recovery checkpoint: the compositor-death watchdog reloads the
     // child when the window goes black. sessionStorage survives the reload, so
     // the Studio rehydrates from THIS document instead of the stale launch
-    // context — the session survives (bounded by the push debounce).
+    // context — the session survives (bounded by the push debounce). The
+    // checkpoint is bound to this launch's operationId (quick-260913-52r H):
+    // a checkpoint left by an earlier Studio session is never substituted.
     const checkpointStartedAtMs = performance.now();
-    try {
-      sessionStorage.setItem(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(document));
-    } catch {
-      // Quota exceeded — the launch-context fallback still applies on reload.
-    }
+    const checkpointOperationId = launchContextRef.current?.operationId;
+    if (checkpointOperationId) writeEfxPaintSessionDocumentCheckpoint(checkpointOperationId, document);
     recordPhysicsPaintPerformance({
       stage: 'bridge.docSyncCheckpoint',
       category: 'sync-cpu',
