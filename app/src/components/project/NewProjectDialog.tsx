@@ -2,6 +2,7 @@ import {useState, useEffect, useRef} from 'preact/hooks';
 import {open as openDialog} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
 import {toPackageManifestPath} from '../../lib/openedProjectUrls';
+import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
 
 interface NewProjectDialogProps {
   onClose: () => void;
@@ -61,7 +62,13 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
 
       onClose();
     } catch (err) {
-      setError(String(err));
+      // quick-260913-05k round 3 (UAT defect A): `createProject` resets the UI
+      // store (`closeProject`), so this dialog is already unmounted by the time
+      // a create or the initial save can fail — an inline setError renders
+      // nowhere. Route the failure through the blocking modal every other save
+      // site uses; the project stays registered at its chosen package path.
+      console.error('Failed to create project:', err);
+      await showProjectIoFailureDialog('save', err);
     } finally {
       setIsCreating(false);
     }

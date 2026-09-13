@@ -32,6 +32,7 @@ import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
 import {loadEfxPaintPackage, savePackage} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
 import {isProjectId} from '../lib/efxPaintPackage';
+import {toPackageManifestPath} from '../lib/openedProjectUrls';
 import {findPackageFormatRejection} from '../efx-paint/document/efxPaintCleanBreak';
 import {showLegacyPhysicPaintRejectionDialog} from '../lib/efxPaintRejectionDialog';
 import {
@@ -780,7 +781,12 @@ export const projectStore = {
       width.value = result.data.width;
       height.value = result.data.height;
       dirPath.value = projectDirPath;
-      filePath.value = null; // Not yet saved to .mce
+      // quick-260913-05k round 3 (UAT defect A): the user picked this package's
+      // location in the New Project dialog, so the project owns its manifest
+      // path from birth — a plain save (Cmd+S, autosave) targets the chosen
+      // package instead of falling into the Save As picker, and a failed
+      // initial save can never strand the project as "never saved".
+      filePath.value = toPackageManifestPath(projectDirPath);
       isDirty.value = true;
     });
 
