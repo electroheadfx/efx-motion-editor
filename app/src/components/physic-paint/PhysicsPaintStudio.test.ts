@@ -238,6 +238,16 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('getBackgroundSourceImageBytes(ref)');
     expect(bridge).toContain('registerBackgroundSourceImage(ref, bytes)');
   });
+
+  it('the per-row frame-blending toggle ships to the parent: the write marks the document sync dirty (quick-260913-52r D)', () => {
+    // 52.1 (Part 1) keys the push on efxPaintVersion only; the interpolation
+    // toggle writes the physicPaint store, so without an explicit mark the
+    // change reached neither the parent runtime (the in-session main-app
+    // composite stayed blind after Studio close) nor the save (reopen lost
+    // the toggle). The mark reuses the one document-sync pipeline.
+    expect(studio).toContain('markDocumentSyncDirtyRef.current();');
+    expect(studio).toContain('markDocumentSyncDirtyRef.current = () => {');
+  });
 });
 
 describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)', () => {
