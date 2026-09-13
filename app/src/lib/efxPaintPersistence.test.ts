@@ -235,6 +235,17 @@ function installPackageTransactionMocks(): void {
   });
   bindEfxPaintPackageTransaction.mockImplementation(
     async (packageRoot: string, stagingBasename: string, paths: string[]) => {
+      // The Rust bind refuses a path the staging generation does not carry
+      // ("the staged file is unreadable (No such file or directory)"): enforce
+      // the same law here, so a save can never bind a file it never staged
+      // (F: the save that follows an open bound reference-only frames).
+      const missing = paths.find((path) => !files.has(`${packageRoot}/${stagingBasename}/${path}`));
+      if (missing !== undefined) {
+        return {
+          ok: false,
+          error: `bind refused "${missing}": the staged file is unreadable (No such file or directory (os error 2))`,
+        };
+      }
       const transactionId = crypto.randomUUID();
       registerActivePackageTransaction(transactionId, packageRoot, stagingBasename, paths);
       return {
@@ -487,6 +498,63 @@ describe('savePackage / loadEfxPaintPackage', () => {
     expect(restored2.cacheLocations.get(document.tracks[0].id)?.get(0)).toBe(
       resolveMachineCachePath(CACHE_ROOT, frameRef),
     );
+  });
+
+  it('a key whose payload carries its media reference is referenced, never staged or bound (F: the save that follows an open)', async () => {
+    const LAYER_ID = 'layer-reopened';
+    const KEY_ID = 'key-reopened';
+    const mediaRelativePath = buildFrameMediaRelativePath(LAYER_ID, KEY_ID);
+    const canonicalBytes = testWebpBytes('canonical-media');
+    const digest = createHash('sha256').update(canonicalBytes).digest('hex');
+    // The open leg's runtime projection (D-13): the key carries the reference
+    // and no bytes, and the canonical media is already on disk from the save
+    // the package was reopened from.
+    files.set(`${PACKAGE_DIR}/${mediaRelativePath}`, canonicalBytes);
+    const document = createEfxPaintDocument(LAYER_ID);
+    const track = document.tracks[0];
+    const realRecords = [{
+      keyId: KEY_ID,
+      appFrame: 0,
+      kind: 'real-key' as const,
+      payload: { frameIndex: 0, appFrame: 0, media: { relativePath: mediaRelativePath, digest } },
+    }];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 24,
+      realKeyRecords: realRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(realRecords, interpolation, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([[LAYER_ID, {
+      document: { ...document, tracks: [{ ...track, rotoPhysical }] },
+      frames: new Map(),
+    }]]);
+
+    // Nothing is committed in this run, so every file is "changed" — the first
+    // save after an open. A reference-only key has nothing to write: it must be
+    // REFERENCED (the sub-file carries it) but never bound — binding it named a
+    // staged file no write produced, and every live save after an open died on
+    // the bind's unreadable staged file (No such file or directory).
+    const result = await saveIntoPackage(documents);
+
+    expect(ipcEfxPaintWriteFrameMedia).not.toHaveBeenCalled();
+    expect(result.changedFiles).not.toContain(mediaRelativePath);
+    const boundPaths = bindEfxPaintPackageTransaction.mock.calls[0][2] as string[];
+    expect(boundPaths).not.toContain(mediaRelativePath);
+    expect(boundPaths).toContain(buildLayerFileRelativePath(LAYER_ID));
+    // The sub-file still carries the loaded reference verbatim.
+    const stagedTrack = (JSON.parse(lastStagedWrite(buildLayerFileRelativePath(LAYER_ID))) as {
+      tracks: Array<{ rotoPhysical: { realKeyRecords: Array<{ payload: { bytes?: unknown; media?: { relativePath: string } } }> } }>;
+    }).tracks[0];
+    expect(stagedTrack.rotoPhysical.realKeyRecords[0].payload.media?.relativePath).toBe(mediaRelativePath);
+    expect(stagedTrack.rotoPhysical.realKeyRecords[0].payload.bytes).toBeUndefined();
   });
 
   it('round-trips reference-only media in BOTH roto collections with no raster payload in the staged sub-file (52.2 D-07, Law 1)', async () => {
