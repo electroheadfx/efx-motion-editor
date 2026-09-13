@@ -990,10 +990,15 @@ async function writeKeyMedia(
   stagingBasename: string,
   layerId: string,
   frame: PreparedPackageFrame,
-): Promise<FrameMediaReference> {
+): Promise<{ readonly reference: FrameMediaReference; readonly staged: boolean }> {
   const payload = frame.payload;
   const existing = payload.media;
-  if (existing !== undefined) return existing;
+  // F (quick-260913-52r): a payload already carrying its media reference (the
+  // open leg's runtime projection, D-13) has no bytes to stage — the canonical
+  // file IS the reference. Reporting `staged: false` keeps it out of the bound
+  // set: binding it named a staged file no write ever produced, and every save
+  // after an open refused at the bind ("the staged file is unreadable").
+  if (existing !== undefined) return { reference: existing, staged: false };
   const bytes = payload.bytes;
   if (bytes === undefined || bytes.length === 0) {
     throw new Error(
@@ -1002,12 +1007,15 @@ async function writeKeyMedia(
   }
   const write = await ipcEfxPaintWriteFrameMedia(packageDir, layerId, frame.keyId, bytes, stagingBasename);
   if (!write.ok) throw new EfxPaintMediaWriteError(layerId, frame.keyId, write.error);
-  return Object.freeze({
-    relativePath: write.data.relativePath,
-    digest: write.data.digest,
-    ...(payload.width !== undefined ? { width: payload.width } : {}),
-    ...(payload.height !== undefined ? { height: payload.height } : {}),
-  });
+  return {
+    reference: Object.freeze({
+      relativePath: write.data.relativePath,
+      digest: write.data.digest,
+      ...(payload.width !== undefined ? { width: payload.width } : {}),
+      ...(payload.height !== undefined ? { height: payload.height } : {}),
+    }),
+    staged: true,
+  };
 }
 
 /**
@@ -1152,12 +1160,12 @@ export async function savePackage(
             continue;
           }
         }
-        const reference = await writeKeyMedia(packageDir, stagingBasename, layer.layerId, frame);
+        const { reference, staged } = await writeKeyMedia(packageDir, stagingBasename, layer.layerId, frame);
         mediaRefs.set(frame.keyId, reference);
-        // The bound set IS the publish set: a staged media file that is not
-        // bound is never published, so its reference would reach the sub-file
-        // while its bytes stayed in the staging generation (T-52.2-21).
-        stagedPaths.push(reference.relativePath);
+        // The bound set IS the publish set, and only what was STAGED is bound:
+        // a reference-only key wrote nothing, so its reference reaches the
+        // sub-file and never the transaction (T-52.2-21, F).
+        if (staged) stagedPaths.push(reference.relativePath);
         savedMediaReferences.set(referenceKey, reference);
       }
       metrics.mediaMs += performance.now() - mediaStartedAtMs;
