@@ -239,14 +239,15 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain('registerBackgroundSourceImage(ref, bytes)');
   });
 
-  it('the per-row frame-blending toggle ships to the parent: the write marks the document sync dirty (quick-260913-52r D)', () => {
-    // 52.1 (Part 1) keys the push on efxPaintVersion only; the interpolation
-    // toggle writes the physicPaint store, so without an explicit mark the
-    // change reached neither the parent runtime (the in-session main-app
-    // composite stayed blind after Studio close) nor the save (reopen lost
-    // the toggle). The mark reuses the one document-sync pipeline.
-    expect(studio).toContain('markDocumentSyncDirtyRef.current();');
-    expect(studio).toContain('markDocumentSyncDirtyRef.current = () => {');
+  it('the per-row frame-blending toggle ships to the parent through the physical coordinator (quick-260913-52r D)', () => {
+    // The direct store write shipped nowhere: the 52.1 auto-push keys on
+    // efxPaintVersion, and the doc-sync mirror refuses the reference-shaped
+    // wire document (canonical revision mismatch). The one path that reaches
+    // the parent runtime — and therefore the save and the reopen — is the
+    // physical coordinator's interpolation op.
+    expect(studio).toContain("operationKind: 'set-interpolation-enabled',");
+    expect(studio).toContain('void physicalEditCoordinator.executePhysicalEdit({');
+    expect(studio).not.toContain('markDocumentSyncDirtyRef');
   });
 });
 

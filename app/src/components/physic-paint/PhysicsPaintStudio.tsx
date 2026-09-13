@@ -1879,10 +1879,6 @@ export function PhysicsPaintStudio() {
   // These refs are assigned after documentSyncDirty/pushLiveProjection are built.
   const pendingDocumentSyncRef = useRef<() => boolean>(() => false);
   const flushDocumentSyncRef = useRef<() => Promise<void>>(async () => {});
-  // quick-260913-52r (D): the per-row interpolation toggle needs the SAME
-  // document-sync pipeline for a physicPaint-store write (52.1 Part 1 keys the
-  // auto-push on efxPaintVersion only) — assigned where the dirty flag lives.
-  const markDocumentSyncDirtyRef = useRef<() => void>(() => {});
   // 52.2-15 (D-16, sensitivity-map rows 2 and 4): ONE flush pipeline owns both
   // Studio flush paths. The requested-flush listener and the close block hand
   // it their existing step sequences, so a close landing while a requested
@@ -3776,26 +3772,35 @@ export function PhysicsPaintStudio() {
     const result = setTrackSolo(layerId, trackId, solo);
     if (!result.ok) setApplyMessage(result.error);
   }, [launchContext?.layerId]);
-  // 47 UAT: the per-row frame-blending toggle writes THIS track's canonical
-  // interpolation state through the store op (the same state the toolbox
-  // toggle drives for the active track). 52.1 Part 1 keys the auto-push on
-  // efxPaintVersion (document structure) only, so the write MUST mark the
-  // document sync dirty itself (quick-260913-52r D) — without the mark the
-  // change reached neither the parent runtime (the in-session main-app
-  // composite stayed blind after Studio close) nor the save (reopen lost the
-  // toggle). Skipped while a physical edit is pending, like the toolbox
+  // 47 UAT + quick-260913-52r (D): the per-row frame-blending toggle flips the
+  // track's canonical interpolation state THROUGH THE PHYSICAL COORDINATOR —
+  // the only path that reaches the parent runtime (the apply/save authority)
+  // and therefore the save. The old direct physicPaint-store write shipped
+  // nowhere: the 52.1 push keys on efxPaintVersion (document structure), and
+  // the doc-sync mirror refuses the reference-shaped wire document (canonical
+  // revision mismatch). The interpolation op is active-track-scoped, so a
+  // non-active row's toggle focuses that row first (one synchronous store
+  // switch). Skipped while a physical edit is pending, like the toolbox
   // toggle.
   const handleToggleBlend = useCallback((trackId: string) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     if (physicalEditCoordinator.pendingOperationId.value !== null) return;
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return;
+    if (document.activeTrackId !== trackId) setActiveTrackId(layerId, trackId);
+    const trackDocument = physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
     const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
-    physicPaintStore.setRotoPhysicalInterpolationState(layerId, trackId, {
-      enabled: !current.enabled,
-      mode: current.mode,
+    const selectedKeyId = trackDocument?.selectedKeyId ?? null;
+    void physicalEditCoordinator.executePhysicalEdit({
+      operationKind: 'set-interpolation-enabled',
+      expectedLaunch: { operationId: launchContext.operationId, layerId },
+      records: physicPaintStore.getRotoRealKeyRecords(layerId, trackId),
+      targetInterpolation: { enabled: !current.enabled, mode: current.mode },
+      selectedKeyId,
+      selectedAppFrame: selectedKeyId === null ? null : (trackDocument?.cursorAppFrame ?? null),
     });
-    markDocumentSyncDirtyRef.current();
-  }, [launchContext?.layerId]);
+  }, [launchContext, physicalEditCoordinator]);
   const handleReorderTrack = useCallback((trackId: string, newOrder: number) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
@@ -3971,9 +3976,6 @@ export function PhysicsPaintStudio() {
   // 52.1 (background sync on close): wire the close-flush refs to the live dirty
   // flag + push so a bare non-stroke document change survives window close.
   pendingDocumentSyncRef.current = () => documentSyncDirty.peek();
-  markDocumentSyncDirtyRef.current = () => {
-    documentSyncDirty.value = true;
-  };
   flushDocumentSyncRef.current = async () => {
     if (!documentSyncDirty.peek()) return;
     documentSyncDirty.value = false;
