@@ -81,6 +81,12 @@ const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
 const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
 const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+// quick-260913-05k (cache extension): the staging lifecycle + the commit-arm
+// removal travel as app commands — the plugin refuses cache paths live.
+const preparePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const stagePhysicPaintCacheFrame = vi.hoisted(() => vi.fn());
+const discardPhysicPaintCacheStaging = vi.hoisted(() => vi.fn());
+const removePhysicPaintCacheEntry = vi.hoisted(() => vi.fn());
 const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
@@ -121,6 +127,10 @@ vi.mock('../lib/ipc', () => ({
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
+  preparePhysicPaintCacheGeneration,
+  stagePhysicPaintCacheFrame,
+  discardPhysicPaintCacheStaging,
+  removePhysicPaintCacheEntry,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
   settleEfxPaintPackageTransaction,
@@ -299,6 +309,10 @@ function installCacheLegMocks(): void {
   publishPhysicPaintCacheGeneration.mockReset();
   settlePhysicPaintCacheGeneration.mockReset();
   hardlinkPhysicPaintCacheFrames.mockReset();
+  preparePhysicPaintCacheGeneration.mockReset();
+  stagePhysicPaintCacheFrame.mockReset();
+  discardPhysicPaintCacheStaging.mockReset();
+  removePhysicPaintCacheEntry.mockReset();
   ipcResolvePhysicPaintCacheRoot.mockReset();
   ipcResolvePhysicPaintCacheRoot.mockResolvedValue({ ok: true, data: CACHE_ROOT });
   publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
@@ -334,6 +348,42 @@ function installCacheLegMocks(): void {
       return { ok: true, data: { accepted: true, missing } };
     },
   );
+  // quick-260913-05k (cache extension): the staging lifecycle over the same
+  // in-memory filesystem; stage writes join the journal like the plugin-fs
+  // writes they replace.
+  preparePhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    dirs.add(cacheRoot);
+    dirs.add(`${cacheRoot}/${stagingBasename}`);
+    return { ok: true, data: { accepted: true } };
+  });
+  stagePhysicPaintCacheFrame.mockImplementation(
+    async (cacheRoot: string, stagingBasename: string, relativePath: string, bytes: Uint8Array) => {
+      const path = `${cacheRoot}/${stagingBasename}/${relativePath}`;
+      writeJournal.push({ path, bytes });
+      files.set(path, bytes);
+      return { ok: true, data: { accepted: true } };
+    },
+  );
+  discardPhysicPaintCacheStaging.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    const root = `${cacheRoot}/${stagingBasename}`;
+    for (const key of Array.from(files.keys())) {
+      if (key.startsWith(`${root}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === root || key.startsWith(`${root}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
+  removePhysicPaintCacheEntry.mockImplementation(async (cacheRoot: string, relative: string) => {
+    const target = `${cacheRoot}/${relative}`;
+    for (const key of Array.from(files.keys())) {
+      if (key === target || key.startsWith(`${target}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === target || key.startsWith(`${target}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
 }
 
 /**

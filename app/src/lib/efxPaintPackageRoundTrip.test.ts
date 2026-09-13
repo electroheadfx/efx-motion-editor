@@ -32,6 +32,12 @@ const ipcEfxPaintReadFrameMedia = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
 const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
 const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+// quick-260913-05k (cache extension): the staging lifecycle over the fixture's
+// REAL temp dirs — the renderer drives no plugin-fs call on cache paths.
+const preparePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const stagePhysicPaintCacheFrame = vi.hoisted(() => vi.fn());
+const discardPhysicPaintCacheStaging = vi.hoisted(() => vi.fn());
+const removePhysicPaintCacheEntry = vi.hoisted(() => vi.fn());
 const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
@@ -48,6 +54,10 @@ vi.mock('./ipc', () => ({
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
+  preparePhysicPaintCacheGeneration,
+  stagePhysicPaintCacheFrame,
+  discardPhysicPaintCacheStaging,
+  removePhysicPaintCacheEntry,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
   settleEfxPaintPackageTransaction,
@@ -169,6 +179,29 @@ function installMocks(): void {
   });
   discardEfxPaintPackageStaging.mockImplementation(async (packageDir: string, stagingBasename: string) => {
     rmSync(join(packageDir, stagingBasename), { recursive: true, force: true });
+    return { ok: true, data: null };
+  });
+
+  // quick-260913-05k (cache extension): the cache staging lifecycle over the
+  // same REAL temp dirs the fixture owns.
+  preparePhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    mkdirSync(join(cacheRoot, stagingBasename), { recursive: true });
+    return { ok: true, data: { accepted: true } };
+  });
+  stagePhysicPaintCacheFrame.mockImplementation(
+    async (cacheRoot: string, stagingBasename: string, relativePath: string, bytes: Uint8Array) => {
+      const target = join(cacheRoot, stagingBasename, relativePath);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, bytes);
+      return { ok: true, data: { accepted: true } };
+    },
+  );
+  discardPhysicPaintCacheStaging.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    rmSync(join(cacheRoot, stagingBasename), { recursive: true, force: true });
+    return { ok: true, data: null };
+  });
+  removePhysicPaintCacheEntry.mockImplementation(async (cacheRoot: string, relative: string) => {
+    rmSync(join(cacheRoot, relative), { recursive: true, force: true });
     return { ok: true, data: null };
   });
 

@@ -28,6 +28,11 @@ const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
 const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
 const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+// quick-260913-05k (cache extension): the staging lifecycle commands.
+const preparePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const stagePhysicPaintCacheFrame = vi.hoisted(() => vi.fn());
+const discardPhysicPaintCacheStaging = vi.hoisted(() => vi.fn());
+const removePhysicPaintCacheEntry = vi.hoisted(() => vi.fn());
 const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
@@ -60,6 +65,10 @@ vi.mock('../lib/ipc', () => ({
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
+  preparePhysicPaintCacheGeneration,
+  stagePhysicPaintCacheFrame,
+  discardPhysicPaintCacheStaging,
+  removePhysicPaintCacheEntry,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
   settleEfxPaintPackageTransaction,
@@ -132,6 +141,10 @@ function installPackageSaveMocks(): void {
   ipcEfxPaintWritePackageLayerFile.mockReset();
   ipcEfxPaintReadPackageLayerFile.mockReset();
   discardEfxPaintPackageStaging.mockReset();
+  preparePhysicPaintCacheGeneration.mockReset();
+  stagePhysicPaintCacheFrame.mockReset();
+  discardPhysicPaintCacheStaging.mockReset();
+  removePhysicPaintCacheEntry.mockReset();
   bindEfxPaintPackageTransaction.mockReset();
   publishEfxPaintPackageTransaction.mockReset();
   settleEfxPaintPackageTransaction.mockReset();
@@ -140,6 +153,10 @@ function installPackageSaveMocks(): void {
   ipcEfxPaintWritePackageLayerFile.mockResolvedValue({ ok: true, data: null });
   ipcEfxPaintReadPackageLayerFile.mockResolvedValue({ ok: false, error: { kind: 'missing' } });
   discardEfxPaintPackageStaging.mockResolvedValue({ ok: true, data: null });
+  preparePhysicPaintCacheGeneration.mockResolvedValue({ ok: true, data: { accepted: true } });
+  stagePhysicPaintCacheFrame.mockResolvedValue({ ok: true, data: { accepted: true } });
+  discardPhysicPaintCacheStaging.mockResolvedValue({ ok: true, data: null });
+  removePhysicPaintCacheEntry.mockResolvedValue({ ok: true, data: null });
   ipcEfxPaintWriteFrameMedia.mockImplementation(
     async (_packageDir: string, layerId: string, keyId: string, bytes: Uint8Array) => ({
       ok: true,

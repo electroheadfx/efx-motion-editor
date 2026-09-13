@@ -58,6 +58,12 @@ const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
 const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
 const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+// quick-260913-05k (cache extension): the machine-cache staging lifecycle —
+// the renderer drives no plugin-fs call on cache paths either (UAT row 1).
+const preparePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const stagePhysicPaintCacheFrame = vi.hoisted(() => vi.fn());
+const discardPhysicPaintCacheStaging = vi.hoisted(() => vi.fn());
+const removePhysicPaintCacheEntry = vi.hoisted(() => vi.fn());
 // The real `./ipc` module is loaded through `importActual` for the transport
 // assertions below, so the Tauri invoke boundary is the mocked seam there.
 const invoke = vi.hoisted(() => vi.fn());
@@ -65,11 +71,11 @@ const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 /**
  * Every write the save performed, IN ORDER, with the composed path and the
- * exact bytes it wrote: the plugin-fs cache-leg staging writes, plus — since
- * quick-260913-05k — the authoritative layer sub-files, which reach the same
- * journal through the ipc write wrapper. The staging generation is deleted by
- * the settle step, so the staged content can only be asserted through this
- * journal (T-52.2-22).
+ * exact bytes it wrote: the cache-leg staging writes (through the native
+ * stage-frame command since quick-260913-05k), plus the authoritative layer
+ * sub-files, which reach the same journal through the ipc write wrapper. The
+ * staging generation is deleted by the settle step, so the staged content can
+ * only be asserted through this journal (T-52.2-22).
  */
 const writeJournal: Array<{ readonly path: string; readonly bytes: Uint8Array }> = [];
 
@@ -78,6 +84,11 @@ function lastStagedWrite(suffix: string): string {
   const entry = [...writeJournal].reverse().find((write) => write.path.endsWith(suffix));
   if (entry === undefined) throw new Error(`no staged write ends with ${suffix}`);
   return new TextDecoder().decode(entry.bytes);
+}
+
+/** Every cache-staging write the save performed, in order (the stage-frame journal). */
+function cacheStagingWrites(): Array<{ readonly path: string; readonly bytes: Uint8Array }> {
+  return writeJournal.filter((write) => write.path.includes('/.efx-paint-staging-'));
 }
 
 /** The package root every save in this suite writes into. */
@@ -171,6 +182,10 @@ function installPackageTransactionMocks(): void {
   ipcEfxPaintWritePackageLayerFile.mockReset();
   ipcEfxPaintReadPackageLayerFile.mockReset();
   discardEfxPaintPackageStaging.mockReset();
+  preparePhysicPaintCacheGeneration.mockReset();
+  stagePhysicPaintCacheFrame.mockReset();
+  discardPhysicPaintCacheStaging.mockReset();
+  removePhysicPaintCacheEntry.mockReset();
   ipcEfxPaintWriteFrameMedia.mockImplementation(
     async (packageDir: string, layerId: string, keyId: string, bytes: Uint8Array, stagingBasename?: string) => {
       const relativePath = buildFrameMediaRelativePath(layerId, keyId);
@@ -259,6 +274,50 @@ function installPackageTransactionMocks(): void {
       return { ok: true, data: { cleanupDeferred: false } };
     },
   );
+  // quick-260913-05k (cache extension): the cache staging lifecycle over the
+  // same in-memory filesystem the plugin-fs mock used to own — prepare
+  // provisions root + generation, stage writes at the generation-relative
+  // path (journalled like the writes it replaces), discard removes the
+  // generation, and the commit-arm removal deletes an efx-paint/-relative
+  // entry.
+  preparePhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    dirs.add(cacheRoot);
+    dirs.add(`${cacheRoot}/${stagingBasename}`);
+    return { ok: true, data: { accepted: true } };
+  });
+  stagePhysicPaintCacheFrame.mockImplementation(
+    async (cacheRoot: string, stagingBasename: string, relativePath: string, bytes: Uint8Array) => {
+      const path = `${cacheRoot}/${stagingBasename}/${relativePath}`;
+      writeJournal.push({ path, bytes });
+      files.set(path, bytes);
+      let directory = path.slice(0, path.lastIndexOf('/'));
+      while (directory.length > cacheRoot.length) {
+        dirs.add(directory);
+        directory = directory.slice(0, directory.lastIndexOf('/'));
+      }
+      return { ok: true, data: { accepted: true } };
+    },
+  );
+  discardPhysicPaintCacheStaging.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    const root = `${cacheRoot}/${stagingBasename}`;
+    for (const key of Array.from(files.keys())) {
+      if (key.startsWith(`${root}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === root || key.startsWith(`${root}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
+  removePhysicPaintCacheEntry.mockImplementation(async (cacheRoot: string, relative: string) => {
+    const target = `${cacheRoot}/${relative}`;
+    for (const key of Array.from(files.keys())) {
+      if (key === target || key.startsWith(`${target}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === target || key.startsWith(`${target}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
 }
 
 function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
@@ -290,6 +349,10 @@ vi.mock('./ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
   hardlinkPhysicPaintCacheFrames,
+  preparePhysicPaintCacheGeneration,
+  stagePhysicPaintCacheFrame,
+  discardPhysicPaintCacheStaging,
+  removePhysicPaintCacheEntry,
   projectSave: ipcProjectSave,
   bindEfxPaintPackageTransaction,
   publishEfxPaintPackageTransaction,
@@ -303,33 +366,6 @@ vi.mock('./ipc', () => ({
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
-vi.mock('@tauri-apps/plugin-fs', () => ({
-  exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
-  mkdir: vi.fn(async (path: string) => { dirs.add(path); }),
-  readDir: vi.fn(async (path: string) => Array.from(dirs)
-    .filter((candidate) => candidate.startsWith(`${path}/`))
-    .map((candidate) => candidate.slice(path.length + 1).split('/')[0])
-    .filter((name, index, names) => name.length > 0 && names.indexOf(name) === index)
-    .map((name) => ({ name, isDirectory: true, isFile: false, isSymlink: false }))),
-  remove: vi.fn(async (path: string) => {
-    for (const key of Array.from(files.keys())) {
-      if (key === path || key.startsWith(`${path}/`)) files.delete(key);
-    }
-    for (const key of Array.from(dirs.keys())) {
-      if (key === path || key.startsWith(`${path}/`)) dirs.delete(key);
-    }
-  }),
-  readFile: vi.fn(async (path: string) => {
-    const file = files.get(path);
-    if (!file) throw new Error(`missing file: ${path}`);
-    return file;
-  }),
-  writeFile: vi.fn(async (path: string, contents: Uint8Array) => {
-    writeJournal.push({ path, bytes: contents });
-    files.set(path, contents);
-  }),
-}));
-
 describe('savePackage / loadEfxPaintPackage', () => {
   beforeEach(async () => {
     files.clear();
@@ -340,8 +376,6 @@ describe('savePackage / loadEfxPaintPackage', () => {
     // stale token map from the previous case would make this case's save look
     // unchanged and skip its writes.
     settlePackageFileTokens('commit', new Map());
-    const { exists } = await import('@tauri-apps/plugin-fs');
-    vi.mocked(exists).mockImplementation(async (path) => dirs.has(String(path)) || files.has(String(path)));
     installPackageTransactionMocks();
     const activeTransactions = new Map<string, string>();
     publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
@@ -405,10 +439,10 @@ describe('savePackage / loadEfxPaintPackage', () => {
     const result = await saveIntoPackage(documents);
 
     // The derived-frame sidecars are staged under the MACHINE cache root's
-    // generation; the authoritative files are staged under the package root.
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([path]) => String(path));
-    const cacheWrites = writtenPaths.filter((path) => path.includes('/.efx-paint-staging-'));
+    // generation (through the native stage-frame command since
+    // quick-260913-05k); the authoritative files are staged under the package
+    // root.
+    const cacheWrites = cacheStagingWrites().map((write) => write.path);
     expect(cacheWrites.length).toBeGreaterThan(0);
     expect(cacheWrites.every((path) => path.startsWith(`${CACHE_ROOT}/.efx-paint-staging-`))).toBe(true);
     // One authoritative staged write: this layer has no roto keys, so its
@@ -420,7 +454,7 @@ describe('savePackage / loadEfxPaintPackage', () => {
     expect(layerWriteCalls[0][0]).toBe(PACKAGE_DIR);
     expect(layerWriteCalls[0][1]).toMatch(/^\.efx-paint-package-staging-[0-9a-f-]{36}$/);
     expect(layerWriteCalls[0][2]).toBe(buildLayerFileRelativePath('layer-x'));
-    expect(writtenPaths.some((path) => path.includes('.efx-paint-package-staging-'))).toBe(false);
+    expect(cacheWrites.every((path) => !path.includes('.efx-paint-package-staging-'))).toBe(true);
     expect(result.changedFiles).toEqual([buildLayerFileRelativePath('layer-x'), 'project.mce']);
     // The manifest is written through the project-save wrapper, pointed at the
     // staging root — with the project and the path ONLY (no transaction id).
@@ -648,21 +682,18 @@ describe('savePackage / loadEfxPaintPackage', () => {
       tracks: [{ ...track, frames: { 0: { cachePath: frameRef, width: 100, height: 50 } } }],
     });
 
-    const { readFile } = await import('@tauri-apps/plugin-fs');
-    const readFileCallsBefore = vi.mocked(readFile).mock.calls.length;
     const loaded = await loadFromPackage('/project', ['layer-lazy'], CACHE_ROOT);
     const restored = loaded.get('layer-lazy')!;
     expect(restored.frames.size).toBe(0);
     expect(restored.cacheLocations.get(track.id)?.get(0)).toBe(resolveMachineCachePath(CACHE_ROOT, frameRef));
     // The layer sub-file is read through the Rust command wrapper
-    // (quick-260913-05k), and it is the ONLY read: no cache byte fetch
-    // happened on open, and the plugin never reads a package path.
+    // (quick-260913-05k) and it is the ONLY read: the module drives no
+    // plugin-fs call at all (boundary-pinned), so no cache byte fetch can
+    // happen on open — the derived frame re-derives (D-14).
     expect(ipcEfxPaintReadPackageLayerFile).toHaveBeenCalledWith(
       '/project',
       buildLayerFileRelativePath('layer-lazy'),
     );
-    const readPaths = vi.mocked(readFile).mock.calls.slice(readFileCallsBefore).map(([path]) => String(path));
-    expect(readPaths).toEqual([]);
   });
 
   it('recomputes no location when the machine cache root is unavailable (D-14)', async () => {
@@ -744,8 +775,7 @@ describe('savePackage / loadEfxPaintPackage', () => {
       frames: new Map([[document.tracks[0].id, new Map([[0, { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AQID'), width: 100, height: 50 }]])]]),
     }]]);
     const first = await saveIntoPackage(documents);
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
+    const firstWriteCount = cacheStagingWrites().length;
     expect(firstWriteCount).toBeGreaterThan(0);
     const firstLayerWriteCount = ipcEfxPaintWritePackageLayerFile.mock.calls.length;
     expect(firstLayerWriteCount).toBeGreaterThan(0);
@@ -757,6 +787,8 @@ describe('savePackage / loadEfxPaintPackage', () => {
     publishEfxPaintPackageTransaction.mockClear();
     settleEfxPaintPackageTransaction.mockClear();
     publishPhysicPaintCacheGeneration.mockClear();
+    preparePhysicPaintCacheGeneration.mockClear();
+    stagePhysicPaintCacheFrame.mockClear();
 
     const second = await saveIntoPackage(documents);
 
@@ -764,7 +796,9 @@ describe('savePackage / loadEfxPaintPackage', () => {
     // no media write, no manifest, no transaction, and no full cache-leg
     // re-stage.
     expect(second.changedFiles).toEqual([]);
-    expect(vi.mocked(writeFile).mock.calls.length).toBe(firstWriteCount);
+    expect(cacheStagingWrites().length).toBe(firstWriteCount);
+    expect(preparePhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(stagePhysicPaintCacheFrame).not.toHaveBeenCalled();
     expect(ipcEfxPaintWritePackageLayerFile.mock.calls.length).toBe(firstLayerWriteCount);
     expect(ipcEfxPaintWriteFrameMedia).not.toHaveBeenCalled();
     expect(ipcProjectSave).not.toHaveBeenCalled();
@@ -832,8 +866,7 @@ describe('savePackage / loadEfxPaintPackage', () => {
     );
     // The prior committed generation remains published with its original bytes
     // and the canonical package is byte-identical to its pre-save snapshot.
-    const { readFile } = await import('@tauri-apps/plugin-fs');
-    expect(Array.from(await readFile(`${CACHE_ROOT}/${frameRef}`))).toEqual(Array.from(testWebpBytes('AQID')));
+    expect(Array.from(files.get(`${CACHE_ROOT}/${frameRef}`)!)).toEqual(Array.from(testWebpBytes('AQID')));
     expect(files.get(`${PACKAGE_DIR}/${buildLayerFileRelativePath('layer-rollback')}`)).toEqual(canonicalLayerBytes);
     expect(files.get(`${PACKAGE_DIR}/${buildFrameMediaRelativePath('layer-rollback', 'key-r')}`)).toEqual(canonicalMediaBytes);
     // Both staging generations are gone.
@@ -950,14 +983,12 @@ describe('savePackage / loadEfxPaintPackage', () => {
     }]]);
 
     await saveIntoPackage(makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')));
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
+    const firstWriteCount = cacheStagingWrites().length;
     expect(firstWriteCount).toBeGreaterThan(0);
 
     await saveIntoPackage(makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')));
 
-    const secondWrites = vi.mocked(writeFile).mock.calls.slice(firstWriteCount);
-    const writtenPaths = secondWrites.map(([path]) => String(path));
+    const writtenPaths = cacheStagingWrites().slice(firstWriteCount).map((write) => write.path);
     expect(writtenPaths.some((path) => path.includes('frame-0000'))).toBe(true);
     expect(writtenPaths.some((path) => path.includes('frame-0001'))).toBe(false);
     expect(hardlinkPhysicPaintCacheFrames).toHaveBeenCalled();
@@ -991,14 +1022,12 @@ describe('savePackage / loadEfxPaintPackage', () => {
     }]]);
 
     await saveIntoPackage(makeDocuments(testWebpBytes('AQID'), testWebpBytes('BAID')));
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    const firstWriteCount = vi.mocked(writeFile).mock.calls.length;
+    const firstWriteCount = cacheStagingWrites().length;
 
     hardlinkPhysicPaintCacheFrames.mockResolvedValueOnce({ ok: false, error: 'EXDEV' });
     await saveIntoPackage(makeDocuments(testWebpBytes('AQIE'), testWebpBytes('BAID')));
 
-    const secondWrites = vi.mocked(writeFile).mock.calls.slice(firstWriteCount);
-    const writtenPaths = secondWrites.map(([path]) => String(path));
+    const writtenPaths = cacheStagingWrites().slice(firstWriteCount).map((write) => write.path);
     expect(writtenPaths.some((path) => path.includes('frame-0000'))).toBe(true);
     expect(writtenPaths.some((path) => path.includes('frame-0001'))).toBe(true);
   });
@@ -1044,8 +1073,6 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
     writeJournal.length = 0;
     vi.clearAllMocks();
     settlePackageFileTokens('commit', new Map());
-    const { exists } = await import('@tauri-apps/plugin-fs');
-    vi.mocked(exists).mockImplementation(async (path) => dirs.has(String(path)) || files.has(String(path)));
     installPackageTransactionMocks();
     publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
       exchangeCacheGeneration(cacheRoot, stagingBasename);
@@ -1086,9 +1113,7 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
 
     await saveIntoPackage(documents);
 
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([path]) => String(path));
-    const cacheWrites = writtenPaths.filter((path) => path.includes('/.efx-paint-staging-'));
+    const cacheWrites = cacheStagingWrites().map((write) => write.path);
     expect(cacheWrites.length).toBeGreaterThan(0);
     expect(cacheWrites.every((path) => path.startsWith(`${CACHE_ROOT}/.efx-paint-staging-`))).toBe(true);
     // The staged location is the generation-relative path (the reference minus
@@ -1122,10 +1147,10 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
     expect(ipcProjectSave).toHaveBeenCalledOnce();
     expect(result.changedFiles).toContain('project.mce');
     expect(settleEfxPaintPackageTransaction).toHaveBeenCalledWith(PACKAGE_DIR, expect.stringMatching(/^[0-9a-f-]{36}$/), 'commit');
-    // With no cache root the plugin-fs leg is skipped entirely: the package
-    // write is the Rust-command layer write, addressed at the package root.
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+    // With no cache root the cache leg is skipped entirely: the package write
+    // is the Rust-command layer write, addressed at the package root.
+    expect(preparePhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(stagePhysicPaintCacheFrame).not.toHaveBeenCalled();
     expect(ipcEfxPaintWritePackageLayerFile).toHaveBeenCalledOnce();
     expect((ipcEfxPaintWritePackageLayerFile.mock.calls[0] as unknown[])[0]).toBe(PACKAGE_DIR);
     expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
@@ -1135,13 +1160,12 @@ describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-
 
   it('refuses a layer document carrying a legacy package-relative cache reference before staging it', async () => {
     const { documents } = makeFrameSaveInput(() => 'cache/efx-paint/layer-machine/track-1/frame-0000.webp');
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
 
     await expect(saveIntoPackage(documents)).rejects.toThrow(/not a machine-relative reference/);
 
     // The refusal happens at intake: nothing is staged anywhere, and no
     // transaction is opened.
-    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+    expect(stagePhysicPaintCacheFrame).not.toHaveBeenCalled();
     expect(ipcEfxPaintWritePackageLayerFile).not.toHaveBeenCalled();
     expect(ipcEfxPaintWriteFrameMedia).not.toHaveBeenCalled();
     expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();

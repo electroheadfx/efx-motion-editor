@@ -63,6 +63,12 @@ const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
 const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
 const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+// quick-260913-05k (cache extension): the staging lifecycle + the commit-arm
+// removal travel as app commands — the plugin refuses cache paths live.
+const preparePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const stagePhysicPaintCacheFrame = vi.hoisted(() => vi.fn());
+const discardPhysicPaintCacheStaging = vi.hoisted(() => vi.fn());
+const removePhysicPaintCacheEntry = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 const PROJECT_DIR = '/project/root';
@@ -130,6 +136,10 @@ function installPackageTransactionMocks(hooks?: PackageTransactionHooks): void {
   ipcEfxPaintWritePackageLayerFile.mockReset();
   ipcEfxPaintReadPackageLayerFile.mockReset();
   discardEfxPaintPackageStaging.mockReset();
+  preparePhysicPaintCacheGeneration.mockReset();
+  stagePhysicPaintCacheFrame.mockReset();
+  discardPhysicPaintCacheStaging.mockReset();
+  removePhysicPaintCacheEntry.mockReset();
   ipcEfxPaintWritePackageLayerFile.mockImplementation(
     async (packageDir: string, stagingBasename: string, layerFile: string, contents: string) => {
       const path = `${packageDir}/${stagingBasename}/${layerFile}`;
@@ -215,6 +225,41 @@ function installPackageTransactionMocks(hooks?: PackageTransactionHooks): void {
       return { ok: true, data: { cleanupDeferred: false } };
     },
   );
+  // quick-260913-05k (cache extension): the staging lifecycle and the
+  // commit-arm removal over the same in-memory filesystem — the removal
+  // command takes the MACHINE-relative reference, so the deletion assertions
+  // read its arguments instead of the old plugin-fs remove mock.
+  preparePhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    dirs.add(cacheRoot);
+    dirs.add(`${cacheRoot}/${stagingBasename}`);
+    return { ok: true, data: { accepted: true } };
+  });
+  stagePhysicPaintCacheFrame.mockImplementation(
+    async (cacheRoot: string, stagingBasename: string, relativePath: string, bytes: Uint8Array) => {
+      files.set(`${cacheRoot}/${stagingBasename}/${relativePath}`, bytes);
+      return { ok: true, data: { accepted: true } };
+    },
+  );
+  discardPhysicPaintCacheStaging.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
+    const root = `${cacheRoot}/${stagingBasename}`;
+    for (const key of Array.from(files.keys())) {
+      if (key.startsWith(`${root}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === root || key.startsWith(`${root}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
+  removePhysicPaintCacheEntry.mockImplementation(async (cacheRoot: string, relative: string) => {
+    const target = `${cacheRoot}/${relative}`;
+    for (const key of Array.from(files.keys())) {
+      if (key === target || key.startsWith(`${target}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === target || key.startsWith(`${target}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
 }
 
 function exchangeGeneration(cacheRoot: string, stagingBasename: string): void {
@@ -255,6 +300,10 @@ vi.mock('../lib/ipc', () => ({
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
+  preparePhysicPaintCacheGeneration,
+  stagePhysicPaintCacheFrame,
+  discardPhysicPaintCacheStaging,
+  removePhysicPaintCacheEntry,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -729,16 +778,15 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     const survivorDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_A}`;
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
-    const { remove } = await import('@tauri-apps/plugin-fs');
-    const removeMock = vi.mocked(remove);
-    removeMock.mockClear();
+    removePhysicPaintCacheEntry.mockClear();
 
     // The sidecar dirs exist on disk when the transaction commits — the cache
     // leg's generation exchange wipes the canonical root during prepare, so
     // they are (re)seeded in the package transaction's publish, which runs
     // after that prepare and before the cache leg's settle — exactly when the
-    // fs remove() must fire. 52.2-07 (D-05): both live under the MACHINE cache
-    // root; nothing under the project directory is ever addressed as a cache.
+    // commit-arm removal must fire. 52.2-07 (D-05): both live under the
+    // MACHINE cache root; nothing under the project directory is ever
+    // addressed as a cache.
     installPackageTransactionMocks({
       onPublish: () => {
         dirs.add(`${MACHINE_CACHE_ROOT}/${deletedDir}`);
@@ -753,8 +801,11 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       cacheRoot: MACHINE_CACHE_ROOT,
     });
     expect(persisted.changedFiles.length).toBeGreaterThan(0);
-    expect(removeMock).toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${deletedDir}`, { recursive: true });
-    expect(removeMock).not.toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${survivorDir}`, { recursive: true });
+    // quick-260913-05k: the removal travels as its native command carrying
+    // the MACHINE-relative reference — never a plugin-fs call on a cache path.
+    const removalCalls = removePhysicPaintCacheEntry.mock.calls as unknown as [string, string][];
+    expect(removalCalls).toContainEqual([MACHINE_CACHE_ROOT, deletedDir]);
+    expect(removalCalls.some((call) => call[1] === survivorDir)).toBe(false);
     expect(dirs.has(`${MACHINE_CACHE_ROOT}/${deletedDir}`)).toBe(false);
     expect(files.has(`${MACHINE_CACHE_ROOT}/${deletedDir}/frame-0000.webp`)).toBe(false);
     expect(dirs.has(`${MACHINE_CACHE_ROOT}/${survivorDir}`)).toBe(true);
@@ -768,9 +819,7 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     const deletedDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(LAYER)}/${TRACK_B}`;
 
     expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
-    const { remove } = await import('@tauri-apps/plugin-fs');
-    const removeMock = vi.mocked(remove);
-    removeMock.mockClear();
+    removePhysicPaintCacheEntry.mockClear();
 
     // The package transaction REFUSES at publish: the save rolls back and
     // rethrows before the cache leg ever reaches its commit arm.
@@ -792,13 +841,12 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     ).rejects.toThrow('publish refused');
     // Rollback never removes the deletion dir: the deletion list is settled
     // only by the commit arm (the mock generation exchange wipes on-disk
-    // state, so the fs remove() call contract is the authoritative assertion).
-    // The only removals a rolled-back save performs are the staging-generation
-    // cleanups of the two legs.
-    expect(removeMock).not.toHaveBeenCalledWith(`${MACHINE_CACHE_ROOT}/${deletedDir}`, { recursive: true });
-    for (const call of removeMock.mock.calls as unknown as unknown[][]) {
-      expect(String(call[0])).not.toContain(deletedDir);
-    }
+    // state, so the removal command's call contract is the authoritative
+    // assertion). The only removals a rolled-back save performs are the
+    // staging-generation cleanups of the two legs.
+    expect(
+      removePhysicPaintCacheEntry.mock.calls.some((call) => JSON.stringify(call).includes(deletedDir)),
+    ).toBe(false);
   });
 
   it('clears the pending deletion list on read — a second save is a no-op deletion-wise', async () => {
@@ -814,9 +862,7 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     // Cleared on read; the committed save's input is built before it runs.
     expect(takePendingTrackDeletions(LAYER)).toEqual([]);
 
-    const { remove } = await import('@tauri-apps/plugin-fs');
-    const removeMock = vi.mocked(remove);
-    removeMock.mockClear();
+    removePhysicPaintCacheEntry.mockClear();
     const persisted = await savePackage(PROJECT_DIR, {
       project: testProject(),
       documents: buildSaveInput(),
@@ -824,7 +870,7 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
       cacheRoot: MACHINE_CACHE_ROOT,
     });
     expect(persisted.changedFiles.length).toBeGreaterThan(0);
-    expect(removeMock).not.toHaveBeenCalled();
+    expect(removePhysicPaintCacheEntry).not.toHaveBeenCalled();
     expect(takePendingTrackDeletions(LAYER)).toEqual([]);
   });
 });

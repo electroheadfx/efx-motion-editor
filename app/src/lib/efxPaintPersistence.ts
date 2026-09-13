@@ -12,20 +12,25 @@
  * emitted file carries an image payload or a machine-local path (Law 1, D-05,
  * D-07).
  *
- * quick-260913-05k: every PACKAGE file operation here — staging-root
- * creation, the `layers/<layerId>.json` write, the staging discard and the
- * layer read — goes through an app-defined Rust command. The fs plugin's scope
- * covers appdata only, so driving a package path through it failed with
+ * quick-260913-05k: every file operation here — package staging-root
+ * creation, the `layers/<layerId>.json` write, the staging discard, the layer
+ * read, AND the machine-cache staging lifecycle — goes through an app-defined
+ * Rust command. The fs plugin's scope covers appdata only, so driving a
+ * package path through it failed with
  * `forbidden path: …/.efx-paint-package-staging-<uuid>`; app commands carry no
- * capability scope. The contract scan in
+ * capability scope. UAT row 1 (2026-09-13) then proved the appdata reading of
+ * the cache leg wrong too: the renderer `mkdir` on
+ * `<app_data_dir>/frame-cache/<projectId>/.efx-paint-staging-<uuid>` was
+ * refused with the same `allow-mkdir` scope error. This module drives NO
+ * plugin-fs call at all; the contract scan in
  * `app/src/efx-paint/efxPaintPackageIoBoundary.test.ts` fails closed on any
- * renderer plugin-fs call outside the machine-cache functions below.
+ * plugin-fs call here and on any module mixing the plugin with a cache path.
  *
  * A second, MACHINE-LOCAL and best-effort leg stages derived-frame sidecars
  * under `<app_data_dir>/frame-cache/<projectId>` (D-05, D-14). It never rides
- * the authoritative transaction and a cache failure never fails the save. It
- * is the ONLY plugin-fs surface left in this module: its paths are under the
- * appdata root, which the capability grants (`fs:scope-appdata-recursive`).
+ * the authoritative transaction and a cache failure never fails the save: the
+ * native staging commands answer with the same typed soft refusal
+ * (`accepted: false` + diagnostic) as the publish/settle/hardlink legs.
  * IMMUTABILITY LAW (52.1 a2): canonical sidecars under `<cache root>/efx-paint/`
  * are NEVER written in place. They are replaced only by the native atomic
  * directory swap (`publish_physic_paint_cache_generation`). Incremental
@@ -42,7 +47,6 @@
  * ASVS V12).
  */
 
-import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import {
@@ -68,15 +72,19 @@ import type { MceProject } from '../types/project';
 import {
   bindEfxPaintPackageTransaction,
   discardEfxPaintPackageStaging,
+  discardPhysicPaintCacheStaging,
   hardlinkPhysicPaintCacheFrames,
   ipcEfxPaintReadPackageLayerFile,
   ipcEfxPaintWriteFrameMedia,
   ipcEfxPaintWritePackageLayerFile,
+  preparePhysicPaintCacheGeneration,
   projectSave as ipcProjectSave,
   publishEfxPaintPackageTransaction,
   publishPhysicPaintCacheGeneration,
+  removePhysicPaintCacheEntry,
   settleEfxPaintPackageTransaction,
   settlePhysicPaintCacheGeneration,
+  stagePhysicPaintCacheFrame,
   type EfxPaintMediaFailure,
 } from './ipc';
 // 52.2-07 (D-05): the machine-relative reference, its guard and its one
@@ -341,10 +349,6 @@ function generationRelativeCachePath(cacheRef: string): string {
   return cacheRef.slice(EFX_PAINT_MACHINE_CACHE_DIR.length + 1);
 }
 
-async function ensureDir(path: string): Promise<void> {
-  if (!(await exists(path))) await mkdir(path, { recursive: true });
-}
-
 function createStagingBasename(): string {
   return `${EFX_PAINT_STAGING_PREFIX}${crypto.randomUUID()}`;
 }
@@ -358,15 +362,6 @@ function createStagingBasename(): string {
  */
 export function createPackageStagingBasename(): string {
   return `${EFX_PAINT_PACKAGE_STAGING_PREFIX}${crypto.randomUUID()}`;
-}
-
-async function removeStagingGeneration(path: string): Promise<void> {
-  try {
-    await remove(path, { recursive: true });
-  } catch {
-    // Staging cleanup is non-authoritative. Canonical publication state is
-    // determined only by the native publication result.
-  }
 }
 
 /**
@@ -601,19 +596,29 @@ function buildEfxPaintSaveFingerprint(
   return `${projectDir}\0${terms.sort().join('\0')}`;
 }
 
+/**
+ * Stage one sidecar into the cache staging generation through its native
+ * command (quick-260913-05k): the renderer's plugin-fs mkdir/writeFile were
+ * refused live, so the staged bytes cross as the raw invoke body and the
+ * command provisions the parent directories.
+ */
 async function stageFrame(
   cacheRoot: string,
   stagingBasename: string,
   write: PendingWrite,
-  ensuredDirectories: Set<string>,
 ): Promise<void> {
-  const stagingRelativePath = `${stagingBasename}/${generationRelativeCachePath(write.path)}`;
-  const directory = stagingRelativePath.slice(0, stagingRelativePath.lastIndexOf('/'));
-  if (!ensuredDirectories.has(directory)) {
-    await mkdir(`${cacheRoot}/${directory}`, { recursive: true });
-    ensuredDirectories.add(directory);
+  const result = await stagePhysicPaintCacheFrame(
+    cacheRoot,
+    stagingBasename,
+    generationRelativeCachePath(write.path),
+    write.bytes,
+  );
+  if (!result.ok) throw new Error(result.error);
+  if (!result.data.accepted) {
+    throw new Error(
+      result.data.diagnostic ?? 'EFX Paint cache frame staging was refused.',
+    );
   }
-  await writeFile(`${cacheRoot}/${stagingRelativePath}`, write.bytes);
 }
 
 /**
@@ -731,19 +736,25 @@ async function prepareEfxPaintCacheLeg(
   }
 
   const stagingBasename = createStagingBasename();
-  const stagingRoot = `${cacheRoot}/${stagingBasename}`;
-  await ensureDir(cacheRoot);
 
   try {
-    await mkdir(stagingRoot, { recursive: true });
-    const ensuredDirectories = new Set<string>();
+    // The staging ROOT (and the cache root itself) is provisioned in Rust
+    // (quick-260913-05k): the plugin's appdata scope refused the renderer
+    // mkdir live, so no renderer filesystem call remains on this leg.
+    const staging = await preparePhysicPaintCacheGeneration(cacheRoot, stagingBasename);
+    if (!staging.ok) throw new Error(staging.error);
+    if (!staging.data.accepted) {
+      throw new Error(
+        staging.data.diagnostic ?? 'EFX Paint cache staging preparation was refused.',
+      );
+    }
     for (const write of changedWrites) {
-      await stageFrame(cacheRoot, stagingBasename, write, ensuredDirectories);
+      await stageFrame(cacheRoot, stagingBasename, write);
     }
     if (unchangedFrames.length > 0) {
       const framesToWrite = await hardlinkUnchangedFrames(cacheRoot, stagingBasename, unchangedFrames);
       for (const write of framesToWrite) {
-        await stageFrame(cacheRoot, stagingBasename, write, ensuredDirectories);
+        await stageFrame(cacheRoot, stagingBasename, write);
       }
     }
 
@@ -763,7 +774,10 @@ async function prepareEfxPaintCacheLeg(
       frameTokens,
     };
   } catch (error) {
-    await removeStagingGeneration(stagingRoot);
+    // Best-effort staging cleanup through its native command; the result is
+    // ignored exactly as the previous plugin-fs removal was, because
+    // canonical publication state is determined only by the transaction.
+    await discardPhysicPaintCacheStaging(cacheRoot, stagingBasename);
     throw error;
   }
 }
@@ -795,24 +809,20 @@ async function settlePreparedEfxPaintCacheLeg(
     // non-authoritative: the transaction already committed and the stale
     // directory is unreferenced by the fresh document. 52.2-07 (D-05): the
     // deletion is a machine-relative reference resolved against the machine
-    // cache root — never the project directory.
+    // cache root — never the project directory. quick-260913-05k: the removal
+    // itself runs in Rust (the plugin's scope refused renderer removals on
+    // cache paths live); the reference guard below stays as the renderer-side
+    // pre-check behind the command's own validation.
     if (cacheRoot !== null) {
       for (const deletion of prepared.deletions) {
-        const deletionPath = resolveMachineCachePath(cacheRoot, deletion);
-        if (deletionPath === null) continue;
-        if (!(await exists(deletionPath))) continue;
-        try {
-          await remove(deletionPath, { recursive: true });
-        } catch {
-          // Non-authoritative cleanup failure: the commit stands.
-        }
+        if (resolveMachineCachePath(cacheRoot, deletion) === null) continue;
+        await removePhysicPaintCacheEntry(cacheRoot, deletion);
       }
       if (prepared.removeCanonicalAfterCommit) {
         // The canonical generation ROOT (a directory, not a reference): the
-        // reference guard requires a path under `efx-paint/`, so this join is
-        // spelled here rather than through `resolveMachineCachePath`.
-        const existingRootDir = `${cacheRoot}/${EFX_PAINT_MACHINE_CACHE_DIR}`;
-        if (await exists(existingRootDir)) await remove(existingRootDir, { recursive: true });
+        // reference guard requires a path under `efx-paint/`, so the segment
+        // is spelled here rather than through `resolveMachineCachePath`.
+        await removePhysicPaintCacheEntry(cacheRoot, EFX_PAINT_MACHINE_CACHE_DIR);
       }
     }
     // One entry, mirroring the pre-52.2-07 cache's memory profile: the last
