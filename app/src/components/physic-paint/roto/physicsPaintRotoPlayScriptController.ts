@@ -122,6 +122,11 @@ export type RotoRegenerateGroupSemanticDelta = Extract<
 interface RotoGeneratedPhysicalPublicationBase {
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly expectedRevision: string;
+  /** quick-260913-52r (E): parent-side fingerprint diagnostics, echoed so the
+   *  coordinator's staging gate can name a divergent term on mismatch. */
+  readonly expectedTermDigests?: PhysicPaintRotoAuthorityResult['physicalTermDigests'];
+  /** quick-260913-52r (E): parent-side carrier census, echoed with the digests. */
+  readonly expectedRecordShapes?: PhysicPaintRotoAuthorityResult['physicalRecordShapes'];
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
@@ -975,6 +980,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return {
       expectedLaunch,
       expectedRevision: authority.physicalRevision,
+      ...(authority.physicalTermDigests !== undefined ? { expectedTermDigests: authority.physicalTermDigests } : {}),
+      ...(authority.physicalRecordShapes !== undefined ? { expectedRecordShapes: authority.physicalRecordShapes } : {}),
       records,
       interpolationEnabled: authority.interpolationEnabled,
       interpolationMode: authority.interpolationMode,
@@ -1795,6 +1802,8 @@ function buildPhysicalPublication(input: {
   return {
     expectedLaunch,
     expectedRevision: authority.physicalRevision,
+    ...(authority.physicalTermDigests !== undefined ? { expectedTermDigests: authority.physicalTermDigests } : {}),
+    ...(authority.physicalRecordShapes !== undefined ? { expectedRecordShapes: authority.physicalRecordShapes } : {}),
     records,
     interpolationEnabled: authority.interpolationEnabled,
     interpolationMode: authority.interpolationMode,

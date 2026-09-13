@@ -17,8 +17,10 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoPhysicalTermDigests,
   buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoProjectEquality,
+  countPhysicPaintRotoPayloadShapes,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
   parsePhysicPaintRotoLoopClips,
@@ -697,13 +699,32 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const records = physicPaintStore.getRotoRealKeyRecords(request.layerId, trackId);
   const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId, trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId, trackId);
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(request.layerId, trackId);
+  const incomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId, trackId);
   const physicalRevision = buildPhysicPaintRotoPhysicalRevision(
     records,
     interpolation,
-    physicPaintStore.getRotoPhysicalLoopClips(request.layerId, trackId),
-    physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId, trackId),
+    loopClips,
+    incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
   );
+  // quick-260913-52r (E): term-level diagnostics for the child's staging gate.
+  // Diagnostic only — any failure here must never block the authority itself.
+  let physicalTermDigests: PhysicPaintRotoAuthorityResult['physicalTermDigests'];
+  let physicalRecordShapes: PhysicPaintRotoAuthorityResult['physicalRecordShapes'];
+  try {
+    physicalTermDigests = buildPhysicPaintRotoPhysicalTermDigests(
+      records,
+      interpolation,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+      groupOverrideRecords,
+    );
+    physicalRecordShapes = countPhysicPaintRotoPayloadShapes(records);
+  } catch {
+    physicalTermDigests = undefined;
+    physicalRecordShapes = undefined;
+  }
   const physicalRecords = records.map((record) => ({
     keyId: record.keyId,
     appFrame: record.appFrame,
@@ -731,6 +752,8 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     physicalCapacity,
     rotoRevision: physicalRevision,
     physicalRevision,
+    ...(physicalTermDigests !== undefined ? { physicalTermDigests } : {}),
+    ...(physicalRecordShapes !== undefined ? { physicalRecordShapes } : {}),
     physicalRecords,
     interpolationEnabled: interpolation.enabled,
     interpolationMode: interpolation.mode,

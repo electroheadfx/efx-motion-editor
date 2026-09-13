@@ -1994,6 +1994,33 @@ export interface PhysicPaintRotoAuthorityRequest {
   trackId: string;
 }
 
+/**
+ * quick-260913-52r (E): per-term digests of the physical revision fingerprint,
+ * one per fingerprint term. Diagnostic only — transported with the authority
+ * result so the child's staging gate can name the exact divergent term when
+ * `physicalRevision` mismatches its own store-derived revision.
+ */
+export interface PhysicPaintRotoPhysicalTermDigests {
+  readonly records: string;
+  readonly groupOverrides: string;
+  readonly interpolation: string;
+  readonly loopClips: string;
+  readonly incomingBreaks: string;
+}
+
+/**
+ * quick-260913-52r (E): census of raster carriers across one real-key
+ * collection. The revision's per-record payload term is carrier-shaped (media
+ * reference vs byte content token), so an equal-content pair of collections
+ * can still fingerprint differently across realms — this census exposes that
+ * case directly.
+ */
+export interface PhysicPaintRotoPayloadShapeCounts {
+  readonly bytesOnly: number;
+  readonly mediaOnly: number;
+  readonly both: number;
+}
+
 export interface PhysicPaintRotoAuthorityResult {
   operationId: string;
   ok: boolean;
@@ -2011,6 +2038,10 @@ export interface PhysicPaintRotoAuthorityResult {
   physicalCapacity: number;
   rotoRevision: string;
   physicalRevision: string;
+  /** quick-260913-52r (E): term digests of the parent's fingerprint — diagnostic only. */
+  physicalTermDigests?: PhysicPaintRotoPhysicalTermDigests;
+  /** quick-260913-52r (E): carrier census of the parent's record set — diagnostic only. */
+  physicalRecordShapes?: PhysicPaintRotoPayloadShapeCounts;
   physicalRecords: readonly PhysicPaintRotoPhysicalEditRecord[];
   interpolationEnabled: boolean;
   interpolationMode: PhysicPaintRotoInterpolationMode;

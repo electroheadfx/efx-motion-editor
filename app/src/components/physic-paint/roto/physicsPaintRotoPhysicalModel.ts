@@ -40,6 +40,8 @@
 import type {
   PhysicPaintRenderedFrame,
   PhysicPaintRotoBackgroundMetadata,
+  PhysicPaintRotoPayloadShapeCounts,
+  PhysicPaintRotoPhysicalTermDigests,
 } from '../../../types/physicPaint';
 import {
   base64ToWebpBytes,
@@ -1137,6 +1139,67 @@ export function buildPhysicPaintRotoPhysicalRevision(
 }
 
 /**
+ * quick-260913-52r (E): per-term digests of the same fingerprint
+ * {@link buildPhysicPaintRotoPhysicalRevision} hashes — one digest per term,
+ * computed with the same canonical encoders. Diagnostic only: the child's
+ * staging gate uses this to name the exact divergent term when the parent's
+ * `physicalRevision` mismatches its own store-derived revision. Empty
+ * collections are digested too (the composite merely omits their term), so the
+ * two sides always produce one comparable value per term.
+ */
+export function buildPhysicPaintRotoPhysicalTermDigests(
+  records: unknown,
+  interpolation: unknown,
+  loopClips: unknown,
+  incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+  groupOverrideRecords: unknown = [],
+): PhysicPaintRotoPhysicalTermDigests {
+  const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
+  const validatedGroupOverrides = parsePhysicPaintRotoRealKeyRecordCollection(groupOverrideRecords);
+  if (!isPhysicPaintRotoInterpolationState(interpolation)) {
+    throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
+  }
+  const validatedLoopClips = parsePhysicPaintRotoLoopClips(loopClips);
+  const validatedIncomingBreaks = parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds, validated);
+  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) =>
+    encodeCanonicalRealKeyRecordsTerm(source, encodeCanonicalBytesPayload);
+  return Object.freeze({
+    records: hashCanonicalPhysicalValue(`records:${encodeRecords(validated)}`),
+    groupOverrides: hashCanonicalPhysicalValue(`group-overrides:${encodeRecords(validatedGroupOverrides)}`),
+    interpolation: hashCanonicalPhysicalValue(
+      `interpolation:${validatedBoolean(interpolation.enabled)}mode:${encodeCanonicalString(interpolation.mode)}`,
+    ),
+    loopClips: hashCanonicalPhysicalValue(`loops:${encodeCanonicalLoopClips(validatedLoopClips)}`),
+    incomingBreaks: hashCanonicalPhysicalValue(
+      `incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(validatedIncomingBreaks)}`,
+    ),
+  });
+}
+
+/**
+ * quick-260913-52r (E): census of raster carriers across one record
+ * collection. The revision's per-record payload term is carrier-shaped (media
+ * reference vs byte content token) — see {@link encodeCanonicalRecordPayloadTerm}
+ * — so two realms holding equal content under different carriers fingerprint
+ * differently. This census makes that case observable.
+ */
+export function countPhysicPaintRotoPayloadShapes(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+): PhysicPaintRotoPayloadShapeCounts {
+  let bytesOnly = 0;
+  let mediaOnly = 0;
+  let both = 0;
+  for (const record of records) {
+    const hasBytes = record.payload.bytes !== undefined;
+    const hasMedia = record.payload.media !== undefined;
+    if (hasBytes && hasMedia) both += 1;
+    else if (hasBytes) bytesOnly += 1;
+    else if (hasMedia) mediaOnly += 1;
+  }
+  return Object.freeze({ bytesOnly, mediaOnly, both });
+}
+
+/**
  * Canonical allowlisted encoding shared by content revision and persisted
  * project equality. Strings are length-prefixed, so payload text cannot create
  * delimiter collisions. Records are ordered by stable identity, not input or
@@ -1181,6 +1244,41 @@ function encodeCanonicalBytesPayload(bytes: Uint8Array): string {
   return `d${buildFrameBytesToken(bytes)};`;
 }
 
+function encodeCanonicalRecordPayloadTerm(
+  payload: PhysicPaintRotoRealKeyPayload,
+  encodePayloadBytes: (bytes: Uint8Array) => string,
+): string {
+  /**
+   * 52.2-02 (D-07): one raster-carrier term per record — the media reference
+   * (`relativePath` + `digest`) for a persisted record, the byte content token
+   * for a runtime one. Keeping the byte branch byte-for-byte as it was means
+   * no existing revision value moves.
+   */
+  const media = payload.media;
+  if (media !== undefined) {
+    return `m${encodeCanonicalString(media.relativePath)}${encodeCanonicalString(media.digest)};`;
+  }
+  const bytes = payload.bytes;
+  return bytes === undefined ? 'u;' : encodePayloadBytes(bytes);
+}
+
+function encodeCanonicalRealKeyRecordsTerm(
+  source: readonly PhysicPaintRotoRealKeyRecord[],
+  encodePayloadBytes: (bytes: Uint8Array) => string,
+): string {
+  const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
+  const encoded = ordered.map((record) => [
+    encodeCanonicalString(record.keyId),
+    encodeCanonicalNumber(record.appFrame),
+    encodeCanonicalNumber(record.payload.frameIndex),
+    encodeCanonicalNumber(record.payload.appFrame),
+    encodeCanonicalRecordPayloadTerm(record.payload, encodePayloadBytes),
+    encodeCanonicalOptionalNumber(record.payload.width),
+    encodeCanonicalOptionalNumber(record.payload.height),
+  ].join('')).join('');
+  return `${ordered.length}:${encoded}`;
+}
+
 function encodeValidatedPhysicPaintRotoPhysicalContent(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   interpolation: PhysicPaintRotoInterpolationState,
@@ -1189,33 +1287,8 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
   groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [],
   encodePayloadBytes: (bytes: Uint8Array) => string = encodeCanonicalBytesPayload,
 ): string {
-  /**
-   * 52.2-02 (D-07): one raster-carrier term per record — the media reference
-   * (`relativePath` + `digest`) for a persisted record, the byte content token
-   * for a runtime one. Keeping the byte branch byte-for-byte as it was means
-   * no existing revision value moves.
-   */
-  const encodePayloadTerm = (payload: PhysicPaintRotoRealKeyPayload): string => {
-    const media = payload.media;
-    if (media !== undefined) {
-      return `m${encodeCanonicalString(media.relativePath)}${encodeCanonicalString(media.digest)};`;
-    }
-    const bytes = payload.bytes;
-    return bytes === undefined ? 'u;' : encodePayloadBytes(bytes);
-  };
-  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) => {
-    const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
-    const encoded = ordered.map((record) => [
-      encodeCanonicalString(record.keyId),
-      encodeCanonicalNumber(record.appFrame),
-      encodeCanonicalNumber(record.payload.frameIndex),
-      encodeCanonicalNumber(record.payload.appFrame),
-      encodePayloadTerm(record.payload),
-      encodeCanonicalOptionalNumber(record.payload.width),
-      encodeCanonicalOptionalNumber(record.payload.height),
-    ].join('')).join('');
-    return `${ordered.length}:${encoded}`;
-  };
+  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) =>
+    encodeCanonicalRealKeyRecordsTerm(source, encodePayloadBytes);
   return [
     `records:${encodeRecords(records)}`,
     ...(groupOverrideRecords.length > 0 ? [`group-overrides:${encodeRecords(groupOverrideRecords)}`] : []),
