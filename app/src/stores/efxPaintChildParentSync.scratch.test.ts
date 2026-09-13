@@ -209,7 +209,10 @@ describe('SCRATCH: child document push + parent save preserves Track 1 keys', ()
       ok: true,
       data: { accepted: true, transactionId: 'tx-1', replacedExisting: false },
     });
-    settlePhysicPaintCacheGeneration.mockResolvedValue({ ok: true, data: null });
+    settlePhysicPaintCacheGeneration.mockResolvedValue({
+    ok: true,
+    data: { accepted: true, cleanupStatus: 'complete' },
+  });
     installPackageSaveMocks();
     // The committed change baseline is process state: a stale map from a
     // previous case would make this case's save look unchanged and skip it.

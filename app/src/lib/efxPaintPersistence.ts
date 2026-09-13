@@ -364,6 +364,10 @@ export function createPackageStagingBasename(): string {
   return `${EFX_PAINT_PACKAGE_STAGING_PREFIX}${crypto.randomUUID()}`;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * The machine-local derived-frame cache leg's prepared state (52.1 a2, D-14).
  *
@@ -679,65 +683,66 @@ async function prepareEfxPaintCacheLeg(
     }
   }
 
-  const fingerprint = buildEfxPaintSaveFingerprint(projectDir, documents);
-  if (savedCacheFingerprints.has(fingerprint)) {
-    return {
-      fingerprint,
-      publication: null,
-      removeCanonicalAfterCommit: false,
-      deletions,
-      frameTokens: new Map(),
-    };
-  }
+  let stagingBasename: string | null = null;
 
-  const changedWrites: PendingWrite[] = [];
-  const unchangedFrames: Array<{ cachePath: string; bytes: Uint8Array }> = [];
-  const frameTokens = new Map<string, string>();
+  try {
+    const fingerprint = buildEfxPaintSaveFingerprint(projectDir, documents);
+    if (savedCacheFingerprints.has(fingerprint)) {
+      return {
+        fingerprint,
+        publication: null,
+        removeCanonicalAfterCommit: false,
+        deletions,
+        frameTokens: new Map(),
+      };
+    }
 
-  for (const [layerId, input] of documents) {
-    const document = parseEfxPaintDocument(input.document);
-    for (const track of document.tracks) {
-      const trackFrames = input.frames.get(track.id);
-      for (const [frameNumber, ref] of Object.entries(track.frames)) {
-        const appFrame = Number(frameNumber);
-        const runtimeFrame = trackFrames?.get(appFrame);
-        if (!runtimeFrame) {
-          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
-        }
-        const bytes = runtimeFrame.bytes;
-        if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
-          throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
-        }
-        const key = `${layerId}:${track.id}:${appFrame}`;
-        const token = buildFrameBytesToken(bytes);
-        frameTokens.set(key, token);
-        if (savedFrameTokens.get(key) === token) {
-          unchangedFrames.push({ cachePath: ref.cachePath, bytes });
-        } else {
-          changedWrites.push({ path: ref.cachePath, bytes });
+    const changedWrites: PendingWrite[] = [];
+    const unchangedFrames: Array<{ cachePath: string; bytes: Uint8Array }> = [];
+    const frameTokens = new Map<string, string>();
+
+    for (const [layerId, input] of documents) {
+      const document = parseEfxPaintDocument(input.document);
+      for (const track of document.tracks) {
+        const trackFrames = input.frames.get(track.id);
+        for (const [frameNumber, ref] of Object.entries(track.frames)) {
+          const appFrame = Number(frameNumber);
+          const runtimeFrame = trackFrames?.get(appFrame);
+          if (!runtimeFrame) {
+            throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
+          }
+          const bytes = runtimeFrame.bytes;
+          if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+            throw new Error(`EFX Paint frame ${layerId}:${track.id}:${appFrame} has no runtime frame bytes.`);
+          }
+          const key = `${layerId}:${track.id}:${appFrame}`;
+          const token = buildFrameBytesToken(bytes);
+          frameTokens.set(key, token);
+          if (savedFrameTokens.get(key) === token) {
+            unchangedFrames.push({ cachePath: ref.cachePath, bytes });
+          } else {
+            changedWrites.push({ path: ref.cachePath, bytes });
+          }
         }
       }
     }
-  }
 
-  // D-14 (52.2-07): with no machine cache root the caller cannot address the
-  // derived-frame cache at all, so the whole cache leg is skipped — the
-  // authoritative save still commits and never fails for a cache it cannot
-  // find. `removeCanonicalAfterCommit` is false: there is no canonical
-  // generation this save is entitled to remove.
-  if (cacheRoot === null) {
-    return {
-      fingerprint,
-      publication: null,
-      removeCanonicalAfterCommit: false,
-      deletions,
-      frameTokens,
-    };
-  }
+    // D-14 (52.2-07): with no machine cache root the caller cannot address the
+    // derived-frame cache at all, so the whole cache leg is skipped — the
+    // authoritative save still commits and never fails for a cache it cannot
+    // find. `removeCanonicalAfterCommit` is false: there is no canonical
+    // generation this save is entitled to remove.
+    if (cacheRoot === null) {
+      return {
+        fingerprint,
+        publication: null,
+        removeCanonicalAfterCommit: false,
+        deletions,
+        frameTokens,
+      };
+    }
 
-  const stagingBasename = createStagingBasename();
-
-  try {
+    stagingBasename = createStagingBasename();
     // The staging ROOT (and the cache root itself) is provisioned in Rust
     // (quick-260913-05k): the plugin's appdata scope refused the renderer
     // mkdir live, so no renderer filesystem call remains on this leg.
@@ -760,10 +765,15 @@ async function prepareEfxPaintCacheLeg(
 
     const publication = await publishPhysicPaintCacheGeneration(cacheRoot, stagingBasename);
     if (!publication.ok) throw new Error(publication.error);
-    // D-14: the cache leg is best-effort and reports a refusal SOFTLY
-    // (`accepted: false` plus a diagnostic). There is then no cache
-    // transaction to settle and the published canonical generation is left
-    // exactly as it was — the authoritative save still commits.
+    // D-14: the cache leg reports a refusal SOFTLY (`accepted: false` plus a
+    // diagnostic): there is then no cache transaction to settle, the canonical
+    // generation is left exactly as it was, and the authoritative save still
+    // commits. The refusal is recorded, never silent.
+    if (!publication.data.accepted) {
+      console.warn(
+        `[efxPaintPersistence] derived-frame cache publication refused (D-14): ${publication.data.diagnostic ?? 'no diagnostic'}`,
+      );
+    }
     return {
       fingerprint,
       publication: publication.data.accepted
@@ -774,11 +784,28 @@ async function prepareEfxPaintCacheLeg(
       frameTokens,
     };
   } catch (error) {
-    // Best-effort staging cleanup through its native command; the result is
-    // ignored exactly as the previous plugin-fs removal was, because
-    // canonical publication state is determined only by the transaction.
-    await discardPhysicPaintCacheStaging(cacheRoot, stagingBasename);
-    throw error;
+    // D-14 (UAT row 1, quick-260913-05k): a cache-side failure degrades the
+    // leg instead of failing the save. The staging generation is discarded
+    // best-effort, the deletions still ride the commit arm (separate,
+    // validated cleanup), and no fingerprint or token is recorded so the
+    // next save retries the leg.
+    if (cacheRoot !== null && stagingBasename !== null) {
+      try {
+        await discardPhysicPaintCacheStaging(cacheRoot, stagingBasename);
+      } catch {
+        // Non-authoritative cleanup of an already-degraded leg.
+      }
+    }
+    console.warn(
+      `[efxPaintPersistence] derived-frame cache leg degraded (D-14): ${errorMessage(error)}`,
+    );
+    return {
+      fingerprint: null,
+      publication: null,
+      removeCanonicalAfterCommit: false,
+      deletions,
+      frameTokens: new Map(),
+    };
   }
 }
 
@@ -792,47 +819,69 @@ async function settlePreparedEfxPaintCacheLeg(
   action: 'commit' | 'rollback',
 ): Promise<void> {
   if (prepared === null) return;
-  if (prepared.publication) {
-    // A publication exists only when the save had a root to publish under.
-    if (cacheRoot === null) throw new Error('EFX Paint cache settlement without a machine cache root.');
-    const result = await settlePhysicPaintCacheGeneration(
-      cacheRoot,
-      prepared.publication.transactionId,
-      action,
+  try {
+    if (prepared.publication) {
+      // A publication exists only when the save had a root to publish under.
+      if (cacheRoot === null) throw new Error('EFX Paint cache settlement without a machine cache root.');
+      const result = await settlePhysicPaintCacheGeneration(
+        cacheRoot,
+        prepared.publication.transactionId,
+        action,
+      );
+      // D-14: a failed or refused settlement is cache-side — recorded and
+      // swallowed, never thrown into the authoritative path (a rollback
+      // refusal must not mask the save's own failure).
+      if (!result.ok) throw new Error(result.error);
+      if (!result.data.accepted) {
+        throw new Error(result.data.cleanupDiagnostic ?? 'EFX Paint cache settlement was refused.');
+      }
+    }
+    if (action === 'commit') {
+      // 46-05 D-15: the deleted track's sidecar directory rides the same
+      // transaction as the save — settled only at commit, after the canonical
+      // publication, before the cache record. A removal failure is
+      // non-authoritative: the transaction already committed and the stale
+      // directory is unreferenced by the fresh document. 52.2-07 (D-05): the
+      // deletion is a machine-relative reference resolved against the machine
+      // cache root — never the project directory. quick-260913-05k: the
+      // removal itself runs in Rust (the plugin's scope refused renderer
+      // removals on cache paths live); the reference guard below stays as the
+      // renderer-side pre-check behind the command's own validation.
+      if (cacheRoot !== null) {
+        for (const deletion of prepared.deletions) {
+          if (resolveMachineCachePath(cacheRoot, deletion) === null) continue;
+          const removal = await removePhysicPaintCacheEntry(cacheRoot, deletion);
+          if (!removal.ok) {
+            console.warn(
+              `[efxPaintPersistence] EFX Paint cache deletion cleanup skipped (D-14): ${removal.error}`,
+            );
+          }
+        }
+        if (prepared.removeCanonicalAfterCommit) {
+          // The canonical generation ROOT (a directory, not a reference): the
+          // reference guard requires a path under `efx-paint/`, so the segment
+          // is spelled here rather than through `resolveMachineCachePath`.
+          const removal = await removePhysicPaintCacheEntry(cacheRoot, EFX_PAINT_MACHINE_CACHE_DIR);
+          if (!removal.ok) {
+            console.warn(
+              `[efxPaintPersistence] EFX Paint canonical cache cleanup skipped (D-14): ${removal.error}`,
+            );
+          }
+        }
+      }
+      // One entry, mirroring the pre-52.2-07 cache's memory profile: the last
+      // committed content set is the only one whose staging can be skipped.
+      savedCacheFingerprints.clear();
+      if (prepared.fingerprint) savedCacheFingerprints.add(prepared.fingerprint);
+      savedFrameTokens.clear();
+      for (const [key, token] of prepared.frameTokens) {
+        savedFrameTokens.set(key, token);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `[efxPaintPersistence] derived-frame cache settlement degraded (D-14): ${errorMessage(error)}`,
     );
-    if (!result.ok && action === 'rollback') throw new Error(result.error);
-  }
-  if (action === 'commit') {
-    // 46-05 D-15: the deleted track's sidecar directory rides the same
-    // transaction as the save — settled only at commit, after the canonical
-    // publication, before the cache record. A removal failure is
-    // non-authoritative: the transaction already committed and the stale
-    // directory is unreferenced by the fresh document. 52.2-07 (D-05): the
-    // deletion is a machine-relative reference resolved against the machine
-    // cache root — never the project directory. quick-260913-05k: the removal
-    // itself runs in Rust (the plugin's scope refused renderer removals on
-    // cache paths live); the reference guard below stays as the renderer-side
-    // pre-check behind the command's own validation.
-    if (cacheRoot !== null) {
-      for (const deletion of prepared.deletions) {
-        if (resolveMachineCachePath(cacheRoot, deletion) === null) continue;
-        await removePhysicPaintCacheEntry(cacheRoot, deletion);
-      }
-      if (prepared.removeCanonicalAfterCommit) {
-        // The canonical generation ROOT (a directory, not a reference): the
-        // reference guard requires a path under `efx-paint/`, so the segment
-        // is spelled here rather than through `resolveMachineCachePath`.
-        await removePhysicPaintCacheEntry(cacheRoot, EFX_PAINT_MACHINE_CACHE_DIR);
-      }
-    }
-    // One entry, mirroring the pre-52.2-07 cache's memory profile: the last
-    // committed content set is the only one whose staging can be skipped.
-    savedCacheFingerprints.clear();
-    if (prepared.fingerprint) savedCacheFingerprints.add(prepared.fingerprint);
-    savedFrameTokens.clear();
-    for (const [key, token] of prepared.frameTokens) {
-      savedFrameTokens.set(key, token);
-    }
   }
 }
 
