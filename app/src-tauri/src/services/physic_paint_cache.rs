@@ -1664,4 +1664,152 @@ mod tests {
         std::fs::remove_dir_all(&sibling).expect("sibling cleanup");
         std::fs::remove_dir_all(package).expect("fixture cleanup");
     }
+
+    // --- quick-260913-05k: the cache staging lifecycle ----------------------
+
+    #[test]
+    fn prepare_cache_staging_generation_provisions_root_and_generation() {
+        let cache_root =
+            std::env::temp_dir().join(format!("efx-test-cache-prepare-{}", Uuid::new_v4()));
+        let basename = format!("{STAGING_PREFIX}{}", Uuid::new_v4());
+
+        // The cache root itself may not exist yet: prepare provisions it and
+        // the generation in one create_dir_all, mirroring the publish leg's
+        // resolve_machine_cache_parent.
+        assert!(!cache_root.exists());
+        prepare_cache_staging_generation(&cache_root, &basename).expect("prepare");
+        assert!(cache_root.join(&basename).is_dir());
+
+        // A crafted basename is refused before anything is created.
+        for crafted in [
+            ".efx-paint-staging-../evil",
+            "/tmp/.efx-paint-staging-abs",
+            ".efx-paint-staging-",
+        ] {
+            assert!(
+                prepare_cache_staging_generation(&cache_root, crafted).is_err(),
+                "expected rejection: {crafted}"
+            );
+        }
+        std::fs::remove_dir_all(&cache_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn stage_cache_frame_writes_generation_relative_and_refuses_crafted_paths() {
+        let cache_root =
+            std::env::temp_dir().join(format!("efx-test-cache-stage-{}", Uuid::new_v4()));
+        let basename = format!("{STAGING_PREFIX}{}", Uuid::new_v4());
+        let relative = "layer-machine-1a2b3c4d/track-1/frame-0000.webp";
+
+        prepare_cache_staging_generation(&cache_root, &basename).expect("prepare");
+        stage_cache_frame(&cache_root, &basename, relative, b"frame-bytes").expect("stage frame");
+        assert_eq!(
+            fs::read(cache_root.join(&basename).join(relative)).expect("staged bytes"),
+            b"frame-bytes"
+        );
+
+        // The same guard the hardlink leg uses (`validate_unchanged_path`)
+        // applies to the staged write: no traversal, absolute or empty segment.
+        for crafted in [
+            "../evil.webp",
+            "/abs/frame.webp",
+            "a//b.webp",
+            "a/./b.webp",
+            "a\\b.webp",
+            "",
+        ] {
+            assert!(
+                stage_cache_frame(&cache_root, &basename, crafted, b"x").is_err(),
+                "expected rejection: {crafted}"
+            );
+        }
+        std::fs::remove_dir_all(&cache_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn discard_cache_staging_generation_is_idempotent_and_refuses_foreign_targets() {
+        let cache_root =
+            std::env::temp_dir().join(format!("efx-test-cache-discard-{}", Uuid::new_v4()));
+        let basename = format!("{STAGING_PREFIX}{}", Uuid::new_v4());
+        prepare_cache_staging_generation(&cache_root, &basename).expect("prepare");
+        fs::write(cache_root.join(&basename).join("frame.webp"), b"frame").expect("staged frame");
+
+        discard_cache_staging_generation(&cache_root, &basename).expect("first discard");
+        assert!(!cache_root.join(&basename).exists());
+        // Idempotent: an absent generation is Ok — the failed save's catch runs
+        // before the generation was ever provisioned.
+        discard_cache_staging_generation(&cache_root, &basename).expect("second discard");
+
+        // A valid-looking basename that is a SYMLINK to a sibling directory is
+        // refused, not followed, and the sibling survives untouched
+        // (T-260913-05k-03).
+        let sibling = cache_root
+            .parent()
+            .expect("temp dir")
+            .join(format!("efx-test-cache-sibling-{}", Uuid::new_v4()));
+        fs::create_dir_all(&sibling).expect("sibling directory");
+        fs::write(sibling.join("keep.txt"), b"keep").expect("sibling file");
+        let canonical_root = fs::canonicalize(&cache_root).expect("canonical cache root");
+        let link = format!("{STAGING_PREFIX}{}", Uuid::new_v4());
+        std::os::unix::fs::symlink(&sibling, cache_root.join(&link)).expect("staging symlink");
+        assert!(discard_cache_staging_generation(&canonical_root, &link).is_err());
+        assert!(sibling.join("keep.txt").exists());
+
+        // Crafted basenames are refused before any filesystem walk.
+        for crafted in [".efx-paint-staging-../evil", "/tmp/.efx-paint-staging-abs"] {
+            assert!(discard_cache_staging_generation(&cache_root, crafted).is_err());
+        }
+        std::fs::remove_dir_all(&sibling).expect("sibling cleanup");
+        std::fs::remove_dir_all(&cache_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn remove_cache_relative_entry_touches_only_the_efx_paint_generation() {
+        let cache_root =
+            std::env::temp_dir().join(format!("efx-test-cache-remove-{}", Uuid::new_v4()));
+        let canonical = cache_root.join("efx-paint");
+        fs::create_dir_all(canonical.join("layer-machine-1a2b3c4d/track-1"))
+            .expect("fixture generation");
+        fs::write(
+            canonical.join("layer-machine-1a2b3c4d/track-1/frame-0000.webp"),
+            b"frame",
+        )
+        .expect("fixture frame");
+        let sibling = cache_root.join("keep");
+        fs::create_dir_all(&sibling).expect("sibling directory");
+        fs::write(sibling.join("keep.txt"), b"keep").expect("sibling file");
+        std::os::unix::fs::symlink(&sibling, canonical.join("link-entry")).expect("entry symlink");
+
+        // One deleted track's sidecar directory.
+        remove_cache_relative_entry(&cache_root, "efx-paint/layer-machine-1a2b3c4d/track-1")
+            .expect("remove track directory");
+        assert!(!canonical.join("layer-machine-1a2b3c4d/track-1").exists());
+        // A symlinked entry is refused, not followed.
+        assert!(remove_cache_relative_entry(&cache_root, "efx-paint/link-entry").is_err());
+        assert!(sibling.join("keep.txt").exists());
+        // The whole canonical generation (the empty-documents removal).
+        remove_cache_relative_entry(&cache_root, "efx-paint").expect("remove generation");
+        assert!(!canonical.exists());
+        assert!(sibling.exists());
+        // Absent is Ok: the cleanup runs after a rollback too.
+        remove_cache_relative_entry(&cache_root, "efx-paint").expect("idempotent");
+
+        // Only `efx-paint/...` is reachable: a sibling, a traversal or an
+        // absolute path is refused.
+        for crafted in [
+            "keep",
+            "keep/keep.txt",
+            "efx-paint/../keep",
+            "../keep",
+            "/tmp/evil",
+            "",
+        ] {
+            assert!(
+                remove_cache_relative_entry(&cache_root, crafted).is_err(),
+                "expected refusal: {crafted}"
+            );
+        }
+        assert!(sibling.join("keep.txt").exists());
+        std::fs::remove_dir_all(&cache_root).expect("fixture cleanup");
+    }
 }

@@ -19,10 +19,14 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 import {
   discardEfxPaintPackageStaging,
+  discardPhysicPaintCacheStaging,
   ipcEfxPaintReadFrameMedia,
   ipcEfxPaintReadPackageLayerFile,
   ipcEfxPaintWriteFrameMedia,
   ipcEfxPaintWritePackageLayerFile,
+  preparePhysicPaintCacheGeneration,
+  removePhysicPaintCacheEntry,
+  stagePhysicPaintCacheFrame,
 } from './ipc';
 
 const FIXTURE_FRAME_BYTES = Uint8Array.from([
@@ -246,5 +250,97 @@ describe('ipc package layer file IO + staging discard (quick-260913-05k)', () =>
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain('direct child directory');
+  });
+});
+
+/**
+ * quick-260913-05k (cache extension): the derived-frame cache staging
+ * lifecycle. The live build refused the renderer's plugin-fs `mkdir` on
+ * `<app_data_dir>/frame-cache/<projectId>/.efx-paint-staging-<uuid>` even
+ * though that path sits under the statically granted appdata scope, so the
+ * staging legs run as app commands like the package legs'. Prepare and stage
+ * answer with the same typed soft failure (`accepted: false` + diagnostic) as
+ * publish/settle/hardlink (D-14); discard and remove are best-effort cleanup
+ * whose failure the caller records and ignores.
+ */
+describe('ipc machine-cache staging commands (quick-260913-05k)', () => {
+  const CACHE_ROOT = '/machine/frame-cache/project-1';
+  const CACHE_STAGING_BASENAME = '.efx-paint-staging-11111111-1111-4111-8111-111111111111';
+
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  it('provisions the staging generation through its exact command name and keys', async () => {
+    invoke.mockResolvedValueOnce({ accepted: true });
+
+    const result = await preparePhysicPaintCacheGeneration(CACHE_ROOT, CACHE_STAGING_BASENAME);
+
+    expect(invoke).toHaveBeenCalledWith('prepare_physic_paint_cache_generation', {
+      cacheRoot: CACHE_ROOT,
+      stagingBasename: CACHE_STAGING_BASENAME,
+    });
+    expect(result).toEqual({ ok: true, data: { accepted: true } });
+  });
+
+  it('forwards a soft refusal from the prepare leg unchanged (accepted: false + diagnostic)', async () => {
+    invoke.mockResolvedValueOnce({ accepted: false, diagnostic: 'the cache root is read-only' });
+
+    const result = await preparePhysicPaintCacheGeneration(CACHE_ROOT, CACHE_STAGING_BASENAME);
+
+    expect(result).toEqual({
+      ok: true,
+      data: { accepted: false, diagnostic: 'the cache root is read-only' },
+    });
+  });
+
+  it('stages a cache frame as the raw invoke body with the scalars in headers, never a JSON number array', async () => {
+    invoke.mockResolvedValueOnce({ accepted: true });
+
+    const result = await stagePhysicPaintCacheFrame(
+      CACHE_ROOT, CACHE_STAGING_BASENAME, 'layer-machine-1a2b3c4d/track-1/frame-0000.webp', FIXTURE_FRAME_BYTES,
+    );
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    const call = invoke.mock.calls[0] as [string, unknown, { headers: Record<string, string> }];
+    expect(call[0]).toBe('stage_physic_paint_cache_frame');
+    expect(call[1]).toBe(FIXTURE_FRAME_BYTES);
+    expect(Array.isArray(call[1])).toBe(false);
+    expect(call[2].headers).toEqual({
+      cacheRoot: CACHE_ROOT,
+      stagingBasename: CACHE_STAGING_BASENAME,
+      relativePath: 'layer-machine-1a2b3c4d/track-1/frame-0000.webp',
+    });
+    expect(result).toEqual({ ok: true, data: { accepted: true } });
+  });
+
+  it('reports a rejected stage invoke as a plain transport failure (the leg softens it)', async () => {
+    invoke.mockRejectedValueOnce('stage_physic_paint_cache_frame: missing or invalid cacheRoot header');
+
+    const result = await stagePhysicPaintCacheFrame(
+      CACHE_ROOT, CACHE_STAGING_BASENAME, 'seg/track-1/frame-0000.webp', FIXTURE_FRAME_BYTES,
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('cacheRoot');
+  });
+
+  it('discards a cache staging generation and removes a machine-relative entry through their exact commands', async () => {
+    invoke.mockResolvedValue(null);
+
+    await discardPhysicPaintCacheStaging(CACHE_ROOT, CACHE_STAGING_BASENAME);
+    await removePhysicPaintCacheEntry(CACHE_ROOT, 'efx-paint/layer-machine-1a2b3c4d/track-1');
+
+    expect(invoke.mock.calls).toEqual([
+      ['discard_physic_paint_cache_staging', {
+        cacheRoot: CACHE_ROOT,
+        stagingBasename: CACHE_STAGING_BASENAME,
+      }],
+      ['remove_physic_paint_cache_entry', {
+        cacheRoot: CACHE_ROOT,
+        relative: 'efx-paint/layer-machine-1a2b3c4d/track-1',
+      }],
+    ]);
   });
 });
