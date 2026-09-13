@@ -1128,3 +1128,88 @@ describe('45-05 Task 3: AddFxMenu registers the v1.0 document at layer creation'
     expect(source).toContain("name: 'Physic Paint'");
   });
 });
+
+describe('quick-260913-05k round 3: a created project owns its chosen package path (UAT defect A)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectStore.reset();
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    efxPaintStoreModule.reset();
+    projectStore.filePath.value = null;
+    projectStore.dirPath.value = null;
+    clearPackageDisk();
+    ipcProjectSave.mockResolvedValue({ ok: true, data: null });
+    ipcProjectSaveAsWithScriptLibrary.mockResolvedValue({ ok: true, data: { diagnostics: [] } });
+    ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
+    ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
+    addRecentProject.mockResolvedValue(undefined);
+    setLastProjectPath.mockResolvedValue(undefined);
+    savePaintData.mockResolvedValue(undefined);
+    cleanupOrphanedPaintFiles.mockResolvedValue(undefined);
+    loadPhysicPaintData.mockResolvedValue([]);
+    prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
+    installPackageTransactionMocks();
+    installCacheLegMocks();
+    fsReadFile.mockImplementation(async (path: string) => {
+      const bytes = files.get(String(path));
+      if (bytes === undefined) throw new Error(`missing file: ${String(path)}`);
+      return bytes;
+    });
+    ipcProjectCreate.mockResolvedValue({ ok: true, data: { width: 1920, height: 1080 } });
+    ipcProjectMigrateTempImages.mockResolvedValue({ ok: true, data: [] });
+    vi.spyOn(projectStore, 'closeProject');
+  });
+
+  it('createProject registers the chosen package path — the first Cmd+S saves instead of falling into Save As', async () => {
+    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce');
+
+    // The reported defect: after Create, the plain-save leg found no path and
+    // opened the Save As picker over the just-created package. The project was
+    // given its location in the dialog, so the store must own it from birth.
+    expect(!projectStore.filePath.value).toBe(false);
+    expect(projectStore.filePath.value).toBe('/projects/Fresh.mce/project.mce');
+    expect(projectStore.dirPath.value).toBe('/projects/Fresh.mce');
+  });
+
+  it('a failed initial save keeps the registered path — never stranded as never-saved', async () => {
+    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce');
+    bindEfxPaintPackageTransaction.mockResolvedValueOnce({ ok: false, error: 'bind refused' });
+
+    await expect(projectStore.saveProjectAs('/projects/Fresh.mce/project.mce')).rejects.toThrow('bind refused');
+
+    // The rollback restores the CREATE-registered path, not `null`: a refused
+    // initial save must never send the next Cmd+S back into the Save As picker.
+    expect(projectStore.filePath.value).toBe('/projects/Fresh.mce/project.mce');
+    expect(projectStore.dirPath.value).toBe('/projects/Fresh.mce');
+  });
+
+  it('the next save after a failed initial save heals into the chosen package', async () => {
+    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce');
+    bindEfxPaintPackageTransaction.mockResolvedValueOnce({ ok: false, error: 'bind refused' });
+    await expect(projectStore.saveProjectAs('/projects/Fresh.mce/project.mce')).rejects.toThrow('bind refused');
+
+    await projectStore.saveProjectAs('/projects/Fresh.mce/project.mce');
+
+    const manifestBytes = files.get('/projects/Fresh.mce/project.mce');
+    expect(manifestBytes).toBeDefined();
+    expect((JSON.parse(new TextDecoder().decode(manifestBytes)) as { formatVersion?: unknown }).formatVersion).toBe(1);
+    expect(projectStore.filePath.value).toBe('/projects/Fresh.mce/project.mce');
+  });
+
+  it('the New Project dialog surfaces a create/initial-save failure through the blocking modal', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../components/project/NewProjectDialog.tsx', import.meta.url)),
+      'utf8',
+    );
+    // `createProject` resets the UI store (closeProject), so the dialog is
+    // already unmounted by the time the initial save can fail — an inline
+    // setError renders nowhere. The failure takes the same blocking-modal
+    // surface every other save site uses.
+    const catchStart = source.indexOf('} catch (err) {');
+    expect(catchStart).toBeGreaterThan(-1);
+    const catchBlock = source.slice(catchStart, source.indexOf('} finally {', catchStart));
+    expect(catchBlock).toContain("showProjectIoFailureDialog('save', err)");
+    expect(catchBlock).not.toContain('setError(');
+  });
+});
