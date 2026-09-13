@@ -542,6 +542,111 @@ pub fn hardlink_cache_frames(
     }
 }
 
+// --- quick-260913-05k: the cache staging lifecycle -------------------------
+//
+// The renderer cannot drive the fs plugin on cache paths either. The live
+// build refused `allow-mkdir` on `<root>/.efx-paint-staging-<uuid>` even
+// though the capability grants `fs:scope-appdata-recursive` statically and
+// the path lives under the appdata root, so the staging lifecycle runs here
+// like the package legs': plain std::fs carries no capability scope.
+
+/// Provision one staging generation — and the cache root itself when absent —
+/// at `<root>/<staging basename>`, the directory `publish_cache_generation`
+/// later canonicalizes and swaps. Best-effort callers treat a failure as a
+/// degraded leg, never as a save error (D-14).
+pub fn prepare_cache_staging_generation(
+    cache_root: &Path,
+    staging_basename: &str,
+) -> Result<(), String> {
+    validate_staging_basename(staging_basename)?;
+    let cache_parent = resolve_machine_cache_parent(cache_root)?;
+    fs::create_dir_all(cache_parent.join(staging_basename)).map_err(|error| {
+        format!("Could not create the Physics Paint cache staging generation: {error}")
+    })
+}
+
+/// Write one derived-frame sidecar into the staging generation at its
+/// generation-relative path (the reference minus its `efx-paint/` prefix),
+/// creating the parent directories. Same path rule as `hardlink_cache_frames`
+/// (`validate_unchanged_path`): no traversal, no absolute or empty segment.
+pub fn stage_cache_frame(
+    cache_root: &Path,
+    staging_basename: &str,
+    relative_path: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
+    validate_staging_basename(staging_basename)?;
+    validate_unchanged_path(relative_path)?;
+    let cache_parent = resolve_machine_cache_parent(cache_root)?;
+    let target = cache_parent.join(staging_basename).join(relative_path);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!("Could not create the Physics Paint staging directory: {error}")
+        })?;
+    }
+    write_synced_file(&target, bytes)
+        .map_err(|error| format!("Could not write the Physics Paint staging frame: {error}"))
+}
+
+/// Discard one staging generation left behind by a failed save. Fail-closed
+/// guards in the package discard's order: the basename must be a staging
+/// generation name, and the target must canonicalize to a direct child
+/// DIRECTORY of the canonical cache root — a symlink pointing elsewhere is
+/// refused, not followed. An absent generation is Ok: the failed save's catch
+/// may run before the generation was ever provisioned.
+pub fn discard_cache_staging_generation(
+    cache_root: &Path,
+    staging_basename: &str,
+) -> Result<(), String> {
+    validate_staging_basename(staging_basename)
+        .map_err(|error| format!("cache staging discard refused: {error}"))?;
+    if !cache_root.join(staging_basename).exists() {
+        return Ok(());
+    }
+    let cache_parent = resolve_machine_cache_parent(cache_root)?;
+    let resolved = fs::canonicalize(cache_parent.join(staging_basename))
+        .map_err(|error| format!("Could not resolve the cache staging generation: {error}"))?;
+    ensure_direct_child_directory(&resolved, &cache_parent, "Physics Paint staging generation")?;
+    fs::remove_dir_all(&resolved)
+        .map_err(|error| format!("Could not remove the cache staging generation: {error}"))
+}
+
+/// Remove one machine-relative entry under the canonical `efx-paint/`
+/// generation at commit time (46-05 D-15 track deletions, and the whole
+/// generation for an empty-documents save). The first segment must be exactly
+/// `efx-paint` and every segment passes `validate_unchanged_path`, so only
+/// the derived cache tree is reachable; a symbolic link is refused. Absent is
+/// Ok — the entry may predate this save or a rollback may have removed it.
+pub fn remove_cache_relative_entry(cache_root: &Path, relative: &str) -> Result<(), String> {
+    validate_cache_relative_entry(relative)?;
+    if !cache_root.exists() {
+        return Ok(());
+    }
+    let cache_parent = resolve_machine_cache_parent(cache_root)?;
+    let target = cache_parent.join(relative);
+    match fs::symlink_metadata(&target) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "Could not inspect the Physics Paint cache entry: {error}"
+        )),
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err("The Physics Paint cache entry must not be a symbolic link".to_string())
+        }
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(&target)
+            .map_err(|error| format!("Could not remove the Physics Paint cache entry: {error}")),
+        Ok(_) => fs::remove_file(&target)
+            .map_err(|error| format!("Could not remove the Physics Paint cache entry: {error}")),
+    }
+}
+
+fn validate_cache_relative_entry(value: &str) -> Result<(), String> {
+    validate_unchanged_path(value)?;
+    if value.split('/').next() != Some(CANONICAL_CACHE_BASENAME) {
+        return Err("Invalid Physics Paint cache entry path".to_string());
+    }
+    Ok(())
+}
+
 pub fn recover_cache_transaction(cache_root: &Path) -> Result<Option<CacheSettlement>, String> {
     #[cfg(not(target_os = "macos"))]
     {

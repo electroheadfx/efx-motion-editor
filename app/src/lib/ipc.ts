@@ -381,6 +381,76 @@ export function hardlinkPhysicPaintCacheFrames(
   );
 }
 
+/**
+ * The cache staging lifecycle (quick-260913-05k). The renderer used to drive
+ * the fs plugin on `<cache root>/.efx-paint-staging-<uuid>`; the live build
+ * refused `allow-mkdir` there even though the path sits under the appdata
+ * root, so the staging legs run as app commands too. Prepare and stage answer
+ * with the same typed soft failure as publish/settle/hardlink (D-14).
+ */
+export interface PhysicPaintCacheStagingResult {
+  accepted: boolean;
+  diagnostic?: string;
+}
+
+export function preparePhysicPaintCacheGeneration(
+  cacheRoot: string,
+  stagingBasename: string,
+): Promise<Result<PhysicPaintCacheStagingResult>> {
+  return safeInvoke<PhysicPaintCacheStagingResult>('prepare_physic_paint_cache_generation', {
+    cacheRoot,
+    stagingBasename,
+  });
+}
+
+/**
+ * Write one derived-frame sidecar into the staging generation. The bytes
+ * cross as the raw invoke body with the scalars in headers, mirroring
+ * `ipcEfxPaintWriteFrameMedia` — never a JSON number array.
+ */
+export async function stagePhysicPaintCacheFrame(
+  cacheRoot: string,
+  stagingBasename: string,
+  relativePath: string,
+  bytes: Uint8Array,
+): Promise<Result<PhysicPaintCacheStagingResult>> {
+  try {
+    const data = await invoke<PhysicPaintCacheStagingResult>(
+      'stage_physic_paint_cache_frame',
+      bytes,
+      { headers: { cacheRoot, stagingBasename, relativePath } },
+    );
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Discard one cache staging generation left behind by a failed save.
+ * Best-effort cleanup: the caller ignores a non-ok result exactly as the
+ * previous plugin-fs removal was swallowed.
+ */
+export function discardPhysicPaintCacheStaging(
+  cacheRoot: string,
+  stagingBasename: string,
+): Promise<Result<null>> {
+  return safeInvoke<null>('discard_physic_paint_cache_staging', { cacheRoot, stagingBasename });
+}
+
+/**
+ * Remove one machine-relative entry under the canonical `efx-paint/`
+ * generation at commit time (track deletions; the empty-documents canonical
+ * removal). Non-authoritative cleanup: the caller records a failure and
+ * commits regardless.
+ */
+export function removePhysicPaintCacheEntry(
+  cacheRoot: string,
+  relative: string,
+): Promise<Result<null>> {
+  return safeInvoke<null>('remove_physic_paint_cache_entry', { cacheRoot, relative });
+}
+
 // --- Authoritative package transaction (52.2-05 Task 2/3, D-10) -----------
 //
 // The wrapper surface mirrors the native commands one-for-one. Each call takes

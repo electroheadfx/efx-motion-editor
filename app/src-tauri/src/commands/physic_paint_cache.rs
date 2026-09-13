@@ -10,11 +10,14 @@
 //! cache error can fail or roll back an authoritative save.
 
 use crate::services::physic_paint_cache::{
-    hardlink_cache_frames, publish_cache_generation, resolve_machine_cache_root,
-    settle_cache_generation, CacheSettlementAction,
+    discard_cache_staging_generation, hardlink_cache_frames, prepare_cache_staging_generation,
+    publish_cache_generation, remove_cache_relative_entry, resolve_machine_cache_root,
+    settle_cache_generation, stage_cache_frame, CacheSettlementAction,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tauri::http::HeaderMap;
+use tauri::ipc::{InvokeBody, Request};
 use tauri::Manager;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -150,4 +153,107 @@ pub fn hardlink_physic_paint_cache_frames(
             diagnostic: Some(diagnostic),
         }),
     }
+}
+
+// --- quick-260913-05k: the cache staging lifecycle -------------------------
+//
+// The renderer's plugin-fs `mkdir` on `<root>/.efx-paint-staging-<uuid>` was
+// refused live (`allow-mkdir` scope) although the path lives under the
+// statically granted appdata scope, so the staging lifecycle runs as app
+// commands like the package legs'. Prepare and stage answer with the same
+// typed soft failure (`accepted: false` + diagnostic) as the publish/settle/
+// hardlink commands (D-14); discard and remove are best-effort cleanup whose
+// failure the caller records and ignores.
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhysicPaintCacheStagingResult {
+    pub accepted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<String>,
+}
+
+fn staging_result(result: Result<(), String>) -> PhysicPaintCacheStagingResult {
+    match result {
+        Ok(()) => PhysicPaintCacheStagingResult {
+            accepted: true,
+            diagnostic: None,
+        },
+        Err(diagnostic) => PhysicPaintCacheStagingResult {
+            accepted: false,
+            diagnostic: Some(diagnostic),
+        },
+    }
+}
+
+#[tauri::command]
+pub fn prepare_physic_paint_cache_generation(
+    cache_root: String,
+    staging_basename: String,
+) -> Result<PhysicPaintCacheStagingResult, String> {
+    Ok(staging_result(prepare_cache_staging_generation(
+        &PathBuf::from(cache_root),
+        &staging_basename,
+    )))
+}
+
+fn staging_header(headers: &HeaderMap, name: &str) -> Result<String, String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string())
+        .ok_or_else(|| {
+            format!("stage_physic_paint_cache_frame: missing or invalid {name} header")
+        })
+}
+
+/// Write one derived-frame sidecar into the staging generation. The frame
+/// bytes cross as the raw invoke body with the scalars in request headers —
+/// never a JSON number array — mirroring `efx_paint_write_frame_media`.
+#[tauri::command(async)]
+pub fn stage_physic_paint_cache_frame(
+    request: Request,
+) -> Result<PhysicPaintCacheStagingResult, String> {
+    let headers = request.headers();
+    let cache_root = staging_header(headers, "cacheRoot")?;
+    let staging_basename = staging_header(headers, "stagingBasename")?;
+    let relative_path = staging_header(headers, "relativePath")?;
+    let bytes = match request.body() {
+        InvokeBody::Raw(bytes) => bytes.clone(),
+        _ => {
+            return Err(
+                "stage_physic_paint_cache_frame: expected a raw byte body".to_string(),
+            )
+        }
+    };
+    Ok(staging_result(stage_cache_frame(
+        &PathBuf::from(cache_root),
+        &staging_basename,
+        &relative_path,
+        &bytes,
+    )))
+}
+
+/// Discard one cache staging generation left behind by a failed save.
+/// Best-effort by contract: the caller swallows a failure exactly as it
+/// swallowed the plugin-fs removal before, because canonical publication
+/// state is determined only by the transaction's own result.
+#[tauri::command]
+pub fn discard_physic_paint_cache_staging(
+    cache_root: String,
+    staging_basename: String,
+) -> Result<(), String> {
+    discard_cache_staging_generation(&PathBuf::from(cache_root), &staging_basename)
+}
+
+/// Remove one machine-relative entry under the canonical `efx-paint/`
+/// generation at commit time (track deletions; the empty-documents canonical
+/// removal). Non-authoritative cleanup: the caller records a failure and
+/// commits regardless.
+#[tauri::command]
+pub fn remove_physic_paint_cache_entry(
+    cache_root: String,
+    relative: String,
+) -> Result<(), String> {
+    remove_cache_relative_entry(&PathBuf::from(cache_root), &relative)
 }
