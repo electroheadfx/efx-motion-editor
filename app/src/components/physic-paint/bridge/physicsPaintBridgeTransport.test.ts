@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invoke = vi.hoisted(() => vi.fn());
 const emitTo = vi.hoisted(() => vi.fn(
@@ -13,10 +13,13 @@ vi.mock('@tauri-apps/api/event', () => ({ emitTo }));
 vi.mock('../performance/physicsPaintPerformanceTrace', () => ({ recordPhysicsPaintPerformance: performanceRecord }));
 
 import {
+  PHYSIC_PAINT_SESSION_DOCUMENT_KEY,
   createPhysicPaintThumbnailNativeEncoder,
   markEfxPaintDocumentSyncFrameDelivered,
+  readEfxPaintSessionDocumentCheckpoint,
   resetEfxPaintDocumentSyncTransferState,
   sendEfxPaintDocumentSync,
+  writeEfxPaintSessionDocumentCheckpoint,
 } from './physicsPaintBridgeTransport';
 import {
   applyPhysicPaintImageLibraryRequest,
@@ -379,5 +382,103 @@ describe('52.2-10 reference sync with a digest-keyed byte channel (D-12)', () =>
     const stages = performanceRecord.mock.calls.map((call) => (call[0] as { stage: string }).stage);
     expect(stages.filter((stage) => stage === 'bridge.docSyncEncode')).toHaveLength(2);
     expect(stages.filter((stage) => stage === 'bridge.docSyncEmit')).toHaveLength(2);
+  });
+});
+
+/**
+ * quick-260913-52r (H): the crash-recovery checkpoint crosses the storage
+ * boundary in the transport shape (bytes as base64 — a raw JSON.stringify turns
+ * Uint8Array into an index object the launch validator refuses) and is BOUND to
+ * the launch operationId that wrote it: only the same launch (a watchdog reload
+ * of the same window) may consume it. A leftover checkpoint from an earlier
+ * Studio session can never substitute a newer launch's carried document.
+ */
+describe('session document checkpoint is transport-shaped and launch-bound (quick-260913-52r H)', () => {
+  const LAYER = 'layer-h-checkpoint';
+  const stored = new Map<string, string>();
+
+  beforeEach(() => {
+    stored.clear();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        stored.set(key, value);
+      },
+      removeItem: (key: string) => {
+        stored.delete(key);
+      },
+      clear: () => {
+        stored.clear();
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const checkpointDocument = (bytes: Uint8Array): EfxPaintDocument => {
+    const base = createEfxPaintDocument(LAYER);
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const realKeyRecords = [{
+      kind: 'real-key' as const,
+      keyId: 'key-1',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, bytes, width: 8, height: 6 },
+    }];
+    const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 4096,
+      realKeyRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    return { ...base, tracks: [{ ...base.tracks[0], rotoPhysical }] };
+  };
+
+  type SerializedCheckpoint = {
+    readonly operationId: string;
+    readonly document: {
+      readonly tracks: readonly {
+        readonly rotoPhysical: {
+          readonly realKeyRecords: readonly { readonly payload: { readonly bytes?: unknown } }[];
+        } | null;
+      }[];
+    };
+  };
+
+  it('round-trips real bytes for the launch that wrote it, with base64 on the wire shape', () => {
+    const bytes = testWebpBytes('checkpoint-roundtrip');
+    writeEfxPaintSessionDocumentCheckpoint('op-1', checkpointDocument(bytes));
+
+    const raw = stored.get(PHYSIC_PAINT_SESSION_DOCUMENT_KEY);
+    expect(raw).toBeDefined();
+    const parsed = JSON.parse(raw!) as SerializedCheckpoint;
+    expect(parsed.operationId).toBe('op-1');
+    // The storage-shape law: bytes crossed as a base64 string, never a JSON
+    // index object (a raw JSON.stringify here deads the next Studio open).
+    expect(typeof parsed.document.tracks[0]!.rotoPhysical!.realKeyRecords[0]!.payload.bytes).toBe('string');
+
+    const restored = readEfxPaintSessionDocumentCheckpoint('op-1');
+    expect(restored).not.toBeNull();
+    const restoredBytes = restored!.tracks[0]!.rotoPhysical!.realKeyRecords[0]!.payload.bytes;
+    expect(restoredBytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(restoredBytes!)).toEqual(Array.from(bytes));
+  });
+
+  it('a checkpoint from an earlier launch is never substituted into a newer one', () => {
+    writeEfxPaintSessionDocumentCheckpoint('op-1', checkpointDocument(testWebpBytes('old-launch')));
+    expect(readEfxPaintSessionDocumentCheckpoint('op-2')).toBeNull();
+  });
+
+  it('a legacy raw-document checkpoint (pre-fix shape) is ignored, never migrated', () => {
+    stored.set(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(checkpointDocument(testWebpBytes('legacy'))));
+    expect(readEfxPaintSessionDocumentCheckpoint('op-1')).toBeNull();
   });
 });
