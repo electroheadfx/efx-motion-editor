@@ -16,13 +16,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // persist across renders so event handlers can drive state forward.
 const hookSlots: unknown[] = [];
 let hookCursor = 0;
+// Mount effects registered by the component under test. Real Preact fires a
+// `[]`-deps effect once per mount; the harness invokes these manually to
+// simulate an open → close → reopen cycle (WR-01).
+const mountEffects: Array<() => void> = [];
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
   return {
     ...actual,
     useRef: <T,>(initial: T): { current: T } => ({ current: initial }),
-    useEffect: () => {},
+    useEffect: (fn: () => void) => {
+      mountEffects.push(fn);
+    },
     useState: <T,>(initial: T): [T, (next: T | ((prev: T) => T)) => void] => {
       const slot = hookCursor++;
       if (!(slot in hookSlots)) hookSlots[slot] = initial;
@@ -140,6 +146,7 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
   beforeEach(() => {
     hookSlots.length = 0;
     hookCursor = 0;
+    mountEffects.length = 0;
     mockCreateProject.mockReset();
     mockCreateProject.mockResolvedValue(undefined);
     mockSaveProjectAs.mockReset();
@@ -215,5 +222,41 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
 
     expect(mockCreateProject).toHaveBeenCalledTimes(1);
     expect(mockCreateProject).toHaveBeenCalledWith('Untitled Project', 24, '/projects/Untitled Project.mce', 1500, 1920);
+  });
+
+  it('reopening the dialog resets the canvas format to the HD defaults (WR-01)', async () => {
+    // First open: fire the mount effect, then pick HD Vertical.
+    let tree = renderDialog();
+    for (const effect of mountEffects.splice(0)) effect();
+    const verticalPill = findPillByLabel(tree, 'HD Vertical');
+    expect(verticalPill).toBeDefined();
+    (verticalPill!.props as { onClick: () => void }).onClick();
+
+    // Close + reopen: a fresh component invocation registers a fresh mount
+    // effect; firing it must restore the HD defaults, symmetric with the
+    // useState-backed name/fps/dirPath fields.
+    tree = renderDialog();
+    for (const effect of mountEffects.splice(0)) effect();
+
+    // Choose a folder and Create — the project must be HD, not vertical.
+    tree = renderDialog();
+    const chooseButton = findAll(tree, (vnode) => {
+      if (vnode.type !== 'button') return false;
+      return textOf(vnode).includes('Choose...');
+    })[0];
+    expect(chooseButton).toBeDefined();
+    await (chooseButton!.props as { onClick: () => Promise<void> }).onClick();
+
+    tree = renderDialog();
+    const createButton = findAll(tree, (vnode) => {
+      if (vnode.type !== 'button') return false;
+      const label = textOf(vnode);
+      return label === 'Create' || label === 'Creating...';
+    })[0];
+    expect(createButton).toBeDefined();
+    await (createButton!.props as { onClick: () => Promise<void> }).onClick();
+
+    expect(mockCreateProject).toHaveBeenCalledTimes(1);
+    expect(mockCreateProject).toHaveBeenCalledWith('Untitled Project', 24, '/projects/Untitled Project.mce', 1920, 1080);
   });
 });
