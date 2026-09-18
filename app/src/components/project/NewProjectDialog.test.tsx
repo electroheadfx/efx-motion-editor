@@ -144,7 +144,7 @@ function renderDialog(): unknown {
 
 /** Simulate a fresh dialog open: render, fire the mount effect (WR-01 reset), re-render. */
 function openDialogFresh(): unknown {
-  const tree = renderDialog();
+  renderDialog();
   for (const effect of mountEffects.splice(0)) effect();
   return renderDialog();
 }

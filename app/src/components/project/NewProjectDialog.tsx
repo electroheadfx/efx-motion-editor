@@ -19,9 +19,11 @@ import {
 // signals, never useState. The pre-existing name/fps/dirPath useState fields
 // stay untouched (out of scope to refactor).
 const selectedPresetId = signal<CanvasFormatSelectionId>(DEFAULT_CANVAS_FORMAT_PRESET_ID);
-// Sensible defaults matching HD — the steppers are the primary bound; these
-// signals only feed handleCreate through clampCustomSize (a defensive second
-// pass per T-260918-ovi-01).
+// Custom…-branch field state (amendment: the W×H fields are always visible —
+// a selected preset displays its own dims in the greyed fields, and entering
+// Custom… re-seeds these signals from the current preset). The steppers clamp
+// at emission; handleCreate still runs clampCustomSize as the defensive
+// second pass (T-260918-ovi-01).
 const customWidth = signal<number>(1920);
 const customHeight = signal<number>(1080);
 
@@ -122,6 +124,13 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
     if (e.key === 'Enter' && !isCreating) handleCreate();
   };
 
+  const isCustomFormat = selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID;
+  // The preset whose dims the greyed W×H fields track. In Custom… mode the
+  // fields read the custom signals instead; activePreset is then only the
+  // seed source captured by the Custom… pill click.
+  const activePreset =
+    CANVAS_FORMAT_PRESETS.find((p) => p.id === selectedPresetId.value) ?? CANVAS_FORMAT_PRESETS[0];
+
   return (
     <div
       class="fixed inset-0 flex items-center justify-center z-50"
@@ -211,38 +220,49 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
             ))}
             <div
               class={`flex items-center rounded-md px-4 py-2 cursor-pointer transition-colors ${
-                selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID ? 'bg-(--color-accent)' : ''
+                isCustomFormat ? 'bg-(--color-accent)' : ''
               }`}
-              onClick={() => { selectedPresetId.value = CUSTOM_CANVAS_FORMAT_PRESET_ID; }}
+              onClick={() => {
+                // Amendment (always-visible fields): entering Custom… seeds the
+                // fields from the preset current at click time — the user edits
+                // from those dims, not from blank. Switching back to a preset
+                // shows that preset's dims again (the custom values are
+                // discarded; a later Custom… entry re-seeds).
+                customWidth.value = activePreset.width;
+                customHeight.value = activePreset.height;
+                selectedPresetId.value = CUSTOM_CANVAS_FORMAT_PRESET_ID;
+              }}
             >
               <span
-                class={`text-sm ${selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
+                class={`text-sm ${isCustomFormat ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
               >
                 Custom…
               </span>
             </div>
           </div>
-          {selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID && (
-            <div class="flex items-center gap-2">
-              <NumericStepper
-                value={customWidth.value}
-                onChange={(v) => { customWidth.value = v; }}
-                step={1}
-                min={CUSTOM_CANVAS_FORMAT_MIN_SIDE}
-                max={CUSTOM_CANVAS_FORMAT_MAX_SIDE}
-                ariaLabel="Custom width (px)"
-              />
-              <span class="text-sm text-(--color-text-secondary)">x</span>
-              <NumericStepper
-                value={customHeight.value}
-                onChange={(v) => { customHeight.value = v; }}
-                step={1}
-                min={CUSTOM_CANVAS_FORMAT_MIN_SIDE}
-                max={CUSTOM_CANVAS_FORMAT_MAX_SIDE}
-                ariaLabel="Custom height (px)"
-              />
-            </div>
-          )}
+          {/* Pixel dims (amendment): always visible — greyed and tracking the
+              selected preset; editable steppers (16–1920 clamp) on Custom…. */}
+          <div class={`flex items-center gap-2 ${isCustomFormat ? '' : 'opacity-50'}`}>
+            <NumericStepper
+              value={isCustomFormat ? customWidth.value : activePreset.width}
+              onChange={(v) => { customWidth.value = v; }}
+              step={1}
+              min={CUSTOM_CANVAS_FORMAT_MIN_SIDE}
+              max={CUSTOM_CANVAS_FORMAT_MAX_SIDE}
+              ariaLabel="Canvas width (px)"
+              disabled={!isCustomFormat}
+            />
+            <span class="text-sm text-(--color-text-secondary)">x</span>
+            <NumericStepper
+              value={isCustomFormat ? customHeight.value : activePreset.height}
+              onChange={(v) => { customHeight.value = v; }}
+              step={1}
+              min={CUSTOM_CANVAS_FORMAT_MIN_SIDE}
+              max={CUSTOM_CANVAS_FORMAT_MAX_SIDE}
+              ariaLabel="Canvas height (px)"
+              disabled={!isCustomFormat}
+            />
+          </div>
         </div>
 
         {/* Location */}
