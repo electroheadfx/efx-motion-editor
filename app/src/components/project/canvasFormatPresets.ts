@@ -44,6 +44,18 @@ export const CANVAS_FORMAT_PRESETS: readonly CanvasFormatPreset[] = [
     height: 1920,
     label: 'HD Vertical — 1080x1920 (9:16) · Story / Reels / Shorts (Instagram / Facebook / YouTube / TikTok)',
   },
+  {
+    id: 'portrait',
+    width: 1080,
+    height: 1350,
+    label: 'Portrait — 1080x1350 (4:5) · Post (Instagram / Facebook)',
+  },
+  {
+    id: 'square',
+    width: 1080,
+    height: 1080,
+    label: 'Square — 1080x1080 (1:1) · Post fallback',
+  },
 ];
 
 /** The preset selected when the dialog opens (D-preset-set: HD is the default). */

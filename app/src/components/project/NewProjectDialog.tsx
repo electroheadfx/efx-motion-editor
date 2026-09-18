@@ -4,16 +4,37 @@ import {open as openDialog} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
 import {toPackageManifestPath} from '../../lib/openedProjectUrls';
 import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
+import {NumericStepper} from '../shared/NumericStepper';
 import {
   CANVAS_FORMAT_PRESETS,
+  CUSTOM_CANVAS_FORMAT_MAX_SIDE,
+  CUSTOM_CANVAS_FORMAT_MIN_SIDE,
+  CUSTOM_CANVAS_FORMAT_PRESET_ID,
   DEFAULT_CANVAS_FORMAT_PRESET_ID,
-  type CanvasFormatPresetId,
+  clampCustomSize,
+  type CanvasFormatSelectionId,
 } from './canvasFormatPresets';
 
 // 260918-ovi (efx-preact-reactivity): NEW dialog state lives in module-scope
 // signals, never useState. The pre-existing name/fps/dirPath useState fields
 // stay untouched (out of scope to refactor).
-const selectedPresetId = signal<CanvasFormatPresetId>(DEFAULT_CANVAS_FORMAT_PRESET_ID);
+const selectedPresetId = signal<CanvasFormatSelectionId>(DEFAULT_CANVAS_FORMAT_PRESET_ID);
+// Sensible defaults matching HD — the steppers are the primary bound; these
+// signals only feed handleCreate through clampCustomSize (a defensive second
+// pass per T-260918-ovi-01).
+const customWidth = signal<number>(1920);
+const customHeight = signal<number>(1080);
+
+/** Short pill label for a fixed preset — full annotated labels stay in the preset table for SettingsView. */
+function pillLabelFor(id: string): string {
+  switch (id) {
+    case 'hd': return 'HD';
+    case 'hd-vertical': return 'HD Vertical';
+    case 'portrait': return 'Portrait';
+    case 'square': return 'Square';
+    default: return id;
+  }
+}
 
 interface NewProjectDialogProps {
   onClose: () => void;
@@ -66,8 +87,12 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
       const packageDirPath = `${dirPath}/${name.trim()}.mce`;
 
       // Create the project via projectStore (handles IPC + temp migration)
-      const preset = CANVAS_FORMAT_PRESETS.find(p => p.id === selectedPresetId.value) ?? CANVAS_FORMAT_PRESETS[0];
-      await projectStore.createProject(name.trim(), fps, packageDirPath, preset.width, preset.height);
+      // Custom… branch: clampCustomSize is the defensive second pass — the
+      // steppers already bounded every emission (T-260918-ovi-01).
+      const dims = selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID
+        ? clampCustomSize(customWidth.value, customHeight.value)
+        : (CANVAS_FORMAT_PRESETS.find(p => p.id === selectedPresetId.value) ?? CANVAS_FORMAT_PRESETS[0]);
+      await projectStore.createProject(name.trim(), fps, packageDirPath, dims.width, dims.height);
 
       // Auto-save the initial package: the manifest inside the package dir.
       await projectStore.saveProjectAs(toPackageManifestPath(packageDirPath));
@@ -174,11 +199,44 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
                 <span
                   class={`text-sm ${selectedPresetId.value === preset.id ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
                 >
-                  {preset.id === 'hd' ? 'HD' : 'HD Vertical'}
+                  {pillLabelFor(preset.id)}
                 </span>
               </div>
             ))}
+            <div
+              class={`flex items-center rounded-md px-4 py-2 cursor-pointer transition-colors ${
+                selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID ? 'bg-(--color-accent)' : ''
+              }`}
+              onClick={() => { selectedPresetId.value = CUSTOM_CANVAS_FORMAT_PRESET_ID; }}
+            >
+              <span
+                class={`text-sm ${selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
+              >
+                Custom…
+              </span>
+            </div>
           </div>
+          {selectedPresetId.value === CUSTOM_CANVAS_FORMAT_PRESET_ID && (
+            <div class="flex items-center gap-2">
+              <NumericStepper
+                value={customWidth.value}
+                onChange={(v) => { customWidth.value = v; }}
+                step={1}
+                min={CUSTOM_CANVAS_FORMAT_MIN_SIDE}
+                max={CUSTOM_CANVAS_FORMAT_MAX_SIDE}
+                ariaLabel="Custom width (px)"
+              />
+              <span class="text-sm text-(--color-text-secondary)">x</span>
+              <NumericStepper
+                value={customHeight.value}
+                onChange={(v) => { customHeight.value = v; }}
+                step={1}
+                min={CUSTOM_CANVAS_FORMAT_MIN_SIDE}
+                max={CUSTOM_CANVAS_FORMAT_MAX_SIDE}
+                ariaLabel="Custom height (px)"
+              />
+            </div>
+          )}
         </div>
 
         {/* Location */}

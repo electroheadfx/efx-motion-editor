@@ -71,17 +71,28 @@ function childrenOf(node: TestVNode): unknown[] {
   return Array.isArray(children) ? children : [children];
 }
 
-function materialize(node: unknown): unknown {
+function materialize(node: unknown, preserve?: ReadonlySet<unknown>): unknown {
   if (node === null || node === undefined || typeof node === 'boolean') return node;
-  if (Array.isArray(node)) return node.map(materialize);
+  if (Array.isArray(node)) return node.map((child) => materialize(child, preserve));
   if (typeof node !== 'object') return node;
   const vnode = node as TestVNode;
-  if (typeof vnode.type === 'function') return materialize((vnode.type as (p: unknown) => unknown)(vnode.props));
+  // Keep whitelisted function components as leaf vnodes so the test can
+  // assert their props directly (e.g. NumericStepper step/min/max).
+  if (typeof vnode.type === 'function' && preserve?.has(vnode.type)) {
+    return {
+      ...vnode,
+      props: {
+        ...vnode.props,
+        children: childrenOf(vnode).map((child) => materialize(child, preserve)),
+      },
+    } as TestVNode;
+  }
+  if (typeof vnode.type === 'function') return materialize((vnode.type as (p: unknown) => unknown)(vnode.props), preserve);
   return {
     ...vnode,
     props: {
       ...vnode.props,
-      children: childrenOf(vnode).map(materialize),
+      children: childrenOf(vnode).map((child) => materialize(child, preserve)),
     },
   } as TestVNode;
 }
@@ -122,7 +133,7 @@ function findPillByLabel(root: unknown, label: string): TestVNode | undefined {
 
 function renderDialog(): unknown {
   hookCursor = 0;
-  return materialize(NewProjectDialog({ onClose: () => {} }));
+  return materialize(NewProjectDialog({ onClose: () => {} }), new Set([NumericStepper]));
 }
 
 describe('NewProjectDialog canvas format (260918-ovi)', () => {
