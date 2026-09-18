@@ -142,6 +142,21 @@ function renderDialog(): unknown {
   return materialize(NewProjectDialog({ onClose: () => {} }), new Set([NumericStepper]));
 }
 
+/** Simulate a fresh dialog open: render, fire the mount effect (WR-01 reset), re-render. */
+function openDialogFresh(): unknown {
+  const tree = renderDialog();
+  for (const effect of mountEffects.splice(0)) effect();
+  return renderDialog();
+}
+
+/** The always-visible W×H steppers, located by their aria labels. */
+function steppersByLabel(tree: unknown): { width: TestVNode; height: TestVNode } {
+  const steppers = findAll(tree, (vnode) => vnode.type === NumericStepper);
+  const width = steppers.find((s) => (s.props.ariaLabel as string).toLowerCase().includes('width'))!;
+  const height = steppers.find((s) => (s.props.ariaLabel as string).toLowerCase().includes('height'))!;
+  return { width, height };
+}
+
 describe('NewProjectDialog canvas format (260918-ovi)', () => {
   beforeEach(() => {
     hookSlots.length = 0;
@@ -164,23 +179,103 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
     expect(findPillByLabel(tree, 'Custom…')).toBeDefined();
   });
 
-  it('Custom… branch renders two NumericSteppers with step=1, min=16, max=1920', () => {
-    let tree = renderDialog();
+  it('Custom… branch renders two editable NumericSteppers with step=1, min=16, max=1920', () => {
+    const tree = openDialogFresh();
     const customPill = findPillByLabel(tree, 'Custom…');
     expect(customPill).toBeDefined();
     (customPill!.props as { onClick: () => void }).onClick();
 
-    tree = renderDialog();
-    const steppers = findAll(tree, (vnode) => vnode.type === NumericStepper);
+    const nextTree = renderDialog();
+    const steppers = findAll(nextTree, (vnode) => vnode.type === NumericStepper);
     expect(steppers).toHaveLength(2);
     for (const stepper of steppers) {
       expect(stepper.props.step).toBe(1);
       expect(stepper.props.min).toBe(CUSTOM_CANVAS_FORMAT_MIN_SIDE);
       expect(stepper.props.max).toBe(CUSTOM_CANVAS_FORMAT_MAX_SIDE);
+      expect(stepper.props.disabled).toBe(false);
     }
     const labels = steppers.map((stepper) => (stepper.props.ariaLabel as string).toLowerCase());
     expect(labels.some((label) => label.includes('width'))).toBe(true);
     expect(labels.some((label) => label.includes('height'))).toBe(true);
+  });
+
+  it('always renders the W×H fields greyed at the open defaults (amendment; WR-01 unchanged)', () => {
+    const tree = openDialogFresh();
+    const fields = steppersByLabel(tree);
+    expect(fields.width.props.value).toBe(1920);
+    expect(fields.height.props.value).toBe(1080);
+    expect(fields.width.props.disabled).toBe(true);
+    expect(fields.height.props.disabled).toBe(true);
+  });
+
+  it('greyed fields track the selected preset live (amendment)', () => {
+    let tree = openDialogFresh();
+
+    (findPillByLabel(tree, 'HD Vertical')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+    let fields = steppersByLabel(tree);
+    expect(fields.width.props.value).toBe(1080);
+    expect(fields.height.props.value).toBe(1920);
+    expect(fields.width.props.disabled).toBe(true);
+    expect(fields.height.props.disabled).toBe(true);
+
+    (findPillByLabel(tree, 'Square')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+    fields = steppersByLabel(tree);
+    expect(fields.width.props.value).toBe(1080);
+    expect(fields.height.props.value).toBe(1080);
+    expect(fields.width.props.disabled).toBe(true);
+    expect(fields.height.props.disabled).toBe(true);
+  });
+
+  it('Custom… enables the fields, seeded from the current preset dims (amendment)', () => {
+    let tree = openDialogFresh();
+
+    (findPillByLabel(tree, 'HD Vertical')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+    (findPillByLabel(tree, 'Custom…')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+
+    const fields = steppersByLabel(tree);
+    expect(fields.width.props.disabled).toBe(false);
+    expect(fields.height.props.disabled).toBe(false);
+    expect(fields.width.props.value).toBe(1080);
+    expect(fields.height.props.value).toBe(1920);
+  });
+
+  it('switching back to a preset discards the custom edits; re-entering Custom… re-seeds from that preset (amendment)', () => {
+    let tree = openDialogFresh();
+
+    // Enter Custom… from HD: seeded 1920×1080, then edit both fields.
+    (findPillByLabel(tree, 'Custom…')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+    let fields = steppersByLabel(tree);
+    expect(fields.width.props.value).toBe(1920);
+    expect(fields.height.props.value).toBe(1080);
+    (fields.width.props as { onChange: (v: number) => void }).onChange(1500);
+    (fields.height.props as { onChange: (v: number) => void }).onChange(1600);
+
+    tree = renderDialog();
+    fields = steppersByLabel(tree);
+    expect(fields.width.props.value).toBe(1500);
+    expect(fields.height.props.value).toBe(1600);
+
+    // Switch to Portrait: the fields grey out and show the preset dims.
+    (findPillByLabel(tree, 'Portrait')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+    fields = steppersByLabel(tree);
+    expect(fields.width.props.disabled).toBe(true);
+    expect(fields.height.props.disabled).toBe(true);
+    expect(fields.width.props.value).toBe(1080);
+    expect(fields.height.props.value).toBe(1350);
+
+    // Re-enter Custom…: re-seeded from Portrait, the 1500×1600 edits discarded.
+    (findPillByLabel(tree, 'Custom…')!.props as { onClick: () => void }).onClick();
+    tree = renderDialog();
+    fields = steppersByLabel(tree);
+    expect(fields.width.props.disabled).toBe(false);
+    expect(fields.width.props.value).toBe(1080);
+    expect(fields.height.props.value).toBe(1350);
   });
 
   it('Create with Custom… calls createProject with the clamped custom dims', async () => {
