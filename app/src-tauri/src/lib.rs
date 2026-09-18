@@ -4,20 +4,28 @@ mod models;
 mod services;
 mod window_occlusion;
 
+pub use commands::efx_paint_media as efx_paint_media_command;
 pub use commands::physic_paint_cache as physic_paint_cache_command;
+pub use models::project::MceProject;
+pub use services::efx_paint_media;
 pub use services::physic_paint_cache;
+pub use services::project_io;
 
 #[doc(hidden)]
 pub mod script_library_test_support;
 
 use commands::config;
+use commands::debug_capture;
+use commands::efx_paint_media as efx_paint_media_commands;
 use commands::export;
+use commands::frame_codec as frame_codec_commands;
 use commands::image;
 use commands::physic_paint_cache as physic_paint_cache_commands;
 use commands::project;
 use commands::script_library;
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
@@ -114,6 +122,21 @@ struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
 /// display_sleep.rs). Dropped when the window is destroyed.
 struct DisplaySleepGuardState(Mutex<Option<display_sleep::DisplaySleepGuard>>);
 
+/// Cold-start buffer for macOS open-document URLs (52.2-11, D-03).
+///
+/// LaunchServices can deliver `RunEvent::Opened` BEFORE the main webview has
+/// installed its `opened` listener, and the event is not replayed, so a
+/// double-clicked package would be lost. URLs that arrive before the frontend
+/// says it is ready are buffered here and drained exactly once by the
+/// `opened_urls` command; `ready` flips on that drain, so every later event is
+/// emitted live instead. A URL is therefore never buffered and emitted for the
+/// same delivery, and the frontend queue dedupes even if it were.
+#[derive(Default)]
+struct OpenedUrlsState {
+    buffered: Mutex<Vec<String>>,
+    ready: std::sync::atomic::AtomicBool,
+}
+
 #[derive(serde::Serialize)]
 struct PhysicsPaintWindowLaunchResult {
     label: String,
@@ -193,6 +216,16 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         let app_handle = app.clone();
         window.on_window_event(move |event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                // 52.1: the main Preview holds its canvas while a paint child
+                // is open (see physicPaintLaunchActive); a manual child close
+                // (no apply) must release that gate so the main re-renders.
+                let _ = app_handle.emit("physic-paint:window-closed", ());
+                // Single-window model: restore the main editor window when the
+                // Studio closes (manual close or apply-with-close).
+                if let Some(main_window) = app_handle.get_webview_window("main") {
+                    let _ = main_window.show();
+                    let _ = main_window.set_focus();
+                }
                 if let Some(state) = app_handle.try_state::<DisplaySleepGuardState>() {
                     if let Ok(mut held) = state.0.lock() {
                         *held = None;
@@ -224,6 +257,12 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
     window.show().map_err(|error| format!("Could not show physics paint window: {error}"))?;
     window.center().map_err(|error| format!("Could not center physics paint window: {error}"))?;
     window.set_focus().map_err(|error| format!("Could not focus physics paint window: {error}"))?;
+    // Single-window model: the Studio owns the layer session while open — hide
+    // the main editor window so the two never present simultaneously. The main
+    // window is restored on the Studio's Destroyed event below.
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.hide().map_err(|error| format!("Could not hide main window: {error}"))?;
+    }
     window.emit("physic-paint:launch", &context).map_err(|error| format!("Could not send physics paint launch context: {error}"))?;
 
     let visible = window.is_visible().map_err(|error| format!("Could not verify physics paint window visibility: {error}"))?;
@@ -458,10 +497,52 @@ fn efxasset_allowed_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// 52.2-11 (D-03): the cold-start half of the open-document handshake —
+/// return and clear the buffered URLs, and switch the native side to live
+/// `opened` emission for the rest of the run.
+#[tauri::command]
+async fn opened_urls(state: tauri::State<'_, OpenedUrlsState>) -> Result<Vec<String>, String> {
+    state.ready.store(true, Ordering::SeqCst);
+    let mut buffered = state
+        .buffered
+        .lock()
+        .map_err(|error| format!("Could not read the opened-URL buffer: {error}"))?;
+    Ok(std::mem::take(&mut *buffered))
+}
+
+/// Deliver one `RunEvent` to the URL buffer/emitter (52.2-11, D-03).
+///
+/// `RunEvent::Opened` exists only on macOS/iOS/Android, so the non-Apple arm is
+/// a no-op that keeps the Windows/Linux build warning-free.
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+fn handle_run_event(app_handle: &tauri::AppHandle, event: &tauri::RunEvent) {
+    use tauri::Manager;
+
+    if let tauri::RunEvent::Opened { urls } = event {
+        let Some(state) = app_handle.try_state::<OpenedUrlsState>() else {
+            return;
+        };
+        let paths: Vec<String> = urls.iter().map(|url| url.to_string()).collect();
+        if state.ready.load(Ordering::SeqCst) {
+            if let Err(error) = app_handle.emit("opened", paths) {
+                println!("[52.2-11] opened-URL emit failed: {error}");
+            }
+        } else if let Ok(mut buffered) = state.buffered.lock() {
+            buffered.extend(paths);
+        } else {
+            println!("[52.2-11] opened-URL buffer poisoned; delivery dropped");
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+fn handle_run_event(_app_handle: &tauri::AppHandle, _event: &tauri::RunEvent) {}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(PhysicsPaintLaunchState(Mutex::new(None)))
         .manage(DisplaySleepGuardState(Mutex::new(None)))
+        .manage(OpenedUrlsState::default())
         .manage(window_occlusion::OcclusionStopFlag::default())
         .manage(services::script_library::ScriptLibraryState::default())
         .plugin(tauri_plugin_shell::init())
@@ -791,6 +872,13 @@ pub fn run() {
             project::project_open,
             project::project_migrate_temp_images,
             project::path_exists,
+            project::write_efx_paint_package_layer_file,
+            project::read_efx_paint_package_layer_file,
+            project::discard_efx_paint_package_staging,
+            project::bind_efx_paint_package_transaction,
+            project::publish_efx_paint_package_transaction,
+            project::settle_efx_paint_package_transaction,
+            project::recover_efx_paint_package_transaction,
             script_library::script_library_bind_saved_project,
             script_library::script_library_clear_active_project,
             script_library::script_library_scan,
@@ -809,8 +897,19 @@ pub fn run() {
             script_library::script_library_encode_thumbnail_webp,
             image::image_get_info,
             image::import_images,
+            physic_paint_cache_commands::resolve_physic_paint_cache_root,
             physic_paint_cache_commands::publish_physic_paint_cache_generation,
             physic_paint_cache_commands::settle_physic_paint_cache_generation,
+            physic_paint_cache_commands::hardlink_physic_paint_cache_frames,
+            physic_paint_cache_commands::prepare_physic_paint_cache_generation,
+            physic_paint_cache_commands::stage_physic_paint_cache_frame,
+            physic_paint_cache_commands::discard_physic_paint_cache_staging,
+            physic_paint_cache_commands::remove_physic_paint_cache_entry,
+            frame_codec_commands::encode_webp_frame,
+            frame_codec_commands::decode_webp_frame,
+            efx_paint_media_commands::efx_paint_write_frame_media,
+            efx_paint_media_commands::efx_paint_read_frame_media,
+            debug_capture::write_debug_capture,
             config::config_get_theme,
             config::config_set_theme,
             config::config_get_canvas_bg,
@@ -838,9 +937,11 @@ pub fn run() {
             export::export_cleanup_file,
             get_physics_paint_launch_context,
             open_physics_paint_window,
+            opened_urls,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| handle_run_event(app_handle, &event));
 }
 
 #[cfg(test)]

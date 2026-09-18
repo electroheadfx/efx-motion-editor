@@ -69,10 +69,10 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 ### AUD — Audio Preview (Phase 7)
 
-- [ ] **AUD-01**: Main-editor audio remains authoritative and read-only during EFX Paint playback
-- [ ] **AUD-02**: All internal Paint tracks share one application-frame playback cursor; audio monitoring follows it
-- [ ] **AUD-03**: Local monitoring On/Off does not mutate source audio; closing Studio releases audio resources
-- [ ] **AUD-04**: Multi-track Paint playback remains synchronized with main-editor audio (seek, loop, pause, resume, stop)
+- [x] **AUD-01**: Main-editor audio remains authoritative and read-only during EFX Paint playback
+- [x] **AUD-02**: All internal Paint tracks share one application-frame playback cursor; audio monitoring follows it
+- [x] **AUD-03**: Local monitoring On/Off does not mutate source audio; closing Studio releases audio resources
+- [x] **AUD-04**: Multi-track Paint playback remains synchronized with main-editor audio (seek, loop, pause, resume, stop)
 
 ### RVL — Reveal (Phase 8)
 
@@ -170,10 +170,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REF-03 | Phase 50 | Complete |
 | REF-04 | Phase 50 | Complete |
 | REF-05 | Phase 50 | Complete |
-| AUD-01 | Phase 51 | Pending |
-| AUD-02 | Phase 51 | Pending |
-| AUD-03 | Phase 51 | Pending |
-| AUD-04 | Phase 51 | Pending |
+| AUD-01 | Phase 51 | Complete |
+| AUD-02 | Phase 51 | Complete |
+| AUD-03 | Phase 51 | Complete |
+| AUD-04 | Phase 51 | Complete |
 | RVL-01 | Phase 52 | Complete |
 | RVL-02 | Phase 52 | Complete |
 | RVL-03 | Phase 52 | Complete |
@@ -192,4 +192,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-08-23*
-*Last updated: 2026-08-24 (TRK-07 complete via 46-05)*
+*Last updated: 2026-09-11 (CMP-01..06 + AUD-01..04 verification records backfilled — see 48-VERIFICATION.md, 52.1-VERIFICATION.md, 51-VERIFICATION.md)*

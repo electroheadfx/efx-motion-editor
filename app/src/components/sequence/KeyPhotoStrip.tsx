@@ -1,7 +1,7 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
-import {Camera, Square, Blend, Pipette, X, Plus, Minus, Music} from 'lucide-preact';
+import {Camera, Square, Blend, Pipette, X, Music} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
@@ -15,6 +15,7 @@ import {getTopLayerId} from '../../lib/layerSelection';
 import {getActiveKeyPhotoIndex} from '../../lib/keyPhotoNav';
 import {snapHoldFramesToBeat} from '../../lib/beatMarkerEngine';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
+import {NumericStepper} from '../shared/NumericStepper';
 import {buildGradientCSS} from '../shared/GradientBar';
 import type {GradientData} from '../../types/sequence';
 
@@ -177,7 +178,13 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose, startFrame}: F
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        if (value !== holdFrames) onCommit(value);
+        // The popover unmounts on close, so a value typed into the field but
+        // never committed (no Enter/blur) is still only in the DOM text: read
+        // it back through the same clamp the field applies (D-23/D-24) so the
+        // click-outside commit keeps its pre-stepper fidelity.
+        const typed = parseInt(popoverRef.current.querySelector('input')?.value ?? '', 10);
+        const next = Number.isFinite(typed) ? Math.max(1, Math.min(999, typed)) : value;
+        if (next !== holdFrames) onCommit(next);
         onClose();
       }
     }
@@ -194,29 +201,13 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose, startFrame}: F
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  const clamp = (n: number) => Math.max(1, Math.min(999, n));
-
-  const handleDecrement = useCallback(() => {
-    setValue(v => {
-      const next = clamp(v - 1);
-      onCommit(next);
-      return next;
-    });
+  // D-23/D-24: the shared − [field] + stepper owns the clamp/step path
+  // (min 1 / max 999 / step 1); this handler keeps the popover's own
+  // commit-on-change contract with the document.
+  const handleFramesChange = useCallback((next: number) => {
+    setValue(next);
+    onCommit(next);
   }, [onCommit]);
-
-  const handleIncrement = useCallback(() => {
-    setValue(v => {
-      const next = clamp(v + 1);
-      onCommit(next);
-      return next;
-    });
-  }, [onCommit]);
-
-  const handleInputCommit = useCallback(() => {
-    const clamped = clamp(value);
-    setValue(clamped);
-    onCommit(clamped);
-  }, [value, onCommit]);
 
   const handleSnapToBeat = useCallback(() => {
     const selectedTrack = audioStore.tracks.peek().find(
@@ -252,46 +243,31 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose, startFrame}: F
       <span class="text-[9px] font-medium" style={{color: 'var(--sidebar-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em'}}>
         Hold Frames
       </span>
-      <div class="flex items-center gap-1">
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded-md cursor-pointer transition-colors hover:bg-[#ffffff15]"
-          style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-          onClick={handleDecrement}
-          title="Decrease frames"
-        >
-          <Minus size={14} />
-        </button>
-        <input
-          type="number"
-          min={1}
-          max={999}
-          value={value}
-          class="flex-1 h-7 rounded-md px-2 border-0 outline-none text-center font-mono"
-          style={{
-            fontSize: '12px',
-            backgroundColor: 'var(--sidebar-input-bg)',
-            color: 'var(--sidebar-text-primary)',
-            minWidth: '40px',
-          }}
-          onInput={(e) => {
-            const parsed = parseInt((e.target as HTMLInputElement).value, 10);
-            if (!isNaN(parsed)) setValue(parsed);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleInputCommit();
-            if (e.key === 'Escape') onClose();
-          }}
-          onBlur={handleInputCommit}
-        />
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded-md cursor-pointer transition-colors hover:bg-[#ffffff15]"
-          style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-          onClick={handleIncrement}
-          title="Increase frames"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
+      <NumericStepper
+        value={value}
+        onChange={handleFramesChange}
+        step={1}
+        min={1}
+        max={999}
+        class="w-full"
+        ariaLabel="Hold frames"
+        inputClass="flex-1 h-7 rounded-md outline-none text-center font-mono"
+        inputStyle={{
+          fontSize: '12px',
+          backgroundColor: 'var(--sidebar-input-bg)',
+          color: 'var(--sidebar-text-primary)',
+          minWidth: '40px',
+          padding: '5px 6px',
+        }}
+        buttonStyle={{
+          width: '28px',
+          height: '28px',
+          borderRadius: '6px',
+          backgroundColor: 'var(--sidebar-input-bg)',
+          color: 'var(--sidebar-text-primary)',
+        }}
+        buttonClass="transition-colors hover:bg-[#ffffff15]"
+      />
       {(() => {
         const selectedTrack = audioStore.tracks.value.find(
           t => t.id === audioStore.selectedTrackId.value,

@@ -1,4 +1,3 @@
-import type { EfxPaintDocument } from '@efxlab/efx-physic-paint';
 import type { EfxPaintDocument as EfxPaintDocumentPayload } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
@@ -24,6 +23,10 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 export type { PhysicPaintRotoInterpolationMode } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+
+import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
+export { isWebpBytes, isPngBytes, buildFrameBytesToken };
+import { parseFrameMediaReference, type FrameMediaReference } from '../lib/efxPaintPackage';
 
 export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
 export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';
@@ -685,10 +688,159 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
   return false;
 }
 
-function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+/**
+ * 52.1 (D-05): the canonical JSON form of a physical-edit payload. Raw bytes
+ * cannot survive JSON.stringify (a Uint8Array becomes an index object), so the
+ * canonical form carries the bytes as base64 — a stable string for the action
+ * transaction records and the Rust boundary hash. The validator accepts this
+ * canonical form alongside the live Uint8Array form.
+ *
+ * 52.2-02 (D-07, Law 1): a payload carries exactly one raster carrier. A
+ * reference-only payload has no pixels to encode, so its canonical form carries
+ * the media reference instead — the bytes branch below is unchanged for every
+ * payload that carries `bytes`, so no existing canonical value or boundary hash
+ * moves.
+ */
+function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): Record<string, unknown> {
+  const media = payload.media;
+  if (media !== undefined) {
+    const reference = media.width === undefined
+      ? { relativePath: media.relativePath, digest: media.digest }
+      : { relativePath: media.relativePath, digest: media.digest, width: media.width, height: media.height };
+    return payload.width === undefined
+      ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, media: reference }
+      : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, media: reference, width: payload.width, height: payload.height };
+  }
+  const inline = payload.bytes as Uint8Array | string;
+  const bytes = typeof inline === 'string' ? inline : bytesToBase64(inline);
   return payload.width === undefined
-    ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, dataUrl: payload.dataUrl }
-    : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, dataUrl: payload.dataUrl, width: payload.width, height: payload.height };
+    ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes }
+    : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, bytes, width: payload.width, height: payload.height };
+}
+
+/**
+ * 52.2-10 (D-12): one real-key TRANSFER ENTRY crossing the Studio→main bridge.
+ *
+ * The bridge carries the layer document as references + metadata; a frame's
+ * pixels ride in the `changedBytes` channel, keyed by the very digest that
+ * identifies them, and only for a digest the receiver does not already hold.
+ * So the steady-state sync of an N-key layer carries N short entries and zero
+ * rasters, and a one-frame edit carries exactly one raster however many keys
+ * reference that digest (`PAYLOAD` never rides alongside `media`: ownership of
+ * the pixels stays unambiguous).
+ */
+export interface PhysicPaintRotoRealKeyTransferEntry {
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly media: FrameMediaReference;
+  /**
+   * Digest → raster, for the digests this sync is actually shipping. Every key
+   * is a 64 lower-case hex SHA-256 and the entry's own `media.digest` MUST be
+   * present: the channel's whole contract is that a receiver can decide what it
+   * needs from the digest alone, without inspecting values. Values are the live
+   * `Uint8Array` or its canonical base64 form.
+   */
+  readonly changedBytes?: Readonly<Record<string, string | Uint8Array>>;
+}
+
+/** 52.2-10 (D-12): the exact member set — an entry with any other key is refused. */
+const REAL_KEY_TRANSFER_ENTRY_KEYS = ['keyId', 'appFrame', 'media', 'changedBytes'] as const;
+const FRAME_MEDIA_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
+
+function base64ToBytes(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/** A byte-channel value is a rendered WebP, live or in its canonical base64 form. */
+function isTransferByteChannelValue(value: unknown): boolean {
+  if (value instanceof Uint8Array) return isWebpBytes(value);
+  if (typeof value !== 'string') return false;
+  const bytes = base64ToBytes(value);
+  return bytes !== null && isWebpBytes(bytes);
+}
+
+/**
+ * Fail-closed guard for {@link PhysicPaintRotoRealKeyTransferEntry} (D-12).
+ *
+ * Rejects non-records, unknown members (including a `payload`/`bytes` carrier
+ * smuggled in beside the reference — the exact ambiguity D-12 exists to kill),
+ * malformed identity, and any media reference `parseFrameMediaReference` would
+ * refuse. A `changedBytes` channel must be non-empty, keyed only by digests,
+ * carry the entry's own digest, and hold only rendered WebP bytes: an entry
+ * that ships bytes under a digest it does not reference cannot deduplicate by
+ * digest, so it is refused outright.
+ */
+export function isPhysicPaintRotoRealKeyTransferEntry(
+  value: unknown,
+): value is PhysicPaintRotoRealKeyTransferEntry {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, REAL_KEY_TRANSFER_ENTRY_KEYS)) return false;
+  if (!isBoundedPhysicalKeyId(value.keyId)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  let media: FrameMediaReference;
+  try {
+    media = parseFrameMediaReference(value.media, 'transferEntry.media');
+  } catch {
+    return false;
+  }
+  if (value.changedBytes === undefined) return true;
+  if (!isRecord(value.changedBytes)) return false;
+  const changedBytes = value.changedBytes as Record<string, unknown>;
+  const digests = Object.keys(changedBytes);
+  if (digests.length === 0) return false;
+  if (!digests.every((digest) => FRAME_MEDIA_DIGEST_PATTERN.test(digest))) return false;
+  if (!Object.prototype.hasOwnProperty.call(changedBytes, media.digest)) return false;
+  return digests.every((digest) => isTransferByteChannelValue(changedBytes[digest]));
+}
+
+/**
+ * Canonical stable JSON form for one validated transfer entry (D-12): the
+ * reference first, and any changed raster as base64 under a digest-sorted
+ * channel, so the same entry always produces the same bytes on the wire.
+ * Throws on a malformed entry — a caller never ships an unvalidated entry.
+ */
+export function serializePhysicPaintRotoRealKeyTransferEntry(
+  entry: PhysicPaintRotoRealKeyTransferEntry,
+): string {
+  if (!isPhysicPaintRotoRealKeyTransferEntry(entry)) {
+    throw new Error('PhysicPaintRotoRealKeyTransferEntry: malformed transfer entry.');
+  }
+  const canonical: Record<string, unknown> = {
+    keyId: entry.keyId,
+    appFrame: entry.appFrame,
+    media: canonicalFrameMediaReference(entry.media),
+  };
+  if (entry.changedBytes !== undefined) {
+    const channel: Record<string, string> = {};
+    for (const digest of Object.keys(entry.changedBytes).sort()) {
+      const value = entry.changedBytes[digest];
+      channel[digest] = typeof value === 'string'
+        ? bytesToBase64(base64ToBytes(value) as Uint8Array)
+        : bytesToBase64(value);
+    }
+    canonical.changedBytes = channel;
+  }
+  return JSON.stringify(canonical);
+}
+
+/** The one canonical media-reference form: dimensions appear together or not at all. */
+function canonicalFrameMediaReference(media: FrameMediaReference): Record<string, unknown> {
+  return media.width === undefined
+    ? { relativePath: media.relativePath, digest: media.digest }
+    : { relativePath: media.relativePath, digest: media.digest, width: media.width, height: media.height };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
 }
 
 function canonicalPhysicalEditTarget(target: PhysicPaintRotoPhysicalEditTarget): PhysicPaintRotoPhysicalEditTarget {
@@ -1103,6 +1255,24 @@ export interface PhysicPaintRotoPhysicalEditRecord {
   readonly keyId: string;
   readonly appFrame: number;
   readonly payload: PhysicPaintRotoRealKeyPayload;
+}
+
+/**
+ * 52.1 (Part 2) wire-only record reference. On the bridge, a real-key record
+ * whose bytes are unchanged relative to the expected (parent-current) state
+ * rides as a content-token ref instead of re-sending the full byte payload;
+ * the parent resolves the ref against its own store before validation, so the
+ * in-memory payload contract above never changes shape.
+ */
+export interface PhysicPaintRotoPhysicalEditRecordRef {
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly refToken: string;
+}
+
+export function isPhysicPaintRotoPhysicalEditRecordRef(value: unknown): value is PhysicPaintRotoPhysicalEditRecordRef {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['keyId', 'appFrame', 'refToken'])) return false;
+  return isBoundedPhysicalKeyId(value.keyId) && isNonNegativeInteger(value.appFrame) && isNonEmptyString(value.refToken);
 }
 
 /**
@@ -1622,7 +1792,6 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   }
   return true;
 }
-const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 
 export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'replace-roto-physical-map' | 'update-roto-interpolation-settings' | 'update-roto-playback-settings';
@@ -1665,7 +1834,7 @@ export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   toSourceFrame?: number;
   interpolationT?: number;
   backgroundOnly?: boolean;
-  onionDataUrl?: string;
+  onionBytes?: Uint8Array;
 }
 
 export interface PhysicPaintProjectContext {
@@ -1753,31 +1922,15 @@ export interface PhysicPaintStateSaveResult {
   error?: string;
 }
 
-export interface PhysicPaintThumbnailEncodeRequest {
-  operationId: string;
-  width: number;
-  height: number;
-  quality: number;
-  rgbaBase64: string;
-}
-
-export interface PhysicPaintThumbnailEncodeResult {
-  operationId: string;
-  ok: boolean;
-  width: number;
-  height: number;
-  mimeType: 'image/webp';
-  webpBase64?: string;
-  error?: string;
-}
-
 export interface PhysicPaintRenderedFrame {
   /** Generated sequence-local frame index. For still applies this is 0. */
   frameIndex: number;
   /** Editor timeline frame that should receive this rendered output. */
   appFrame: number;
-  /** Rendered PNG output only. Editable stroke/engine state is never transported here. */
-  dataUrl: string;
+  /** Rendered WebP-lossless output only (compact bytes, D-05/D-18). Editable stroke/engine state is never transported here. */
+  bytes: Uint8Array;
+  /** Canonical sidecar ref (D-08): refs-only load returns this path with empty bytes; the decode path fetches bytes on demand. */
+  cachePath?: string;
   width?: number;
   height?: number;
   /** Roto cache provenance; generated frames are render-only and never editable. */
@@ -1795,9 +1948,8 @@ export interface PhysicPaintApplyCanvasPayload {
   sourceFrame?: number;
   displayFrame?: number;
   renderedFrame: PhysicPaintRenderedFrame;
-  editableState?: EfxPaintDocument;
   backgroundOnly?: boolean;
-  onionDataUrl?: string;
+  onionBytes?: Uint8Array;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
   closeWindowAfterApply?: boolean;
@@ -2081,12 +2233,11 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
 
   if (value.kind === 'apply-canvas') {
     const sourceFrame = typeof value.sourceFrame === 'number' ? value.sourceFrame : value.startFrame;
-    return (value.editableState === undefined || isEfxPaintDocumentEditableState(value.editableState)) &&
-      optionalNonNegativeInteger(value.sourceFrame) &&
+    return optionalNonNegativeInteger(value.sourceFrame) &&
       optionalNonNegativeInteger(value.displayFrame) &&
       isPhysicPaintRenderedFrame(value.renderedFrame, sourceFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
-      (value.onionDataUrl === undefined || isRenderedPngDataUrl(value.onionDataUrl)) &&
+      (value.onionBytes === undefined || isWebpBytes(value.onionBytes)) &&
       optionalRotoBackgroundMetadata(value.rotoBackground) &&
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
@@ -2111,7 +2262,7 @@ export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPain
   if (!optionalNonNegativeInteger(value.fromSourceFrame)) return false;
   if (!optionalNonNegativeInteger(value.toSourceFrame)) return false;
   if (value.interpolationT !== undefined && (typeof value.interpolationT !== 'number' || !Number.isFinite(value.interpolationT) || value.interpolationT < 0 || value.interpolationT > 1)) return false;
-  if (value.onionDataUrl !== undefined && !isRenderedPngDataUrl(value.onionDataUrl)) return false;
+  if (value.onionBytes !== undefined && !isWebpBytes(value.onionBytes)) return false;
   return value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean';
 }
 
@@ -2235,24 +2386,6 @@ export function isPhysicPaintApplyResultMessage(value: unknown): value is Physic
   );
 }
 
-export function isPhysicPaintThumbnailEncodeRequest(value: unknown): value is PhysicPaintThumbnailEncodeRequest {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'width', 'height', 'quality', 'rgbaBase64'])) return false;
-  if (!isBoundedOperationId(value.operationId) || !isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64)) return false;
-  if (typeof value.quality !== 'number' || !Number.isFinite(value.quality) || value.quality < 0.75 || value.quality > 0.85) return false;
-  if (typeof value.rgbaBase64 !== 'string') return false;
-  const expectedBytes = value.width * value.height * 4;
-  return isCanonicalBase64ForByteLength(value.rgbaBase64, expectedBytes);
-}
-
-export function isPhysicPaintThumbnailEncodeResult(value: unknown): value is PhysicPaintThumbnailEncodeResult {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'width', 'height', 'mimeType', 'webpBase64', 'error'])) return false;
-  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
-  if (!isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64) || value.mimeType !== 'image/webp') return false;
-  if (value.error !== undefined && typeof value.error !== 'string') return false;
-  if (!value.ok) return value.webpBase64 === undefined && isNonEmptyString(value.error);
-  return typeof value.webpBase64 === 'string' && isCanonicalBase64WithinLimit(value.webpBase64, 512 * 1024) && value.error === undefined;
-}
-
 export function isPhysicPaintScriptLibraryRequest(value: unknown): value is PhysicPaintScriptLibraryRequest {
   if (!isRecord(value) || !isNonEmptyString(value.operationId)) return false;
   if (value.kind === 'scan') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId');
@@ -2357,8 +2490,13 @@ export function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: nu
   if (!isNonNegativeInteger(value.appFrame)) return false;
   if (expectedFrameIndex !== undefined && value.frameIndex !== expectedFrameIndex) return false;
   if (expectedAppFrame !== undefined && value.appFrame !== expectedAppFrame) return false;
-  if (!isRenderedPngDataUrl(value.dataUrl)) return false;
   if (value.source !== undefined && value.source !== 'real-key' && value.source !== 'generated-interpolation' && value.source !== 'background-only-support') return false;
+  if (value.source === 'background-only-support') {
+    // Distinct non-raster marker (Pitfall 4): never decoded, so empty bytes are valid.
+    if (!(value.bytes instanceof Uint8Array)) return false;
+  } else if (!isWebpBytes(value.bytes)) {
+    return false;
+  }
   return optionalNumber(value.width) && optionalNumber(value.height);
 }
 
@@ -2367,35 +2505,6 @@ function containsForbiddenApplyField(value: Record<string, unknown>): boolean {
     if (FORBIDDEN_APPLY_FIELDS.has(key)) return true;
   }
   return false;
-}
-
-/**
- * v1.0 document payload guard for the apply-canvas editableState carrier (D-03).
- * The engine's save() output carries engine-only strokes/settings on the active
- * track; the app-side parser's closed TRACK_KEYS rejects those carriers, so the
- * guard validates a carrier-stripped copy through the full fail-closed parse.
- * Legacy version:2 payloads fail the parse and are rejected.
- */
-function isEfxPaintDocumentEditableState(value: unknown): value is EfxPaintDocument {
-  if (!isRecord(value) || !Array.isArray(value.tracks)) return false;
-  const stripped = {
-    ...value,
-    tracks: value.tracks.map((track) => {
-      if (!isRecord(track)) return track;
-      const { strokes: _strokes, settings: _settings, ...rest } = track;
-      return rest;
-    }),
-  };
-  try {
-    parseEfxPaintDocument(stripped);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isRenderedPngDataUrl(value: unknown): value is string {
-  return typeof value === 'string' && value.startsWith(RENDERED_DATA_URL_PREFIX) && value.includes(',');
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -2409,35 +2518,6 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 
 function isBoundedOperationId(value: unknown): value is string {
   return isNonEmptyString(value) && value.length <= 256 && !/[^\x20-\x7e]/.test(value);
-}
-
-function isBoundedThumbnailDimension(value: unknown, max: number): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= max;
-}
-
-function isCanonicalBase64ForByteLength(value: string, byteLength: number): boolean {
-  const encodedLength = Math.ceil(byteLength / 3) * 4;
-  if (value.length !== encodedLength || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  if (value.slice(0, -padding || undefined).includes('=')) return false;
-  if (padding !== (3 - (byteLength % 3)) % 3) return false;
-  try {
-    const decoded = atob(value);
-    if (decoded.length !== byteLength) return false;
-    let binary = '';
-    for (let index = 0; index < decoded.length; index += 1) binary += decoded[index];
-    return btoa(binary) === value;
-  } catch {
-    return false;
-  }
-}
-
-function isCanonicalBase64WithinLimit(value: string, maxBytes: number): boolean {
-  if (value.length === 0 || value.length > Math.ceil(maxBytes / 3) * 4 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  if (value.slice(0, -padding || undefined).includes('=')) return false;
-  const byteLength = (value.length / 4) * 3 - padding;
-  return byteLength > 0 && byteLength <= maxBytes && isCanonicalBase64ForByteLength(value, byteLength);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

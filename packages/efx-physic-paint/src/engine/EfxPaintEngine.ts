@@ -98,6 +98,8 @@ type DeferredStrokeFinalization = {
   continuationFrames: number
   mutationId: number
   queuedAt: number
+  /** allActions entries this pending covers (1 primary + N zero-point continuations) — redrawAll skips that trailing span so queued strokes render only via the drain. */
+  actionCount: number
   /** Scripted strokes (enqueueRecordedStroke) coalesce into one drain; interactive strokes pace one step per frame. */
   isScripted: boolean
 }
@@ -153,15 +155,42 @@ export type PaintHistoryAvailability = {
   redo: number
 }
 
-const STROKE_FINALIZATION_IDLE_MS = 500
+/** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
+export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
+
+// 52.1: 1000ms → 400ms (user UAT request, progressive rendering). The 48ms
+// time-bounded turn + state.drawing block keep render work out of the gesture;
+// the only exposure is one bounded slice at pen-down when the user resumes
+// mid-turn. 400ms opens the gate inside natural inter-stroke pauses
+// (~300-500ms) so a finished stroke renders before the next one starts — the
+// standalone's progressive feel — instead of bursting the whole backlog after
+// a full 1s stop (the 52.1 slow-stroke trace's all-at-once landing).
+const STROKE_FINALIZATION_IDLE_MS = 400
+// 52.1 (2nd-stroke freeze): natural drying is cosmetic evaporation; every
+// dryStep reads back + writes back the dry canvas region (a long stroke's bbox
+// is large) and blocks the thread for ~87ms on the GPU semaphore. The user's
+// inter-stroke pause (~1s) let the old 1000ms gate fire between strokes and the
+// whole session crawled at ~8fps. Only evaporate at a genuine stop (matching
+// the capture/documentSync quiet windows); residual wet is handled by the next
+// stroke's prepareWetLayerForStroke + finalize, so skipping drying mid-train is
+// safe.
+const DRYING_QUIET_MS = 2500
+// 52.1 (2nd-stroke freeze): while a paint train is this recent, a fresh-key base
+// apply must not upload its 8.3MB texture (see applyPreviewBaseImage) — existing
+// keys never re-upload during painting, which is why they stay perfect.
+const PAINT_TRAIN_BASE_DRAW_MS = 1500
 /** Scripted bursts drain at most this many strokes per visual frame — bounds the synchronous block. */
 const MAX_COALESCED_STROKES_PER_FRAME = 4
-/** Interactive strokes drain at most this many phase steps per visual frame — batches the final render. */
-const MAX_INTERACTIVE_STEPS_PER_FRAME = 12
-/** Hard cap on the interactive drain turn's synchronous block — the drain runs
- *  in the gap between strokes; a long turn delays the next stroke's first
- *  samples (the stroke-start stutter the user felt every few strokes). */
-const STROKE_FINALIZATION_MAX_TURN_MS = 12
+/** Hard cap on the interactive drain turn's synchronous block. The drain only
+ *  runs after the stroke-input idle gate opens (never mid-gesture), so the cap
+ *  prices gap throughput, not in-stroke jank. 12ms starved the queue: grain
+ *  layers cost 17-37ms and local-fluid ticks 58-74ms, so a turn ran ~1 step per
+ *  frame and the backlog outgrew the drain (the 52.1 slow-stroke trace: 5-7s
+ *  queue waits). The original standalone blocked pointer-up for the WHOLE
+ *  stroke raster (hundreds of ms) and stayed responsive in practice; 48ms lands
+ *  each completed group within a few frames while a pen-down mid-turn waits at
+ *  most one slice. */
+const STROKE_FINALIZATION_MAX_TURN_MS = 48
 /** Minimum interval between full display composites while a drain is running —
  * the per-frame full-canvas upload is the main remaining GPU churn during a
  * painting session; 30fps keeps the final render visibly fast. */
@@ -398,6 +427,22 @@ export class EfxPaintEngine {
   // accepted render for the same frame.
   private appliedPreviewBaseAppFrame: number | null = null
   private appliedPreviewBaseExplicit: boolean = false
+  // 52.1: an explicit (content-token) preview-base paint is in flight — its
+  // async blob decode has not yet applied or dropped. A plain refresh (no
+  // content token) must not supersede it, or the completion reconcile paint is
+  // dropped and the guard churns (the "completion paint dropped" error).
+  private inFlightExplicitPreviewBase: boolean = false
+  // 52.1: an explicit completion paint whose async decode landed while the user
+  // was mid-stroke (state.drawing true). It is NOT dropped — it is parked here
+  // and re-applied the moment the active stroke ends (onPointerUp), so the
+  // reconcile paint never needs the guard's repair churn.
+  private pendingExplicitPreviewBase: {
+    image: HTMLImageElement
+    requestId: number
+    dataUrl: string
+    generation: number
+    appFrame?: number
+  } | null = null
   // 38.1-07: resetBackground skip memo — an unchanged background (same bgData
   // identity AND same input tuple) performs no drawBg/redraw work. Every other
   // background writer REPLACES this.bgData, so the identity half covers them
@@ -448,11 +493,21 @@ export class EfxPaintEngine {
   private lastNativePenInputTime: number = 0
   private lastPointerInputTime: number = 0
   private lastStrokeHandoffTime: number = 0
+  // Stroke-scoped input clock (pointer down/up/cancel + drawing moves only —
+  // hover excluded). The finalization drain gates on THIS, not the hover clock:
+  // gaps between strokes are full of hover, so a hover-inclusive clock never
+  // opens the idle window mid-session and the whole burst piles onto the last
+  // stroke — and hovering to WATCH the drain keeps pausing it, stretching the
+  // last stroke's finalization wall time by seconds. Drying and the base-draw
+  // train gate keep the hover-inclusive clock (conservative = correct there).
+  private lastStrokeInputTime: number = 0
   private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
   private readonly paperTextureScale: number
   private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
   private historyAvailabilityListener: ((availability: PaintHistoryAvailability) => void) | null = null
   private performanceListener: ((sample: PaintPerformanceSample) => void) | null = null
+  /** 52.1: pointer-input activity callback for the Studio's gesture-idle scheduler. */
+  public onInputActivity: ((kind: InputActivityKind, pointerId: number) => void) | null = null
   private nextMutationId: number = 1
   private activeMutationId: number | null = null
   private lastCompletedMutationId: number | null = null
@@ -462,6 +517,7 @@ export class EfxPaintEngine {
   private readonly boundPointerMove: (e: PointerEvent) => void
   private readonly boundPointerUp: (e: PointerEvent) => void
   private readonly boundPointerLeave: (e: PointerEvent) => void
+  private readonly boundPointerCancel: (e: PointerEvent) => void
   private readonly boundTouchStart: (e: TouchEvent) => void
 
   // --- Deferred Init (for async init()) ---
@@ -561,6 +617,7 @@ export class EfxPaintEngine {
     this.boundPointerMove = this.onPointerMove.bind(this)
     this.boundPointerUp = this.onPointerUp.bind(this)
     this.boundPointerLeave = this.onPointerLeave.bind(this)
+    this.boundPointerCancel = this.onPointerCancel.bind(this)
     this.boundTouchStart = (e: TouchEvent) => e.preventDefault()
 
     // Set up pointer event listeners on the dry canvas
@@ -569,6 +626,7 @@ export class EfxPaintEngine {
     canvas.addEventListener('pointermove', this.boundPointerMove)
     canvas.addEventListener('pointerup', this.boundPointerUp)
     canvas.addEventListener('pointerleave', this.boundPointerLeave)
+    canvas.addEventListener('pointercancel', this.boundPointerCancel)
     canvas.addEventListener('touchstart', this.boundTouchStart, { passive: false })
 
     // Store paper config for async init() — consumers call init() to load textures
@@ -748,7 +806,12 @@ export class EfxPaintEngine {
     image.src = dataUrl
   }
 
-  resetBackground(): void {
+  // skipRedraw: leave-path callers (resetBackground immediately followed by
+  // clear()) pass true — clear() discards allActions and repaints the dry
+  // canvas from drawBg, so the redrawAll() stroke replay is wasted work. The
+  // drawBg/redrawPreviewBase/memo writes still happen (they are the state the
+  // skip memo and the following clear() rely on).
+  resetBackground(skipRedraw = false): void {
     this.requestRender()
     this.previewBackgroundRequestId += 1
     const inputs = this.lastResetBackgroundInputs
@@ -766,7 +829,7 @@ export class EfxPaintEngine {
     }
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
-    this.redrawAll()
+    if (!skipRedraw) this.redrawAll()
     this.lastResetBackgroundData = this.bgData
     this.lastResetBackgroundInputs = {
       bgMode: this.state.bgMode,
@@ -779,9 +842,14 @@ export class EfxPaintEngine {
 
   setPreviewBaseImageUrl(dataUrl: string, contentToken?: number, appFrame?: number): void {
     this.requestRender()
+    const requestExplicit = contentToken !== undefined
+    // 52.1: a plain refresh (no content token) must not supersede an explicit
+    // completion paint whose async decode is still in flight — that supersede
+    // is what drops the reconcile paint and makes the guard churn.
+    if (!requestExplicit && this.inFlightExplicitPreviewBase) return
     const requestId = ++this.previewBaseRequestId
     const requestContentToken = contentToken ?? this.nextPreviewBaseContentToken()
-    const requestExplicit = contentToken !== undefined
+    if (requestExplicit) this.inFlightExplicitPreviewBase = true
     // Keep the auto-assignment counter above any explicit content token this
     // engine has seen, so a later auto-issued paint (navigation/editing) is
     // never gated by an older explicit completion token. Layer 2 callers that
@@ -799,6 +867,7 @@ export class EfxPaintEngine {
       // reload resolving content from an older revision) must never paint
       // over the newer settled content.
       if (requestContentToken < (this.appliedPreviewBaseGeneration ?? 0)) {
+        if (requestExplicit) this.inFlightExplicitPreviewBase = false
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
@@ -819,7 +888,26 @@ export class EfxPaintEngine {
           if (oldest !== undefined) this.previewBaseImageCache.delete(oldest)
         }
       }
-      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) {
+      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
+        const superseded = requestId !== this.previewBaseRequestId
+        // A superseded explicit paint means a NEWER explicit paint is in flight
+        // (a subsequent stroke's reconcile on the same frame). Keep the in-flight
+        // flag set and do NOT notify the guard — it would wrongly repair the older
+        // paint; the newer paint settles and notifies instead.
+        if (requestExplicit && superseded) return
+        if (requestExplicit) this.inFlightExplicitPreviewBase = false
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
+        return
+      }
+      if (this.state.drawing) {
+        // The decode landed mid-stroke. A plain refresh is dropped (it must not
+        // clobber the wet layer), but an explicit completion paint is DEFERRED —
+        // parked and re-applied on pointer-up so the reconcile never churns the
+        // guard. Keep the in-flight flag set: the paint is still pending.
+        if (requestExplicit) {
+          this.pendingExplicitPreviewBase = { image, requestId, dataUrl, generation: requestContentToken, appFrame }
+          return
+        }
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
@@ -827,6 +915,7 @@ export class EfxPaintEngine {
         // Content-token regression: a decode completing with an OLDER content
         // token than the last settled paint must never touch the canvas, even
         // when its requestId is current (a stale-content re-issue).
+        if (requestExplicit) this.inFlightExplicitPreviewBase = false
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
@@ -834,6 +923,7 @@ export class EfxPaintEngine {
       this.notifyPreviewBaseSettled(dataUrl, 'applied', requestContentToken)
     }
     image.onerror = () => {
+      if (requestExplicit) this.inFlightExplicitPreviewBase = false
       this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
     }
     image.src = dataUrl
@@ -895,9 +985,19 @@ export class EfxPaintEngine {
     return this.previewBaseGenerationCounter
   }
 
-  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false): void {
-    if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
-    if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false, skipFullReplay = false): boolean {
+    if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode) {
+      if (explicit) this.inFlightExplicitPreviewBase = false
+      return false
+    }
+    if (this.state.drawing) {
+      // Cache-hit apply landing mid-stroke: defer an explicit completion paint
+      // (same as the async decode path), drop a plain refresh.
+      if (explicit) this.pendingExplicitPreviewBase = { image, requestId, dataUrl: dataUrl ?? '', generation, appFrame }
+      return false
+    }
+    if (explicit) this.inFlightExplicitPreviewBase = false
+    if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return false
     this.previewBaseImage = image
     this.previewBaseEnabled = true
     this.previewBackgroundSeparated = true
@@ -905,13 +1005,33 @@ export class EfxPaintEngine {
     this.appliedPreviewBaseGeneration = generation
     this.appliedPreviewBaseAppFrame = appFrame ?? null
     this.appliedPreviewBaseExplicit = explicit
+    if (skipFullReplay || performance.now() - this.lastPointerInputTime < PAINT_TRAIN_BASE_DRAW_MS) {
+      // 52.1 (2nd-stroke freeze): a fresh key's acceptance base apply used to
+      // redrawPreviewBase() + redrawAll() — the FIRST drawImage of the new base
+      // image uploads an 8.3MB texture to the GPU process, a multi-hundred-ms
+      // wait landing exactly where the user is between stroke 1 and 2. Existing
+      // keys never re-upload a base texture during painting (theirs was
+      // uploaded at navigation), which is exactly why they stay perfect. While a
+      // paint train is active (a stroke just lifted/pressed) the stroke is
+      // already live over this same blank base, so only the base image FIELD
+      // changes; previewBaseCtx stays correct and the texture uploads later at
+      // the next genuine redraw (a real stop or navigation).
+      return true
+    }
     this.redrawPreviewBase()
     this.redrawAll()
+    return true
   }
 
-  clearPreviewBaseImage(): void {
+  // skipRedraw: leave-path callers (clearPreviewBaseImage immediately followed
+  // by resetBackground + clear()) pass true — clear() repaints the dry canvas
+  // from drawBg, so the redrawAll() stroke replay is wasted work. The state
+  // writes (previewBaseEnabled=false, previewBaseImage=null, generation reset)
+  // still happen.
+  clearPreviewBaseImage(skipRedraw = false): void {
     this.requestRender()
     this.previewBaseRequestId += 1
+    this.pendingExplicitPreviewBase = null
     this.previewBaseEnabled = false
     this.previewBackgroundSeparated = false
     this.previewBaseImage = null
@@ -922,7 +1042,7 @@ export class EfxPaintEngine {
     this.appliedPreviewBaseAppFrame = null
     this.appliedPreviewBaseExplicit = false
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
-    this.redrawAll()
+    if (!skipRedraw) this.redrawAll()
   }
 
   /** Set paper grain for physics (key matches PaperConfig.name) */
@@ -1133,6 +1253,16 @@ export class EfxPaintEngine {
     if (this.dryingInterval) return // already drying
     this.requestRender()
     this.dryingInterval = setInterval(() => {
+      // 52.1: each dryStep does a full-frame getImageData on the GPU-backed dry
+      // canvas — a synchronous IPC wait that flushes the drawing queue. While
+      // the user is painting or just lifted the pen, that queue still holds
+      // the last stroke's commands, so the 10fps readback parks the main
+      // thread for hundreds of ms and starves the next stroke's input (the
+      // 2nd-stroke freeze). Drying is cosmetic (seconds-scale evaporation):
+      // skip ticks until the gesture has been quiet for the idle window.
+      if (this.state.drawing) return
+      const lastInteractionTime = Math.max(this.lastPointerInputTime, this.lastStrokeHandoffTime)
+      if (performance.now() - lastInteractionTime < DRYING_QUIET_MS) return
       // Check if there's still wet paint
       let hasWet = false
       for (let i = 0; i < this.size; i += 64) {
@@ -1143,7 +1273,7 @@ export class EfxPaintEngine {
         return
       }
       dryStep(this.wet, this.drying, this.dualCanvas.dryCtx,
-        this.width, this.height, this.state.drySpeed, this.paperHeight)
+        this.width, this.height, this.state.drySpeed, this.paperHeight, undefined, this.lastStrokeBounds)
       // Each drying step changes the visible wet — re-composite the display.
       this.displayCompositeDirty = true
       this.requestRender()
@@ -1364,6 +1494,7 @@ export class EfxPaintEngine {
     canvas.removeEventListener('pointermove', this.boundPointerMove)
     canvas.removeEventListener('pointerup', this.boundPointerUp)
     canvas.removeEventListener('pointerleave', this.boundPointerLeave)
+    canvas.removeEventListener('pointercancel', this.boundPointerCancel)
     canvas.removeEventListener('touchstart', this.boundTouchStart)
   }
 
@@ -1392,11 +1523,45 @@ export class EfxPaintEngine {
     const canvas = document.createElement('canvas')
     canvas.width = this.width
     canvas.height = this.height
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     ctx.clearRect(0, 0, this.width, this.height)
     ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
     ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
     return canvas
+  }
+
+  /** 52.1 (fresh-frame first-paint freeze): drain the frame's freshly-applied
+   * base/display uploads to the GPU NOW, during idle activation, instead of
+   * letting the first paint's synchronous readback flush them mid-stroke (the
+   * measured ~380-400ms rAF gaps that broke the fast-chained 2nd stroke on a new
+   * frame). A 1px readback of the dry canvas synchronously drains the whole
+   * canvas queue. Negligible on already-resident surfaces; one ~hundreds-ms
+   * drain on a brand-new frame's cold surfaces. */
+  warmCanvasSurfaces(): void {
+    if (this.destroyed) return
+    this.requestRender()
+    try {
+      this.dualCanvas.dryCtx.getImageData(0, 0, 1, 1)
+    } catch {
+      // A detached/cleared canvas throws — the drain is best-effort.
+    }
+  }
+
+  /** 52.1 (fresh-frame first-paint freeze): hold input for `ms` on a newly
+   * activated frame so the cold GPU surfaces settle BEFORE the first stroke
+   * (the user-validated "+key then wait ~1s" recipe, encoded). Without the
+   * gate, the first paint's synchronous readback flushes the fresh surface
+   * mid-stroke — the ~380ms rAF gaps that broke the fast-chained 2nd stroke.
+   * Releases itself and notifies the Studio through the caller. */
+  lockInputForWarm(ms: number): Promise<void> {
+    this.inputLocked = true
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        this.inputLocked = false
+        this.requestRender()
+        resolve()
+      }, ms)
+    })
   }
 
   /** Copy the completed live paint only, excluding preview base and paper/background. */
@@ -1412,7 +1577,7 @@ export class EfxPaintEngine {
     const canvas = document.createElement('canvas')
     canvas.width = this.width
     canvas.height = this.height
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     ctx.clearRect(0, 0, this.width, this.height)
     this.recordPerformance('live-alpha-allocate', 'sync-cpu', allocationStartedAt, { mutationId, branch })
 
@@ -1796,6 +1961,7 @@ export class EfxPaintEngine {
       continuationFrames: continuations.reduce((total, continuation) => total + Math.max(0, Math.min(600, Math.trunc(continuation.diffusionFrames ?? 0))), 0),
       mutationId,
       queuedAt: performance.now(),
+      actionCount: actions.length,
       isScripted,
     }
 
@@ -1886,7 +2052,7 @@ export class EfxPaintEngine {
 
   private runScheduledStrokeFinalizationFrame(): void {
     if (!this.strokeFinalizationScheduled || this.destroyed) return
-    const lastInteractionTime = Math.max(this.lastPointerInputTime, this.lastStrokeHandoffTime)
+    const lastInteractionTime = Math.max(this.lastStrokeInputTime, this.lastStrokeHandoffTime)
     if (
       this.state.drawing ||
       performance.now() - lastInteractionTime < STROKE_FINALIZATION_IDLE_MS ||
@@ -1907,13 +2073,11 @@ export class EfxPaintEngine {
     if (allScripted) {
       this.runStrokeFinalizationTurn(true, MAX_COALESCED_STROKES_PER_FRAME, Infinity)
     } else {
-      // Interactive strokes batch a bounded number of phase steps per visual
-      // frame — one step per frame drains at ~1 stroke/second, so a long
-      // painting session's queue takes minutes to finalize. Batching keeps the
-      // final render fast while the per-frame block stays small (the drain
-      // only runs in the 500ms inactivity window, never mid-stroke; the turn
-      // also yields to a time budget and to pending input between strokes).
-      this.runStrokeFinalizationTurn(false, Infinity, MAX_INTERACTIVE_STEPS_PER_FRAME, STROKE_FINALIZATION_MAX_TURN_MS)
+      // Interactive strokes drain in time-bounded turns, paced by TIME only:
+      // the idle gate keeps a turn out of every gesture, and the turn yields
+      // per frame so a pen-down waits at most one slice. The former 12-step cap
+      // let a backlog of big-step strokes outrun the drain (52.1 slow-stroke).
+      this.runStrokeFinalizationTurn(false, Infinity, Infinity, STROKE_FINALIZATION_MAX_TURN_MS)
     }
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.strokeFinalizationScheduled = true
@@ -2008,6 +2172,14 @@ export class EfxPaintEngine {
     if (active.generation !== this.strokeFinalizationGeneration) return
     const pending = active.pending
     if (this.pendingStrokeFinalizations[0] === pending) this.pendingStrokeFinalizations.shift()
+    // 52.1 (slow-stroke): composite ONCE per completed stroke — the per-step
+    // dirty flag fired a full display composite per phase step (the trace's 160
+    // composites for 12 strokes, ~2s of main-thread upload per backlog drain)
+    // and read as "the canvas refreshes too many times per stroke". The queued
+    // outline stays the pending preview until the stroke's render lands; the
+    // 30ms composite throttle merges strokes completed in one turn into a
+    // single canvas update (the standalone's stroke-group feel).
+    this.displayCompositeDirty = true
     this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
     const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
     if (historyEntry) historyEntry.deferred = null
@@ -2017,9 +2189,6 @@ export class EfxPaintEngine {
   }
 
   private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
-    // Every finalization step mutates the wet/dry pixels — the next render
-    // frame re-composites the display.
-    this.displayCompositeDirty = true
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
@@ -2097,7 +2266,7 @@ export class EfxPaintEngine {
         active.phase = 'fluid'
         return
       }
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry')
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(active.pending.points, active.pending.opts))
       this.finishInteractivePaintFinalization(active)
       return
     }
@@ -2113,6 +2282,25 @@ export class EfxPaintEngine {
       this.replayDiffusionFrame(active.continuationFrame, sampleHFn, pending.physicsMode)
       active.continuationFrame += 1
       if (active.continuationFrame >= pending.continuationFrames) this.completeActiveStrokeFinalization(active)
+    }
+  }
+
+  // 52.1 (2nd-stroke freeze): the dry canvas region this stroke owns — clamp
+  // every per-stroke forceDryAll readback/writeback to it instead of the
+  // full 1920×1080 frame (8.3MB each). The stroke-1 finalize's full writeback
+  // queued up for stroke 2's synchronous getImageData to flush (~1s block).
+  private dryRegionForStroke(points: readonly PenPoint[], opts: BrushOpts): { x0: number; y0: number; x1: number; y1: number } {
+    let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
+    for (const p of points) {
+      sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
+      sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
+    }
+    const brushR = brushRenderRadius(opts)
+    return {
+      x0: Math.max(0, Math.floor(sx0 - brushR)),
+      y0: Math.max(0, Math.floor(sy0 - brushR)),
+      x1: Math.min(this.width - 1, Math.ceil(sx1 + brushR)),
+      y1: Math.min(this.height - 1, Math.ceil(sy1 + brushR)),
     }
   }
 
@@ -2180,46 +2368,68 @@ export class EfxPaintEngine {
     if (physicsMode === 'local') {
       const keepR = brushRenderRadius(opts) * 3 + 40
       const keepR2 = keepR * keepR
+      // 52.1 (2nd-stroke freeze): the stroke-start readback was the WHOLE
+      // full-frame dry canvas (8.3MB) — at stroke 2 that readback had to flush
+      // stroke 1's queued full-frame writeback first (~1s GPU-semaphore park).
+      // Scope the readback + eventual writeback to the union of the previous
+      // stroke's bbox (where deferred wet lives, to composite+dry far pixels)
+      // and the keepR preserve box around the new stroke start.
+      const kx0 = Math.max(0, Math.floor(pt.x - keepR)), ky0 = Math.max(0, Math.floor(pt.y - keepR))
+      const kx1 = Math.min(this.width - 1, Math.ceil(pt.x + keepR)), ky1 = Math.min(this.height - 1, Math.ceil(pt.y + keepR))
+      const prev = this.lastStrokeBounds
+      // lastStrokeBounds is `Math.floor(sx0 - brushR)` and can dip below 0 for
+      // a stroke near an edge — a negative getImageData origin throws
+      // IndexSizeError. Clamp the union rect into the canvas like forceDryAll.
+      const rx0 = Math.max(0, prev ? Math.min(prev.x0, kx0) : kx0)
+      const ry0 = Math.max(0, prev ? Math.min(prev.y0, ky0) : ky0)
+      const rx1 = Math.min(this.width - 1, prev ? Math.max(prev.x1, kx1) : kx1)
+      const ry1 = Math.min(this.height - 1, prev ? Math.max(prev.y1, ky1) : ky1)
+      const rw = rx1 - rx0 + 1
+      const rh = ry1 - ry0 + 1
       const readbackStartedAt = observePrimitive ? performance.now() : 0
-      const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
-      if (observePrimitive) observePrimitive('paint-pre-stroke-local-full-frame-readback', performance.now() - readbackStartedAt)
+      const id = this.dualCanvas.dryCtx.getImageData(rx0, ry0, rw, rh)
+      if (observePrimitive) observePrimitive('paint-pre-stroke-local-readback', performance.now() - readbackStartedAt)
       const d = id.data
       let changed = false
       const pixelLoopStartedAt = observePrimitive ? performance.now() : 0
-      for (let i = 0; i < this.size; i++) {
-        if (this.wet.alpha[i] < 1) continue
-        const x = i % this.width, y = (i / this.width) | 0
-        const dx = x - pt.x, dy = y - pt.y
-        if (dx * dx + dy * dy > keepR2) {
-          const pixelOpacity = this.wet.strokeOpacity[i]
-          const displayAlpha = wetDisplayAlpha(this.wet.alpha[i], pixelOpacity, sampleH(this.paperHeight, x, y, this.width, this.height)) / 255
-          if (displayAlpha > 0.005) {
-            const pi = i * 4, ma = d[pi + 3] / 255
-            const oa = Math.min(1, ma + displayAlpha * (1 - ma))
-            const bt = displayAlpha / Math.max(0.005, oa)
-            d[pi] = Math.round(clamp(lerp(d[pi], this.wet.r[i], bt), 0, 255))
-            d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], this.wet.g[i], bt), 0, 255))
-            d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], this.wet.b[i], bt), 0, 255))
-            d[pi + 3] = Math.round(clamp(oa * 255, 0, 255))
-            changed = true
+      for (let y = ry0; y <= ry1; y++) {
+        const rowBase = y * this.width
+        for (let x = rx0; x <= rx1; x++) {
+          const i = rowBase + x
+          if (this.wet.alpha[i] < 1) continue
+          const dx = x - pt.x, dy = y - pt.y
+          if (dx * dx + dy * dy > keepR2) {
+            const pixelOpacity = this.wet.strokeOpacity[i]
+            const displayAlpha = wetDisplayAlpha(this.wet.alpha[i], pixelOpacity, sampleH(this.paperHeight, x, y, this.width, this.height)) / 255
+            if (displayAlpha > 0.005) {
+              const di = ((y - ry0) * rw + (x - rx0)) * 4
+              const ma = d[di + 3] / 255
+              const oa = Math.min(1, ma + displayAlpha * (1 - ma))
+              const bt = displayAlpha / Math.max(0.005, oa)
+              d[di] = Math.round(clamp(lerp(d[di], this.wet.r[i], bt), 0, 255))
+              d[di + 1] = Math.round(clamp(lerp(d[di + 1], this.wet.g[i], bt), 0, 255))
+              d[di + 2] = Math.round(clamp(lerp(d[di + 2], this.wet.b[i], bt), 0, 255))
+              d[di + 3] = Math.round(clamp(oa * 255, 0, 255))
+              changed = true
+            }
+            this.wet.alpha[i] = 0; this.wet.wetness[i] = 0
+            this.wet.r[i] = 0; this.wet.g[i] = 0; this.wet.b[i] = 0
+            this.wet.strokeOpacity[i] = 0
+            this.drying.dryPos[i] = 0
           }
-          this.wet.alpha[i] = 0; this.wet.wetness[i] = 0
-          this.wet.r[i] = 0; this.wet.g[i] = 0; this.wet.b[i] = 0
-          this.wet.strokeOpacity[i] = 0
-          this.drying.dryPos[i] = 0
         }
       }
       if (observePrimitive) observePrimitive('paint-pre-stroke-local-pixel-loop', performance.now() - pixelLoopStartedAt)
       if (changed) {
         const writebackStartedAt = observePrimitive ? performance.now() : 0
-        this.dualCanvas.dryCtx.putImageData(id, 0, 0)
-        if (observePrimitive) observePrimitive('paint-pre-stroke-local-full-frame-writeback', performance.now() - writebackStartedAt)
+        this.dualCanvas.dryCtx.putImageData(id, rx0, ry0)
+        if (observePrimitive) observePrimitive('paint-pre-stroke-local-writeback', performance.now() - writebackStartedAt)
       }
       this.stopNaturalDrying()
       return
     }
 
-    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry')
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry', this.lastStrokeBounds)
   }
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
@@ -2337,7 +2547,7 @@ export class EfxPaintEngine {
 
       // Bake to canvas — in local mode, keep wet for stroke interaction
       if (this.state.physicsMode !== 'local') {
-        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry')
+        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(points, opts))
       } else if (options.startNaturalDrying) {
         // Start natural drying timer (research: paint dries over time via evaporation)
         this.startNaturalDrying()
@@ -2354,7 +2564,7 @@ export class EfxPaintEngine {
         this.getDryRestoreData(),
         observePrimitive,
       )
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry')
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry', this.lastStrokeBounds)
     }
 
     // Compute last stroke bounding box for physics "Last" mode
@@ -2399,7 +2609,9 @@ export class EfxPaintEngine {
       this.lastCompletedMutationId = null
     }
     e.preventDefault()
+    this.onInputActivity?.('down', e.pointerId)
     this.lastPointerInputTime = handlerStartedAt
+    this.lastStrokeInputTime = handlerStartedAt
     this.lastRenderActivityTime = performance.now()
     this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
     this.state.drawing = true
@@ -2420,6 +2632,8 @@ export class EfxPaintEngine {
 
     if (!this.state.drawing) return
     e.preventDefault()
+    this.onInputActivity?.('move', e.pointerId)
+    this.lastStrokeInputTime = performance.now()
 
     // Handle coalesced events for smooth strokes
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : null
@@ -2439,10 +2653,12 @@ export class EfxPaintEngine {
 
   private onPointerUp(e: PointerEvent): void {
     if (!this.state.drawing) return
+    this.onInputActivity?.('up', e.pointerId)
     this.requestRender()
     const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
     const mutationId = this.nextMutationId++
     this.lastPointerInputTime = performance.now()
+    this.lastStrokeInputTime = this.lastPointerInputTime
     this.lastRenderActivityTime = this.lastPointerInputTime
     const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : null
     if (coalesced && coalesced.length > 0) this.consumePointerSamples(coalesced)
@@ -2450,6 +2666,18 @@ export class EfxPaintEngine {
     this.state.drawing = false
     this.previewStroke = null
     this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+    // Apply any explicit completion paint deferred while the stroke was active.
+    const pending = this.pendingExplicitPreviewBase
+    if (pending) {
+      this.pendingExplicitPreviewBase = null
+      if (pending.requestId === this.previewBaseRequestId) {
+        // 52.1: the pointerUp parked apply must NOT replay the full action
+        // history (see applyPreviewBaseImage skipFullReplay) — the stroke just
+        // painted is already live on the dry/display canvas.
+        const applied = this.applyPreviewBaseImage(pending.image, pending.requestId, pending.dataUrl, pending.generation, pending.appFrame, true, true)
+        if (applied) this.notifyPreviewBaseSettled(pending.dataUrl, 'applied', pending.generation)
+      }
+    }
 
     if (this.rawPts.length < 3) {
       this.rawPts = []
@@ -2481,6 +2709,20 @@ export class EfxPaintEngine {
     this.cursorX = -1
     if (this.state.drawing) this.onPointerUp(e)
     else this.requestRender()
+  }
+
+  private onPointerCancel(e: PointerEvent): void {
+    this.onInputActivity?.('cancel', e.pointerId)
+    if (!this.state.drawing) return
+    this.lastStrokeInputTime = performance.now()
+    this.state.drawing = false
+    this.previewStroke = null
+    this.rawPts = []
+    try {
+      this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+    } catch {
+      // The browser auto-releases capture on cancel; the release may already be gone.
+    }
   }
 
   private consumePointerSamples(events: readonly PointerEvent[]): void {
@@ -2556,7 +2798,20 @@ export class EfxPaintEngine {
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
-    for (const a of this.allActions) {
+    // Strokes still queued for finalization are rendered by the scheduled
+    // drain — replaying them here renders each queued stroke twice: a mid-burst
+    // preview-base apply (first-open scripted apply, [da52] trace) replayed
+    // the whole 35-stroke burst synchronously (~14s blocked, all-at-once), then
+    // the drain rendered it again live. The one in-flight stroke stays in the
+    // replay: the surface reset wipes its partial wet pixels, so skipping it
+    // would orphan its continuation state (pre-existing quirk, unchanged).
+    let queuedActions = 0
+    for (const pending of this.pendingStrokeFinalizations) queuedActions += pending.actionCount
+    if (this.activeStrokeFinalization) queuedActions -= this.activeStrokeFinalization.pending.actionCount
+    const replayCount = Math.max(0, this.allActions.length - Math.max(0, queuedActions))
+
+    for (let i = 0; i < replayCount; i++) {
+      const a = this.allActions[i]
       this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }

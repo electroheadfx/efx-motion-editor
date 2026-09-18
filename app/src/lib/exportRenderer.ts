@@ -200,7 +200,7 @@ export function renderGlobalFrame(
 
             // Composite onto main canvas
             if (glResult) {
-              const ctx = canvas.getContext('2d')!;
+              const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
               ctx.save();
               ctx.setTransform(1, 0, 0, 1, 0, 0);
               ctx.clearRect(0, 0, w, h);
@@ -282,7 +282,7 @@ export function renderGlobalFrame(
       const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
       if (solidAlpha > 0) {
         const color = activeFade?.color ?? '#000000';
-        const solidCtx = canvas.getContext('2d')!;
+        const solidCtx = canvas.getContext('2d', { willReadFrequently: true })!;
         solidCtx.save();
         solidCtx.setTransform(1, 0, 0, 1, 0, 0);  // physical pixel coords (per Pitfall 5)
         solidCtx.globalAlpha = solidAlpha;
@@ -394,7 +394,7 @@ export function renderFrameWithMotionBlur(
   motionBlurStore.shutterAngle.value = shutterAngle;
 
   try {
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
     const pixelCount = w * h * 4; // RGBA
     // Float32 accumulator to avoid both source-over alpha compounding and lighter overflow
     const accum = new Float32Array(pixelCount);
@@ -435,7 +435,7 @@ export function renderFrameWithMotionBlur(
  * Failed images are logged but do not block the export — frames referencing
  * them will render without that image (blank/missing layer).
  */
-export function preloadExportImages(
+export async function preloadExportImages(
   renderer: PreviewRenderer,
   fm: FrameEntry[],
   signal?: AbortSignal,
@@ -443,6 +443,12 @@ export function preloadExportImages(
 ): Promise<void> {
   const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
   const paperTextures = renderer.collectRotoPaperTextures(sequences);
+  // 52.1-05 (D-13): trigger the decode for every physic-paint frame in the
+  // export range (getFlattenedFrame returns null on a cold miss but still kicks
+  // off the async decode), then await the in-flight decodes so the render loop's
+  // getFlattenedFrame returns the baked raster — never a silently missing layer.
+  collectExportPhysicPaintFrameSources(renderer, fm, sequences);
+  await renderer.awaitPhysicPaintDecodes();
   const physicPaintFrames = collectExportPhysicPaintFrameSources(renderer, fm, sequences);
   return new Promise<void>((resolve, reject) => {
     let settled = false;

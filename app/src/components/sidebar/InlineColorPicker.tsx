@@ -5,6 +5,7 @@ import {
   rgbToHsv, hsvToRgb, rgbToCmyk, cmykToRgb,
 } from '../../lib/colorUtils';
 import {loadRecentColors, saveRecentColors, loadFavoriteColors, saveFavoriteColors} from '../../lib/paintPreferences';
+import {NumericStepper} from '../shared/NumericStepper';
 
 type ColorMode = 'Box' | 'TSL' | 'RVB' | 'CMYK';
 
@@ -264,19 +265,17 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
           });
         }}
       />
-      <input
-        type="number"
+      <NumericStepper
+        value={Math.round(value * (unit === '%' ? 1 : 1))}
+        onChange={onInput}
+        step={step}
         min={min}
         max={max}
-        step={step}
-        value={Math.round(value * (unit === '%' ? 1 : 1))}
-        class="w-10 text-[10px] rounded px-1 py-0.5 outline-none text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        style={sliderInputStyle}
-        onInput={(e) => {
-          const v = parseFloat((e.target as HTMLInputElement).value);
-          if (!isNaN(v)) onInput(Math.max(min, Math.min(max, v)));
-        }}
-        onClick={(e) => e.stopPropagation()}
+        class="w-16 shrink-0"
+        ariaLabel={label}
+        inputClass="text-[10px] rounded outline-none text-center"
+        inputStyle={sliderInputStyle}
+        buttonStyle={{width: '16px', height: '16px'}}
       />
       {unit && <span class="text-[8px] w-3" style={{color: 'var(--sidebar-text-secondary)'}}>{unit}</span>}
     </div>

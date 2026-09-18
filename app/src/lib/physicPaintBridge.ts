@@ -1,8 +1,10 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
+import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import {
@@ -10,11 +12,12 @@ import {
   resolvePhysicPaintRotoPhysicalEdit,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl, prepareRotoPhysicalRealKeyPngs } from '../components/physic-paint/roto/rotoCanvasFrames';
+import { prepareRotoPhysicalRealKeyFrames } from '../components/physic-paint/roto/rotoCanvasFrames';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoProjectEquality,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
@@ -24,6 +27,7 @@ import {
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
+  requirePhysicPaintRotoInlineBytes,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -52,16 +56,19 @@ import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
   physicPaintStore,
+  hasFrameMediaBytes,
+  installFrameMediaBytes,
   registerBackgroundSourceImage,
   type PhysicPaintRotoPhysicalOperationLeaseToken,
 } from '../stores/physicPaintStore';
+import { encodeCanvasAsWebp } from './webpFrameCodec';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
 import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
 import { resolveSequenceTimelineRange, trackLayouts } from './frameMap';
-import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
+import { assetUrl, scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
@@ -93,8 +100,6 @@ export const PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT = 'physic-paint:roto-auth
 export const PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT = 'physic-paint:roto-authority-result';
 export const PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT = 'physic-paint:state-save-request';
 export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-result';
-export const PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT = 'physic-paint:thumbnail-encode-request';
-export const PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT = 'physic-paint:thumbnail-encode-result';
 /**
  * 49-04 (Task 1): the image-library request/result pair that fills the Studio
  * realm's empty imageStore (Pitfall 2). The Studio webview requests
@@ -104,6 +109,14 @@ export const PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT = 'physic-paint:thumbnai
  */
 export const PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT = 'physic-paint:image-library-request';
 export const PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT = 'physic-paint:image-library-result';
+/**
+ * 52.2-10 (D-12): main→Studio frame-media request. With the document crossing
+ * reference-shaped, the main window is the receiving side of the digest-keyed
+ * byte channel; when it lacks content (a reloaded window, a fresh install) it
+ * names the digests it needs on this event rather than forcing a full re-ship
+ * (T-52.2-35 — the request is per digest, never the whole document).
+ */
+export const PHYSIC_PAINT_FRAME_MEDIA_REQUEST_EVENT = 'physic-paint:frame-media-request';
 
 /**
  * Structural twin of usePhysicsPaintParentBridge's PhysicsPaintBridgeMode —
@@ -169,6 +182,16 @@ function shouldCloseNativeWindowAfterApply(payload: PhysicPaintApplyPayload): bo
 const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
 const deliveredOperations = new Map<string, { fingerprint: string; result: PhysicPaintApplyResult }>();
 const activeLaunchOperationByLayer = new Map<string, string>();
+
+/**
+ * True while a Standalone paint child session is open. The main app's Preview
+ * gates its full-canvas recomposite on this: while the child owns the paint
+ * surface the main canvas holds its last frame instead of re-flattening +
+ * decoding + uploading 8.3MB per child push — the fresh-key GPU-process
+ * saturation that froze the child's 2nd stroke (52.1). Cleared when the child
+ * window closes (apply-with-close or window close).
+ */
+export const physicPaintLaunchActive = signal(false);
 
 /**
  * Parent-authoritative accepted-operation ledger for the generic physical-edit
@@ -260,12 +283,28 @@ function activatePhysicalLaunchAuthority(context: PhysicPaintLaunchContext): voi
     }
   }
   activeLaunchOperationByLayer.set(context.layerId, context.operationId);
+  physicPaintLaunchActive.value = true;
+}
+
+/** Clear the child-session gate (see physicPaintLaunchActive) — idempotent. */
+export function deactivatePhysicPaintLaunch(): void {
+  // 52.1 (close-settle): the Studio's frame-sync seeks only currentFrame (the
+  // playhead); the main Preview renders displayFrame. Settle displayFrame onto
+  // the synced cursor BEFORE clearing the gate — the same law the playback
+  // engine applies on stop — so the first ungated re-render draws the frame
+  // the playhead shows, not the pre-session frame (the close-stale defect).
+  timelineStore.syncDisplayFrame();
+  physicPaintLaunchActive.value = false;
 }
 
 function cloneAndDeepFreezePlainData<T>(value: T): T {
   const clone = structuredClone(value);
   const freeze = (candidate: unknown): void => {
     if (candidate === null || typeof candidate !== 'object' || Object.isFrozen(candidate)) return;
+    // 52.1 (D-05): frame bytes are a Uint8Array — array buffer views with
+    // elements cannot be frozen. They are already immutable-by-convention after
+    // structuredClone, so skip them rather than throwing.
+    if (candidate instanceof Uint8Array || candidate instanceof ArrayBuffer) return;
     for (const nested of Object.values(candidate as Record<string, unknown>)) freeze(nested);
     Object.freeze(candidate);
   };
@@ -364,14 +403,14 @@ function debugReplaySnapshotDiff(
   console.warn(`[replay-diff] replay target mismatch: ${failures.join(' | ') || 'unknown-field'}`);
 }
 
-export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
+export async function applyPhysicPaintPayload(payload: unknown): Promise<PhysicPaintApplyResult> {
   return applyPhysicPaintPayloadWithPublicationLease(payload);
 }
 
-function applyPhysicPaintPayloadWithPublicationLease(
+async function applyPhysicPaintPayloadWithPublicationLease(
   payload: unknown,
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
-): PhysicPaintApplyResult {
+): Promise<PhysicPaintApplyResult> {
   const base = resultBase(payload);
   if (!isStructuredClonePlainData(payload) || !isPhysicPaintApplyPayload(payload)) {
     return failureResult(base, 'Invalid physics paint apply payload');
@@ -422,9 +461,20 @@ function applyPhysicPaintPayloadWithPublicationLease(
   try {
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
-      result = physicPaintStore.applyCanvas(payload);
+      result = await physicPaintStore.applyCanvas(payload);
+      if (result.ok && payload.renderedFrame.bytes instanceof Uint8Array) {
+        // 52.2-10 (D-12): the receiver materialized this raster, so its content
+        // digest is now receiver-held — the same claim the Studio's coordinator
+        // marks on its side. A later document sync answers "already held"
+        // instead of re-shipping the bytes (T-52.2-35).
+        const appliedBytes = payload.renderedFrame.bytes;
+        trackDocumentSyncFrameInstall(
+          sha256HexBytes(appliedBytes).then((digest) =>
+            (_documentSyncFramePorts ?? _defaultDocumentSyncFramePorts).install(digest, appliedBytes)),
+        );
+      }
     } else if (payload.kind === 'update-roto-interpolation-settings') {
-      const generatedFrames = physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);
+      const generatedFrames = await physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.settings);
       result = successResult(payload, generatedFrames.length);
     } else if (payload.kind === 'update-roto-playback-settings') {
       const changed = physicPaintStore.setRotoPlaybackSettings(payload.layerId, payload.trackId, payload.settings);
@@ -473,9 +523,9 @@ function applyPhysicPaintPayloadWithPublicationLease(
           if (!affectedSources.has(source) && !existingSources.has(source)) return applyFailureResult(payload, 'Play Script batch contains an unexpected out-of-range real key.');
         }
       }
-      result = physicPaintStore.replaceRotoKeyFrames(payload);
+      result = await physicPaintStore.replaceRotoKeyFrames(payload);
     } else if (payload.kind === 'replace-roto-physical-map') {
-      result = applyPhysicPaintRotoPhysicalMap(payload, publicationLeaseToken);
+      result = await applyPhysicPaintRotoPhysicalMap(payload, publicationLeaseToken);
     } else {
       result = applyFailureResult(payload, 'Unsupported physics paint payload');
     }
@@ -486,32 +536,85 @@ function applyPhysicPaintPayloadWithPublicationLease(
   }
 }
 
+/**
+ * 52.1 (Part 2): unchanged real-key records may cross the bridge as
+ * content-token refs ({ keyId, appFrame, refToken }) in place of full byte
+ * payloads. Resolve them against the parent store before validation — the
+ * payload's expectedRevision gate guarantees the parent holds exactly these
+ * bytes. A missing key or token mismatch fails closed (the store and the
+ * document are never touched by a half-resolved records list).
+ */
+export function expandRotoPhysicalEditRecordRefs(payload: unknown): { payload: unknown } | { error: string } {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { payload };
+  const candidate = payload as Record<string, unknown>;
+  if (candidate.kind !== 'replace-roto-physical-map') return { payload };
+  if (!Array.isArray(candidate.records) || !candidate.records.some(isPhysicPaintRotoPhysicalEditRecordRef)) return { payload };
+  if (typeof candidate.layerId !== 'string' || candidate.layerId.length === 0
+    || typeof candidate.trackId !== 'string' || candidate.trackId.length === 0) return { payload };
+  const layerId = candidate.layerId;
+  const trackId = candidate.trackId;
+  const expanded: unknown[] = [];
+  for (const entry of candidate.records) {
+    if (!isPhysicPaintRotoPhysicalEditRecordRef(entry)) {
+      expanded.push(entry);
+      continue;
+    }
+    const current = physicPaintStore.getRotoRealKeyRecord(layerId, trackId, entry.keyId);
+    if (!current) return { error: `Roto physical record ref "${entry.keyId}" is unknown to the parent document.` };
+    if (buildPhysicPaintRotoPayloadContentToken(current.payload) !== entry.refToken) {
+      return { error: `Roto physical record ref "${entry.keyId}" no longer matches the parent document content.` };
+    }
+    expanded.push({ keyId: entry.keyId, appFrame: entry.appFrame, payload: { ...current.payload, appFrame: entry.appFrame } });
+  }
+  return { payload: { ...candidate, records: expanded } };
+}
+
 async function applyPreparedPhysicPaintPayload(
   payload: unknown,
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
 ): Promise<PhysicPaintApplyResult> {
+  const expanded = expandRotoPhysicalEditRecordRefs(payload);
+  if ('error' in expanded) {
+    return applyFailureResult(payload as PhysicPaintApplyPayload, expanded.error);
+  }
+  payload = expanded.payload;
   if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) return applyPhysicPaintPayload(payload);
-  const preparedDataUrls = new Set(payload.records.map((record) => record.payload.dataUrl));
+  const preparedTokens = new Set(payload.records.map((record) => buildPhysicPaintRotoPayloadContentToken(record.payload)));
   try {
-    await prepareRotoPhysicalRealKeyPngs(payload.records);
+    await prepareRotoPhysicalRealKeyFrames(payload.records);
   } catch (error) {
-    physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedDataUrls);
+    physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedTokens);
     return applyFailureResult(
       payload,
       error instanceof Error ? error.message : 'Canonical Roto PNG preparation failed.',
     );
   }
-  const result = applyPhysicPaintPayloadWithPublicationLease(
+  const result = await applyPhysicPaintPayloadWithPublicationLease(
     payload,
     publicationLeaseToken,
   );
-  if (!result.ok) physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedDataUrls);
+  if (!result.ok) physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedTokens);
   return result;
 }
 
 async function applyTransportedPhysicPaintPayload(
   payload: unknown,
 ): Promise<PhysicPaintApplyResult> {
+  // 52.1 (D-05): the child serialized frame bytes as base64 (emitTo JSON turns
+  // Uint8Array into index objects). Decode the canonical base64 `bytes` fields
+  // back to Uint8Array before validation/handling so the in-memory payload
+  // shape matches the direct (non-transported) apply path.
+  payload = fromTransportPayload(payload);
+  // 52.1 (Part 2): expand wire record refs BEFORE the physical-kind check — a
+  // compacted payload must take the same lease-gated branch as a full one (a
+  // ref shape is invalid in memory by contract, so it would otherwise detour
+  // around lease acquisition and be rejected with mismatched-token). On a ref
+  // resolution failure the unexpanded payload falls through to
+  // applyPreparedPhysicPaintPayload, which re-attempts and fails closed.
+  {
+    const expansion = expandRotoPhysicalEditRecordRefs(payload);
+    if (!('error' in expansion)) payload = expansion.payload;
+  }
   if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) {
     return applyPreparedPhysicPaintPayload(payload);
   }
@@ -594,11 +697,13 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const records = physicPaintStore.getRotoRealKeyRecords(request.layerId, trackId);
   const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId, trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId, trackId);
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(request.layerId, trackId);
+  const incomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId, trackId);
   const physicalRevision = buildPhysicPaintRotoPhysicalRevision(
     records,
     interpolation,
-    physicPaintStore.getRotoPhysicalLoopClips(request.layerId, trackId),
-    physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId, trackId),
+    loopClips,
+    incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
   );
   const physicalRecords = records.map((record) => ({
@@ -606,7 +711,14 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     appFrame: record.appFrame,
     payload: record.payload,
   }));
-  const frames = records.map((record) => ({ ...record.payload, source: 'real-key' as const }));
+  // 52.2-02 (D-07): the wire `frames` projection is a runtime shape and needs
+  // pixels, so the inline carrier is asserted here. A reference-only record
+  // never reaches this path — the packed document is built from runtime records.
+  const frames = records.map((record) => ({
+    ...record.payload,
+    bytes: requirePhysicPaintRotoInlineBytes(record.payload),
+    source: 'real-key' as const,
+  }));
   return {
     operationId: request.operationId,
     ok: true,
@@ -742,6 +854,9 @@ function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'object') return false;
+  // 52.1 (D-05): frame bytes are a Uint8Array — structured-cloneable, but not a
+  // plain record. Accept it so the bytes-token payload passes the clone guard.
+  if (value instanceof Uint8Array) return true;
   if (seen.has(value)) return false;
   seen.add(value);
   try {
@@ -756,6 +871,11 @@ function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()
 
 function stableSerialize(value: unknown, seen: WeakSet<object>): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
+  // 52.1 (D-05): frame bytes are a Uint8Array. Serializing them as a plain
+  // object (Object.keys → sort → per-byte JSON.stringify) is O(n log n) and
+  // blows past the 5s apply timeout for photo-weight frames. Fingerprint by the
+  // O(1) content token instead — same content, same token (G-52-6).
+  if (value instanceof Uint8Array) return buildFrameBytesToken(value);
   if (seen.has(value)) throw new TypeError('Physics Paint payload contains a cyclic value.');
   seen.add(value);
   try {
@@ -771,7 +891,7 @@ function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][numbe
   return (left.sourceFrame ?? left.appFrame) === (right.sourceFrame ?? right.appFrame)
     && left.appFrame === right.appFrame
     && left.frameIndex === right.frameIndex
-    && left.dataUrl === right.dataUrl
+    && buildFrameBytesToken(left.bytes) === buildFrameBytesToken(right.bytes)
     && left.width === right.width
     && left.height === right.height
     && left.source === right.source
@@ -781,7 +901,7 @@ function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][numbe
     && left.toSourceFrame === right.toSourceFrame
     && left.interpolationT === right.interpolationT
     && left.backgroundOnly === right.backgroundOnly
-    && left.onionDataUrl === right.onionDataUrl;
+    && ((left as { onionBytes?: Uint8Array }).onionBytes === undefined) === ((right as { onionBytes?: Uint8Array }).onionBytes === undefined);
 }
 
 function samePhysicalRecord(
@@ -792,7 +912,7 @@ function samePhysicalRecord(
     && left.appFrame === right.appFrame
     && left.payload.frameIndex === right.payload.frameIndex
     && left.payload.appFrame === right.payload.appFrame
-    && left.payload.dataUrl === right.payload.dataUrl
+    && buildPhysicPaintRotoPayloadContentToken(left.payload) === buildPhysicPaintRotoPayloadContentToken(right.payload)
     && left.payload.width === right.payload.width
     && left.payload.height === right.payload.height;
 }
@@ -816,7 +936,7 @@ function sameApplyPayloadRecords(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.dataUrl === candidate.payload.dataUrl
+      && buildPhysicPaintRotoPayloadContentToken(record.payload) === buildPhysicPaintRotoPayloadContentToken(candidate.payload)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -917,11 +1037,15 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   return null;
 }
 
-function isCanonicalBlankRotoPayload(
+async function isCanonicalBlankRotoPayload(
   payload: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyPayload,
   destinationAppFrame: number,
-): boolean {
-  if (payload.frameIndex !== 0
+): Promise<boolean> {
+  // 52.2-02 (D-07): a blank-delta check compares pixels, so a reference-only
+  // payload (which carries none) cannot be the canonical blank frame.
+  const payloadBytes = payload.bytes;
+  if (payloadBytes === undefined
+    || payload.frameIndex !== 0
     || payload.appFrame !== destinationAppFrame
     || !Number.isInteger(payload.width)
     || !Number.isInteger(payload.height)
@@ -932,13 +1056,14 @@ function isCanonicalBlankRotoPayload(
     const canvas = document.createElement('canvas');
     canvas.width = payload.width as number;
     canvas.height = payload.height as number;
-    return payload.dataUrl === canvas.toDataURL('image/png');
+    const blankBytes = await encodeCanvasAsWebp(canvas);
+    return buildFrameBytesToken(payloadBytes) === buildFrameBytesToken(blankBytes);
   } catch {
     return false;
   }
 }
 
-function validateInsertEmptySegmentPhysicalDelta(input: {
+async function validateInsertEmptySegmentPhysicalDelta(input: {
   readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
   readonly currentRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
   readonly proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
@@ -947,7 +1072,7 @@ function validateInsertEmptySegmentPhysicalDelta(input: {
   readonly currentIncomingInterpolationBreakKeyIds: readonly string[];
   readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
   readonly capacity: number;
-}): string | null {
+}): Promise<string | null> {
   const {
     payload,
     currentRecords,
@@ -970,7 +1095,7 @@ function validateInsertEmptySegmentPhysicalDelta(input: {
   if (!semanticValidation.ok) return semanticValidation.error;
   const delta = payload.semanticDelta as Extract<NonNullable<typeof payload.semanticDelta>, { kind: 'insert-empty-segment' }>;
   const inserted = proposedRecords.find((record) => record.keyId === delta.insertedKeyId);
-  if (!inserted || !isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame)) {
+  if (!inserted || !(await isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame))) {
     return 'Empty-segment insert must carry the canonical blank Paint payload.';
   }
   if (stableSerialize(proposedLoopClips, new WeakSet<object>())
@@ -1064,7 +1189,7 @@ function validatePlayScriptPhysicalDelta(input: {
   const expectedFreshKeyIds: string[] = [];
   for (let appFrame = delta.affectedStartAppFrame; appFrame <= delta.affectedEndAppFrame; appFrame += 1) {
     const proposed = proposedByFrame.get(appFrame);
-    if (!proposed || !isRotoPngDataUrl(proposed.payload.dataUrl)) return 'Play Script is missing a valid PNG destination record.';
+    if (!proposed || !isWebpBytes(proposed.payload.bytes)) return 'Play Script is missing a valid WebP destination record.';
     const current = currentByFrame.get(appFrame);
     if (current) {
       if (proposed.keyId !== current.keyId) return 'Play Script changed an occupied destination keyId.';
@@ -1232,7 +1357,7 @@ function recomputeCanonicalGroupRegenerate(input: {
   for (const sourceKeyId of sourceKeyIds) {
     const current = currentByKeyId.get(sourceKeyId);
     const proposed = proposedByKeyId.get(sourceKeyId);
-    if (!current || !proposed || proposed.appFrame !== current.appFrame || !isRotoPngDataUrl(proposed.payload.dataUrl)) {
+    if (!current || !proposed || proposed.appFrame !== current.appFrame || !isWebpBytes(proposed.payload.bytes)) {
       return 'Group Regenerate changed source identity or timing.';
     }
   }
@@ -1455,10 +1580,10 @@ function validateCanonicalGroupLifecycleEdit(input: {
   return null;
 }
 
-function applyPhysicPaintRotoPhysicalMap(
+async function applyPhysicPaintRotoPhysicalMap(
   payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>,
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
-): PhysicPaintRotoPhysicalEditApplyResult {
+): Promise<PhysicPaintRotoPhysicalEditApplyResult> {
   const reject = (error: string, stagedRevision?: string) => physicalEditResult(payload, { ok: false, error, stagedRevision });
   const isPlayScript = payload.operationKind === 'play-script';
   if (isPlayScript && (!projectStore.filePath.peek() || !projectStore.scriptLibraryAuthority.peek())) {
@@ -1687,7 +1812,7 @@ function applyPhysicPaintRotoPhysicalMap(
     if (canonicalValidationError) return reject(canonicalValidationError, stagedRevision);
   }
   if (payload.operationKind === 'insert-empty-segment') {
-    const validationError = validateInsertEmptySegmentPhysicalDelta({
+    const validationError = await validateInsertEmptySegmentPhysicalDelta({
       payload,
       currentRecords,
       proposedRecords,
@@ -2635,29 +2760,6 @@ export async function installPhysicPaintStateSaveListener(): Promise<() => void>
   return () => window.removeEventListener('message', message);
 }
 
-export async function installPhysicPaintThumbnailEncodeListener(): Promise<() => void> {
-  if (!isTauriRuntime()) return () => {};
-  const eventApi = await import('@tauri-apps/api/event');
-  const unlisten = await eventApi.listen?.(PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, async (event) => {
-    const request = isPhysicPaintThumbnailEncodeRequest(event.payload) ? event.payload : null;
-    const operationId = request?.operationId ?? 'invalid-operation';
-    let result: PhysicPaintThumbnailEncodeResult;
-    if (!request) {
-      result = { operationId, ok: false, width: 1, height: 1, mimeType: 'image/webp', error: 'Invalid thumbnail encode request' };
-    } else {
-      const encoded = await scriptLibraryEncodeThumbnailWebp(request);
-      const candidate: PhysicPaintThumbnailEncodeResult = encoded.ok
-        ? { operationId, ok: true, ...encoded.data }
-        : { operationId, ok: false, width: request.width, height: request.height, mimeType: 'image/webp', error: encoded.error };
-      result = isPhysicPaintThumbnailEncodeResult(candidate)
-        ? candidate
-        : { operationId, ok: false, width: request.width, height: request.height, mimeType: 'image/webp', error: 'Native thumbnail encoder returned an invalid result' };
-    }
-    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT, result);
-  });
-  return unlisten ?? (() => {});
-}
-
 export async function installPhysicPaintScriptLibraryListener(): Promise<() => void> {
   const emitResult = async (result: PhysicPaintScriptLibraryResult, source?: Pick<Window, 'postMessage'> | null) => {
     if (isTauriRuntime()) {
@@ -2693,7 +2795,10 @@ export async function installPhysicPaintRotoAuthorityListener(): Promise<() => v
   const emitResult = async (result: PhysicPaintRotoAuthorityResult, source?: Pick<Window, 'postMessage'> | null) => {
     if (isTauriRuntime()) {
       const eventApi = await import('@tauri-apps/api/event');
-      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, result);
+      // 52.1 (D-05): physicalRecords carry Uint8Array bytes; emitTo JSON would
+      // turn them into index objects. Convert bytes -> base64 on the way out.
+      const encoded = toTransportPayload(result);
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, encoded);
     }
     if (typeof window !== 'undefined') source?.postMessage?.({ type: PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, payload: result }, window.location.origin);
   };
@@ -2738,6 +2843,7 @@ async function closeNativePhysicPaintWindow(): Promise<void> {
     const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
     const paintWindow = await windowApi.Window?.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
     if (!paintWindow) return;
+    deactivatePhysicPaintLaunch();
     if (typeof paintWindow.destroy === 'function') {
       await paintWindow.destroy();
       return;
@@ -2763,12 +2869,32 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
         const payload = event.payload;
         const result = await applyTransportedPhysicPaintPayload(payload);
         onResult?.(result);
-        await eventApi.emit?.(PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
-        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
+        // 52.1 (D-05): the result echoes the semanticDelta whose clipboardPayload
+        // bytes are a Uint8Array. emitTo serializes as JSON, which would turn the
+        // bytes into an index object and make the child's isPhysicPaintApplyResult
+        // reject the result (silent timeout). Convert bytes -> base64 on the way
+        // out so the child's validator sees the canonical string form.
+        // NOTE: the raw `emit` broadcast was removed — it JSON-serialized the
+        // Uint8Array into an index object and the child's Tauri listener rejected
+        // that duplicate (the "invalid Tauri apply result" warning). The child is
+        // the only Tauri listener for this event and already receives the encoded
+        // result via emitTo below.
+        const encoded = toTransportPayload(result);
+        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, encoded);
         sendBrowserApplyResult(result);
         if (result.ok && isPhysicPaintApplyPayload(payload) && shouldCloseNativeWindowAfterApply(payload)) await closeNativePhysicPaintWindow();
       });
-      if (unlisten) return unlisten;
+      // 52.1: a manual child close (no Apply, no apply-with-close) must still
+      // release the main Preview gate so it re-renders the settled composite.
+      const unlistenClosed = await eventApi.listen?.('physic-paint:window-closed', () => {
+        deactivatePhysicPaintLaunch();
+      });
+      if (unlisten || unlistenClosed) {
+        return () => {
+          unlisten?.();
+          unlistenClosed?.();
+        };
+      }
     } catch (error) {
       console.warn('[physicPaintBridge] Falling back to browser apply listener:', error);
     }
@@ -2800,6 +2926,161 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
 }
 
 /**
+ * 52.2-10 (D-12, T-52.2-33/34/35): the receiver's frame-media port pair. With
+ * the document crossing REFERENCE-SHAPED, the receiver owns exactly two jobs:
+ * answer "do I already hold this digest?" from its own store (no decode, no
+ * file read) and install the rasters it does receive under their digest. The
+ * ports are injectable so the contract tests drive the decision without a real
+ * store; production binds them to physicPaintStore + the missing-digest
+ * request channel.
+ */
+export interface PhysicPaintDocumentSyncFramePorts {
+  has(digest: string): boolean;
+  install(digest: string, bytes: Uint8Array): Promise<{ ok: true } | { ok: false; reason: string }>;
+  request(digests: readonly string[]): void;
+}
+
+let _documentSyncFramePorts: PhysicPaintDocumentSyncFramePorts | null = null;
+/** Digests already asked for this window's lifetime — one request per digest. */
+const _documentSyncRequestedDigests = new Set<string>();
+/** In-flight installs kicked by a sync or by the apply path's digest install. */
+const _documentSyncPendingInstalls = new Set<Promise<void>>();
+
+function trackDocumentSyncFrameInstall(install: Promise<unknown>): void {
+  const tracked = install.then(() => undefined, () => undefined);
+  _documentSyncPendingInstalls.add(tracked);
+  void tracked.finally(() => { _documentSyncPendingInstalls.delete(tracked); });
+}
+
+function requestDocumentSyncFrameMedia(digests: readonly string[]): void {
+  if (digests.length === 0) return;
+  // main→Studio: the receiver names exactly the digests it lacks; the Studio's
+  // marks (its delivered set) are the other half of the same knowledge. The
+  // responder rides the sender's queue (pilot scope, plan 14) — this emit is
+  // the protocol signal, delivered on the same Tauri channel as the flush
+  // round-trip. A non-Tauri window has no bridge to ask.
+  void (async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_FRAME_MEDIA_REQUEST_EVENT, { digests });
+    } catch {
+      // Bridge unavailable — the next Studio push re-evaluates from its marks.
+    }
+  })();
+}
+
+const _defaultDocumentSyncFramePorts: PhysicPaintDocumentSyncFramePorts = {
+  has: (digest) => hasFrameMediaBytes(digest),
+  install: (digest, bytes) => installFrameMediaBytes(bytes, digest),
+  request: (digests) => requestDocumentSyncFrameMedia(digests),
+};
+
+/**
+ * 52.2-10 (D-12): swap the receiver's digest-store ports. Pass `null` to return
+ * to the production defaults (the physicPaintStore-backed pair). Test-only
+ * surface, on the `_setPhysicPaintPackageDirProvider` pattern.
+ */
+export function _setPhysicPaintDocumentSyncFramePorts(ports: PhysicPaintDocumentSyncFramePorts | null): void {
+  _documentSyncFramePorts = ports;
+}
+
+/**
+ * 52.2-10 (D-12): drop the receiver's per-session digest memory — the
+ * requested-digest set and any tracked install promises. Transient event
+ * state, like the transport's delivered-digest claim.
+ */
+export function resetPhysicPaintDocumentSyncFrameState(): void {
+  _documentSyncRequestedDigests.clear();
+  _documentSyncPendingInstalls.clear();
+}
+
+/**
+ * 52.2-10 (D-12): await the in-flight installs kicked by a document sync (and
+ * by the apply path's digest install). Never rejects — an install failure is
+ * recorded on the store's verdict map, not thrown at the caller.
+ */
+export async function awaitPendingPhysicPaintFrameMediaInstalls(): Promise<void> {
+  while (_documentSyncPendingInstalls.size > 0) {
+    await Promise.allSettled([..._documentSyncPendingInstalls]);
+  }
+}
+
+/**
+ * 52.2-10 (D-12): the digests a reference-shaped document names, from BOTH
+ * roto collections — the same two the plan-06 projection writes and the
+ * plan-09 resolver reads (a reference names no collection, so neither may be
+ * skipped when deciding what the receiver lacks).
+ */
+function collectDocumentSyncReferencedDigests(document: EfxPaintDocument): string[] {
+  const digests = new Set<string>();
+  for (const track of document.tracks) {
+    const roto = track.rotoPhysical;
+    if (!roto) continue;
+    for (const collection of [roto.realKeyRecords, roto.groupOverrideRecords ?? []]) {
+      for (const record of collection) {
+        const digest = record.payload.media?.digest;
+        if (typeof digest === 'string' && digest.length > 0) digests.add(digest);
+      }
+    }
+  }
+  return [...digests];
+}
+
+/**
+ * 52.2-10 (D-12, T-52.2-33/34/35): the receiver's decision for one arriving
+ * document sync — what it lacks (one request per digest, ever) and what the
+ * byte channel actually delivered (verified installs only). Runs BEFORE the
+ * document's revision guard: a re-pushed unchanged document may still carry
+ * bytes the receiver lost.
+ */
+function applyDocumentSyncFrameMedia(
+  document: EfxPaintDocument,
+  changedBytes: unknown,
+): void {
+  const ports = _documentSyncFramePorts ?? _defaultDocumentSyncFramePorts;
+  const missing: string[] = [];
+  for (const digest of collectDocumentSyncReferencedDigests(document)) {
+    let held = false;
+    try {
+      held = ports.has(digest);
+    } catch {
+      held = false;
+    }
+    if (held || _documentSyncRequestedDigests.has(digest)) continue;
+    _documentSyncRequestedDigests.add(digest);
+    missing.push(digest);
+  }
+  if (missing.length > 0) {
+    try {
+      ports.request(missing);
+    } catch {
+      // The request channel is best-effort: a failed ask must not break the
+      // document apply, and the digest stays marked so it is not re-asked
+      // on every tick (the retry law, T-52.2-35).
+    }
+  }
+  if (!changedBytes || typeof changedBytes !== 'object' || Array.isArray(changedBytes)) return;
+  for (const [digest, encoded] of Object.entries(changedBytes as Record<string, unknown>)) {
+    if (typeof encoded !== 'string' || encoded.length === 0) continue;
+    // The transport base64-decodes the WebP payload; the magic-byte guard is
+    // the same one every bytes field crosses with (never a JSON index object).
+    const bytes = base64ToWebpBytes(encoded);
+    if (bytes === null) continue;
+    let held = false;
+    try {
+      held = ports.has(digest);
+    } catch {
+      held = false;
+    }
+    // Never re-install what the receiver holds: a re-delivered retry is
+    // idempotent because the install is skipped, not because it is repeated.
+    if (held) continue;
+    trackDocumentSyncFrameInstall(ports.install(digest, bytes));
+  }
+}
+
+/**
  * 47-01: main-window listener for the child's EFX Paint document sync. The
  * incoming payload is validated fail-closed by the canonical parser and
  * re-registered into the main window's efxPaintStore ONLY when the document
@@ -2819,14 +3100,24 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // "no Bg render" symptom). registerBackgroundSourceImage is a no-op for an
       // already-identical byte.
       const incoming = payload && typeof payload === 'object' && !Array.isArray(payload)
-        ? payload as { document?: unknown; backgroundSources?: unknown }
+        ? payload as { document?: unknown; backgroundSources?: unknown; changedBytes?: unknown }
         : {};
       if (incoming.backgroundSources && typeof incoming.backgroundSources === 'object') {
-        for (const [ref, dataUrl] of Object.entries(incoming.backgroundSources)) {
-          if (typeof dataUrl === 'string' && dataUrl.length > 0) registerBackgroundSourceImage(ref, dataUrl);
+        for (const [ref, encoded] of Object.entries(incoming.backgroundSources)) {
+          if (typeof encoded === 'string' && encoded.length > 0) {
+            const bytes = decodeSourceBytesForDocumentSync(encoded);
+            if (bytes) registerBackgroundSourceImage(ref, bytes);
+          }
         }
       }
-      const document = parseEfxPaintDocument(incoming.document ?? payload);
+      // 52.1 (D-05): the child serialized the document's real-key bytes as
+      // base64 (emitTo JSON). Decode back to Uint8Array before the canonical
+      // parser so the in-memory shape matches the direct path.
+      const document = parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload));
+      // 52.2-10 (D-12): the digest decision runs BEFORE the revision guard —
+      // a re-pushed UNCHANGED document may still carry (or need) bytes, and
+      // the guard below would otherwise return before the byte channel is read.
+      applyDocumentSyncFrameMedia(document, incoming.changedBytes);
       const current = getEfxPaintDocument(document.parentLayerId);
       if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
       registerEfxPaintDocument(document);
@@ -2862,7 +3153,17 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
     try {
       const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
       const unlisten = await eventApi.listen?.(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT, (event) => {
-        applyDocument(event.payload);
+        const receiveStartedAtMs = performance.now();
+        try {
+          applyDocument(event.payload);
+        } finally {
+          recordPhysicsPaintPerformance({
+            stage: 'bridge.docReceive',
+            category: 'sync-cpu',
+            durationMs: performance.now() - receiveStartedAtMs,
+            timestamp: performance.now(),
+          });
+        }
       });
       if (unlisten) return unlisten;
     } catch (error) {
@@ -3135,7 +3436,11 @@ async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext):
   try {
     const core = await import('@tauri-apps/api/core') as TauriCoreApi;
     if (!core.invoke) return { ok: false, error: 'Tauri invoke API unavailable' };
-    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context });
+    // 52.1 (D-05): invoke serializes the context as JSON, which turns the
+    // document's real-key `bytes` (Uint8Array) into index objects. Convert
+    // bytes -> base64 so the child's launch validator sees the canonical
+    // string form instead of a corrupted array.
+    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context: toTransportPayload(context) });
     if (!isTauriPhysicsPaintLaunchResult(result)) {
       return { ok: false, error: `Physics paint native command returned an invalid result: ${JSON.stringify(result)}` };
     }
@@ -3194,7 +3499,7 @@ function buildPhysicsPaintUrl(context: PhysicPaintLaunchContext): string {
   const baseUrl = typeof window !== 'undefined' && window.location?.origin
     ? new URL(PHYSIC_PAINT_FALLBACK_PATH, window.location.origin)
     : new URL(PHYSIC_PAINT_FALLBACK_PATH, 'http://localhost');
-  baseUrl.searchParams.set('context', JSON.stringify(context));
+  baseUrl.searchParams.set('context', JSON.stringify(toTransportPayload(context)));
   return `${baseUrl.pathname}${baseUrl.search}`;
 }
 
@@ -3216,4 +3521,28 @@ function isTauriRuntime(): boolean {
 
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * 52.1 (D-06): document-sync boundary conversion. The child→main document
+ * sync is a JSON event carrying the hydrated Background source images; JSON
+ * cannot carry raw bytes compactly, so the sync payload holds base64 at this
+ * persistence boundary ONLY. The frame apply path never uses these — it
+ * transports raw bytes via invoke (D-07).
+ */
+export function encodeSourceBytesForDocumentSync(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+export function decodeSourceBytesForDocumentSync(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
 }

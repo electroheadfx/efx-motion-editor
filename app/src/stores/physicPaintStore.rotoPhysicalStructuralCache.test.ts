@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import {
   physicPaintStore,
@@ -35,7 +36,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`structural:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`structural:${appFrame}:${tag}`)),
     width: 4,
     height: 4,
   };

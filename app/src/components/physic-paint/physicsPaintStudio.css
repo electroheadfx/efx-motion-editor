@@ -2174,6 +2174,8 @@ button.destructive {
 .physics-paint-status-capsule .lucide {
   flex: 0 0 auto;
   color: #f8c96b;
+  position: relative;
+  z-index: 1;
 }
 
 .physics-paint-status-capsule-error .lucide {
@@ -2186,6 +2188,29 @@ button.destructive {
   color: #dde7f0;
   text-overflow: ellipsis;
   white-space: nowrap;
+  position: relative;
+  z-index: 1;
+}
+
+.physics-paint-status-capsule-warm {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.physics-paint-status-capsule-warm-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(248, 201, 107, 0.45);
+  transition: width 60ms linear;
 }
 
 .physics-paint-pill {
@@ -2205,13 +2230,6 @@ button.destructive {
 .physics-paint-pill--navigation {
   border-color: #575e66;
   background: #34383c;
-}
-
-/* 43.5-02 final polish: inside the liquid-glass toolbox popover the pill's
-   own tonal background reads as a double surface; the border and the inner
-   control hover/focus/disabled states stay unchanged. */
-.physics-paint-pill--interpolation {
-  border-color: #596775;
 }
 
 .physics-paint-pill--playback {
@@ -2762,61 +2780,6 @@ button.destructive {
   border-right: 6px solid var(--color-tooltip-bg);
 }
 
-.physics-paint-roto-interpolation-controls {
-  min-width: 0;
-}
-
-.physics-paint-roto-interpolation-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #e3e6ea;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.physics-paint-roto-interpolation-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: transparent;
-  color: #b8c7ff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-
-.physics-paint-roto-interpolation-toggle:hover:not(:disabled) {
-  background: rgba(184, 199, 255, 0.14);
-}
-
-.physics-paint-roto-interpolation-toggle.active {
-  background: rgba(184, 199, 255, 0.2);
-  color: #dbe4ff;
-}
-
-.physics-paint-roto-interpolation-toggle:focus-visible {
-  outline: 2px solid #9bb7ff;
-  outline-offset: 2px;
-}
-
-.physics-paint-roto-interpolation-toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.physics-paint-roto-interpolation-controls[data-pending="true"] .physics-paint-roto-interpolation-toggle {
-  cursor: wait;
-}
-
 .physics-paint-roto-force-spacing-controls {
   min-width: 0;
 }
@@ -2885,7 +2848,6 @@ button.destructive {
   opacity: 0.58;
 }
 
-.physics-paint-roto-interpolation-select,
 .physics-paint-roto-motion-toggle {
   min-height: 22px;
   padding: 2px 6px;
@@ -4018,6 +3980,54 @@ button.destructive {
   padding: 12px;
 }
 
+/* Apply progress pill — floats centered over the canvas region's
+   bottom edge (just above the workflow strip) while an apply drains.
+   It must live OUTSIDE the strip: the strip's
+   overflow-y:hidden clips anything anchored past its top edge, which hid the
+   pill entirely in its first release. */
+.physics-paint-apply-progress {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(28, 30, 34, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 60;
+}
+
+.physics-paint-apply-progress-track {
+  position: relative;
+  flex: 1 1 0;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.physics-paint-apply-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: #7fa1ff;
+  transition: width 120ms linear;
+}
+
+.physics-paint-apply-progress-label {
+  flex: 0 0 auto;
+  color: #b9c3ce;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* Mode segmented control — 3 equal segments on a recessed rail. */
 .physics-paint-photo-reference-mode {
   display: flex;
@@ -4698,15 +4708,23 @@ button.destructive {
    The label's base rule already truncates; this class makes the contract
    explicit and grep-able. */
 .physics-paint-track-row-label-ellipsis {
+  /* 260911-s1j mockup layout: the name is pushed right (auto margin) and the
+     trash stays pinned at the far right; the 8px right padding keeps the
+     mockup's name→trash gap (8px padding + the row's 5px gap). flex-grow is
+     cleared so the auto margin — not the label box — consumes the free space
+     (a growing label would keep its text left-aligned after the buttons). */
+  flex: 0 1 auto;
+  margin-left: auto;
+  padding-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 47-02 Task 1: per-row solo (S) toggle. A compact always-visible chip before
-   the tools group; its pressed state reflects the session solo arm
-   (physicsPaintSoloArm, D-20) — the armed chip shows the same accent family
-   as the active row so the armed playback filter reads at a glance. */
+/* 47-02 Task 1 (260911-s1j): the standing inline solo (S) chip — the row-level
+   solo indicator, always visible. Its pressed state reflects the track's
+   document `solo` flag (the one the click toggles and the compositor filters
+   on); armed paints the unmistakable orange family. */
 .physics-paint-track-row-solo {
   flex: 0 0 auto;
   display: inline-flex;
@@ -4732,13 +4750,14 @@ button.destructive {
 }
 
 .physics-paint-track-row-solo-armed {
-  border-color: #6f90ff;
-  background: #2f3a4d;
-  color: #ffffff;
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .physics-paint-track-row-solo-armed:hover {
-  background: #33425a;
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
 }
 
 .physics-paint-track-row-solo:focus-visible {
@@ -4746,114 +4765,20 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* 47 UAT: the per-row frame-blending toggle's pressed state — the same
-   accent family as the armed solo chip, so an enabled blend reads at a
-   glance on every track row. */
-.physics-paint-track-row-blend-enabled {
-  border-color: #6f90ff;
-  background: #2f3a4d;
-  color: #ffffff;
+/* 47 UAT (260911-s1j): the per-row frame-blending toggle's armed state — the
+   same unmistakable orange family as the armed solo chip. The compound
+   selectors beat the base `.physics-paint-track-row-tool-button` rule, which
+   sits LATER in this file at equal specificity and would otherwise win the
+   cascade and paint the neutral gray. */
+.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
-.physics-paint-track-row-blend-enabled:hover {
-  background: #33425a;
-}
-
-/* Hover-visible tool buttons (eye / pencil / copy / trash-2). 47-01 UAT
-   round 5: the tools collapse to ZERO width while hidden (max-width: 0 +
-   overflow: hidden) so they reserve no layout space at rest — the track name
-   keeps the full header width and reads whole ("Track 1", not "1"). On hover
-   they expand to their reserved width (max-width: 84px) and push the label
-   left; the label truncates rather than being covered by an overlay.
-   pointer-events are disabled while hidden so the invisible buttons never
-   swallow header clicks.
-
-   47-01 UAT round 2: the dark right-to-left gradient is removed — it washed a
-   dark veil over the track name. The buttons now carry their own solid
-   surfaces (below), so they separate from the label without a gradient. */
-.physics-paint-track-row-tools {
-  flex: 0 0 auto;
-  max-width: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.12s ease, max-width 0.12s ease;
-}
-
-/* 47-01 UAT round 6: the tools open ONLY from the small more-button at the
-   name's right extreme (data-tools-open='true' set by the strip state) — a
-   hover or a click on the name never reveals them (a name click selects the
-   track). Leaving the panel or the header closes them (onPointerLeave in the
-   component).
-
-   47 UAT: while the panel is open it takes over the WHOLE row — the standing
-   controls (grip, eye, blend, name) and the more-button hide, and the three
-   tool buttons (solo / copy / trash) stretch across the track's full width
-   (flex: 1 each). */
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-grip,
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-label,
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools-toggle,
-.physics-paint-track-row-header[data-tools-open='true'] > .physics-paint-track-row-tool-button {
-  display: none;
-}
-
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools {
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: none;
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  justify-content: stretch;
-  gap: 4px;
-}
-
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools .physics-paint-track-row-tool-button,
-.physics-paint-track-row-header[data-tools-open='true'] .physics-paint-track-row-tools .physics-paint-track-row-solo {
-  flex: 1 1 0;
-  width: auto;
-  min-width: 0;
-  height: 22px;
-}
-
-/* 47-01 UAT round 6: the more-button lives at the header's right extreme,
-   always visible — the explicit opener for the tool panel. Sized like the
-   tool buttons so the row's action affordance reads as one family. */
-.physics-paint-track-row-tools-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid #58616b;
-  border-radius: 4px;
-  background: #3a424c;
-  color: #d8dde3;
-  cursor: pointer;
-}
-
-.physics-paint-track-row-tools-toggle:hover {
-  background: #45505c;
-  border-color: #69727c;
-  color: #e5edf8;
-}
-
-.physics-paint-track-row-tools-toggle:focus-visible {
-  outline: 2px solid #6f90ff;
-  outline-offset: 1px;
-}
-
-.physics-paint-track-row-tools-toggle svg {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
 }
 
 /* 47-01 hide: a hidden Paint track fades its cells to gray — every key and
@@ -6112,24 +6037,12 @@ button.destructive {
   font-variant-numeric: tabular-nums;
 }
 
-/* Blend-state badge (D-04): 6px filled dot pinned at the icon's top-right
-   corner (2px insets), read-only projection of the timeline-owned
-   interpolation state — never interactive, never a second authority. */
+/* The ToolCase icon wrapper (260911-s1j: the interpolation-state badge is
+   retired — the row's blend button is the per-track state, and the mode
+   dropdown is the only interpolation control left in the popover). */
 .physics-paint-toolbox-badge-anchor {
   position: relative;
   display: inline-flex;
-}
-
-.physics-paint-toolbox-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #dbe4ff;
-  box-shadow: 0 0 0 1px #37393a;
-  pointer-events: none;
 }
 
 /* 47-02 Task 2 (TML-02, D-17): the acknowledge-and-delete dialog surface.

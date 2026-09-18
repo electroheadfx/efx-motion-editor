@@ -32,7 +32,7 @@ export function loadPaperTexture(
       const tc = document.createElement('canvas')
       tc.width = width
       tc.height = height
-      const tx = tc.getContext('2d')
+      const tx = tc.getContext('2d', { willReadFrequently: true })
       if (!tx) {
         reject(new Error('Failed to get 2D context for paper texture'))
         return

@@ -464,10 +464,98 @@ Plans:
 - [x] 52-04-PLAN.md — "Reveal with script…" modal entry
 - [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
+### Phase 52.2: Project package format — references only (INSERTED)
+
+**Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
+**Requirements**: TBD (D-01..D-26 locked decisions)
+**Depends on:** Phase 52
+**Plans:** 16/16 plans executed
+
+Plans:
+
+**Wave 1** *(independent — native media IPC, package contract, UI sweeps)*
+
+- [x] 52.2-01-PLAN.md — Tracer: prefix-locked Rust frame-media read/write commands + TS IPC taxonomy
+- [x] 52.2-02-PLAN.md — Package layout contract (manifest, layer paths, machine-cache paths, media references)
+- [x] 52.2-03-PLAN.md — `− [field] +` numeric steppers swept across main editor and Studio
+- [x] 52.2-04-PLAN.md — Solo play starts at content start and every loop wrap returns there
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [x] 52.2-05-PLAN.md — Multi-file save transaction + machine-local cache relocation
+- [x] 52.2-06-PLAN.md — Roto real-key records become media references (persist + hydrate)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [x] 52.2-07-PLAN.md — Package save: per-file change tokens, media-then-manifest ordering
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [x] 52.2-08-PLAN.md — Pre-52.2 refusal gate + clean break (no legacy carrier field)
+- [x] 52.2-10-PLAN.md — Bridge retargeted to references + digest-keyed byte channel
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [x] 52.2-09-PLAN.md — Read-back leg: digest-verified lazy media decode on reopen
+- [x] 52.2-11-PLAN.md — macOS document-package treatment (`Info.plist`, open handling, dialogs)
+- [x] 52.2-12-PLAN.md — Async conventions doc (Gate 2) + gated render counters
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [x] 52.2-13-PLAN.md — Pilot preconditions: re-verify + pin libraries, re-measure the chunk budget
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [x] 52.2-14-PLAN.md — Async pilot: stroke-finalization machine + bounded-turn finalization queue
+
+**Wave 8** *(blocked on Wave 7)*
+
+- [x] 52.2-15-PLAN.md — Flush pipeline behind the pilot boundary + Studio wiring and retry routing
+
+**Wave 9** *(blocked on Wave 8)*
+
+- [x] 52.2-16-PLAN.md — Bundled native UAT (Gates 4/5) + D-25 re-measurement record, pilot verdict + skill decision
+
+### Phase 52.1: Modern frame runtime + native HD paint (INSERTED)
+
+**Goal:** Replace the base64-dataUrl frame runtime with a bytes/ImageBitmap runtime, move PNG→WebP-lossless encode/decode into Rust, lazy-load sidecars behind a byte-budgeted LRU, and raise the working-resolution cap 1000→1920 — so HD projects paint at native resolution without main-thread jank or heap blowup.
+**Requirements**: TBD (D-01..D-19 locked decisions)
+**Depends on:** Phase 52
+**Plans:** 7/7 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 52.1-01-PLAN.md — Dependency bumps (Tauri 2.11.5 / Preact 10.29.8) + D-04 gates
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 52.1-02-PLAN.md — Tracer: Rust FrameCodec trait + WebPLosslessCodec + encode/decode commands + JS byte bridge
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 52.1-03-PLAN.md — Runtime frame identity retarget (bytes field, WebP probe, registries re-keyed, raw-byte apply path)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 52.1-04-PLAN.md — Byte-budgeted LRU + pinning + ImageBitmap handle + absorb decode-once caches
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 52.1-05-PLAN.md — Main-editor preview/export readers + compositor drawImage(bitmap)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 52.1-06-PLAN.md — Cap raise 1000→1920 + ~1.9x physics/brush rescale
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 52.1-07-PLAN.md — Clean-break contract + full gates + native roto UAT
+
 ### Phase 53: Integrated v1.0.0 Acceptance
 
 **Goal**: The enforcement backstop for all stop conditions — automated gates, native UAT, and signed/notarized release.
-**Depends on**: Phase 52
+**Depends on**: Phase 52.1
 **Requirements**: ACC-01, ACC-02, ACC-03
 **Success Criteria** (what must be TRUE):
 
@@ -498,4 +586,6 @@ Plans:
 | 50. Photo/Reference Track | v1.0.0 | 6/6 | Complete | 2026-09-01 |
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Complete | 2026-09-02 |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
+| 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
+| 52.2. Project package format — references only | v1.0.0 | 16/16 | Complete | 2026-09-18 |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |

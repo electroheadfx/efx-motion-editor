@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
@@ -16,6 +17,16 @@ import {
   setPhotoReferenceVisible,
 } from '../../../stores/efxPaintStore';
 import { drawReferenceGhost, shouldDrawReferenceGhost } from './PhysicsPaintReferenceGhost';
+
+// 52.1-04 (D-13): the reference ghost now draws the shared decode-once LRU
+// bitmap (`physicPaintStore.getDecodedImage`), not a per-draw `new Image()`.
+// Mock the Rust decode leaf so the async decode is observable without reaching
+// the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../../../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 const TEST_TRACK_ID = 'track-1';
 
@@ -48,7 +59,7 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceVisible(layerId, false);
     const document = getDocument(layerId)!;
     expect(shouldDrawReferenceGhost(document, 0, false)).toEqual({ draw: false, verdict: null });
@@ -58,7 +69,7 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     const document = getDocument(layerId)!;
     expect(shouldDrawReferenceGhost(document, 0, true)).toEqual({ draw: false, verdict: null });
   });
@@ -67,12 +78,12 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['present', 'absent']);
-    registerReferenceSourceImage('present', 'data:present');
+    registerReferenceSourceImage('present', testWebpBytes('data:present'));
     const document = getDocument(layerId)!;
     // frame 0 resolves; frame 1 is missing → fail-closed null
     expect(shouldDrawReferenceGhost(document, 0, false)).toEqual({
       draw: true,
-      verdict: { ref: 'present', dataUrl: 'data:present', clamped: false },
+      verdict: { ref: 'present', bytes: testWebpBytes('data:present'), clamped: false },
     });
     expect(shouldDrawReferenceGhost(document, 1, false)).toEqual({ draw: false, verdict: null });
   });
@@ -81,22 +92,22 @@ describe('shouldDrawReferenceGhost (50-04 S3 decision)', () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0', 'f1', 'f2']);
-    registerReferenceSourceImage('f0', 'data:f0');
-    registerReferenceSourceImage('f1', 'data:f1');
-    registerReferenceSourceImage('f2', 'data:f2');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
+    registerReferenceSourceImage('f1', testWebpBytes('data:f1'));
+    registerReferenceSourceImage('f2', testWebpBytes('data:f2'));
     const document = getDocument(layerId)!;
     expect(shouldDrawReferenceGhost(document, 0, false)).toEqual({
       draw: true,
-      verdict: { ref: 'f0', dataUrl: 'data:f0', clamped: false },
+      verdict: { ref: 'f0', bytes: testWebpBytes('data:f0'), clamped: false },
     });
     expect(shouldDrawReferenceGhost(document, 1, false)).toEqual({
       draw: true,
-      verdict: { ref: 'f1', dataUrl: 'data:f1', clamped: false },
+      verdict: { ref: 'f1', bytes: testWebpBytes('data:f1'), clamped: false },
     });
     // frame 3 clamps to the last source frame (sequence end holds)
     expect(shouldDrawReferenceGhost(document, 3, false)).toEqual({
       draw: true,
-      verdict: { ref: 'f2', dataUrl: 'data:f2', clamped: true },
+      verdict: { ref: 'f2', bytes: testWebpBytes('data:f2'), clamped: true },
     });
   });
 });
@@ -155,12 +166,25 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     get src(): string { return this.currentSrc; }
   }
 
+  /** The decoded ImageBitmap the LRU hands back (no `src` — a real ImageBitmap). */
+  class FlatTestBitmap {
+    width = 4;
+    height = 3;
+    close = vi.fn();
+  }
+
   beforeEach(() => {
     physicPaintStore.reset();
     reset();
     _setEfxPaintMarkDirtyCallback(() => {});
+    decodeWebpFrameMock.mockReset();
+    decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
     vi.stubGlobal('Image', FlatTestImage);
     vi.stubGlobal('HTMLImageElement', FlatTestImage);
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+    vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
   });
 
   afterEach(() => {
@@ -169,6 +193,19 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
 
   function makeContext(ops: GhostOp[]): FlatRecordingContext {
     return new FlatRecordingContext(ops, { width: 100, height: 50 });
+  }
+
+  /** Kick off the async decode, flush it, then redraw so the LRU hit draws. */
+  async function drawGhostAfterDecode(
+    ctx: CanvasRenderingContext2D,
+    document: EfxPaintDocument,
+    frame: number,
+    zoom: number,
+    isPlaying: boolean,
+  ): Promise<void> {
+    drawReferenceGhost(ctx, document, frame, zoom, isPlaying);
+    await flushDecode();
+    drawReferenceGhost(ctx, document, frame, zoom, isPlaying);
   }
 
   it('draws nothing when the decision is draw:false (no track / hidden / playing / missing)', () => {
@@ -182,17 +219,17 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     expect(ops).toEqual([]);
   });
 
-  it('applies the overlay opacity and the display transform with no tint/blend/outline (D-09, D-13)', () => {
+  it('applies the overlay opacity and the display transform with no tint/blend/outline (D-09, D-13)', async () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceOpacity(layerId, 0.8);
     setPhotoReferenceTransform(layerId, { x: 10, y: 20, scaleX: 1.5, scaleY: 0.5, rotation: 45 });
     const document = getDocument(layerId)!;
     const ops: GhostOp[] = [];
     const ctx = makeContext(ops);
-    drawReferenceGhost(ctx as unknown as CanvasRenderingContext2D, document, 0, 0.5, false);
+    await drawGhostAfterDecode(ctx as unknown as CanvasRenderingContext2D, document, 0, 0.5, false);
 
     // save → opacity → translate → rotate → scale → drawImage → restore
     expect(ops[0]).toEqual({ type: 'save' });
@@ -207,67 +244,61 @@ describe('drawReferenceGhost (50-04 S3 monitor-paint draw)', () => {
     expect(ops[ops.length - 1]).toEqual({ type: 'restore' });
   });
 
-  it('centers the image and scales it by zoom with the transform offset (D-13)', () => {
+  it('centers the image and scales it by zoom with the transform offset (D-13)', async () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceTransform(layerId, { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 });
     const document = getDocument(layerId)!;
     const ops: GhostOp[] = [];
     const ctx = makeContext(ops);
-    drawReferenceGhost(ctx as unknown as CanvasRenderingContext2D, document, 0, 0.5, false);
+    await drawGhostAfterDecode(ctx as unknown as CanvasRenderingContext2D, document, 0, 0.5, false);
 
     const translate = ops.find((op) => op.type === 'translate') as Extract<GhostOp, { type: 'translate' }>;
     // canvas 100x50, zoom 0.5, transform x:10 y:20 → center + offset*zoom
     expect(translate.x).toBe(100 / 2 + 10 * 0.5);
     expect(translate.y).toBe(50 / 2 + 20 * 0.5);
     const draw = ops.find((op) => op.type === 'drawImage') as Extract<GhostOp, { type: 'drawImage' }>;
-    expect(draw.source).toBe('data:f0');
+    // The draw source is now the decoded ImageBitmap (no `src`), not a blob URL.
+    expect(draw.source).toBe('canvas');
   });
 
-  it('decodes the reference once per dataUrl across repeated draws (G-52-5 decode-storm fix)', () => {
+  it('decodes the reference once per dataUrl across repeated draws (G-52-5 decode-storm fix)', async () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     const document = getDocument(layerId)!;
 
-    let constructions = 0;
-    class CountingImage {
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      crossOrigin = '';
-      width = 4;
-      height = 3;
-      private currentSrc = '';
-      constructor() { constructions += 1; }
-      set src(value: string) { this.currentSrc = value; this.onload?.(); }
-      get src(): string { return this.currentSrc; }
-    }
-    vi.stubGlobal('Image', CountingImage);
-    vi.stubGlobal('HTMLImageElement', CountingImage);
+    // The first draw kicks off the async decode and draws nothing this tick.
+    const firstOps: GhostOp[] = [];
+    drawReferenceGhost(makeContext(firstOps) as unknown as CanvasRenderingContext2D, document, 0, 1, false);
+    expect(firstOps.some((op) => op.type === 'drawImage')).toBe(false);
+
+    await flushDecode();
+    expect(decodeWebpFrameMock).toHaveBeenCalledTimes(1);
 
     // Repeated draws (frame scrub + version bumps) with the same source: one
-    // decode EVER; every redraw is a plain cached canvas drawImage.
+    // decode EVER; every redraw is a plain cached bitmap drawImage.
     for (let draw = 0; draw < 3; draw += 1) {
       const ops: GhostOp[] = [];
       drawReferenceGhost(makeContext(ops) as unknown as CanvasRenderingContext2D, document, draw, 1, false);
       expect(ops.some((op) => op.type === 'drawImage')).toBe(true);
     }
-    expect(constructions).toBe(1);
+    expect(decodeWebpFrameMock).toHaveBeenCalledTimes(1);
   });
 
-  it('converts rotation from degrees to radians (D-13)', () => {
+  it('converts rotation from degrees to radians (D-13)', async () => {
     const layerId = 'layer-photo';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['f0']);
-    registerReferenceSourceImage('f0', 'data:f0');
+    registerReferenceSourceImage('f0', testWebpBytes('data:f0'));
     setPhotoReferenceTransform(layerId, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90 });
     const document = getDocument(layerId)!;
     const ops: GhostOp[] = [];
     const ctx = makeContext(ops);
-    drawReferenceGhost(ctx as unknown as CanvasRenderingContext2D, document, 0, 1, false);
+    await drawGhostAfterDecode(ctx as unknown as CanvasRenderingContext2D, document, 0, 1, false);
 
     const rotate = ops.find((op) => op.type === 'rotate') as Extract<GhostOp, { type: 'rotate' }>;
     expect(rotate.angle).toBeCloseTo(Math.PI / 2);

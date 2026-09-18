@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 import {
   clampPhysicPaintGroupDragDestination,
   type PhysicPaintRotoGroupDragClampInput,
@@ -194,6 +195,7 @@ export function usePhysicsPaintGroupRailDrag(
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (!input.prepareRotoGroupDrag || !input.commitRotoGroupDrag || !win) return;
     if (sessionRef.current) return;
+    beginInteraction(event.pointerId);
     const sourceElement = event.currentTarget as unknown as GroupRailDragSourceElement;
     let active = true;
     const session: GroupRailDragSession = {
@@ -221,6 +223,7 @@ export function usePhysicsPaintGroupRailDrag(
     const cleanup = () => {
       if (!active) return;
       active = false;
+      endInteraction(session.pointerId);
       win.removeEventListener('pointermove', handlePointerMove);
       win.removeEventListener('pointerup', handlePointerUp);
       win.removeEventListener('pointercancel', handlePointerCancel);
@@ -317,6 +320,7 @@ export function usePhysicsPaintGroupRailDrag(
     };
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
+      markInteractionActive();
       session.latestX = moveEvent.clientX;
       session.latestY = moveEvent.clientY;
       if (!session.started && Math.abs(session.latestX - session.originX) > GROUP_RAIL_DRAG_THRESHOLD_PX) {

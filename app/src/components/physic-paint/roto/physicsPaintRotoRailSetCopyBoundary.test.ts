@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -13,14 +14,13 @@ import {
 } from './physicsPaintRotoRailSetCopy';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
-const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 function recordKey(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   return Object.freeze({
     kind: 'real-key',
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl: PNG, width: 100, height: 80 },
+    payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('iVBORw0KGgo='), width: 100, height: 80 },
   }) as PhysicPaintRotoRealKeyRecord;
 }
 

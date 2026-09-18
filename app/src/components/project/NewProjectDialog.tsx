@@ -1,6 +1,8 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
 import {open as openDialog} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
+import {toPackageManifestPath} from '../../lib/openedProjectUrls';
+import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
 
 interface NewProjectDialogProps {
   onClose: () => void;
@@ -45,19 +47,28 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
     setError(null);
 
     try {
-      // Build the project directory path: dirPath/projectName
-      const projectDirPath = `${dirPath}/${name.trim()}`;
+      // 52.2-11 (D-03): the project IS the package — a directory named
+      // `Name.mce` that macOS presents as ONE Finder document (LSTypeIsPackage
+      // in the bundle's Info.plist). Every package-relative path the store
+      // writes (`project.mce`, `layers/`, `frames/`) lives inside it, so the
+      // project directory and the package directory are the same directory.
+      const packageDirPath = `${dirPath}/${name.trim()}.mce`;
 
       // Create the project via projectStore (handles IPC + temp migration)
-      await projectStore.createProject(name.trim(), fps, projectDirPath);
+      await projectStore.createProject(name.trim(), fps, packageDirPath);
 
-      // Auto-save an initial .mce file
-      const mcePath = `${projectDirPath}/${name.trim()}.mce`;
-      await projectStore.saveProjectAs(mcePath);
+      // Auto-save the initial package: the manifest inside the package dir.
+      await projectStore.saveProjectAs(toPackageManifestPath(packageDirPath));
 
       onClose();
     } catch (err) {
-      setError(String(err));
+      // quick-260913-05k round 3 (UAT defect A): `createProject` resets the UI
+      // store (`closeProject`), so this dialog is already unmounted by the time
+      // a create or the initial save can fail — an inline setError renders
+      // nowhere. Route the failure through the blocking modal every other save
+      // site uses; the project stays registered at its chosen package path.
+      console.error('Failed to create project:', err);
+      await showProjectIoFailureDialog('save', err);
     } finally {
       setIsCreating(false);
     }

@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
@@ -8,6 +9,7 @@ import {
 import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
@@ -147,7 +149,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-preview:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-preview:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };
@@ -299,7 +301,7 @@ describe('preview accepted Group lifecycle parity', () => {
       kind: 'real',
       appFrame: 5,
       keyId: 'override-5',
-      renderedFrame: expect.objectContaining({ dataUrl: payload(5, 'override').dataUrl }),
+      renderedFrame: expect.objectContaining({ bytes: payload(5, 'override').bytes }),
     }));
     expect(neighbor).toEqual(expect.objectContaining({
       kind: 'generated',
@@ -307,7 +309,7 @@ describe('preview accepted Group lifecycle parity', () => {
       cycleOffset: 2,
     }));
     if (!neighbor || neighbor.kind !== 'generated') throw new Error('Expected generated Group neighbor.');
-    expect(neighbor.renderedFrame.dataUrl).not.toBe(payload(5, 'override').dataUrl);
+    expect(neighbor.renderedFrame.bytes).not.toBe(payload(5, 'override').bytes);
   });
 
   it('retains immutable phase while detached and reflects accepted regeneration immediately', () => {
@@ -382,7 +384,7 @@ describe('preview linked-generated cache identity', () => {
       layerId: LAYER,
       frame: source.appFrame,
       cacheKey: `physic-paint:${LAYER}:physical:${source.cacheRevision}`,
-      renderedFrame: source.renderedFrame,
+      renderedFrame: { ...source.renderedFrame, bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame) },
     });
 
     expect(first.sourceCycleId).toBe(getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']));

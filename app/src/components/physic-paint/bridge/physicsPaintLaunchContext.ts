@@ -29,6 +29,9 @@ function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'object') return false;
+  // 52.1 (D-05): frame bytes are a Uint8Array — structured-cloneable, but not a
+  // plain record. Accept it so the bytes-token payload passes the clone guard.
+  if (value instanceof Uint8Array) return true;
   if (seen.has(value)) return false;
   seen.add(value);
   try {

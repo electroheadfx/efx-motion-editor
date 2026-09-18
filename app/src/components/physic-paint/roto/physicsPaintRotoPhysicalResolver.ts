@@ -78,6 +78,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import {
+  buildPhysicPaintRotoPayloadContentToken,
   createPhysicPaintRotoKeyId,
   isPhysicPaintRotoKeyIdentity,
   isPhysicPaintRotoLoopClip,
@@ -138,7 +139,7 @@ export function buildCanonicalMoveGroupOverrideRecords(input: {
       payload: {
         frameIndex: record.payload.frameIndex,
         appFrame: stagedAppFrame,
-        dataUrl: record.payload.dataUrl,
+        bytes: record.payload.bytes,
         ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
         ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
       },
@@ -485,7 +486,7 @@ function clonePayloadAtFrame(
   return Object.freeze({
     frameIndex: payload.frameIndex,
     appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
@@ -496,9 +497,12 @@ function payloadEqualsAtFrame(
   expected: PhysicPaintRotoRealKeyPayload,
   appFrame: number,
 ): boolean {
+  // 52.2-02 (D-07): the content token is total over both payload shapes, so an
+  // identity comparison reads the media digest for a reference-only record
+  // instead of dereferencing pixels that a persisted record does not carry.
   return actual.frameIndex === expected.frameIndex
     && actual.appFrame === appFrame
-    && actual.dataUrl === expected.dataUrl
+    && buildPhysicPaintRotoPayloadContentToken(actual) === buildPhysicPaintRotoPayloadContentToken(expected)
     && actual.width === expected.width
     && actual.height === expected.height;
 }

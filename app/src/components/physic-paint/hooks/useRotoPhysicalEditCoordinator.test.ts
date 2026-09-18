@@ -25,8 +25,10 @@ import type {
   PhysicPaintRotoPhysicalEditSemanticDelta,
   RailSetDeleteMember,
 } from '../../../types/physicPaint';
+import { isPhysicPaintRotoPhysicalEditRecordRef } from '../../../types/physicPaint';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoInterpolationState,
@@ -56,6 +58,7 @@ import {
 } from './useRotoPhysicalEditCoordinator';
 import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
 import { useRotoTimelineActions } from './useRotoTimelineActions';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
 
@@ -90,7 +93,7 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      bytes: testWebpBytes('iVBORw0KGgo='),
     },
   };
 }
@@ -285,7 +288,20 @@ function harness(options: {
     return { ok: true as const };
   });
   const sendPhysicalEditPayload = vi.fn(async (nextPayload: PhysicPaintRotoPhysicalEditApplyPayload) => {
-    payload = nextPayload;
+    // 52.1 (Part 2): the wire payload carries unchanged records as content-token
+    // refs. Expand them against the harness's canonical pre-op records exactly
+    // like the parent bridge (token verified, fail-closed on mismatch).
+    payload = {
+      ...nextPayload,
+      records: nextPayload.records.map((entry) => {
+        if (!isPhysicPaintRotoPhysicalEditRecordRef(entry)) return entry;
+        const before = records.find((record) => record.keyId === entry.keyId);
+        if (!before || buildPhysicPaintRotoPayloadContentToken(before.payload) !== entry.refToken) {
+          throw new Error(`Test parent: unresolvable record ref "${entry.keyId}".`);
+        }
+        return { keyId: entry.keyId, appFrame: entry.appFrame, payload: { ...before.payload, appFrame: entry.appFrame } };
+      }),
+    };
     if (options.transportRejects) throw new Error('transport failed');
   });
   const reconcileCurrentFrame = vi.fn();
@@ -312,7 +328,7 @@ function harness(options: {
     cachedRepaintBase: Object.freeze({
       frameIndex: 0,
       appFrame: 0,
-      dataUrl: 'data:image/png;base64,U0hBUkVE',
+      bytes: testWebpBytes('U0hBUkVE'),
       width: 2,
       height: 2,
     }),
@@ -480,7 +496,7 @@ function harness(options: {
       blankPayload: {
         frameIndex: 0,
         appFrame: destinationAppFrame,
-        dataUrl: 'data:image/png;base64,AAAA',
+        bytes: testWebpBytes('AAAA'),
         width: 2,
         height: 2,
       },
@@ -514,7 +530,7 @@ function harness(options: {
       clipboardPayload: {
         frameIndex: 0,
         appFrame: destinationAppFrame,
-        dataUrl: 'data:image/png;base64,AAAA',
+        bytes: testWebpBytes('AAAA'),
         width: 2,
         height: 2,
       },
@@ -570,13 +586,13 @@ function harness(options: {
     canonicalSelectedKeyId = null;
     canonicalCursorAppFrame = appFrame;
   };
-  const executeGroupPaint = (appFrame: number, overrideKeyId: string, dataUrl = 'data:image/png;base64,UEFJTlQ=') => coordinator.executePhysicalEdit({
+  const executeGroupPaint = (appFrame: number, overrideKeyId: string, bytes = testWebpBytes('UEFJTlQ=')) => coordinator.executePhysicalEdit({
     operationKind: 'paint-group-frame',
     expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
     groupId: 'group-1',
     appFrame,
     overrideKeyId,
-    renderedPayload: { frameIndex: 0, appFrame, dataUrl },
+    renderedPayload: { frameIndex: 0, appFrame, bytes },
   });
   const executeDeleteGroupFrame = (appFrame: number) => coordinator.executePhysicalEdit({
     operationKind: 'delete-group-frame',
@@ -631,7 +647,7 @@ function harness(options: {
     const currentDocument = getCanonicalDocument();
     const regeneratedRecords = currentDocument.realKeyRecords.map((entry) => (
       entry.keyId === 'A' || entry.keyId === 'B'
-        ? { ...entry, payload: { ...entry.payload, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' } }
+        ? { ...entry, payload: { ...entry.payload, bytes: testWebpBytes('iVBORw0KGgo=') } }
         : entry
     ));
     const sourceUpdatedDocument = parsePhysicPaintRotoPhysicalDocument({
@@ -1218,7 +1234,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       blankPayload: {
         frameIndex: 0,
         appFrame: 14,
-        dataUrl: 'data:image/png;base64,AAAA',
+        bytes: testWebpBytes('AAAA'),
         width: 2,
         height: 2,
       },
@@ -2606,14 +2622,14 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     const before = groupLifecycleDocument({ sharedSourceOwner: true, cursorAppFrame: 0 });
     test.seedGroupDocument(before);
 
-    expect(await test.executeGroupPaint(0, 'override-source-0', 'data:image/png;base64,U09VUkNFLUNPVw==')).toBe(true);
+    expect(await test.executeGroupPaint(0, 'override-source-0', testWebpBytes('U09VUkNFLUNPVw=='))).toBe(true);
 
     expect(test.getRecords()).toEqual(before.realKeyRecords);
     expect(test.getPayload()).toMatchObject({
       groupOverrideRecords: [{
         keyId: 'override-source-0',
         appFrame: 0,
-        payload: { appFrame: 0, dataUrl: 'data:image/png;base64,U09VUkNFLUNPVw==' },
+        payload: { appFrame: 0, bytes: testWebpBytes('U09VUkNFLUNPVw==') },
       }],
     });
     expect(test.sendPhysicalEditPayload).toHaveBeenCalledOnce();
@@ -2646,8 +2662,8 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     const capture = transactions.capture({
       identity,
       resolveCurrent: () => identity,
-      produce: async () => 'data:image/png;base64,U0VDT05ELVNUUk9LRQ==',
-      commit: (dataUrl) => test.executeGroupPaint(4, 'override-4', dataUrl),
+      produce: async () => testWebpBytes('U0VDT05ELVNUUk9LRQ=='),
+      commit: (bytes) => test.executeGroupPaint(4, 'override-4', bytes),
     });
 
     await expect(Promise.race([
@@ -2693,7 +2709,7 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     expect(test.accept()).toBe('accepted');
     expect(test.getGroupOverrideRecords().find((entry) => entry.keyId === 'override-gap-4')).toMatchObject({
       appFrame: 0,
-      payload: { appFrame: 0, dataUrl: 'data:image/png;base64,UEFJTlQ=' },
+      payload: { appFrame: 0, bytes: testWebpBytes('UEFJTlQ=') },
     });
     expect(test.getLoopClips()[0]).toMatchObject({
       syncState: 'modified',
@@ -2720,10 +2736,10 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     const test = harness();
     test.seedGroupDocument(groupLifecycleDocument({ existingOverride: true }));
 
-    expect(await test.executeGroupPaint(4, 'override-4', 'data:image/png;base64,UkVQQUlOVA==')).toBe(true);
+    expect(await test.executeGroupPaint(4, 'override-4', testWebpBytes('UkVQQUlOVA=='))).toBe(true);
     expect(test.accept()).toBe('accepted');
     expect(test.getGroupOverrideRecords().filter((entry) => entry.keyId === 'override-4')).toHaveLength(1);
-    expect(test.getGroupOverrideRecords().find((entry) => entry.keyId === 'override-4')?.payload.dataUrl).toBe('data:image/png;base64,UkVQQUlOVA==');
+    expect(test.getGroupOverrideRecords().find((entry) => entry.keyId === 'override-4')?.payload.bytes).toEqual(testWebpBytes('UkVQQUlOVA=='));
     expect(test.getLoopClips()[0]).toMatchObject({
       syncState: 'modified',
       frameOverrides: [{ appFrame: 0, keyId: 'override-4' }],
@@ -2739,7 +2755,7 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     expect(test.accept()).toBe('accepted');
 
     expect(test.getGroupOverrideRecords().filter((entry) => entry.keyId === 'override-3')).toEqual([
-      expect.objectContaining({ appFrame: 1, payload: expect.objectContaining({ appFrame: 1, dataUrl: 'data:image/png;base64,UEFJTlQ=' }) }),
+      expect.objectContaining({ appFrame: 1, payload: expect.objectContaining({ appFrame: 1, bytes: testWebpBytes('UEFJTlQ=') }) }),
     ]);
     expect(test.getRecords().find((entry) => entry.keyId === 'A')).toEqual(before.realKeyRecords.find((entry) => entry.keyId === 'A'));
     expect(test.getRecords().find((entry) => entry.keyId === 'B')).toEqual(before.realKeyRecords.find((entry) => entry.keyId === 'B'));
@@ -3220,7 +3236,7 @@ describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
       groupId: 'group-1',
       appFrame: 4,
       overrideKeyId: 'override-4',
-      renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+      renderedPayload: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('iVBORw0KGgo=') },
     }, {
       acquireLease: () => { order.push('acquire'); return token; },
       getAcceptedDocument: () => { order.push('snapshot'); return document; },
@@ -3253,7 +3269,7 @@ describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
         groupId: 'group-1',
         appFrame: 4,
         overrideKeyId: 'override-4',
-        renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+        renderedPayload: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('iVBORw0KGgo=') },
       }, {
         acquireLease: () => Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', trackId: 'track-1', generation: 1, owner: 'exclusive' as const }),
         getAcceptedDocument: () => document,
@@ -3271,12 +3287,12 @@ describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
 });
 
 describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () => {
-  const pastePng = (label: string) => `data:image/png;base64,${btoa(`paste-${label}`)}`;
+  const pastePng = (label: string) => testWebpBytes(`paste-${label}`);
   const pasteRecord = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
     kind: 'real-key',
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl: pastePng(keyId), width: 100, height: 80 },
+    payload: { frameIndex: 0, appFrame, bytes: pastePng(keyId), width: 100, height: 80 },
   });
 
   function twoKeyRailDocument(capacity = 100) {
@@ -3311,13 +3327,13 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
               sourceKeyId: 'k0',
               sourceAppFrame: 0,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 0, dataUrl: pastePng('k0'), width: 100, height: 80 },
+              payload: { frameIndex: 0, appFrame: 0, bytes: pastePng('k0'), width: 100, height: 80 },
             }),
             Object.freeze({
               sourceKeyId: 'k2',
               sourceAppFrame: 2,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 2, dataUrl: pastePng('k2'), width: 100, height: 80 },
+              payload: { frameIndex: 0, appFrame: 2, bytes: pastePng('k2'), width: 100, height: 80 },
             }),
           ]),
         }),
@@ -3331,13 +3347,13 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
               sourceKeyId: 'k6',
               sourceAppFrame: 6,
               ownsIncomingBreak: true,
-              payload: { frameIndex: 0, appFrame: 6, dataUrl: pastePng('k6'), width: 100, height: 80 },
+              payload: { frameIndex: 0, appFrame: 6, bytes: pastePng('k6'), width: 100, height: 80 },
             }),
             Object.freeze({
               sourceKeyId: 'k8',
               sourceAppFrame: 8,
               ownsIncomingBreak: false,
-              payload: { frameIndex: 0, appFrame: 8, dataUrl: pastePng('k8'), width: 100, height: 80 },
+              payload: { frameIndex: 0, appFrame: 8, bytes: pastePng('k8'), width: 100, height: 80 },
             }),
           ]),
         }),

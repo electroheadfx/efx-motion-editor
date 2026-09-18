@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
@@ -36,7 +37,7 @@ const TRACK_B = 'track-b';
 const makePayload = (appFrame: number, tag: string) => ({
   frameIndex: 0,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 4,
   height: 4,
 });
@@ -120,7 +121,7 @@ function mockParentAuthority(candidate: Layer): void {
 
 const originalWindow = globalThis.window;
 
-describe('three-dimensional Roto authority (46-04 Task 1)', () => {
+describe('three-dimensional Roto authority (46-04 Task 1)', async () => {
   beforeEach(() => {
     physicPaintStore.reset();
     resetEfxPaintStore();
@@ -149,7 +150,7 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
     });
   });
 
-  it('echoes the requested trackId on success — never the active track', () => {
+  it('echoes the requested trackId on success — never the active track', async () => {
     // The document's ACTIVE track is B; the request names A and must be honored.
     registerTwoTrackDocument(TRACK_B, [makeRecord('key-a-0', 0, 'a@0')]);
     mockParentAuthority(physicLayer());
@@ -166,7 +167,7 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
     expect(authority.capacity).toBeGreaterThan(0);
   });
 
-  it('fails closed on a foreign trackId — no active-track fallback, no auto-create', () => {
+  it('fails closed on a foreign trackId — no active-track fallback, no auto-create', async () => {
     registerTwoTrackDocument(TRACK_A, [makeRecord('key-a-0', 0, 'a@0')]);
     mockParentAuthority(physicLayer());
 
@@ -187,7 +188,7 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
     expect(authority.documentRevision).toBe(buildEfxPaintDocumentRevision(getDocument(LAYER)!));
   });
 
-  it('returns deterministic per-track and document revision terms; editing track A moves only A', () => {
+  it('returns deterministic per-track and document revision terms; editing track A moves only A', async () => {
     registerTwoTrackDocument(TRACK_A, [makeRecord('key-a-0', 0, 'a@0')]);
     mockParentAuthority(physicLayer());
 
@@ -222,7 +223,7 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
     expect(untouchedB.trackRevision).toBe(authB.trackRevision);
   });
 
-  it('rejects a malformed request (missing or non-string trackId) before store state is touched', () => {
+  it('rejects a malformed request (missing or non-string trackId) before store state is touched', async () => {
     const base = { operationId: 'auth-malformed', projectContextId: 'project-1', layerId: LAYER, canonicalStart: 0 };
     expect(isPhysicPaintRotoAuthorityRequest({ ...base })).toBe(false);
     expect(isPhysicPaintRotoAuthorityRequest({ ...base, trackId: 42 })).toBe(false);
@@ -238,7 +239,7 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
     expect(result.error).toBe('Malformed Roto authority request.');
   });
 
-  it('envelope extraction carries a foreign trackId into the closed failure result', () => {
+  it('envelope extraction carries a foreign trackId into the closed failure result', async () => {
     // Not a valid authority request (extra key) — the FromUnknown path extracts
     // the envelope and must keep the trackId in the closed failure.
     const payload = {
@@ -258,7 +259,7 @@ describe('three-dimensional Roto authority (46-04 Task 1)', () => {
   });
 });
 
-describe('three-dimensional commit gate (46-04 Task 2)', () => {
+describe('three-dimensional commit gate (46-04 Task 2)', async () => {
   /** Mount one track's runtime so the authority + gate read real per-track state. */
   function mountTrackRuntime(trackId: string, records: readonly PhysicPaintRotoRealKeyRecord[]): void {
     const interpolation = { enabled: false, mode: 'duplicate' as const };
@@ -314,27 +315,27 @@ describe('three-dimensional commit gate (46-04 Task 2)', () => {
       expectedDocumentRevision: authority.documentRevision,
       frames: [
         authority.frames[0],
-        { frameIndex: 0, appFrame: 2, dataUrl: `data:image/png;base64,${btoa('a@2')}`, width: 4, height: 4, source: 'real-key' },
+        { frameIndex: 0, appFrame: 2, bytes: testWebpBytes(btoa('a@2')), width: 4, height: 4, source: 'real-key' },
       ],
       ...overrides,
     };
   }
 
-  it('commits a captured track-A batch onto A and leaves B byte-identical', () => {
+  it('commits a captured track-A batch onto A and leaves B byte-identical', async () => {
     const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
     seedTwoTrackState(aRecords);
     const authority = captureA(2);
     expect(authority.trackRevision).not.toBe('');
     const beforeB = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
 
-    const result = applyPhysicPaintPayload(buildBatch(authority));
+    const result = await applyPhysicPaintPayload(buildBatch(authority));
     expect(result).toMatchObject({ ok: true, operationId: expect.any(String) });
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
     // Track B's records are byte-identical after A's commit.
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeB);
   });
 
-  it('fails closed on a stale captured track revision and writes nothing', () => {
+  it('fails closed on a stale captured track revision and writes nothing', async () => {
     const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
     seedTwoTrackState(aRecords);
     const authority = captureA(2);
@@ -342,14 +343,14 @@ describe('three-dimensional commit gate (46-04 Task 2)', () => {
     const beforeBRecords = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
     const beforeACacheFrames = physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A);
 
-    const result = applyPhysicPaintPayload(buildBatch(authority, { expectedTrackRevision: 'stale-track-revision' }));
+    const result = await applyPhysicPaintPayload(buildBatch(authority, { expectedTrackRevision: 'stale-track-revision' }));
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining('Roto authority became stale before commit.') });
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual(beforeARecords);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeBRecords);
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual(beforeACacheFrames);
   });
 
-  it('fails closed on a stale captured document revision and writes nothing', () => {
+  it('fails closed on a stale captured document revision and writes nothing', async () => {
     const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
     seedTwoTrackState(aRecords);
     const authority = captureA(2);
@@ -357,14 +358,14 @@ describe('three-dimensional commit gate (46-04 Task 2)', () => {
     const beforeBRecords = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
     const beforeACacheFrames = physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A);
 
-    const result = applyPhysicPaintPayload(buildBatch(authority, { expectedDocumentRevision: 'stale-document-revision' }));
+    const result = await applyPhysicPaintPayload(buildBatch(authority, { expectedDocumentRevision: 'stale-document-revision' }));
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining('Roto authority became stale before commit.') });
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual(beforeARecords);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeBRecords);
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual(beforeACacheFrames);
   });
 
-  it('lands the commit on the captured track when the active track switches mid-flight', () => {
+  it('lands the commit on the captured track when the active track switches mid-flight', async () => {
     const aRecords = [makeRecord('key-a-0', 0, 'a@0')];
     seedTwoTrackState(aRecords);
     const authority = captureA(2);
@@ -380,7 +381,7 @@ describe('three-dimensional commit gate (46-04 Task 2)', () => {
     // the commit must land on A — never on the live active track B.
     registerTwoTrackDocument(TRACK_B, aRecords);
 
-    const result = applyPhysicPaintPayload(payload);
+    const result = await applyPhysicPaintPayload(payload);
     expect(result).toMatchObject({ ok: true });
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([

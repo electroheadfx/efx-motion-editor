@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
@@ -53,13 +54,13 @@ import {
   type RotoTimelineActionsInput,
 } from './useRotoTimelineActions';
 
-const BLANK_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
+const BLANK_PNG_DATA_URL = testWebpBytes('iVBORw0KGgo=');
 
 function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
   return Object.freeze({
     frameIndex: 0,
     appFrame,
-    dataUrl: BLANK_PNG_DATA_URL,
+    bytes: BLANK_PNG_DATA_URL,
     width: 100,
     height: 80,
   }) as PhysicPaintRotoRealKeyPayload;
@@ -103,7 +104,7 @@ interface HarnessOptions {
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   capacity?: number;
   parentEndExclusive?: number;
-  blankDataUrl?: string;
+  blankDataUrl?: Uint8Array;
   /** Omit the four physical-edit ports (executePhysicalEdit, getRotoKeyRecords, getRotoInterpolationState, getCapacity) to exercise the guard-order rejection path. */
   omitPhysicalEditPorts?: boolean;
   executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
@@ -153,10 +154,10 @@ function createHarness(options: HarnessOptions = {}) {
     getLaunchContext: () => launch,
     getIncomingInterpolationBreakKeyIds: options.getIncomingInterpolationBreakKeyIds
       ?? (() => options.incomingInterpolationBreakKeyIds ?? []),
-    buildBlankRotoFrame: (appFrame) => ({
+    buildBlankRotoFrame: async (appFrame) => ({
       frameIndex: 0,
       appFrame,
-      dataUrl: options.blankDataUrl ?? BLANK_PNG_DATA_URL,
+      bytes: options.blankDataUrl ?? BLANK_PNG_DATA_URL,
       width: 100,
       height: 80,
       source: 'real-key',
@@ -810,11 +811,11 @@ describe('useRotoTimelineActions contextual Insert', () => {
     });
     expect(occupied.publishStatus).toHaveBeenCalledWith('Inserted an empty Roto frame before the selected key.');
 
-    const predecessorDataUrl = 'data:image/png;base64,iVBORw0KGgoAAA==';
+    const predecessorBytes = testWebpBytes('iVBORw0KGgoAAA==');
     const records = [
       Object.freeze({
         ...realKeyRecord('key-before', 1),
-        payload: Object.freeze({ ...blankPayload(1), dataUrl: predecessorDataUrl }),
+        payload: Object.freeze({ ...blankPayload(1), bytes: predecessorBytes }),
       }) as PhysicPaintRotoRealKeyRecord,
       realKeyRecord('key-after', 5),
     ];
@@ -850,8 +851,8 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(dispatched.proposal.selectedAppFrame).toBe(3);
     expect(dispatched.proposal.nextRecords).toHaveLength(3);
     const inserted = dispatched.proposal.nextRecords.find((record) => record.keyId === dispatched.proposal.selectedKeyId);
-    expect(inserted?.payload.dataUrl).toBe(BLANK_PNG_DATA_URL);
-    expect(inserted?.payload.dataUrl).not.toBe(predecessorDataUrl);
+    expect(inserted?.payload.bytes).toEqual(BLANK_PNG_DATA_URL);
+    expect(inserted?.payload.bytes).not.toEqual(predecessorBytes);
     expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['key-after']);
   });
 
@@ -981,7 +982,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(dispatched.proposal.mapping.get(newKeyId)).toBe(3);
     expect(dispatched.proposal.selectedAppFrame).toBe(3);
     expect(dispatched.proposal.nextRecords).toHaveLength(1);
-    expect(dispatched.proposal.nextRecords?.[0].payload.dataUrl).toBe(BLANK_PNG_DATA_URL);
+    expect(dispatched.proposal.nextRecords?.[0].payload.bytes).toEqual(BLANK_PNG_DATA_URL);
     expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
     expect(publishStatus).toHaveBeenCalledWith('Added an empty Roto key.');
   });

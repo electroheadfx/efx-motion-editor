@@ -13,10 +13,10 @@ import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
-import {physicPaintStore, physicPaintVersion, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
+import {physicPaintStore, physicPaintVersion, awaitPendingDecodes, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
 import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
-import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
+import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
 import {projectStore} from '../stores/projectStore';
 import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
@@ -87,6 +87,9 @@ function getActiveTrackId(layerId: string): string {
  * - no solo armed → every track whose `visible !== false` resolves visible;
  * - any solo armed → only tracks that are `visible !== false` AND soloed show;
  * - hide always wins over solo (`visible: false` is hidden even when soloed);
+ * - solo arming considers only tracks whose `visible !== false` — a hidden
+ *   track's solo flag never arms solo mode (CMP-02 adjacency, matching
+ *   `participatingPaintTracks` in efxPaintHideSolo.ts);
  * - unknown track id or absent document fails closed to hidden.
  * 48-03: this filter is consumed by the Studio active-track editing surface
  * (PhysicsPaintStudio.tsx) until 48-05; the flattened delivery itself applies
@@ -97,7 +100,9 @@ export function resolvePhysicPaintTrackVisibility(layerId: string, trackId: stri
   if (!document) return false;
   const track = document.tracks.find((candidate) => candidate.id === trackId);
   if (!track || track.visible === false) return false;
-  const soloArmed = document.tracks.some((candidate) => candidate.solo === true);
+  // A hidden track's solo never arms solo mode (hide wins over solo), so solo
+  // arming considers only visible tracks.
+  const soloArmed = document.tracks.some((candidate) => candidate.visible !== false && candidate.solo === true);
   if (!soloArmed) return true;
   return track.solo === true;
 }
@@ -109,7 +114,7 @@ export interface PreviewPhysicPaintFrameSource {
   cacheKey?: string;
   /**
    * G-52-8: flattened delivery records carry their composite raster — draw it
-   * directly instead of round-tripping through renderedFrame.dataUrl (encode +
+   * directly instead of round-tripping through renderedFrame.bytes (encode +
    * main-thread decode). Absent on hand-built sources; the dataUrl path below
    * remains the fallback.
    */
@@ -118,7 +123,7 @@ export interface PreviewPhysicPaintFrameSource {
 }
 
 export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFrameSource): string {
-  return source.cacheKey ?? `physic-paint:${source.layerId}:${source.frame}:${source.renderedFrame.dataUrl.slice(0, 96)}:${source.renderedFrame.dataUrl.length}`;
+  return source.cacheKey ?? `physic-paint:${source.layerId}:${source.frame}:${buildFrameBytesToken(source.renderedFrame.bytes)}`;
 }
 
 const PHYSIC_PAINT_PAPER_TEXTURE_URLS: Record<string, string> = {
@@ -156,7 +161,7 @@ export class PreviewRenderer {
 
   constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
     this.canvas = canvas;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       throw new Error('PreviewRenderer: failed to get 2d context');
     }
@@ -221,8 +226,13 @@ export class PreviewRenderer {
     // G-52-8: a raster-carrying record is resolved by construction — the
     // export readiness gate must not wait for an Image decode that never runs.
     if (frame.raster) return true;
-    const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
-    return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
+    // 52.1-05 (D-13): the fallback resolves through the shared LRU bitmap.
+    return physicPaintStore.getDecodedImage(frame.renderedFrame.bytes) !== null;
+  }
+
+  /** 52.1-05 (D-13): await every in-flight physic-paint decode (export preload gate). */
+  awaitPhysicPaintDecodes(): Promise<void> {
+    return awaitPendingDecodes();
   }
 
   /**
@@ -282,6 +292,13 @@ export class PreviewRenderer {
     }
 
     let hasDrawable = false;
+    // 52.1 (delete-layer stale pixels): "keep previous frame" below is an
+    // anti-flicker guard for content still arriving — an image mid-load
+    // (re-renders via onImageLoaded) or a physics frame mid-decode (re-renders
+    // via the physicPaintVersion bump). When a layer is deleted nothing is in
+    // flight, so the stale composite must be cleared, not kept. Track whether
+    // any visible layer is genuinely pending.
+    let hasPendingContent = false;
     if (!clearCanvas) {
       // In overlay mode, the canvas already has content from a prior pass.
       // Adjustment layers modify existing pixels — any visible layer is drawable.
@@ -303,6 +320,9 @@ export class PreviewRenderer {
             hasDrawable = true;
             break;
           }
+          // A present-but-unresolved physics layer is mid-decode: its completion
+          // bumps physicPaintVersion and re-renders, so the previous frame is kept.
+          hasPendingContent = true;
         } else if (isAdjustmentLayer(layer)) {
           // Adjustments only matter if there's content below; continue checking
           continue;
@@ -322,10 +342,17 @@ export class PreviewRenderer {
           }
         }
       }
+      // Image loads kicked inside resolveLayerSource re-render via onImageLoaded.
+      if (this.loadingImages.size > 0) hasPendingContent = true;
     }
 
     if (!hasDrawable) {
-      return; // Keep previous frame
+      if (!hasPendingContent) {
+        // Nothing drawable and nothing on the way — the previous composite is
+        // stale (its layer was deleted). Clear it rather than freeze it.
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      }
+      return; // Keep previous frame only while content is still arriving
     }
 
     const ctx = this.ctx;
@@ -427,7 +454,7 @@ export class PreviewRenderer {
         const off = document.createElement('canvas');
         off.width = projW;
         off.height = projH;
-        const offCtx = off.getContext('2d')!;
+        const offCtx = off.getContext('2d', { willReadFrequently: true })!;
         if (paintFrame) {
           // FX frames need white bg (p5.brush); flat frames use layer's persisted bgColor
           const hasFx = paintFrame.elements.some((el: any) => el.brushStyle && el.brushStyle !== 'flat');
@@ -624,26 +651,11 @@ export class PreviewRenderer {
     // no cache entry, no Image construction, no decode (the flattened memo
     // owns the raster's lifetime and identity per cacheKey).
     if (frame.raster) return frame.raster;
-    const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
-    const cached = this.imageCache.get(cacheKey);
-    if (cached) return cached;
-    if (this.loadingImages.has(cacheKey) || this.failedImages.has(cacheKey)) return null;
-
-    this.loadingImages.add(cacheKey);
-    const img = new Image();
-    img.onload = () => {
-      this.loadingImages.delete(cacheKey);
-      this.imageCache.set(cacheKey, img);
-      this.onImageLoaded?.();
-    };
-    img.onerror = () => {
-      this.loadingImages.delete(cacheKey);
-      this.failedImages.add(cacheKey);
-      console.warn(`[PreviewRenderer] Failed to load physics paint frame: ${frame.layerId}@${frame.frame}`);
-      this.onImageLoaded?.();
-    };
-    img.src = frame.renderedFrame.dataUrl;
-    return null;
+    // 52.1-05 (D-13): the fallback resolves the shared LRU ImageBitmap — never
+    // a per-draw `new Image()` + Blob URL string round-trip. A cold miss kicks
+    // off the async decode and returns null this tick; the decode-complete
+    // physicPaintVersion bump re-fires the subscriber and re-draws.
+    return physicPaintStore.getDecodedImage(frame.renderedFrame.bytes);
   }
 
   getPaperTextureSource(paperGrain: string | undefined): HTMLImageElement | null {
@@ -969,7 +981,7 @@ export class PreviewRenderer {
       this.blurOffscreen.width = w;
       this.blurOffscreen.height = h;
     }
-    const ctx = this.blurOffscreen.getContext('2d');
+    const ctx = this.blurOffscreen.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
     return {canvas: this.blurOffscreen, ctx};
   }
@@ -1013,7 +1025,7 @@ export class PreviewRenderer {
         }
         if (this.offscreenCanvas.width !== vw) this.offscreenCanvas.width = vw;
         if (this.offscreenCanvas.height !== vh) this.offscreenCanvas.height = vh;
-        const vidCtx = this.offscreenCanvas.getContext('2d');
+        const vidCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
         if (vidCtx) {
           vidCtx.clearRect(0, 0, vw, vh);
           vidCtx.drawImage(source, 0, 0);
@@ -1098,7 +1110,7 @@ export class PreviewRenderer {
         }
         if (this.offscreenCanvas.width !== vw) this.offscreenCanvas.width = vw;
         if (this.offscreenCanvas.height !== vh) this.offscreenCanvas.height = vh;
-        const offCtx = this.offscreenCanvas.getContext('2d');
+        const offCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
         if (offCtx) {
           offCtx.clearRect(0, 0, vw, vh);
           offCtx.drawImage(source, 0, 0);

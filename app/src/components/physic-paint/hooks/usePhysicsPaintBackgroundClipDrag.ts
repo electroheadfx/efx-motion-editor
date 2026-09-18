@@ -29,6 +29,7 @@
 
 import { useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 
 /** Horizontal travel in CSS pixels that must be exceeded before dragging starts. */
 export const BACKGROUND_CLIP_DRAG_THRESHOLD_PX = 4;
@@ -203,6 +204,7 @@ export function usePhysicsPaintBackgroundClipDrag(
     if (!win || sessionRef.current) return;
     const source = input.resolveSource(event);
     if (!source) return;
+    beginInteraction(event.pointerId);
 
     const sourceElement = event.currentTarget as unknown as BackgroundClipDragSourceElement;
     let active = true;
@@ -239,6 +241,7 @@ export function usePhysicsPaintBackgroundClipDrag(
     const cleanup = () => {
       if (!active) return;
       active = false;
+      endInteraction(session.pointerId);
       win.removeEventListener('pointermove', handlePointerMove);
       win.removeEventListener('pointerup', handlePointerUp);
       win.removeEventListener('pointercancel', handlePointerCancel);
@@ -298,6 +301,7 @@ export function usePhysicsPaintBackgroundClipDrag(
     };
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
+      markInteractionActive();
       session.latestX = moveEvent.clientX;
       if (!session.started && Math.abs(session.latestX - session.originX) > BACKGROUND_CLIP_DRAG_THRESHOLD_PX) {
         if (!beginDrag()) return;

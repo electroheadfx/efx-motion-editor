@@ -40,6 +40,7 @@ import { describe, expect, it } from 'vitest';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const CELL_WIDTH_PX = 18;
 
@@ -418,7 +419,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
     const cachedFrames = Array.from({ length: capacity }, (_, appFrame) => ({
       frameIndex: appFrame,
       appFrame,
-      dataUrl: 'data:image/png;base64,',
+      bytes: testWebpBytes(''),
       source: 'real-key' as const,
     }));
 
@@ -557,12 +558,12 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
   describe('timeline content controls', () => {
     const records: readonly PhysicPaintRotoRealKeyRecord[] = [
-      { keyId: 'A', appFrame: 94, kind: 'real-key', payload: { frameIndex: 0, appFrame: 94, dataUrl: 'data:image/png;base64,YQ==' } },
-      { keyId: 'B', appFrame: 97, kind: 'real-key', payload: { frameIndex: 1, appFrame: 97, dataUrl: 'data:image/png;base64,Yg==' } },
-      { keyId: 'M1', appFrame: 100, kind: 'real-key', payload: { frameIndex: 2, appFrame: 100, dataUrl: 'data:image/png;base64,bTE=' } },
-      { keyId: 'M2', appFrame: 101, kind: 'real-key', payload: { frameIndex: 3, appFrame: 101, dataUrl: 'data:image/png;base64,bTI=' } },
-      { keyId: 'S1', appFrame: 110, kind: 'real-key', payload: { frameIndex: 4, appFrame: 110, dataUrl: 'data:image/png;base64,czE=' } },
-      { keyId: 'S2', appFrame: 111, kind: 'real-key', payload: { frameIndex: 5, appFrame: 111, dataUrl: 'data:image/png;base64,czI=' } },
+      { keyId: 'A', appFrame: 94, kind: 'real-key', payload: { frameIndex: 0, appFrame: 94, bytes: testWebpBytes('YQ==') } },
+      { keyId: 'B', appFrame: 97, kind: 'real-key', payload: { frameIndex: 1, appFrame: 97, bytes: testWebpBytes('Yg==') } },
+      { keyId: 'M1', appFrame: 100, kind: 'real-key', payload: { frameIndex: 2, appFrame: 100, bytes: testWebpBytes('bTE=') } },
+      { keyId: 'M2', appFrame: 101, kind: 'real-key', payload: { frameIndex: 3, appFrame: 101, bytes: testWebpBytes('bTI=') } },
+      { keyId: 'S1', appFrame: 110, kind: 'real-key', payload: { frameIndex: 4, appFrame: 110, bytes: testWebpBytes('czE=') } },
+      { keyId: 'S2', appFrame: 111, kind: 'real-key', payload: { frameIndex: 5, appFrame: 111, bytes: testWebpBytes('czI=') } },
     ];
     const loopClips: readonly PhysicPaintRotoLoopClip[] = [
       { loopId: 'motion', placementStart: 100, sourceKeyIds: ['M1', 'M2'], repeat: 2, mode: 'progressive' },
@@ -667,7 +668,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
       // Track B owns a real key at frame 8 in the runtime store.
       const bRecords: readonly PhysicPaintRotoRealKeyRecord[] = [
-        { keyId: 'b-key', appFrame: 8, kind: 'real-key', payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Yg==' } },
+        { keyId: 'b-key', appFrame: 8, kind: 'real-key', payload: { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('Yg==') } },
       ];
       const seeded = physicPaintStore.replaceRotoPhysicalDocument(layerId, trackB.id, {
         capacity: 240,
@@ -689,7 +690,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
         physicalCells: createPhysicalCells(240, [
           { kind: 'real', appFrame: 5, keyId: 'a-key' },
         ]),
-        cachedRotoFrames: [{ frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,YQ==', source: 'real-key' }],
+        cachedRotoFrames: [{ frameIndex: 0, appFrame: 5, bytes: testWebpBytes('YQ=='), source: 'real-key' }],
       });
       harness.render();
 
@@ -748,13 +749,18 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(activeHeader).toBeDefined();
       expect(activeHeader!.props['aria-label']).toBe('Select track Track 1');
       expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
-      // 47-01 UAT round 6: the tools open ONLY from the more-button — the
-      // header never tracks a hover zone; a pointer-leave closes the panel.
+      // 260911-s1j: every row control is standing inline — no ⋯ expander, no
+      // tools panel, and no hover zone (the header never tracks pointer moves
+      // or closes anything on leave).
       expect(activeHeader!.props.onPointerMove).toBeUndefined();
-      expect(typeof activeHeader!.props.onPointerLeave).toBe('function');
+      expect(activeHeader!.props.onPointerLeave).toBeUndefined();
       expect(activeHeader!.props['data-tools-open']).toBeUndefined();
-      // The more-button (tools toggle) is rendered for every Paint header.
-      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(1);
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
+      // The inline controls render: the solo chip and exactly three tool
+      // buttons (eye, blend, trash).
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(1);
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(3);
       // 47-01 UAT round 5: the header label carries the FULL track name (the
       // "Track 1" vs "1" fix) — the label span text must match the track name.
       const activeLabel = findOne(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-label'));
@@ -774,6 +780,9 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(String(bgLabel.props.children)).toBe('Bg');
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
       expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
+      // 260911-s1j: none of the standing Paint controls leak onto the Bg row.
+      expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(0);
+      expect(findAll(bgHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(0);
 
       // The header column is a sibling of the horizontal scroller, never a
       // descendant — so it stays pinned while the frame cells scroll (D-05).

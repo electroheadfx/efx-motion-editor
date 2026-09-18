@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -68,6 +68,7 @@ import {
   setPushCommitInFlight,
   togglePushTool,
 } from './physicsPaintPushArmedTool';
+import { NumericStepper } from '../../shared/NumericStepper';
 import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
@@ -198,7 +199,7 @@ export interface PhysicsPaintWorkflowStripFrameMarker {
 
 export interface PhysicsPaintWorkflowOnionPreviewFrame {
   frame: number;
-  dataUrl: string;
+  bytes: Uint8Array;
   direction: 'previous' | 'next';
   distance: number;
   source: 'roto';
@@ -226,6 +227,10 @@ export interface PhysicsPaintWorkflowStripProps {
   statusMessage?: string | null;
   /** Capsule icon tone: the current status message is an apply/rejection error. */
   statusIsError?: boolean;
+  /** 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen.
+   *  The capsule renders a thin bar so the artist knows when the canvas is
+   *  released. Absent/0 = idle. */
+  warmProgress?: ReadonlySignal<number>;
   /** Persisted operation-result line (UAT-3): survives the operation's own
    *  selection publication until a NEW explicit gesture or the next operation. */
   operationResult?: string | null;
@@ -256,7 +261,8 @@ export interface PhysicsPaintWorkflowStripProps {
    * ~120 cells per tick).
    */
   rotoCachedPlaybackTick?: Signal<RotoCachedPlaybackTick | null> | null;
-  onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
+  /** 260911-s1j: the document-level interpolation mode intent (writes every
+   *  track); per-track on/off lives on the row's blend button. */
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
@@ -582,7 +588,7 @@ export function buildRotoTimelineStructuralIndex(
         cachedFrameByAppFrame.set(appFrame, {
           frameIndex: 0,
           appFrame,
-          dataUrl: 'data:image/png;base64,',
+          bytes: new Uint8Array(0),
           source: 'generated-interpolation',
         });
       }
@@ -755,9 +761,11 @@ function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFra
   return <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }} />;
 }
 
-function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean }) {
+function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean; warmProgress?: ReadonlySignal<number> }) {
   const tooltip = useStyledTooltip();
   const capsuleText = props.capsuleText.value;
+  const warm = props.warmProgress?.value ?? 0;
+  const warming = warm > 0 && warm < 100;
   return (
     <div
       class={`physics-paint-status-capsule${props.isError ? ' physics-paint-status-capsule-error' : ''}`}
@@ -770,6 +778,11 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
         ? <TriangleAlert size={16} aria-hidden="true" />
         : <Info size={16} aria-hidden="true" />}
       <span class="physics-paint-status-capsule-text">{capsuleText}</span>
+      {warming && (
+        <span class="physics-paint-status-capsule-warm" aria-hidden="true">
+          <span class="physics-paint-status-capsule-warm-fill" style={{ width: `${warm}%` }} />
+        </span>
+      )}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
     </div>
   );
@@ -780,6 +793,8 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   capsuleText: Signal<string>;
   /** Capsule icon tone: a warning triangle when the current message is an error. */
   capsuleIsError: boolean;
+  /** 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen. */
+  warmProgress?: ReadonlySignal<number>;
   ready: boolean;
   playbackAvailable: boolean;
   playbackActive: boolean;
@@ -805,7 +820,6 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   soloArmedClass: string;
   soloToolDisabled: boolean;
   soloToolDisabledReason: string | null;
-  onInterpolationEnabledChange?: (enabled: boolean) => void;
   onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
@@ -826,7 +840,8 @@ interface PhysicsPaintWorkflowStaticChromeProps {
    *  nothing (popover byte-identical to 43.5). The popover never creates or
    *  modifies the set — this is a pure read of the Plan 01 mapper output. */
   forceSpacingScopeLine: string | null;
-  onForceSpacingInput?: (event: Event) => void;
+  /** The stepper emits the committed field value (D-23/D-24). */
+  onForceSpacingInput?: (value: string) => void;
   onForceSpacingSubmit?: (event: Event) => void;
   /** 260905-dso: relocated buffer Apply/Clear ports + derived availability for
    *  the toolbox popover's third "Actions" section. The handlers are the
@@ -1086,14 +1101,10 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       window.removeEventListener('keydown', onEscapeKeyDown, true);
     };
   }, [toolboxOpen]);
-  function handleRotoPlaybackFpsInput(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
+  // D-23/D-24: the shared − [field] + stepper owns the fps step 0.5 and its
+  // 1–60 clamp; this handler keeps the old finite-value guard.
+  function handleRotoPlaybackFpsChange(value: number) {
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
-  }
-  function handleInterpolationModeChange(event: Event) {
-    const mode = (event.currentTarget as HTMLSelectElement).value;
-    if (mode !== 'duplicate' && mode !== 'blend') return;
-    props.onInterpolationModeChange?.(mode);
   }
   return (
     <div class="physics-paint-workflow-header">
@@ -1172,9 +1183,35 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             <PhysicsPaintStyledTooltip visible={audioPreviewTooltip.visible} region="bottom">{props.audioPreviewEnabled ? 'Audio preview On — click to mute monitoring' : 'Audio preview Off — click to hear monitoring'}</PhysicsPaintStyledTooltip>
           </span>
         ) : null}
-        <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
+        <label class="physics-paint-roto-fps-control"><span>fps</span><NumericStepper
+          value={props.playbackFps || props.projectFps || 1}
+          onChange={handleRotoPlaybackFpsChange}
+          step={0.5}
+          min={1}
+          max={60}
+          disabled={!props.ready}
+          ariaLabel="Cached Roto playback frames per second"
+          class="physics-paint-roto-fps-stepper"
+          inputStyle={{
+            width: '40px',
+            height: '24px',
+            padding: '2px 4px',
+            border: '1px solid #747980',
+            borderRadius: '3px',
+            backgroundColor: '#5a5c5f',
+            color: '#f8fafc',
+            fontWeight: 700,
+          }}
+          buttonStyle={{
+            width: '22px',
+            height: '24px',
+            border: '1px solid #747980',
+            backgroundColor: '#5a5c5f',
+            color: '#f8fafc',
+          }}
+        /></label>
       </div>
-      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} />
+      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       <span
         class="physics-paint-roto-key-icon-action physics-paint-toolbox-button-anchor"
         ref={toolboxAnchorRef}
@@ -1184,7 +1221,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <button
           type="button"
           class={`physics-paint-roto-key-icon-button physics-paint-toolbox-toggle${toolboxOpen ? ' physics-paint-toolbox-toggle-open' : ''}`}
-          aria-label={props.onInterpolationEnabledChange ? (props.interpolationEnabled ? 'Timeline tools, interpolation on' : 'Timeline tools, interpolation off') : 'Timeline tools'}
+          aria-label="Timeline tools"
           aria-haspopup="dialog"
           aria-expanded={toolboxOpen}
           aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
@@ -1194,25 +1231,21 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         >
           <span class="physics-paint-toolbox-badge-anchor">
             <ToolCase size={18} aria-hidden="true" />
-            {props.interpolationEnabled ? <span class="physics-paint-toolbox-badge" aria-hidden="true" /> : null}
           </span>
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation and Key Spacing.', null)}
+          {buildGuardedActionTooltipCopy('Open timeline tools — Key Spacing and Actions.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
-      {(props.onInterpolationEnabledChange || props.onApplyScript || props.onDiscardScript) ? (
+      {(props.onApplyScript || props.onDiscardScript) ? (
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
-          <div class="physics-paint-toolbox-section">
-            <div class="physics-paint-toolbox-section-heading">Interpolation</div>
-            <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-              <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
-              <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
-              <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
-            </div>
-          </div>
-          <div class="physics-paint-toolbox-divider" />
+          {/* 260911-s1j follow-up: the Interpolation section (mode dropdown +
+              status pill) is removed from the UI — the mode is fixed on Frame
+              duplicate until the engine's Frame blending slowdown work lands
+              (the store coerces every blend state to duplicate). The retained
+              interpolation props/handler stay wired on the static chrome for
+              the re-introduction. */}
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Key Spacing</div>
             {props.forceSpacingScopeLine ? (
@@ -1227,20 +1260,21 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 >
                   <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
                   <span class="physics-paint-roto-key-icon-label">Key spacing</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={props.forceSpacingInput}
-                    aria-label="Empty frames between real keys"
-                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
-                    aria-describedby={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
+                  <NumericStepper
+                    value={Number.isFinite(Number(props.forceSpacingInput)) ? Number(props.forceSpacingInput) : 0}
+                    onChange={(value) => {
+                      if (!props.canApplyForceSpacing) return;
+                      props.onForceSpacingInput?.(String(value));
+                    }}
+                    step={1}
+                    min={0}
+                    ariaLabel="Empty frames between real keys"
+                    ariaDisabled={!props.canApplyForceSpacing}
+                    ariaDescribedBy={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
                     onFocus={forceSpacingTooltip.onFocus}
                     onBlur={forceSpacingTooltip.onBlur}
-                    onInput={(event) => {
-                      if (!props.canApplyForceSpacing) return;
-                      props.onForceSpacingInput?.(event);
-                    }}
+                    inputStyle={{ width: '34px', padding: '2px 4px' }}
+                    buttonStyle={{ width: '18px', height: '18px' }}
                   />
                   <button
                     type="submit"
@@ -1420,7 +1454,47 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
   );
 }
 
-const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);
+// 52.1 (fresh-key glitch): the per-cell derivation cache full-invalidates
+// whenever physicalCellByAppFrame identity changes (a fresh key inserts a new
+// cell), handing EVERY cell a brand-new RotoCellViewModel object. The default
+// memo identity check then re-renders all ~626 cells on each key creation even
+// though their content is byte-identical — a ~157ms JS burst + DOM-diff churn
+// inside the paint window. Compare VM CONTENT (not identity) so unchanged cells
+// bail and only the frame(s) whose derivation actually changed re-render.
+function rotoCellVmValuesEqual(a: RotoCellViewModel, b: RotoCellViewModel): boolean {
+  if (a.frame !== b.frame) return false;
+  if (a.baseMeaning !== b.baseMeaning) return false;
+  if (a.state !== b.state) return false;
+  if (a.label !== b.label) return false;
+  if (a.title !== b.title) return false;
+  if (a.ariaLabel !== b.ariaLabel) return false;
+  if (a.fillClass !== b.fillClass) return false;
+  if (a.isEditableTarget !== b.isEditableTarget) return false;
+  if (a.isCurrent !== b.isCurrent) return false;
+  if (a.isDirty !== b.isDirty) return false;
+  if (a.isPending !== b.isPending) return false;
+  if (a.overlays.length !== b.overlays.length) return false;
+  for (let i = 0; i < a.overlays.length; i++) {
+    if (a.overlays[i] !== b.overlays[i]) return false;
+  }
+  return true;
+}
+
+const RotoTimelineCellButton = memo(
+  RotoTimelineCellButtonImpl,
+  (prev, next) => prev.frame === next.frame
+    && prev.semanticKind === next.semanticKind
+    && prev.cellKeyId === next.cellKeyId
+    && prev.cellClass === next.cellClass
+    && prev.dragEligible === next.dragEligible
+    && prev.startsInterpolationSegment === next.startsInterpolationSegment
+    && prev.ariaLabel === next.ariaLabel
+    && prev.ariaSelected === next.ariaSelected
+    && prev.tooltipCopy === next.tooltipCopy
+    && prev.onCellPointerDown === next.onCellPointerDown
+    && prev.onCellClick === next.onCellClick
+    && rotoCellVmValuesEqual(prev.vm, next.vm),
+);
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
@@ -1498,9 +1572,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // and flow down to the matching `PhysicsPaintTrackRowHeader` as props.
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
-  // 47-01 UAT round 6: the tool panel opens only from the header's more-button
-  // (one open panel at a time); leaving the panel or the header closes it.
-  const [toolsOpenTrackId, setToolsOpenTrackId] = useState<string | null>(null);
   // 47-01 UAT round 3: flexible/resizable strip height. `null` = auto (default
   // = exactly enough for all rows + Bg, capped at 270px); a number = the user's
   // session-local manual resize. Clamped to [1 row, full content height] so the
@@ -1570,15 +1641,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const handleCancelRename = useCallback(() => {
     setRenamingTrackId(null);
   }, []);
-  const handleToggleTrackTools = useCallback((trackId: string) => {
-    setToolsOpenTrackId((current) => (current === trackId ? null : trackId));
-  }, []);
-  const handleCloseTrackTools = useCallback(() => {
-    setToolsOpenTrackId(null);
-  }, []);
   // 47-02 Task 2: 'S' solo toggle intent — the row's armed state reflects the
-  // session solo arm (physicsPaintSoloArm); the click routes the desired
-  // visibility to the controller (setTrackSolo).
+  // track's DOCUMENT solo flag (260911-sli/s1j); the click routes the desired
+  // visibility to the controller (setTrackSolo). The session playback arm
+  // (physicsPaintSoloArm) stays exclusive to the playback pill.
   const handleToggleSolo = useCallback((trackId: string) => {
     const track = props.tracks?.find((candidate) => candidate.id === trackId);
     props.onToggleSolo?.(trackId, !track?.solo);
@@ -1595,7 +1661,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       props.rotoPhysicalActions?.publishStatus?.('Could not delete track.');
       return;
     }
-    setToolsOpenTrackId(null);
     setDeletePreview(preview);
   }, [props.layerId, props.rotoPhysicalActions]);
   const handleCancelDeleteTrack = useCallback(() => {
@@ -3014,8 +3079,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 43.5-02 Task 2: the relocated Key Spacing form lives inside the memoized
   // static chrome, so the handlers it wires must keep stable identity (same
   // guard bodies as the bottom-row version — byte-identical behavior).
-  const handleForceSpacingInput = useCallback((event: Event) => {
-    physicalActions?.setForceSpacingInput((event.currentTarget as HTMLInputElement).value);
+  const handleForceSpacingInput = useCallback((value: string) => {
+    physicalActions?.setForceSpacingInput(value);
   }, [physicalActions]);
 
   const handleForceSpacingSubmit = useCallback((event: Event) => {
@@ -4116,6 +4181,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
         capsuleIsError={Boolean(props.statusIsError)}
+        warmProgress={props.warmProgress}
         ready={props.ready !== false}
         playbackAvailable={Boolean(props.rotoCachedPlaybackAvailable)}
         playbackActive={Boolean(props.isRotoCachedPlaybackActive)}
@@ -4137,7 +4203,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         soloArmedClass={soloArmedClass}
         soloToolDisabled={soloToolDisabled}
         soloToolDisabledReason={soloToolDisabledReason}
-        onInterpolationEnabledChange={props.onRotoInterpolationEnabledChange}
         onInterpolationModeChange={props.onRotoInterpolationModeChange}
         onGoToFirstFrame={props.onGoToFirstFrame}
         onGoToPreviousFrame={props.onGoToPreviousFrame}
@@ -4197,9 +4262,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             onRenameDraftChange: handleRenameDraftChange,
             onCommitRename: handleCommitRename,
             onCancelRename: handleCancelRename,
-            toolsOpenTrackId: toolsOpenTrackId,
-            onToggleTools: handleToggleTrackTools,
-            onCloseTools: handleCloseTrackTools,
             headerRowsRef: headerRowsRef,
             headerColumnRef: headerColumnRef,
             onHeaderScroll: syncHeaderScroll,

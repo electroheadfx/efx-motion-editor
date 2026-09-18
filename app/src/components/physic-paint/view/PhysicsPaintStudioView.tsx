@@ -6,6 +6,7 @@ import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPai
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
+import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
@@ -18,6 +19,7 @@ import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
 import { PhysicsPaintReferenceGhostLayer } from './PhysicsPaintReferenceGhostLayer';
 import { PhysicsPaintReferenceTransformHandles } from './PhysicsPaintReferenceTransformHandles';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowRotoScriptState } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
@@ -97,8 +99,9 @@ interface PhysicsPaintCanvasStackViewProps {
  * previous url-driven slot (DOM byte-identical).
  */
 function PhysicsPaintRotoPlaybackImage(props: { tick: Signal<RotoCachedPlaybackTick<RenderedFramePayload> | null> | null | undefined }) {
-  const dataUrl = props.tick?.value?.frame?.dataUrl ?? null;
-  return dataUrl ? <img class="physics-paint-cached-roto-playback" src={dataUrl} alt="" /> : null;
+  const bytes = props.tick?.value?.frame?.bytes ?? null;
+  const src = bytes ? getFrameBlobUrl(bytes) : null;
+  return src ? <img class="physics-paint-cached-roto-playback" src={src} alt="" /> : null;
 }
 
 function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {  const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -106,7 +109,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
     return subscribeRotoPlaybackBackground({
       context,
@@ -300,6 +303,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               the engine canvas stays mounted underneath (D-01 lock). */}
           {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
           {referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}
+          {/* 52.1 quick B: the apply pill lives INSIDE the canvas region
+              (position:relative, no overflow clip — the canvas-toast
+              pattern). It previously rendered inside the workflow strip, whose
+              overflow-y:hidden clipped it away: the pill never appeared. */}
+          <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
         </section>
 
         <PhysicsPaintRightPanelRegion
@@ -327,5 +335,35 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         ) : null}
       </section>
     </main>
+  );
+}
+
+/**
+ * 52.1 quick B: apply progress pill — floats centered over the canvas
+ * region's bottom edge (just above the workflow strip) for the whole apply:
+ * progressive live paint plus per-brush progress. It owns its applyProgress
+ * subscription so per-completion ticks re-render only this pill, never the
+ * Studio view.
+ */
+function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
+  const applyProgress = rotoScript?.applyProgress.value ?? null;
+  if (!applyProgress) return null;
+  return (
+    <div
+      class="physics-paint-apply-progress"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={applyProgress.total}
+      aria-valuenow={applyProgress.completed}
+      aria-label={`Applying Action — ${applyProgress.completed} of ${applyProgress.total} brushes`}
+    >
+      <span class="physics-paint-apply-progress-track" aria-hidden="true">
+        <span
+          class="physics-paint-apply-progress-fill"
+          style={{ width: `${Math.round((applyProgress.completed / Math.max(1, applyProgress.total)) * 100)}%` }}
+        />
+      </span>
+      <span class="physics-paint-apply-progress-label">Applying {applyProgress.completed}/{applyProgress.total}</span>
+    </div>
   );
 }

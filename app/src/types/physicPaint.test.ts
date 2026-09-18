@@ -10,6 +10,7 @@ import {
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
   isPhysicPaintRotoPhysicalEditApplyPayload,
+  isPhysicPaintRotoPhysicalEditRecordRef,
   isPhysicPaintRotoPhysicalEditApplyResult,
   isPhysicPaintRotoPhysicalEditIntent,
   isPhysicPaintActionHistoryReleaseRequest,
@@ -18,9 +19,13 @@ import {
   isPhysicPaintActionTransactionPrepareRequest,
   isPhysicPaintActionTransactionResult,
   isPhysicPaintActionTransactionTokenRequest,
+  isPhysicPaintRotoRealKeyTransferEntry,
+  isWebpBytes,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
   serializePhysicPaintRotoPhysicalEditIntent,
+  serializePhysicPaintRotoRealKeyTransferEntry,
 } from './physicPaint';
+import { bytesToBase64 } from '../lib/webpBytes';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
@@ -29,10 +34,16 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { hashCanonicalPhysicalValue } from '../efx-paint/document/efxPaintCanonicalEncoder';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
-const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
+const webpBytes = new Uint8Array([
+  0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
+  0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c,
+]);
+
+const renderedFrame = { frameIndex: 0, appFrame: 12, bytes: webpBytes, width: 1000, height: 650 };
 
 const physicalLeaseToken = (layerId = 'layer-1', trackId = TEST_TRACK_ID) => ({
   projectContextId: 'project-1',
@@ -54,11 +65,11 @@ const GROUP_FIELD_PARTICIPATION = [
 const groupTransportRecords = () => [{
   keyId: 'key-0',
   appFrame: 0,
-  payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+  payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('iVBORw0KGgo=') },
 }, {
   keyId: 'override-1',
   appFrame: 1,
-  payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+  payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('iVBORw0KGgo=') },
 }];
 
 const completeTransportGroup = () => ({
@@ -136,8 +147,8 @@ describe('physic paint payload contracts', () => {
   });
 
   it('validates Roto cache provenance and background metadata', () => {
-    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: 2 })).toBe(true);
-    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 2 })).toBe(true);
+    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, bytes: webpBytes, source: 'generated-interpolation', nearestRealKeyFrame: 2 })).toBe(true);
+    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, bytes: new Uint8Array(0), source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 2 })).toBe(true);
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 })).toBe(true);
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'photo', paperGrain: 'canvas1', grainStrength: 0.5 })).toBe(false);
   });
@@ -150,26 +161,11 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
-  it('accepts a v1.0 document editableState carrier and rejects the legacy version:2 shape', () => {
-    const document = createEfxPaintDocument('layer-1');
-    const engineCarrierDocument = {
-      ...document,
-      tracks: document.tracks.map((track) => ({
-        ...track,
-        strokes: [{ tool: 'paint', pts: [[0, 0, 0.5, 0, 0, 0, 0]], color: '#103c65', params: { size: 6 }, time: 0 }],
-        settings: { bgMode: 'transparent', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
-      })),
-    };
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: document })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: engineCarrierDocument })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, editableState: { version: 2, width: 1000, height: 650, strokes: [], settings: { bgMode: 'transparent' } } })).toBe(false);
-  });
-
   it('accepts only the insert-empty-segment transport contract', () => {
     const records = [{
       keyId: 'inserted-key',
       appFrame: 4,
-      payload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+      payload: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('iVBORw0KGgo=') },
     }];
     const payload = {
       kind: 'replace-roto-physical-map',
@@ -204,6 +200,17 @@ describe('physic paint payload contracts', () => {
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
+    // 52.1 (Part 2): a wire ref record ({ keyId, appFrame, refToken }) is NOT a
+    // valid in-memory payload record — the parent bridge expands refs to full
+    // records before this validator ever runs.
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      records: [{ keyId: 'inserted-key', appFrame: 4, refToken: 'tok' }],
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4, refToken: 'tok' })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4, refToken: 'tok', extra: 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef(records[0])).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
       intent: { kind: 'delete-key', selectedKeyId: 'inserted-key' },
@@ -248,7 +255,7 @@ describe('physic paint payload contracts', () => {
   });
 
   it('strictly parses and canonically serializes every ordinary physical-edit intent', () => {
-    const payload = { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
+    const payload = { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const intents = [
       { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: 'blank-3', blankPayload: payload },
       { kind: 'delete-key', selectedKeyId: 'key-A' },
@@ -275,7 +282,7 @@ describe('physic paint payload contracts', () => {
       expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
     }
 
-    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[0])).toBe('{"kind":"insert-empty-segment","destinationAppFrame":3,"insertedKeyId":"blank-3","blankPayload":{"frameIndex":0,"appFrame":3,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}}');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[0])).toBe('{"kind":"insert-empty-segment","destinationAppFrame":3,"insertedKeyId":"blank-3","blankPayload":{"frameIndex":0,"appFrame":3,"bytes":"UklGRgAAAABXRUJQVlA4TAAAAAAAAAAAAAAAAAAAAABBQUFB","width":2,"height":2}}');
     expect(serializePhysicPaintRotoPhysicalEditIntent(intents[4])).toBe('{"kind":"move-key-group","movedKeyIds":["key-A","key-C"],"grabbedKeyId":"key-C","target":{"kind":"before-key","targetKeyId":"key-D"}}');
     expect(serializePhysicPaintRotoPhysicalEditIntent(intents[6])).toBe('{"kind":"force-spacing","emptyFrames":1,"selectedKeyId":"key-A","scopeKeyIds":["key-A","key-B"],"linkedSourceSpacingScopes":[{"sourceCycleId":"5:key-A|5:key-B|5:key-C","sourceKeyIds":["key-A","key-B","key-C"],"selectedSourceKeyIds":["key-A","key-B"]}]}');
   });
@@ -359,12 +366,12 @@ describe('physic paint payload contracts', () => {
   });
 
   it('round-trips paste-key startsNewSegment and rejects a non-boolean flag', () => {
-    const payload = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
+    const payload = { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const broken = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-paint', clipboardPayload: payload, startsNewSegment: true } as const;
 
     expect(isPhysicPaintRotoPhysicalEditIntent(broken)).toBe(true);
     const serialized = serializePhysicPaintRotoPhysicalEditIntent(broken);
-    expect(serialized).toBe('{"kind":"paste-key","destinationAppFrame":8,"destinationKeyId":null,"newKeyId":"key-paint","clipboardPayload":{"frameIndex":0,"appFrame":8,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2},"startsNewSegment":true}');
+    expect(serialized).toBe('{"kind":"paste-key","destinationAppFrame":8,"destinationKeyId":null,"newKeyId":"key-paint","clipboardPayload":{"frameIndex":0,"appFrame":8,"bytes":"UklGRgAAAABXRUJQVlA4TAAAAAAAAAAAAAAAAAAAAABBQUFB","width":2,"height":2},"startsNewSegment":true}');
     const parsed: unknown = JSON.parse(serialized);
     expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
     if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical broken paste must parse');
@@ -378,7 +385,7 @@ describe('physic paint payload contracts', () => {
   });
 
   it('rejects malformed, duplicate, reordered, and ambiguous ordinary intent authorization', () => {
-    const payload = { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
+    const payload = { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const oversizedId = 'x'.repeat(257);
     const malformed = [
       { kind: 'delete-key', selectedKeyId: '', unknown: true },
@@ -411,7 +418,7 @@ describe('physic paint payload contracts', () => {
         { payload, sourceAppFrame: 7, sourceKeyId: 'A', newKeyId: 'paste-C' },
       ] },
       { kind: 'insert-empty-segment', destinationAppFrame: -1, insertedKeyId: 'blank', blankPayload: payload },
-      { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: oversizedId, blankPayload: { ...payload, dataUrl: '' } },
+      { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: oversizedId, blankPayload: { ...payload, bytes: testWebpBytes('') } },
       { kind: 'play-script' },
     ];
 
@@ -425,7 +432,7 @@ describe('physic paint payload contracts', () => {
     const records = [{
       keyId: 'key-1',
       appFrame: 0,
-      payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+      payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('iVBORw0KGgo=') },
     }];
     const playScript = {
       kind: 'replace-roto-physical-map',
@@ -602,33 +609,135 @@ describe('physic paint payload contracts', () => {
   });
 });
 
+describe('52.2-10 bridge transfer entries (D-12)', () => {
+  const DIGEST_A = 'a'.repeat(64);
+  const DIGEST_B = 'b'.repeat(64);
+  const DIGEST_C = 'c'.repeat(64);
+  const mediaReference = (keyId: string, digest: string, dimensions = true) => ({
+    relativePath: `frames/layer-1/${keyId}.webp`,
+    digest,
+    ...(dimensions ? { width: 1000, height: 650 } : {}),
+  });
+
+  it('serializes an unchanged real-key entry as a reference with no raster-sized string', () => {
+    const entry = { keyId: 'key-A', appFrame: 3, media: mediaReference('key-A', DIGEST_A) };
+    expect(isPhysicPaintRotoRealKeyTransferEntry(entry)).toBe(true);
+    const serialized = serializePhysicPaintRotoRealKeyTransferEntry(entry);
+    expect(JSON.parse(serialized)).toEqual({
+      keyId: 'key-A',
+      appFrame: 3,
+      media: { relativePath: 'frames/layer-1/key-A.webp', digest: DIGEST_A, width: 1000, height: 650 },
+    });
+    // The whole point of D-12: nothing raster-sized crosses in the steady state.
+    const strings = serialized.match(/"[^"]*"/g) ?? [];
+    expect(strings.every((value) => value.length <= 256)).toBe(true);
+  });
+
+  it('carries a changed frame bytes in a separate digest-keyed field and keeps the digest in the canonical form', () => {
+    const bytes = testWebpBytes('52.2-10-changed');
+    const entry = {
+      keyId: 'key-A',
+      appFrame: 3,
+      media: mediaReference('key-A', DIGEST_A),
+      changedBytes: { [DIGEST_A]: bytes },
+    };
+    expect(isPhysicPaintRotoRealKeyTransferEntry(entry)).toBe(true);
+    const serialized = serializePhysicPaintRotoRealKeyTransferEntry(entry);
+    const parsed = JSON.parse(serialized) as { changedBytes?: Record<string, string> };
+    expect(parsed.changedBytes?.[DIGEST_A]).toBe(bytesToBase64(bytes));
+    expect(serialized).toContain(DIGEST_A);
+    // Stable: the canonical form of the same changed entry serializes identically.
+    expect(serializePhysicPaintRotoRealKeyTransferEntry(entry)).toBe(serialized);
+  });
+
+  it('is byte-identical across two serializations of the same unchanged entry and of its re-parsed form', () => {
+    const entry = { keyId: 'key-B', appFrame: 9, media: mediaReference('key-B', DIGEST_B, false) };
+    const first = serializePhysicPaintRotoRealKeyTransferEntry(entry);
+    const second = serializePhysicPaintRotoRealKeyTransferEntry({ ...entry });
+    expect(second).toBe(first);
+    expect(serializePhysicPaintRotoRealKeyTransferEntry(JSON.parse(first))).toBe(first);
+  });
+
+  it('refuses an entry carrying both a media reference and a payload for the same key (ambiguous ownership)', () => {
+    const entry = { keyId: 'key-A', appFrame: 3, media: mediaReference('key-A', DIGEST_A) };
+    expect(isPhysicPaintRotoRealKeyTransferEntry({
+      ...entry,
+      payload: { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('ambiguous') },
+    })).toBe(false);
+    // Unknown members are refused outright, whatever they carry.
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, bytes: testWebpBytes('loose') })).toBe(false);
+  });
+
+  it('refuses malformed identity, reference, and byte-channel shapes', () => {
+    const entry = { keyId: 'key-A', appFrame: 3, media: mediaReference('key-A', DIGEST_A) };
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, keyId: '' })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, appFrame: -1 })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ keyId: 'key-A', appFrame: 3 })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, media: { ...entry.media, digest: 'not-a-digest' } })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, media: { ...entry.media, relativePath: 'frames/../escape.webp' } })).toBe(false);
+    // A byte channel keyed by something that is not a digest, or one that
+    // omits the entry's own digest, cannot deduplicate by digest alone.
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: { 'not-a-digest': testWebpBytes('x') } })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: { [DIGEST_C]: testWebpBytes('x') } })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: {} })).toBe(false);
+    expect(isPhysicPaintRotoRealKeyTransferEntry({ ...entry, changedBytes: { [DIGEST_A]: '' } })).toBe(false);
+    // A malformed entry never serializes.
+    expect(() => serializePhysicPaintRotoRealKeyTransferEntry({ ...entry, appFrame: -1 })).toThrow();
+  });
+
+  it('keeps the paste-group entry key set fail-closed against a both-carrier payload', () => {
+    // The pre-existing physical-edit payload validators keep their exact key
+    // sets: carrying a media reference AND bytes for the same key is refused.
+    const bothCarriers = {
+      frameIndex: 0,
+      appFrame: 3,
+      bytes: testWebpBytes('both'),
+      media: mediaReference('key-A', DIGEST_A),
+    };
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'insert-empty-segment',
+      destinationAppFrame: 3,
+      insertedKeyId: 'blank-3',
+      blankPayload: bothCarriers,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'paste-key-group',
+      destinationAppFrame: 3,
+      entries: [
+        { payload: { frameIndex: 0, appFrame: 3, media: mediaReference('key-A', DIGEST_A) }, sourceAppFrame: 3, sourceKeyId: 'key-A', newKeyId: 'paste-A' },
+        { payload: { frameIndex: 0, appFrame: 7, bytes: testWebpBytes('pasted'), media: mediaReference('key-C', DIGEST_C) }, sourceAppFrame: 7, sourceKeyId: 'key-C', newKeyId: 'paste-C' },
+      ],
+    })).toBe(false);
+  });
+});
+
 describe('roto physical revision payload tokenization (G-52-6)', () => {
   const interpolation = { enabled: false, mode: 'duplicate' as const };
-  const revealSizedDataUrl = `data:image/png;base64,${'iVBORw0KGgo'.repeat(40000)}`;
-  const revisionRecord = (keyId: string, appFrame: number, dataUrl: string) => ({
+  const revealSizedBytes = testWebpBytes('iVBORw0KGgo'.repeat(40000));
+  const revisionRecord = (keyId: string, appFrame: number, bytes: Uint8Array) => ({
     kind: 'real-key' as const,
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl, width: 1000, height: 650 },
+    payload: { frameIndex: 0, appFrame, bytes, width: 1000, height: 650 },
   });
 
   it('never embeds the full payload dataUrl in the canonical encoding (reveal-baked keys carry multi-MB PNGs)', () => {
     // Mutation-verified: the pre-fix encoder concatenated the full dataUrl, so
     // this assertion fails against it (the encoding contained the payload).
     const encoded = encodePhysicPaintRotoPhysicalContent(
-      [revisionRecord('key-0', 0, revealSizedDataUrl)],
+      [revisionRecord('key-0', 0, revealSizedBytes)],
       interpolation,
       [],
     );
-    expect(encoded.includes(revealSizedDataUrl)).toBe(false);
+    expect(encoded.includes('iVBORw0KGgo')).toBe(false);
     expect(encoded.length).toBeLessThan(1000);
   });
 
   it('keeps equal content equal and rotates on any payload change', () => {
-    const records = [revisionRecord('key-0', 0, revealSizedDataUrl)];
+    const records = [revisionRecord('key-0', 0, revealSizedBytes)];
     const base = buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
     expect(buildPhysicPaintRotoPhysicalRevision(records, interpolation, [])).toBe(base);
-    const changedTail = `${revealSizedDataUrl.slice(0, -4)}BBBB`;
+    const changedTail = testWebpBytes('iVBORw0KGgo'.repeat(40000) + 'BBBB');
     expect(buildPhysicPaintRotoPhysicalRevision(
       [revisionRecord('key-0', 0, changedTail)],
       interpolation,
@@ -640,9 +749,8 @@ describe('roto physical revision payload tokenization (G-52-6)', () => {
     // Same encoder + same dimensions → identical head bytes; only the tail of
     // the deflate stream differs. A head-only token (the previewRenderer idiom)
     // would collide here; head+tail+length must not.
-    const sharedHead = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg';
-    const a = `${sharedHead}${'A'.repeat(2002)}AAAA`;
-    const b = `${sharedHead}${'A'.repeat(2002)}BBBB`;
+    const a = testWebpBytes('A'.repeat(2002) + 'AAAA');
+    const b = testWebpBytes('A'.repeat(2002) + 'BBBB');
     expect(buildPhysicPaintRotoPhysicalRevision(
       [revisionRecord('key-0', 0, a)],
       interpolation,
@@ -656,25 +764,25 @@ describe('roto physical revision payload tokenization (G-52-6)', () => {
 
   it('tokenizes group-override payloads too', () => {
     const encoded = encodePhysicPaintRotoPhysicalContent(
-      [revisionRecord('key-0', 0, 'data:image/png;base64,iVBORw0KGgo=')],
+      [revisionRecord('key-0', 0, testWebpBytes('iVBORw0KGgo='))],
       interpolation,
       [],
       [],
-      [revisionRecord('override-1', 1, revealSizedDataUrl)],
+      [revisionRecord('override-1', 1, revealSizedBytes)],
     );
-    expect(encoded.includes(revealSizedDataUrl)).toBe(false);
+    expect(encoded.includes('iVBORw0KGgo')).toBe(false);
     expect(encoded.length).toBeLessThan(1000);
   });
 
-  it('accepts a pre-cutover full-dataUrl revision at parse and re-stamps the tokenized one (legacy open path)', () => {
-    // Documents saved before the token cutover carry a revision computed over
-    // the FULL payload dataUrl. The parse accepts that shape once (the D-29
-    // exact-legacy escape idiom) and re-stamps the tokenized revision, so an
-    // old project still opens and its next save is on the fast path.
+  it('rejects a pre-cutover full-dataUrl revision (legacy open path removed — clean break)', () => {
+    // Documents saved before the token cutover carried a revision computed over
+    // the FULL payload dataUrl. The legacy open path was deleted (clean break,
+    // no compat): a dataUrl payload can never satisfy the bytes-token record,
+    // so the parse fails closed rather than re-stamping.
     const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
     const legacySource = `records:1:s5:key-0;n0;n0;n0;s${dataUrl.length}:${dataUrl};u;u;interpolation:0;mode:s9:duplicate;`;
     const legacyRevision = `physical-${hashCanonicalPhysicalValue(legacySource)}`;
-    const parsed = parsePhysicPaintRotoPhysicalDocument({
+    expect(() => parsePhysicPaintRotoPhysicalDocument({
       capacity: 24,
       realKeyRecords: [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl } }],
       interpolation,
@@ -683,19 +791,13 @@ describe('roto physical revision payload tokenization (G-52-6)', () => {
       selectedKeyId: null,
       cursorAppFrame: 0,
       revision: legacyRevision,
-    });
-    expect(parsed.revision).not.toBe(legacyRevision);
-    expect(parsed.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
-      [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl } }],
-      interpolation,
-      [],
-    ));
+    })).toThrow('malformed real-key record');
   });
 
   it('still fails closed on a genuinely tampered revision', () => {
     expect(() => parsePhysicPaintRotoPhysicalDocument({
       capacity: 24,
-      realKeyRecords: [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' } }],
+      realKeyRecords: [{ kind: 'real-key', keyId: 'key-0', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('iVBORw0KGgo=') } }],
       interpolation,
       scriptMotion: { deformation: 0, position: 0 },
       background: null,
@@ -846,8 +948,8 @@ describe('referenced Action transaction contracts', () => {
 
   it('pins the canonical physical hash reference vector shared with the Rust boundary', () => {
     const realKeyRecords = [
-      { kind: 'real-key', keyId: 'key-1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
-      { kind: 'real-key', keyId: 'key-2', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,BBBB' } },
+      { kind: 'real-key', keyId: 'key-1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'key-2', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('BBBB') } },
     ];
     const interpolation = { enabled: false, mode: 'duplicate' as const };
     const loopClips = [
@@ -866,7 +968,7 @@ describe('referenced Action transaction contracts', () => {
       loopClips,
       incomingInterpolationBreakKeyIds: [],
     };
-    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-416-550fa14e');
+    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-598-5cf0b794');
   });
 
   it('distinguishes every durable journal and retained-history result state', () => {
@@ -923,5 +1025,44 @@ describe('referenced Action transaction contracts', () => {
       generation: request.generation, operationId: request.operationId,
       leaseToken: request.leaseToken, direction: 'sideways', cleaned: true,
     })).toBe(false);
+  });
+});
+
+describe('isWebpBytes', () => {
+  const webpLosslessBytes = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, // "RIFF"
+    0x00, 0x00, 0x00, 0x00, // size (ignored by probe)
+    0x57, 0x45, 0x42, 0x50, // "WEBP" (offset 8)
+    0x56, 0x50, 0x38, 0x4c, // "VP8L" (offset 12, lossless)
+    0x00, 0x00, 0x00, 0x00, // padding to satisfy length >= 16
+  ]);
+
+  it('accepts WebP RIFF/WEBP/VP8L lossless bytes', () => {
+    expect(isWebpBytes(webpLosslessBytes)).toBe(true);
+  });
+
+  it('rejects a PNG signature', () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52]);
+    expect(isWebpBytes(png)).toBe(false);
+  });
+
+  it('rejects a lossy WebP (VP8, not VP8L)', () => {
+    const lossy = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
+      0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20, // "VP8 " (lossy)
+    ]);
+    expect(isWebpBytes(lossy)).toBe(false);
+  });
+
+  it('rejects non-array values', () => {
+    expect(isWebpBytes('data:image/webp;base64,AAAA')).toBe(false);
+    expect(isWebpBytes(null)).toBe(false);
+    expect(isWebpBytes(undefined)).toBe(false);
+    expect(isWebpBytes(1234)).toBe(false);
+  });
+
+  it('rejects arrays shorter than the WebP header', () => {
+    expect(isWebpBytes(new Uint8Array([0x52, 0x49, 0x46, 0x46]))).toBe(false);
+    expect(isWebpBytes(new Uint8Array(0))).toBe(false);
   });
 });

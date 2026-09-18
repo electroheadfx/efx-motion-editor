@@ -45,6 +45,7 @@ function createHarness() {
     strokeFinalizationGeneration: 0,
     destroyed: false,
     lastPointerInputTime: 0,
+    lastStrokeInputTime: 0,
     lastStrokeHandoffTime: 0,
     activeMutationId: null,
     performanceListener: null,
@@ -233,6 +234,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.inputLocked = false
     engine.lastCompletedMutationId = null
     engine.lastPointerInputTime = 0
+    engine.lastStrokeInputTime = 0
     engine.rawPts = []
     engine.dualCanvas = {
       dryCanvas: {
@@ -596,6 +598,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.inputLocked = false
     engine.lastCompletedMutationId = null
     engine.lastPointerInputTime = 0
+    engine.lastStrokeInputTime = 0
     engine.rawPts = []
     engine.dualCanvas = {
       dryCanvas: {
@@ -615,20 +618,21 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.pendingStrokeFinalizations.map((job: any) => job.id)).toEqual(['brush-1', 'brush-2'])
   })
 
-  it('waits for 500 ms of pointer inactivity before batching the queued stroke to completion', () => {
+  it('waits for 400 ms of pointer inactivity before batching the queued stroke to completion', () => {
     const { engine, finalized, enqueue } = createHarness()
     let now = 1_000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     enqueue('brush-1')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
 
     engine.scheduleStrokeFinalization()
-    now = 1_499
+    now = 1_399
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
     expect(finalized).toEqual([])
 
-    now = 1_500
+    now = 1_400
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
@@ -645,11 +649,11 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.markStrokeHandoffComplete()
     engine.scheduleStrokeFinalization()
 
-    now = 2_099
+    now = 1_999
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
-    now = 2_100
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1'])
   })
@@ -663,7 +667,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.scheduleStrokeFinalization()
     engine.hasPendingInput = vi.fn(() => true)
 
-    now = 1_500
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
@@ -678,18 +682,20 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     enqueue('brush-1')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.scheduleStrokeFinalization()
 
-    now = 1_400
+    now = 1_300
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
     engine.lastPointerInputTime = now
-    now = 1_899
+    engine.lastStrokeInputTime = now
+    now = 1_699
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
-    now = 1_900
+    now = 1_700
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1'])
   })
@@ -705,30 +711,31 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-2', 'paint', 0, true)
     enqueue('brush-3', 'paint', 0, true)
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.scheduleStrokeFinalization()
 
     // The single idle rule: exactly ONE post-idle drain publishes the WHOLE
     // scripted sequence — the canvas must never show intermediate per-stroke
     // renders (the 'last strokes missing until a click' regression-amplifier).
-    now = 1_500
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
     expect(engine.activeStrokeFinalization).toBeNull()
 
     // Nothing is re-scheduled: the next visual frame is a no-op (single render).
-    now = 1_600
+    now = 2_100
     engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
   })
 
-  it('batches INTERACTIVE strokes in bounded steps per frame — a user burst never coalesces into one blocking drain', () => {
+  it('batches INTERACTIVE strokes in bounded TIME per frame — a user burst never coalesces into one blocking drain', () => {
     const { engine, finalized, enqueue } = createHarness()
     let now = 1_000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     // Interactive strokes (pointer input) are NOT scripted: a burst drains in
-    // bounded steps per visual frame (never the whole queue in one turn) so
-    // the main thread never blocks for a multi-stroke synchronous drain.
+    // time-bounded turns per visual frame (never the whole queue in one turn)
+    // so the main thread never blocks for a multi-stroke synchronous drain.
     enqueue('brush-1')
     enqueue('brush-2')
     enqueue('brush-3')
@@ -736,18 +743,25 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-5')
     enqueue('brush-6')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.scheduleStrokeFinalization()
 
-    // The harness completes a stroke in 3 steps; the 12-step frame budget
-    // finishes brush-1..brush-4 in the first post-idle frame, leaving
-    // brush-5 and brush-6 for the next frame — the queue is never drained in
-    // one turn, whatever the budget.
-    now = 1_500
-    engine.runScheduledStrokeFinalizationFrame()
-    expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3', 'brush-4'])
-    expect(engine.pendingStrokeFinalizations).toHaveLength(2)
+    // 52.1: the interactive turn is paced by TIME (48ms), not step count — a
+    // frozen clock would hand the turn an infinite budget and drain all 6 in
+    // one frame. Advance 12ms per harness step so the budget expires mid-queue:
+    // 4 steps per turn, 3 steps per stroke → one stroke plus change per frame.
+    const baseStep = engine.stepInteractivePaintFinalization
+    engine.stepInteractivePaintFinalization = function (this: any, active: any) {
+      now += 12
+      return baseStep.call(this, active)
+    }
 
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
+    expect(finalized).toEqual(['brush-1'])
+    expect(engine.pendingStrokeFinalizations).toHaveLength(5)
+
+    while (finalized.length < 6) engine.runScheduledStrokeFinalizationFrame()
     expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3', 'brush-4', 'brush-5', 'brush-6'])
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
     expect(engine.activeStrokeFinalization).toBeNull()
@@ -759,9 +773,10 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     enqueue('brush-1')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.state.drawing = true
     engine.scheduleStrokeFinalization()
-    now = 1_600
+    now = 2_000
     engine.runScheduledStrokeFinalizationFrame()
     expect(engine.activeStrokeFinalization).toBeNull()
 
@@ -777,6 +792,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-1')
     enqueue('brush-2')
     engine.lastPointerInputTime = now
+    engine.lastStrokeInputTime = now
     engine.state.drawing = true
     engine.scheduleStrokeFinalization()
     now = 2_000

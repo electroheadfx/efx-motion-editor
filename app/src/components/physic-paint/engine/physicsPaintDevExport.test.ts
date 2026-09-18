@@ -8,21 +8,21 @@ import {
   makePhysicsPaintFrameFilename,
 } from './physicsPaintDevExport';
 
-const pngDataUrl = (text: string) => `data:image/png;base64,${btoa(text)}`;
+const webpBytes = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c]);
 
 const makeFrame = (frameIndex: number, appFrame: number, overrides: Partial<PhysicPaintRenderedFrame> = {}): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: pngDataUrl(`frame-${frameIndex}`),
+  bytes: webpBytes,
   width: 1000,
   height: 650,
   ...overrides,
 });
 
 describe('physicsPaintDevExport', () => {
-  it('formats debug frame PNG filenames with stable zero padding', () => {
-    expect(makePhysicsPaintFrameFilename(0)).toBe('frame-0000.png');
-    expect(makePhysicsPaintFrameFilename(42)).toBe('frame-0042.png');
+  it('formats debug frame WebP filenames with stable zero padding', () => {
+    expect(makePhysicsPaintFrameFilename(0)).toBe('frame-0000.webp');
+    expect(makePhysicsPaintFrameFilename(42)).toBe('frame-0042.webp');
   });
 
   it('builds manifest.json metadata for live captured PNG frames', () => {
@@ -49,9 +49,9 @@ describe('physicsPaintDevExport', () => {
       generatedAt: '2026-06-12T12:00:00.000Z',
     });
     expect(manifest.frames).toEqual([
-      { frameIndex: 0, appFrame: 12, file: 'frame-0000.png', width: 1000, height: 650 },
-      { frameIndex: 1, appFrame: 13, file: 'frame-0001.png', width: 1000, height: 650 },
-      { frameIndex: 2, appFrame: 14, file: 'frame-0002.png', width: 1000, height: 650 },
+      { frameIndex: 0, appFrame: 12, file: 'frame-0000.webp', width: 1000, height: 650 },
+      { frameIndex: 1, appFrame: 13, file: 'frame-0001.webp', width: 1000, height: 650 },
+      { frameIndex: 2, appFrame: 14, file: 'frame-0002.webp', width: 1000, height: 650 },
     ]);
   });
 
@@ -79,7 +79,7 @@ describe('physicsPaintDevExport', () => {
       operationId: 'op-1',
       startFrame: 12,
       frameCount: 1,
-      frames: [makeFrame(0, 12, { dataUrl: 'data:image/jpeg;base64,aGVsbG8=' })],
+      frames: [makeFrame(0, 12, { bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]) })],
       fps: 24,
     })).toThrow(/PNG/i);
 
@@ -93,18 +93,18 @@ describe('physicsPaintDevExport', () => {
     })).toThrow(/frameCount/i);
   });
 
-  it('builds still PNG proof metadata from one rendered frame', () => {
+  it('builds still WebP proof metadata from one rendered frame', () => {
     const still = buildPhysicsPaintStillExport(makeFrame(42, 99));
 
     expect(still).toEqual({
       kind: 'physics-paint-debug-export',
-      file: 'frame-0042.png',
+      file: 'frame-0042.webp',
       frameIndex: 42,
       appFrame: 99,
-      mimeType: 'image/png',
+      mimeType: 'image/webp',
       width: 1000,
       height: 650,
-      dataUrl: expect.stringContaining('data:image/png'),
+      bytes: webpBytes,
     });
   });
 

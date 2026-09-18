@@ -1,4 +1,5 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
+import { NumericStepper } from '../../shared/NumericStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
@@ -75,16 +76,26 @@ function TopBarSlider(props: {
           onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
         />
         {props.numericInput ? (
-          <input
-            class="physics-paint-topbar-number"
-            type="number"
+          <NumericStepper
+            class="physics-paint-topbar-number-stepper"
+            value={props.value}
+            onChange={(value) => updateValue(value)}
+            step={1}
             min={props.min}
             max={props.max}
-            value={props.value}
             disabled={props.disabled}
-            aria-label={`${props.label} exact value`}
-            onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
-            onBlur={(event) => updateValue((event.target as HTMLInputElement).value)}
+            ariaLabel={`${props.label} exact value`}
+            inputStyle={{
+              flex: '0 0 auto',
+              width: '46px',
+              height: '24px',
+              padding: '2px 4px',
+              backgroundColor: '#5a5c5f',
+              color: '#f8fafc',
+              fontSize: '12px',
+              fontWeight: 700,
+            }}
+            buttonStyle={{ width: '22px', height: '24px' }}
           />
         ) : <output>{props.value}</output>}
       </div>

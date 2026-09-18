@@ -27,15 +27,34 @@ export interface MceProject {
     export_sub_frames: number;     // 4, 8, or 16
   };
   /**
-   * Opaque legacy presence carrier (D-02/D-06): round-trips the presence of
-   * pre-v1.0 physic_paint_outputs blobs to the TS rejection gate but is
-   * never interpreted, migrated, or rendered. The gate rejects any project
-   * with a non-empty array before hydration, so the runtime value is always
-   * undefined/absent (Rust omits the empty field on serialization).
+   * v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust).
+   *
+   * 52.2-07 (D-04): the package format no longer ships layer content inside the
+   * project file — each layer now lives in its own `layers/<layerId>.json`
+   * sub-file and each raster in `frames/<layerId>/<keyId>.webp`. A pre-52.2
+   * project still carries the map on the way in, but plan 08's gate refuses the
+   * manifest before this field is read; plan 09's read-back leg then loads
+   * layer content from the sub-files and retires this field.
    */
-  physic_paint_outputs?: unknown[];
-  /** v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust). */
   efx_paint_documents?: Record<string, unknown>;
+  /**
+   * The package format version (D-04), stamped by `buildPackageManifest` and
+   * read by the refusal gate (52.2-08). Absent on a pre-52.2 project — the
+   * gate's "older format" reason.
+   */
+  formatVersion?: number;
+  /**
+   * The package identity (D-05): a 36-character lower-case UUID carried IN the
+   * manifest — never derived from the file path — so the same package keeps the
+   * same identity (and therefore the same disposable cache) on another machine.
+   */
+  projectId?: string;
+  /**
+   * The layer index (D-04, co-change with Rust): `layerId` → `{ layerFile,
+   * documentRevision, compositeRevision }`, built by `buildPackageManifest`.
+   * Carried opaquely here — `efxPaintPackage.ts` owns the schema.
+   */
+  efxPaint?: Record<string, unknown>;
 }
 
 /** Runtime project shape: identical to the persisted MceProject (v1.0). */

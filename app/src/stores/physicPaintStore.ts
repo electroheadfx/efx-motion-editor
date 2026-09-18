@@ -1,10 +1,22 @@
 import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanvasRegistry';
+import { sha256HexBytes } from '../lib/webpBytes';
+import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
+import { frameLru } from '../lib/frameLru';
+// 52.2-09 Task 3 (D-13): the READ leg of the package media pair. The resolver
+// takes the LRU, the injected decode and the package root as parameters, so the
+// store keeps ownership of the LRU budget and the two-format sniff.
+import {
+  resolveFrameMediaBitmap,
+  type FrameMediaRefusalReason,
+} from '../lib/efxPaintMediaRead';
+import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
-import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
+import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
 // efxPaintStore document registry. The efxPaintStore ↔ physicPaintStore import
@@ -41,6 +53,7 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
@@ -75,7 +88,16 @@ import {
 import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
 import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
-import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 52.2-06 (D-06/D-07): the persist seam's media projection. Both roto
+// collections are projected through the same pure functions — the store does
+// not learn which collection a record came from.
+import {
+  PhysicPaintRotoMediaProjectionError,
+  toPersistedRotoRecords,
+  toRuntimeRotoRecords,
+  type PhysicPaintRotoMediaReferenceResolver,
+} from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { getPhysicsPaintWorkingSize } from '../components/physic-paint/engine/physicsPaintCanvasSizing';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -184,7 +206,7 @@ export function mountTrackRuntime(layerId: string, trackId: string): void {
 export function removeTrackRuntime(layerId: string, trackId: string): boolean {
   if (!layerId || !trackId) return false;
   let changed = false;
-  const dataUrls = _getTrackDataUrls(layerId, trackId);
+  const tokens = _getTrackBytesTokens(layerId, trackId);
   for (const map of [
     _frames,
     _rotoBackgroundMetadata,
@@ -221,8 +243,8 @@ export function removeTrackRuntime(layerId: string, trackId: string): boolean {
     changed = true;
     _notifyRotoPhysicalOperationLeaseChange();
   }
-  for (const dataUrl of dataUrls) {
-    if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
+  for (const token of tokens) {
+    if (!_isBytesTokenReferenced(token)) changed = rotoAlphaCanvasRegistry.delete(token) || changed;
   }
   return changed;
 }
@@ -303,6 +325,20 @@ const DEFAULT_ROTO_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings 
 };
 
 /**
+ * 260911-s1j follow-up: Frame blending is retired from the product surface
+ * until the engine's blended-frame slowdown work lands. Every physical
+ * interpolation state entering the store is coerced to Frame duplicate here
+ * — the map can never hold blend, so every read (render paths, UI,
+ * persistence, revision and memo identity checks) observes one coherent
+ * mode. The canonical model and the blended renderer keep the mode type
+ * intact for the later re-introduction.
+ */
+function _retireFrameBlendingMode(state: PhysicPaintRotoInterpolationState): PhysicPaintRotoInterpolationState {
+  if (state.mode !== 'blend') return state;
+  return Object.freeze({ enabled: state.enabled, mode: 'duplicate' });
+}
+
+/**
  * One unresolvable Loop Clip intersecting a queried frame window (Phase 43,
  * D-28). Carries the verbatim missing source keyIds (D-31) and the loop's
  * effective end so the export preflight can name the blocked range without
@@ -329,27 +365,11 @@ export interface EfxPaintRuntimeProjection {
   readonly rotoPhysical: PhysicPaintRotoPhysicalDocument | null;
 }
 
-const _rotoAlphaCanvasRegistry = new Map<string, HTMLCanvasElement>();
-
-// G-52-10 ownership law: registration ADOPTS the canvas for the session — the
-// compositor's FIX 3 branch draws from it directly, so once registered a caller
-// must never release, resize, or mutate it (same lifetime as hydration entries).
-export function registerRotoAlphaCanvasFrame(dataUrl: string, canvas: HTMLCanvasElement): void {
-  if (!dataUrl.startsWith('data:image/png') || canvas.width <= 0 || canvas.height <= 0) return;
-  _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
-}
-
-export function hasRotoAlphaCanvasFrame(
-  dataUrl: string,
-  expectedSize?: { width: number; height: number },
-): boolean {
-  const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
-  // G-52-10: a zero-size entry (a registered canvas a caller later released or
-  // resized) is treated as absent so a fresh registration can overwrite it.
-  if (!canvas || canvas.width <= 0 || canvas.height <= 0) return false;
-  return !expectedSize
-    || (canvas.width === expectedSize.width && canvas.height === expectedSize.height);
-}
+// 52.1 (D-06): the Roto alpha-canvas registry lives in a leaf module
+// (lib/rotoAlphaCanvasRegistry.ts) so rotoCanvasFrames.ts can register/query
+// canvases without importing this store (which imports the reveal renderer,
+// which imports rotoCanvasFrames.ts — a module-body cycle).
+export { registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame } from '../lib/rotoAlphaCanvasRegistry';
 
 // 46-01 TRK-01 base law: every runtime map is addressed layerId -> trackId ->
 // value. trackId is the stable UUID identity from the v1.0 document
@@ -361,6 +381,16 @@ const _frames = new Map<string, Map<string, Map<number, PhysicPaintRenderedFrame
 const _rotoBackgroundMetadata = new Map<string, Map<string, PhysicPaintRotoBackgroundMetadata>>();
 const _rotoCacheMetadata = new Map<string, Map<string, Map<number, PhysicPaintRotoCacheFrame>>>();
 const _rotoGeneratedCacheMetadata = new Map<string, Map<string, Map<number, PhysicPaintRotoCacheFrame>>>();
+
+// 52.1 lever 1: read-path cache for generated (blend/duplicate) frames, keyed
+// by the cacheRevision string (which embeds contentRevision — the freshness
+// signal, so a stale entry is never served). Populated on-demand in
+// getRotoPhysicalRenderSource; cleared on store reset. Holds raw bytes (never
+// canvases/dataURLs); byte-budgeted with FIFO eviction so a long edit session
+// cannot grow it unbounded.
+const _generatedRenderSourceCache = new Map<string, PhysicPaintRenderedFrame>();
+let _generatedRenderSourceCacheBytes = 0;
+const GENERATED_RENDER_SOURCE_CACHE_BYTE_CEILING = 64 * 1024 * 1024;
 const _rotoInterpolationSettings = new Map<string, Map<string, PhysicPaintRotoInterpolationSettings>>();
 const _rotoInterpolationFailureStatus = new Map<string, Map<string, string>>();
 const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regenerate. Real keys were kept.';
@@ -425,14 +455,96 @@ export function _setPhysicPaintCompositorSizeProvider(cb: (() => { width: number
   _compositorSizeProvider = cb;
 }
 
+/**
+ * 52.2-09 Task 3 (D-13): the package root the media read leg resolves a
+ * persisted `frames/<layerId>/<keyId>.webp` reference against. Injected from
+ * projectStore (the opened package's own directory) on the
+ * `_setPhysicPaintCompositorSizeProvider` pattern, because the store cannot
+ * import projectStore without an ESM module-body cycle. Null means "no package
+ * root this session" — a media reference then resolves to nothing.
+ */
+let _packageDirProvider: (() => string | null) | null = null;
+export function _setPhysicPaintPackageDirProvider(cb: (() => string | null) | null): void {
+  _packageDirProvider = cb;
+}
+
 /** Per-layer flattened memo (D-08/CMP-04) + per-track raster memo (D-07). */
 const _flattenedMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintFlattenedFrameRecord>>();
 const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>>();
 
-/** Store-side dataUrl decode cache (mirrors previewRenderer's imageCache idiom). */
-const _compositorImageCache = new Map<string, HTMLImageElement>();
-const _compositorImageLoading = new Set<string>();
-const _compositorImageFailed = new Set<string>();
+/** In-flight decode guard (D-12): prevents duplicate decode kicks for the same bytes token. */
+const _compositorDecodeLoading = new Set<string>();
+/** In-flight decode promises (52.1-05 D-13): lets the export preload await completion. */
+const _compositorDecodePromises = new Map<string, Promise<ImageBitmap | null>>();
+
+/**
+ * 52.2-09 Task 3 (D-13, T-52.2-29/32): the terminal NON-bitmap outcome recorded
+ * for one persisted media digest — a resolved bitmap lives in the frame LRU, so
+ * only the failures need a verdict. Recording them keeps a missing or refused
+ * read from being re-issued on every compositor tick, and makes a refusal
+ * (corrupt file) observable instead of silent. Guarded by digest, so a tampered
+ * file can never be served from a previous frame's bitmap.
+ */
+export type FrameMediaVerdict = 'missing' | FrameMediaRefusalReason;
+const _frameMediaVerdicts = new Map<string, FrameMediaVerdict>();
+/** In-flight media reads, keyed by digest — the duplicate-kick guard. */
+const _frameMediaResolutionPromises = new Map<string, Promise<void>>();
+export function getFrameMediaVerdict(digest: string): FrameMediaVerdict | null {
+  return _frameMediaVerdicts.get(digest) ?? null;
+}
+
+/**
+ * 52.2-10 (D-12, T-52.2-33/34): the receiver's bridged-raster store — the
+ * landing half of the bridge's digest-keyed byte channel. The 52.2-09 read leg
+ * answers the SAME question (`hasFrameMediaBytes`) from the frame LRU; this map
+ * is what makes that answer true for a raster that arrived over the bridge
+ * instead of from a package file, with no decode and no file read. Bytes are
+ * kept UNDECODED here and move into the LRU only when the compositor seam
+ * actually needs the frame — a bridged raster never pays a decode it may never
+ * display, and one decode serves every key that references the digest.
+ */
+const _frameMediaBytes = new Map<string, Uint8Array>();
+
+export type FrameMediaInstallResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{ ok: false; reason: FrameMediaRefusalReason }>;
+
+/**
+ * Does the receiver already hold this digest? Answered from the LRU and the
+ * bridged-bytes map only — never a decode, never a file read (T-52.2-35: this
+ * answer is what keeps a retry storm from re-pulling the document).
+ */
+export function hasFrameMediaBytes(digest: string): boolean {
+  return frameLru.has(digest) || _frameMediaBytes.has(digest);
+}
+
+/**
+ * Install bridged raster bytes under their content digest. `expectedDigest`
+ * claims the content; the digest is recomputed from the bytes and a mismatch
+ * is refused and recorded, never applied (T-52.2-33/34 — the digest is the
+ * identity AND the verification, same law as the disk read path). On a match
+ * the bytes supersede any earlier verdict for that digest, and the flattened
+ * memo is cleared + the version clock bumped so a frame waiting on this
+ * reference re-renders (the registerBackgroundSourceImage arrival idiom).
+ */
+export async function installFrameMediaBytes(
+  bytes: Uint8Array,
+  expectedDigest?: string,
+): Promise<FrameMediaInstallResult> {
+  const digest = await sha256HexBytes(bytes);
+  if (expectedDigest !== undefined && expectedDigest !== digest) {
+    // The claimed digest is what identified this entry; record the refusal
+    // against the CLAIM so the seam answers missing for it without a read,
+    // and never store the tampered bytes under any key.
+    _frameMediaVerdicts.set(expectedDigest, 'digest-mismatch');
+    return { ok: false, reason: 'digest-mismatch' };
+  }
+  _frameMediaVerdicts.delete(digest);
+  _frameMediaBytes.set(digest, bytes);
+  _flattenedMemo.clear();
+  physicPaintVersion.value++;
+  return { ok: true };
+}
 
 /**
  * Background sourceRef → dataUrl registry (48-04 port wiring; Phase 49's import
@@ -440,10 +552,12 @@ const _compositorImageFailed = new Set<string>();
  * clears the flattened memo (T-48-07) — the flattened key's clip terms don't
  * cover runtime bytes, so a stale record must not survive a bytes arrival.
  */
-const _backgroundSourceImages = new Map<string, string>();
-export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string): void {
-  if (_backgroundSourceImages.get(sourceRef) === dataUrl) return;
-  _backgroundSourceImages.set(sourceRef, dataUrl);
+const _backgroundSourceImages = new Map<string, Uint8Array>();
+const _backgroundSourceImageUrls = new Map<string, string>();
+export function registerBackgroundSourceImage(sourceRef: string, bytes: Uint8Array): void {
+  const existing = _backgroundSourceImages.get(sourceRef);
+  if (existing && buildFrameBytesToken(existing) === buildFrameBytesToken(bytes)) return;
+  _backgroundSourceImages.set(sourceRef, bytes);
   _flattenedMemo.clear();
   // 49-06 (UAT round 2): the async hydration (import/reopen) registers bytes
   // AFTER the document mutation already bumped efxPaintVersion — without a
@@ -464,10 +578,11 @@ export function registerBackgroundSourceImage(sourceRef: string, dataUrl: string
  * reference never enters the flattened path (D-06), so a reference bytes
  * arrival must not invalidate the flattened composite.
  */
-const _referenceSourceImages = new Map<string, string>();
-export function registerReferenceSourceImage(sourceRef: string, dataUrl: string): void {
-  if (_referenceSourceImages.get(sourceRef) === dataUrl) return;
-  _referenceSourceImages.set(sourceRef, dataUrl);
+const _referenceSourceImages = new Map<string, Uint8Array>();
+export function registerReferenceSourceImage(sourceRef: string, bytes: Uint8Array): void {
+  const existing = _referenceSourceImages.get(sourceRef);
+  if (existing && buildFrameBytesToken(existing) === buildFrameBytesToken(bytes)) return;
+  _referenceSourceImages.set(sourceRef, bytes);
   physicPaintVersion.value++;
 }
 
@@ -500,10 +615,10 @@ export interface BackgroundSourceHydrationPorts {
    * different URLs and only the fallback decoded). Empty = absent.
    */
   resolveAssetUrls: (sourceRef: string) => readonly string[];
-  /** Fetch + decode the asset URL bytes into a dataUrl, or null on failure. */
-  decodeBytes: (url: string) => Promise<string | null>;
+  /** Fetch + decode the asset URL into raw bytes, or null on failure. */
+  decodeBytes: (url: string) => Promise<Uint8Array | null>;
   /** Register decoded bytes for a source ref (the existing registerBackgroundSourceImage). */
-  register: (sourceRef: string, dataUrl: string) => void;
+  register: (sourceRef: string, bytes: Uint8Array) => void;
 }
 
 /** Per-ref hydration outcome — the diagnostic the import path surfaces when a
@@ -533,9 +648,9 @@ export async function hydrateBackgroundSourceImages(
     // A freshly imported image can resolve through the imageStore OR the
     // picker fallback, and only one of the two URLs may be servable.
     for (const url of urls) {
-      const dataUrl = await ports.decodeBytes(url);
-      if (dataUrl !== null) {
-        ports.register(ref, dataUrl);
+      const bytes = await ports.decodeBytes(url);
+      if (bytes !== null) {
+        ports.register(ref, bytes);
         registered.push(ref);
         return;
       }
@@ -575,8 +690,8 @@ function _ensureDecodeHost(): HTMLDivElement {
   return _decodeHost;
 }
 
-function _decodeEfxAssetBytes(url: string): Promise<string | null> {
-  return new Promise<string | null>((resolve) => {
+function _decodeEfxAssetBytes(url: string): Promise<Uint8Array | null> {
+  return new Promise<Uint8Array | null>((resolve) => {
     const image = new Image();
     // 49-06 (UAT round 3): the efxasset:// origin differs from the page origin,
     // so a canvas rasterization of the loaded image is TAINTED unless the image
@@ -588,7 +703,7 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
     // never needs this — which is why the user could select images while the
     // clip never rendered.
     image.crossOrigin = 'anonymous';
-    image.onload = () => {
+    image.onload = async () => {
       try {
         // 49-06 (UAT round 5): cap the rasterization at 2048px on the longest
         // side — a full-res import rasterized at native size produces a
@@ -611,7 +726,7 @@ function _decodeEfxAssetBytes(url: string): Promise<string | null> {
           return;
         }
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL());
+        resolve(await encodeCanvasAsWebp(canvas));
       } catch {
         resolve(null);
       } finally {
@@ -691,9 +806,9 @@ export async function hydrateReferenceSourceImages(
       return;
     }
     for (const url of urls) {
-      const dataUrl = await ports.decodeBytes(url);
-      if (dataUrl !== null) {
-        ports.register(ref, dataUrl);
+      const bytes = await ports.decodeBytes(url);
+      if (bytes !== null) {
+        ports.register(ref, bytes);
         registered.push(ref);
         return;
       }
@@ -746,12 +861,14 @@ export interface EfxPaintFlattenedFrameRecord {
   readonly cacheKey: string;
   /**
    * G-52-8: the composite raster itself. Same-window draw surfaces (program
-   * monitor, preview renderer) consume it directly — the PNG encode→decode
-   * round-trip through `renderedFrame.dataUrl` only runs for
-   * transport/serialization readers (lazy getter, encoded on first read).
+   * monitor, preview renderer) consume it directly — the WebP encode only runs
+   * for transport/serialization readers via `encodeBytes()` (async Rust codec,
+   * memoized on first call). `renderedFrame.bytes` is a placeholder; readers
+   * that need the real bytes must await `encodeBytes()`.
    */
   readonly raster?: HTMLCanvasElement;
   readonly renderedFrame: PhysicPaintRenderedFrame;
+  readonly encodeBytes: () => Promise<Uint8Array>;
   readonly missing: readonly EfxPaintMissingSourceEntry[];
 }
 
@@ -801,6 +918,51 @@ function _validateRotoPhysicalLayerPublication(
   return _sameRotoPhysicalOperationLease(active, token)
     ? { ok: true }
     : { ok: false, reason: 'mismatched-token' };
+}
+
+/**
+ * Fail-closed carrier guard for a hydrate-time roto document (52.2-06,
+ * T-52.2-19). Every record the store is about to install must carry EXACTLY
+ * ONE raster carrier: `media` for a reference-only (on-disk) record, `bytes`
+ * for a live runtime projection. The canonical parser refuses a payload with
+ * neither, but generically and without naming the record — this guard runs
+ * first and names the offending keyId, over BOTH persisted collections, so a
+ * malformed document is actionable rather than a bare "malformed record".
+ */
+function _assertRotoPhysicalDocumentCarriers(physical: unknown): void {
+  if (typeof physical !== 'object' || physical === null) return;
+  const document = physical as { realKeyRecords?: unknown; groupOverrideRecords?: unknown };
+  for (const collection of [document.realKeyRecords, document.groupOverrideRecords]) {
+    if (!Array.isArray(collection)) continue;
+    for (const entry of collection) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const record = entry as { keyId?: unknown; payload?: unknown };
+      if (typeof record.payload !== 'object' || record.payload === null) continue;
+      const payload = record.payload as { bytes?: unknown; media?: unknown };
+      if (payload.bytes === undefined && payload.media === undefined) {
+        throw new Error(
+          `PhysicPaintRotoPhysicalDocument: roto record "${typeof record.keyId === 'string' ? record.keyId : '?'}" carries neither a media reference nor inline raster bytes.`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * The publishable runtime frame a duplicated/pasted key owes the runtime, or
+ * null when the record cannot supply one (52.2-06, T-52.2-20). A record with a
+ * media reference and no inline bytes has no pixels in the runtime yet — plan
+ * 09 resolves them from the package — and a missing/zero raster dimension
+ * would publish an invisible `width: 0` frame.
+ */
+function _resolveRotoPublishFrameSource(
+  payload: PhysicPaintRotoRealKeyPayload,
+): { bytes: Uint8Array; width: number; height: number } | null {
+  const bytes = payload.bytes;
+  const width = payload.width;
+  const height = payload.height;
+  if (bytes === undefined || width === undefined || width <= 0 || height === undefined || height <= 0) return null;
+  return { bytes, width, height };
 }
 
 // --- Physical structural read memo (46-01 track-keyed, 46-07) ---
@@ -902,64 +1064,64 @@ function _resolveRotoPhysicalStructural(layerId: string, trackId: string): RotoP
   _rotoPhysicalStructuralCache.set(cacheKey, entry);
   return entry;
 }
-function _collectFrameDataUrls(frames: Iterable<PhysicPaintRenderedFrame>, target: Set<string>): void {
+function _collectFrameBytesTokens(frames: Iterable<PhysicPaintRenderedFrame>, target: Set<string>): void {
   for (const frame of frames) {
-    target.add(frame.dataUrl);
-    const onionDataUrl = (frame as { onionDataUrl?: unknown }).onionDataUrl;
-    if (typeof onionDataUrl === 'string') target.add(onionDataUrl);
+    target.add(buildFrameBytesToken(frame.bytes));
+    const onionBytes = (frame as { onionBytes?: unknown }).onionBytes;
+    if (onionBytes instanceof Uint8Array) target.add(buildFrameBytesToken(onionBytes));
   }
 }
 
-/** Collect every payload dataUrl owned by ONE track (46-01 track-scoped). */
-function _getTrackDataUrls(layerId: string, trackId: string): Set<string> {
-  const dataUrls = new Set<string>();
-  _collectFrameDataUrls(_frames.get(layerId)?.get(trackId)?.values() ?? [], dataUrls);
-  _collectFrameDataUrls(_rotoCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], dataUrls);
-  _collectFrameDataUrls(_rotoGeneratedCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], dataUrls);
-  for (const record of _rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
-  for (const record of _rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
-  return dataUrls;
+/** Collect every payload bytes token owned by ONE track (46-01 track-scoped). */
+function _getTrackBytesTokens(layerId: string, trackId: string): Set<string> {
+  const tokens = new Set<string>();
+  _collectFrameBytesTokens(_frames.get(layerId)?.get(trackId)?.values() ?? [], tokens);
+  _collectFrameBytesTokens(_rotoCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], tokens);
+  _collectFrameBytesTokens(_rotoGeneratedCacheMetadata.get(layerId)?.get(trackId)?.values() ?? [], tokens);
+  for (const record of _rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildPhysicPaintRotoPayloadContentToken(record.payload));
+  for (const record of _rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? []) tokens.add(buildPhysicPaintRotoPayloadContentToken(record.payload));
+  return tokens;
 }
 
-function _isDataUrlReferenced(dataUrl: string): boolean {
-  const referencesDataUrl = (frames: Iterable<PhysicPaintRenderedFrame>): boolean => {
+function _isBytesTokenReferenced(token: string): boolean {
+  const referencesToken = (frames: Iterable<PhysicPaintRenderedFrame>): boolean => {
     for (const frame of frames) {
-      if (frame.dataUrl === dataUrl || (frame as { onionDataUrl?: unknown }).onionDataUrl === dataUrl) return true;
+      if (buildFrameBytesToken(frame.bytes) === token || ((frame as { onionBytes?: unknown }).onionBytes instanceof Uint8Array && buildFrameBytesToken((frame as { onionBytes?: Uint8Array }).onionBytes!) === token)) return true;
     }
     return false;
   };
   for (const layerTracks of _frames.values()) {
-    for (const trackFrames of layerTracks.values()) if (referencesDataUrl(trackFrames.values())) return true;
+    for (const trackFrames of layerTracks.values()) if (referencesToken(trackFrames.values())) return true;
   }
   for (const layerTracks of _rotoCacheMetadata.values()) {
-    for (const trackMetadata of layerTracks.values()) if (referencesDataUrl(trackMetadata.values())) return true;
+    for (const trackMetadata of layerTracks.values()) if (referencesToken(trackMetadata.values())) return true;
   }
   for (const layerTracks of _rotoGeneratedCacheMetadata.values()) {
-    for (const trackMetadata of layerTracks.values()) if (referencesDataUrl(trackMetadata.values())) return true;
+    for (const trackMetadata of layerTracks.values()) if (referencesToken(trackMetadata.values())) return true;
   }
   for (const layerTracks of _rotoRealKeyRecords.values()) {
     for (const trackRecords of layerTracks.values()) {
-      for (const record of trackRecords.values()) if (record.payload.dataUrl === dataUrl) return true;
+      for (const record of trackRecords.values()) if (buildPhysicPaintRotoPayloadContentToken(record.payload) === token) return true;
     }
   }
   for (const layerTracks of _rotoGroupOverrideRecords.values()) {
     for (const trackRecords of layerTracks.values()) {
-      for (const record of trackRecords.values()) if (record.payload.dataUrl === dataUrl) return true;
+      for (const record of trackRecords.values()) if (buildPhysicPaintRotoPayloadContentToken(record.payload) === token) return true;
     }
   }
   return false;
 }
 
-function _pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
-  for (const dataUrl of dataUrls) {
-    if (!_isDataUrlReferenced(dataUrl)) _rotoAlphaCanvasRegistry.delete(dataUrl);
+function _pruneUnreferencedRotoAlphaCanvases(tokens: Iterable<string>): void {
+  for (const token of tokens) {
+    if (!_isBytesTokenReferenced(token)) rotoAlphaCanvasRegistry.delete(token);
   }
 }
 
 function _clearLayerState(layerId: string): boolean {
-  const dataUrls = new Set<string>();
+  const tokens = new Set<string>();
   for (const trackId of _frames.get(layerId)?.keys() ?? []) {
-    for (const dataUrl of _getTrackDataUrls(layerId, trackId)) dataUrls.add(dataUrl);
+    for (const token of _getTrackBytesTokens(layerId, trackId)) tokens.add(token);
   }
   let changed = false;
   // Derived structural memo entries — pruned with the layer's source state
@@ -997,8 +1159,8 @@ function _clearLayerState(layerId: string): boolean {
     changed = true;
     _notifyRotoPhysicalOperationLeaseChange();
   }
-  for (const dataUrl of dataUrls) {
-    if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
+  for (const token of tokens) {
+    if (!_isBytesTokenReferenced(token)) changed = rotoAlphaCanvasRegistry.delete(token) || changed;
   }
   return changed;
 }
@@ -1087,35 +1249,245 @@ function _getOrCreateCompositorMemo<K, V>(outer: Map<string, EfxPaintKeyedMemo<K
 }
 
 /**
- * 48-03 store-side decode cache (mirrors previewRenderer's imageCache idiom):
- * dataUrl → HTMLImageElement, with loading/failed sets and an onload/onerror
- * that bump the existing physicPaintVersion clock (never a new subscription
- * surface, MEMORY: always bump AND subscribe). Returns null while pending or
- * failed; re-checks the cache after setting src so synchronous decodes (test
- * stubs / hot decodes) resolve in the same tick.
+ * 52.1-04 (D-12/D-13/D-14): the single decoded-frame decode path. Resolves the
+ * byte-budgeted LRU handle (keyed by the stable bytes content token) instead of
+ * the absorbed decode-once cache. On a miss it kicks off the async Rust decode
+ * (`decode_webp_frame` → raw RGBA → transient ImageData → createImageBitmap with
+ * premultiplyAlpha:'premultiply' — see _decodeWebpToBitmap for the WKWebView
+ * straight-bitmap wash) and returns null this tick; the decode-complete
+ * version-clock bump re-fires subscribers (the _compositorDecode idiom, MEMORY:
+ * always bump AND subscribe). ImageData exists only as the transient IPC→bitmap
+ * bridge, never stored (D-13).
  */
-function _compositorDecode(dataUrl: string): HTMLImageElement | null {
-  const cached = _compositorImageCache.get(dataUrl);
-  if (cached) return cached;
-  if (_compositorImageLoading.has(dataUrl) || _compositorImageFailed.has(dataUrl)) return null;
-  const image = new Image();
-  _compositorImageLoading.add(dataUrl);
-  image.onload = () => {
-    _compositorImageLoading.delete(dataUrl);
-    _compositorImageCache.set(dataUrl, image);
-    physicPaintVersion.value++;
-  };
-  image.onerror = () => {
-    _compositorImageLoading.delete(dataUrl);
-    _compositorImageFailed.add(dataUrl);
-    physicPaintVersion.value++;
-  };
-  image.src = dataUrl;
-  if (_compositorImageCache.has(dataUrl)) {
-    _compositorImageLoading.delete(dataUrl);
-    return _compositorImageCache.get(dataUrl)!;
+
+/** True while `prefetchNeighborFrames` runs — attributes decode telemetry. */
+let _decodeOriginIsPrefetch = false;
+
+function _compositorDecode(bytes: Uint8Array): ImageBitmap | null {
+  const token = buildFrameBytesToken(bytes);
+  const cached = frameLru.get(token);
+  if (cached) {
+    recordPhysicsPaintPerformanceCounter('decode.lruHit');
+    return cached;
+  }
+  if (_compositorDecodeLoading.has(token)) {
+    recordPhysicsPaintPerformanceCounter('decode.inflightSkip');
+    return null;
+  }
+  _compositorDecodeLoading.add(token);
+  recordPhysicsPaintPerformanceCounter('decode.lruMiss');
+  const decodeOrigin: 'draw' | 'prefetch' = _decodeOriginIsPrefetch ? 'prefetch' : 'draw';
+  const promise = (async (): Promise<ImageBitmap | null> => {
+    try {
+      const bitmap = await _decodeFrameBytesByFormat(bytes, decodeOrigin);
+      frameLru.put(token, bitmap, bitmap.width, bitmap.height);
+      return bitmap;
+    } catch {
+      // Decode failed — leave the token uncached so a later query retries.
+      recordPhysicsPaintPerformanceCounter('decode.fail');
+      return null;
+    } finally {
+      _compositorDecodeLoading.delete(token);
+      _compositorDecodePromises.delete(token);
+      physicPaintVersion.value++;
+    }
+  })();
+  _compositorDecodePromises.set(token, promise);
+  return null;
+}
+
+/**
+ * Two-format law (52.1): real keys are VP8L (Rust codec); display-only derived
+ * frames (interpolation blends) are PNG. Sniff the magic bytes — never feed PNG
+ * bytes to the Rust WebP decoder. One implementation, shared by the inline
+ * decode path and the media path, so the sniff cannot drift between them.
+ */
+async function _decodeFrameBytesByFormat(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
+  const isWebp = bytes.length >= 16
+    && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x4c;
+  return isWebp
+    ? await _decodeWebpToBitmap(bytes, origin)
+    : await _decodePngBytesToBitmap(bytes, origin);
+}
+
+/**
+ * 52.2-09 Task 3 (D-13, T-52.2-29/31/32): resolve one persisted media
+ * reference for the compositor seam. The bitmap it yields is cached in the
+ * shared 512 MB frame LRU under the reference DIGEST — the resolver's key, so
+ * the same raster referenced by several keys decodes once.
+ *
+ * A terminal non-bitmap outcome (missing file, digest mismatch, refusal) is
+ * recorded by digest and reported as the Phase 49 MISSING branch, naming the
+ * reference: transparent pixels plus a report entry, never a placeholder
+ * bitmap. The first request kicks the async read off and returns null this
+ * tick; the version-clock bump in `finally` re-fires subscribers when it
+ * lands (the 52.1 decode idiom).
+ */
+function _resolveMediaRasterResolution(media: FrameMediaReference): EfxPaintTrackContentResolution | null {
+  const cached = frameLru.get(media.digest);
+  if (cached) return { kind: 'content', raster: cached };
+  const verdict = _frameMediaVerdicts.get(media.digest);
+  if (verdict !== undefined) return { kind: 'missing', missingRefs: [media.relativePath] };
+  // 52.2-10 (D-12): bytes that arrived over the bridge's digest-keyed channel
+  // resolve HERE, in memory — the package file is never consulted for a digest
+  // the receiver already holds (T-52.2-35). Decoding is still lazy: the frame
+  // enters the LRU only when the compositor actually needs it, through the same
+  // two-format sniff as every other decode (one implementation).
+  const bridgedBytes = _frameMediaBytes.get(media.digest);
+  if (bridgedBytes !== undefined) {
+    if (!_frameMediaResolutionPromises.has(media.digest)) {
+      const promise = (async (): Promise<void> => {
+        try {
+          const bitmap = await _decodeFrameBytesByFormat(bridgedBytes, 'draw');
+          frameLru.put(media.digest, bitmap, bitmap.width, bitmap.height);
+          // The LRU now owns the decoded handle — drop the byte copy so a
+          // bridged frame is never held twice (eviction then answers false,
+          // and a later sync may legitimately re-ship it).
+          _frameMediaBytes.delete(media.digest);
+        } catch {
+          recordPhysicsPaintPerformanceCounter('decode.fail');
+          _frameMediaVerdicts.set(media.digest, 'decode-failed');
+        } finally {
+          _frameMediaResolutionPromises.delete(media.digest);
+          physicPaintVersion.value++;
+        }
+      })();
+      _frameMediaResolutionPromises.set(media.digest, promise);
+    }
+    return null;
+  }
+  if (!_frameMediaResolutionPromises.has(media.digest)) {
+    const packageDir = _packageDirProvider?.() ?? null;
+    if (packageDir === null) {
+      // No package root this session — there is no file the reference could
+      // name, so the frame is honest missing content (never a fabricated one).
+      // quick-260913-52r (G): LOUD, once per digest (the verdict short-
+      // circuits later ticks) — a reference that can never resolve is the
+      // exact failure the package format must surface, not hide.
+      console.warn(
+        `[physicPaint] frame media "${media.relativePath}" (digest ${media.digest}) is unresolvable: no package root is available in this window. The frame renders as missing content.`,
+      );
+      _frameMediaVerdicts.set(media.digest, 'missing');
+      return { kind: 'missing', missingRefs: [media.relativePath] };
+    }
+    const promise = resolveFrameMediaBitmap({
+      packageDir,
+      reference: media,
+      // The LRU interface is structural: the frame LRU already owns the byte
+      // budget and `bitmap.close()` on eviction, so media frames share the one
+      // cache and one eviction policy (T-52.2-31, D-10/D-12).
+      lru: frameLru,
+      decode: async (bytes) => {
+        try {
+          return await _decodeFrameBytesByFormat(bytes, 'draw');
+        } catch {
+          recordPhysicsPaintPerformanceCounter('decode.fail');
+          return null;
+        }
+      },
+    }).then((resolution) => {
+      // A 'bitmap' outcome is already in the LRU; only the failures need a
+      // durable verdict so the next tick does not re-issue the read.
+      if (resolution.kind !== 'bitmap') {
+        const reason = resolution.kind === 'missing' ? 'missing' : resolution.reason;
+        // quick-260913-52r (G): a failed resolution is LOUD — once per digest,
+        // because the verdict short-circuits every later tick.
+        console.warn(
+          `[physicPaint] frame media "${media.relativePath}" (digest ${media.digest}) could not be resolved: ${reason}. The frame renders as missing content.`,
+        );
+        _frameMediaVerdicts.set(media.digest, reason);
+      }
+    }).catch((error) => {
+      // An unexpected transport failure is an `io` refusal — never a bitmap.
+      console.warn(
+        `[physicPaint] frame media "${media.relativePath}" (digest ${media.digest}) read failed: ${error instanceof Error ? error.message : String(error)}.`,
+      );
+      _frameMediaVerdicts.set(media.digest, 'io');
+    }).finally(() => {
+      _frameMediaResolutionPromises.delete(media.digest);
+      physicPaintVersion.value++;
+    });
+    _frameMediaResolutionPromises.set(media.digest, promise);
   }
   return null;
+}
+
+async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
+  // Telemetry (stall diagnosis): the JS-observed invoke wall time covers the
+  // request-body handoff + codec + Rust base64 encode + response JSON string
+  // transfer + JS parse; codecMs isolates the pure codec. The convert step is
+  // the base64 decode (rgba arrives as Uint8Array) + the ImageData view; bitmap
+  // covers the premultiplied upload.
+  const ipcStartedAt = performance.now();
+  const { width, height, rgba, codecMs } = await decodeWebpFrame({ bytes });
+  const ipcEndedAt = performance.now();
+  const rgbaIsJsonArray = Array.isArray(rgba);
+  const convertStartedAt = performance.now();
+  const imageData = new ImageData(
+    rgba instanceof Uint8Array
+      ? new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.byteLength)
+      : new Uint8ClampedArray(rgba),
+    width,
+    height,
+  );
+  const convertEndedAt = performance.now();
+  // 52.1 (washed-out regression): premultiply AT bitmap creation. drawImage
+  // only ever consumes premultiplied data, and WKWebView draws a
+  // straight-alpha-flagged ('none') bitmap AS IF premultiplied — every
+  // semi-transparent stroke pixel composites over-bright ("screen-blend" wash).
+  // Hydrated keys escaped because they draw from rotoAlphaCanvasRegistry
+  // canvases (browser-decoded blob, already premultiplied); a freshly applied
+  // key misses the registry and lands here, so only its new strokes washed out.
+  const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: 'premultiply' });
+  const bitmapEndedAt = performance.now();
+  recordPhysicsPaintDecodeSample({
+    path: 'webp',
+    origin,
+    ipcMs: ipcEndedAt - ipcStartedAt,
+    codecMs: typeof codecMs === 'number' ? codecMs : -1,
+    convertMs: convertEndedAt - convertStartedAt,
+    bitmapMs: bitmapEndedAt - convertEndedAt,
+    width,
+    height,
+    inputBytes: bytes.length,
+    rgbaIsJsonArray,
+  });
+  return bitmap;
+}
+
+async function _decodePngBytesToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
+  const startedAt = performance.now();
+  const bitmap = await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }));
+  recordPhysicsPaintDecodeSample({
+    path: 'png',
+    origin,
+    ipcMs: 0,
+    codecMs: -1,
+    convertMs: 0,
+    bitmapMs: performance.now() - startedAt,
+    width: bitmap.width,
+    height: bitmap.height,
+    inputBytes: bytes.length,
+    rgbaIsJsonArray: false,
+  });
+  return bitmap;
+}
+
+/**
+ * 52.1-05 (D-13): await every in-flight decode. The export preload calls this
+ * after triggering the per-frame decodes so the render loop's getFlattenedFrame
+ * returns the baked raster — a cold LRU miss must never render a frame with a
+ * silently missing layer.
+ *
+ * 52.2-09 Task 3: the persisted-media reads are in-flight work of the same
+ * kind — an export that awaited only the inline decodes would bake a frame
+ * whose reopened real key was still being read from the package.
+ */
+export function awaitPendingDecodes(): Promise<void> {
+  return Promise.all([
+    ..._compositorDecodePromises.values(),
+    ..._frameMediaResolutionPromises.values(),
+  ]).then(() => undefined);
 }
 
 /**
@@ -1129,7 +1501,7 @@ function _trackContentRevision(layerId: string, trackId: string, frame: number):
   if (structural) return structural.contentRevision;
   const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
   if (!renderedFrame) return null;
-  return `${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
+  return buildFrameBytesToken(renderedFrame.bytes);
 }
 
 /**
@@ -1205,42 +1577,81 @@ function _preResolveTrackContent(
     if (source.kind === 'loop-placeholder') {
       return { kind: 'missing', missingRefs: source.missingSourceKeyIds ?? source.sourceKeyIds ?? [] };
     }
-    const dataUrl = source.renderedFrame.dataUrl;
+    // 52.2-09 Task 3 (D-13): a REOPENED package holds reference-only records —
+    // the pixels live in `frames/<layerId>/<keyId>.webp`, never inline — so a
+    // media-carrying payload resolves through the media seam instead of the
+    // inline-bytes assertion (which stays the runtime-record contract). Both
+    // roto collections reach this ONE seam: a reference names no collection.
+    const media = source.renderedFrame.media;
+    if (source.renderedFrame.bytes === undefined && media !== undefined) {
+      return _resolveMediaRasterResolution(media);
+    }
+    const bytes = requirePhysicPaintRotoInlineBytes(source.renderedFrame);
     // G-52-8 (FIX 3): decode-once across the whole app — launch hydration
     // already decoded this exact payload off the main thread into the alpha
     // canvas registry, so the compositor reuses that canvas instead of paying
     // a second main-thread decode (WebKit decodes lazily at the first
     // drawImage of the _compositorDecode Image). The registry canvas is a
     // read-only drawImage source here, same dimensions as the decoded image.
-    const registeredCanvas = _rotoAlphaCanvasRegistry.get(dataUrl);
+    const registeredCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(bytes));
     // G-52-10: fail-soft — a zero-size entry (a registered canvas a caller
     // later released) would throw InvalidStateError at drawImage; fall through
     // to _compositorDecode instead.
     if (registeredCanvas && registeredCanvas.width > 0 && registeredCanvas.height > 0) {
       return { kind: 'content', raster: registeredCanvas };
     }
-    const image = _compositorDecode(dataUrl);
+    const image = _compositorDecode(bytes);
     if (!image) return null;
     return { kind: 'content', raster: image };
   }
   const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
   if (!renderedFrame) return { kind: 'missing', missingRefs: [] };
-  const image = _compositorDecode(renderedFrame.dataUrl);
+  const image = _compositorDecode(renderedFrame.bytes);
   if (!image) return null;
   return { kind: 'content', raster: image };
 }
 
 /** 48-03 store-side implementation of the 48-04 resolveBackgroundSourceImage port. */
-function _resolveBackgroundSourceImage(sourceRef: string): HTMLImageElement | null {
-  const dataUrl = _backgroundSourceImages.get(sourceRef);
-  if (!dataUrl) return null;
-  return _compositorDecode(dataUrl);
+function _resolveBackgroundSourceImage(sourceRef: string): ImageBitmap | null {
+  const bytes = _backgroundSourceImages.get(sourceRef);
+  if (!bytes) return null;
+  return _compositorDecode(bytes);
+}
+
+/**
+ * 52.1-04 (D-10): neighbor prewarm — decode the adjacent frames (N+1, N+2, and
+ * N-1) through the existing decode path (decode_webp_frame → createImageBitmap
+ * → frameLru.put) into the SAME 512 MB LRU. One budget, one eviction policy:
+ * there is no second prewarm budget. The just-drawn frame is most-recently-used
+ * so prewarm only evicts the distant tail behind the playhead. Missing frames
+ * (past the sequence end, or a track with no source at that appFrame) resolve
+ * to `{ kind: 'missing' }` without a decode, so the helper is safe to call at
+ * any playhead position.
+ */
+export function prefetchNeighborFrames(layerId: string, appFrame: number): void {
+  const efxDocument = getEfxPaintDocument(layerId);
+  if (!efxDocument) return;
+  recordPhysicsPaintPerformanceCounter('prefetch.call');
+  const participating = participatingPaintTracks(efxDocument);
+  const previousOrigin = _decodeOriginIsPrefetch;
+  _decodeOriginIsPrefetch = true;
+  try {
+    for (const offset of [-1, 1, 2]) {
+      const targetFrame = appFrame + offset;
+      if (targetFrame < 0) continue;
+      for (const track of participating) {
+        _preResolveTrackContent(layerId, track.id, targetFrame);
+      }
+    }
+  } finally {
+    _decodeOriginIsPrefetch = previousOrigin;
+  }
 }
 
 /** 50-02 Task 2: the frame-aligned reference source verdict for the ghost draw path. */
 export interface ReferenceSourceFrameVerdict {
   readonly ref: string;
-  readonly dataUrl: string;
+  readonly bytes: Uint8Array;
   readonly clamped: boolean;
 }
 
@@ -1256,9 +1667,9 @@ function _resolveReferenceSourceImage(document: EfxPaintDocument, frame: number)
   if (track === null || track.sourceFrameRefs.length === 0) return null;
   const index = Math.min(frame, track.sourceFrameRefs.length - 1);
   const ref = track.sourceFrameRefs[index];
-  const dataUrl = _referenceSourceImages.get(ref);
-  if (dataUrl === undefined) return null;
-  return { ref, dataUrl, clamped: index !== frame };
+  const bytes = _referenceSourceImages.get(ref);
+  if (bytes === undefined) return null;
+  return { ref, bytes, clamped: index !== frame };
 }
 
 // ---------------------------------------------------------------------------
@@ -1326,7 +1737,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       motion: input.motion,
       mode: input.mode,
       size,
-      reference: { dataUrl: verdict.dataUrl, transform: track.transform, zoom: referenceZoom },
+      reference: { bytes: verdict.bytes, transform: track.transform, zoom: referenceZoom },
       signal: input.signal,
       onProgress: input.onProgress,
     });
@@ -1341,7 +1752,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
     payload: {
       frameIndex: frame.frameIndex,
       appFrame: frame.appFrame,
-      dataUrl: frame.dataUrl,
+      bytes: frame.bytes,
       width: frame.width,
       height: frame.height,
     },
@@ -1426,7 +1837,7 @@ function _makeRotoCacheFrame(
   backgroundOnly?: boolean,
   provenance?: Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT'>,
 ): PhysicPaintRotoCacheFrame {
-  const onionDataUrl = (renderedFrame as { onionDataUrl?: unknown }).onionDataUrl;
+  const onionBytes = (renderedFrame as { onionBytes?: Uint8Array }).onionBytes;
   return {
     ...renderedFrame,
     appFrame,
@@ -1438,7 +1849,7 @@ function _makeRotoCacheFrame(
     ...(provenance?.toSourceFrame !== undefined ? { toSourceFrame: provenance.toSourceFrame } : {}),
     ...(provenance?.interpolationT !== undefined ? { interpolationT: provenance.interpolationT } : {}),
     ...(backgroundOnly !== undefined ? { backgroundOnly } : {}),
-    ...(typeof onionDataUrl === 'string' ? { onionDataUrl } : {}),
+    ...(typeof onionBytes === 'string' ? { onionBytes } : {}),
   };
 }
 
@@ -1591,7 +2002,7 @@ function _makeBackgroundOnlySupportFrame(layerId: string, trackId: string, appFr
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`background-only-support:${layerId}:${appFrame}:${instruction.color}:${instruction.paperGrain ?? ''}:${instruction.grainStrength ?? 0}`)}`,
+    bytes: new Uint8Array(0),
     source: 'background-only-support',
     nearestRealKeyFrame,
     backgroundOnly: true,
@@ -1641,10 +2052,14 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
   return { ...frame, appFrame, frameIndex: 0, source: 'generated-interpolation' };
 }
 
-function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
+// Two-format law: blended interpolation bytes are PNG (display-only, never
+// persisted/validated); real keys are VP8L-only. The browser's toDataURL cannot
+// emit VP8L, and these derived frames never reach validation, so an explicit
+// image/png producer is honest here.
+function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): Uint8Array | null {
   if (typeof document === 'undefined') return null;
-  const firstCanvas = _rotoAlphaCanvasRegistry.get(firstKeyFrame.dataUrl);
-  const secondCanvas = _rotoAlphaCanvasRegistry.get(secondKeyFrame.dataUrl);
+  const firstCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(firstKeyFrame.bytes));
+  const secondCanvas = rotoAlphaCanvasRegistry.get(buildFrameBytesToken(secondKeyFrame.bytes));
   if (!firstCanvas || !secondCanvas) return null;
   const width = Math.max(1, Math.trunc(firstKeyFrame.width ?? firstCanvas.width));
   const height = Math.max(1, Math.trunc(firstKeyFrame.height ?? firstCanvas.height));
@@ -1659,30 +2074,48 @@ function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFr
   outputContext.globalAlpha = t;
   outputContext.drawImage(secondCanvas, 0, 0, width, height);
   outputContext.globalAlpha = 1;
-  return output.toDataURL('image/png');
+  const bytes = canvasToPngBytes(output);
+  return bytes;
 }
 
-function _blendAlphaDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
+function _blendAlphaBytes(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): Uint8Array | null {
   return _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame, secondKeyFrame, t);
+}
+
+/**
+ * 52.2-02 (D-07): project a runtime real-key payload into the rendered-frame
+ * shape the interpolation renderers consume. A payload carries exactly one
+ * raster carrier, and these renderers read pixels, so the inline carrier is
+ * asserted here — a reference-only payload never reaches a generated-cell
+ * render, which is a runtime-only derivation.
+ */
+function _toRenderedPayloadFrame(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRenderedFrame {
+  return {
+    frameIndex: payload.frameIndex,
+    appFrame: payload.appFrame,
+    bytes: requirePhysicPaintRotoInlineBytes(payload),
+    ...(payload.width !== undefined ? { width: payload.width } : {}),
+    ...(payload.height !== undefined ? { height: payload.height } : {}),
+  };
 }
 
 export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
   return _withGeneratedAppFrame({
     frameIndex: 0,
     appFrame: targetFrame,
-    dataUrl: sourceKeyFrame.dataUrl,
+    bytes: sourceKeyFrame.bytes,
     width: sourceKeyFrame.width,
     height: sourceKeyFrame.height,
   }, targetFrame);
 }
 
 export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame | null {
-  const dataUrl = _blendAlphaDataUrl(firstKeyFrame, secondKeyFrame, t);
-  if (!dataUrl) return null;
+  const bytes = _blendAlphaBytes(firstKeyFrame, secondKeyFrame, t);
+  if (!bytes) return null;
   return _withGeneratedAppFrame({
     frameIndex: 0,
     appFrame: targetFrame,
-    dataUrl,
+    bytes,
     width: firstKeyFrame.width ?? secondKeyFrame.width,
     height: firstKeyFrame.height ?? secondKeyFrame.height,
   }, targetFrame);
@@ -1733,9 +2166,11 @@ function _regenerateGeneratedRotoCache(layerId: string, trackId: string, setting
     const targetDisplayOccupiedByRealKey = Array.from(metadata.values()).some((frame) => frame.source === 'real-key' && (frame.displayFrame ?? frame.appFrame) === targetFrame);
     if (targetDisplayOccupiedByRealKey) continue;
     _removeBackgroundOnlyRotoSupport(layerId, trackId, [targetFrame]);
+    const enumerateRenderStartedAtMs = performance.now();
     const rendered = settings.mode === 'duplicate'
       ? renderDuplicateRotoInterpolationFrame(from, targetFrame, settings)
       : renderBlendedRotoInterpolationFrame(from, to, targetFrame, displayEntry.t, settings);
+    recordPhysicsPaintPerformance({ stage: 'generated.renderEnumerate', category: 'sync-cpu', durationMs: performance.now() - enumerateRenderStartedAtMs, timestamp: performance.now(), sourceFrame: targetFrame });
     if (!rendered) throw new Error('Generated Roto alpha sources are unavailable.');
     const generatedFrame = {
       ...rendered,
@@ -1755,6 +2190,55 @@ function _regenerateGeneratedRotoCache(layerId: string, trackId: string, setting
   return { changed: removed || generatedFrames.length > 0, generatedFrames, failed: false };
 }
 
+/**
+ * 52.1 lever 1: resolve a generated (blend/duplicate) frame through the
+ * read-path cache keyed by cacheRevision. The cacheRevision embeds
+ * contentRevision, so a real-key edit (which rotates contentRevision) can
+ * never be served a stale blend. On a miss the frame is rendered once and
+ * stored; the cache is byte-budgeted (FIFO eviction) and holds raw bytes.
+ */
+function _getOrRenderGeneratedRotoFrame(
+  cacheRevision: string,
+  mode: 'duplicate' | 'blend',
+  left: PhysicPaintRotoRealKeyRecord,
+  right: PhysicPaintRotoRealKeyRecord,
+  appFrame: number,
+  t: number,
+): PhysicPaintRenderedFrame | null {
+  const cached = _generatedRenderSourceCache.get(cacheRevision);
+  if (cached) {
+    recordPhysicsPaintPerformanceCounter('generated.cacheHit');
+    return cached;
+  }
+  recordPhysicsPaintPerformanceCounter('generated.cacheMiss');
+  const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode };
+  const renderStartedAtMs = performance.now();
+  const rendered = mode === 'duplicate'
+    ? renderDuplicateRotoInterpolationFrame(_toRenderedPayloadFrame(left.payload), appFrame, settings)
+    : renderBlendedRotoInterpolationFrame(_toRenderedPayloadFrame(left.payload), _toRenderedPayloadFrame(right.payload), appFrame, t, settings);
+  recordPhysicsPaintPerformance({
+    stage: 'generated.render',
+    category: 'sync-cpu',
+    durationMs: performance.now() - renderStartedAtMs,
+    timestamp: performance.now(),
+    sourceFrame: appFrame,
+    branch: mode,
+  });
+  if (!rendered) {
+    return null;
+  }
+  _generatedRenderSourceCache.set(cacheRevision, rendered);
+  _generatedRenderSourceCacheBytes += rendered.bytes.length;
+  while (_generatedRenderSourceCacheBytes > GENERATED_RENDER_SOURCE_CACHE_BYTE_CEILING) {
+    const oldestKey = _generatedRenderSourceCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = _generatedRenderSourceCache.get(oldestKey);
+    _generatedRenderSourceCache.delete(oldestKey);
+    if (oldest) _generatedRenderSourceCacheBytes -= oldest.bytes.length;
+  }
+  return rendered;
+}
+
 function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operationId' | 'layerId' | 'startFrame'>, error: string): PhysicPaintApplyResult {
   return {
     operationId: payload.operationId,
@@ -1768,19 +2252,50 @@ function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operation
 }
 
 /**
+ * Project one runtime record collection into its persisted (media-reference)
+ * shape when the caller supplied a resolver (52.2-06, D-06/D-07). No resolver
+ * means the live Studio path: records pass through with their bytes, exactly
+ * as before this plan. A supplied resolver makes the projection mandatory —
+ * an unresolved key throws rather than producing a record without media.
+ */
+function _projectRotoRecordsForPersistence(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  resolveRef: PhysicPaintRotoMediaReferenceResolver | undefined,
+): readonly PhysicPaintRotoRealKeyRecord[] {
+  if (resolveRef === undefined) return records;
+  const projected = toPersistedRotoRecords(records, resolveRef);
+  if (!projected.ok) throw new PhysicPaintRotoMediaProjectionError(projected.failure);
+  return projected.records;
+}
+
+/**
  * Build the canonical v1.0 rotoPhysical document payload for one layer, or
  * null when the layer has no physical Roto state. Consumed by the v1.0
  * document projection (extractRuntimeStateForDocument) so the serialized
  * payload is always schema-valid. Reads the module maps directly (the
  * `_resolveRotoPhysicalStructural` idiom) and mirrors the getRoto* accessor
  * derivations exactly.
+ *
+ * 52.2-06 (D-06): when `resolveRef` is supplied, BOTH persisted roto
+ * collections are projected to media references BEFORE the revision is
+ * computed, so the persisted revision is a function of the references (plan
+ * 02's reference-total encoding) and no payload byte is read on this path.
+ * Projecting only `realKeyRecords` would leave group overrides carrying an
+ * inline raster into the sub-file, and the on-disk parser refuses the whole
+ * layer — not one lost key.
  */
-function _buildRotoPhysicalDocumentForLayer(layerId: string, trackId: string): PhysicPaintRotoPhysicalDocument | null {
+function _buildRotoPhysicalDocumentForLayer(
+  layerId: string,
+  trackId: string,
+  resolveRef?: PhysicPaintRotoMediaReferenceResolver,
+): PhysicPaintRotoPhysicalDocument | null {
   const recordMap = _rotoRealKeyRecords.get(layerId)?.get(trackId);
   if (!recordMap) return null;
   const realKeyRecords = Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
   const groupOverrideRecords = Array.from(_rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? [])
     .sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
+  const persistedRealKeyRecords = _projectRotoRecordsForPersistence(realKeyRecords, resolveRef);
+  const persistedGroupOverrideRecords = _projectRotoRecordsForPersistence(groupOverrideRecords, resolveRef);
   const interpolation = _rotoPhysicalInterpolationState.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
   const capacity = _rotoPhysicalCapacity.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
   const selectedCandidate = _rotoPhysicalSelectedKeyId.get(layerId)?.get(trackId) ?? null;
@@ -1793,19 +2308,19 @@ function _buildRotoPhysicalDocumentForLayer(layerId: string, trackId: string): P
     ?? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY;
   return parsePhysicPaintRotoPhysicalDocument({
     capacity,
-    realKeyRecords,
-    groupOverrideRecords,
+    realKeyRecords: persistedRealKeyRecords,
+    groupOverrideRecords: persistedGroupOverrideRecords,
     interpolation,
     scriptMotion: _rotoPhysicalScriptMotion.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
     background: _rotoBackgroundMetadata.get(layerId)?.get(trackId) ?? null,
     selectedKeyId,
     cursorAppFrame,
     revision: buildPhysicPaintRotoPhysicalRevision(
-      realKeyRecords,
+      persistedRealKeyRecords,
       interpolation,
       loopClips,
       incomingInterpolationBreakKeyIds,
-      groupOverrideRecords,
+      persistedGroupOverrideRecords,
     ),
     loopClips,
     incomingInterpolationBreakKeyIds,
@@ -1824,6 +2339,10 @@ export type RotoTrackSelectionFailureReason =
   | 'missing-key'
   | 'partial-loop-overlap'
   | 'apply-failed'
+  // 52.2-06 (T-52.2-20): a pasted/duplicated key whose pixels are not in the
+  // runtime (reference-only record) cannot publish a frame — refusal, never an
+  // invisible `width: 0` key.
+  | 'unresolved-key-pixels'
   | RotoRailSetPasteFailureReason
   | 'empty-set'
   | 'malformed-member'
@@ -1860,8 +2379,8 @@ function _backgroundSourceRevision(document: EfxPaintDocument): string {
     for (const ref of clip.sourceFrameRefs) refs.add(ref);
   }
   return [...refs].sort().map((ref) => {
-    const dataUrl = _backgroundSourceImages.get(ref);
-    return dataUrl === undefined ? `${ref}:missing` : `${ref}:${dataUrl.length}:${dataUrl.slice(0, 64)}`;
+    const bytes = _backgroundSourceImages.get(ref);
+    return bytes === undefined ? `${ref}:missing` : `${ref}:${buildFrameBytesToken(bytes)}`;
   }).join('|');
 }
 
@@ -1878,8 +2397,8 @@ export function _referenceSourceRevision(document: EfxPaintDocument): string {
   const track = document.photoReference;
   if (track === null) return '';
   return track.sourceFrameRefs.map((ref) => {
-    const dataUrl = _referenceSourceImages.get(ref);
-    return dataUrl === undefined ? `${ref}:missing` : `${ref}:${dataUrl.length}:${dataUrl.slice(0, 64)}`;
+    const bytes = _referenceSourceImages.get(ref);
+    return bytes === undefined ? `${ref}:missing` : `${ref}:${buildFrameBytesToken(bytes)}`;
   }).join('|');
 }
 
@@ -2016,13 +2535,11 @@ function _resolveFlattenedFrame(
     fondCtx.drawImage(result.raster, 0, 0);
     raster = fondCanvas;
   }
-  // G-52-8 (FIX 4): the record carries the raster and encodes the PNG LAZILY —
-  // at photo weight a synchronous raster.toDataURL() costs ~40-80ms on the main
-  // thread, and both draw surfaces then decoded that fresh dataUrl again (WebKit
-  // lazy decode at first drawImage). Draw surfaces consume `raster` directly;
-  // only transport/serialization readers (bridge, export, tests) pay the
-  // encode, memoized on first read. The getter survives Object.freeze.
-  let encodedDataUrl: string | null = null;
+  // G-52-8 (FIX 4): the record carries the raster; draw surfaces consume it
+  // directly. The WebP encode is async (Rust codec) and memoized on first call
+  // via encodeBytes() — transport/serialization readers (bridge, export, tests)
+  // await it. The memoized Promise survives Object.freeze.
+  let encodedBytesPromise: Promise<Uint8Array> | null = null;
   const record: EfxPaintFlattenedFrameRecord = Object.freeze({
     layerId,
     frame,
@@ -2031,13 +2548,14 @@ function _resolveFlattenedFrame(
     renderedFrame: Object.freeze({
       frameIndex: frame,
       appFrame: frame,
-      get dataUrl(): string {
-        if (encodedDataUrl === null) encodedDataUrl = raster.toDataURL();
-        return encodedDataUrl;
-      },
+      bytes: new Uint8Array(0),
       width: size.width,
       height: size.height,
     }),
+    encodeBytes: () => {
+      if (encodedBytesPromise === null) encodedBytesPromise = encodeCanvasAsWebp(raster);
+      return encodedBytesPromise;
+    },
     missing: result.missing,
   });
   flattenedMemo.set(flattenedKey, record);
@@ -2055,8 +2573,27 @@ export const physicPaintStore = {
    * the neutral fill. Null when the ref has no registered bytes (the clip
    * hasn't hydrated yet, or the ref is dangling).
    */
-  getBackgroundSourceImageDataUrl(sourceRef: string): string | null {
+  getBackgroundSourceImageBytes(sourceRef: string): Uint8Array | null {
     return _backgroundSourceImages.get(sourceRef) ?? null;
+  },
+
+  /**
+   * 52.1 (D-06): memoized Blob URL for one Background source ref — the Bg
+   * rail's filmstrip cells paint it via <img src>. The URL is derived from
+   * the registered bytes (never a data: URL) and memoized per ref+token;
+   * replaced (old URL revoked) when the bytes change. Absorbed by the LRU
+   * in Plan 04.
+   */
+  getBackgroundSourceImageUrl(sourceRef: string): string | null {
+    const bytes = _backgroundSourceImages.get(sourceRef);
+    if (!bytes) return null;
+    const token = buildFrameBytesToken(bytes);
+    const key = `${sourceRef}:${token}`;
+    const cached = _backgroundSourceImageUrls.get(key);
+    if (cached) return cached;
+    const url = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
+    _backgroundSourceImageUrls.set(key, url);
+    return url;
   },
 
   /**
@@ -2137,8 +2674,8 @@ export const physicPaintStore = {
    * draw (the _compositorDecode idiom — never a per-draw decode, MEMORY: image
    * decode storms cause global slowness).
    */
-  getDecodedImage(dataUrl: string): HTMLImageElement | null {
-    return _compositorDecode(dataUrl);
+  getDecodedImage(bytes: Uint8Array): ImageBitmap | null {
+    return _compositorDecode(bytes);
   },
 
   getRotoFrame(layerId: string, trackId: string, frame: number): PhysicPaintRotoCacheFrame | null {
@@ -2256,10 +2793,19 @@ export const physicPaintStore = {
    * (Phase 45-04 Task 2, 46-01 track-scoped). The rotoPhysical payload is
    * rebuilt through the canonical parser so the document always carries a
    * schema-valid, revision-consistent record.
+   *
+   * 52.2-06: `resolveRef` is the package-write caller's media authority (plan
+   * 07's save funnel). Supplied, both roto collections are projected to media
+   * references and an unresolved key throws; omitted, the live runtime records
+   * pass through unchanged for the in-memory Studio projection.
    */
-  extractRuntimeStateForDocument(layerId: string, trackId: string): EfxPaintRuntimeProjection {
+  extractRuntimeStateForDocument(
+    layerId: string,
+    trackId: string,
+    resolveRef?: PhysicPaintRotoMediaReferenceResolver,
+  ): EfxPaintRuntimeProjection {
     const frames = new Map(_frames.get(layerId)?.get(trackId) ?? []);
-    return { trackId, frames, rotoPhysical: _buildRotoPhysicalDocumentForLayer(layerId, trackId) };
+    return { trackId, frames, rotoPhysical: _buildRotoPhysicalDocumentForLayer(layerId, trackId, resolveRef) };
   },
 
   /**
@@ -2303,6 +2849,7 @@ export const physicPaintStore = {
       for (const [frame, value] of payload.frames) trackFrames.set(frame, value);
     }
     if (payload.rotoPhysical) {
+      _assertRotoPhysicalDocumentCarriers(payload.rotoPhysical);
       const physical = parsePhysicPaintRotoPhysicalDocument(payload.rotoPhysical);
       // (46-01 TRK-03) per-track revisions bump WITHOUT the dirty callback —
       // the caller owns project-dirty signaling for installs.
@@ -2314,11 +2861,15 @@ export const physicPaintStore = {
       });
       if (!projection.ok) throw new Error(projection.failure.text);
       const recordMap = _getOrCreateTrackRecords(layerId, trackId);
-      for (const record of physical.realKeyRecords) recordMap.set(record.keyId, record);
+      // 52.2-06 (D-06): BOTH collections are projected to the runtime shape —
+      // a reference-only record is rebuilt as a media-only record (no byte
+      // buffer is allocated for pixels the package will supply), and the
+      // group-override map is not a secondary concern.
+      for (const record of toRuntimeRotoRecords(physical.realKeyRecords)) recordMap.set(record.keyId, record);
       const groupOverrideMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
-      for (const record of physical.groupOverrideRecords ?? []) groupOverrideMap.set(record.keyId, record);
+      for (const record of toRuntimeRotoRecords(physical.groupOverrideRecords ?? [])) groupOverrideMap.set(record.keyId, record);
       _getOrCreateLayerTrackMap(_rotoGroupOverrideRecords, layerId).set(trackId, groupOverrideMap);
-      _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, physical.interpolation);
+      _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(physical.interpolation));
       _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, physical.scriptMotion);
       _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, physical.loopClips);
       _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, physical.incomingInterpolationBreakKeyIds);
@@ -2463,7 +3014,7 @@ export const physicPaintStore = {
       const update = this.updateRotoPhysicalRealKeyPayload(payload.layerId, payload.trackId, physicalRecord.keyId, currentRevision, {
         frameIndex: payload.renderedFrame.frameIndex,
         appFrame: physicalRecord.appFrame,
-        dataUrl: payload.renderedFrame.dataUrl,
+        bytes: payload.renderedFrame.bytes,
         ...(payload.renderedFrame.width !== undefined ? { width: payload.renderedFrame.width } : {}),
         ...(payload.renderedFrame.height !== undefined ? { height: payload.renderedFrame.height } : {}),
       });
@@ -2476,7 +3027,7 @@ export const physicPaintStore = {
     } else {
       const rotoBackground = payload.rotoBackground ?? null;
       if (rotoBackground) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, payload.layerId).set(payload.trackId, { ...rotoBackground });
-      this.upsertRealRotoKeyFrame(payload.layerId, payload.trackId, payload.sourceFrame ?? payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
+      this.upsertRealRotoKeyFrame(payload.layerId, payload.trackId, payload.sourceFrame ?? payload.startFrame, { ...payload.renderedFrame, ...(payload.onionBytes ? { onionBytes: payload.onionBytes } : {}) }, payload.backgroundOnly === true);
       if (payload.rotoInterpolationSettings) this.setRotoInterpolationSettings(payload.layerId, payload.trackId, payload.rotoInterpolationSettings);
     }
     return {
@@ -2561,9 +3112,9 @@ export const physicPaintStore = {
     const rotoInterpolationFailureStatus = _rotoInterpolationFailureStatus.get(layerId)?.get(trackId);
     const rotoPlaybackSettings = _rotoPlaybackSettings.get(layerId)?.get(trackId);
     const alphaCanvases: Array<[string, HTMLCanvasElement]> = [];
-    for (const dataUrl of _getTrackDataUrls(layerId, trackId)) {
-      const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
-      if (canvas) alphaCanvases.push([dataUrl, canvas]);
+    for (const token of _getTrackBytesTokens(layerId, trackId)) {
+      const canvas = rotoAlphaCanvasRegistry.get(token);
+      if (canvas) alphaCanvases.push([token, canvas]);
     }
     if (!frames && !rotoBackground && !rotoCacheMetadata && !rotoGeneratedCacheMetadata && !rotoInterpolationSettings && !rotoInterpolationFailureStatus && !rotoPlaybackSettings && alphaCanvases.length === 0) return null;
     return {
@@ -2584,8 +3135,8 @@ export const physicPaintStore = {
     const { layerId, trackId } = snapshot;
     // Only the snapshot's track is replaced; sibling tracks stay untouched
     // (46-01 TRK-01: per-track teardown/restore law).
-    for (const dataUrl of _getTrackDataUrls(layerId, trackId)) {
-      _rotoAlphaCanvasRegistry.delete(dataUrl);
+    for (const token of _getTrackBytesTokens(layerId, trackId)) {
+      rotoAlphaCanvasRegistry.delete(token);
     }
     _frames.get(layerId)?.delete(trackId);
     _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
@@ -2620,8 +3171,8 @@ export const physicPaintStore = {
     if (snapshot.rotoInterpolationSettings) _getOrCreateLayerTrackMap(_rotoInterpolationSettings, layerId).set(trackId, _cloneRotoInterpolationSettings(snapshot.rotoInterpolationSettings));
     if (snapshot.rotoInterpolationFailureStatus) _getOrCreateLayerTrackMap(_rotoInterpolationFailureStatus, layerId).set(trackId, snapshot.rotoInterpolationFailureStatus);
     if (snapshot.rotoPlaybackSettings) _getOrCreateLayerTrackMap(_rotoPlaybackSettings, layerId).set(trackId, { ...snapshot.rotoPlaybackSettings });
-    for (const [dataUrl, canvas] of snapshot.alphaCanvases) {
-      if (!_rotoAlphaCanvasRegistry.has(dataUrl)) _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
+    for (const [token, canvas] of snapshot.alphaCanvases) {
+      if (!rotoAlphaCanvasRegistry.has(token)) rotoAlphaCanvasRegistry.set(token, canvas);
     }
     bumpTrackRevision(layerId, trackId);
   },
@@ -2636,14 +3187,18 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorImageCache.size === 0 && _compositorImageLoading.size === 0 && _compositorImageFailed.size === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && _frameMediaBytes.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
     _rotoGeneratedCacheMetadata.clear();
+    _generatedRenderSourceCache.clear();
+    _generatedRenderSourceCacheBytes = 0;
     _rotoInterpolationSettings.clear();
     _rotoInterpolationFailureStatus.clear();
-    if (resetAlphaCanvases) _rotoAlphaCanvasRegistry.clear();
+    if (resetAlphaCanvases) rotoAlphaCanvasRegistry.clear();
+    for (const url of _backgroundSourceImageUrls.values()) URL.revokeObjectURL(url);
+    _backgroundSourceImageUrls.clear();
     _rotoRealKeyRecords.clear();
     _rotoGroupOverrideRecords.clear();
     _rotoPhysicalInterpolationState.clear();
@@ -2665,17 +3220,25 @@ export const physicPaintStore = {
     // rest of the store (decode caches clear here only, per the plan).
     _flattenedMemo.clear();
     _trackRasterMemo.clear();
-    _compositorImageCache.clear();
-    _compositorImageLoading.clear();
-    _compositorImageFailed.clear();
+    _compositorDecodeLoading.clear();
+    _compositorDecodePromises.clear();
+    // 52.2-09 Task 3: the media verdicts are per-session runtime state too — a
+    // verdict recorded for a previous project's digest must not silence a read
+    // in the next one.
+    _frameMediaVerdicts.clear();
+    _frameMediaResolutionPromises.clear();
+    // 52.2-10 (D-12): bridged bytes are a claim about THIS session's window
+    // pair; a new project must not inherit them.
+    _frameMediaBytes.clear();
+    frameLru.clear();
     _backgroundSourceImages.clear();
     _referenceSourceImages.clear();
     trackRevisions.clear();
     _notifyVisualChange();
   },
 
-  pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
-    _pruneUnreferencedRotoAlphaCanvases(dataUrls);
+  pruneUnreferencedRotoAlphaCanvases(tokens: Iterable<string>): void {
+    _pruneUnreferencedRotoAlphaCanvases(tokens);
   },
 
   // -------------------------------------------------------------------------
@@ -2715,6 +3278,7 @@ export const physicPaintStore = {
     if (!isPhysicPaintRotoInterpolationState(interpolation)) {
       return { ok: false, error: 'Interpolation state must include canonical enabled and mode fields.' };
     }
+    const nextInterpolation = _retireFrameBlendingMode(interpolation);
 
     let validatedRecords: readonly PhysicPaintRotoRealKeyRecord[];
     try {
@@ -2729,7 +3293,7 @@ export const physicPaintStore = {
     const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
       identities,
       capacity,
-      interpolationEnabled: interpolation.enabled,
+      interpolationEnabled: nextInterpolation.enabled,
       incomingInterpolationBreakKeyIds: currentIncomingBreaks,
     });
     if (!projectionResult.ok) {
@@ -2737,7 +3301,7 @@ export const physicPaintStore = {
     }
 
     const previousRecords = this.getRotoRealKeyRecords(layerId, trackId);
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     const groupOverrideRecords = this.getRotoGroupOverrideRecords(layerId, trackId);
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
     const previousCapacity = this.getRotoPhysicalCapacity(layerId, trackId);
@@ -2753,7 +3317,7 @@ export const physicPaintStore = {
     );
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(
       validatedRecords,
-      interpolation,
+      nextInterpolation,
       currentLoopClips,
       currentIncomingBreaks,
       groupOverrideRecords,
@@ -2765,8 +3329,8 @@ export const physicPaintStore = {
     recordMap.clear();
     for (const record of validatedRecords) recordMap.set(record.keyId, record);
     _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, Object.freeze({
-      enabled: interpolation.enabled,
-      mode: interpolation.mode,
+      enabled: nextInterpolation.enabled,
+      mode: nextInterpolation.mode,
     }) as PhysicPaintRotoInterpolationState);
     if (!_rotoPhysicalScriptMotion.get(layerId)?.has(trackId)) _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO);
     const previousSelectedKeyId = _rotoPhysicalSelectedKeyId.get(layerId)?.get(trackId) ?? null;
@@ -2774,7 +3338,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, selectedRecord?.keyId ?? null);
     _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, selectedRecord?.appFrame ?? Math.min(_rotoPhysicalCursorAppFrame.get(layerId)?.get(trackId) ?? 0, capacity - 1));
     _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, capacity);
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
     return { ok: true };
@@ -2895,7 +3459,7 @@ export const physicPaintStore = {
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
       trackId,
       new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
@@ -2904,7 +3468,7 @@ export const physicPaintStore = {
       trackId,
       new Map((document.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
     );
-    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, document.interpolation);
+    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(document.interpolation));
     _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
@@ -2914,7 +3478,7 @@ export const physicPaintStore = {
     if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
     else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
     return { ok: true, document };
@@ -2954,7 +3518,7 @@ export const physicPaintStore = {
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
       trackId,
       new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
@@ -2963,7 +3527,7 @@ export const physicPaintStore = {
       trackId,
       new Map((document.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
     );
-    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, document.interpolation);
+    _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(document.interpolation));
     _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
@@ -2973,7 +3537,7 @@ export const physicPaintStore = {
     if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
     else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     return { ok: true, document };
   },
 
@@ -3213,11 +3777,12 @@ export const physicPaintStore = {
     if (!isPhysicPaintRotoInterpolationState(state)) {
       return { ok: false, error: 'Interpolation state must include canonical enabled and mode fields.' };
     }
+    const next = _retireFrameBlendingMode(state);
     const current = this.getRotoPhysicalInterpolationState(layerId, trackId);
-    if (current.enabled === state.enabled && current.mode === state.mode) return { ok: true };
+    if (current.enabled === next.enabled && current.mode === next.mode) return { ok: true };
     _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, Object.freeze({
-      enabled: state.enabled,
-      mode: state.mode,
+      enabled: next.enabled,
+      mode: next.mode,
     }) as PhysicPaintRotoInterpolationState);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
@@ -3399,21 +3964,19 @@ export const physicPaintStore = {
         const right = this.getRotoRealKeyRecord(layerId, trackId, lifecycleTarget.rightSourceKeyId);
         const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
         if (!left || !right || !interpolation.enabled) return null;
-        const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
-        const rendered = interpolation.mode === 'duplicate'
-          ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-          : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, lifecycleTarget.progress, settings);
+        const group = structural.loopClips.find((candidate) => candidate.loopId === lifecycleTarget.groupId);
+        if (!group) return null;
+        const sourceCycleId = getPhysicsPaintRotoSourceCycleId(group.sourceKeyIds);
+        const cacheRevision = `${contentRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`;
+        const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, lifecycleTarget.progress);
         if (!rendered) return null;
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
           frameIndex: rendered.frameIndex,
           appFrame,
-          dataUrl: rendered.dataUrl,
+          bytes: rendered.bytes,
           ...(rendered.width !== undefined ? { width: rendered.width } : {}),
           ...(rendered.height !== undefined ? { height: rendered.height } : {}),
         };
-        const group = structural.loopClips.find((candidate) => candidate.loopId === lifecycleTarget.groupId);
-        if (!group) return null;
-        const sourceCycleId = getPhysicsPaintRotoSourceCycleId(group.sourceKeyIds);
         return {
           kind: 'generated',
           layerId,
@@ -3424,7 +3987,7 @@ export const physicPaintStore = {
           sourceCycleId,
           cycleOffset: lifecycleTarget.cycleOffset,
           contentRevision,
-          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`,
+          cacheRevision,
           renderedFrame,
         };
       }
@@ -3464,16 +4027,14 @@ export const physicPaintStore = {
       const right = this.getRotoRealKeyRecord(layerId, trackId, cell.rightKeyId);
       if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
       const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
-      const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
       const distance = right.appFrame - left.appFrame;
-      const rendered = interpolation.mode === 'duplicate'
-        ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-        : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, settings);
+      const cacheRevision = `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`;
+      const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, (appFrame - left.appFrame) / distance);
       if (!rendered) return null;
       const renderedFrame: PhysicPaintRotoRealKeyPayload = {
         frameIndex: rendered.frameIndex,
         appFrame,
-        dataUrl: rendered.dataUrl,
+        bytes: rendered.bytes,
         ...(rendered.width !== undefined ? { width: rendered.width } : {}),
         ...(rendered.height !== undefined ? { height: rendered.height } : {}),
       };
@@ -3485,7 +4046,7 @@ export const physicPaintStore = {
         rightKeyId: right.keyId,
         interpolationMode: interpolation.mode,
         contentRevision,
-        cacheRevision: `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`,
+        cacheRevision,
         renderedFrame,
       };
     }
@@ -3528,15 +4089,16 @@ export const physicPaintStore = {
         if (!left || !right) return null;
         const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
         if (!interpolation.enabled) return null;
-        const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
-        const rendered = interpolation.mode === 'duplicate'
-          ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-          : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, resolution.progress, settings);
+        // Cycle-local identity: equivalent source cycles share generated
+        // cache entries across repeat destinations and Loop Clip instances,
+        // while distinct ordered cycles cannot collide on one adjacent pair.
+        const cacheRevision = `${contentRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`;
+        const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, resolution.progress);
         if (!rendered) return null;
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
           frameIndex: rendered.frameIndex,
           appFrame,
-          dataUrl: rendered.dataUrl,
+          bytes: rendered.bytes,
           ...(rendered.width !== undefined ? { width: rendered.width } : {}),
           ...(rendered.height !== undefined ? { height: rendered.height } : {}),
         };
@@ -3550,10 +4112,7 @@ export const physicPaintStore = {
           sourceCycleId: resolution.sourceCycleId,
           cycleOffset: resolution.cycleOffset,
           contentRevision,
-          // Cycle-local identity: equivalent source cycles share generated
-          // cache entries across repeat destinations and Loop Clip instances,
-          // while distinct ordered cycles cannot collide on one adjacent pair.
-          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`,
+          cacheRevision,
           renderedFrame,
         };
       }
@@ -3597,7 +4156,7 @@ export const physicPaintStore = {
     const currentRevision = this.getRotoPhysicalContentRevision(layerId, trackId);
     const current = _rotoRealKeyRecords.get(layerId)?.get(trackId)?.get(keyId) ?? null;
     const reject = (error: string): { ok: false; error: string } => {
-      _pruneUnreferencedRotoAlphaCanvases([payload.dataUrl]);
+      _pruneUnreferencedRotoAlphaCanvases([buildPhysicPaintRotoPayloadContentToken(payload)]);
       return { ok: false, error };
     };
     if (!currentRevision || currentRevision !== expectedContentRevision || !current) return reject('Physical identity or content revision changed.');
@@ -3619,7 +4178,7 @@ export const physicPaintStore = {
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(trackId, new Map(validated.map((record) => [record.keyId, record])));
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases([current.payload.dataUrl]);
+    _pruneUnreferencedRotoAlphaCanvases([buildPhysicPaintRotoPayloadContentToken(current.payload)]);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId, diagnostics);
     return { ok: true, changed: true, contentRevision: nextRevision };
@@ -3630,7 +4189,7 @@ export const physicPaintStore = {
    * replacement/disposal.
    */
   clearRotoPhysicalRecords(layerId: string, trackId: string): void {
-    const previousPayloadDataUrls = _getTrackDataUrls(layerId, trackId);
+    const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
     _rotoRealKeyRecords.get(layerId)?.delete(trackId);
     _rotoGroupOverrideRecords.get(layerId)?.delete(trackId);
     _rotoPhysicalInterpolationState.get(layerId)?.delete(trackId);
@@ -3641,7 +4200,7 @@ export const physicPaintStore = {
     _rotoPhysicalCursorAppFrame.get(layerId)?.delete(trackId);
     _rotoPhysicalCapacity.get(layerId)?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
-    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
   },
 
   // -------------------------------------------------------------------------
@@ -3747,7 +4306,7 @@ export const physicPaintStore = {
     });
     if (!pasted.ok) return { ok: false, reason: pasted.reason };
     const applied = _applyRotoTrackPaste(this, layerId, targetTrackId, document, pasted.proposal);
-    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    if (!applied.ok) return { ok: false, reason: applied.reason };
     return { ok: true, impact: pasted.impact };
   },
 
@@ -3772,7 +4331,7 @@ export const physicPaintStore = {
     });
     if (!duplicated.ok) return { ok: false, reason: duplicated.reason };
     const applied = _applyRotoTrackPaste(this, layerId, trackId, document, duplicated.proposal);
-    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    if (!applied.ok) return { ok: false, reason: applied.reason };
     return { ok: true, impact: duplicated.impact };
   },
 
@@ -3858,7 +4417,7 @@ export const physicPaintStore = {
     });
     if (!pasted.ok) return { ok: false, reason: pasted.reason };
     const applied = _applyRotoTrackPaste(this, layerId, toTrackId, destinationDocument, pasted.proposal);
-    if (!applied.ok) return { ok: false, reason: 'apply-failed' };
+    if (!applied.ok) return { ok: false, reason: applied.reason };
     // Delete half second: the source loses the moved items exactly like a cut.
     const carriedLoopIds = new Set(
       copied.payload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
@@ -3922,7 +4481,20 @@ function _applyRotoTrackPaste(
   trackId: string,
   priorDocument: PhysicPaintRotoPhysicalDocument,
   proposal: PhysicPaintRotoPhysicalDocument,
-): { ok: true } | { ok: false; reason: string } {
+): { ok: true } | { ok: false; reason: RotoTrackSelectionFailureReason } {
+  const existingKeyIds = new Set(priorDocument.realKeyRecords.map((record) => record.keyId));
+  const freshRecords = proposal.realKeyRecords.filter((record) => !existingKeyIds.has(record.keyId));
+  // 52.2-06 (T-52.2-20): every fresh key publishes its own runtime frame. A
+  // reference-only record (reopened document) has no pixels in the runtime
+  // yet, so publishing would have to write an empty `width: 0` frame — an
+  // invisible key. Refuse BEFORE any mutation; plan 09 resolves pixels from
+  // the package's media reference and can lift this refusal.
+  const frameSources = new Map<string, { bytes: Uint8Array; width: number; height: number }>();
+  for (const record of freshRecords) {
+    const source = _resolveRotoPublishFrameSource(record.payload);
+    if (source === null) return { ok: false, reason: 'unresolved-key-pixels' };
+    frameSources.set(record.keyId, source);
+  }
   const recordsResult = store.replaceRotoPhysicalRecords(
     layerId,
     trackId,
@@ -3930,20 +4502,20 @@ function _applyRotoTrackPaste(
     proposal.interpolation,
     proposal.capacity,
   );
-  if (!recordsResult.ok) return { ok: false, reason: recordsResult.error };
+  if (!recordsResult.ok) return { ok: false, reason: 'apply-failed' };
   const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, proposal.loopClips);
-  if (!loopsResult.ok) return { ok: false, reason: loopsResult.error };
+  if (!loopsResult.ok) return { ok: false, reason: 'apply-failed' };
   const breaksResult = store.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId, proposal.incomingInterpolationBreakKeyIds);
-  if (!breaksResult.ok) return { ok: false, reason: breaksResult.error };
-  const existingKeyIds = new Set(priorDocument.realKeyRecords.map((record) => record.keyId));
-  for (const record of proposal.realKeyRecords) {
-    if (existingKeyIds.has(record.keyId)) continue;
+  if (!breaksResult.ok) return { ok: false, reason: 'apply-failed' };
+  for (const record of freshRecords) {
+    const source = frameSources.get(record.keyId);
+    if (source === undefined) continue;
     store.upsertRealRotoKeyFrame(layerId, trackId, record.appFrame, {
       frameIndex: 0,
       appFrame: record.appFrame,
-      dataUrl: record.payload.dataUrl,
-      width: record.payload.width ?? 0,
-      height: record.payload.height ?? 0,
+      bytes: source.bytes,
+      width: source.width,
+      height: source.height,
     });
   }
   return { ok: true };

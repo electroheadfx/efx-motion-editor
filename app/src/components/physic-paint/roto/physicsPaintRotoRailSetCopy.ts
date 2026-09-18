@@ -498,17 +498,25 @@ function buildFreshKeyRecord(
   freshKeyId: string,
   freshFrame: number,
 ): PhysicPaintRotoRealKeyRecord {
+  const dimensions = {
+    ...(sourcePayload.width !== undefined ? { width: sourcePayload.width } : {}),
+    ...(sourcePayload.height !== undefined ? { height: sourcePayload.height } : {}),
+  };
+  // 52.2-06 (D-07): preserve the source's raster CARRIER. A copy taken from a
+  // reopened (reference-only) document carries `media`, never bytes — copying
+  // only `bytes` would build a record with NEITHER carrier, which the
+  // collection parser refuses, so the whole paste/duplicate proposal would
+  // throw instead of refusing cleanly. A duplicated key renders the same
+  // pixels, so its media reference names the same digest (plan 09 resolves
+  // pixels from it; the save projection re-points it at the fresh keyId).
+  const payload = sourcePayload.media !== undefined
+    ? { frameIndex: sourcePayload.frameIndex, appFrame: freshFrame, media: sourcePayload.media, ...dimensions }
+    : { frameIndex: sourcePayload.frameIndex, appFrame: freshFrame, bytes: sourcePayload.bytes, ...dimensions };
   return Object.freeze({
     kind: 'real-key',
     keyId: freshKeyId,
     appFrame: freshFrame,
-    payload: Object.freeze({
-      frameIndex: sourcePayload.frameIndex,
-      appFrame: freshFrame,
-      dataUrl: sourcePayload.dataUrl,
-      ...(sourcePayload.width !== undefined ? { width: sourcePayload.width } : {}),
-      ...(sourcePayload.height !== undefined ? { height: sourcePayload.height } : {}),
-    }),
+    payload: Object.freeze(payload),
   }) as PhysicPaintRotoRealKeyRecord;
 }
 

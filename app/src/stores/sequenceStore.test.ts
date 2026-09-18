@@ -6,6 +6,7 @@ import {sequenceStore} from './sequenceStore';
 import {registerDocument, reset as resetEfxPaintStore} from './efxPaintStore';
 import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
 import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -215,14 +216,14 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     physicPaintStore.upsertRealRotoKeyFrame('canonical-target', TEST_TRACK_ID, 0, {
       frameIndex: 0,
       appFrame: 0,
-      dataUrl: 'data:image/png;base64,dGFyZ2V0LTA=',
+      bytes: testWebpBytes('dGFyZ2V0LTA='),
       width: 100,
       height: 50,
     });
     physicPaintStore.upsertRealRotoKeyFrame('canonical-target', TEST_TRACK_ID, 2, {
       frameIndex: 0,
       appFrame: 2,
-      dataUrl: 'data:image/png;base64,dGFyZ2V0LTI=',
+      bytes: testWebpBytes('dGFyZ2V0LTI='),
       width: 100,
       height: 50,
     });
@@ -241,7 +242,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     physicPaintStore.setFrame('canonical-survivor', TEST_TRACK_ID, 4, {
       frameIndex: 0,
       appFrame: 4,
-      dataUrl: 'data:image/png;base64,c3Vydml2b3I=',
+      bytes: testWebpBytes('c3Vydml2b3I='),
       width: 100,
       height: 50,
     });
@@ -253,20 +254,20 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     expect(sequenceStore.getById('target-sequence')).toBeNull();
     expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
     expect(physicPaintStore.getRotoCacheFrames('canonical-target', TEST_TRACK_ID)).toEqual([]);
-    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
+    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('c3Vydml2b3I='));
 
     undo();
 
     expect(sequenceStore.getById('target-sequence')?.layers[0].source).toEqual({ type: 'physic-paint', layerId: 'canonical-target' });
     expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual(targetOutputBefore);
     expect(physicPaintStore.getRotoCacheFrames('canonical-target', TEST_TRACK_ID)).toEqual(targetCacheBefore);
-    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
+    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('c3Vydml2b3I='));
 
     redo();
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
     expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
-    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
+    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('c3Vydml2b3I='));
   });
 
   it.each([
@@ -297,7 +298,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     physicPaintStore.setFrame('canonical-target', TEST_TRACK_ID, 3, {
       frameIndex: 0,
       appFrame: 3,
-      dataUrl: 'data:image/png;base64,dGFyZ2V0LTM=',
+      bytes: testWebpBytes('dGFyZ2V0LTM='),
       width: 100,
       height: 50,
     });
@@ -331,19 +332,19 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     physicPaintStore.setFrame('shared-canonical', TEST_TRACK_ID, 5, {
       frameIndex: 0,
       appFrame: 5,
-      dataUrl: 'data:image/png;base64,c2hhcmVk',
+      bytes: testWebpBytes('c2hhcmVk'),
       width: 100,
       height: 50,
     });
 
     sequenceStore.remove('first-owner');
-    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.dataUrl).toBe('data:image/png;base64,c2hhcmVk');
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.bytes).toEqual(testWebpBytes('c2hhcmVk'));
 
     undo();
-    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.dataUrl).toBe('data:image/png;base64,c2hhcmVk');
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.bytes).toEqual(testWebpBytes('c2hhcmVk'));
 
     redo();
-    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.dataUrl).toBe('data:image/png;base64,c2hhcmVk');
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.bytes).toEqual(testWebpBytes('c2hhcmVk'));
 
     sequenceStore.remove('second-owner');
     expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)).toBeNull();

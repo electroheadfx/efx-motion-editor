@@ -28,6 +28,17 @@ vi.mock('@preact/signals', () => ({
     };
     return hookRuntime.signals[index] as { value: Value; peek: () => Value };
   },
+  // The fake needs the real Signal's immediate-call subscribe: the idle
+  // scheduler subscribes to the finalization lifecycle's state signal at
+  // module scope (52.2-14).
+  signal: <Value>(initial: Value) => ({
+    value: initial,
+    peek() { return this.value; },
+    subscribe(callback: (value: Value) => void) {
+      callback(this.value);
+      return () => {};
+    },
+  }),
 }));
 
 import {

@@ -22,7 +22,7 @@ export const DENSITY_K_PHYSICS = 3.5   // Drying/forceDryAll: strong wet layer v
 export const DENSITY_K = DENSITY_K_DISPLAY
 export const MAX_DISPLAY_ALPHA = 255
 export const BLOW_DECAY = 0.92
-export const BLOW_STRENGTH = 8.0
+export const BLOW_STRENGTH = 15.2
 
 // === PAPER CONFIGURATION ===
 

@@ -26,7 +26,10 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(mount).not.toContain("from 'preact/compat'");
     expect(wrapper).toContain("import { memo } from 'preact/compat';");
     expect(wrapper).toContain("import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';");
-    expect(wrapper).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMount);');
+    // 52.2-12: the memo target is the counted boundary (render-churn
+    // inventory, D-18) which delegates through createElement so the mount's
+    // hooks bind to the mount instance, not the wrapper's.
+    expect(wrapper).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
   });
 
   it('memoizes CanvasStack without passing a fresh children vnode across its boundary', () => {

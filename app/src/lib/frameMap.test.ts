@@ -9,6 +9,7 @@ import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
 import {buildPhysicPaintRotoPhysicalRevision} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {Sequence} from '../types/sequence';
 import type {PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -73,7 +74,7 @@ function makeRotoRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKey
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: `data:image/png;base64,${String(appFrame).padStart(4, 'A')}`,
+      bytes: testWebpBytes(String(appFrame).padStart(4, 'A')),
     },
   };
 }
@@ -315,14 +316,14 @@ describe('frameMap solid/transparent entries', () => {
     // Physical real keys at direct appFrames 0, 4, 8 with interpolation enabled:
     // gap-derived interiors fill 1-3 and 5-7, so the physical end frame is 9.
     const records = [
-      { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,Y2lyY2xl' },
-      { keyId: 'key-4', appFrame: 4, dataUrl: 'data:image/png;base64,c3F1YXJl' },
-      { keyId: 'key-8', appFrame: 8, dataUrl: 'data:image/png;base64,Y3Jvc3NlZA==' },
+      { keyId: 'key-0', appFrame: 0, bytes: testWebpBytes('Y2lyY2xl') },
+      { keyId: 'key-4', appFrame: 4, bytes: testWebpBytes('c3F1YXJl') },
+      { keyId: 'key-8', appFrame: 8, bytes: testWebpBytes('Y3Jvc3NlZA==') },
     ].map((key) => ({
       keyId: key.keyId,
       appFrame: key.appFrame,
       kind: 'real-key' as const,
-      payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+      payload: { frameIndex: 0, appFrame: key.appFrame, bytes: key.bytes },
     }));
     const interpolation = { enabled: true, mode: 'duplicate' as const };
     const seeded = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', TEST_TRACK_ID, {

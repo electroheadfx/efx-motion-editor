@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
-import { createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
+import { CAPTURE_PRODUCE_QUIET_MS, createRotoLivePixelCacheTransactions } from './rotoLivePixelCacheTransactions';
+import { FINALIZATION_TURN_CONCURRENCY } from '../pilot/finalizationQueue';
+import { beginInteraction, endInteraction, GESTURE_IDLE_WINDOW_MS, interactionIdle } from '../bridge/gestureIdleScheduler';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+
+const codec = vi.hoisted(() => ({ encode: vi.fn() }));
+vi.mock('../../../lib/webpFrameCodec', () => ({ encodeWebpFrame: codec.encode }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -8,18 +14,19 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-class DelayedBlobCanvas {
+class DelayedWebpCanvas {
   width = 320;
   height = 180;
-  private blobCallback: BlobCallback | null = null;
 
-  toBlob(callback: BlobCallback, type?: string): void {
-    expect(type).toBe('image/png');
-    this.blobCallback = callback;
-  }
-
-  finishEncoding(): void {
-    this.blobCallback?.(new Blob(['encoded-pixels'], { type: 'image/png' }));
+  getContext(kind: string): { getImageData: () => ImageData } | null {
+    if (kind !== '2d') return null;
+    return {
+      getImageData: () => ({
+        data: new Uint8ClampedArray(this.width * this.height * 4),
+        width: this.width,
+        height: this.height,
+      }) as ImageData,
+    };
   }
 }
 
@@ -31,22 +38,15 @@ afterEach(() => {
 describe('Roto live pixel cache transactions', () => {
   it('lets a second capture return while the first PNG encoding remains pending', async () => {
     vi.useFakeTimers();
-    const firstCanvas = new DelayedBlobCanvas();
-    const secondCanvas = new DelayedBlobCanvas();
+    const firstCanvas = new DelayedWebpCanvas();
+    const secondCanvas = new DelayedWebpCanvas();
+    const firstEncoding = deferred<Uint8Array>();
+    const secondEncoding = deferred<Uint8Array>();
+    codec.encode
+      .mockImplementationOnce(() => firstEncoding.promise)
+      .mockImplementationOnce(() => secondEncoding.promise);
     const events: string[] = [];
     const transactions = createRotoLivePixelCacheTransactions();
-    vi.stubGlobal('FileReader', class {
-      result: string | ArrayBuffer | null = null;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-
-      readAsDataURL(blob: Blob): void {
-        blob.arrayBuffer().then(() => {
-          this.result = 'data:image/png;base64,ZW5jb2RlZC1waXhlbHM=';
-          this.onload?.();
-        }).catch(() => this.onerror?.());
-      }
-    });
 
     const firstWork = transactions.capture({
       sourceFrame: 7,
@@ -65,9 +65,9 @@ describe('Roto live pixel cache transactions', () => {
     expect(events).toEqual(['second-caller-returned']);
 
     await vi.advanceTimersByTimeAsync(0);
-    secondCanvas.finishEncoding();
+    secondEncoding.resolve(testWebpBytes('second'));
     await expect(secondWork).resolves.toBe(true);
-    firstCanvas.finishEncoding();
+    firstEncoding.resolve(testWebpBytes('first'));
     await expect(firstWork).resolves.toBe(false);
     expect(events).toEqual(['second-caller-returned', 'second-committed']);
   });
@@ -219,5 +219,116 @@ describe('Roto live pixel cache transactions', () => {
 
     expect(remove).toHaveBeenCalledOnce();
     expect(commit).not.toHaveBeenCalled();
+  });
+});
+
+describe('Roto live pixel cache transactions — bounded turns and interruption (52.2-14)', () => {
+  /** Real-timer helper: each round flushes every pending macrotask and microtask. */
+  const settle = async (rounds = 4): Promise<void> => {
+    for (let round = 0; round < rounds; round += 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  };
+
+  it('cancels an in-flight capture on interrupt so its commit never runs', async () => {
+    const encoding = deferred<string>();
+    const commit = vi.fn();
+    const produce = vi.fn(() => encoding.promise);
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({ sourceFrame: 7, produce, commit });
+    await settle();
+    expect(produce).toHaveBeenCalledOnce();
+
+    transactions.interrupt();
+    // The encode settles AFTER the interrupt: a cancelled capture must be
+    // unable to commit, which the promise-per-key map could not express.
+    encoding.resolve('stale-pixels');
+    await settle();
+
+    await expect(work).resolves.toBe(false);
+    expect(commit).not.toHaveBeenCalled();
+    expect(transactions.hasPending(7)).toBe(false);
+  });
+
+  it('runs captures at bounded concurrency and keeps every commit outcome', async () => {
+    const gates = [0, 1, 2].map(() => deferred<void>());
+    const produced: number[] = [];
+    const committed: number[] = [];
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const works = gates.map((gate, index) => transactions.capture({
+      sourceFrame: index,
+      produce: async () => {
+        produced.push(index);
+        await gate.promise;
+        return `frame-${index}`;
+      },
+      commit: () => {
+        committed.push(index);
+      },
+    }));
+
+    await settle();
+    expect(produced).toHaveLength(FINALIZATION_TURN_CONCURRENCY);
+
+    gates[0].resolve();
+    await settle();
+    expect(produced).toHaveLength(FINALIZATION_TURN_CONCURRENCY + 1);
+
+    gates[1].resolve();
+    gates[2].resolve();
+    await settle();
+    await expect(Promise.all(works)).resolves.toEqual([true, true, true]);
+    expect([...committed].sort()).toEqual([0, 1, 2]);
+    expect(transactions.hasPending()).toBe(false);
+  });
+});
+
+describe('Roto live pixel cache transactions — gesture-idle gating', () => {
+  afterEach(() => {
+    interactionIdle.value = true;
+  });
+
+  it('defers produce until the idle transition while a gesture is active', async () => {
+    // performance must be faked alongside timers: the produce quiet window
+    // (Part 3) reads performance.now() directly.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
+    beginInteraction(1);
+    const produce = vi.fn(async () => 'pixels');
+    const commit = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({ sourceFrame: 7, produce, commit });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(produce).not.toHaveBeenCalled();
+
+    endInteraction(1);
+    // 52.1 (Part 3): the idle transition alone is not enough — produce also
+    // waits for the capture quiet window so a mid-burst pause never starts an
+    // encode the next stroke would supersede.
+    await vi.advanceTimersByTimeAsync(GESTURE_IDLE_WINDOW_MS);
+    expect(produce).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CAPTURE_PRODUCE_QUIET_MS);
+    await expect(work).resolves.toBe(true);
+    expect(produce).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledWith('pixels');
+  });
+
+  it('forces a deferred produce synchronously on flush (navigation/close/save)', async () => {
+    vi.useFakeTimers();
+    beginInteraction(1);
+    const produce = vi.fn(async () => 'pixels');
+    const commit = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({ sourceFrame: 7, produce, commit });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(produce).not.toHaveBeenCalled();
+
+    await transactions.flush(7);
+    await expect(work).resolves.toBe(true);
+    expect(produce).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledWith('pixels');
   });
 });

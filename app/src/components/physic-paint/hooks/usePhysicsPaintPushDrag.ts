@@ -1,5 +1,6 @@
 import { useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 
 /**
  * Horizontal travel in CSS pixels that must be exceeded before a push drag
@@ -185,6 +186,7 @@ export function usePhysicsPaintPushDrag<Publication>(
     event.stopPropagation();
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (!win || sessionRef.current) return;
+    beginInteraction(event.pointerId);
 
     const sourceElement = event.currentTarget as unknown as PushDragSourceElement;
     let active = true;
@@ -222,6 +224,7 @@ export function usePhysicsPaintPushDrag<Publication>(
     const cleanup = () => {
       if (!active) return;
       active = false;
+      endInteraction(session.pointerId);
       win.removeEventListener('pointermove', handlePointerMove);
       win.removeEventListener('pointerup', handlePointerUp);
       win.removeEventListener('pointercancel', handlePointerCancel);
@@ -293,6 +296,7 @@ export function usePhysicsPaintPushDrag<Publication>(
     };
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
+      markInteractionActive();
       session.latestX = moveEvent.clientX;
       session.latestY = moveEvent.clientY;
       if (!session.started && Math.abs(session.latestX - session.originX) > PUSH_DRAG_THRESHOLD_PX) {

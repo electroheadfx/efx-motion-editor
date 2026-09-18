@@ -47,9 +47,9 @@ export interface RotoRevealRenderInput {
   papers?: readonly Readonly<{ name: string; url: string }>[];
   defaultPaper?: string;
   paperTextureScale?: number;
-  /** The frame-aligned reference verdict (dataUrl) plus the display transform (D-14). */
+  /** The frame-aligned reference verdict (bytes) plus the display transform (D-14). */
   reference: Readonly<{
-    dataUrl: string;
+    bytes: Uint8Array;
     transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>;
     /** Project→working scale (working size / project size) — the ghost draw's `zoom`. */
     zoom: number;
@@ -87,7 +87,7 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
     engine.setInputLocked(true);
     engine.setBgMode('transparent');
 
-    const referenceImage = await loadRevealReferenceImage(input.reference.dataUrl);
+    const referenceImage = await loadRevealReferenceImage(input.reference.bytes);
     throwIfAborted(input.signal);
 
     const strokes = flattenScriptStrokes(input.script);
@@ -170,7 +170,7 @@ function compositeRevealMask(
   const output = document.createElement('canvas');
   output.width = size.width;
   output.height = size.height;
-  const context = output.getContext('2d');
+  const context = output.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Could not composite reveal mask: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);
@@ -189,12 +189,19 @@ function compositeRevealMask(
   return output;
 }
 
-function loadRevealReferenceImage(dataUrl: string): Promise<HTMLImageElement> {
+function loadRevealReferenceImage(bytes: Uint8Array): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Could not load reveal reference image.'));
-    image.src = dataUrl;
+    const blobUrl = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
+    image.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      reject(new Error('Could not load reveal reference image.'));
+    };
+    image.src = blobUrl;
   });
 }
 

@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -47,6 +48,15 @@ vi.mock('../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer', ()
   renderRotoRevealFrames: harness.renderReveal,
 }));
 
+// 52.1-04 (D-13): the flattened path decodes frame bytes via the Rust
+// `decode_webp_frame` leaf → ImageData → createImageBitmap. Mock the leaf so
+// the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 const TEST_TRACK_ID = 'track-1';
 
 function makeTrackDocument(layerId: string): EfxPaintDocument {
@@ -71,12 +81,13 @@ type OkRevealMutation = { ok: true; descriptor: BackgroundEditDescriptor | null 
 
 /** A valid 1x1 transparent PNG data URL — the canonical payload guard requires a real PNG signature. */
 const PNG_1X1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const PNG_1X1_WEBP = testWebpBytes('png-1x1');
 
-function stagedFrames(start: number, count: number, dataUrl = PNG_1X1): Array<{ frameIndex: number; appFrame: number; dataUrl: string; width: number; height: number; source: 'real-key' }> {
+function stagedFrames(start: number, count: number, bytes = PNG_1X1_WEBP): Array<{ frameIndex: number; appFrame: number; bytes: Uint8Array; width: number; height: number; source: 'real-key' }> {
   return Array.from({ length: count }, (_, index) => ({
     frameIndex: index,
     appFrame: start + index,
-    dataUrl,
+    bytes,
     width: 4,
     height: 3,
     source: 'real-key' as const,
@@ -116,7 +127,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const preCreate = getDocument(layerId)!;
 
     const descriptor = await createRail(layerId);
@@ -138,7 +149,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const records = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
     expect(records).toHaveLength(2);
     expect(records.map((record) => record.appFrame)).toEqual([10, 11]);
-    expect(records.map((record) => record.payload.dataUrl)).toEqual([PNG_1X1, PNG_1X1]);
+    expect(records.map((record) => record.payload.bytes)).toEqual([PNG_1X1_WEBP, PNG_1X1_WEBP]);
 
     expect(after.documentRevision).toBe(preCreate.documentRevision + 1);
   });
@@ -147,7 +158,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const preCreate = getDocument(layerId)!;
     const revisionBefore = preCreate.documentRevision;
 
@@ -199,7 +210,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     _setEfxPaintRevealScriptLoader(async () => null);
     const result = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
@@ -217,13 +228,14 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     await createRail(layerId);
 
     // The baked keys are ordinary track content: the flattened seam resolves
     // them like any real key (D-02 — one track pipeline, no second compositor).
-    // The compositor decodes the key dataUrls via `new Image()` — stub the
-    // decode surface like the photo-reference exclusion test does.
+    // The compositor decodes the key dataUrls through the shared decode-once
+    // LRU (decode_webp_frame → ImageData → createImageBitmap) — stub that
+    // surface like the photo-reference exclusion test does.
     class FlatImage {
       onload: (() => void) | null = null;
       onerror: (() => void) | null = null;
@@ -234,6 +246,11 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
       set src(value: string) { this.currentSrc = value; this.onload?.(); }
       get src(): string { return this.currentSrc; }
     }
+    class FlatBitmap {
+      width = 4;
+      height = 3;
+      close = vi.fn();
+    }
     class FlatCanvas {
       width = 0;
       height = 0;
@@ -242,10 +259,20 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
       }
       toDataURL(): string { return PNG_1X1; }
     }
+    decodeWebpFrameMock.mockReset();
+    decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
     vi.stubGlobal('Image', FlatImage);
     vi.stubGlobal('HTMLImageElement', FlatImage);
     vi.stubGlobal('HTMLCanvasElement', FlatCanvas);
+    vi.stubGlobal('ImageData', class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    });
+    vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatBitmap());
     vi.stubGlobal('document', { createElement: (tag: string) => (tag === 'canvas' ? new FlatCanvas() : {}) });
+
+    // Kick off the async decode and flush it so the flattened record resolves.
+    physicPaintStore.getFlattenedFrame(layerId, 10);
+    await flushDecode();
 
     const flattened = physicPaintStore.getFlattenedFrame(layerId, 10);
     expect(flattened).not.toBeNull();
@@ -258,15 +285,16 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
 
     await createRail(layerId);
     // Script strokes live in working coordinates: the bake must render at
-    // getPhysicsPaintWorkingSize(1920×1080) = 1000×563 — never the project
-    // size — and hand the mask composite the ghost zoom (1000/1920).
+    // getPhysicsPaintWorkingSize(1920×1080) = 1920×1080 (cap raised, no
+    // downscale) — never a downscaled size — and hand the mask composite the
+    // project→working zoom (1920/1920 = 1).
     expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
-      size: { width: 1000, height: 563 },
-      reference: expect.objectContaining({ zoom: 1000 / 1920 }),
+      size: { width: 1920, height: 1080 },
+      reference: expect.objectContaining({ zoom: 1920 / 1920 }),
     }));
   });
 
@@ -274,7 +302,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
 
     await createRail(layerId, 10, 2);
     const track = getDocument(layerId)!.tracks.find((candidate) => candidate.id === TEST_TRACK_ID)!;
@@ -293,7 +321,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
 
     const descriptor = await createRail(layerId);
     // The Studio pushes the live runtime projection on every efxPaintVersion
@@ -310,7 +338,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
 
     const result = await createRevealRail(layerId, {
@@ -333,7 +361,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
   it('carries the creation-time repeat law and motion wiggle into the bake and the rail record (G-52-3, D-08/D-09)', async () => {    const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
 
     const result = await createRevealRail(layerId, {
@@ -370,7 +398,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const preCreate = getDocument(layerId)!;
     const descriptor = await createRail(layerId);
 
@@ -408,13 +436,13 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     // A prior rail's last real key sits BEFORE the new rail's span.
     const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, TEST_TRACK_ID);
     const seeded = physicPaintStore.replaceRotoPhysicalRecords(
       layerId,
       TEST_TRACK_ID,
-      [{ kind: 'real-key', keyId: 'prior-last', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: PNG_1X1, width: 4, height: 3 } }],
+      [{ kind: 'real-key', keyId: 'prior-last', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: PNG_1X1_WEBP, width: 4, height: 3 } }],
       { enabled: true, mode: 'duplicate' },
       capacity,
     );
@@ -441,7 +469,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const createDescriptor = await createRail(layerId, 10, 2);
     const loopId = createDescriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
     const firstBakedId = createDescriptor.after.tracks[0].rotoPhysical!.realKeyRecords
@@ -465,7 +493,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const descriptor = await createRail(layerId, 10, 2);
     const afterBreaks = descriptor.after.tracks[0].rotoPhysical!.incomingInterpolationBreakKeyIds;
     expect(afterBreaks).toHaveLength(1);
@@ -505,15 +533,15 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const createDescriptor = await createRail(layerId);
     const loopId = createDescriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
 
     // A hand edit inside the span (an ordinary key eraser / paint) is replaced
     // on replay — the replay overwrites every baked key in the span (D-05).
     const preReplay = getDocument(layerId)!;
-    const replayedPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, replayedPng));
+    const replayedBytes = testWebpBytes('replayed');
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, replayedBytes));
     const replayResult = await replayRevealRail(layerId, loopId);
     expect(replayResult.ok).toBe(true);
     const replayDescriptor = (replayResult as OkRevealMutation).descriptor!;
@@ -523,7 +551,7 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
 
     const records = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
     expect(records).toHaveLength(2);
-    expect(records.every((record) => record.payload.dataUrl === replayedPng)).toBe(true);
+    expect(records.every((record) => record.payload.bytes === replayedBytes)).toBe(true);
     // The rail clip survives replay (its span is re-baked, D-05).
     expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(1);
 
@@ -534,18 +562,18 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     registerDocument(replayDescriptor.before);
     expect(getDocument(layerId)).toBe(preReplay);
     const restored = getDocument(layerId)!.tracks[0].rotoPhysical!.realKeyRecords;
-    expect(restored.map((record) => record.payload.dataUrl)).toEqual([PNG_1X1, PNG_1X1]);
+    expect(restored.map((record) => record.payload.bytes)).toEqual([PNG_1X1_WEBP, PNG_1X1_WEBP]);
     // CR-01: the RUNTIME is re-synced too — the replayedPng records are gone
     // (previously the runtime kept them and the next serialize re-projected the
     // overwritten keys back into the document).
-    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.payload.dataUrl)).toEqual([PNG_1X1, PNG_1X1]);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.payload.bytes)).toEqual([PNG_1X1_WEBP, PNG_1X1_WEBP]);
   });
 
   it('delete reveal rail is one undo-ledger entry; undo restores the whole rail + keys unit (D-06)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const createDescriptor = await createRail(layerId);
     const loopId = createDescriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
 
@@ -580,7 +608,7 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const createDescriptor = await createRail(layerId, 10, 3);
     const loopId = createDescriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
 
@@ -619,7 +647,7 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
-    registerReferenceSourceImage('ref-a', 'data:ref-a');
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
     const preCreate = getDocument(layerId)!;
     const descriptor = await createRail(layerId);
 

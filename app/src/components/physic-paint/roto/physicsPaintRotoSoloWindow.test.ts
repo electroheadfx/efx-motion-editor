@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deriveSoloContentStart,
   deriveSoloPlaybackWindow,
+  resolvePlaybackStartIndex,
+  type DeriveSoloContentStartInput,
   type DeriveSoloPlaybackWindowInput,
+  type ResolvePlaybackStartIndexInput,
+  type SoloPlaybackWindow,
 } from './physicsPaintRotoSoloWindow';
 import type { KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
 import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolver';
@@ -380,3 +385,165 @@ describe('deriveSoloPlaybackWindow — A3 single-attribution fixtures', () => {
     expect(groupWindow!.includesFrame(3)).toBe(true);
   });
 });
+
+/**
+ * D-20/D-21/D-22: solo playback starts at the BEGINNING of the isolated
+ * content. The pill (session window) starts at the window's first frame; the
+ * persisted row-S document solo starts at the first painted key of the soloed
+ * tracks and falls back to project frame 0 when they carry none. Both
+ * resolvers are pure and total (T-52.2-12): no store, no document, no bridge.
+ */
+function soloWindow(start: number, endExclusive: number): SoloPlaybackWindow {
+  return {
+    start,
+    endExclusive,
+    includesFrame: (appFrame: number) => appFrame >= start && appFrame < endExclusive,
+  };
+}
+
+function contentStart(
+  overrides: Partial<DeriveSoloContentStartInput> = {},
+): number {
+  return deriveSoloContentStart({
+    sessionWindow: null,
+    documentSoloTrackIds: [],
+    paintedKeyFrames: [],
+    capacity: 24,
+    ...overrides,
+  });
+}
+
+function startIndex(
+  overrides: Partial<ResolvePlaybackStartIndexInput> = {},
+): number {
+  return resolvePlaybackStartIndex({
+    soloActive: false,
+    contentStart: 0,
+    cursorAppFrame: 0,
+    cachedFrames: [],
+    ...overrides,
+  });
+}
+
+const frameList = (...appFrames: number[]) => appFrames.map((appFrame) => ({ appFrame }));
+
+describe('deriveSoloContentStart — solo content start (D-20/D-21)', () => {
+  it('exports both solo resolvers as pure functions', () => {
+    expect(typeof deriveSoloContentStart).toBe('function');
+    expect(typeof resolvePlaybackStartIndex).toBe('function');
+  });
+
+  it('pill path: returns the session solo window start', () => {
+    expect(contentStart({ sessionWindow: soloWindow(12, 40) })).toBe(12);
+  });
+
+  it('pill path wins over row-S when both solos are present', () => {
+    expect(
+      contentStart({
+        sessionWindow: soloWindow(12, 40),
+        documentSoloTrackIds: ['t1'],
+        paintedKeyFrames: [3, 8],
+      }),
+    ).toBe(12);
+  });
+
+  it('row-S path with keys: returns the first painted key across the soloed tracks', () => {
+    expect(
+      contentStart({ documentSoloTrackIds: ['t1'], paintedKeyFrames: [7, 21, 40] }),
+    ).toBe(7);
+  });
+
+  it('row-S path without keys: falls back to project frame 0 (D-21)', () => {
+    expect(contentStart({ documentSoloTrackIds: ['t1'], paintedKeyFrames: [] })).toBe(0);
+  });
+
+  it('no solo returns project frame 0', () => {
+    expect(contentStart()).toBe(0);
+  });
+
+  it('clamps the content start into [0, capacity - 1]', () => {
+    expect(contentStart({ sessionWindow: soloWindow(30, 40), capacity: 24 })).toBe(23);
+    expect(contentStart({ documentSoloTrackIds: ['t1'], paintedKeyFrames: [40], capacity: 24 })).toBe(23);
+    expect(contentStart({ sessionWindow: soloWindow(-4, 40), capacity: 24 })).toBe(0);
+  });
+
+  it('treats a degenerate capacity as 0 without throwing (T-52.2-12)', () => {
+    expect(contentStart({ sessionWindow: soloWindow(30, 40), capacity: 0 })).toBe(0);
+    expect(contentStart({ sessionWindow: soloWindow(30, 40), capacity: -5 })).toBe(0);
+    expect(contentStart({ sessionWindow: soloWindow(30, 40), capacity: Number.NaN })).toBe(0);
+  });
+
+  it('ignores non-finite painted key frames when picking the minimum', () => {
+    expect(
+      contentStart({
+        documentSoloTrackIds: ['t1'],
+        paintedKeyFrames: [Number.NaN, 9, Number.POSITIVE_INFINITY],
+      }),
+    ).toBe(9);
+    expect(
+      contentStart({
+        documentSoloTrackIds: ['t1'],
+        paintedKeyFrames: [Number.NaN, Number.POSITIVE_INFINITY],
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('resolvePlaybackStartIndex — solo start index (D-20..D-22)', () => {
+  it('no solo returns the cursor index exactly as the Phase 51 law computes it', () => {
+    expect(
+      startIndex({ soloActive: false, cursorAppFrame: 9, cachedFrames: frameList(8, 9, 10) }),
+    ).toBe(1);
+  });
+
+  it('no solo falls back to index 0 when the cursor is absent from the cached frames', () => {
+    expect(
+      startIndex({ soloActive: false, cursorAppFrame: 99, cachedFrames: frameList(8, 9, 10) }),
+    ).toBe(0);
+  });
+
+  it('solo active returns the first cached frame at or after the content start', () => {
+    expect(
+      startIndex({ soloActive: true, contentStart: 9, cursorAppFrame: 10, cachedFrames: frameList(8, 9, 10) }),
+    ).toBe(1);
+    expect(
+      startIndex({ soloActive: true, contentStart: 10, cursorAppFrame: 8, cachedFrames: frameList(8, 9, 10) }),
+    ).toBe(2);
+    expect(
+      startIndex({ soloActive: true, contentStart: 9.5, cursorAppFrame: 8, cachedFrames: frameList(8, 9, 10) }),
+    ).toBe(2);
+  });
+
+  it('solo active falls back to index 0 when no cached frame reaches the content start', () => {
+    expect(
+      startIndex({ soloActive: true, contentStart: 99, cursorAppFrame: 9, cachedFrames: frameList(8, 9, 10) }),
+    ).toBe(0);
+  });
+
+  it('solo active on an empty frame list yields index 0 without throwing (T-52.2-12)', () => {
+    expect(startIndex({ soloActive: true, contentStart: 12, cachedFrames: [] })).toBe(0);
+    expect(startIndex({ soloActive: true, contentStart: Number.NaN, cachedFrames: [] })).toBe(0);
+  });
+
+  it('a session window start past the capacity still resolves inside the frame-list bounds (D-21 clamp)', () => {
+    const capacity = 3;
+    const clamped = deriveSoloContentStart({
+      sessionWindow: soloWindow(99, 120),
+      documentSoloTrackIds: [],
+      paintedKeyFrames: [],
+      capacity,
+    });
+    expect(clamped).toBe(2);
+    const frames = frameList(0, 1, 2);
+    const index = resolvePlaybackStartIndex({
+      soloActive: true,
+      contentStart: clamped,
+      cursorAppFrame: 0,
+      cachedFrames: frames,
+    });
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(index).toBeLessThan(frames.length);
+    expect(frames[index].appFrame).toBe(2);
+  });
+});
+

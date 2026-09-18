@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
@@ -287,6 +288,36 @@ function renderWorkflowStrip(
   });
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+/** 52.1: a Uint8Array cannot survive JSON.stringify, so the save/reopen
+ * round-trip serializes frame bytes as base64 and revives them back to
+ * Uint8Array before the physical document parser (which computes a content
+ * token from the live bytes). */
+function roundTripDocument(document: PhysicPaintRotoPhysicalDocument): unknown {
+  const json = JSON.stringify(document, (_key, value) => {
+    if (value instanceof Uint8Array) return { __webpBytes: bytesToBase64(value) };
+    return value;
+  });
+  return JSON.parse(json, (_key, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.__webpBytes === 'string') {
+      return base64ToBytes(value.__webpBytes);
+    }
+    return value;
+  });
+}
+
 function createGeneratedPresentationDocument(
   mode: PhysicPaintRotoLoopClip['mode'],
   options: {
@@ -295,8 +326,8 @@ function createGeneratedPresentationDocument(
   } = {},
 ): PhysicPaintRotoPhysicalDocument {
   const records: PhysicPaintRotoRealKeyRecord[] = [
-    { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,YQ==' } },
-    { keyId: 'B', appFrame: 3, kind: 'real-key', payload: { frameIndex: 1, appFrame: 3, dataUrl: 'data:image/png;base64,Yg==' } },
+    { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('YQ==') } },
+    { keyId: 'B', appFrame: 3, kind: 'real-key', payload: { frameIndex: 1, appFrame: 3, bytes: testWebpBytes('Yg==') } },
   ];
   const clip: PhysicPaintRotoLoopClip = {
     loopId: `generated-${mode}`,
@@ -529,10 +560,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it('publishes the shared Infinity boundary to Group Rail drag despite a deleted tail', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { keyId: 'A', appFrame: 10, kind: 'real-key', payload: { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,YQ==' } },
-      { keyId: 'B', appFrame: 12, kind: 'real-key', payload: { frameIndex: 1, appFrame: 12, dataUrl: 'data:image/png;base64,Yg==' } },
-      { keyId: 'C', appFrame: 30, kind: 'real-key', payload: { frameIndex: 2, appFrame: 30, dataUrl: 'data:image/png;base64,Yw==' } },
-      { keyId: 'D', appFrame: 31, kind: 'real-key', payload: { frameIndex: 3, appFrame: 31, dataUrl: 'data:image/png;base64,ZA==' } },
+      { keyId: 'A', appFrame: 10, kind: 'real-key', payload: { frameIndex: 0, appFrame: 10, bytes: testWebpBytes('YQ==') } },
+      { keyId: 'B', appFrame: 12, kind: 'real-key', payload: { frameIndex: 1, appFrame: 12, bytes: testWebpBytes('Yg==') } },
+      { keyId: 'C', appFrame: 30, kind: 'real-key', payload: { frameIndex: 2, appFrame: 30, bytes: testWebpBytes('Yw==') } },
+      { keyId: 'D', appFrame: 31, kind: 'real-key', payload: { frameIndex: 3, appFrame: 31, bytes: testWebpBytes('ZA==') } },
     ];
     const infinityClip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a',
@@ -596,8 +627,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it('keeps deleted Group phases gray under one rail and exposes only true outer endpoint cuts', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,YQ==' } },
-      { keyId: 'B', appFrame: 1, kind: 'real-key', payload: { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,Yg==' } },
+      { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('YQ==') } },
+      { keyId: 'B', appFrame: 1, kind: 'real-key', payload: { frameIndex: 1, appFrame: 1, bytes: testWebpBytes('Yg==') } },
     ];
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a',
@@ -1440,7 +1471,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       keyId,
       appFrame,
       kind: 'real-key',
-      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,YQ==' },
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('YQ==') },
     }));
     const loopClips = [clip];
     physicPaintStore.clearRotoPhysicalRecords(layerId, TEST_TRACK_ID);
@@ -1709,8 +1740,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
           { kind: 'generated', appFrame: 8, leftKeyId: 'A', rightKeyId: 'B' },
         ]),
         cachedRotoFrames: [
-          { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,source', source: 'generated-interpolation' },
-          { frameIndex: 8, appFrame: 8, dataUrl: 'data:image/png;base64,repeat', source: 'generated-interpolation' },
+          { frameIndex: 1, appFrame: 1, bytes: testWebpBytes('source'), source: 'generated-interpolation' },
+          { frameIndex: 8, appFrame: 8, bytes: testWebpBytes('repeat'), source: 'generated-interpolation' },
         ],
         rotoSpacingSelection: {
           sourceCycleId: sourceProxy.sourceCycleId,
@@ -1800,7 +1831,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     it.each(['progressive', 'static'] as const)('preserves %s generated classifications and fill classes after save/reopen parsing', (mode) => {
       const beforeDocument = createGeneratedPresentationDocument(mode);
-      const reopenedDocument = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(beforeDocument)));
+      const reopenedDocument = parsePhysicPaintRotoPhysicalDocument(roundTripDocument(beforeDocument));
       const before = renderGeneratedPresentationDocument(beforeDocument);
       const reopened = renderGeneratedPresentationDocument(reopenedDocument);
 
@@ -2236,13 +2267,13 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
           kind: 'real-key',
           keyId: 'A',
           appFrame: 1,
-          payload: Object.freeze({ frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,YQ==' }),
+          payload: Object.freeze({ frameIndex: 0, appFrame: 1, bytes: testWebpBytes('YQ==') }),
         }),
         Object.freeze({
           kind: 'real-key',
           keyId: 'C',
           appFrame: 5,
-          payload: Object.freeze({ frameIndex: 1, appFrame: 5, dataUrl: 'data:image/png;base64,Yw==' }),
+          payload: Object.freeze({ frameIndex: 1, appFrame: 5, bytes: testWebpBytes('Yw==') }),
         }),
       ]);
       const clip: PhysicPaintRotoLoopClip = Object.freeze({

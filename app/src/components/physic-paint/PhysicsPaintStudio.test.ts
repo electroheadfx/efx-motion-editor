@@ -210,20 +210,44 @@ describe('Physics Paint Play Script integration contract', () => {
     // mutation (track CRUD) to the main window or the added track never lands
     // in the .mce.
     expect(studio).toContain('sendEfxPaintDocumentSync(');
-    expect(studio).toContain("if (mode !== 'Tauri' && mode !== 'Browser fallback') return;");
-    expect(studio).toContain('// eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [launchContext?.layerId, efxPaintVersion.value]);');
+    expect(studio).toContain("if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {");
+    // 52.1 (gesture-idle scheduler): mutations set a dirty flag; the push runs
+    // once on the idle transition, not once per mutation.
+    expect(studio).toContain('documentSyncDirty.value = true;');
+    expect(studio).toContain('if (!interactionIdle.value) return;');
+    expect(studio).toContain('if (!documentSyncDirty.value) return;');
+    // 52.1 (Part 1): the dirty flag is set ONLY on structural changes
+    // (efxPaintVersion) — physical edits (physicPaintVersion) ship via
+    // applyPayload and must NOT re-trigger a full-document sync.
+    expect(studio).toContain('}, [efxPaintVersion.value]);');
+    expect(studio).not.toContain('[efxPaintVersion.value, physicPaintVersion.value]');
+    // 52.1 (Part 1): the flush (save/export) pushes the document ONLY when a
+    // structural change is pending — the auto-save → flush path must not
+    // re-serialize the full document on physical edits.
+    expect(studio).toContain('if (!documentSyncDirty.peek()) return;');
     expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
     // The main-window listener is fail-closed (canonical parser) and
     // idempotency-guarded by document revision (the launch push is a no-op).
     expect(bridge).toContain("PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document'");
     expect(bridge).toContain('installPhysicPaintEfxPaintDocumentListener');
-    expect(bridge).toContain('parseEfxPaintDocument(incoming.document ?? payload)');
+    expect(bridge).toContain('parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload))');
     expect(bridge).toContain('buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)');
     // 49-06 (UAT round 11): the child carries its runtime background source
     // bytes with the sync (the main window's registry is only hydrated at
     // project load), and the listener registers them BEFORE the revision guard.
-    expect(studio).toContain('getBackgroundSourceImageDataUrl(ref)');
-    expect(bridge).toContain('registerBackgroundSourceImage(ref, dataUrl)');
+    expect(studio).toContain('getBackgroundSourceImageBytes(ref)');
+    expect(bridge).toContain('registerBackgroundSourceImage(ref, bytes)');
+  });
+
+  it('the per-row frame-blending toggle ships to the parent through the physical coordinator (quick-260913-52r D)', () => {
+    // The direct store write shipped nowhere: the 52.1 auto-push keys on
+    // efxPaintVersion, and the doc-sync mirror refuses the reference-shaped
+    // wire document (canonical revision mismatch). The one path that reaches
+    // the parent runtime — and therefore the save and the reopen — is the
+    // physical coordinator's interpolation op.
+    expect(studio).toContain("operationKind: 'set-interpolation-enabled',");
+    expect(studio).toContain('void physicalEditCoordinator.executePhysicalEdit({');
+    expect(studio).not.toContain('markDocumentSyncDirtyRef');
   });
 });
 
@@ -238,7 +262,7 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     // 47-01 UAT round 8: the strip subscriptions read the THROTTLED paint
     // revision (trailing 150ms flush) so a stroke burst does not re-render the
     // whole Studio per paint event.
-    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]);');
+    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);');
     expect(studio).toContain('getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),');
     expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),');
     expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
@@ -300,7 +324,7 @@ describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
     expect(studio).toContain('.filter((loopClip) => loopClip.scriptId === actionId)');
     expect(studio).toContain('if (!groupsById.has(loopClip.loopId)) groupsById.set(loopClip.loopId, loopClip);');
     expect(studio).toContain('left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId)');
-    expect(studio).toContain('[launchContext?.layerId, throttledPaintRevision.value, efxPaintVersion.value]');
+    expect(studio).toContain('[launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]');
   });
 
   it('reveals only an available source Action when a stable Group is selected', () => {
@@ -701,8 +725,12 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 
   it('gates the solo playback window on the armed signal so a plain rail selection never filters playback (43.6-09)', () => {
-    const portStart = studio.indexOf('getSoloWindow: () => {');
-    const portEnd = studio.indexOf('onStart: (frameCount)', portStart);
+    // 52.2-04 (D-21): the window derivation moved into resolveSessionSoloWindow
+    // so one derivation serves both getSoloWindow and getSoloContentStart; the
+    // port delegates. The disarmed guard must still lead the derivation.
+    expect(studio).toContain('getSoloWindow: () => resolveSessionSoloWindow(),');
+    const portStart = studio.indexOf('const resolveSessionSoloWindow = (): SoloPlaybackWindow | null => {');
+    const portEnd = studio.indexOf('getSoloWindow:', portStart);
     const port = studio.slice(portStart, portEnd);
     expect(portStart).toBeGreaterThanOrEqual(0);
     // 43.6-09: a disarmed solo must return null BEFORE member derivation so
@@ -1050,7 +1078,7 @@ describe('Canvas navigation render localization', () => {
   it('keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack', () => {
     expect(canvasMount).toContain('export function PhysicsPaintCanvasMount(');
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMount);');
+    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
     expect(studioView).not.toContain('<PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />');
@@ -1060,7 +1088,6 @@ describe('Canvas navigation render localization', () => {
 describe('Workflow navigation render localization', () => {
   it('assembles Workflow with named stable callbacks instead of inline action closures', () => {
     for (const handler of [
-      'handleRotoInterpolationEnabledChange',
       'handleRotoInterpolationModeChange',
       'handleToggleRotoKeySelection',
       'handleCollapseRotoSelectionToKey',
@@ -1074,10 +1101,29 @@ describe('Workflow navigation render localization', () => {
     const workflowEnd = studio.indexOf('status: { shortcutsVisible }', workflowStart);
     const workflowBlock = studio.slice(workflowStart, workflowEnd);
     expect(workflowStart).toBeGreaterThanOrEqual(0);
-    expect(workflowBlock).not.toContain('onRotoInterpolationEnabledChange: (');
+    expect(workflowBlock).not.toContain('onRotoInterpolationModeChange: (');
     expect(workflowBlock).not.toContain('onNavigateToSyncedFrame: (');
-    expect(workflowBlock).toContain('onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange');
+    expect(workflowBlock).toContain('onRotoInterpolationModeChange: handleRotoInterpolationModeChange');
     expect(workflowBlock).toContain('onNavigateToSyncedFrame: handleNavigateToSyncedFrame');
+    // 260911-s1j: the popover's enable toggle is retired — the Studio wires no
+    // onRotoInterpolationEnabledChange (the row blend button owns on/off).
+    expect(studio).not.toContain('onRotoInterpolationEnabledChange');
+    expect(studio).not.toContain('handleRotoInterpolationEnabledChange');
+  });
+
+  it('writes the document-level interpolation mode to EVERY track and preserves each track\'s enabled flag (260911-s1j)', () => {
+    const handlerStart = studio.indexOf('const handleRotoInterpolationModeChange = useCallback(');
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    const handlerEnd = studio.indexOf('const handleSelectRotoSpacingProxy = useCallback(', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handler).toContain('getEfxPaintDocument(layerId)');
+    expect(handler).toContain('for (const track of document.tracks)');
+    expect(handler).toContain('physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id)');
+    expect(handler).toContain('physicPaintStore.setRotoPhysicalInterpolationState(layerId, track.id, { enabled: current.enabled, mode })');
+    expect(handler).toContain('physicalEditCoordinator.pendingOperationId.value !== null');
+    // The old active-track coordinator path is gone entirely.
+    expect(studio).not.toContain('useRotoInterpolationController');
+    expect(studio).not.toContain('updateRotoInterpolationSettings');
   });
 
   it('keeps ordinary Workflow frame navigation outside physical edit, document replacement, and history authority', () => {
@@ -1239,7 +1285,7 @@ describe('localized render instrumentation', () => {
       expect(countOccurrences(engineLifecycle, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
     }
     expect(engineLifecycle).toContain('}, []);');
-    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.document?.background?.fallback]);');
+    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.layerId, efxPaintVersion.value]);');
   });
 
   it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and three Studio identity resolves', () => {
@@ -1924,5 +1970,71 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
   it('mounts the picker dialog in the Studio view next to the Photo Reference dialog', () => {
     expect(studio).toContain('const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(');
     expect(studioView).toContain('<PhysicsPaintScriptPickerDialog {...scriptPickerDialog} />');
+  });
+});
+
+// 52.2-15 (D-16, sensitivity-map row 2): both Studio flush paths drain through
+// ONE pilot flush pipeline instance. A component-level test cannot mount the
+// Studio (Tauri window/engine deps), so the wiring is pinned by contract — the
+// same style as the rest of this suite. The join itself (two overlapping
+// callers → one drain, one push) is pinned behaviorally in the pipeline's own
+// suite; these cases prove the Studio callers cannot bypass that join.
+describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
+  const listenerFlush = (() => {
+    const start = studio.indexOf('flushStudioStateRef.current = async () => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('installPhysicPaintFlushRequestListener', start));
+  })();
+  const closeFlush = (() => {
+    const start = studio.indexOf('usePhysicsPaintCloseFlush(');
+    return start === -1 ? '' : studio.slice(start, start + 1600);
+  })();
+
+  it('creates exactly one pipeline instance and routes both flush paths through it', () => {
+    expect(studio).toContain("import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';");
+    // One instance, however many callers: a second instance would let a close
+    // start a second sequence while the requested flush is still in flight
+    // (T-52.2-54 — two pushes for one document).
+    expect((studio.match(/createFlushPipeline\(/g) ?? [])).toHaveLength(1);
+    expect(listenerFlush).toContain('runStudioFlush([');
+    expect(closeFlush).toContain('runStudioFlush([');
+    // The one shared runner is the single place the pipeline is entered, so
+    // the two paths cannot diverge.
+    expect(studio).toContain('await flushPipeline.flush({ steps });');
+  });
+
+  it('keeps the close sequence: engine settle, capture flush, playback settings, documentSync push', () => {
+    const order = [
+      'engineRef.current?.flushPendingStrokeFinalizations()',
+      'rotoPersistence.flushLivePixels(currentFrame)',
+      'rotoPlaybackSettingsController.flush()',
+      'flushDocumentSyncRef.current()',
+    ];
+    const positions = order.map((step) => closeFlush.indexOf(step));
+    expect(positions).not.toContain(-1);
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+  });
+
+  it('keeps the requested-flush sequence: idle-gated engine settle, capture flush, documentSync push', () => {
+    const order = [
+      'readInteractionIdle()',
+      'rotoPersistence.flushLivePixels()',
+      'pushLiveProjection(layerId, mode)',
+    ];
+    const positions = order.map((step) => listenerFlush.indexOf(step));
+    expect(positions).not.toContain(-1);
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+  });
+
+  it('keeps a non-flushed outcome visible to the facade and the unmount teardown intact', () => {
+    // The facade's fail-closed contract depends on the flush closure throwing:
+    // the pipeline never rejects, so the runner rethrows the outcome.
+    expect(studio).toContain("if (outcome.status === 'flushed') return;");
+    expect(listenerFlush).toContain('runStudioFlush([');
+    expect(studio).toContain('return () => unlisten?.();');
+  });
+
+  it('drains the capture queue through the pipeline port before the caller steps', () => {
+    expect(studio).toContain('drain: () => rotoPersistenceRef.current.drainLivePixelQueue()');
+    expect(studio).toContain('interrupt: () => rotoPersistenceRef.current.interruptLivePixels()');
   });
 });

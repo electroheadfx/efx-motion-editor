@@ -1,21 +1,21 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 53
+current_phase: "53"
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Phase 52 complete, ready to plan Phase 53
-last_updated: "2026-09-04T19:48:46.276Z"
-last_activity: 2026-09-04
-last_activity_desc: Phase 52 complete, transitioned to Phase 53
-state_head: 732c504c2b5d0dbe25b5d599806ab442d57a4017
+stopped_at: Phase 52.2 complete, ready to plan Phase 53
+last_updated: "2026-09-18T14:52:36.000Z"
+last_activity: 2026-09-18
+last_activity_desc: Phase 52.2 complete, transitioned to Phase 53
+state_head: 43679a0238bfcf14abf96f7cb9726ddf52b03c38
 progress:
-  total_phases: 9
-  completed_phases: 5
-  total_plans: 42
-  completed_plans: 42
-  percent: 56
+  total_phases: 11
+  completed_phases: 7
+  total_plans: 65
+  completed_plans: 65
+  percent: 64
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
+**Current focus:** Phase 52.2 — Project package format — references only
 
 ## Current Position
 
-Phase: 53 — Integrated v1.0.0 Acceptance
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-05 - Completed quick task 260905-hfd: Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector
+Phase: 53 (Integrated v1.0.0 Acceptance) — PLANNING
+Plan: — (not started)
+Status: Phase 52.2 complete + verified (12/12) — ready to plan Phase 53
+Last activity: 2026-09-18 — Phase 52.2 transition: verification PASSED, Nyquist audit clean, ui.safety_gate re-enabled, superseded SPECS draft deleted
 
-Progress: [████████████████████] 42/42 plans (100%)
+Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
 ## Performance Metrics
 
@@ -103,6 +103,26 @@ Progress: [████████████████████] 42/42 p
 | Phase 50 P04 | 15min | 2 tasks | 7 files |
 | Phase 50 P05 | 19 | 3 tasks | 11 files |
 | Phase 50 P06 | 10min | 2 tasks | 2 files |
+| Phase 52.1 P01 | 2 min | 2 tasks | 5 files |
+| Phase 52.1-modern-frame-runtime-native-hd-paint P02 | 35 | 2 tasks | 6 files |
+| Phase 52.1 P04 | 19 | 4 tasks | 9 files |
+| Phase 52.1 P05 | 0min | 2 tasks | 7 files |
+| Phase 52.1 P06 | 0min | 2 tasks | 6 files |
+| Phase 52.2 P01 | 8min | 3 tasks | 9 files |
+| Phase 52.2 P02 | 22min | 3 tasks | 22 files |
+| Phase 52.2 P03 | 63min | 3 tasks | 11 files |
+| Phase 52.2 P04 | 9 | 3 tasks | 6 files |
+| Phase 52.2 P05 | 25min | 3 tasks | 9 files |
+| Phase 52.2 P06 | 11min | 3 tasks | 8 files |
+| Phase 52.2 P07 | 54min | 3 tasks | 13 files |
+| Phase 52.2 P08 | ~45min | 3 tasks | 12 files |
+| Phase 52.2 P09 | ~31 min | 3 tasks | 14 files |
+| Phase 52.2 P10 | 30min | 3 tasks | 10 files |
+| Phase 52.2 P11 | 16min | 3 tasks | 9 files |
+| Phase 52.2 P12 | 1h53min | 3 tasks | 10 files |
+| Phase 52.2 P13 | 7 | 4 tasks | 35 files |
+| Phase 52.2 P14 | 46 min | 2 tasks | 15 files |
+| Phase 52.2 P15 | 10min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -240,6 +260,74 @@ Recent decisions affecting current work:
 - [Phase 52]: The alpha-canvas registry OWNS any canvas registered into it (session-lifetime) — no caller may release/resize/mutate a registered canvas; the compositor's registry-first branch only accepts non-zero-size entries (fail-soft) so a poisoned 0x0 canvas can never throw InvalidStateError on drawImage (G-52-10).
 - [Phase 52]: The canonical content fingerprint uses a content TOKEN (length + head-64 + tail-64, O(1)) instead of the full payload dataUrl — head+tail is change-safe for same-encoder PNG output because deflate streams have no resync points; the Rust boundary mirrors the token and the parity pin holds (G-52-6).
 - [Phase 52]: Photo-weight baked keys decode OFF the main thread (dataUrl → Blob → createImageBitmap, with Image + await img.decode() fallback) and the flattened record carries the composite raster with a LAZY dataUrl getter — the draw path never pays a PNG encode/decode round-trip (G-52-7/G-52-8).
+- [Phase 52.1]: Corrected plan target versions to actual latest (api 2.11.1, cli 2.11.4, tauri-build 2.6.3, plugins independent latest; only Rust tauri crate has 2.11.5)
+- [Phase 52.1]: Raised root pnpm overrides (preact ^10.29.8, @preact/signals ^2.11.2) so the bump is not pinned back
+- [Phase 52.1]: Encode via encode_advanced with exact=1 (config_exact), not encode_lossless() which does not set exact
+- [Phase 52.1]: Use direct invoke (not safeInvoke) so raw Uint8Array return is explicit and acceptance grep invoke( matches
+- [Phase 52.1]: Keep bytesToBase64/base64ToBytes — deletion is Plan 03's apply-path retarget
+- [Phase 52.1]: rotoAlphaCanvasRegistry stays (canvas registry for interpolation/reveal bake, not a decode cache); only _compositorImageCache absorbed into the LRU
+- [Phase 52.1]: decode_webp_frame takes bytes (not a path), so fetch-on-demand is deferred to Plan 05; Plan 04 decode path is invoke(decode_webp_frame, { bytes })
+- [Phase 52.1]: prefetchNeighborFrames wired via an optional prefetchNeighbors callback on useRotoNavigationCoordinator (layer-agnostic); the Studio closes over launchContext.layerId
+- [Phase 52.1]: ImageData exists only as the transient IPC-to-bitmap bridge, never stored
+- [Phase 52.1 close]: Plan-04 TDD deviation (tests bundled inside feat commits, no RED-first history) receives a conscious `--force-mvp-gate` override at phase close, on the record (52.1-04-SUMMARY "Phase-close override" + 52.1-07-SUMMARY)
+- [Phase 52.1 close]: The chunk budget stays at 1300 kB — NOT raised. Main chunk 1305.11 kB (13.68 kB over the 1291.43 kB baseline). Attribution via a pre-phase baseline build against the bumped node_modules (1296.24 kB): ~4.8 kB dep bumps (+ intervening quicks) + ~8.9 kB 52.1 feature code — the overage is NOT purely dep-bumps-only; documented and left red pending user sign-off on any future raise
+- [Phase 52.1 close]: Plan-07 native roto UAT signed off on feeling (drag, paint-burst, general fluidity); the numeric docSync count was declined by the user — validation recorded as feeling-based
+- [Phase 52.2]: Rule 3: tauri 2.11.5 Response has no header API — the frame-media read leg returns a base64 JSON envelope with bytesBase64 instead of bytes+response headers; plans 07/09 build on this wire contract (coverage item D6, human review).
+- [Phase 52.2]: One uniform EfxPaintMediaError (Rejected variant | Io) serialized as a single fixed label so no path or io detail reaches the renderer.
+- [Phase 52.2]: Two-guard asymmetry: the media lock stays frames/ + .webp-only; the save transaction's resolve_package_bound_path carries its own allowlist and delegates every frames/ entry back to the media code path.
+- [Phase 52.2]: Rule 3 deviation (52.2-02): the persisted payload mode is selected at the on-disk read door (loadEfxPaintDocuments), not inside parseEfxPaintDocument — the same entry point validates live in-memory documents on the save/fingerprint/launch paths, so an unconditional rule caused 116 failures. payloadMode defaults to 'runtime'; exactly one non-test call site passes 'reference-only'.
+- [Phase 52.2]: 52.2-02: one record type, two carriers — bytes is optional with media (FrameMediaReference: frames/<layerId>/<keyId>.webp + 64-hex digest) as the alternative. buildPhysicPaintRotoPayloadContentToken is total over both shapes (byte token | media digest) so revision/equality/dedup never dereference the raster carrier; requirePhysicPaintRotoInlineBytes throws at every runtime pixel projection (Law 1).
+- [Phase 52.2]: 52.2-03: numeric fields use one shared NumericStepper (type=text + inputMode=decimal, single clamp+round commit path, hold-to-repeat 400ms/60ms); per-field step/min/max preserved; numericStepperSweep source-scan contract over 6 files with a length-asserted list
+- [Phase 52.2]: 52.2-03: typed values commit on blur/Enter + -/+ buttons (shared gesture) instead of per keystroke; ColorPickerModal channel commits take a single-channel override; the Hold Frames popover reads its field text back on close so an uncommitted typed value is not lost
+- [Phase 52.2]: 52.2-04: the solo content start is a lazy getter (getSoloContentStart) returning null when no solo is active — arming the pill does not re-render the Studio, so a captured value would be stale at Play press; null keeps the Phase 51 play-from-cursor branch byte-for-byte
+- [Phase 52.2]: 52.2-04: the solo content start is resolved once and assigned to BOTH frameIndexRef and loopStartIndexRef — the wrap branch reads loopStartIndexRef, so the single assignment is what makes every loop iteration return to the isolated content start (D-22)
+- [Phase 52.2]: 52.2-04: one Studio closure (resolveSessionSoloWindow) serves both the playback filter (getSoloWindow) and the D-21 content start, so the pil's window derivation and the start seam can never drift; row-S reads the document soloed tracks + physicPaintStore.getRotoRealKeyRecords filtered to those ids, capacity = composite end frame
+- [Phase 52.2]: 52.2-05: the cache leg no longer binds a project write at all — a cache marker found at open is always rolled back, and no project write carries a cache transaction id (D-05/D-14)
+- [Phase 52.2]: 52.2-05: marker/entry structs stay snake_case because the marker's on-disk shape is untrusted input; the renderer-facing DTOs are camelCase command structs (BoundPackageFileSet)
+- [Phase 52.2]: 52.2-05: Save As holds ONE transaction open across the active-path migration (publish → migrate → commit | rollback), so a migration failure restores the previous destination through the transaction's own rollback (T-52.2-18)
+- [Phase 52.2]: 52.2-05: physicPaintCacheTransactionId is dead by design in both TS project-save signatures — plan 07 Task 3 stops passing it, plan 09 deletes the declaration; nothing may leave it in shipped code
+- [Phase 52.2]: 52.2-05: the cache producers' conversion to the machine cache root (efxPaintStore.ts + the efxPaintPersistence.ts guard) is plan 07 Task 2 and was deliberately not pre-empted
+- [Phase 52.2]: 52.2-06: resolveRef is OPTIONAL on serializeRuntimeIntoDocument — the roto media projection engages only when the package-write caller supplies digests; live Studio push, sibling sync and undo paths keep bytes
+- [Phase 52.2]: 52.2-06: toRuntimeRotoRecords passes a live bytes-carrying record through untouched and rebuilds a media-carrying one as an immutable media-only record — never allocates a byte buffer
+- [Phase 52.2]: 52.2-06: hydrate refuses a carrier-less roto record by keyId BEFORE the canonical parse (the parser's refusal is generic and cannot name the record)
+- [Phase 52.2]: The staged media path joins the bound set: the publish set IS the bound set, so no reference can outlive its bytes (T-52.2-21)
+- [Phase 52.2]: An empty change set returns without touching the package but still runs the derived-frame cache leg — a repaint moves frames without moving document tokens (D-11/D-14)
+- [Phase 52.2]: Both save call sites pass project + path only; the dead cache transaction id parameter is scheduled for removal in plan 09 Task 1
+- [Phase 52.2]: 52.2-08: the refusal gate keys on formatVersion with four terminal reasons in fixed precedence (not-a-package-manifest → old-project-layout → missing-format-version → unsupported-format-version{found,required}); all four render the identical blocking no-recourse dialog; the openProject call site passes pathKind:'directory'
+- [Phase 52.2]: 52.2-08: the Rust MceProject had to declare formatVersion/projectId/efxPaint in the same task as the carrier deletion — serde drops undeclared keys, so without them plan 07's manifest would lose all three on every save
+- [Phase 52.2]: 52.2-08: efx_paint_documents is kept in both models and in openProject's read (unreachable behind the gate) — plan 09 Task 2 deletes it together with wiring the layers/<layerId>.json reader; app/src/lib/ipc.ts joined the frame-transport allowlist because base64ToBytes is the package media read leg plan 09 depends on
+- [Phase 52.2]: 52.2-08: the rescue converter emits empty documentRevision/compositeRevision (the codebase's 'recompute' sentinel — the canonical revisions need the app's parser graph) and drops pre-52.2 derived-frame cache refs (machine-local, D-14) rather than rewriting them
+- [Phase 52.2]: 52.2-09: media LRU keyed by persisted digest (same raster referenced by several keys decodes once); mismatch refused before decode and before any LRU write
+- [Phase 52.2]: 52.2-09: missing/refused media draws the Phase 49 slate with the reference named — never an invented placeholder; verdicts are terminal per digest so failed reads are not re-issued per tick
+- [Phase 52.2]: 52.2-10: the receiver's digest decision runs BEFORE the document's revision guard — a re-pushed unchanged document may still carry bytes the receiver lost
+- [Phase 52.2]: 52.2-10: bridged raster bytes are held undecoded in _frameMediaBytes and enter the frame LRU only when the compositor actually needs the frame (byte copy dropped on decode)
+- [Phase 52.2]: 52.2-10: the main→Studio frame-media request ships as a Tauri-guarded protocol signal only — the responder rides the sender's queue, deferred to plan 14 (pilot)
+- [Phase 52.2]: 52.2-11: the .mce document-type declaration lives in exactly ONE file (app/src-tauri/Info.plist) — Tauri's plist merge is a shallow top-level overwrite and bundle.fileAssociations cannot express LSTypeIsPackage
+- [Phase 52.2]: 52.2-11: toPackageManifestPath is the single package-directory -> manifest-file conversion (OS/dialog paths name the package, projectStore reads the file inside it); shortcuts.ts:95 + WelcomeScreen.tsx:168 still pass raw paths — deferred-items, no scheduled owner
+- [Phase 52.2]: 52.2-11: the Finder one-icon/double-click and the rfd dialog package treatment stay PENDING until plan 52.2-16's bundled UAT (tauri dev carries no Info.plist)
+- [Phase 52.2]: Gate 2 CLOSED 2026-09-12: SPECS/async-conventions.md approved; plans 52.2-13 and 52.2-14 unblocked; no XState/Effect code or dependency exists
+- [Phase 52.2]: XState v6 alpha 6.0.0-alpha.53 stands per locked D-15; plan 13 re-verifies dist-tags + breaking changes at pilot start; SPECS/phase-52.3-async-conventions.md is superseded and void (user-owned deletion)
+- [Phase 52.2]: Void-numbers branch resolved: if the post-format re-capture already meets T1-T3, the pilot is admitted on T4/T5 + inspectability (rows 1-4 architectural problems survive the format change, answering D-17(a)); the honest-failure clause then evaluates T4 + T5 only
+- [Phase 52.2]: Verdict table approved as-is; NEITHER ('neither library here, and nowhere yet') remains the default everywhere else
+- [Phase 52.2]: BEFORE render-churn capture is a user-side action on the current dev build (efx.physicsPaint.profile), to run before any pilot code lands (plan 52.2-14)
+- [Phase 52.2]: 52.2-13: chunk budget raised 1320 -> 1340 kB (measured 1,326.36 + ~13.6 kB headroom) — pre/post-install builds emitted the byte-identical index-knu_IwqL.js main chunk, so the pinned xstate/effect install's delta is 0.00 kB and the raise is attributed to the already-landed 52.2 format work (plans 08-12), never to pilot code
+- [Phase 52.2]: 52.2-13: xstate 6.0.0-alpha.53 + effect 4.0.0-rc.115 installed --save-exact and left unimported (zero imports in app/src); pilot library imports stay behind the PhysicsPaintStudio lazy boundary. Pilot-start re-verification (D-15) recorded in SPECS/async-conventions.md: pins unchanged, five v6 breaking changes recorded (guard signature last), no Preact binding, @effect/platform still absent for v4
+- [Phase 52.2]: 52.2-13: scripts/verify-async-api-surface.ts is the installed-surface API gate (D-17) — the doc's import bindings, cited-but-not-imported names, removed-creator absence and dotted members all resolve against the shipped .d.ts; audit result zero unresolved names, zero corrections; effect-ts skill 0.6.5 installed (v4 default, upstream effect@4.0.0-beta.92 older than the pin, so the installed .d.ts is authoritative)
+- [Phase 52.2]: Failures are data, not fiber death: Effect v4 tryPromise's catch maps into the typed ERROR channel, so produce/commit run as never-rejecting Effect.promise thunks returning a discriminated result
+- [Phase 52.2]: The machine's wait IS the yield: the queue always awaits waitUntilDrainable (a macrotask when already drainable) so a turn never produces ahead of work submitted later in the same task
+- [Phase 52.2]: Settle-through interruption: interrupt() cancels live turns but each turn resolves its own settlement promise, and a cancelled turn's commit is never called
+- [Phase 52.2]: D-19 proven by measurement: main chunk byte-stable at 1,326.43 kB (budget 1340); the only xstate/effect imports in app/src are the two pilot modules; app/src/lib untouched
+- [Phase 52.2]: The pipeline's queue port is a forced capture-queue drain (drain/interrupt), not flushLivePixels: the port settles the gesture's queued captures BEFORE the caller's steps, while parent deliveries and their retries stay inside step 2 (52.2-15).
+- [Phase 52.2]: flush() returns the SAME in-flight promise to every concurrent caller: overlapping requests (or a close during a requested flush) produce one drain, one push and one shared outcome (T-52.2-54, 52.2-15).
+- [Phase 52.2]: The pipeline never rejects - a throwing step resolves failed with the error attached and an interrupted drain resolves interrupted - so the shared Studio runner rethrows for the callers whose contract is a rejection (52.2-15).
+- [Phase 52.2]: Interruption races the forced port drain against an interrupt wake, so a port whose work never settles cannot wedge Save/Export (T-52.2-48); the facade's unchanged 5 s timeout stays the outer bound (52.2-15).
+- [Phase 52.2]: The delivery retry is one beginFlush-wrapped pilot queue turn whose produce re-schedules only the narrowed per-identity entry and whose commit waits out that delivery chain - queue owns concurrency, coordinator keeps owning identity (52.2-15).
+- [Phase 52.2]: 52.2-16 CLOSED phase execution — bundled session 2026-09-18 (bundle facf1351, subject the rebuilt §7-pair at ~/Desktop/efx-motion-editor-project-test/v1.0.0.mce): rows 1-5 PASS (ONE Finder icon warm+cold with the unsaved-changes guard; file-style dialogs, no directory fallback; changed-media-only saves + autosave with no bind modal; stroke train smooth, finalization catches up during idle pauses; both solos content-start with identical wraps; steppers click/hold/keyboard/clamp) + the converted-fixture open PASS (2 keys, near-blank canvas expected)
+- [Phase 52.2]: 52.2-16 converter proof — one run on the committed fixture (app/src/efx-paint/document/__fixtures__/pre-52.2-project.mce.json → /tmp/efx-52.2-16-rescue/pre-52.2-project.mce): 2 layers / 2 keys / 5 files written / 0 skipped / 0 failed; source sha256 52f22844…f190 unchanged before and after (re-verified 2026-09-18); mechanics-not-scale recorded (the user's 37 MB original was discarded 2026-09-14)
+- [Phase 52.2]: 52.2-16 D-25 numbers (dev runtime of the shipped commit; bundle emits no telemetry by design): finalization median 113 ms (pre ~900 ms); input delay median 16 / p95 104 / max 186 ms, 0 stalls; queue waits stay in the idle-gate class by design (T3-as-written recorded UNMET, max 10 891 ms); persist.total 1 404 ms = commit 872 + media 460 + layers 11 + manifest 10 — the ~4.6 s full-document serialize is abolished, not optimized (n=1, architectural proof); §7 churn MET: tracksStrip 123 vs 369 (−78% per row), rightPanel 4 vs 72, canvas 114 vs 248, no surface up
+- [Phase 52.2]: 52.2-16 pilot verdict — ADMITTED on T4/T5 + inspectability (numbers axis void-not-waived; the D-01 miss, T3-unmet and T4's unrun 10-minute leg recorded honestly); skill .claude/skills/efx-async-orchestration/SKILL.md written (D-17 contract earned); close-out chores committed: 33a92f3d (52r E/H diagnostic cluster removed) + 8e5f219d (body background into the bundled stylesheet — packaged-CSP fix); the next bundle carries both, no behavior change
+- [Phase 52.2]: 52.2-16 carried to phase close — re-enable ui.safety_gate; delete the superseded SPECS/phase-52.3-async-conventions.md draft (user-owned); save progress-modal UX idea stays a registered candidate; the sequence-extension bug is routed as a later quick; the branch merge decision is the user's
+- [Phase 52.2]: PHASE CLOSED 2026-09-18 — verification PASSED (`52.2-VERIFICATION.md`: 12/12 must-haves, 0 behavior-unverified; real-package digest check 32/32, zero-base64 scan 0 matches, bundled plist verified); Nyquist validation clean (0 gaps; `52.2-VALIDATION.md` status: validated, nyquist_compliant: true); close-out chores done (ui.safety_gate re-enabled, superseded SPECS/phase-52.3 draft deleted); next: Phase 53
 
 ### Pending Todos
 
@@ -249,6 +337,9 @@ None yet.
 
 - Research flags for planning: exact `.mce` v1.0 schema field-level design (Phase 45), opacity/blend application order + full pixel acceptance matrix enumeration (Phase 48), track-aware `paintVersion` reactivity model (Phase 46).
 - v0.9.0 audit-accepted tech debt and deferred items carried forward (see Deferred Items below).
+- 52.2-02 leaves 8 round-trip tests red by design until plan 07's writer projects media references: efxPaintPersistence.test.ts (1, owned by plans 07/09) and 7 in files NO phase plan lists — physicsPaintRotoLoopClips.test.ts (5) and physicsPaintRotoGroupParity.test.ts (2). Plans 07 and 09 both carry a 'full suite green' exit criterion, which is where this surfaces.
+- 52.2-03: vitest run exits 1 on 9 pre-existing failures (roto persistence x7, base64ToBytes frame-transport token in app/src/lib/ipc.ts, efxPaintPersistence base64) — identical at the plan base 15e680cc; not introduced by this plan, owners must clear them before /gsd-ship
+- BEFORE render-churn capture pending - owner: user. Run the SPECS/async-conventions.md section 7 protocol on the current dev build (render.tracksStrip/rightPanel/canvas through window.__EFX_PHYSICS_PAINT_PROFILE__.snapshot().counters) before plan 52.2-14 pilot code lands.
 
 ### Quick Tasks Completed
 
@@ -262,10 +353,18 @@ None yet.
 | 260905-epb | Right panel: keep tab bars and the Actions toolbar pinned; only the tab content / scripts list scrolls | 2026-09-05 | 3be8a3e1 | [260905-epb-right-panel-keep-tab-bars-and-the-action](./quick/260905-epb-right-panel-keep-tab-bars-and-the-action/) |
 | 260905-f3v | Actions tab polish: styled guarded tooltips on every toolbar button, explicit Linked Rails nav with lucide icons + contextual Edit Rail, readable script rows by default | 2026-09-05 | cc113daa | [260905-f3v-actions-tab-polish-styled-guarded-toolti](./quick/260905-f3v-actions-tab-polish-styled-guarded-toolti/) |
 | 260905-hfd | Amendment to quick-260905-f3v: fix the gray script-title cascade, remove the contextual Edit Rail, compact Linked Rails nav, one 4-button row atop the Rail inspector | 2026-09-05 | ddb4ebde | [260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr](./quick/260905-hfd-amendment-to-quick-260905-f3v-fix-the-gr/) |
+| 260911-f2p | Backfill missing milestone verification records for Phase 48 and Phase 52.1 and reconcile REQUIREMENTS.md CMP-01..06 | 2026-09-11 | 596ecb58 | [260911-f2p-backfill-missing-milestone-verification-](./quick/260911-f2p-backfill-missing-milestone-verification-/) |
+| 260911-g1g | Align hide/solo semantics — hide is a hard off-switch | 2026-09-11 | 12cdee36 | [260911-g1g-align-hide-solo-semantics-hide-is-a-hard](./quick/260911-g1g-align-hide-solo-semantics-hide-is-a-hard/) |
+| 260911-s1j | Track-row header redesign — inline controls [grip/eye/S/blend], ⋯ panel + duplicate button retired, orange armed solo/blend, Tools popover Blend toggle removed, document-level interpolation mode (amends 260911-sli) | 2026-09-11 | 6a78f90a | [260911-s1j-track-row-header-redesign-inline-row-con](./quick/260911-s1j-track-row-header-redesign-inline-row-con/) |
+| 260911-jy4 | Close Phase 51 verification gap — AUD-01..04 | 2026-09-11 | 41d4235e | [260911-jy4-close-phase-51-verification-gap-aud-01-0](./quick/260911-jy4-close-phase-51-verification-gap-aud-01-0/) |
+| 260911-sli | Surface armed solo on the track row — standing badge + chip bound to the document solo flag; folds the pending 260911-g1g hide/solo native UAT | 2026-09-11 | 42a22183 | [260911-sli-surface-armed-solo-on-the-track-row](./quick/260911-sli-surface-armed-solo-on-the-track-row/) |
+| 260913-05k | P0 fix: route .mce package file IO through Rust commands (layer write/read + staging discard; plugin-fs restriction on package paths) + blocking save/open failure modal. Native UAT OWED | 2026-09-13 | 99aa5f2d | [260913-05k-p0-fix-route-mce-package-file-io-through](./quick/260913-05k-p0-fix-route-mce-package-file-io-through/) |
 
 ### Roadmap Evolution
 
 - Phase 51 edited: marked delivered via quicks 260902-cfa + 260902-cfa-amendments (no full phase cycle)
+- Phase 52.1 inserted after Phase 52: Modern frame runtime + native HD paint (URGENT)
+- Phase 52.2 inserted after Phase 52: Project package format — references only: sidecar .webp media files + per-layer manifests; absorbs and cancels the autosave quick (URGENT)
 
 ## Deferred Items
 
@@ -282,6 +381,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-04
-Stopped at: Phase 52 complete, ready to plan Phase 53
-Resume file: None
+Last session: 2026-09-13T00:32:00.000Z
+Stopped at: Completed quick 260913-05k (P0 package-IO reroute + failure modal); native UAT owed by the user
+Resume file: .planning/quick/260913-05k-p0-fix-route-mce-package-file-io-through/260913-05k-SUMMARY.md

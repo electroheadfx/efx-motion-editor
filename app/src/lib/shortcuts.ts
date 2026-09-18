@@ -6,6 +6,7 @@ import {findPrevSequenceStart, findNextSequenceStart} from './sequenceNav';
 import {trackLayouts} from './frameMap';
 import {undo, redo} from './history';
 import {guardUnsavedChanges} from './unsavedGuard';
+import {toPackageManifestPath} from './openedProjectUrls';
 import {cycleTheme} from './themeManager';
 import {projectStore} from '../stores/projectStore';
 import {uiStore} from '../stores/uiStore';
@@ -23,6 +24,7 @@ import {audioEngine} from './audioEngine';
 import {timelineStore} from '../stores/timelineStore';
 import {isFxLayer} from '../types/layer';
 import {save, open} from '@tauri-apps/plugin-dialog';
+import {showProjectIoFailureDialog} from './projectIoFailureDialog';
 
 /**
  * Check whether a keyboard shortcut should be suppressed because the user
@@ -65,6 +67,9 @@ export async function handleSave(): Promise<void> {
         await projectStore.saveProjectAs(filePath);
       } catch (err) {
         console.error('Failed to save project:', err);
+        // quick-260913-05k: a failed save must be visible — console alone let
+        // the live P0 look like a successful save.
+        await showProjectIoFailureDialog('save', err);
       }
     }
   } else {
@@ -72,6 +77,7 @@ export async function handleSave(): Promise<void> {
       await projectStore.saveProject();
     } catch (err) {
       console.error('Failed to save project:', err);
+      await showProjectIoFailureDialog('save', err);
     }
   }
 }
@@ -92,9 +98,10 @@ export async function handleOpenProject(): Promise<void> {
   });
   if (selected && typeof selected === 'string') {
     try {
-      await projectStore.openProject(selected);
+      await projectStore.openProject(toPackageManifestPath(selected));
     } catch (err) {
       console.error('Failed to open project:', err);
+      await showProjectIoFailureDialog('open', err);
     }
   }
 }

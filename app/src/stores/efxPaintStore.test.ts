@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
@@ -9,7 +10,16 @@ import {
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
-import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, PhotoReferenceTrack } from '../efx-paint/document/efxPaintDocument';
+import type { FrameMediaReference } from '../lib/efxPaintPackage';
+import {
+  buildFrameMediaRelativePath,
+  buildMachineCacheRelativePath,
+  isSafeMachineCacheRelativePath,
+  resolveMachineCachePath,
+} from '../lib/efxPaintPackage';
+import type { PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { PhysicPaintRotoMediaProjectionError } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { deriveEfxPaintBackgroundResolution, resolveEfxPaintBackgroundFrame } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
@@ -66,18 +76,18 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  bytes: testWebpBytes(btoa(`frame-${frameIndex}`)),
   width: 100,
   height: 50,
 });
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const rotoRecord = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(keyId), width: 10, height: 10 },
+  payload: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(keyId), width: 10, height: 10 },
 });
 
 describe('efxPaintStore', () => {
@@ -149,7 +159,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     const track = projected.tracks[0];
     expect(track.id).toBe(document.activeTrackId);
     expect(Object.keys(track.frames).map(Number).sort()).toEqual([0, 3]);
-    expect(track.frames[0].cachePath).toMatch(/^cache\/efx-paint\//);
+    expect(track.frames[0].cachePath).toMatch(/^efx-paint\//);
     expect(track.frames[0].width).toBe(100);
     expect(track.frames[0].height).toBe(50);
     expect(track.rotoPhysical?.realKeyRecords.map((record) => record.keyId)).toEqual(['key-1']);
@@ -165,7 +175,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
       ...document,
       tracks: [{
         ...track,
-        frames: { 0: { cachePath: 'cache/efx-paint/layer_L-abc/frame-000000-0000.png', width: 100, height: 50 } },
+        frames: { 0: { cachePath: buildMachineCacheRelativePath('layer-L', TEST_TRACK_ID, 0), width: 100, height: 50 } },
         rotoPhysical: {
           capacity: 10,
           realKeyRecords: records,
@@ -191,7 +201,7 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     // 46-02: the hydrate carrier is per-track (trackId → appFrame → frame).
     hydrateRuntimeFromDocument(withPayload, new Map([[TEST_TRACK_ID, frames]]));
 
-    expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).get(0)?.dataUrl).toBe(makeFrame(0, 0).dataUrl);
+    expect(physicPaintStore.getFrames('layer-L', TEST_TRACK_ID).get(0)?.bytes).toEqual(makeFrame(0, 0).bytes);
     expect(physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID).map((record) => record.keyId)).toEqual(['key-1']);
   });
 
@@ -215,11 +225,11 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
 
     const restoredFrames = physicPaintStore.getFrames('layer-L', TEST_TRACK_ID);
     expect(Array.from(restoredFrames.keys()).sort()).toEqual([0, 3]);
-    expect(restoredFrames.get(0)?.dataUrl).toBe(originalFrames.get(0)?.dataUrl);
-    expect(restoredFrames.get(3)?.dataUrl).toBe(originalFrames.get(3)?.dataUrl);
+    expect(restoredFrames.get(0)?.bytes).toBe(originalFrames.get(0)?.bytes);
+    expect(restoredFrames.get(3)?.bytes).toBe(originalFrames.get(3)?.bytes);
     const restoredRoto = physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID);
     expect(restoredRoto.map((record) => record.keyId)).toEqual(originalRoto.map((record) => record.keyId));
-    expect(restoredRoto[0]?.payload.dataUrl).toBe(originalRoto[0]?.payload.dataUrl);
+    expect(restoredRoto[0]?.payload.bytes).toBe(originalRoto[0]?.payload.bytes);
   });
 
   it('projects an empty runtime into a schema-valid document with an empty default-track payload', () => {
@@ -234,6 +244,22 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     expect(projected.documentRevision).toBe(document.documentRevision);
   });
 
+  it('bumps efxPaintVersion only when the projection actually changed (52.1 Fix A load-bearing assumption)', () => {
+    const document = makeTrackDocument('layer-idem');
+    registerDocument(document);
+    const before = efxPaintVersion.value;
+    // No runtime mutation: serialize is a no-op → no bump.
+    serializeRuntimeIntoDocument('layer-idem');
+    expect(efxPaintVersion.value).toBe(before);
+    // Mutate the runtime: serialize now changes the document → bumps once.
+    physicPaintStore.setFrame('layer-idem', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    serializeRuntimeIntoDocument('layer-idem');
+    expect(efxPaintVersion.value).toBe(before + 1);
+    // No further mutation: serialize is a no-op again → no bump.
+    serializeRuntimeIntoDocument('layer-idem');
+    expect(efxPaintVersion.value).toBe(before + 1);
+  });
+
   it('never reads or writes another layer runtime maps when projecting layer A', () => {
     const documentA = makeTrackDocument('layer-A');
     registerDocument(documentA);
@@ -243,9 +269,298 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     const projected = serializeRuntimeIntoDocument('layer-A');
 
     expect(Object.keys(projected.tracks[0].frames).map(Number)).toEqual([0]);
-    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
+    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
     hydrateRuntimeFromDocument(projected, new Map([[TEST_TRACK_ID, physicPaintStore.getFrames('layer-A', TEST_TRACK_ID)]]));
-    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.dataUrl).toBe(makeFrame(0, 7).dataUrl);
+    expect(physicPaintStore.getFrames('layer-B', TEST_TRACK_ID).get(7)?.bytes).toEqual(makeFrame(0, 7).bytes);
+  });
+});
+
+describe('52.2-07 Task 2: derived-frame cache references are machine-relative (D-05)', () => {
+  const TEST_CACHE_ROOT = '/machine/frame-cache/layer-machine';
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setEfxPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    reset();
+  });
+
+  it('serializeRuntimeIntoDocument emits one machine-relative reference per runtime frame', () => {
+    const document = makeTrackDocument('layer-M');
+    registerDocument(document);
+    physicPaintStore.setFrame('layer-M', TEST_TRACK_ID, 0, makeFrame(0, 0));
+    physicPaintStore.setFrame('layer-M', TEST_TRACK_ID, 3, makeFrame(1, 3));
+
+    const projected = serializeRuntimeIntoDocument('layer-M');
+    const track = projected.tracks[0];
+
+    // The producer emits the plan-02 shape, exactly and deterministically.
+    expect(track.frames[0].cachePath).toBe(buildMachineCacheRelativePath('layer-M', TEST_TRACK_ID, 0));
+    expect(track.frames[3].cachePath).toBe(buildMachineCacheRelativePath('layer-M', TEST_TRACK_ID, 3));
+    expect(track.frames[0].cachePath).toMatch(/^efx-paint\//);
+    for (const frame of Object.values(track.frames)) {
+      expect(isSafeMachineCacheRelativePath(frame.cachePath)).toBe(true);
+    }
+    // The machine-local identity resolves under the cache root, never the package.
+    const resolved0 = resolveMachineCachePath(TEST_CACHE_ROOT, track.frames[0].cachePath);
+    const resolved3 = resolveMachineCachePath(TEST_CACHE_ROOT, track.frames[3].cachePath);
+    expect(resolved0).toBe(`${TEST_CACHE_ROOT}/${buildMachineCacheRelativePath('layer-M', TEST_TRACK_ID, 0)}`);
+    expect(resolved0).not.toBe(resolved3);
+    // Two calls produce the same identity (deterministic, idempotent).
+    expect(resolveMachineCachePath(TEST_CACHE_ROOT, track.frames[0].cachePath)).toBe(resolved0);
+  });
+
+  it('the runtime projection behind duplicateTrack emits the same machine-relative shape for the copy', () => {
+    const document = makeTrackDocument('layer-D');
+    registerDocument(document);
+    // A duplicated track copies its roto real keys — and each freshly pasted
+    // key publishes its own runtime frame, which is the frame the copy's
+    // projection must re-reference.
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      'layer-D', TEST_TRACK_ID, [rotoRecord('key-d-1', 2)], { enabled: false, mode: 'duplicate' }, 10,
+    );
+    expect(seeded.ok).toBe(true);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-D', TEST_TRACK_ID, 2, makeFrame(0, 2));
+
+    const duplicated = duplicateTrack('layer-D', TEST_TRACK_ID) as { ok: true; trackId: string };
+    expect(duplicated.ok).toBe(true);
+    const copy = getDocument('layer-D')!.tracks.find((track) => track.id === duplicated.trackId)!;
+
+    expect(copy.frames[2].cachePath).toBe(buildMachineCacheRelativePath('layer-D', duplicated.trackId, 2));
+    expect(isSafeMachineCacheRelativePath(copy.frames[2].cachePath)).toBe(true);
+    expect(resolveMachineCachePath(TEST_CACHE_ROOT, copy.frames[2].cachePath))
+      .toBe(`${TEST_CACHE_ROOT}/${copy.frames[2].cachePath}`);
+  });
+});
+
+describe('serializeRuntimeIntoDocument media projection (52.2-06 Task 2)', () => {
+  const TEST_LAYER = 'layer-L';
+
+  const mediaRef = (keyId: string, digestCharacter = 'a'): FrameMediaReference => ({
+    relativePath: buildFrameMediaRelativePath(TEST_LAYER, keyId),
+    digest: digestCharacter.repeat(64),
+    width: 10,
+    height: 10,
+  });
+
+  const resolverFor = (entries: ReadonlyArray<readonly [string, FrameMediaReference]>) => {
+    const byKeyId = new Map(entries);
+    return (keyId: string) => byKeyId.get(keyId);
+  };
+
+  const payloadKeys = (payload: object) => Object.keys(payload).sort();
+  const PROJECTED_KEYS = ['appFrame', 'frameIndex', 'height', 'media', 'width'];
+
+  /** A canonical finite Group: one override is valid only when a loop clip references it. */
+  const groupLoopClip = {
+    loopId: 'loop-phase',
+    placementStart: 10,
+    sourceKeyIds: ['key-1', 'key-2'],
+    repeat: 3,
+    mode: 'progressive' as const,
+    syncState: 'modified' as const,
+    provenanceState: 'attached' as const,
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: [{ start: 10, endExclusive: 16 }],
+    frameOverrides: [{ appFrame: 11, keyId: 'override-phase-1' }],
+  };
+
+  function seedRoto(
+    realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    options: { groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[]; loopClips?: readonly unknown[] } = {},
+  ): void {
+    const groupOverrideRecords = options.groupOverrideRecords ?? [];
+    const loopClips = (options.loopClips ?? []) as never;
+    const result = physicPaintStore.replaceRotoPhysicalDocument(TEST_LAYER, TEST_TRACK_ID, {
+      capacity: 32,
+      realKeyRecords,
+      groupOverrideRecords,
+      interpolation: PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+      scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        realKeyRecords,
+        PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+        loopClips,
+        [],
+        groupOverrideRecords,
+      ),
+    });
+    expect(result.ok).toBe(true);
+  }
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setEfxPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    reset();
+  });
+
+  it('serializes every real key with a media reference and no raster payload, and the plan-02 parser accepts it', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([
+      ['key-1', mediaRef('key-1')],
+      ['key-2', mediaRef('key-2', 'b')],
+    ]));
+
+    const records = projected.tracks[0].rotoPhysical!.realKeyRecords;
+    expect(records.map((record) => record.keyId)).toEqual(['key-1', 'key-2']);
+    expect(payloadKeys(records[0].payload)).toEqual(PROJECTED_KEYS);
+    expect('bytes' in records[0].payload).toBe(false);
+    expect(records[0].payload.media?.relativePath).toBe('frames/layer-L/key-1.webp');
+    expect(records[0].payload.media?.digest).toBe('a'.repeat(64));
+    expect(records[1].payload.media?.digest).toBe('b'.repeat(64));
+    // The contract that matters: the on-disk door parses the produced document.
+    expect(() => parseEfxPaintDocument(projected, 'reference-only')).not.toThrow();
+  });
+
+  it('projects BOTH roto collections: groupOverrideRecords carries media and neither collection carries a raster payload', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)], {
+      groupOverrideRecords: [rotoRecord('override-phase-1', 11)],
+      loopClips: [groupLoopClip],
+    });
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([
+      ['key-1', mediaRef('key-1')],
+      ['key-2', mediaRef('key-2')],
+      ['override-phase-1', mediaRef('override-phase-1', 'c')],
+    ]));
+
+    const physical = projected.tracks[0].rotoPhysical!;
+    expect(physical.groupOverrideRecords?.map((record) => record.keyId)).toEqual(['override-phase-1']);
+    expect(payloadKeys(physical.groupOverrideRecords![0].payload)).toEqual(PROJECTED_KEYS);
+    expect(physical.groupOverrideRecords![0].payload.media?.relativePath).toBe('frames/layer-L/override-phase-1.webp');
+    expect(physical.realKeyRecords.every((record) => !('bytes' in record.payload))).toBe(true);
+    expect(physical.groupOverrideRecords!.every((record) => !('bytes' in record.payload))).toBe(true);
+    expect(() => parseEfxPaintDocument(projected, 'reference-only')).not.toThrow();
+  });
+
+  it('fails the serialize with the typed failure naming an unresolved real key', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)]);
+    const resolve = resolverFor([['key-1', mediaRef('key-1')]]);
+
+    expect(() => serializeRuntimeIntoDocument(TEST_LAYER, resolve)).toThrow(/key-2/);
+    let caught: unknown;
+    try {
+      serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(PhysicPaintRotoMediaProjectionError);
+    expect((caught as PhysicPaintRotoMediaProjectionError).failure).toEqual({
+      kind: 'unresolved-media-reference',
+      keyId: 'key-2',
+    });
+  });
+
+  it('fails the serialize with the typed failure naming an unresolved group override keyId', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)], {
+      groupOverrideRecords: [rotoRecord('override-phase-1', 11)],
+      loopClips: [groupLoopClip],
+    });
+    const resolve = resolverFor([['key-1', mediaRef('key-1')], ['key-2', mediaRef('key-2')]]);
+
+    expect(() => serializeRuntimeIntoDocument(TEST_LAYER, resolve)).toThrow(/override-phase-1/);
+  });
+
+  it('computes the persisted revision from the projected records, not from the runtime payload bytes', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0), rotoRecord('key-2', 3)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([
+      ['key-1', mediaRef('key-1')],
+      ['key-2', mediaRef('key-2')],
+    ]));
+
+    const physical = projected.tracks[0].rotoPhysical!;
+    const projectedRevision = buildPhysicPaintRotoPhysicalRevision(
+      physical.realKeyRecords,
+      physical.interpolation,
+      physical.loopClips,
+      physical.incomingInterpolationBreakKeyIds,
+      physical.groupOverrideRecords,
+    );
+    const runtimeRevision = buildPhysicPaintRotoPhysicalRevision(
+      [rotoRecord('key-1', 0), rotoRecord('key-2', 3)],
+      PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+      PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+      PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+      [],
+    );
+    expect(physical.revision).toBe(projectedRevision);
+    expect(physical.revision).not.toBe(runtimeRevision);
+  });
+
+  it('leaves keys with no raster at all untouched and never calls the resolver for an empty layer', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    const resolve = vi.fn(() => undefined);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+
+    expect(projected.tracks[0].rotoPhysical).toBeNull();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('copies both sourceFrameRefs arrays verbatim for a layer carrying a loop clip and a photo reference (D-06 Law-1)', () => {
+    const base = makeTrackDocument(TEST_LAYER);
+    const loopClip: FrameLoopClip = {
+      id: 'loop-hold-1',
+      startFrame: 0,
+      sourceFrameRefs: ['key-1', 'key-2'],
+      repeat: { mode: 'infinite' },
+      sourceKind: 'playscript-hold',
+      revision: 0,
+    };
+    const photoReference: PhotoReferenceTrack = {
+      id: 'ref-1',
+      sourceFrameRefs: ['img-a', 'img-b'],
+      revision: 0,
+      visibleInStudio: true,
+      opacity: 1,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: false,
+    };
+    registerDocument({ ...base, tracks: [{ ...base.tracks[0], loopClips: [loopClip] }], photoReference });
+    seedRoto([rotoRecord('key-1', 0)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER, resolverFor([['key-1', mediaRef('key-1')]]));
+
+    expect(projected.tracks[0].loopClips[0].sourceFrameRefs).toEqual(['key-1', 'key-2']);
+    expect(projected.photoReference?.sourceFrameRefs).toEqual(['img-a', 'img-b']);
+    expect(payloadKeys(projected.tracks[0].rotoPhysical!.realKeyRecords[0].payload)).toEqual(PROJECTED_KEYS);
+  });
+
+  it('serializes twice without a runtime change into equal documents (determinism)', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0)]);
+    const resolve = resolverFor([['key-1', mediaRef('key-1')]]);
+
+    const first = serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+    const second = serializeRuntimeIntoDocument(TEST_LAYER, resolve);
+
+    expect(second).toEqual(first);
+    expect(second.documentRevision).toBe(first.documentRevision);
+  });
+
+  it('without a resolver keeps the live bytes-carrying records (Studio live-push path unchanged)', () => {
+    registerDocument(makeTrackDocument(TEST_LAYER));
+    seedRoto([rotoRecord('key-1', 0)]);
+
+    const projected = serializeRuntimeIntoDocument(TEST_LAYER);
+
+    const payload = projected.tracks[0].rotoPhysical!.realKeyRecords[0].payload;
+    expect(payload.bytes).toBeInstanceOf(Uint8Array);
+    expect('media' in payload).toBe(false);
   });
 });
 
@@ -413,10 +728,10 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
     expect(copyKeyIds.some((keyId) => sourceKeyIds.includes(keyId))).toBe(false);
     // The copy's frame bytes are byte-identical to the source's real-key payloads.
     const sourceRecords = physicPaintStore.getRotoRealKeyRecords('layer-crud', TEST_TRACK_ID);
-    expect(physicPaintStore.getFrames('layer-crud', copyId).get(0)?.dataUrl)
-      .toBe(sourceRecords.find((record) => record.appFrame === 0)?.payload.dataUrl);
-    expect(physicPaintStore.getFrames('layer-crud', copyId).get(3)?.dataUrl)
-      .toBe(sourceRecords.find((record) => record.appFrame === 3)?.payload.dataUrl);
+    expect(physicPaintStore.getFrames('layer-crud', copyId).get(0)?.bytes)
+      .toBe(sourceRecords.find((record) => record.appFrame === 0)?.payload.bytes);
+    expect(physicPaintStore.getFrames('layer-crud', copyId).get(3)?.bytes)
+      .toBe(sourceRecords.find((record) => record.appFrame === 3)?.payload.bytes);
     // The copy is independently editable — mutating it leaves the source untouched.
     const sourceFrameCount = physicPaintStore.getFrames('layer-crud', TEST_TRACK_ID).size;
     physicPaintStore.setFrame('layer-crud', copyId, 9, makeFrame(2, 9));

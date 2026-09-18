@@ -66,6 +66,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoInterpolationState,
@@ -94,7 +95,8 @@ import {
   buildCanonicalMoveGroupOverrideRecords,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../roto/physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
+import { isWebpBytes } from '../../../types/physicPaint';
+import { buildFrameBytesToken } from '../../../lib/webpBytes';
 import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
@@ -439,6 +441,11 @@ function createAuthorizedPhysicalEditPayload(
   }
 }
 
+function payloadBytesEqual(left: unknown, right: unknown): boolean {
+  if (!(left instanceof Uint8Array) || !(right instanceof Uint8Array)) return false;
+  return buildFrameBytesToken(left) === buildFrameBytesToken(right);
+}
+
 function semanticDeltaEquals(
   left: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
   right: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
@@ -520,7 +527,7 @@ function semanticDeltaEquals(
         || leftEntry.newKeyId !== rightEntry.newKeyId
         || leftEntry.payload.frameIndex !== rightEntry.payload.frameIndex
         || leftEntry.payload.appFrame !== rightEntry.payload.appFrame
-        || leftEntry.payload.dataUrl !== rightEntry.payload.dataUrl
+        || !payloadBytesEqual(leftEntry.payload.bytes, rightEntry.payload.bytes)
         || leftEntry.payload.width !== rightEntry.payload.width
         || leftEntry.payload.height !== rightEntry.payload.height) {
         return false;
@@ -536,7 +543,7 @@ function semanticDeltaEquals(
     && left.newKeyId === right.newKeyId
     && leftPayload.frameIndex === rightPayload.frameIndex
     && leftPayload.appFrame === rightPayload.appFrame
-    && leftPayload.dataUrl === rightPayload.dataUrl
+    && payloadBytesEqual(leftPayload.bytes, rightPayload.bytes)
     && leftPayload.width === rightPayload.width
     && leftPayload.height === rightPayload.height;
 }
@@ -592,7 +599,7 @@ function clonePayloadAtFrame(
   return {
     frameIndex: payload.frameIndex,
     appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   };
@@ -606,7 +613,7 @@ function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicP
     payload: {
       frameIndex: record.payload.frameIndex,
       appFrame: record.payload.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
@@ -689,7 +696,7 @@ function recordsEqual(
       || leftRecord.appFrame !== rightRecord.appFrame
       || leftRecord.payload.frameIndex !== rightRecord.payload.frameIndex
       || leftRecord.payload.appFrame !== rightRecord.payload.appFrame
-      || leftRecord.payload.dataUrl !== rightRecord.payload.dataUrl
+      || !payloadBytesEqual(leftRecord.payload.bytes, rightRecord.payload.bytes)
       || leftRecord.payload.width !== rightRecord.payload.width
       || leftRecord.payload.height !== rightRecord.payload.height) return false;
   }
@@ -708,7 +715,7 @@ function applyPayloadRecordsEqual(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.dataUrl === candidate.payload.dataUrl
+      && payloadBytesEqual(record.payload.bytes, candidate.payload.bytes)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -785,7 +792,7 @@ function railSetCopyKeyRailMemberEqual(
       || entry.ownsIncomingBreak !== other.ownsIncomingBreak) return false;
     return entry.payload.frameIndex === other.payload.frameIndex
       && entry.payload.appFrame === other.payload.appFrame
-      && entry.payload.dataUrl === other.payload.dataUrl
+      && payloadBytesEqual(entry.payload.bytes, other.payload.bytes)
       && entry.payload.width === other.payload.width
       && entry.payload.height === other.payload.height;
   });
@@ -925,7 +932,7 @@ function validatePlayScriptInput(
   const expectedFreshIds: string[] = [];
   for (let appFrame = delta.affectedStartAppFrame; appFrame <= delta.affectedEndAppFrame; appFrame += 1) {
     const proposed = proposedByFrame.get(appFrame);
-    if (!proposed || !isRotoPngDataUrl(proposed.payload.dataUrl)) return 'Play Script proposal is missing a valid PNG destination record.';
+    if (!proposed || !isWebpBytes(proposed.payload.bytes)) return 'Play Script proposal is missing a valid WebP destination record.';
     const current = currentByFrame.get(appFrame);
     if (current) {
       if (proposed.keyId !== current.keyId) return 'Play Script proposal changed an occupied destination identity.';
@@ -967,11 +974,38 @@ function recordsToApplyPayloadRecords(records: readonly PhysicPaintRotoRealKeyRe
     payload: {
       frameIndex: record.payload.frameIndex,
       appFrame: record.payload.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
   }));
+}
+
+/**
+ * 52.1 (Part 2): the wire copy of the physical-edit payload. Real-key records
+ * whose bytes are identical to the expected (parent-current) state ride the
+ * bridge as content-token refs instead of full byte payloads — the parent
+ * resolves them against its own store before validation. `beforeRecords` is
+ * the exact snapshot `expectedRevision` refers to, so a ref can never point at
+ * bytes the parent does not hold; the pending/recovery copy of the payload
+ * keeps full records.
+ */
+function compactRecordsForTransport(
+  records: PhysicPaintRotoPhysicalEditApplyPayload['records'],
+  beforeRecords: readonly PhysicPaintRotoRealKeyRecord[],
+): PhysicPaintRotoPhysicalEditApplyPayload['records'] {
+  const beforeTokens = new Map(beforeRecords.map((record) => [record.keyId, buildPhysicPaintRotoPayloadContentToken(record.payload)]));
+  let refCount = 0;
+  const compacted = records.map((record) => {
+    const token = beforeTokens.get(record.keyId);
+    if (token === undefined || token !== buildPhysicPaintRotoPayloadContentToken(record.payload)) return record;
+    refCount += 1;
+    return { keyId: record.keyId, appFrame: record.appFrame, refToken: token };
+  });
+  if (refCount === 0) return records;
+  // Wire-only shape — refs are expanded back to full records at the bridge
+  // boundary, so the in-memory payload type (full records) stays authoritative.
+  return compacted as PhysicPaintRotoPhysicalEditApplyPayload['records'];
 }
 
 function replayProposalMatchesTarget(
@@ -1923,8 +1957,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           }
         }
         if (isGeneratedPublication) {
-          const generatedValidationError = !generatedPublicationInput
-            || generatedPublicationInput.expectedRevision !== expectedRevision
+          const revisionMismatch = !generatedPublicationInput
+            || generatedPublicationInput.expectedRevision !== expectedRevision;
+          const generatedValidationError = revisionMismatch
             ? `${isRegenerateGroup ? 'Group Regenerate' : 'Play Script'} physical revision became stale before staging.`
             : isPlayScript && playScriptInput
               ? validatePlayScriptInput(playScriptInput, currentRecords, currentInterpolation, capacity)
@@ -2198,7 +2233,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         portsRef.current.status.setLastError(null);
 
         try {
-          await portsRef.current.bridge.sendPhysicalEditPayload(payload);
+          const wirePayload: PhysicPaintRotoPhysicalEditApplyPayload = {
+            ...payload,
+            records: compactRecordsForTransport(payload.records, before.records),
+          };
+          await portsRef.current.bridge.sendPhysicalEditPayload(wirePayload);
         } catch (error) {
           finalizeFailed(pending, before, 'transport', error);
           return false;
@@ -2358,7 +2397,7 @@ function buildReplayRecords(
       payload: {
         frameIndex: record.payload.frameIndex,
         appFrame: record.payload.appFrame,
-        dataUrl: record.payload.dataUrl,
+        bytes: record.payload.bytes,
         ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
         ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
       },

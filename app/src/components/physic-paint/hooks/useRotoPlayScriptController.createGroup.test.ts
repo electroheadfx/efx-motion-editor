@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
@@ -54,10 +55,10 @@ type HookPorts = Parameters<typeof useRotoPlayScriptController>[0];
 const LAYER_ID = 'phys-layer-1';
 const CONTEXT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
-  return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
+  return { frameIndex: 0, appFrame, bytes: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
 }
 
 /** 46-04: the authority revalidates the document → track dimensions, so the

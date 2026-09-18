@@ -292,7 +292,7 @@ function physicalRecordsEqual(
     const right = rightRecords[index];
     if (left.keyId !== right.keyId) return false;
     if (left.appFrame !== right.appFrame) return false;
-    if (left.payload.dataUrl !== right.payload.dataUrl) return false;
+    if (left.payload.bytes !== right.payload.bytes) return false;
     if (left.payload.frameIndex !== right.payload.frameIndex) return false;
     if (left.payload.appFrame !== right.payload.appFrame) return false;
     if (left.payload.width !== right.payload.width) return false;
@@ -420,7 +420,7 @@ function snapshotCanonicalContentEqual(
     const l = left.records[index];
     const r = right.records[index];
     if (l.keyId !== r.keyId || l.appFrame !== r.appFrame) return false;
-    if (l.payload.dataUrl !== r.payload.dataUrl
+    if (l.payload.bytes !== r.payload.bytes
       || l.payload.frameIndex !== r.payload.frameIndex
       || l.payload.appFrame !== r.payload.appFrame
       || l.payload.width !== r.payload.width

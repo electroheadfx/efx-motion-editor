@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 
 /** Horizontal travel in CSS pixels that must be exceeded before scrub mode arms. */
 export const RULER_SCRUB_THRESHOLD_PX = 4;
@@ -90,6 +91,7 @@ export function usePhysicsPaintRulerScrub(
   const onPointerDown = (event: PointerEvent) => {
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (!win || sessionRef.current) return;
+    beginInteraction(event.pointerId);
 
     const rulerElement = event.currentTarget as unknown as RulerScrubRulerElement;
     const rectLeft = rulerElement.getBoundingClientRect().left;
@@ -130,6 +132,7 @@ export function usePhysicsPaintRulerScrub(
     const cleanup = () => {
       if (!active) return;
       active = false;
+      endInteraction(session.pointerId);
       win.removeEventListener('pointermove', handlePointerMove);
       win.removeEventListener('pointerup', handlePointerUp);
       win.removeEventListener('pointercancel', handlePointerCancel);
@@ -159,6 +162,7 @@ export function usePhysicsPaintRulerScrub(
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
+      markInteractionActive();
       if (!session.scrubbing) {
         if (Math.abs(moveEvent.clientX - session.originX) <= RULER_SCRUB_THRESHOLD_PX) return;
         session.scrubbing = true;

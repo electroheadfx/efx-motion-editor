@@ -45,10 +45,15 @@ vi.mock('@efxlab/efx-physic-paint/animation', () => ({
   getStaticFrameStrokes: harness.getStatic,
   transformRecordedStrokeForHeldPose: harness.transform,
 }));
+vi.mock('../../../lib/webpFrameCodec', () => ({
+  encodeWebpFrame: vi.fn(async () => new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c])),
+  decodeWebpFrame: vi.fn(),
+}));
 
 // The REAL modules under test: the encode registers into the REAL store registry.
 import { hasRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
 import { renderRotoPlayScriptFrames, renderRotoRevealFrames } from './physicsPaintRotoPlayScriptRenderer';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 class OwnedCanvas {
   width = 0;
@@ -65,6 +70,7 @@ class OwnedCanvas {
       rotate: vi.fn(),
       scale: vi.fn(),
       drawImage: vi.fn(),
+      getImageData: () => ({ data: new Uint8Array(this.width * this.height * 4) }),
     };
   }
   toBlob(callback: BlobCallback): void {
@@ -127,7 +133,7 @@ function revealInput(extra: Record<string, unknown> = {}): Parameters<typeof ren
     motion: { deformation: 0, position: 0 },
     mode: 'progressive',
     size: { width: 10, height: 10 },
-    reference: { dataUrl: 'data:image/png;base64,ref', transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    reference: { bytes: testWebpBytes('ref'), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
     signal: new AbortController().signal,
     ...extra,
   } as Parameters<typeof renderRotoRevealFrames>[0];
@@ -175,7 +181,7 @@ describe('G-52-10 registry ownership (real encode → real registry)', () => {
     for (const frame of staged) {
       // A register-then-release in the render loop zeroed this canvas AFTER
       // registration — the exact G-52-10 poison the compositor later drew from.
-      expect(hasRotoAlphaCanvasFrame(frame.dataUrl, { width: 10, height: 10 })).toBe(true);
+      expect(hasRotoAlphaCanvasFrame(frame.bytes, { width: 10, height: 10 })).toBe(true);
     }
     // The coverage alpha canvas is never registered, so it is still released.
     expect(harness.scriptAlpha?.width).toBe(0);
@@ -187,7 +193,7 @@ describe('G-52-10 registry ownership (real encode → real registry)', () => {
 
     expect(staged.map((frame) => frame.appFrame)).toEqual([15, 16, 17]);
     for (const frame of staged) {
-      expect(hasRotoAlphaCanvasFrame(frame.dataUrl, { width: 10, height: 10 })).toBe(true);
+      expect(hasRotoAlphaCanvasFrame(frame.bytes, { width: 10, height: 10 })).toBe(true);
     }
     expect(harness.scriptAlpha?.width).toBe(0);
     expect(harness.scriptAlpha?.height).toBe(0);

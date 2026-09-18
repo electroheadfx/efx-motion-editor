@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -18,7 +19,7 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      bytes: testWebpBytes('iVBORw0KGgo='),
     },
   };
 }
@@ -63,7 +64,7 @@ function snapshot(appFrame: number) {
   const frame = {
     frameIndex: 0,
     appFrame,
-    dataUrl: 'data:image/png;base64,VklSVFVBTA==',
+    bytes: testWebpBytes('VklSVFVBTA=='),
   };
   return {
     frameStates: new Map([[appFrame, { strokes: 1 }]]),

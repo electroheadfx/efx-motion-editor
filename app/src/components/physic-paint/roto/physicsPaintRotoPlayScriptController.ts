@@ -25,7 +25,7 @@ import {
 } from './physicsPaintRotoPhysicalResolver';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
-import { isRotoPngDataUrl } from './rotoCanvasFrames';
+import { isWebpBytes } from '../../../types/physicPaint';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -1757,7 +1757,7 @@ function buildPhysicalPublication(input: {
       || frame.appFrame < start
       || frame.appFrame > affectedEndAppFrame
       || stagedByFrame.has(frame.appFrame)
-      || !isRotoPngDataUrl(frame.dataUrl)) throw new Error('Rendered Play Script output is incomplete or is not a valid PNG.');
+      || !isWebpBytes(frame.bytes)) throw new Error('Rendered Play Script output is incomplete or is not valid WebP.');
     stagedByFrame.set(frame.appFrame, frame);
   }
 
@@ -1781,7 +1781,7 @@ function buildPhysicalPublication(input: {
       payload: {
         frameIndex: frame.frameIndex,
         appFrame,
-        dataUrl: frame.dataUrl,
+        bytes: frame.bytes,
         ...(frame.width !== undefined ? { width: frame.width } : {}),
         ...(frame.height !== undefined ? { height: frame.height } : {}),
       },
@@ -1817,7 +1817,7 @@ function clonePhysicalPayload(payload: PhysicPaintRotoPhysicalEditRecord['payloa
   return {
     frameIndex: payload.frameIndex,
     appFrame: payload.appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   };
@@ -1842,7 +1842,7 @@ function samePhysicalRecords(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.dataUrl === candidate.payload.dataUrl
+      && record.payload.bytes === candidate.payload.bytes
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });

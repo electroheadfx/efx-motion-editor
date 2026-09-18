@@ -4,6 +4,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../engine/physicsPaintDevExport';
 import { downloadPhysicsPaintState, LOAD_STATE_SUCCESS_COPY, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
+import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import { getDocument, registerDocument } from '../../../stores/efxPaintStore';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -120,16 +121,20 @@ export function createPhysicsPaintSessionController(
     reader.readAsText(file);
   };
 
-  const exportDebugProof = () => {
+  const exportDebugProof = async () => {
     const engine = input.engine;
     const launchContext = input.launchContext;
     if (!engine || !launchContext) return;
     try {
       const canvas = engine.exportCompositeCanvas();
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('Debug proof canvas is unavailable.');
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const bytes = await encodeWebpFrame({ rgba: new Uint8Array(imageData.data), width: canvas.width, height: canvas.height });
       const frame: PhysicPaintRenderedFrame = {
         frameIndex: 0,
         appFrame: input.currentFrame,
-        dataUrl: canvas.toDataURL('image/png'),
+        bytes,
         width: canvas.width,
         height: canvas.height,
       };

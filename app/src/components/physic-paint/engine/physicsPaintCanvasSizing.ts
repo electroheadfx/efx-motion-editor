@@ -1,6 +1,6 @@
 export const DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH = 1000;
 export const DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT = 650;
-export const PHYSICS_PAINT_WORKING_LONG_EDGE = 1000;
+export const PHYSICS_PAINT_WORKING_LONG_EDGE = 1920;
 
 export function getPhysicsPaintWorkingSize(projectWidth: number, projectHeight: number): { width: number; height: number } {
   if (projectWidth <= 0 || projectHeight <= 0) return { width: DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, height: DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT };

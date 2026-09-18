@@ -1,6 +1,26 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const invoke = vi.hoisted(() => vi.fn());
+const emitTo = vi.hoisted(() => vi.fn(
+  async (_target: string, _event: string, _payload: unknown): Promise<void> => undefined,
+));
+const performanceRecord = vi.hoisted(() => vi.fn());
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ emitTo }));
+vi.mock('../performance/physicsPaintPerformanceTrace', () => ({ recordPhysicsPaintPerformance: performanceRecord }));
+
+import {
+  PHYSIC_PAINT_SESSION_DOCUMENT_KEY,
+  createPhysicPaintThumbnailNativeEncoder,
+  markEfxPaintDocumentSyncFrameDelivered,
+  readEfxPaintSessionDocumentCheckpoint,
+  resetEfxPaintDocumentSyncTransferState,
+  sendEfxPaintDocumentSync,
+  writeEfxPaintSessionDocumentCheckpoint,
+} from './physicsPaintBridgeTransport';
 import {
   applyPhysicPaintImageLibraryRequest,
   createImageLibraryRequestLifecycle,
@@ -9,6 +29,15 @@ import {
 } from '../../../lib/physicPaintBridge';
 import { isPhysicPaintImageLibraryResult } from '../../../types/physicPaint';
 import type { MceImageRef } from '../../../types/project';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
+} from '../roto/physicsPaintRotoPhysicalModel';
+import { buildFrameMediaRelativePath } from '../../../lib/efxPaintPackage';
+import { bytesToBase64 } from '../../../lib/webpBytes';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const transport = readFileSync(fileURLToPath(new URL('./physicsPaintBridgeTransport.ts', import.meta.url)), 'utf8');
 
@@ -126,5 +155,330 @@ describe('image-library bridge pair (49-04, Task 1)', () => {
     expect(bridge).toContain("import { tempProjectDir } from './projectDir';");
     expect(bridge).toContain("getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? '')");
     expect(bridge).toContain("getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? ''");
+  });
+});
+
+describe('thumbnail native encoder raw-bytes transport (52.1 Save Action regression)', () => {
+  it('sends the rgba as the raw invoke body with dimensions in headers, and normalizes the number-array response', async () => {
+    invoke.mockResolvedValueOnce([82, 73, 70, 70, 87, 69, 66, 80]);
+    const rgba = new Uint8Array(2 * 2 * 4).fill(7);
+
+    const result = await createPhysicPaintThumbnailNativeEncoder().encodeWebp({ width: 2, height: 2, quality: 0.8, rgba });
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    const [command, body, options] = invoke.mock.calls[0];
+    expect(command).toBe('script_library_encode_thumbnail_webp');
+    // The raw Uint8Array IS the invoke body. Crossing the event bridge (or a
+    // JSON arg) index-objects the bytes and orphans the request — the silent
+    // Save Action stall this regression came from.
+    expect(body).toBe(rgba);
+    expect(options.headers).toMatchObject({ width: '2', height: '2', quality: '0.8' });
+    expect(options.headers.operationid).toMatch(/^physics-paint-thumbnail-/);
+    expect(result.width).toBe(2);
+    expect(result.height).toBe(2);
+    expect(result.mimeType).toBe('image/webp');
+    // macOS serializes a raw response as a JSON number array — normalize.
+    expect(result.bytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(result.bytes)).toEqual([82, 73, 70, 70, 87, 69, 66, 80]);
+  });
+
+  it('propagates a Rust encode failure as a rejection so the save failure is loud (no silent stall)', async () => {
+    invoke.mockRejectedValueOnce(new Error('Thumbnail RGBA length does not match dimensions'));
+
+    await expect(
+      createPhysicPaintThumbnailNativeEncoder().encodeWebp({ width: 2, height: 2, quality: 0.8, rgba: new Uint8Array(16) }),
+    ).rejects.toThrow('Thumbnail RGBA length does not match dimensions');
+  });
+
+  it('keeps the retired event relay out of the transport', () => {
+    // The tree-wide scan lives in efxPaintCleanBreakContract.test.ts (D-19);
+    // this pins the transport file itself.
+    expect(transport).not.toContain('PHYSIC_PAINT_THUMBNAIL_ENCODE');
+    expect(transport).not.toContain("emitTo('main', PHYSIC_PAINT_THUMBNAIL");
+  });
+});
+
+/**
+ * 52.2-10 (D-12): the Studio→main sync carries layer documents as references +
+ * metadata; raster bytes ride a digest-keyed channel and only for a digest the
+ * companion window is not known to hold. The reference IS the package reference
+ * a save would write, so the two windows speak the same identity as the file.
+ */
+describe('52.2-10 reference sync with a digest-keyed byte channel (D-12)', () => {
+  const LAYER = 'layer-52-10';
+
+  interface SyncKey {
+    readonly keyId: string;
+    readonly appFrame: number;
+    readonly bytes: Uint8Array;
+  }
+
+  const syncDocument = (keys: readonly SyncKey[]): EfxPaintDocument => {
+    const base = createEfxPaintDocument(LAYER);
+    const track = base.tracks[0];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const realKeyRecords = keys.map((key) => ({
+      kind: 'real-key' as const,
+      keyId: key.keyId,
+      appFrame: key.appFrame,
+      payload: { frameIndex: 0, appFrame: key.appFrame, bytes: key.bytes, width: 8, height: 6 },
+    }));
+    const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 4096,
+      realKeyRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    return { ...base, tracks: [{ ...track, rotoPhysical }] };
+  };
+
+  interface EmittedSync {
+    readonly document: EfxPaintDocument;
+    readonly changedBytes?: Record<string, string>;
+  }
+
+  const emittedSync = (index: number): EmittedSync => emitTo.mock.calls[index][2] as EmittedSync;
+  const lastSync = (): EmittedSync => emittedSync(emitTo.mock.calls.length - 1);
+  const emittedRecords = (payload: EmittedSync) => payload.document.tracks[0].rotoPhysical?.realKeyRecords ?? [];
+
+  const sha256Hex = async (bytes: Uint8Array): Promise<string> => {
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    const digest = await crypto.subtle.digest('SHA-256', copy.buffer);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  };
+
+  beforeEach(() => {
+    emitTo.mockClear();
+    performanceRecord.mockClear();
+    resetEfxPaintDocumentSyncTransferState();
+  });
+
+  it('emits a reference-shaped record whose digest is the SHA-256 the package will persist', async () => {
+    const bytes = testWebpBytes('steady-state');
+    await sendEfxPaintDocumentSync(syncDocument([{ keyId: 'key-1', appFrame: 0, bytes }]), 'Tauri');
+
+    const payload = lastSync();
+    const record = emittedRecords(payload)[0];
+    const media = record.payload.media;
+    expect(record.payload.bytes).toBeUndefined();
+    expect(media?.relativePath).toBe(buildFrameMediaRelativePath(LAYER, 'key-1'));
+    expect(media?.digest).toBe(await sha256Hex(bytes));
+    expect(media?.width).toBe(8);
+    expect(media?.height).toBe(6);
+    // The changed frame still crosses: a references-only bridge with no byte
+    // channel would silently drop this paint.
+    expect(payload.changedBytes).toEqual({ [media?.digest as string]: bytesToBase64(bytes) });
+  });
+
+  it('ships one byte-map entry for three keys whose content is identical', async () => {
+    const shared = testWebpBytes('shared-content');
+    await sendEfxPaintDocumentSync(syncDocument([
+      { keyId: 'key-a', appFrame: 0, bytes: shared },
+      { keyId: 'key-b', appFrame: 1, bytes: shared.slice() },
+      { keyId: 'key-c', appFrame: 2, bytes: testWebpBytes('shared-content') },
+    ]), 'Tauri');
+
+    const payload = lastSync();
+    const digests = emittedRecords(payload).map((record) => record.payload.media?.digest);
+    expect(new Set(digests).size).toBe(1);
+    expect(Object.keys(payload.changedBytes ?? {})).toHaveLength(1);
+  });
+
+  it('a repeated sync with no content change transfers no bytes at all and emits the identical reference document', async () => {
+    // A frame whose base64 form is comfortably longer than the 256-character
+    // ceiling, so the scan below cannot pass vacuously on a tiny fixture.
+    const document = syncDocument([{ keyId: 'key-1', appFrame: 0, bytes: testWebpBytes('R'.repeat(512)) }]);
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+
+    const first = emittedSync(0);
+    const second = emittedSync(1);
+    expect(second.changedBytes).toBeUndefined();
+    expect(JSON.stringify(second.document)).toBe(JSON.stringify(first.document));
+    // Nothing raster-sized survives in the steady-state payload (D-12).
+    const strings = JSON.stringify(second).match(/"[^"]*"/g) ?? [];
+    expect(strings.every((value) => value.length <= 256)).toBe(true);
+  });
+
+  it('re-ships exactly the digest whose content changed', async () => {
+    await sendEfxPaintDocumentSync(syncDocument([
+      { keyId: 'key-a', appFrame: 0, bytes: testWebpBytes('untouched') },
+      { keyId: 'key-b', appFrame: 1, bytes: testWebpBytes('before-edit') },
+    ]), 'Tauri');
+    const edited = testWebpBytes('after-edit');
+    await sendEfxPaintDocumentSync(syncDocument([
+      { keyId: 'key-a', appFrame: 0, bytes: testWebpBytes('untouched') },
+      { keyId: 'key-b', appFrame: 1, bytes: edited },
+    ]), 'Tauri');
+
+    const payload = lastSync();
+    expect(Object.keys(payload.changedBytes ?? {})).toEqual([await sha256Hex(edited)]);
+    expect(emittedRecords(payload).map((record) => record.payload.media?.digest)).toEqual([
+      await sha256Hex(testWebpBytes('untouched')),
+      await sha256Hex(edited),
+    ]);
+  });
+
+  it('withholds bytes for a digest the caller reports the receiver already holds', async () => {
+    const bytes = testWebpBytes('known');
+    const document = syncDocument([{ keyId: 'key-1', appFrame: 0, bytes }]);
+
+    // Control: the same document without the option ships its bytes.
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+    const payload = lastSync();
+    const digest = emittedRecords(payload)[0].payload.media?.digest as string;
+    expect(payload.changedBytes).toEqual({ [digest]: bytesToBase64(bytes) });
+
+    resetEfxPaintDocumentSyncTransferState();
+    await sendEfxPaintDocumentSync(document, 'Tauri', undefined, { knownDigests: [digest] });
+
+    expect(lastSync().changedBytes).toBeUndefined();
+  });
+
+  it('bounds a very large unchanged document to a reference-sized payload', async () => {
+    const keys = Array.from({ length: 192 }, (_, index) => ({
+      keyId: `key-large-${index}`,
+      appFrame: index,
+      bytes: testWebpBytes(`${'L'.repeat(4096)}:${index}`),
+    }));
+    const document = syncDocument(keys);
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+
+    const cold = JSON.stringify(emittedSync(0)).length;
+    const warmed = JSON.stringify(emittedSync(1)).length;
+    // The former shape base64'd every payload on every sync; the reference
+    // payload is bounded by the metadata, not the pixels (assert a ceiling).
+    expect(cold).toBeGreaterThan(512 * 1024);
+    expect(warmed).toBeLessThan(64 * 1024);
+  });
+
+  it('marks a frame delivered through the apply channel so the next sync withholds its bytes', async () => {
+    const bytes = testWebpBytes('delivered-through-apply');
+    const document = syncDocument([{ keyId: 'key-1', appFrame: 0, bytes }]);
+
+    // The coordinator delivered this raster through the per-key apply channel;
+    // the sender's claim about the receiver's frame store must now be truthful
+    // for the digest channel (D-12 steady state, T-52.2-35 retry law).
+    await markEfxPaintDocumentSyncFrameDelivered(LAYER, document.tracks[0].id, 'key-1', bytes);
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+
+    expect(lastSync().changedBytes).toBeUndefined();
+  });
+
+  it('keeps the bridge telemetry stages on every sync', async () => {
+    const document = syncDocument([{ keyId: 'key-1', appFrame: 0, bytes: testWebpBytes('telemetry') }]);
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+    await sendEfxPaintDocumentSync(document, 'Tauri');
+
+    const stages = performanceRecord.mock.calls.map((call) => (call[0] as { stage: string }).stage);
+    expect(stages.filter((stage) => stage === 'bridge.docSyncEncode')).toHaveLength(2);
+    expect(stages.filter((stage) => stage === 'bridge.docSyncEmit')).toHaveLength(2);
+  });
+});
+
+/**
+ * quick-260913-52r (H): the crash-recovery checkpoint crosses the storage
+ * boundary in the transport shape (bytes as base64 — a raw JSON.stringify turns
+ * Uint8Array into an index object the launch validator refuses) and is BOUND to
+ * the launch operationId that wrote it: only the same launch (a watchdog reload
+ * of the same window) may consume it. A leftover checkpoint from an earlier
+ * Studio session can never substitute a newer launch's carried document.
+ */
+describe('session document checkpoint is transport-shaped and launch-bound (quick-260913-52r H)', () => {
+  const LAYER = 'layer-h-checkpoint';
+  const stored = new Map<string, string>();
+
+  beforeEach(() => {
+    stored.clear();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        stored.set(key, value);
+      },
+      removeItem: (key: string) => {
+        stored.delete(key);
+      },
+      clear: () => {
+        stored.clear();
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const checkpointDocument = (bytes: Uint8Array): EfxPaintDocument => {
+    const base = createEfxPaintDocument(LAYER);
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const realKeyRecords = [{
+      kind: 'real-key' as const,
+      keyId: 'key-1',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, bytes, width: 8, height: 6 },
+    }];
+    const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 4096,
+      realKeyRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    return { ...base, tracks: [{ ...base.tracks[0], rotoPhysical }] };
+  };
+
+  type SerializedCheckpoint = {
+    readonly operationId: string;
+    readonly document: {
+      readonly tracks: readonly {
+        readonly rotoPhysical: {
+          readonly realKeyRecords: readonly { readonly payload: { readonly bytes?: unknown } }[];
+        } | null;
+      }[];
+    };
+  };
+
+  it('round-trips real bytes for the launch that wrote it, with base64 on the wire shape', () => {
+    const bytes = testWebpBytes('checkpoint-roundtrip');
+    writeEfxPaintSessionDocumentCheckpoint('op-1', checkpointDocument(bytes));
+
+    const raw = stored.get(PHYSIC_PAINT_SESSION_DOCUMENT_KEY);
+    expect(raw).toBeDefined();
+    const parsed = JSON.parse(raw!) as SerializedCheckpoint;
+    expect(parsed.operationId).toBe('op-1');
+    // The storage-shape law: bytes crossed as a base64 string, never a JSON
+    // index object (a raw JSON.stringify here deads the next Studio open).
+    expect(typeof parsed.document.tracks[0]!.rotoPhysical!.realKeyRecords[0]!.payload.bytes).toBe('string');
+
+    const restored = readEfxPaintSessionDocumentCheckpoint('op-1');
+    expect(restored).not.toBeNull();
+    const restoredBytes = restored!.tracks[0]!.rotoPhysical!.realKeyRecords[0]!.payload.bytes;
+    expect(restoredBytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(restoredBytes!)).toEqual(Array.from(bytes));
+  });
+
+  it('a checkpoint from an earlier launch is never substituted into a newer one', () => {
+    writeEfxPaintSessionDocumentCheckpoint('op-1', checkpointDocument(testWebpBytes('old-launch')));
+    expect(readEfxPaintSessionDocumentCheckpoint('op-2')).toBeNull();
+  });
+
+  it('a legacy raw-document checkpoint (pre-fix shape) is ignored, never migrated', () => {
+    stored.set(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(checkpointDocument(testWebpBytes('legacy'))));
+    expect(readEfxPaintSessionDocumentCheckpoint('op-1')).toBeNull();
   });
 });

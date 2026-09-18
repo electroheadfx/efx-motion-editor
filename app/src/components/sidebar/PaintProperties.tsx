@@ -2,6 +2,7 @@ import {useState, useEffect} from 'preact/hooks';
 import {ArrowRight, ChevronDown} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
+import {NumericStepper} from '../shared/NumericStepper';
 import {PaintModeSelector, FxBrushConvertBar} from './PaintModeSelector';
 import {paintStore} from '../../stores/paintStore';
 import {layerStore} from '../../stores/layerStore';
@@ -383,18 +384,17 @@ export function PaintProperties({layer}: {layer: Layer}) {
                       onInput={(e) => applyWidth(parseInt((e.target as HTMLInputElement).value, 10))}
                       onChange={(e) => applyWidth(parseInt((e.target as HTMLInputElement).value, 10), true)}
                     />
-                    <input
-                      type="number"
+                    <NumericStepper
+                      value={sliderWidth}
+                      onChange={(v) => applyWidth(v, true)}
+                      step={1}
                       min={1}
                       max={500}
-                      step={1}
-                      value={sliderWidth}
-                      class="w-12 text-[11px] rounded px-1 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-                      onInput={(e) => {
-                        const v = parseInt((e.target as HTMLInputElement).value, 10);
-                        if (!isNaN(v) && v > 0) applyWidth(v, true);
-                      }}
+                      class="w-24 shrink-0"
+                      ariaLabel="Stroke width"
+                      inputClass="text-[11px] rounded outline-none"
+                      inputStyle={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', padding: '2px 4px'}}
+                      buttonStyle={{width: '18px', height: '18px'}}
                     />
                   </div>
                   {/* Color -- full row */}
@@ -784,18 +784,17 @@ export function PaintProperties({layer}: {layer: Layer}) {
                 style={{accentColor: 'var(--color-accent)'}}
                 onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
               />
-              <input
-                type="number"
+              <NumericStepper
+                value={brushSizeVal}
+                onChange={(v) => paintStore.setBrushSize(v)}
+                step={1}
                 min={BRUSH_SIZE_MIN}
                 max={BRUSH_SIZE_MAX}
-                step={1}
-                value={brushSizeVal}
-                class="w-12 text-[11px] rounded px-1.5 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-                onInput={(e) => {
-                  const v = parseInt((e.target as HTMLInputElement).value, 10);
-                  if (!isNaN(v)) paintStore.setBrushSize(v);
-                }}
+                class="w-24 shrink-0"
+                ariaLabel="Brush size"
+                inputClass="text-[11px] rounded outline-none"
+                inputStyle={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', padding: '2px 6px'}}
+                buttonStyle={{width: '18px', height: '18px'}}
               />
             </div>
 

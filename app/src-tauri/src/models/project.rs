@@ -25,16 +25,26 @@ pub struct MceProject {
     pub images: Vec<MceImageRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<MceAudioTrack>,
-    /// Opaque legacy presence carrier (D-02/D-06): round-trips the presence of
-    /// pre-v1.0 physic_paint_outputs blobs to the TS rejection gate but is
-    /// never interpreted, migrated, or rendered by Rust.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub physic_paint_outputs: Vec<Value>,
     /// v1.0 EFX Paint documents keyed by parent layer id (F1). Carried
     /// opaquely as serde_json values — TS owns the fail-closed schema,
     /// mirroring the roto_physical escape hatch.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub efx_paint_documents: HashMap<String, Value>,
+    /// The package format version (D-04), stamped by `buildPackageManifest`
+    /// and judged by the TS refusal gate (52.2-08). `None` on a pre-52.2
+    /// project. Declared here because serde drops undeclared keys: without
+    /// this field every save would erase the version the gate reads.
+    #[serde(default, rename = "formatVersion", skip_serializing_if = "Option::is_none")]
+    pub format_version: Option<u32>,
+    /// The package identity (D-05): a 36-character lower-case UUID carried IN
+    /// the manifest, never derived from the file path (52.2-02).
+    #[serde(default, rename = "projectId", skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    /// The layer index (`layerId` → `{ layerFile, documentRevision,
+    /// compositeRevision }`), carried opaquely like `efx_paint_documents`:
+    /// TS owns the schema (52.2-02 `buildPackageManifest`).
+    #[serde(default, rename = "efxPaint", skip_serializing_if = "HashMap::is_empty")]
+    pub efx_paint: HashMap<String, Value>,
 }
 
 /// Audio track in project file (Phase 15)

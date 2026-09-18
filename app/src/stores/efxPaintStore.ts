@@ -20,8 +20,15 @@ import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxP
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 52.2-06 (D-06/D-07): the serialize seam takes its media authority from the
+// caller (plan 07's save funnel); the store never invents a digest.
+import type { PhysicPaintRotoMediaReferenceResolver } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
-import { buildEfxPaintFrameCachePath, EFX_PAINT_CACHE_DIR, stableSegment } from '../lib/efxPaintPersistence';
+// 52.2-07 (D-05): the derived-frame cache reference is machine-relative — the
+// only constructor is plan 02's `buildMachineCacheRelativePath`; `stableSegment`
+// keeps one implementation with the persistence boundary.
+import { buildMachineCacheRelativePath, EFX_PAINT_MACHINE_CACHE_DIR } from '../lib/efxPaintPackage';
+import { stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
 import { bumpTrackRevision, commitRevealBake, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
@@ -38,10 +45,11 @@ const _documents = new Map<string, EfxPaintDocument>();
 
 /**
  * Pending track-sidecar deletion dirs (46-05 TRK-07 D-15): layerId →
- * relative dirs under `cache/efx-paint/` registered by committed track
- * deletions. The save path (projectStore.buildEfxPaintDocuments) merges them
- * into the next save input so the sidecar removal rides the same tracked
- * transaction as the save — commit removes, rollback keeps.
+ * machine-relative dirs under `efx-paint/` (52.2-07 D-05) registered by
+ * committed track deletions. The save path (projectStore.buildEfxPaintDocuments)
+ * merges them into the next save input so the sidecar removal rides the same
+ * tracked transaction as the save — commit removes, rollback keeps. They are
+ * addressed against the machine-local cache root, never the project directory.
  */
 const _pendingTrackDeletions = new Map<string, string[]>();
 
@@ -153,7 +161,7 @@ function _projectTrackRuntime(layerId: string, trackId: string): Pick<InternalPa
   const frames: Record<number, CachedFrameReference> = {};
   for (const [appFrame, frame] of runtime.frames) {
     frames[appFrame] = {
-      cachePath: buildEfxPaintFrameCachePath(layerId, trackId, frame),
+      cachePath: buildMachineCacheRelativePath(layerId, trackId, appFrame),
       width: frame.width ?? 0,
       height: frame.height ?? 0,
     };
@@ -484,10 +492,12 @@ export function commitDeleteTrack(
   removeTrackRuntime(layerId, trackId);
 
   // 46-05 D-15: register the deleted track's sidecar directory for removal
-  // in the same cache transaction as the next save. The dir (a relative
-  // path under cache/efx-paint) is validated by the persistence boundary
-  // before it may ride the transaction.
-  const deletionDir = `${EFX_PAINT_CACHE_DIR}/${stableSegment(layerId)}/${trackId}`;
+  // in the same cache transaction as the next save. 52.2-07 (D-05): the dir
+  // is machine-relative (`efx-paint/...`) and the persistence boundary
+  // validates it with the machine-relative guard before it may ride the
+  // transaction; the caller joins it onto the machine-local cache root, never
+  // onto the project directory.
+  const deletionDir = `${EFX_PAINT_MACHINE_CACHE_DIR}/${stableSegment(layerId)}/${trackId}`;
   const pending = _pendingTrackDeletions.get(layerId) ?? [];
   _pendingTrackDeletions.set(layerId, [...pending, deletionDir]);
 
@@ -499,7 +509,7 @@ export function commitDeleteTrack(
     const frames: Record<number, CachedFrameReference> = {};
     for (const [appFrame, frame] of runtime.frames) {
       frames[appFrame] = {
-        cachePath: buildEfxPaintFrameCachePath(layerId, track.id, frame),
+        cachePath: buildMachineCacheRelativePath(layerId, track.id, appFrame),
         width: frame.width ?? 0,
         height: frame.height ?? 0,
       };
@@ -1646,16 +1656,28 @@ export function reset(): void {
  * Roto state is carried as-is per track. `documentRevision` bumps by one only
  * when the projected content actually changed (the fingerprint includes the
  * current docrev, so the comparison is made on the same revision).
+ *
+ * 52.2-06 (D-06/D-07): `resolveRef` is the media authority for the records
+ * this document will hold — the package-write funnel (plan 07) supplies one
+ * digest per key, and BOTH persisted roto collections are then projected to
+ * `frames/<layerId>/<keyId>.webp` references before the roto revision is
+ * computed. Without a resolver the live runtime records pass through
+ * unchanged (the Studio live-push, sibling-sync and undo paths keep their
+ * bytes). With one, a key that has runtime bytes and no reference throws
+ * `PhysicPaintRotoMediaProjectionError` — never a silent payload fallback.
  */
-export function serializeRuntimeIntoDocument(layerId: string): EfxPaintDocument {
+export function serializeRuntimeIntoDocument(
+  layerId: string,
+  resolveRef?: PhysicPaintRotoMediaReferenceResolver,
+): EfxPaintDocument {
   const document = getDocument(layerId);
   if (!document) throw new Error(`No EFX Paint document for layer "${layerId}".`);
   const tracks = document.tracks.map((track) => {
-    const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id);
+    const runtime = physicPaintStore.extractRuntimeStateForDocument(layerId, track.id, resolveRef);
     const frames: Record<number, CachedFrameReference> = {};
     for (const [appFrame, frame] of runtime.frames) {
       frames[appFrame] = {
-        cachePath: buildEfxPaintFrameCachePath(layerId, track.id, frame),
+        cachePath: buildMachineCacheRelativePath(layerId, track.id, appFrame),
         width: frame.width ?? 0,
         height: frame.height ?? 0,
       };

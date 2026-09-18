@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import { requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
@@ -11,6 +12,8 @@ import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { useRotoReferenceController } from './useRotoReferenceController';
 import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoordinator';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
+import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
+import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -255,8 +258,12 @@ export function rejectRotoLoopPlaceholderSource(
 }
 
 export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
+  // 52.2-02 (D-07): a runtime cache frame needs pixels, so the inline carrier is
+  // asserted. A reference-only record is a persisted shape and never reaches
+  // this projection — the document here was built from in-memory runtime records.
   return document.realKeyRecords.map((record) => ({
     ...record.payload,
+    bytes: requirePhysicPaintRotoInlineBytes(record.payload),
     appFrame: record.appFrame,
     source: 'real-key' as const,
     keyId: record.keyId,
@@ -274,6 +281,17 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const failedParentPayloadRef = useRef<Map<string, { identity: RotoLivePixelIdentity; payload: PhysicPaintApplyPayload }>>(new Map());
   const parentOperationRevisionRef = useRef(0);
   const previousLaunchRef = useRef<{ launchId: string; layerId: string } | null>(null);
+  // 52.2-15 (D-16, sensitivity-map row 4): the delivery retry is scheduled
+  // through the pilot's bounded-turn queue instead of re-entering the delivery
+  // chain inline. The queue owns concurrency; this hook keeps owning identity —
+  // the retry unit stays the per-identity entry plan 10 narrowed, never a whole
+  // payload. Lazily created: a ref argument would build the queue on every
+  // Studio render and discard all but the first.
+  const deliveryRetryQueueRef = useRef<FinalizationQueue | null>(null);
+  const deliveryRetryQueue = (): FinalizationQueue => {
+    if (deliveryRetryQueueRef.current === null) deliveryRetryQueueRef.current = createFinalizationQueue();
+    return deliveryRetryQueueRef.current;
+  };
   const inputRef = useRef(input);
   inputRef.current = input;
 
@@ -296,6 +314,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         || currentRecord.appFrame !== identity.appFrame
         || currentRevision !== identity.contentRevision) return;
       await inputRef.current.sendCachePayload(payload);
+      // 52.2-10 (D-12, T-52.2-35): the frame's bytes just reached the main
+      // window through the apply channel, so the sender's claim about the
+      // receiver's frame store must now be truthful for that content digest —
+      // the next document sync withholds it, and a retry after a partial
+      // success re-ships only what the receiver actually lacks.
+      if (payload.kind === 'apply-canvas' && payload.renderedFrame.bytes instanceof Uint8Array) {
+        await markEfxPaintDocumentSyncFrameDelivered(
+          identity.layerId,
+          trackId,
+          identity.keyId,
+          payload.renderedFrame.bytes,
+        ).catch(() => undefined);
+      }
       parentDeliveryErrorRef.current.delete(deliveryKey);
       failedParentPayloadRef.current.delete(deliveryKey);
       if (profiling) recordPhysicsPaintPerformance({ stage: 'bridge-delivery', category: 'async-elapsed', durationMs: performance.now() - deliveryStartedAt, timestamp: performance.now(), mutationId, sourceFrame: identity.appFrame });
@@ -380,7 +411,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       renderedPayload: {
         frameIndex: renderedFrame.frameIndex,
         appFrame: renderedFrame.appFrame,
-        dataUrl: renderedFrame.dataUrl,
+        bytes: renderedFrame.bytes,
         ...(renderedFrame.width !== undefined ? { width: renderedFrame.width } : {}),
         ...(renderedFrame.height !== undefined ? { height: renderedFrame.height } : {}),
       },
@@ -423,7 +454,14 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     layerId: string;
     keyId?: string;
     appFrame: number;
-    liveAlphaCanvas: HTMLCanvasElement;
+    // 52.1 (2nd-stroke freeze): a factory instead of an eager canvas. Calling
+    // mutationEngine.copyLiveAlphaCanvas() immediately at stroke-completion
+    // SYNCHRONOUSLY flushes every pending stroke finalization (a full-raster
+    // drain measured at 500-1942ms) right when the user is starting their next
+    // stroke. Resolving the snapshot inside the idled/settled produce moves that
+    // drain to the genuine stop, where the bounded rAF finalize loop has already
+    // applied the pending rasters (queue empty -> fast copy).
+    liveAlphaCanvas: HTMLCanvasElement | (() => HTMLCanvasElement);
     cachedBase: RenderedFramePayload | null;
     size: { width: number; height: number };
     mutationId?: number;
@@ -459,10 +497,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         return currentIdentityKey === identityKey ? identity : null;
       },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
-      produce: () => capture.cachedBase
-        ? mergeCachedRotoAlphaFrame(capture.cachedBase, capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
-        : encodeRotoFrameFromCanvas(capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId),
-      commit: (rendered, current) => upsertCachedFrame(
+      produce: () => {
+        // Resolve the snapshot only once the capture gate has settled and the
+        // finalize loop has applied the pending rasters — never synchronously at
+        // stroke-completion (see the liveAlphaCanvas factory note above).
+        const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
+          ? capture.liveAlphaCanvas()
+          : capture.liveAlphaCanvas;
+        return capture.cachedBase
+          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
+          : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
+      },
+      commit: async (rendered, current) => {
+        const result = await upsertCachedFrame(
         { ...rendered, appFrame: current.appFrame },
         capture.backgroundOnly === true,
         undefined,
@@ -473,7 +520,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         capture.background,
         capture.keyId,
         contentRevision,
-      ),
+        );
+        return result;
+      },
     });
   }, [getCurrentIdentity, upsertCachedFrame]);
 
@@ -508,10 +557,17 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId, trackId);
     if (!record || record.appFrame !== appFrame || !contentRevision) return false;
     livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
-    const blank = buildBlankRotoFrame(size.width, size.height, appFrame);
-    void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+    void buildBlankRotoFrame(size.width, size.height, appFrame).then((blank) => {
+      void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+    });
     return true;
   }, [upsertCachedFrame]);
+
+  const snapshotLivePixels = useCallback((appFrame: number): void => {
+    const identity = resolveFrameIdentityInput(appFrame);
+    if (!identity) return;
+    livePixelTransactionsRef.current.snapshot(identity);
+  }, [resolveFrameIdentityInput]);
 
   const flushLivePixels = useCallback(async (appFrame?: number): Promise<void> => {
     const identity = appFrame === undefined ? undefined : resolveFrameIdentityInput(appFrame) ?? undefined;
@@ -531,8 +587,22 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         failedParentPayloadRef.current.delete(key);
         continue;
       }
-      queueParentPayload(currentIdentity, failed.payload);
-      await parentDeliveryRef.current.get(key);
+      // 52.2-15 (D-16): the retry is one pilot-queue turn — the queue owns the
+      // scheduling (bounded, never-rejecting settlement), this loop keeps the
+      // identity check above and the outcome check below. The turn's produce
+      // re-schedules exactly the narrowed unit (this identity's recorded
+      // payload), never a whole document; its commit waits out that unit's
+      // delivery chain so the error check right after reads a settled result.
+      const queue = deliveryRetryQueue();
+      const release = queue.beginFlush();
+      try {
+        await queue.submit({
+          produce: () => queueParentPayload(currentIdentity, failed.payload),
+          commit: () => parentDeliveryRef.current.get(key),
+        });
+      } finally {
+        release();
+      }
       if (parentDeliveryErrorRef.current.has(key)) throw parentDeliveryErrorRef.current.get(key);
     }
   }, [getCurrentIdentity, queueParentPayload, resolveFrameIdentityInput]);
@@ -553,6 +623,17 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     if (launch) publishCurrentDocument(launch.layerId, launch.operationId);
   }, [editBuffer, publishCurrentDocument, reference.resetCachedRotoReference]);
 
+  // 52.2-15 (D-16, sensitivity-map row 2): the flush pipeline's queue port. The
+  // forced drain opens the capture gate and settles the gesture's queued
+  // captures before the pipeline runs its caller steps; the interrupt cancels
+  // the live produce/commit turns, so a cancelled capture never commits.
+  const drainLivePixelQueue = useCallback(async (): Promise<void> => {
+    await livePixelTransactionsRef.current.flush();
+  }, []);
+  const interruptLivePixels = useCallback((): void => {
+    livePixelTransactionsRef.current.interrupt();
+  }, []);
+
   return {
     editBuffer,
     confirmedFramesRef,
@@ -560,7 +641,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     upsertCachedFrame,
     captureLivePixels,
     invalidateLivePixels,
+    snapshotLivePixels,
     flushLivePixels,
+    drainLivePixelQueue,
+    interruptLivePixels,
     hasPendingLivePixels: () => livePixelTransactionsRef.current.hasPending() || parentDeliveryRef.current.size > 0 || parentDeliveryErrorRef.current.size > 0,
     removeCachedFrame,
     clearCurrentFrame,

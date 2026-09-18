@@ -3,13 +3,12 @@ import type {
   PhysicPaintApplyPayload,
   PhysicPaintLaunchContext,
   PhysicPaintRenderedFrame,
-  PhysicPaintRotoBackgroundMetadata,
   PhysicPaintRotoCacheFrame,
   PhysicPaintRotoInterpolationSettings,
 } from '../../../types/physicPaint';
 
 export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
-export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
+export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
 export interface RotoFlushOptions {
   force?: boolean;
@@ -36,17 +35,6 @@ export function guardRotoFlush(input: {
   if (!input.force && !input.dirty) return { type: 'clean' };
   if (input.inFlight) return { type: 'in-flight' };
   return { type: 'flush' };
-}
-
-export function selectRotoEditableState(input: {
-  frame: number;
-  currentFrame: number;
-  liveState: RotoEditableState;
-  storedState?: RotoEditableState;
-}): { editableState: RotoEditableState | undefined; previousState: RotoEditableState | null } {
-  return input.frame === input.currentFrame
-    ? { editableState: input.liveState, previousState: null }
-    : { editableState: input.storedState, previousState: input.liveState };
 }
 
 /** Active-track engine carrier read: strokes/settings ride the active track in v1.0 documents (D-03). */
@@ -82,35 +70,6 @@ export function buildDeleteRotoFramePayload(input: {
     trackId: input.launchContext.document?.activeTrackId ?? '',
     startFrame: input.frame,
     sourceFrame: input.sourceFrame,
-  };
-}
-
-export function buildApplyCanvasPayload(input: {
-  launchContext: PhysicPaintLaunchContext;
-  frame: number;
-  sourceFrame: number;
-  editableState: RotoEditableState;
-  renderedFrame: RotoRenderedFrame;
-  backgroundMetadata: PhysicPaintRotoBackgroundMetadata;
-  interpolationSettings: PhysicPaintRotoInterpolationSettings;
-  backgroundOnly: boolean;
-  onionFrame: RotoRenderedFrame | null;
-  now: number;
-}): PhysicPaintApplyPayload {
-  return {
-    operationId: `${input.launchContext.operationId}:canvas:${input.frame}:${input.now}`,
-    kind: 'apply-canvas',
-    layerId: input.launchContext.layerId,
-    // 46-01: apply payloads carry the target trackId (the launch IS the document).
-    trackId: input.launchContext.document?.activeTrackId ?? '',
-    startFrame: input.frame,
-    sourceFrame: input.sourceFrame,
-    editableState: input.editableState,
-    renderedFrame: input.renderedFrame,
-    rotoBackground: input.backgroundMetadata,
-    rotoInterpolationSettings: input.interpolationSettings,
-    ...(input.backgroundOnly ? { backgroundOnly: true } : {}),
-    ...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {}),
   };
 }
 

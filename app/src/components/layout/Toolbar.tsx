@@ -3,6 +3,8 @@ import {useState, useRef, useEffect} from 'preact/hooks';
 import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
+import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
+import {toPackageManifestPath} from '../../lib/openedProjectUrls';
 import {NewProjectDialog} from '../project/NewProjectDialog';
 import {blurStore} from '../../stores/blurStore';
 import {motionBlurStore} from '../../stores/motionBlurStore';
@@ -44,9 +46,13 @@ export function Toolbar() {
     });
     if (selected && typeof selected === 'string') {
       try {
-        await projectStore.openProject(selected);
+        // 52.2-11 (D-03): the package — a `Name.mce` directory macOS presents as
+        // one item — is what the dialog targets; the store loads the manifest
+        // inside it (`toPackageManifestPath` leaves a manifest path untouched).
+        await projectStore.openProject(toPackageManifestPath(selected));
       } catch (err) {
         console.error('Failed to open project:', err);
+        await showProjectIoFailureDialog('open', err);
       }
     }
   };
@@ -62,9 +68,13 @@ export function Toolbar() {
       });
       if (filePath) {
         try {
-          await projectStore.saveProjectAs(filePath);
+          // 52.2-11 (D-03): the chosen path names the PACKAGE; the package is
+          // written at its directory, so the manifest inside it is what the
+          // store is handed (the same convention the open leg reads back).
+          await projectStore.saveProjectAs(toPackageManifestPath(filePath));
         } catch (err) {
           console.error('Failed to save project:', err);
+          await showProjectIoFailureDialog('save', err);
         }
       }
     } else {
@@ -72,6 +82,7 @@ export function Toolbar() {
         await projectStore.saveProject();
       } catch (err) {
         console.error('Failed to save project:', err);
+        await showProjectIoFailureDialog('save', err);
       }
     }
   };

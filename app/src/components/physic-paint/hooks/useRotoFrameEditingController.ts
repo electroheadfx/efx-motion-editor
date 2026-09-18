@@ -74,7 +74,7 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
 }
 
 export function useRotoFrameEditingController<TEditable extends RotoEditableState>(input: UseRotoFrameEditingControllerInput<TEditable>) {
-  const snapshotCurrentFrame = useCallback(() => {
+  const snapshotCurrentFrame = useCallback(async () => {
     if (!input.engine || !input.launchContext) return false;
     const state = input.engine.save() as TEditable;
     const hasCachedReference = Boolean(
@@ -84,8 +84,8 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     const persist = shouldPersistRotoFrame(state);
     const shouldCapture = !(hasCachedReference && !input.editBuffer.dirtyFramesRef.current.has(input.currentFrame)) && persist;
     const capturedFrame = shouldCapture
-      ? buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(input.engine), input.currentFrame, input.canvasSize)
-      : buildBlankRotoFrame(input.canvasSize.width, input.canvasSize.height, input.currentFrame);
+      ? await buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(input.engine), input.currentFrame, input.canvasSize)
+      : await buildBlankRotoFrame(input.canvasSize.width, input.canvasSize.height, input.currentFrame);
     return input.editBuffer.snapshotFrame({
       frame: input.currentFrame,
       state,

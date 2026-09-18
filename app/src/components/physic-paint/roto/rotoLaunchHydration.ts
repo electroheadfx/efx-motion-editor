@@ -9,7 +9,7 @@ import {
   type PhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 import { projectPhysicPaintRotoPhysicalTimeline } from './physicsPaintRotoPhysicalResolver';
-import { prepareRotoPhysicalRealKeyPngs } from './rotoCanvasFrames';
+import { prepareRotoPhysicalRealKeyFrames } from './rotoCanvasFrames';
 
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
@@ -79,11 +79,26 @@ export async function hydrateRotoPhysicalLaunchContext(
   const prepared = prepareRotoPhysicalLaunch(context);
   if (!prepared.ok) return prepared;
 
+  // quick-260913-52r (G): the alpha-canvas preparation requires inline bytes.
+  // A reference-only record (its file was missing or refused at open, so the
+  // runtime could not materialize it) must not kill the whole launch — the
+  // structural install below still runs so keys and rails are correct, and
+  // the affected frame renders as missing content. Loud per key, never a
+  // silent drop, never an all-or-nothing refusal.
+  const allRecords = [
+    ...prepared.document.realKeyRecords,
+    ...(prepared.document.groupOverrideRecords ?? []),
+  ];
+  const bytesCarrying = allRecords.filter((record) => record.payload.bytes !== undefined);
+  for (const record of allRecords) {
+    if (record.payload.bytes === undefined) {
+      console.warn(
+        `[PhysicsPaintStudio] Roto key "${record.keyId}" has no inline bytes at launch (reference-only, its package file could not be read). Its alpha canvas is skipped; the frame renders as missing content.`,
+      );
+    }
+  }
   try {
-    await prepareRotoPhysicalRealKeyPngs([
-      ...prepared.document.realKeyRecords,
-      ...(prepared.document.groupOverrideRecords ?? []),
-    ]);
+    await prepareRotoPhysicalRealKeyFrames(bytesCarrying);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
   }

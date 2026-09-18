@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hookRuntime = vi.hoisted(() => ({
@@ -109,6 +110,16 @@ function createHarness(input: UseRotoCachedPlaybackInput<Frame>) {
   };
   return {
     render,
+    /**
+     * The playback anchor refs, white-box (D-22 asserts they hold the SAME
+     * index). The mock indexes refs by `useRef` call order and the 4 `useState`
+     * calls consume slots 0-3 first: settingsRef(4), timerRef(5),
+     * frameIndexRef(6), loopStartIndexRef(7) — see the hook's call order.
+     */
+    anchors: () => ({
+      frameIndex: hookRuntime.refs[6] as { current: unknown },
+      loopStart: hookRuntime.refs[7] as { current: unknown },
+    }),
     update: (next: Partial<UseRotoCachedPlaybackInput<Frame>>) => {
       current = { ...current, ...next };
       return render();
@@ -785,6 +796,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     getEndFrame: () => number | null;
     getFrame: (appFrame: number) => Preview | null;
     getSoloWindow?: () => SoloPlaybackWindow | null;
+    getSoloContentStart?: () => number | null;
     getCurrentAppFrame?: () => number;
   }
 
@@ -828,6 +840,9 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
             : {}),
           ...(current.getCurrentAppFrame !== undefined
             ? { getCurrentAppFrame: () => current.getCurrentAppFrame!() }
+            : {}),
+          ...(current.getSoloContentStart !== undefined
+            ? { getSoloContentStart: () => current.getSoloContentStart!() }
             : {}),
           onStart,
           onFrame,
@@ -975,6 +990,33 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     vi.useRealTimers();
   });
 
+  it('start anchors at the caller-supplied solo content start while armed (D-20/D-21)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 50,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getSoloWindow: () => ({
+        start: 12,
+        endExclusive: 40,
+        includesFrame: () => true,
+      }),
+      getSoloContentStart: () => 12,
+      getCurrentAppFrame: () => 20,
+    });
+
+    let coordinator = harness.render();
+    coordinator.playback.start();
+    coordinator = harness.render();
+
+    // The solo window enumeration starts at 12 (index 0) even though the
+    // cursor sits at 20 (index 8) — the content start wins while solo is armed.
+    expect(harness.onFrame).toHaveBeenLastCalledWith(0, 12);
+    vi.advanceTimersByTime(500);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(1, 13);
+    vi.useRealTimers();
+  });
+
   it('Pitfall 3 regression: armed solo does not alter the stopped-canvas display lookup (D-18)', () => {
     // The stopped canvas renders everything at any cursor position:
     // findCachedRotoDisplayFrame has no solo input and returns the physical
@@ -984,7 +1026,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
       endExclusive: 40,
       includesFrame: (appFrame) => appFrame >= 12 && appFrame < 40,
     };
-    const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+    const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
     const physical = (appFrame: number) => ({
       kind: 'real' as const,
       layerId: 'layer-1',
@@ -992,7 +1034,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
       keyId: `k${appFrame}`,
       contentRevision: 'rev-1',
       cacheRevision: `rev-1:real:k${appFrame}`,
-      renderedFrame: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(`k${appFrame}`) },
+      renderedFrame: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(`k${appFrame}`) },
     });
     const display = (appFrame: number) => findCachedRotoDisplayFrame(appFrame, {
       getPhysicalRenderSource: (frame) => physical(frame),
@@ -1007,3 +1049,148 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     expect(soloWindow.includesFrame(5)).toBe(false);
   });
 });
+
+/**
+ * D-20/D-21/D-22: when a solo is active, Play starts at the solo content start
+ * — not at the cursor — and every loop wrap returns there. The solo state
+ * arrives as a caller-supplied getter (null = no solo active): this hook never
+ * reads the solo signal, the document, or persistence, consistent with its
+ * existing `getCurrentAppFrame` seam.
+ */
+describe('solo content start (D-20..D-22)', () => {
+  function installWindowTimers() {
+    vi.stubGlobal('window', {
+      clearInterval,
+      setInterval,
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+    audioMocks.playAtCursor.mockReset();
+    audioMocks.stop.mockReset();
+    audioMocks.positionedAt.mockReset();
+    audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+    audioMocks.notifyLoopWrap.mockReset();
+    audioMocks.checkDrift.mockReset();
+    audioMocks.claimAudio.mockReset();
+    audioMocks.ownershipConfigure.mockReset();
+    audioMocks.getSection.mockReset().mockReturnValue(null);
+  });
+
+  // appFrames 8, 9, 10: the pre-solo cursor (10) is index 2, the solo content
+  // start (9) is index 1 — the two anchors are distinguishable.
+  const soloFrames = [
+    { appFrame: 8, frame: { id: 'first' } },
+    { appFrame: 9, frame: { id: 'second' } },
+    { appFrame: 10, frame: { id: 'third' } },
+  ];
+
+  function createSoloHarness(getSoloContentStart: (() => number | null) | undefined) {
+    const onFrame = vi.fn();
+    const harness = createHarness({
+      initialSettings: { loop: false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => soloFrames,
+      getCurrentAppFrame: () => 10,
+      ...(getSoloContentStart !== undefined ? { getSoloContentStart } : {}),
+      onStart: vi.fn(),
+      onFrame,
+      setIsPlaying: vi.fn(),
+    });
+    return { harness, onFrame };
+  }
+
+  it('start() anchors BOTH the frame and loop refs at the solo content start (D-20/D-22)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const onFrame = vi.fn();
+    const anchorsAtFirstTick: Array<{ frameIndex: unknown; loopStart: unknown }> = [];
+    const harness = createHarness({
+      initialSettings: { loop: false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => soloFrames,
+      getCurrentAppFrame: () => 10,
+      getSoloContentStart: () => 9,
+      onStart: vi.fn(),
+      onFrame: (frameIndex, appFrame) => {
+        // The first tick fires BEFORE the hook advances frameIndexRef, so this
+        // is the moment the two anchors are still the same value (D-22).
+        if (anchorsAtFirstTick.length === 0) {
+          const anchors = harness.anchors();
+          anchorsAtFirstTick.push({
+            frameIndex: anchors.frameIndex.current,
+            loopStart: anchors.loopStart.current,
+          });
+        }
+        onFrame(frameIndex, appFrame);
+      },
+      setIsPlaying: vi.fn(),
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(true);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    expect(anchorsAtFirstTick[0]).toEqual({ frameIndex: 1, loopStart: 1 });
+    expect(anchorsAtFirstTick[0]!.frameIndex).toBe(anchorsAtFirstTick[0]!.loopStart);
+    // Post-tick: the loop anchor holds the solo start index (the D-22 wrap
+    // target) and the frame index advanced from that same base.
+    const anchors = harness.anchors();
+    expect(anchors.loopStart.current).toBe(1);
+    expect(anchors.frameIndex.current).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it('every loop wrap returns to the solo content start, never the pre-solo cursor (D-22)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const { harness, onFrame } = createSoloHarness(() => 9);
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+
+    // Walk past the end of the enumeration: index 2 (frame 10), then the wrap
+    // returns to the solo content start (index 1, frame 9) — never index 2,
+    // the cursor the user happened to sit on before Play.
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    // Iteration 2 behaves identically (same wrap target).
+    vi.advanceTimersByTime(1_000);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    vi.useRealTimers();
+  });
+
+  it('no solo: the Phase 51 cursor re-anchor path is unchanged', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const { harness, onFrame } = createSoloHarness(() => null);
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    // Cursor 10 → index 2; the wrap returns to that same cursor index.
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    const anchors = harness.anchors();
+    expect(anchors.frameIndex.current).toBe(3); // next tick target after index 2
+    expect(anchors.loopStart.current).toBe(2);
+    vi.advanceTimersByTime(1_000);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.useRealTimers();
+  });
+
+});
+

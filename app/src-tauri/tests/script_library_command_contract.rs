@@ -9,8 +9,8 @@ fn physical_document(revision: &str) -> Value {
     json!({
         "capacity": 24,
         "realKeyRecords": [
-            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}},
-            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"dataUrl":"data:image/png;base64,BBBB"}}
+            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"bytes":"AAAA","width":2,"height":2}},
+            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"bytes":"BBBB"}}
         ],
         "groupOverrideRecords": [],
         "interpolation": {"enabled":false,"mode":"duplicate"},

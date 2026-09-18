@@ -9,7 +9,7 @@ export function upsertCachedRotoCacheFrame(
   frames: readonly PhysicPaintRotoCacheFrame[] | undefined,
   renderedFrame: PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame'>>,
   backgroundOnly: boolean,
-  onionFrame?: Pick<PhysicPaintRenderedFrame, 'dataUrl'> | null,
+  onionFrame?: Pick<PhysicPaintRenderedFrame, 'bytes'> | null,
 ): PhysicPaintRotoCacheFrame[] {
   const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
   const displayFrame = renderedFrame.displayFrame ?? renderedFrame.appFrame;
@@ -20,7 +20,7 @@ export function upsertCachedRotoCacheFrame(
     sourceFrame,
     displayFrame,
     ...(backgroundOnly ? { backgroundOnly: true } : {}),
-    ...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {}),
+    ...(onionFrame?.bytes ? { onionBytes: onionFrame.bytes } : {}),
   };
   return [
     ...(frames ?? []).filter((frame) => (frame.sourceFrame ?? frame.appFrame) !== sourceFrame),

@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
-import type { CompletedPaintMutation, EfxPaintEngine, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, EfxPaintEngine, InputActivityKind, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -26,7 +26,7 @@ const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, JSX.CSSProperties['mixBlendMode'
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -36,6 +36,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const onNativePenInputReadyRef = useRef(props.onNativePenInputReady);
   const onCompletedMutationRef = useRef(props.onCompletedMutation);
   const onPerformanceSampleRef = useRef(props.onPerformanceSample);
+  const onInputActivityRef = useRef(props.onInputActivity);
   const beforeEngineDestroyRef = useRef(props.beforeEngineDestroy);
   const getStrokeMetadataRef = useRef(props.getStrokeMetadata);
   onEngineReadyRef.current = props.onEngineReady;
@@ -43,6 +44,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   onNativePenInputReadyRef.current = props.onNativePenInputReady;
   onCompletedMutationRef.current = props.onCompletedMutation;
   onPerformanceSampleRef.current = props.onPerformanceSample;
+  onInputActivityRef.current = props.onInputActivity;
   beforeEngineDestroyRef.current = props.beforeEngineDestroy;
   getStrokeMetadataRef.current = props.getStrokeMetadata;
 
@@ -118,6 +120,9 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const handlePerformanceSample = useCallback((sample: PaintPerformanceSample) => {
     return onPerformanceSampleRef.current?.(sample);
   }, []);
+  const handleInputActivity = useCallback((kind: InputActivityKind, pointerId: number) => {
+    onInputActivityRef.current?.(kind, pointerId);
+  }, []);
   const handleBeforeEngineDestroy = useCallback((engine: EfxPaintEngine) => {
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.beforeDestroy');
     return beforeEngineDestroyRef.current?.(engine);
@@ -143,6 +148,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         onNativePenInputReady={handleNativePenInputReady}
         onCompletedMutation={handleCompletedMutation}
         onPerformanceSample={handlePerformanceSample}
+        onInputActivity={handleInputActivity}
         beforeEngineDestroy={handleBeforeEngineDestroy}
         getStrokeMetadata={handleGetStrokeMetadata}
         onEngineReady={handleEngineReady}

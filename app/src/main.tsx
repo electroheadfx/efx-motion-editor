@@ -2,18 +2,22 @@ import './index.css';
 import {render} from 'preact';
 import {getCurrentWindow} from '@tauri-apps/api/window';
 import {listen} from '@tauri-apps/api/event';
+import {invoke} from '@tauri-apps/api/core';
 import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
 import {initTheme} from './lib/themeManager';
 import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {startAutoSave} from './lib/autoSave';
 import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
+import {createOpenedUrlQueue, toPackageManifestPath} from './lib/openedProjectUrls';
+import {reportLatchedIoFailure, showProjectIoFailureDialog} from './lib/projectIoFailureDialog';
+import {projectStore} from './stores/projectStore';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageLibraryListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageLibraryListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
@@ -112,7 +116,6 @@ if (window.location.pathname === '/physics-paint') {
     await installPhysicPaintScriptLibraryListener();
     await installPhysicPaintRotoAuthorityListener();
     await installPhysicPaintStateSaveListener();
-    await installPhysicPaintThumbnailEncodeListener();
     // 49-04: the main webview answers the Studio's image-library request/result
     // bridge pair (the picker grid + in-picker Import refresh). Without this
     // install the child's emitTo('main', ...) has no receiver and every request
@@ -139,8 +142,8 @@ if (window.location.pathname === '/physics-paint') {
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu
     // accelerators before keydown reaches the webview, so these menu event
     // listeners are the sole path for undo/redo on that platform.
-    listen('menu:undo', () => { undo(); });
-    listen('menu:redo', () => { redo(); });
+    listen('menu:undo', () => { if (document.hasFocus()) undo(); });
+    listen('menu:redo', () => { if (document.hasFocus()) redo(); });
 
     // Listen for zoom events emitted by the native macOS View menu.
     // Zoom in/out now use bare = / - keys via tinykeys (no Cmd modifier),
@@ -174,6 +177,51 @@ if (window.location.pathname === '/physics-paint') {
     listen('menu:close-project', () => { handleCloseProject(); });
 
     listen('menu:export', () => { uiStore.setEditorMode('export'); });
+
+    // 52.2-11 (D-03): a `.mce` package double-clicked in Finder. macOS delivers
+    // the document through `RunEvent::Opened`; the native side EMITS it live on
+    // the `opened` channel once this listener exists, and BUFFERS it for the
+    // cold start (the event fires before the webview is alive) for the one
+    // `opened_urls` drain below. Both channels feed ONE queue, so a URL that
+    // arrives twice cannot open the project twice; the guard + open path is the
+    // menu open's (52.2-11 Task 3).
+    const openedUrlQueue = createOpenedUrlQueue();
+    const openPackageFromPath = async (openedPath: string): Promise<void> => {
+      const guard = await guardUnsavedChanges();
+      if (guard === 'cancelled') return;
+      try {
+        // The OS names the PACKAGE directory; the store loads the manifest in it.
+        await projectStore.openProject(toPackageManifestPath(openedPath));
+      } catch (err) {
+        console.error('Failed to open project:', err);
+        await showProjectIoFailureDialog('open', err);
+      }
+    };
+    const applyOpenedUrls = async (urls: readonly string[]): Promise<void> => {
+      openedUrlQueue.push(urls);
+      for (const openedPath of openedUrlQueue.drain()) {
+        await openPackageFromPath(openedPath);
+      }
+    };
+    await listen<string[]>('opened', (event) => {
+      applyOpenedUrls(event.payload).catch((err) => {
+        console.error('Failed to open a package delivered by the OS:', err);
+        // The callback is not async — surface the failure without awaiting it.
+        void showProjectIoFailureDialog('open', err);
+      });
+    });
+    // Cold start: drain the buffer exactly once. This call also flips the
+    // native side to live emission, so nothing is delivered twice.
+    try {
+      await applyOpenedUrls(await invoke<string[]>('opened_urls'));
+    } catch (err) {
+      // Fail-soft like the live `opened` listener above: a missing native
+      // command must not abort the rest of startup (close guard, shortcuts).
+      console.error('Failed to drain OS-delivered packages:', err);
+      // Latched: the cold-start drain runs once, but the per-URL open failures
+      // inside it already reported — one modal per streak, not one per URL.
+      reportLatchedIoFailure('open', err);
+    }
 
     // Guard window close: show unsaved-changes dialog and prevent close on Cancel
     getCurrentWindow().onCloseRequested(async (event) => {

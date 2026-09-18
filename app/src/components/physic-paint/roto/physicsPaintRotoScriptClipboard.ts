@@ -159,6 +159,10 @@ interface ActiveApplyOperation {
   cancelled: boolean;
   cancellationReason: 'user' | 'invalidated' | null;
   failure: RotoScriptOperationError | null;
+  /** Raw cause of a mid-burst enqueue throw. Materialized into `failure` at
+   *  close time so the partial-failure message counts the brushes that actually
+   *  completed (in a burst, in-flight completions land AFTER the throw). */
+  enqueueFailureCause: unknown;
   publishUi: boolean;
   finishing: boolean;
   settled: Promise<void>;
@@ -533,6 +537,21 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function finishApply(operation: ActiveApplyOperation, success: boolean): void {
     if (activeApply !== operation || operation.finishing) return;
     operation.finishing = true;
+    // A mid-burst enqueue throw is reported here, once the in-flight brushes
+    // have drained, so the message reflects the real completed count. Any
+    // accepted brush makes it a partial failure; a first-brush throw keeps the
+    // enqueue-failed contract.
+    if (!operation.failure && operation.enqueueFailureCause !== null) {
+      const acceptedAny = operation.expectedMutationIds.size > 0;
+      operation.failure = operationError(
+        'apply',
+        acceptedAny ? 'apply-partial-failure' : 'apply-enqueue-failed',
+        acceptedAny
+          ? `Apply Script stopped after ${operation.completed} of ${operation.script.brushes.length} brushes`
+          : 'Apply Script could not enqueue its first brush',
+        operation.enqueueFailureCause,
+      );
+    }
     const complete = async () => {
       let applied = success && !operation.cancelled;
       try {
@@ -612,15 +631,12 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         publicationIdentity: operation.publicationIdentity ?? undefined,
       });
     } catch (cause) {
-      operation.failure = operationError(
-        'apply',
-        operation.completed > 0 ? 'apply-partial-failure' : 'apply-enqueue-failed',
-        operation.completed > 0
-          ? `Apply Script stopped after ${operation.completed} of ${operation.script.brushes.length} brushes`
-          : 'Apply Script could not enqueue its first brush',
-        cause,
-      );
-      finishApply(operation, false);
+      // Stop the burst at the first throw; the error itself is materialized in
+      // finishApply so its counts include the in-flight brushes. A burst can
+      // leave those brushes running — their completions close the operation
+      // instead of finishing past them. Nothing in flight → close now.
+      operation.enqueueFailureCause = cause;
+      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
     }
   }
 
@@ -695,6 +711,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         cancelled: false,
         cancellationReason: null,
         failure: null,
+        enqueueFailureCause: null,
         publishUi: true,
         finishing: false,
         settled,
@@ -702,7 +719,19 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         resolve,
       };
       activeApply = operation;
-      enqueueNextBrush(operation);
+      // The whole burst enqueues up front: the engine's scripted-stroke
+      // coalescing (allScripted → bounded multi-stroke flush turns) drains the
+      // queue, so Apply paints in fast multi-stroke bursts instead of pacing
+      // one brush per completion round-trip. The loop stops on
+      // invalidation/failure via enqueueNextBrush's own guards.
+      while (
+        activeApply === operation
+        && !operation.cancelled
+        && !operation.enqueueFailureCause
+        && operation.nextBrushIndex < operation.script.brushes.length
+      ) {
+        enqueueNextBrush(operation);
+      }
     });
   }
 
@@ -720,7 +749,13 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       if (!operation.cancelled && operation.publishUi && launchGeneration === operation.launchGeneration) {
         status.value = `Applying ${operation.completed}/${operation.script.brushes.length}`;
       }
-      queueMicrotask(() => enqueueNextBrush(operation));
+      // Every brush was enqueued up front — finish once all expected mutations
+      // are consumed. This also closes mid-burst invalidation/enqueue
+      // failures: their in-flight completions still land here and end the
+      // operation.
+      if (operation.consumedMutationIds.size === operation.expectedMutationIds.size) {
+        finishApply(operation, !operation.cancelled && !operation.failure && operation.completed === operation.script.brushes.length);
+      }
       return;
     }
   }

@@ -9,17 +9,16 @@
  * (D-05, 47-01 UAT round 4: the band stays in lockstep with the rows).
  *
  * The component is presentational and hook-free: the strip owns the session
- * state (edit-in-place rename draft, more-button tools panel, vertical
- * scrollbar geometry) and flows it down as props, so the viewport test can
- * invoke the column as a plain component like `PhysicsPaintTrackRowHeader`.
+ * state (edit-in-place rename draft, vertical scrollbar geometry) and flows
+ * it down as props, so the viewport test can invoke the column as a plain
+ * component like `PhysicsPaintTrackRowHeader`.
  *
  * Every control binds to the 47-01 store-op surface through the prop bundle
  * — the column never mutates a row it does not target: row click selects via
- * onSelectTrack, the standing eye + blend toggles and the tools-panel solo
- * toggle route visibility/blending/solo intents, the '+' adds a track, and
- * the more-panel holds solo/duplicate/delete (47 UAT: the pencil is gone —
- * a double-click on the name renames in place). The reorder grab area is
- * deliberately NOT
+ * onSelectTrack, the standing inline eye / S / blend / trash controls route
+ * visibility/solo/blending/delete intents (260911-s1j: the ⋯ tools panel and
+ * its duplicate button are retired), and the '+' adds a track. The reorder
+ * grab area is deliberately NOT
  * wired to any pointer drag here (the header-drag reorder gesture is 47-02
  * Task 2; content cross-track drag is 47-05 — D-18 keeps the two distinct).
  */
@@ -64,7 +63,8 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly onToggleBlend?: (trackId: string) => void;
   /** '+' add-track intent; the strip wires it through addTrack. */
   readonly onAddTrack: () => void;
-  /** Duplicate intent; the strip wires it through duplicateTrack. */
+  /** Retained duplicate intent (260911-s1j: no row renders the button; the
+   *  strip path stays wired for a later re-exposure). */
   readonly onDuplicateTrack: (trackId: string) => void;
   /** Delete intent; the strip opens the acknowledge-and-delete dialog. */
   readonly onRequestDeleteTrack: (trackId: string) => void;
@@ -88,12 +88,6 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly onCommitRename?: (trackId: string) => void;
   /** Rename Escape/blur — the strip abandons the edit. */
   readonly onCancelRename?: () => void;
-  /** The row whose more-button tools panel is open, or null (one at a time). */
-  readonly toolsOpenTrackId?: string | null;
-  /** More-button click — toggles the tool panel for this track. */
-  readonly onToggleTools?: (trackId: string) => void;
-  /** Pointer left the panel (or the header) — closes it. */
-  readonly onCloseTools?: () => void;
   /** The header-rows band element, synced with the rows-region (D-05). */
   readonly headerRowsRef?: Ref<HTMLDivElement>;
   /** 47-02 Task 3: the pinned header-column element — never scrolls (D-01).
@@ -139,7 +133,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     layerId,
     onToggleBlend,
     onAddTrack,
-    onDuplicateTrack,
     onRequestDeleteTrack,
     onGripPointerDown,
     reorderDragTrackId = null,
@@ -150,9 +143,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onRenameDraftChange,
     onCommitRename,
     onCancelRename,
-    toolsOpenTrackId = null,
-    onToggleTools,
-    onCloseTools,
     headerRowsRef,
     headerColumnRef,
     onHeaderScroll,
@@ -186,6 +176,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               activeTrackId={effectiveActiveTrackId}
               onSelectTrack={onSelectTrack}
               visible={track.visible}
+              solo={track.solo}
               reorderable
               deletable={deletable}
               editing={renamingTrackId === track.id}
@@ -198,11 +189,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               onToggleSolo={onToggleSolo}
               layerId={layerId}
               onToggleBlend={onToggleBlend}
-              onDuplicateTrack={onDuplicateTrack}
               onDeleteTrack={onRequestDeleteTrack}
-              toolsOpen={toolsOpenTrackId === track.id}
-              onToggleTools={onToggleTools}
-              onCloseTools={onCloseTools}
               onGripPointerDown={onGripPointerDown}
             />
           ))}

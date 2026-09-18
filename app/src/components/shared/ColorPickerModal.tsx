@@ -4,6 +4,7 @@ import {X} from 'lucide-preact';
 import type {GradientData, GradientStop} from '../../types/sequence';
 import {createDefaultGradient} from '../../types/sequence';
 import {GradientBar, buildGradientCSS} from './GradientBar';
+import {NumericStepper} from './NumericStepper';
 import {hexToRgba, rgbaToHex, rgbToHsl, hslToRgb, rgbToHsv, hsvToRgb} from '../../lib/colorUtils';
 
 // Re-export color utilities for backward compatibility
@@ -188,18 +189,23 @@ export function ColorPickerModal({
     }
   }, [hexInput, currentHex]);
 
-  // Commit RGBA from text inputs
-  const commitRgba = useCallback(() => {
-    const r = parseInt(rInput, 10), g = parseInt(gInput, 10), b = parseInt(bInput, 10);
+  // Commit RGBA from text inputs (a single channel may already have been
+  // updated by a stepper step — the override wins over the stale text state)
+  const commitRgba = useCallback((override?: {r?: number; g?: number; b?: number}) => {
+    const r = override?.r ?? parseInt(rInput, 10);
+    const g = override?.g ?? parseInt(gInput, 10);
+    const b = override?.b ?? parseInt(bInput, 10);
     if ([r, g, b].every(v => !isNaN(v) && v >= 0 && v <= 255)) {
       const h = rgbToHsv(r, g, b);
       setHue(h.h); setSat(h.s); setVal(h.v);
     }
   }, [rInput, gInput, bInput]);
 
-  // Commit HSL from text inputs
-  const commitHsl = useCallback(() => {
-    const h = parseInt(hInput, 10), s = parseInt(sInput, 10), l = parseInt(lInput, 10);
+  // Commit HSL from text inputs (same single-channel override)
+  const commitHsl = useCallback((override?: {h?: number; s?: number; l?: number}) => {
+    const h = override?.h ?? parseInt(hInput, 10);
+    const s = override?.s ?? parseInt(sInput, 10);
+    const l = override?.l ?? parseInt(lInput, 10);
     if (!isNaN(h) && h >= 0 && h <= 360 && !isNaN(s) && s >= 0 && s <= 100 && !isNaN(l) && l >= 0 && l <= 100) {
       const rgb = hslToRgb(h / 360, s / 100, l / 100);
       const hsv2 = rgbToHsv(rgb.r, rgb.g, rgb.b);
@@ -433,15 +439,16 @@ export function ColorPickerModal({
               <div class="flex flex-col gap-1">
                 <span style={labelStyle}>Angle</span>
                 <div class="flex items-center gap-2">
-                  <input
-                    type="number"
+                  <NumericStepper
+                    value={gradientState.angle ?? (gradientState.type === 'linear' ? 180 : 0)}
+                    onChange={handleGradientAngleChange}
+                    step={1}
                     min={0}
                     max={360}
-                    value={gradientState.angle ?? (gradientState.type === 'linear' ? 180 : 0)}
-                    class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                    style={inputStyle}
-                    onInput={(e) => handleGradientAngleChange(Number((e.target as HTMLInputElement).value))}
-                    onClick={(e) => e.stopPropagation()}
+                    class="w-full"
+                    ariaLabel="Gradient angle"
+                    inputClass="w-full rounded outline-none font-mono"
+                    inputStyle={inputStyle}
                   />
                   <span class="text-[10px] shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>deg</span>
                 </div>
@@ -453,28 +460,30 @@ export function ColorPickerModal({
               <div class="grid grid-cols-2 gap-2">
                 <div class="flex flex-col gap-1">
                   <span style={labelStyle}>Center X</span>
-                  <input
-                    type="number"
+                  <NumericStepper
+                    value={Math.round((gradientState.centerX ?? 0.5) * 100)}
+                    onChange={(v) => handleGradientCenterChange('centerX', v / 100)}
+                    step={1}
                     min={0}
                     max={100}
-                    value={Math.round((gradientState.centerX ?? 0.5) * 100)}
-                    class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                    style={inputStyle}
-                    onInput={(e) => handleGradientCenterChange('centerX', Number((e.target as HTMLInputElement).value) / 100)}
-                    onClick={(e) => e.stopPropagation()}
+                    class="w-full"
+                    ariaLabel="Center X"
+                    inputClass="w-full rounded outline-none font-mono"
+                    inputStyle={inputStyle}
                   />
                 </div>
                 <div class="flex flex-col gap-1">
                   <span style={labelStyle}>Center Y</span>
-                  <input
-                    type="number"
+                  <NumericStepper
+                    value={Math.round((gradientState.centerY ?? 0.5) * 100)}
+                    onChange={(v) => handleGradientCenterChange('centerY', v / 100)}
+                    step={1}
                     min={0}
                     max={100}
-                    value={Math.round((gradientState.centerY ?? 0.5) * 100)}
-                    class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                    style={inputStyle}
-                    onInput={(e) => handleGradientCenterChange('centerY', Number((e.target as HTMLInputElement).value) / 100)}
-                    onClick={(e) => e.stopPropagation()}
+                    class="w-full"
+                    ariaLabel="Center Y"
+                    inputClass="w-full rounded outline-none font-mono"
+                    inputStyle={inputStyle}
                   />
                 </div>
               </div>
@@ -574,23 +583,22 @@ export function ColorPickerModal({
         {colorInputMode === 'rgba' && (
           <div class="grid grid-cols-3 gap-2">
             {[
-              {label: 'R', value: rInput, set: setRInput, commit: commitRgba},
-              {label: 'G', value: gInput, set: setGInput, commit: commitRgba},
-              {label: 'B', value: bInput, set: setBInput, commit: commitRgba},
+              {label: 'R', value: rInput, set: setRInput, commit: (v: number) => commitRgba({r: v})},
+              {label: 'G', value: gInput, set: setGInput, commit: (v: number) => commitRgba({g: v})},
+              {label: 'B', value: bInput, set: setBInput, commit: (v: number) => commitRgba({b: v})},
             ].map(({label, value, set, commit}) => (
               <div class="flex flex-col gap-1" key={label}>
                 <span style={labelStyle}>{label}</span>
-                <input
-                  type="number"
+                <NumericStepper
+                  value={Number(value)}
+                  onChange={(next) => { set(String(next)); commit(next); }}
+                  step={1}
                   min={0}
                   max={255}
-                  value={value}
-                  class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                  style={inputStyle}
-                  onInput={(e) => set((e.target as HTMLInputElement).value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-                  onBlur={commit}
-                  onClick={(e) => e.stopPropagation()}
+                  class="w-full"
+                  ariaLabel={`${label} channel`}
+                  inputClass="w-full rounded outline-none font-mono"
+                  inputStyle={inputStyle}
                 />
               </div>
             ))}
@@ -600,23 +608,22 @@ export function ColorPickerModal({
         {colorInputMode === 'hsl' && (
           <div class="grid grid-cols-3 gap-2">
             {[
-              {label: 'H', value: hInput, set: setHInput, commit: commitHsl, max: 360, unit: '\u00B0'},
-              {label: 'S', value: sInput, set: setSInput, commit: commitHsl, max: 100, unit: '%'},
-              {label: 'L', value: lInput, set: setLInput, commit: commitHsl, max: 100, unit: '%'},
+              {label: 'H', value: hInput, set: setHInput, commit: (v: number) => commitHsl({h: v}), max: 360, unit: '\u00B0'},
+              {label: 'S', value: sInput, set: setSInput, commit: (v: number) => commitHsl({s: v}), max: 100, unit: '%'},
+              {label: 'L', value: lInput, set: setLInput, commit: (v: number) => commitHsl({l: v}), max: 100, unit: '%'},
             ].map(({label, value, set, commit, max}) => (
               <div class="flex flex-col gap-1" key={label}>
                 <span style={labelStyle}>{label}</span>
-                <input
-                  type="number"
+                <NumericStepper
+                  value={Number(value)}
+                  onChange={(next) => { set(String(next)); commit(next); }}
+                  step={1}
                   min={0}
                   max={max}
-                  value={value}
-                  class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                  style={inputStyle}
-                  onInput={(e) => set((e.target as HTMLInputElement).value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-                  onBlur={commit}
-                  onClick={(e) => e.stopPropagation()}
+                  class="w-full"
+                  ariaLabel={`${label} channel`}
+                  inputClass="w-full rounded outline-none font-mono"
+                  inputStyle={inputStyle}
                 />
               </div>
             ))}

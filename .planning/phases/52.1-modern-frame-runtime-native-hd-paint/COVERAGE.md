@@ -1,0 +1,1 @@
+No external API integration: the phase replaces the in-heap frame runtime (base64 dataUrl → bytes/ImageBitmap) and moves PNG→WebP-lossless encode/decode into Rust via the already-present `webp` crate (libwebp bindings); `createImageBitmap` is a built-in Web platform API (browser), not an external service, and Tauri IPC is internal.

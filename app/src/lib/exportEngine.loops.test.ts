@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
@@ -72,6 +73,12 @@ vi.mock('./exportSidecar', () => ({ generateJsonSidecar: () => '{}', generateFcp
 vi.mock('./audioExportMixer', () => ({ renderMixedAudio: vi.fn(async () => new Uint8Array()) }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: 'main' }) }));
 vi.mock('../stores/paintStore', () => ({ paintStore: { getFrame: vi.fn(() => null) } }));
+
+// 52.1-05 (D-13): the compositor decodes frame bytes through the shared LRU
+// (`decodeWebpFrame` → `createImageBitmap` → ImageBitmap). Mock the Rust decode
+// leaf so the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
 
 vi.mock('./exportRenderer', () => ({
   renderGlobalFrame: vi.fn(),
@@ -185,6 +192,16 @@ class TestImage {
   }
 }
 
+/** The decoded ImageBitmap the LRU hands back (no `src` — a real ImageBitmap). */
+class FlatTestBitmap {
+  width = 4;
+  height = 3;
+  close = vi.fn();
+}
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 function makeCanvas(ctx: RecordingCanvasContext): HTMLCanvasElement {
   return {
     width: 4,
@@ -207,7 +224,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-export:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-export:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };
@@ -317,6 +334,16 @@ beforeEach(() => {
   vi.stubGlobal('HTMLImageElement', TestImage);
   vi.stubGlobal('HTMLCanvasElement', TestCanvas);
   vi.stubGlobal('HTMLVideoElement', class {});
+  // 52.1-05 (D-13): the decode path is `decodeWebpFrame` → ImageData →
+  // createImageBitmap. The parity harness only needs a deterministic bitmap
+  // handle (raster identity is asserted via the flattened canvas, not the
+  // bitmap), so a single shared FlatTestBitmap shape suffices.
+  decodeWebpFrameMock.mockReset();
+  decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
+  vi.stubGlobal('ImageData', class {
+    constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+  });
+  vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
 });
 
 afterEach(() => {
@@ -471,10 +498,10 @@ describe('export loop preflight (failure path, D-28)', () => {
 
 describe('valid-loop preview/export parity (success path, D-27, audit finding 8)', () => {
   interface ParityResult {
-    exportByFrame: Map<number, { cacheKey: string; dataUrl: string } | null>;
+    exportByFrame: Map<number, { cacheKey: string; bytes: Uint8Array } | null>;
     exportKeyByFrame: Map<number, string>;
     exportNullFrames: Set<number>;
-    previewByFrame: Map<number, { cacheKey: string; dataUrl: string } | null>;
+    previewByFrame: Map<number, { cacheKey: string; bytes: Uint8Array } | null>;
     previewRasterByFrame: Map<number, HTMLCanvasElement | undefined>;
     drawnSources: Set<unknown>;
   }
@@ -504,10 +531,12 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     const keySpy = vi.spyOn(physicPaintStore, 'getRotoPhysicalRenderSource');
     try {
       for (const frame of frames) {
-        // Two passes per frame: the first loads the flattened raster into the
-        // image cache, the second paints it — the same load-then-draw
-        // discipline the preload + render loop gives the real export.
+        // Two passes per frame: the first kicks off the async decode, the
+        // second (after the decode completes) paints the flattened raster —
+        // the same load-then-draw discipline the preload + render loop gives
+        // the real export.
         actual.renderGlobalFrame(renderer, canvas, frame, hoisted.fm, hoisted.sequences, [], false);
+        await flushDecode();
         actual.renderGlobalFrame(renderer, canvas, frame, hoisted.fm, hoisted.sequences, [], false);
       }
     } finally {
@@ -525,7 +554,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
           exportNullFrames.add(appFrame);
           continue;
         }
-        exportByFrame.set(appFrame, { cacheKey: result.cacheKey, dataUrl: result.renderedFrame.dataUrl });
+        exportByFrame.set(appFrame, { cacheKey: result.cacheKey, bytes: result.renderedFrame.bytes });
       }
       for (let index = 0; index < keyCalls.length; index += 1) {
         const [layerId, , appFrame] = keyCalls[index] as [string, string, number];
@@ -543,7 +572,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     for (const frame of frames) {
       const sources = renderer.collectPhysicPaintFrameSources(layers, frame);
       const source = sources.find((candidate) => candidate.layerId === LAYER) ?? null;
-      previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', dataUrl: source.renderedFrame.dataUrl } : null);
+      previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', bytes: source.renderedFrame.bytes } : null);
       previewRasterByFrame.set(frame, source?.raster);
     }
 
@@ -572,7 +601,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
       // flattened raster.
       expect(previewSource!.cacheKey, `frame ${frame} flattened provenance`).toBe(exportSource!.cacheKey);
       // Deterministic raster equality BETWEEN the two paths (never fixed hashes).
-      expect(previewSource!.dataUrl, `frame ${frame} flattened raster parity`).toBe(exportSource!.dataUrl);
+      expect(previewSource!.bytes, `frame ${frame} flattened raster parity`).toBe(exportSource!.bytes);
     }
   }
 
@@ -679,7 +708,7 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
       // Flattened-seam parity (48-03): the cache-cold preview and the export
       // path consume the SAME flattened record.
       expect(previewSource!.cacheKey, `flattened provenance frame ${frame}`).toBe(exportSource!.cacheKey);
-      expect(previewSource!.dataUrl, `flattened raster parity frame ${frame}`).toBe(exportSource!.dataUrl);
+      expect(previewSource!.bytes, `flattened raster parity frame ${frame}`).toBe(exportSource!.bytes);
     }
     // D-09 (48-03): frame 2 is a fragmented gap — transparent flattened record
     // with no key resolution on both surfaces.
@@ -697,6 +726,25 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
 
     const synchronized = await resolveBothSurfaces(6);
     expect(synchronized.exportKeyByFrame.get(2)).toBe('A0');
-    expect(synchronized.previewByFrame.get(2)?.dataUrl).toBe(synchronized.exportByFrame.get(2)?.dataUrl);
+    expect(synchronized.previewByFrame.get(2)?.bytes).toBe(synchronized.exportByFrame.get(2)?.bytes);
+  });
+
+  it('52.1-05 (D-13): preloadExportImages awaits the async decode — a cold frame never renders with a missing layer', async () => {
+    install(cycleRecords(['A']), [loopClip('loop-1', 0, ['A'], 1)]);
+    hoisted.fm = makeFm(1);
+
+    const actual = await vi.importActual<typeof import('./exportRenderer')>('./exportRenderer');
+    const ctx = new RecordingCanvasContext();
+    const canvas = makeCanvas(ctx);
+    const renderer = new PreviewRenderer(canvas);
+
+    // Cold: the decode is pending, so the flattened delivery is null this tick.
+    expect(physicPaintStore.getFlattenedFrame(LAYER, 0)).toBeNull();
+
+    await actual.preloadExportImages(renderer, hoisted.fm, undefined, hoisted.sequences);
+
+    // After the preload, the decode completed and the flattened raster is baked
+    // — the export render loop can never observe a cold-miss null.
+    expect(physicPaintStore.getFlattenedFrame(LAYER, 0)).not.toBeNull();
   });
 });

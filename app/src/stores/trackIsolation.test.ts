@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bumpTrackRevision,
@@ -25,6 +26,7 @@ import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/docu
 import { buildEfxPaintTrackRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  requirePhysicPaintRotoInlineBytes,
   type PhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoAuthorityResult } from '../types/physicPaint';
@@ -45,7 +47,7 @@ const INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 const makeFrame = (frameIndex: number, appFrame: number, tag: string) => ({
   frameIndex,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 1000,
   height: 650,
 });
@@ -53,7 +55,7 @@ const makeFrame = (frameIndex: number, appFrame: number, tag: string) => ({
 const makePayload = (appFrame: number, tag: string): PhysicPaintRotoRealKeyPayload => ({
   frameIndex: 0,
   appFrame,
-  dataUrl: `data:image/png;base64,${btoa(tag)}`,
+  bytes: testWebpBytes(btoa(tag)),
   width: 4,
   height: 4,
 });
@@ -96,20 +98,20 @@ function requireCopy(layerId: string, trackId: string, keyIds: readonly string[]
   return copied.payload;
 }
 
-describe('physicPaintStore track isolation (46-01 TRK-01 base law)', () => {
+describe('physicPaintStore track isolation (46-01 TRK-01 base law)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('re-key accessors: a real key upserted on track A is invisible on track B', () => {
+  it('re-key accessors: a real key upserted on track A is invisible on track B', async () => {
     physicPaintStore.upsertRealRotoKeyFrame(LAYER, TRACK_A, 5, makeFrame(0, 5, 'frame-a-5'));
 
-    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 5)?.dataUrl).toBe(makeFrame(0, 5, 'frame-a-5').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 5)?.bytes).toEqual(makeFrame(0, 5, 'frame-a-5').bytes);
     expect(physicPaintStore.getFrame(LAYER, TRACK_B, 5)).toBeNull();
   });
 
-  it('isolation law: editing track A at frame 5 leaves track B record payload byte-identical', () => {
+  it('isolation law: editing track A at frame 5 leaves track B record payload byte-identical', async () => {
     const seedB = physicPaintStore.replaceRotoPhysicalRecords(
       LAYER,
       TRACK_B,
@@ -144,13 +146,13 @@ describe('physicPaintStore track isolation (46-01 TRK-01 base law)', () => {
 
     const recordsB = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
     expect(recordsB).toHaveLength(1);
-    expect(recordsB[0].payload.dataUrl).toBe(makePayload(5, 'b@5').dataUrl);
+    expect(recordsB[0].payload.bytes).toEqual(makePayload(5, 'b@5').bytes);
     const recordsA = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A);
     expect(recordsA).toHaveLength(1);
-    expect(recordsA[0].payload.dataUrl).toBe(makePayload(5, 'a@5-painted').dataUrl);
+    expect(recordsA[0].payload.bytes).toEqual(makePayload(5, 'a@5-painted').bytes);
   });
 
-  it('empty track: removing the last real key leaves an empty-but-present track addressable by trackId', () => {
+  it('empty track: removing the last real key leaves an empty-but-present track addressable by trackId', async () => {
     physicPaintStore.upsertRealRotoKeyFrame(LAYER, TRACK_B, 5, makeFrame(0, 5, 'frame-b-5'));
     const seeded = physicPaintStore.replaceRotoPhysicalRecords(
       LAYER,
@@ -171,7 +173,7 @@ describe('physicPaintStore track isolation (46-01 TRK-01 base law)', () => {
     expect(physicPaintStore.hasTrackRuntime(LAYER, TRACK_B)).toBe(true);
   });
 
-  it('ordering: records of one track sort appFrame ascending, ties by keyId localeCompare', () => {
+  it('ordering: records of one track sort appFrame ascending, ties by keyId localeCompare', async () => {
     const seeded = physicPaintStore.replaceRotoPhysicalRecords(
       LAYER,
       TRACK_B,
@@ -187,13 +189,13 @@ describe('physicPaintStore track isolation (46-01 TRK-01 base law)', () => {
   });
 });
 
-describe('physicPaintStore per-track revision signals (46-01 TRK-03)', () => {
+describe('physicPaintStore per-track revision signals (46-01 TRK-03)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('per-track revision isolation: bumpTrackRevision on track A bumps A and the global clock, track B untouched', () => {
+  it('per-track revision isolation: bumpTrackRevision on track A bumps A and the global clock, track B untouched', async () => {
     const globalBefore = physicPaintVersion.value;
     const aPaintBefore = getTrackPaintVersion(LAYER, TRACK_A).value;
     const aRotoBefore = getTrackRotorRevision(LAYER, TRACK_A).value;
@@ -209,7 +211,7 @@ describe('physicPaintStore per-track revision signals (46-01 TRK-03)', () => {
     expect(getTrackRotorRevision(LAYER, TRACK_B).value).toBe(bRotoBefore);
   });
 
-  it('fresh track runtime mounted by mountTrackRuntime reports the baseline revision and not-dirty', () => {
+  it('fresh track runtime mounted by mountTrackRuntime reports the baseline revision and not-dirty', async () => {
     let dirtyCount = 0;
     _setPhysicPaintMarkDirtyCallback(() => { dirtyCount += 1; });
     const globalBefore = physicPaintVersion.value;
@@ -222,7 +224,7 @@ describe('physicPaintStore per-track revision signals (46-01 TRK-03)', () => {
     expect(dirtyCount).toBe(0);
   });
 
-  it('per-track dirty law: one mutation fires the injected dirty callback exactly once and bumps the global paint version', () => {
+  it('per-track dirty law: one mutation fires the injected dirty callback exactly once and bumps the global paint version', async () => {
     let dirtyCount = 0;
     _setPhysicPaintMarkDirtyCallback(() => { dirtyCount += 1; });
     const globalBefore = physicPaintVersion.value;
@@ -244,13 +246,13 @@ describe('physicPaintStore per-track revision signals (46-01 TRK-03)', () => {
   });
 });
 
-describe('physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3)', () => {
+describe('physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('lease scope: track A and track B each hold an exclusive lease on the same layer, with cross-track validation rejected', () => {
+  it('lease scope: track A and track B each hold an exclusive lease on the same layer, with cross-track validation rejected', async () => {
     const leaseA = physicPaintStore.acquireRotoPhysicalOperationLease('project-leases', LAYER, TRACK_A);
     expect(leaseA).toMatchObject({ projectContextId: 'project-leases', layerId: LAYER, trackId: TRACK_A, owner: 'exclusive' });
     const leaseB = physicPaintStore.acquireRotoPhysicalOperationLease('project-leases', LAYER, TRACK_B);
@@ -269,7 +271,7 @@ describe('physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3)',
     expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-leases', LAYER, TRACK_B)).toBe(true);
   });
 
-  it('track teardown: removeTrackRuntime clears B frames, records, caches, selection, leases, and memo entries while A stays untouched', () => {
+  it('track teardown: removeTrackRuntime clears B frames, records, caches, selection, leases, and memo entries while A stays untouched', async () => {
     const seedA = physicPaintStore.replaceRotoPhysicalRecords(
       LAYER,
       TRACK_A,
@@ -314,19 +316,19 @@ describe('physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3)',
     expect(getTrackRotorRevision(LAYER, TRACK_B).value).toBe(0);
   });
 
-  it('empty-keep: removeTrackRuntime on a never-mounted track is a no-op returning false without throwing', () => {
+  it('empty-keep: removeTrackRuntime on a never-mounted track is a no-op returning false without throwing', async () => {
     expect(removeTrackRuntime(LAYER, 'track-never-mounted')).toBe(false);
     expect(physicPaintStore.hasTrackRuntime(LAYER, 'track-never-mounted')).toBe(false);
   });
 });
 
-describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1)', () => {
+describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('same-track copy/paste: fresh keyIds/loopIds (never S\'s ids) and identical payload bytes', () => {
+  it('same-track copy/paste: fresh keyIds/loopIds (never S\'s ids) and identical payload bytes', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
     const payload = requireCopy(LAYER, TRACK_A, ['k0']);
     // The selection copies its key rail AND the Hold loop fully covered by it.
@@ -346,10 +348,10 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(fresh.every((record) => !['k0', 'k2'].includes(record.keyId))).toBe(true);
     // Identical payload bytes, relocated onto the fresh frames.
     const sourcePayloads = new Map([
-      [10, makePayload(0, 'a@0').dataUrl],
-      [12, makePayload(2, 'a@2').dataUrl],
+      [10, makePayload(0, 'a@0').bytes],
+      [12, makePayload(2, 'a@2').bytes],
     ]);
-    for (const record of fresh) expect(record.payload.dataUrl).toBe(sourcePayloads.get(record.appFrame));
+    for (const record of fresh) expect(record.payload.bytes).toEqual(sourcePayloads.get(record.appFrame));
     // Fresh loop identity; the same-track paste duplicates the source cycle, so
     // the pasted loop references the fresh source key (the key-rail's copy of
     // k0 at frame 10), never the original k0.
@@ -364,7 +366,7 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(freshSource!.appFrame).toBe(10);
   });
 
-  it('cross-track paste isolation: pasting A\'s selection into B changes B only; A records, caches, and revisions stay byte-identical', () => {
+  it('cross-track paste isolation: pasting A\'s selection into B changes B only; A records, caches, and revisions stay byte-identical', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
     seedTrack(TRACK_B, [makeRecord('b5', 5, 'b@5')], []);
     const documentABefore = physicPaintStore.getRotoPhysicalDocument(LAYER, TRACK_A);
@@ -387,7 +389,7 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)).toEqual(frameABefore);
   });
 
-  it('cross-track Hold re-pointing: pasted Hold references the destination\'s copied frames, never A\'s key ids', () => {
+  it('cross-track Hold re-pointing: pasted Hold references the destination\'s copied frames, never A\'s key ids', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0')], [makeLoop('hold-a', 0, ['k0'])]);
     seedTrack(TRACK_B, [makeRecord('b5', 5, 'b@5')], []);
     const payload = requireCopy(LAYER, TRACK_A, ['k0']);
@@ -412,7 +414,7 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
   });
 
-  it('reject not dangle: a payload whose Hold source frame is outside the pasted set fails closed with zero mutation', () => {
+  it('reject not dangle: a payload whose Hold source frame is outside the pasted set fails closed with zero mutation', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 1, 'a@1')], [makeLoop('hold', 0, ['k0', 'k1'])]);
     seedTrack(TRACK_B, [makeRecord('b5', 5, 'b@5')], []);
     // Split the contiguous rail with a break on k1 so k0's segment carries k0
@@ -443,7 +445,7 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_B)).toEqual([]);
   });
 
-  it('deep-copy assets: the pasted frames own their bytes; deleting the destination leaves A intact', () => {
+  it('deep-copy assets: the pasted frames own their bytes; deleting the destination leaves A intact', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0')], [makeLoop('hold-a', 0, ['k0'])]);
     seedTrack(TRACK_B, [makeRecord('b5', 5, 'b@5')], []);
     const payload = requireCopy(LAYER, TRACK_A, ['k0']);
@@ -452,15 +454,15 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`paste must resolve: ${pasted.reason}`);
     // B's pasted frame holds the source bytes (deep copy, owned by B).
-    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 10)?.dataUrl).toBe(makePayload(0, 'a@0').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 10)?.bytes).toEqual(makePayload(0, 'a@0').bytes);
     // Deleting B leaves A untouched.
     expect(removeTrackRuntime(LAYER, TRACK_B)).toBe(true);
-    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-k0').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.bytes).toEqual(makeFrame(0, 0, 'frame-k0').bytes);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
     expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_A)).toHaveLength(1);
   });
 
-  it('clearTrackFrames removes only the target track\'s frames + records; the sibling track\'s cache paths untouched', () => {
+  it('clearTrackFrames removes only the target track\'s frames + records; the sibling track\'s cache paths untouched', async () => {
     seedTrack(TRACK_A, [makeRecord('k5', 5, 'a@5'), makeRecord('k6', 6, 'a@6')], []);
     seedTrack(TRACK_B, [makeRecord('k5', 5, 'b@5')], []);
     const cleared = physicPaintStore.clearTrackFrames(LAYER, TRACK_A, [5, 6]);
@@ -470,11 +472,11 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 6)).toBeNull();
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual([]);
     // B's cache path and record at the same frame are untouched.
-    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 5)?.dataUrl).toBe(makeFrame(0, 5, 'frame-k5').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 5)?.bytes).toEqual(makeFrame(0, 5, 'frame-k5').bytes);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
   });
 
-  it('cutTrackSelection copies and removes the selection; cut fails closed on partial loop overlap', () => {
+  it('cutTrackSelection copies and removes the selection; cut fails closed on partial loop overlap', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
     const cut = physicPaintStore.cutTrackSelection(LAYER, TRACK_A, ['k0']);
     expect(cut.ok).toBe(true);
@@ -497,7 +499,7 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TRACK_B)).toHaveLength(1);
   });
 
-  it('duplicateTrackFrames duplicates at the derived anchor with fresh identities', () => {
+  it('duplicateTrackFrames duplicates at the derived anchor with fresh identities', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
     const duplicated = physicPaintStore.duplicateTrackFrames(LAYER, TRACK_A, [0, 2]);
     expect(duplicated.ok).toBe(true);
@@ -530,7 +532,7 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
  * two branches; the revision hash and cursor are excluded (fresh per write).
  */
 function normalizeTrackDocument(trackId: string): {
-  readonly records: readonly { appFrame: number; dataUrl: string }[];
+  readonly records: readonly { appFrame: number; bytes: Uint8Array }[];
   readonly loops: readonly { placementStart: number; sourceAppFrames: readonly number[] }[];
   readonly breaks: readonly number[];
 } {
@@ -538,7 +540,7 @@ function normalizeTrackDocument(trackId: string): {
   const frameByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record.appFrame]));
   const records = [...document.realKeyRecords]
     .sort((left, right) => left.appFrame - right.appFrame)
-    .map((record) => ({ appFrame: record.appFrame, dataUrl: record.payload.dataUrl }));
+    .map((record) => ({ appFrame: record.appFrame, bytes: requirePhysicPaintRotoInlineBytes(record.payload) }));
   const loops = [...document.loopClips]
     .sort((left, right) => left.placementStart - right.placementStart)
     .map((clip) => ({
@@ -551,13 +553,13 @@ function normalizeTrackDocument(trackId: string): {
   return { records, loops, breaks };
 }
 
-describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
+describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('RED: move removes the items from the source and adds fresh-identity copies at the same appFrames', () => {
+  it('RED: move removes the items from the source and adds fresh-identity copies at the same appFrames', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], []);
     seedTrack(TRACK_B, [], []);
 
@@ -569,16 +571,16 @@ describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
     const destination = physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TRACK_B, 0);
     expect(destination).not.toBeNull();
     expect(destination!.keyId).not.toBe('k0');
-    expect(destination!.payload.dataUrl).toBe(makePayload(0, 'a@0').dataUrl);
-    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.dataUrl).toBe(makePayload(0, 'a@0').dataUrl);
+    expect(destination!.payload.bytes).toEqual(makePayload(0, 'a@0').bytes);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.bytes).toEqual(makePayload(0, 'a@0').bytes);
 
     // Source: k0's record, frame, and cache path are gone; k2 untouched.
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A).map((record) => record.appFrame)).toEqual([2]);
     expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)).toBeNull();
-    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 2)?.dataUrl).toBe(makeFrame(0, 2, 'frame-k2').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 2)?.bytes).toEqual(makeFrame(0, 2, 'frame-k2').bytes);
   });
 
-  it('RED: move equals cut-then-paste — destination matches the cut payload pasted at its anchor, source matches the cut effect', () => {
+  it('RED: move equals cut-then-paste — destination matches the cut payload pasted at its anchor, source matches the cut effect', async () => {
     const seedBoth = () => {
       seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
       seedTrack(TRACK_B, [], []);
@@ -609,7 +611,7 @@ describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
     expect(movedSource).toEqual(cutSource);
   });
 
-  it('RED: a covered Hold re-points onto the destination fresh frames; a colliding move fails closed with the source untouched', () => {
+  it('RED: a covered Hold re-points onto the destination fresh frames; a colliding move fails closed with the source untouched', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 1, 'a@1')], [makeLoop('hold-a', 0, ['k0', 'k1'])]);
     seedTrack(TRACK_B, [], []);
 
@@ -641,9 +643,9 @@ describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
     if (colliding.ok) throw new Error('A colliding move must fail closed');
     expect(colliding.reason).toBe('duplicate-destination-frame');
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A).map((record) => record.appFrame)).toEqual([0]);
-    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-k0').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 0)?.bytes).toEqual(makeFrame(0, 0, 'frame-k0').bytes);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toHaveLength(1);
-    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.dataUrl).toBe(makeFrame(0, 0, 'frame-b0').dataUrl);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 0)?.bytes).toEqual(makeFrame(0, 0, 'frame-b0').bytes);
   });
 });
 
@@ -656,13 +658,13 @@ describe('physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09)', () => {
  * store-built context carries track provenance, and linked answers are virtual
  * query results that never persist.
  */
-describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02)', () => {
+describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('adjacency: two tracks holding a Hold Loop Clip at the same appFrame each answer their own loopId/sourceKeyId — the A answer never shows B\'s', () => {
+  it('adjacency: two tracks holding a Hold Loop Clip at the same appFrame each answer their own loopId/sourceKeyId — the A answer never shows B\'s', async () => {
     seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
     seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], [makeLoop('hold-b', 10, ['kB-0'])]);
 
@@ -683,7 +685,7 @@ describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 —
     expect(JSON.stringify(answerA)).not.toBe(JSON.stringify(answerB));
   });
 
-  it('empty: a track with a Hold clip but zero real keys answers every clip cell linked-unresolved — never a foreign frame, never a fabricated base', () => {
+  it('empty: a track with a Hold clip but zero real keys answers every clip cell linked-unresolved — never a foreign frame, never a fabricated base', async () => {
     // The sibling track's real key must never leak into A's answer.
     seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], []);
     // 46-06 Task 3: the clip surface rejects refs to never-present keys, so
@@ -709,7 +711,7 @@ describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 —
     expect(answer.kind).not.toBe('real');
   });
 
-  it('ordering: half-open boundaries — the frame at the next clip\'s placementStart belongs to the next clip, never both', () => {
+  it('ordering: half-open boundaries — the frame at the next clip\'s placementStart belongs to the next clip, never both', async () => {
     seedTrack(TRACK_A, [makeRecord('k1-0', 0, 'a@0'), makeRecord('k2-0', 20, 'a@20')], [
       { loopId: 'c1', placementStart: 10, sourceKeyIds: ['k1-0'], repeat: 10, mode: 'static' },
       { loopId: 'c2', placementStart: 20, sourceKeyIds: ['k2-0'], repeat: 2, mode: 'static' },
@@ -730,7 +732,7 @@ describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 —
     expect(answers.every((answer) => answer.kind === 'linked' || answer.kind === 'real')).toBe(true);
   });
 
-  it('context provenance: the context the store builds for track A contains no loopId and no keyId owned by track B', () => {
+  it('context provenance: the context the store builds for track A contains no loopId and no keyId owned by track B', async () => {
     seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
     seedTrack(TRACK_B, [makeRecord('kB-0', 5, 'b@5')], [makeLoop('hold-b', 10, ['kB-0'])]);
 
@@ -746,7 +748,7 @@ describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 —
     expect(contextA!.context.keyIdByAppFrame.get(20)).toBeUndefined();
   });
 
-  it('virtual-only: no linked or linked-unresolved resolution is ever persisted — frames, cache, projection, and document stay virtual', () => {
+  it('virtual-only: no linked or linked-unresolved resolution is ever persisted — frames, cache, projection, and document stay virtual', async () => {
     seedTrack(TRACK_A, [makeRecord('kA-0', 5, 'a@5')], [makeLoop('hold-a', 10, ['kA-0'])]);
     const contextA = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK_A);
     expect(contextA).not.toBeNull();
@@ -784,7 +786,7 @@ describe('physicPaintStore track-local Hold resolution context (46-06 Task 1 —
  * by A's captured track term, never by a foreign track's edit nor by the
  * global paint clock.
  */
-describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
+describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
@@ -926,12 +928,12 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
       expectedDocumentRevision: authority.documentRevision,
       frames: [
         authority.frames[0],
-        { frameIndex: 0, appFrame: 2, dataUrl: `data:image/png;base64,${btoa(tag)}`, width: 4, height: 4, source: 'real-key' },
+        { frameIndex: 0, appFrame: 2, bytes: testWebpBytes(btoa(tag)), width: 4, height: 4, source: 'real-key' },
       ],
     };
   }
 
-  it('cross-track stale isolation: a track-B edit between capture and commit leaves the A capture valid and never moves B', () => {
+  it('cross-track stale isolation: a track-B edit between capture and commit leaves the A capture valid and never moves B', async () => {
     seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
     const capturedA = capture(TRACK_A, 2);
 
@@ -950,7 +952,7 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
     // and the commit lands on A, never on the edited B.
     const { expectedDocumentRevision: _omittedDocumentTerm, ...payload } = buildBatch(capturedA);
     const beforeB = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
-    const result = applyPhysicPaintPayload(payload);
+    const result = await applyPhysicPaintPayload(payload);
     expect(result).toMatchObject({ ok: true });
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual(beforeB);
@@ -958,7 +960,7 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
     expect(capture(TRACK_B, 6).trackRevision).toBe(bAfterEdit.trackRevision);
   });
 
-  it('concurrent captures at a shared appFrame: both commit their own maps, the last never overwrites the first', () => {
+  it('concurrent captures at a shared appFrame: both commit their own maps, the last never overwrites the first', async () => {
     seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
     // Each track capture names its own track and its own operation: the
     // dedupe registry keys on the per-commit operationId, so A's entry can
@@ -966,22 +968,22 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
     const capturedA = capture(TRACK_A, 2);
     const capturedB = capture(TRACK_B, 2);
 
-    const commitA = applyPhysicPaintPayload(buildBatch(capturedA));
+    const commitA = await applyPhysicPaintPayload(buildBatch(capturedA));
     expect(commitA).toMatchObject({ ok: true });
-    const commitB = applyPhysicPaintPayload(buildBatch(capturedB, { trackId: TRACK_B, tag: 'b@2' }));
+    const commitB = await applyPhysicPaintPayload(buildBatch(capturedB, { trackId: TRACK_B, tag: 'b@2' }));
     expect(commitB).toMatchObject({ ok: true });
 
     // The shared appFrame 2 holds each track's own bytes: the last commit
     // writes its own track map and never overwrites the first's frame.
-    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 2)?.dataUrl).toBe(`data:image/png;base64,${btoa('a@2')}`);
-    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 2)?.dataUrl).toBe(`data:image/png;base64,${btoa('b@2')}`);
+    expect(physicPaintStore.getFrame(LAYER, TRACK_A, 2)?.bytes).toEqual(testWebpBytes(btoa('a@2')));
+    expect(physicPaintStore.getFrame(LAYER, TRACK_B, 2)?.bytes).toEqual(testWebpBytes(btoa('b@2')));
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_B)).toEqual([0, 2]);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toEqual([makeRecord('key-a-0', 0, 'a@0')]);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([makeRecord('key-b-0', 0, 'b@0')]);
   });
 
-  it('B-dirty does not fail A: the per-track revision, not the global clock, gates A\'s commit', () => {
+  it('B-dirty does not fail A: the per-track revision, not the global clock, gates A\'s commit', async () => {
     seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
     const capturedA = capture(TRACK_A, 2);
     const globalBefore = physicPaintVersion.value;
@@ -995,7 +997,7 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
     expect(getTrackRotorRevision(LAYER, TRACK_B).value).toBe(bRotorBefore + 1);
     expect(getTrackRotorRevision(LAYER, TRACK_A).value).toBe(aRotorBefore);
 
-    const result = applyPhysicPaintPayload(buildBatch(capturedA));
+    const result = await applyPhysicPaintPayload(buildBatch(capturedA));
     expect(result).toMatchObject({ ok: true });
     expect(physicPaintStore.getRealRotoKeyFrames(LAYER, TRACK_A)).toEqual([0, 2]);
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([makeRecord('key-b-5', 5, 'b@5')]);
@@ -1006,7 +1008,7 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', () => {
     expect(recapturedA.rotoRevision).toBe(capturedA.rotoRevision);
   });
 
-  it('authority during a foreign-track edit: a request for A after a B edit returns A\'s terms and bytes unchanged', () => {
+  it('authority during a foreign-track edit: a request for A after a B edit returns A\'s terms and bytes unchanged', async () => {
     seedTwoTrackState([makeRecord('key-a-0', 0, 'a@0')], [makeRecord('key-b-0', 0, 'b@0')]);
     const beforeA = capture(TRACK_A, 0);
 

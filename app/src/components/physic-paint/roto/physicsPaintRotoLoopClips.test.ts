@@ -1,9 +1,27 @@
+import { createHash } from 'node:crypto';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
+const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+// quick-260913-05k: the package-IO boundary — the layer sub-file write/read
+// and the staging discard are app commands, not fs-plugin calls.
+const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
+const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
+const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+const projectSave = vi.hoisted(() => vi.fn());
+const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
+const PACKAGE_PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const activePackageTransactions = new Map<
+  string,
+  { readonly packageRoot: string; readonly stagingBasename: string; readonly paths: readonly string[] }
+>();
 
 function moveGeneration(projectDir: string, stagingBasename: string): void {
   const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
@@ -28,9 +46,99 @@ function moveGeneration(projectDir: string, stagingBasename: string): void {
   }
 }
 
+/** The package transaction surface, simulated over the in-memory filesystem. */
+function installPackageIpcMocks(): void {
+  activePackageTransactions.clear();
+  ipcEfxPaintWriteFrameMedia.mockReset();
+  projectSave.mockReset();
+  bindEfxPaintPackageTransaction.mockReset();
+  publishEfxPaintPackageTransaction.mockReset();
+  settleEfxPaintPackageTransaction.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockReset();
+  ipcEfxPaintReadPackageLayerFile.mockReset();
+  discardEfxPaintPackageStaging.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockImplementation(
+    async (packageDir: string, stagingBasename: string, layerFile: string, contents: string) => {
+      files.set(`${packageDir}/${stagingBasename}/${layerFile}`, new TextEncoder().encode(contents));
+      dirs.add(`${packageDir}/${stagingBasename}`);
+      return { ok: true, data: null };
+    },
+  );
+  ipcEfxPaintReadPackageLayerFile.mockImplementation(async (packageDir: string, layerFile: string) => {
+    const bytes = files.get(`${packageDir}/${layerFile}`);
+    if (bytes === undefined) return { ok: false, error: { kind: 'missing' } };
+    return { ok: true, data: new TextDecoder().decode(bytes) };
+  });
+  discardEfxPaintPackageStaging.mockImplementation(async (packageDir: string, stagingBasename: string) => {
+    const root = `${packageDir}/${stagingBasename}`;
+    for (const key of Array.from(files.keys())) {
+      if (key === root || key.startsWith(`${root}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === root || key.startsWith(`${root}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
+  ipcEfxPaintWriteFrameMedia.mockImplementation(
+    async (packageDir: string, layerId: string, keyId: string, bytes: Uint8Array, stagingBasename?: string) => {
+      const relativePath = buildFrameMediaRelativePath(layerId, keyId);
+      const root = stagingBasename === undefined ? packageDir : `${packageDir}/${stagingBasename}`;
+      files.set(`${root}/${relativePath}`, bytes);
+      return {
+        ok: true,
+        data: { relativePath, digest: createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.length },
+      };
+    },
+  );
+  projectSave.mockImplementation(async (project: unknown, path: string) => {
+    files.set(path, new TextEncoder().encode(JSON.stringify(project)));
+    return { ok: true, data: null };
+  });
+  bindEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, stagingBasename: string, paths: string[]) => {
+      const transactionId = crypto.randomUUID();
+      activePackageTransactions.set(transactionId, { packageRoot, stagingBasename, paths });
+      return { ok: true, data: { transactionId, aggregateDigest: 'a'.repeat(64), entries: [] } };
+    },
+  );
+  publishEfxPaintPackageTransaction.mockImplementation(async (packageRoot: string, transactionId: string) => {
+    const transaction = activePackageTransactions.get(transactionId);
+    if (!transaction) return { ok: false, error: 'inactive transaction' };
+    for (const path of transaction.paths) {
+      const staged = files.get(`${transaction.packageRoot}/${transaction.stagingBasename}/${path}`);
+      if (staged !== undefined) files.set(`${packageRoot}/${path}`, staged);
+    }
+    return { ok: true, data: { transactionId, published: transaction.paths.length } };
+  });
+  settleEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, transactionId: string, _action: 'commit' | 'rollback') => {
+      const transaction = activePackageTransactions.get(transactionId);
+      if (!transaction) return { ok: false, error: 'inactive transaction' };
+      activePackageTransactions.delete(transactionId);
+      const stagingRoot = `${packageRoot}/${transaction.stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      for (const key of Array.from(dirs)) {
+        if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
+      }
+      return { ok: true, data: { cleanupDeferred: false } };
+    },
+  );
+}
+
 vi.mock('../../../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
+  ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
+  ipcEfxPaintReadPackageLayerFile,
+  discardEfxPaintPackageStaging,
+  projectSave,
+  bindEfxPaintPackageTransaction,
+  publishEfxPaintPackageTransaction,
+  settleEfxPaintPackageTransaction,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -67,19 +175,43 @@ import { proposePhysicPaintRotoGroupFramePaint } from './physicsPaintRotoGroupLi
 import { isPhysicPaintRotoPhysicalEditApplyPayload } from '../../../types/physicPaint';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
-  loadEfxPaintDocuments,
-  saveEfxPaintDocumentsWithProjectWrite,
+  loadEfxPaintPackage,
+  savePackage,
+  settlePackageFileTokens,
   type EfxPaintDocumentSaveInput,
 } from '../../../lib/efxPaintPersistence';
+import { buildFrameMediaRelativePath, buildLayerFileRelativePath } from '../../../lib/efxPaintPackage';
+import type { MceProject } from '../../../types/project';
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+/** JSON round-trip that preserves Uint8Array bytes (base64 marker) at any depth. */
+function jsonRoundTrip<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, v) => (v instanceof Uint8Array ? { __webpBytes: bytesToBase64(v) } : v)),
+    (_key, v) => (v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v.__webpBytes === 'string' ? base64ToBytes(v.__webpBytes) : v),
+  );
+}
 
 const realKey = (keyId: string, appFrame: number) => ({
   kind: 'real-key' as const,
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
+  payload: { frameIndex: 0, appFrame, bytes: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
 });
 
 /** Source cycle: five real keys at physical frames 0/3/6/9/12. */
@@ -209,9 +341,9 @@ const baseDocument = (loopClips?: unknown) => {
 };
 
 const runtimeOutput = (document: ReturnType<typeof baseDocument>): Map<string, EfxPaintDocumentSaveInput> => {
-  const efxDocument = createEfxPaintDocument('physic layer/1');
+  const efxDocument = createEfxPaintDocument('physic-layer-1');
   const track = efxDocument.tracks[0];
-  return new Map([['physic layer/1', {
+  return new Map([['physic-layer-1', {
     document: {
       ...efxDocument,
       tracks: [{ ...track, rotoPhysical: parsePhysicPaintRotoPhysicalDocument(document) }],
@@ -459,7 +591,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       });
       const otherGroup = proposedGroup({ loopId: 'loop-2', placementStart: 30, phaseOrigin: 30, originalEndExclusive: 55, visibleRanges: [{ start: 30, endExclusive: 55 }] });
       const document = parsePhysicPaintRotoPhysicalDocument(baseDocument([group, otherGroup]));
-      const beforeSourceBytes = document.realKeyRecords.map((record) => record.payload.dataUrl);
+      const beforeSourceBytes = document.realKeyRecords.map((record) => record.payload.bytes);
       const beforeOtherGroup = JSON.stringify(document.loopClips[1]);
 
       const result = proposePhysicPaintRotoGroupFramePaint({
@@ -467,7 +599,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         groupId: 'loop-1',
         appFrame: 7,
         overrideKeyId: 'override-7',
-        renderedPayload: { frameIndex: 0, appFrame: 7, dataUrl: pngDataUrl('painted-7'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: 7, bytes: pngDataUrl('painted-7'), width: 10, height: 10 },
       });
 
       expect(result.ok).toBe(true);
@@ -480,7 +612,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       });
       expect(result.proposal.realKeyRecords
         .filter((record) => SOURCE_KEY_IDS.includes(record.keyId))
-        .map((record) => record.payload.dataUrl)).toEqual(beforeSourceBytes);
+        .map((record) => record.payload.bytes)).toEqual(beforeSourceBytes);
       expect(JSON.stringify(result.proposal.loopClips[1])).toBe(beforeOtherGroup);
       expect(result.impact).toEqual({
         kind: 'paint-group-frame',
@@ -516,7 +648,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         groupId: 'loop-1',
         appFrame: 0,
         overrideKeyId: 'override-0',
-        renderedPayload: { frameIndex: 0, appFrame: 0, dataUrl: pngDataUrl('painted-0'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: 0, bytes: pngDataUrl('painted-0'), width: 10, height: 10 },
       });
 
       expect(result.ok).toBe(true);
@@ -528,7 +660,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         kind: 'real-key',
         keyId: 'override-0',
         appFrame: 0,
-        payload: { frameIndex: 0, appFrame: 0, dataUrl: pngDataUrl('painted-0'), width: 10, height: 10 },
+        payload: { frameIndex: 0, appFrame: 0, bytes: pngDataUrl('painted-0'), width: 10, height: 10 },
       }]);
       expect(result.proposal.loopClips[0].frameOverrides).toEqual([{ appFrame: 0, keyId: 'override-0' }]);
       expect(result.proposal.loopClips[1]).toEqual(document.loopClips[1]);
@@ -542,7 +674,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         groupId: 'loop-1',
         appFrame: 4,
         overrideKeyId: 'override-4',
-        renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: pngDataUrl('painted-4'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: 4, bytes: pngDataUrl('painted-4'), width: 10, height: 10 },
       } as const;
 
       expect(proposePhysicPaintRotoGroupFramePaint({ ...operation, overrideKeyId: 'k1' })).toMatchObject({ ok: false, reason: 'duplicate-override-key-id' });
@@ -583,10 +715,10 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
     const first = parsePhysicPaintRotoPhysicalDocument(baseDocument([loop]));
     expect(first.loopClips).toEqual([canonical]);
 
-    const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify({
+    const reopened = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip({
       ...baseDocument([loop]),
       revision: first.revision,
-    })));
+    }));
     expect(JSON.stringify(reopened.loopClips)).toBe(JSON.stringify([canonical]));
   });
 
@@ -658,7 +790,7 @@ describe('parsePhysicPaintRotoPhysicalDocument incoming interpolation breaks', (
       valid.loopClips ?? [],
       valid.incomingInterpolationBreakKeyIds,
     );
-    const parsed = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(valid)));
+    const parsed = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip(valid));
     expect(JSON.stringify(parsed.incomingInterpolationBreakKeyIds)).toBe(JSON.stringify(['k3']));
     expect(Object.isFrozen(parsed.incomingInterpolationBreakKeyIds)).toBe(true);
 
@@ -684,17 +816,86 @@ describe('parsePhysicPaintRotoPhysicalDocument incoming interpolation breaks', (
   });
 });
 
-function saveDocuments(
+function testProject(): MceProject {
+  return {
+    version: 13,
+    name: 'roto',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    created_at: '2026-01-01T00:00:00Z',
+    modified_at: '2026-01-01T00:00:00Z',
+    sequences: [],
+    images: [],
+  };
+}
+
+/**
+ * Save through the package write and read back the PUBLISHED layer sub-files.
+ * The derived-frame cache leg is off here (no cache root): these cases are
+ * about the authoritative layer document, and the machine cache is its own
+ * best-effort leg.
+ */
+async function saveDocuments(
   projectDir: string,
   documents: ReadonlyMap<string, EfxPaintDocumentSaveInput> | undefined,
-) {
-  return saveEfxPaintDocumentsWithProjectWrite(projectDir, documents, async () => {});
+): Promise<Record<string, unknown>> {
+  await savePackage(projectDir, {
+    project: testProject(),
+    documents,
+    projectId: PACKAGE_PROJECT_ID,
+    cacheRoot: null,
+  });
+  const payload: Record<string, unknown> = {};
+  for (const layerId of documents?.keys() ?? []) {
+    const bytes = files.get(`${projectDir}/${buildLayerFileRelativePath(layerId)}`);
+    if (bytes === undefined) continue;
+    payload[layerId] = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  }
+  return payload;
+}
+
+/**
+ * Load one published layer back through the 52.2 package loader (52.2-09): the
+ * manifest's `efxPaint` index is the only layer source, and the sub-file
+ * reaches the loader from the in-memory package the save just wrote.
+ */
+function loadPersistedLayer(projectDir: string, layerId: string) {
+  return loadEfxPaintPackage({
+    packageDir: projectDir,
+    manifest: {
+      efxPaint: {
+        [layerId]: {
+          layerFile: buildLayerFileRelativePath(layerId),
+          documentRevision: '0',
+          compositeRevision: '0',
+        },
+      },
+    },
+    machineCacheRoot: null,
+  });
+}
+
+/**
+ * Rewrite one published sub-file in the in-memory package before a load, for
+ * the cases that perturb the persisted shape (a member removed, a malformed
+ * value) rather than saving it.
+ */
+function rewriteLayerFile(projectDir: string, layerId: string, value: unknown): void {
+  files.set(
+    `${projectDir}/${buildLayerFileRelativePath(layerId)}`,
+    new TextEncoder().encode(JSON.stringify(value)),
+  );
 }
 
 describe('v1.0 document persistence loopClips save/reopen', () => {
   beforeEach(() => {
     files.clear();
     dirs.clear();
+    // A committed baseline is process state: clearing it keeps every case a
+    // fail-closed first save rather than a no-op against a previous case.
+    settlePackageFileTokens('commit', new Map());
+    installPackageIpcMocks();
     publishPhysicPaintCacheGeneration.mockReset();
     publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
       moveGeneration(projectDir, stagingBasename);
@@ -714,7 +915,7 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
     const canonical = proposedGroup();
     const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([loop])));
 
-    const persistedDocument = (persisted['physic layer/1'] as { tracks: Array<{ rotoPhysical: { loopClips?: unknown } }> }).tracks[0].rotoPhysical;
+    const persistedDocument = (persisted['physic-layer-1'] as { tracks: Array<{ rotoPhysical: { loopClips?: unknown } }> }).tracks[0].rotoPhysical;
     expect(persistedDocument.loopClips).toEqual([canonical]);
     // D-30: canonical Group authority persists without any derived loop state.
     expect(Object.keys((persistedDocument.loopClips as readonly object[])[0]).sort()).toEqual([
@@ -722,15 +923,15 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
       'placementStart', 'provenanceState', 'repeat', 'sourceKeyIds', 'syncState', 'visibleRanges',
     ]);
 
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
-    expect(hydrated.get('physic layer/1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([canonical]);
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
+    expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([canonical]);
   });
 
   it('saves and reopens a duplicated linked loop with placement independent from source location', async () => {
     const duplicate = { ...baseLoop(), loopId: 'loop-dup', placementStart: 40 };
-    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([duplicate])));
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
-    expect(hydrated.get('physic layer/1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([proposedGroup({
+    await saveDocuments('/project', runtimeOutput(baseDocument([duplicate])));
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
+    expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([proposedGroup({
       loopId: 'loop-dup',
       placementStart: 40,
       phaseOrigin: 40,
@@ -744,19 +945,23 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
     // loop-free revision; the empty collection contributes no fingerprint
     // term, so the legacy revision stays canonical (D-29, no migration).
     const persisted = await saveDocuments('/project', runtimeOutput(baseDocument()));
-    const legacy = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    const legacyDocument = (legacy['physic layer/1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical;
-    delete legacyDocument.loopClips;
+    const legacy = jsonRoundTrip(persisted) as typeof persisted;
+    // The sub-file IS the document (never a layerId-keyed map): the rewritten
+    // file must be the layer document itself, or the load fails on the schema
+    // rather than reaching the loopClips-absent path this case exercises.
+    const legacyLayer = legacy['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> };
+    delete legacyLayer.tracks[0].rotoPhysical.loopClips;
+    rewriteLayerFile('/project', 'physic-layer-1', legacyLayer);
 
-    const hydrated = await loadEfxPaintDocuments('/project', legacy);
-    expect(hydrated.get('physic layer/1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([]);
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
+    expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([]);
   });
 
   it('preserves dangling source keyIds verbatim through save and reopen', async () => {
     const dangling = { ...baseLoop(), sourceKeyIds: ['ghost-1', 'ghost-2'] };
-    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([dangling])));
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
-    expect(hydrated.get('physic layer/1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([{
+    await saveDocuments('/project', runtimeOutput(baseDocument([dangling])));
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
+    expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips).toEqual([{
       ...dangling,
       syncState: 'synchronized',
       provenanceState: 'attached',
@@ -769,20 +974,24 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
 
   it('round-trips the infinity repeat state as the explicit string', async () => {
     const infinite = { ...baseLoop(), repeat: 'infinity' as const };
-    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([infinite])));
-    const hydrated = await loadEfxPaintDocuments('/project', persisted);
-    expect(hydrated.get('physic layer/1')?.document.tracks[0].rotoPhysical?.loopClips[0].repeat).toBe('infinity');
+    await saveDocuments('/project', runtimeOutput(baseDocument([infinite])));
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
+    expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips[0].repeat).toBe('infinity');
   });
 
   it('fails closed on a structurally malformed persisted loopClips member', async () => {
     const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([baseLoop()])));
     const malformed = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    (malformed['physic layer/1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical.loopClips = 'loops';
-    await expect(loadEfxPaintDocuments('/project', malformed)).rejects.toThrow();
+    const malformedLayer = malformed['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> };
+    malformedLayer.tracks[0].rotoPhysical.loopClips = 'loops';
+    rewriteLayerFile('/project', 'physic-layer-1', malformedLayer);
+    await expect(loadPersistedLayer('/project', 'physic-layer-1')).rejects.toThrow();
 
     const malformedRecord = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    (malformedRecord['physic layer/1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> }).tracks[0].rotoPhysical.loopClips = [{ ...baseLoop(), canonicalStart: 0 }];
-    await expect(loadEfxPaintDocuments('/project', malformedRecord)).rejects.toThrow();
+    const malformedRecordLayer = malformedRecord['physic-layer-1'] as { tracks: Array<{ rotoPhysical: Record<string, unknown> }> };
+    malformedRecordLayer.tracks[0].rotoPhysical.loopClips = [{ ...baseLoop(), canonicalStart: 0 }];
+    rewriteLayerFile('/project', 'physic-layer-1', malformedRecordLayer);
+    await expect(loadPersistedLayer('/project', 'physic-layer-1')).rejects.toThrow();
   });
 });
 

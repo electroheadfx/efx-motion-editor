@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES,
+  capturePhysicsPaintStallDiagnostics,
   clearPhysicsPaintPerformance,
   diffPhysicsPaintPerformanceSnapshots,
+  recordPhysicsPaintDecodeSample,
   recordPhysicsPaintPerformance,
   recordPhysicsPaintPerformanceCounter,
   snapshotPhysicsPaintPerformance,
+  startPhysicsPaintStallDiagnostics,
+  stopPhysicsPaintStallDiagnostics,
   summarizePhysicsPaintPerformance,
 } from './physicsPaintPerformanceTrace';
 
@@ -23,6 +27,9 @@ const EXPECTED_COUNTER_NAMES = [
   'render.workflowStrip',
   'render.workflowStaticChrome',
   'render.rotoTimelineCellButton',
+  'render.tracksStrip',
+  'render.rightPanel',
+  'render.canvas',
   'observer.canvasStack.resize.install',
   'observer.canvasStack.resize.cleanup',
   'observer.canvasStack.mutation.install',
@@ -36,6 +43,14 @@ const EXPECTED_COUNTER_NAMES = [
   'lifecycle.engine.tabletListener.install',
   'lifecycle.engine.tabletListener.cleanup',
   'lifecycle.engine.externalState.cleanup',
+  'decode.lruHit',
+  'decode.lruMiss',
+  'decode.inflightSkip',
+  'decode.pngBlob',
+  'decode.fail',
+  'prefetch.call',
+  'generated.cacheHit',
+  'generated.cacheMiss',
 ] as const;
 
 const storage = new Map<string, string>();
@@ -223,6 +238,10 @@ describe('Physics Paint performance trace', () => {
       summary: expect.any(Function),
       snapshot: expect.any(Function),
       delta: expect.any(Function),
+      start: expect.any(Function),
+      stop: expect.any(Function),
+      capture: expect.any(Function),
+      dump: expect.any(Function),
     });
     nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.clear();
     const before = nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.snapshot();
@@ -231,5 +250,57 @@ describe('Physics Paint performance trace', () => {
     expect(nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.delta(before!, after!)).toEqual(
       Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])),
     );
+  });
+
+  it('captures a JSON-serializable stall report with decode timing tuples', () => {
+    recordPhysicsPaintDecodeSample({
+      path: 'webp',
+      origin: 'prefetch',
+      ipcMs: 120,
+      codecMs: 4,
+      convertMs: 80,
+      bitmapMs: 12,
+      width: 1920,
+      height: 1080,
+      inputBytes: 4096,
+      rgbaIsJsonArray: true,
+    });
+
+    const capture = capturePhysicsPaintStallDiagnostics();
+    expect(capture).toMatchObject({
+      decodes: {
+        count: 1,
+        droppedSamples: 0,
+        byPath: { webp: 1, png: 0 },
+        byOrigin: { draw: 0, prefetch: 1 },
+        rgbaShape: { jsonArray: 1, typed: 0 },
+        stats: {
+          ipcMs: { count: 1, medianMs: 120, maxMs: 120 },
+          codecMs: { count: 1, medianMs: 4, maxMs: 4 },
+        },
+      },
+      stalls: { count: 0 },
+      frameCache: { byteTotalBytes: 0, entryCount: 0, capacityEvictions: 0 },
+    });
+    expect(capture.decodes.samples).toEqual([[0, 120, 4, 80, 12, 1920, 1080, 0, 1, 4096, 1]]);
+    expect(JSON.parse(JSON.stringify(capture)).decodes.count).toBe(1);
+
+    const compact = capturePhysicsPaintStallDiagnostics({ includeDecodeSamples: false });
+    expect(compact.decodes.samplesIncluded).toBe(false);
+    expect(compact.decodes.samples).toEqual([]);
+    expect(compact.decodes.stats.ipcMs).toMatchObject({ count: 1, medianMs: 120 });
+  });
+
+  it('arms and disarms the stall diagnostics only while profiling is enabled', () => {
+    vi.useFakeTimers();
+    try {
+      expect(startPhysicsPaintStallDiagnostics()).toBe(true);
+      stopPhysicsPaintStallDiagnostics();
+      storage.delete('efx.physicsPaint.profile');
+      expect(startPhysicsPaintStallDiagnostics()).toBe(false);
+    } finally {
+      stopPhysicsPaintStallDiagnostics();
+      vi.useRealTimers();
+    }
   });
 });

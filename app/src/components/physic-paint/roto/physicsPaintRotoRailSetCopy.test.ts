@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -18,15 +19,13 @@ import {
 } from './physicsPaintRotoRailSetCopy';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
-const PNG = 'data:image/png;base64,iVBORw0KGgo=';
-const CHANGED_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-function recordKey(keyId: string, appFrame: number, dataUrl = PNG): PhysicPaintRotoRealKeyRecord {
+function recordKey(keyId: string, appFrame: number, bytes = testWebpBytes('iVBORw0KGgo=')): PhysicPaintRotoRealKeyRecord {
   return Object.freeze({
     kind: 'real-key',
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl, width: 100, height: 80 },
+    payload: { frameIndex: 0, appFrame, bytes, width: 100, height: 80 },
   }) as PhysicPaintRotoRealKeyRecord;
 }
 
@@ -119,7 +118,7 @@ describe('physicsPaintRotoRailSetCopy — set copy payload builder (quick 260820
     expect(railA.entries.map((entry) => entry.sourceKeyId)).toEqual(['k0', 'k2']);
     expect(railB.entries.map((entry) => entry.sourceAppFrame)).toEqual([6, 8]);
     expect(railB.entries.map((entry) => entry.sourceKeyId)).toEqual(['k6', 'k8']);
-    expect(railB.entries.map((entry) => entry.payload.dataUrl)).toEqual([PNG, PNG]);
+    expect(railB.entries.map((entry) => entry.payload.bytes)).toEqual([testWebpBytes('iVBORw0KGgo='), testWebpBytes('iVBORw0KGgo=')]);
   });
 
   it('RED 2: builds a Motion Rail payload from loop placement facts', () => {
@@ -332,13 +331,13 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
     if (!built.ok) throw new Error('Payload must resolve');
     // The source key's paint changes after the copy moment — the frozen payload wins.
-    const changedDocument = buildDocument([recordKey('k0', 0, CHANGED_PNG)], [], []);
+    const changedDocument = buildDocument([recordKey('k0', 0, testWebpBytes('CHANGED'))], [], []);
     const pasted = proposeRails({ document: changedDocument, payload: built.payload, placementMode: 'paste', destinationAppFrame: 8 });
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
     const fresh = pasted.proposal.realKeyRecords.find((record) => record.keyId !== 'k0');
-    expect(fresh?.payload.dataUrl).toBe(PNG);
-    expect(fresh?.payload.dataUrl).not.toBe(CHANGED_PNG);
+    expect(fresh?.payload.bytes).toEqual(testWebpBytes('iVBORw0KGgo='));
+    expect(fresh?.payload.bytes).not.toEqual(testWebpBytes('CHANGED'));
   });
 
   it('RED 3: a partially occupied destination rejects the WHOLE paste with zero mutation', () => {

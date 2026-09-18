@@ -15,20 +15,18 @@
  * mutations never originate here — all edits keep routing through
  * `studioActiveTrackId()`.
  *
- * 47-01 mockup redesign (the user's design-direction change): the header
- * column gains the "Tracks N" strip (`PhysicsPaintTrackColumnStrip`) and
- * every Paint row shows the reorder grip, the always-visible eye toggle, the
- * name, and the more-button; the more-button opens the hover tools panel
- * (solo / copy / trash-2 — 47 UAT: the eye left the panel for the standing
- * row, the pencil was removed because a double-click on the name renames).
- * The Background row stays a fixed muted row with lock semantics — no reorder
+ * 260911-s1j mockup redesign (the user's design-direction change): every
+ * Paint row's controls are standing inline — reorder grip, eye, solo S,
+ * frame-blending, the right-pushed name, and the trash pinned far right. The
+ * ⋯ tools panel, its duplicate button, and the 260911-sli solo badge are
+ * retired: the inline S itself is the row-level solo indicator. The
+ * Background row stays a fixed muted row with lock semantics — no reorder
  * grab, no rename, no duplicate, no delete (D-06).
  */
 
 import { useRef } from 'preact/hooks';
-import { Blend, Camera, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-preact';
+import { Blend, Camera, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
-import { isSoloArmed } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -50,6 +48,7 @@ import type {
 } from '../hooks/usePhysicsPaintBackgroundClipDrag';
 import type { BackgroundClipResizeApi } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
+import { countRender } from '../performance/renderCounters';
 
 /** 47-01 geometry: the same 18px frame pitch as the active track. */
 const ROW_CELL_WIDTH_PX = 18;
@@ -75,7 +74,7 @@ function resolveBackgroundClipCellImages(clip: FrameLoopClip, cellCount: number)
   const images: (string | null)[] = [];
   const capped = Math.min(cellCount, MAX_BG_CELL_IMAGES);
   for (let index = 0; index < capped; index += 1) {
-    images.push(physicPaintStore.getBackgroundSourceImageDataUrl(refs[index % refs.length]));
+    images.push(physicPaintStore.getBackgroundSourceImageUrl(refs[index % refs.length]));
   }
   return images;
 }
@@ -478,6 +477,11 @@ function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipR
  * Background row, reading the SAME frameCells through the row's trackId.
  */
 export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
+  // 52.2 D-18 (render-churn inventory): count REAL renders of the tracks strip
+  // — this row is the strip's repeating unit. First statement, before any
+  // signal read, so the count is unconditional and the row's reactive reads are
+  // untouched; `countRender` is a no-op while the profile gate is off.
+  countRender('tracksStrip');
   const {
     trackId,
     layerId,
@@ -724,6 +728,8 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onSelectTrack?: (trackId: string) => void;
   /** Current track visibility (drives the eye icon + aria-pressed). */
   readonly visible?: boolean;
+  /** Current document solo flag (260911-sli/s1j): drives the inline S chip's armed (orange) state — the S itself is the row-level solo indicator. */
+  readonly solo?: boolean;
   /** Paint rows get the reorder grab; the Background row is locked (D-06). */
   readonly reorderable?: boolean;
   /** False hides/disables the delete affordance for the last surviving Paint track (D-17). */
@@ -751,19 +757,14 @@ export interface PhysicsPaintTrackRowHeaderProps {
   /** Frame-blending toggle intent (47 UAT) — the row routes it to the strip,
    *  which toggles the track's canonical interpolation state. */
   readonly onToggleBlend?: (trackId: string) => void;
-  /** Copy intent — routes through duplicateTrack. */
+  /** Retained duplicate intent (260911-s1j: the row UI no longer renders the
+   *  button — the strip path stays wired for a later re-exposure). */
   readonly onDuplicateTrack?: (trackId: string) => void;
   /** Trash intent — routes through requestDeleteTrack/commitDeleteTrack. */
   readonly onDeleteTrack?: (trackId: string) => void;
   /** 47-02 Task 2: the distinct reorder grab's pointerdown intent — the strip
    *  owns the drag session (D-08/D-18: only the grab area starts a reorder). */
   readonly onGripPointerDown?: (event: PointerEvent, trackId: string) => void;
-  /** True while this row's tool panel (eye/pencil/copy/trash) is open. */
-  readonly toolsOpen?: boolean;
-  /** More-button click — toggles the tool panel for this track. */
-  readonly onToggleTools?: (trackId: string) => void;
-  /** Pointer left the tool panel (or the whole header) — closes it. */
-  readonly onCloseTools?: () => void;
   /** 49-05 (S1): the Bg row's ONLY action — opens the scoped asset picker.
    *  The locked Background row carries no reorder grab, no duplicate/delete
    *  hover actions (47-CONTEXT D-06); Import is its single affordance. */
@@ -789,6 +790,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     activeTrackId,
     onSelectTrack,
     visible = true,
+    solo = false,
     reorderable = true,
     deletable = true,
     editing = false,
@@ -801,12 +803,8 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onToggleSolo,
     layerId,
     onToggleBlend,
-    onDuplicateTrack,
     onDeleteTrack,
     onGripPointerDown,
-    toolsOpen = false,
-    onToggleTools,
-    onCloseTools,
     onImportBackground,
   } = props;
   const isActive = activeTrackId === trackId;
@@ -863,7 +861,6 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     <div
       class={headerClass}
       data-track-id={trackId}
-      data-tools-open={toolsOpen ? 'true' : undefined}
       role="button"
       tabIndex={0}
       aria-label={`Select track ${label}`}
@@ -878,10 +875,6 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           event.preventDefault();
           onSelectTrack?.(trackId);
         }
-      }}
-      onPointerLeave={() => {
-        // 47-01 UAT round 6: leaving the header closes the tool panel.
-        if (toolsOpen) onCloseTools?.();
       }}
     >
       {editing ? (
@@ -932,8 +925,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
             </span>
           ) : null}
           {/* 47 UAT: the eye (hide/show) toggle is a standing row control,
-              placed before the name and after the reorder grip — the row's
-              only always-visible controls besides the more-button. */}
+              placed before the name and after the reorder grip. */}
           <button
             type="button"
             class="physics-paint-track-row-tool-button"
@@ -947,7 +939,24 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           >
             {visible ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
           </button>
-          {/* 47 UAT: per-row frame-blending toggle right after the eye. Its
+          {/* 260911-s1j: the inline S chip IS the row-level solo indicator —
+              always visible, orange when armed (the 260911-sli badge is folded
+              into it). It toggles the document solo flag `setTrackSolo` writes,
+              the same flag `participatingPaintTracks` filters the composite on. */}
+          <button
+            type="button"
+            class={`physics-paint-track-row-solo${solo ? ' physics-paint-track-row-solo-armed' : ''}`}
+            aria-label={`Solo ${label}`}
+            aria-pressed={solo ? 'true' : 'false'}
+            title={solo ? `Un-solo ${label}` : `Solo ${label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSolo?.(trackId);
+            }}
+          >
+            S
+          </button>
+          {/* 47 UAT: per-row frame-blending toggle right after the S. Its
               pressed state reflects THIS track's canonical interpolation
               enabled flag; the click routes through onToggleBlend(trackId)
               and the strip toggles the track's interpolation state. */}
@@ -966,76 +975,25 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
               <Blend size={12} aria-hidden="true" />
             </button>
           ) : null}
+          {/* The name is pushed right by its auto margin (mockup layout),
+              leaving the trash pinned at the far right. */}
           <span
             class="physics-paint-track-row-label physics-paint-track-row-label-ellipsis"
             title={label}
           >{label}</span>
-          {/* 47-01 UAT round 6: the tools open ONLY from the small more-button
-              at the name's right extreme (never on header hover or click —
-              a click on the name selects the track); leaving the panel closes
-              it. 47 UAT: the panel now holds solo / copy / trash — the pencil
-              was removed because a double-click on the name renames in place,
-              and the eye moved out to the standing row controls. */}
-          <span
-            class="physics-paint-track-row-tools"
-            role="group"
-            aria-label={`${label} actions`}
-            onPointerLeave={() => {
-              if (toolsOpen) onCloseTools?.();
-            }}
-          >
-            <button
-              type="button"
-              class={`physics-paint-track-row-solo${isSoloArmed() ? ' physics-paint-track-row-solo-armed' : ''}`}
-              aria-label={`Solo ${label}`}
-              aria-pressed={isSoloArmed() ? 'true' : 'false'}
-              title={isSoloArmed() ? `Un-solo ${label}` : `Solo ${label}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleSolo?.(trackId);
-              }}
-            >
-              S
-            </button>
-            <button
-              type="button"
-              class="physics-paint-track-row-tool-button"
-              aria-label={`Duplicate ${label}`}
-              title={`Duplicate ${label}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDuplicateTrack?.(trackId);
-              }}
-            >
-              <Copy size={12} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              class="physics-paint-track-row-tool-button"
-              aria-label={`Delete ${label}`}
-              title={deletable ? `Delete ${label}` : 'A document must always have at least one Paint track.'}
-              aria-disabled={!deletable ? 'true' : undefined}
-              disabled={!deletable}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (deletable) onDeleteTrack?.(trackId);
-              }}
-            >
-              <Trash2 size={12} aria-hidden="true" />
-            </button>
-          </span>
           <button
             type="button"
-            class="physics-paint-track-row-tools-toggle"
-            aria-label={toolsOpen ? `Close ${label} actions` : `Open ${label} actions`}
-            aria-expanded={toolsOpen ? 'true' : 'false'}
-            title={toolsOpen ? 'Close actions' : 'Actions'}
+            class="physics-paint-track-row-tool-button"
+            aria-label={`Delete ${label}`}
+            title={deletable ? `Delete ${label}` : 'A document must always have at least one Paint track.'}
+            aria-disabled={!deletable ? 'true' : undefined}
+            disabled={!deletable}
             onClick={(event) => {
               event.stopPropagation();
-              onToggleTools?.(trackId);
+              if (deletable) onDeleteTrack?.(trackId);
             }}
           >
-            <MoreHorizontal size={14} aria-hidden="true" />
+            <Trash2 size={12} aria-hidden="true" />
           </button>
         </>
       )}
