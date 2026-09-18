@@ -76,6 +76,25 @@ describe('FX span drag never reads the live timeline total (260918-o0n)', () => 
     expect(definition).toContain('null');
   });
 
+  it('keeps every FX-area row kind on the single shared drag path', () => {
+    // fxTrackLayouts carries one entry per non-content sequence (generators,
+    // Paint, Physic Paint, imported static-image / image-sequence / video), so
+    // the drag branch must keep indexing that list rather than branching on the
+    // layer kind. Fixing the one path fixes every row kind.
+    const dispatchStart = interaction.indexOf('if (this.isInFxArea(e.clientY)) {');
+    const dispatchEnd = interaction.indexOf('// Click in FX area but not on a bar', dispatchStart);
+    expect(dispatchStart).toBeGreaterThan(-1);
+    expect(dispatchEnd).toBeGreaterThan(dispatchStart);
+
+    const dispatch = interaction.slice(dispatchStart, dispatchEnd);
+    expect(dispatch).toContain('const fxIdx = this.fxTrackIndexFromY(e.clientY);');
+    expect(dispatch).toContain('const fxTracks = fxTrackLayouts.peek();');
+    expect(dispatch).toContain('this.fxDragModeFromX(e.clientX, fxTrack)');
+    expect(dispatch).not.toContain('physic-paint');
+    expect(dispatch).not.toContain('generator-');
+    expect(dispatch).not.toContain('content-overlay');
+  });
+
   it('keeps the live-timeline clamp on the seek, scrub, and hit-test pointer paths', () => {
     // Unchanged shapes: every non-drag consumer still resolves through the clamped getFrame.
     expect(interaction).toContain('const frame = this.getFrame(e.clientX);');
