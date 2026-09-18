@@ -9,6 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CANVAS_FORMAT_PRESETS,
+  CUSTOM_CANVAS_FORMAT_MAX_SIDE,
+  CUSTOM_CANVAS_FORMAT_MIN_SIDE,
   DEFAULT_CANVAS_FORMAT_PRESET_ID,
   clampCustomSize,
 } from './canvasFormatPresets';
@@ -49,5 +51,34 @@ describe('canvasFormatPresets (260918-ovi)', () => {
   it('clampCustomSize rounds non-integer input before clamping', () => {
     expect(clampCustomSize(1080.4, 1919.6)).toEqual({ width: 1080, height: 1920 });
     expect(clampCustomSize(15.6, 1920.4)).toEqual({ width: 16, height: 1920 });
+  });
+
+  it('exports Portrait and Square presets with platform annotations', () => {
+    const portrait = CANVAS_FORMAT_PRESETS.find((preset) => preset.id === 'portrait');
+    expect(portrait).toBeDefined();
+    expect(portrait!.width).toBe(1080);
+    expect(portrait!.height).toBe(1350);
+    expect(portrait!.label).toContain('Portrait');
+    expect(portrait!.label).toContain('1080x1350');
+    expect(portrait!.label).toContain('4:5');
+    expect(portrait!.label).toContain('Post');
+
+    const square = CANVAS_FORMAT_PRESETS.find((preset) => preset.id === 'square');
+    expect(square).toBeDefined();
+    expect(square!.width).toBe(1080);
+    expect(square!.height).toBe(1080);
+    expect(square!.label).toContain('Square');
+    expect(square!.label).toContain('1080x1080');
+    expect(square!.label).toContain('1:1');
+    expect(square!.label).toContain('Post fallback');
+  });
+
+  it('preset order is hd, hd-vertical, portrait, square', () => {
+    expect(CANVAS_FORMAT_PRESETS.map((preset) => preset.id)).toEqual(['hd', 'hd-vertical', 'portrait', 'square']);
+  });
+
+  it('CUSTOM_CANVAS_FORMAT_MIN_SIDE is 16 and CUSTOM_CANVAS_FORMAT_MAX_SIDE is 1920', () => {
+    expect(CUSTOM_CANVAS_FORMAT_MIN_SIDE).toBe(16);
+    expect(CUSTOM_CANVAS_FORMAT_MAX_SIDE).toBe(1920);
   });
 });
