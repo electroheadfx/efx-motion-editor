@@ -1,12 +1,11 @@
 import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {ThemeSwitcher} from '../layout/ThemeSwitcher';
-
-const COMMON_RESOLUTIONS = [
-  {label: '1920x1080 (1080p)', w: 1920, h: 1080},
-  {label: '1280x720 (720p)', w: 1280, h: 720},
-  {label: '3840x2160 (4K)', w: 3840, h: 2160},
-];
+// 260918-ovi (T-260918-ovi-03): consume the SHARED preset table so a future
+// edit cannot silently reintroduce a 4K option in one surface while the other
+// stays clamped. The source-scan contract (SettingsView.test.tsx) pins the
+// absence of any '3840' / '2160' / '4K' literal outside comments.
+import {CANVAS_FORMAT_PRESETS} from '../project/canvasFormatPresets';
 
 export function SettingsView() {
   const currentResLabel = `${projectStore.width.value}x${projectStore.height.value}`;
@@ -56,14 +55,18 @@ export function SettingsView() {
               value={currentResLabel}
               onChange={(e) => {
                 const val = (e.target as HTMLSelectElement).value;
-                const res = COMMON_RESOLUTIONS.find((r) => `${r.w}x${r.h}` === val.split(' ')[0]);
-                if (res) projectStore.setResolution(res.w, res.h);
+                const preset = CANVAS_FORMAT_PRESETS.find((p) => `${p.width}x${p.height}` === val);
+                if (preset) projectStore.setResolution(preset.width, preset.height);
               }}
             >
-              {COMMON_RESOLUTIONS.map((r) => (
-                <option key={r.label} value={`${r.w}x${r.h}`}>{r.label}</option>
+              {CANVAS_FORMAT_PRESETS.map((preset) => (
+                <option key={preset.id} value={`${preset.width}x${preset.height}`}>{preset.label}</option>
               ))}
-              {!COMMON_RESOLUTIONS.find((r) => `${r.w}x${r.h}` === currentResLabel) && (
+              {/* Fallback: a project created outside the preset set (or via the
+                  Custom… creation branch with non-preset dims) still sees its
+                  live size as a selectable option so the select always shows
+                  the project's current dims. */}
+              {!CANVAS_FORMAT_PRESETS.find((p) => `${p.width}x${p.height}` === currentResLabel) && (
                 <option value={currentResLabel}>{currentResLabel}</option>
               )}
             </select>
