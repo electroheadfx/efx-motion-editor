@@ -91,8 +91,6 @@ export function useRotoPlayScriptController<EngineState = unknown>(
         const baseInput = {
           expectedLaunch: publication.expectedLaunch,
           expectedRevision: publication.expectedRevision,
-          ...(publication.expectedTermDigests !== undefined ? { expectedTermDigests: publication.expectedTermDigests } : {}),
-          ...(publication.expectedRecordShapes !== undefined ? { expectedRecordShapes: publication.expectedRecordShapes } : {}),
           records: publication.records,
           interpolationEnabled: publication.interpolationEnabled,
           interpolationMode: publication.interpolationMode,

@@ -17,10 +17,8 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
-  buildPhysicPaintRotoPhysicalTermDigests,
   buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoProjectEquality,
-  countPhysicPaintRotoPayloadShapes,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
   parsePhysicPaintRotoLoopClips,
@@ -708,23 +706,6 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
   );
-  // quick-260913-52r (E): term-level diagnostics for the child's staging gate.
-  // Diagnostic only — any failure here must never block the authority itself.
-  let physicalTermDigests: PhysicPaintRotoAuthorityResult['physicalTermDigests'];
-  let physicalRecordShapes: PhysicPaintRotoAuthorityResult['physicalRecordShapes'];
-  try {
-    physicalTermDigests = buildPhysicPaintRotoPhysicalTermDigests(
-      records,
-      interpolation,
-      loopClips,
-      incomingInterpolationBreakKeyIds,
-      groupOverrideRecords,
-    );
-    physicalRecordShapes = countPhysicPaintRotoPayloadShapes(records);
-  } catch {
-    physicalTermDigests = undefined;
-    physicalRecordShapes = undefined;
-  }
   const physicalRecords = records.map((record) => ({
     keyId: record.keyId,
     appFrame: record.appFrame,
@@ -752,8 +733,6 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     physicalCapacity,
     rotoRevision: physicalRevision,
     physicalRevision,
-    ...(physicalTermDigests !== undefined ? { physicalTermDigests } : {}),
-    ...(physicalRecordShapes !== undefined ? { physicalRecordShapes } : {}),
     physicalRecords,
     interpolationEnabled: interpolation.enabled,
     interpolationMode: interpolation.mode,
@@ -1695,16 +1674,6 @@ async function applyPhysicPaintRotoPhysicalMap(
     }
   }
   if (currentRevision !== payload.expectedRevision) {
-    // quick-260913-52r (H): name the divergent side on the next live run —
-    // each realm logs its own per-term digests and carrier census, so the
-    // pair of console lines locates a cross-realm split without a rebuild.
-    try {
-      console.warn(
-        `[physicPaintBridge] Roto physical commit revision mismatch: child=${payload.expectedRevision} parent=${currentRevision} parentTermDigests=${JSON.stringify(buildPhysicPaintRotoPhysicalTermDigests(currentRecords, currentInterpolation, currentLoopClips, currentIncomingInterpolationBreakKeyIds, currentGroupOverrideRecords))} parentRecordShapes=${JSON.stringify(countPhysicPaintRotoPayloadShapes(currentRecords))}`,
-      );
-    } catch {
-      // Diagnostic only — never blocks the rejection.
-    }
     return reject('Roto physical revision became stale before commit.');
   }
   if (payload.records.length > capacity) {

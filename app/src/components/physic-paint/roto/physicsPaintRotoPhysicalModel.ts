@@ -40,8 +40,6 @@
 import type {
   PhysicPaintRenderedFrame,
   PhysicPaintRotoBackgroundMetadata,
-  PhysicPaintRotoPayloadShapeCounts,
-  PhysicPaintRotoPhysicalTermDigests,
 } from '../../../types/physicPaint';
 import {
   base64ToWebpBytes,
@@ -1136,67 +1134,6 @@ export function buildPhysicPaintRotoPhysicalRevision(
 ): string {
   const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, groupOverrideRecords);
   return `physical-${hashCanonicalPhysicalValue(source)}`;
-}
-
-/**
- * quick-260913-52r (E): per-term digests of the same fingerprint
- * {@link buildPhysicPaintRotoPhysicalRevision} hashes — one digest per term,
- * computed with the same canonical encoders. Diagnostic only: the child's
- * staging gate uses this to name the exact divergent term when the parent's
- * `physicalRevision` mismatches its own store-derived revision. Empty
- * collections are digested too (the composite merely omits their term), so the
- * two sides always produce one comparable value per term.
- */
-export function buildPhysicPaintRotoPhysicalTermDigests(
-  records: unknown,
-  interpolation: unknown,
-  loopClips: unknown,
-  incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
-  groupOverrideRecords: unknown = [],
-): PhysicPaintRotoPhysicalTermDigests {
-  const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
-  const validatedGroupOverrides = parsePhysicPaintRotoRealKeyRecordCollection(groupOverrideRecords);
-  if (!isPhysicPaintRotoInterpolationState(interpolation)) {
-    throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
-  }
-  const validatedLoopClips = parsePhysicPaintRotoLoopClips(loopClips);
-  const validatedIncomingBreaks = parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds, validated);
-  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) =>
-    encodeCanonicalRealKeyRecordsTerm(source, encodeCanonicalBytesPayload);
-  return Object.freeze({
-    records: hashCanonicalPhysicalValue(`records:${encodeRecords(validated)}`),
-    groupOverrides: hashCanonicalPhysicalValue(`group-overrides:${encodeRecords(validatedGroupOverrides)}`),
-    interpolation: hashCanonicalPhysicalValue(
-      `interpolation:${validatedBoolean(interpolation.enabled)}mode:${encodeCanonicalString(interpolation.mode)}`,
-    ),
-    loopClips: hashCanonicalPhysicalValue(`loops:${encodeCanonicalLoopClips(validatedLoopClips)}`),
-    incomingBreaks: hashCanonicalPhysicalValue(
-      `incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(validatedIncomingBreaks)}`,
-    ),
-  });
-}
-
-/**
- * quick-260913-52r (E): census of raster carriers across one record
- * collection. The revision's per-record payload term is carrier-shaped (media
- * reference vs byte content token) — see {@link encodeCanonicalRecordPayloadTerm}
- * — so two realms holding equal content under different carriers fingerprint
- * differently. This census makes that case observable.
- */
-export function countPhysicPaintRotoPayloadShapes(
-  records: readonly PhysicPaintRotoRealKeyRecord[],
-): PhysicPaintRotoPayloadShapeCounts {
-  let bytesOnly = 0;
-  let mediaOnly = 0;
-  let both = 0;
-  for (const record of records) {
-    const hasBytes = record.payload.bytes !== undefined;
-    const hasMedia = record.payload.media !== undefined;
-    if (hasBytes && hasMedia) both += 1;
-    else if (hasBytes) bytesOnly += 1;
-    else if (hasMedia) mediaOnly += 1;
-  }
-  return Object.freeze({ bytesOnly, mediaOnly, both });
 }
 
 /**

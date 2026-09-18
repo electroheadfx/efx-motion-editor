@@ -48,7 +48,6 @@ import {
 } from '../../../types/physicPaint';
 import type {
   PhysicPaintApplyResult,
-  PhysicPaintRotoAuthorityResult,
   PhysicPaintRotoBackgroundMetadata,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
@@ -69,9 +68,7 @@ import type {
 import {
   buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
-  buildPhysicPaintRotoPhysicalTermDigests,
   buildPhysicPaintRotoProjectEquality,
-  countPhysicPaintRotoPayloadShapes,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
@@ -283,11 +280,6 @@ export interface RotoInterpolationModeExecuteInput {
 interface RotoGeneratedPublicationExecuteInputBase {
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly expectedRevision: string;
-  /** quick-260913-52r (E): parent-side fingerprint diagnostics, echoed from
-   *  the authority so a staging-gate mismatch can name the divergent term. */
-  readonly expectedTermDigests?: PhysicPaintRotoAuthorityResult['physicalTermDigests'];
-  /** quick-260913-52r (E): parent-side carrier census, echoed with the digests. */
-  readonly expectedRecordShapes?: PhysicPaintRotoAuthorityResult['physicalRecordShapes'];
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationState['mode'];
@@ -1967,35 +1959,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         if (isGeneratedPublication) {
           const revisionMismatch = !generatedPublicationInput
             || generatedPublicationInput.expectedRevision !== expectedRevision;
-          if (revisionMismatch && generatedPublicationInput) {
-            // quick-260913-52r (E): the gate compares the parent's
-            // commit-check revision against a revision rebuilt from this
-            // window's stores — two realms that can hold equal content under
-            // different raster carriers (media digest vs byte token), which
-            // the fingerprint distinguishes. Log both sides' per-term digests
-            // and payload-shape census so the divergent term names itself.
-            try {
-              portsRef.current.status.logDiagnostic(
-                `Play Script stale-revision diff: parent=${JSON.stringify({
-                  revision: generatedPublicationInput.expectedRevision,
-                  termDigests: generatedPublicationInput.expectedTermDigests ?? null,
-                  recordShapes: generatedPublicationInput.expectedRecordShapes ?? null,
-                })} studio=${JSON.stringify({
-                  revision: expectedRevision,
-                  termDigests: buildPhysicPaintRotoPhysicalTermDigests(
-                    currentRecords,
-                    currentInterpolation,
-                    currentLoopClips,
-                    currentIncomingInterpolationBreakKeyIds,
-                    currentGroupOverrideRecords,
-                  ),
-                  recordShapes: countPhysicPaintRotoPayloadShapes(currentRecords),
-                })}`,
-              );
-            } catch {
-              // Diagnostic only — a failed diff must never alter the gate.
-            }
-          }
           const generatedValidationError = revisionMismatch
             ? `${isRegenerateGroup ? 'Group Regenerate' : 'Play Script'} physical revision became stale before staging.`
             : isPlayScript && playScriptInput
@@ -2274,16 +2237,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             ...payload,
             records: compactRecordsForTransport(payload.records, before.records),
           };
-          // quick-260913-52r (H): the parent's commit gate logs its own term
-          // digests on a stale-revision rejection; this child-side line is the
-          // other half of the pair that locates a cross-realm split live.
-          try {
-            portsRef.current.status.logDiagnostic(
-              `Roto physical edit commit revision: expected=${expectedRevision} termDigests=${JSON.stringify(buildPhysicPaintRotoPhysicalTermDigests(currentRecords, currentInterpolation, currentLoopClips, currentIncomingInterpolationBreakKeyIds, currentGroupOverrideRecords))} recordShapes=${JSON.stringify(countPhysicPaintRotoPayloadShapes(currentRecords))}`,
-            );
-          } catch {
-            // Diagnostic only — never blocks the commit.
-          }
           await portsRef.current.bridge.sendPhysicalEditPayload(wirePayload);
         } catch (error) {
           finalizeFailed(pending, before, 'transport', error);
