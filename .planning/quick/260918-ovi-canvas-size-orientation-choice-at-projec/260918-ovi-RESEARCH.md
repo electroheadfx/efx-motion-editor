@@ -202,13 +202,14 @@ Run: `pnpm --filter efx-motion-editor exec vitest run` (config `workflow.test_co
 
 Minimal surface: the Custom… entry is numeric input feeding a Rust command parameter. Mitigations already structural: `NumericStepper.clampToStep` bounds input renderer-side; Rust `width`/`height` are `u32` (negative/huge values fail serde). If Option A lands, add a Rust-side sanity bound (e.g. 1..=1920 per side) in `project_create` — defense-in-depth for a param that sizes canvas allocations (ASVS V5 input validation). No auth/session/crypto/access-control surface.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **SettingsView resolution select (F5)** — offers 4K (violates the locked HD cap) and no vertical presets; it is a post-creation escape hatch.
+1. **SettingsView resolution select (F5)** — offers 4K (violates the locked HD cap) and no vertical presets; it is a post-creation escape hatch. **(RESOLVED)**
    - What we know: it writes via `setResolution` (data-driven), so vertical projects survive it; but selecting 4K exceeds the 52.1 cap the dialog clamps to.
    - Recommendation: flag to user at plan time — options: (a) leave untouched (out of scope, pre-existing), (b) align presets with the new set + drop 4K. Cheap either way; decision belongs to the user since CONTEXT locks the cap.
+   - **Resolution (2026-09-18, CONTEXT.md "SettingsView alignment (locked 2026-09-18)"):** option (b) — drop 4K, clamp to the 1920 long edge, consume the shared preset table. Implemented as Plan Task 3.
 
-2. **Sane minimum per side for Custom…** — discretion. Recommendation: 16 px (arbitrary but safe; below thumbnail-useful sizes the app still renders correctly — all math verified ratio/size-agnostic down to 1 px, and `getPhysicsPaintWorkingSize` guards `<= 0`).
+2. **Sane minimum per side for Custom…** — discretion. Recommendation: 16 px (arbitrary but safe; below thumbnail-useful sizes the app still renders correctly — all math verified ratio/size-agnostic down to 1 px, and `getPhysicsPaintWorkingSize` guards `<= 0`). **(RESOLVED)** — adopted the recommended 16 px: `CUSTOM_CANVAS_FORMAT_MIN_SIDE = 16` in the plan's shared preset helper (Plan Task 1, per CONTEXT.md Claude's Discretion).
 
 ## Sources
 
