@@ -1,7 +1,8 @@
 ---
 phase: quick-260918-ovi
 verified: 2026-09-18T20:01:38Z
-status: human_needed
+status: passed
+human_verified: 2026-09-18 — 8/8 native UAT rows passed (260918-ovi-UAT.md); paint-content export sub-check carved out to the pre-53 paint-export quick (pre-existing defect, exonerates this quick)
 score: 6/6 must-haves verified
 covered_files:
   - .planning/quick/260918-ovi-canvas-size-orientation-choice-at-projec/260918-ovi-PLAN.md
