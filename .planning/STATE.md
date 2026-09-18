@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.2"
 current_phase_name: Project package format — references only
 status: executing
-stopped_at: Completed 52.2-15-PLAN.md
-last_updated: "2026-09-12T22:05:19.375Z"
-last_activity: 2026-09-12
-last_activity_desc: Phase 52.2 execution started
+stopped_at: Completed 52.2-16-PLAN.md — phase 52.2 complete (16/16), verification/close pending
+last_updated: "2026-09-18T14:38:31.000Z"
+last_activity: 2026-09-18
+last_activity_desc: Plan 52.2-16 complete — bundled UAT PASS + fixture-open PASS, D-25 re-measurement, pilot verdict + efx-async-orchestration skill
 state_head: 247e2e77f54a71357f11d0f14ea142c4ed9149bc
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 65
-  completed_plans: 64
+  completed_plans: 65
   percent: 55
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 52.2 (Project package format — references only) — EXECUTING
-Plan: 16 of 16
-Status: Ready to execute
-Last activity: 2026-09-13 — Completed quick task 260913-05k: P0 fix — route .mce package file IO through Rust commands (renderer plugin-fs is scope-forbidden on package paths)
+Phase: 52.2 (Project package format — references only) — EXECUTION COMPLETE (verification/close pending)
+Plan: 16 of 16 — completed 2026-09-18
+Status: Plan 16 complete — phase close pending
+Last activity: 2026-09-18 — Plan 52.2-16: bundled UAT (five rows + fixture-open) PASS, D-25 re-measurement recorded, pilot verdict + efx-async-orchestration skill written
 
 Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
@@ -322,6 +322,11 @@ Recent decisions affecting current work:
 - [Phase 52.2]: The pipeline never rejects - a throwing step resolves failed with the error attached and an interrupted drain resolves interrupted - so the shared Studio runner rethrows for the callers whose contract is a rejection (52.2-15).
 - [Phase 52.2]: Interruption races the forced port drain against an interrupt wake, so a port whose work never settles cannot wedge Save/Export (T-52.2-48); the facade's unchanged 5 s timeout stays the outer bound (52.2-15).
 - [Phase 52.2]: The delivery retry is one beginFlush-wrapped pilot queue turn whose produce re-schedules only the narrowed per-identity entry and whose commit waits out that delivery chain - queue owns concurrency, coordinator keeps owning identity (52.2-15).
+- [Phase 52.2]: 52.2-16 CLOSED phase execution — bundled session 2026-09-18 (bundle facf1351, subject the rebuilt §7-pair at ~/Desktop/efx-motion-editor-project-test/v1.0.0.mce): rows 1-5 PASS (ONE Finder icon warm+cold with the unsaved-changes guard; file-style dialogs, no directory fallback; changed-media-only saves + autosave with no bind modal; stroke train smooth, finalization catches up during idle pauses; both solos content-start with identical wraps; steppers click/hold/keyboard/clamp) + the converted-fixture open PASS (2 keys, near-blank canvas expected)
+- [Phase 52.2]: 52.2-16 converter proof — one run on the committed fixture (app/src/efx-paint/document/__fixtures__/pre-52.2-project.mce.json → /tmp/efx-52.2-16-rescue/pre-52.2-project.mce): 2 layers / 2 keys / 5 files written / 0 skipped / 0 failed; source sha256 52f22844…f190 unchanged before and after (re-verified 2026-09-18); mechanics-not-scale recorded (the user's 37 MB original was discarded 2026-09-14)
+- [Phase 52.2]: 52.2-16 D-25 numbers (dev runtime of the shipped commit; bundle emits no telemetry by design): finalization median 113 ms (pre ~900 ms); input delay median 16 / p95 104 / max 186 ms, 0 stalls; queue waits stay in the idle-gate class by design (T3-as-written recorded UNMET, max 10 891 ms); persist.total 1 404 ms = commit 872 + media 460 + layers 11 + manifest 10 — the ~4.6 s full-document serialize is abolished, not optimized (n=1, architectural proof); §7 churn MET: tracksStrip 123 vs 369 (−78% per row), rightPanel 4 vs 72, canvas 114 vs 248, no surface up
+- [Phase 52.2]: 52.2-16 pilot verdict — ADMITTED on T4/T5 + inspectability (numbers axis void-not-waived; the D-01 miss, T3-unmet and T4's unrun 10-minute leg recorded honestly); skill .claude/skills/efx-async-orchestration/SKILL.md written (D-17 contract earned); close-out chores committed: 33a92f3d (52r E/H diagnostic cluster removed) + 8e5f219d (body background into the bundled stylesheet — packaged-CSP fix); the next bundle carries both, no behavior change
+- [Phase 52.2]: 52.2-16 carried to phase close — re-enable ui.safety_gate; delete the superseded SPECS/phase-52.3-async-conventions.md draft (user-owned); save progress-modal UX idea stays a registered candidate; the sequence-extension bug is routed as a later quick; the branch merge decision is the user's
 
 ### Pending Todos
 

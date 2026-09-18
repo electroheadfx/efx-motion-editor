@@ -469,7 +469,7 @@ Plans:
 **Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
 **Requirements**: TBD (D-01..D-26 locked decisions)
 **Depends on:** Phase 52
-**Plans:** 15/16 plans executed
+**Plans:** 16/16 plans executed
 
 Plans:
 
@@ -514,7 +514,7 @@ Plans:
 
 **Wave 9** *(blocked on Wave 8)*
 
-- [ ] 52.2-16-PLAN.md — Bundled native UAT (Gates 4/5) + D-25 re-measurement record, pilot verdict + skill decision
+- [x] 52.2-16-PLAN.md — Bundled native UAT (Gates 4/5) + D-25 re-measurement record, pilot verdict + skill decision
 
 ### Phase 52.1: Modern frame runtime + native HD paint (INSERTED)
 
