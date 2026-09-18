@@ -52,6 +52,41 @@ describe('Motion Editor passive Loop Clip marker interaction contract', () => {
   });
 });
 
+describe('FX span drag never reads the live timeline total (260918-o0n)', () => {
+  it('resolves the FX drag range through the pure resolver and the store', () => {
+    const start = interaction.indexOf('// FX range bar dragging');
+    const end = interaction.indexOf('// Audio track height resize (INT-07)');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const region = interaction.slice(start, end);
+    expect(region).toContain('resolveFxSpanDragRange(');
+    expect(region).toContain('sequenceStore.updateFxSequenceRange(');
+    expect(region).not.toContain('totalFrames');
+  });
+
+  it('drops the pointer ceiling only through getSpanDragFrame at capture and drag-move', () => {
+    const calls = interaction.match(/getSpanDragFrame\(e\.clientX\)/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+
+    const definitionIndex = interaction.indexOf('private getSpanDragFrame(');
+    expect(definitionIndex).toBeGreaterThan(-1);
+    const definition = interaction.slice(definitionIndex, definitionIndex + 400);
+    expect(definition).toContain('frameFromX(');
+    expect(definition).toContain('null');
+  });
+
+  it('keeps the live-timeline clamp on the seek, scrub, and hit-test pointer paths', () => {
+    // Unchanged shapes: every non-drag consumer still resolves through the clamped getFrame.
+    expect(interaction).toContain('const frame = this.getFrame(e.clientX);');
+    expect(interaction).toContain('playbackEngine.seekToFrame(frame);');
+    expect(interaction).toContain('playbackEngine.seekToFrame(this.getFrame(e.clientX));');
+    expect(interaction).toContain('const frame = this.snapFrame(this.getFrame(e.clientX));');
+    expect(interaction).toContain('const clickFrame = this.getFrame(clientX);');
+    expect(interaction).toContain('const globalFrame = this.getFrame(e.clientX);');
+  });
+});
+
 describe('Motion Editor playhead scrub audio contract (TIME-03)', () => {
   it('routes drag-scrub through the audible scrub port and stops the snippet on release', () => {
     // The drag-move branch carries the throttled snippet; click seeks keep the

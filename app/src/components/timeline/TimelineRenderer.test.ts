@@ -376,3 +376,37 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     expect(layout?.rotoKeyFrames).toBeUndefined();
   });
 });
+
+describe('timeline pointer frame resolution (260918-o0n)', () => {
+  it('resolves past the derived end when no ceiling is passed', async () => {
+    const { BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, resolveTimelinePointerFrame } =
+      await import('./TimelineRenderer');
+
+    // zoom 1 => 60px frames; the x sits on frame 137, far past a 60-frame timeline.
+    expect(resolveTimelinePointerFrame(TRACK_HEADER_WIDTH + 137 * BASE_FRAME_WIDTH, 0, 0, 1, null)).toBe(137);
+  });
+
+  it('applies the ceiling when one is given', async () => {
+    const { BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, resolveTimelinePointerFrame } =
+      await import('./TimelineRenderer');
+
+    expect(resolveTimelinePointerFrame(TRACK_HEADER_WIDTH + 137 * BASE_FRAME_WIDTH, 0, 0, 1, 59)).toBe(59);
+  });
+
+  it('never returns a negative frame', async () => {
+    const { TRACK_HEADER_WIDTH, resolveTimelinePointerFrame } = await import('./TimelineRenderer');
+
+    // An x left of the track header resolves to frame 0, not to a negative frame.
+    expect(resolveTimelinePointerFrame(TRACK_HEADER_WIDTH - 40, 0, 0, 1, null)).toBe(0);
+  });
+
+  it('delegates frameFromX to it and keeps the live-timeline default ceiling', () => {
+    const code = source();
+    const frameFromXIndex = code.indexOf('frameFromX(clientX: number');
+    expect(frameFromXIndex).toBeGreaterThan(-1);
+    const frameFromXSource = code.slice(frameFromXIndex, frameFromXIndex + 400);
+
+    expect(frameFromXSource).toContain('resolveTimelinePointerFrame(');
+    expect(frameFromXSource).toContain('totalFrames > 0 ? totalFrames - 1 : 0');
+  });
+});

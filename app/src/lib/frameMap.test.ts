@@ -1,7 +1,7 @@
 import {describe,it, expect, beforeEach} from 'vitest';
 import {sequenceStore} from '../stores/sequenceStore';
 import {defaultTransform, type Layer} from '../types/layer';
-import {frameMap, fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts} from './frameMap';
+import {frameMap, fxTrackLayouts, resolveSequenceTimelineRange, totalFrames, trackLayouts} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
 import {registerDocument, reset as resetEfxPaintStore} from '../stores/efxPaintStore';
 import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
@@ -516,5 +516,83 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     };
     sequenceStore.sequences.value = [makeFxSequence('paint-sequence', 'Paint', paintLayer)];
     expect(fxTrackLayouts.value[0].repeatDurationMarkers).toBeUndefined();
+  });
+});
+
+describe('derived timeline span growth (260918-o0n)', () => {
+  beforeEach(() => {
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+  });
+
+  const paintLayer = (layerId: string): Layer => ({
+    id: layerId,
+    name: 'Paint',
+    type: 'paint',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'paint', layerId },
+  });
+
+  const staticImageOverlayLayer = (layerId: string): Layer => ({
+    id: layerId,
+    name: 'Overlay',
+    type: 'static-image',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'static-image', imageId: 'img-overlay' },
+  });
+
+  const content20 = () => makeSequence({
+    id: 'content-20',
+    keyPhotos: [{ id: 'kp-20', imageId: 'img-20', holdFrames: 20 }],
+  });
+
+  it('the derived timeline follows a span extension in both directions', () => {
+    sequenceStore.sequences.value = [
+      content20(),
+      { ...makeFxSequence('fx-span', 'Paint span', paintLayer('paint-span')), inFrame: 0, outFrame: 100 },
+    ] as Sequence[];
+
+    expect(totalFrames.value).toBe(100);
+    expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-span', outFrame: 100 }));
+
+    // The user shrinks the span: the derived total follows the span down...
+    sequenceStore.updateFxSequenceRange('fx-span', 0, 60);
+    expect(totalFrames.value).toBe(60);
+    expect(fxTrackLayouts.value[0].outFrame).toBe(60);
+
+    // ...and back up when the span is dragged out again. No clamp anywhere.
+    sequenceStore.updateFxSequenceRange('fx-span', 0, 140);
+    expect(totalFrames.value).toBe(140);
+    expect(fxTrackLayouts.value[0].outFrame).toBe(140);
+  });
+
+  it('the derived timeline follows a content-overlay span extension in both directions', () => {
+    sequenceStore.sequences.value = [
+      content20(),
+      {
+        ...makeFxSequence('overlay-span', 'Overlay span', staticImageOverlayLayer('overlay-layer')),
+        kind: 'content-overlay',
+        inFrame: 0,
+        outFrame: 100,
+      },
+    ] as Sequence[];
+
+    expect(totalFrames.value).toBe(100);
+    expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'overlay-span', outFrame: 100 }));
+
+    sequenceStore.updateFxSequenceRange('overlay-span', 0, 60);
+    expect(totalFrames.value).toBe(60);
+    expect(fxTrackLayouts.value[0].outFrame).toBe(60);
+
+    sequenceStore.updateFxSequenceRange('overlay-span', 0, 140);
+    expect(totalFrames.value).toBe(140);
+    expect(fxTrackLayouts.value[0].outFrame).toBe(140);
   });
 });
