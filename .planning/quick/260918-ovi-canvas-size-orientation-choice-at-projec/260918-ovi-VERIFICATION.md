@@ -23,7 +23,7 @@ covered_files:
   - app/src/stores/projectStore.ts
   - app/src/stores/sequenceStore.test.ts
   - app/src/stores/sequenceStore.ts
-covered_digest: "v1:sha256:7668f320041dd7157d6cfc1760b148755eef72d5309521c7b01f5bd06c7d2e2a"
+covered_digest: "v1:sha256:7152b6babbb61e8d11bd1e01488b6c56e36d91049db6257bdfd5e9b2bee03391"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
@@ -48,6 +48,9 @@ human_verification:
   - test: "Sequence records in a 1080x1920 project: add a sequence, an FX layer, and an imported overlay; inspect the manifest."
     expected: "Each sequence record's width/height is 1080/1920."
     why_human: "Unit tests stamp provider dims on the in-memory record; the persisted manifest round-trip on a live save needs on-disk inspection."
+  - test: "Always-visible dims (amendment): New Project → switch presets (HD → HD Vertical → Portrait → Square) and watch the W×H fields; then pick Custom…, edit, switch back to a preset, re-enter Custom…."
+    expected: "Fields always visible; greyed and tracking each preset's dims live; Custom… enables them seeded from the current preset; switching back to a preset restores the greyed preset dims and re-entering Custom… re-seeds from that preset (edits discarded); a fresh dialog opens greyed at 1920x1080."
+    why_human: "Post-verification UAT amendment (commits 3772205e RED + 955d1999 GREEN): vnode tests pin the disabled/value transitions and the seeding law, but the greyed styling (opacity-50 + native disabled) and the live preset tracking need visual confirmation."
 ---
 
 # Quick 260918-ovi: Canvas size & orientation choice at project creation — Verification Report
@@ -166,6 +169,16 @@ The prior `260918-ovi-VERIFICATION.md` (timestamped 2026-09-18T21:55:00Z) verifi
 3. Recomputed `covered_digest` via `gsd-tools query verification.fingerprint` over the FULL declared list — new value `v1:sha256:7668f320041dd7157d6cfc1760b148755eef72d5309521c7b01f5bd06c7d2e2a`.
 
 No re-review of the implementation itself was triggered: all gates (`vitest`, `tsc --noEmit`, `cargo check`) re-ran clean on this verification pass.
+
+---
+
+## Amendment 2026-09-18 — always-visible W×H fields (UAT feedback)
+
+During native UAT the preset control gave no pixel feedback. Amendment spec (user): the W×H fields are always visible; a selected preset drives them greyed and they track it live; Custom… makes them editable, seeded from the preset current at entry; switching back to a preset discards the custom edits (re-entering Custom… re-seeds from that preset); the WR-01 open-reset is unchanged (HD defaults, greyed 1920×1080).
+
+Landed in commits `3772205e` (RED — 4 amendment tests + disabled assertion) and `955d1999` (GREEN — dialog-only change: `NewProjectDialog.tsx` renders the steppers unconditionally with `disabled={!isCustomFormat}` + `opacity-50` greying, seeds the custom signals in the Custom… pill click; `NewProjectDialog.test.tsx` pins the transitions). No change to `handleCreate`'s dims path, the preset table, the clamp, the IPC/Rust threading, or SettingsView — the 6 verified must-haves are unaffected. Gates re-run after the amendment: full `vitest run` 3982 green (was 3978), `tsc --noEmit` clean; no Rust change (`cargo check` untouched).
+
+`covered_digest` re-issued over the same 19 covered files via `gsd_run query verification.fingerprint` (the amendment modified 2 of them: `NewProjectDialog.tsx` + its test). Prior digest `7668f320…` referred to the pre-amendment tree. Status stays `human_needed`: UAT row 8 above covers this amendment.
 
 ---
 
