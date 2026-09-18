@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {describe, it, expect, beforeEach} from 'vitest';
+import {describe, it, expect, beforeEach, vi} from 'vitest';
 import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
 import {sequenceStore} from './sequenceStore';
@@ -8,6 +8,18 @@ import {physicPaintStore} from './physicPaintStore';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
+
+// 260918-ovi: spy on the projectCreate IPC wrapper so createProject threading
+// is observable. Other ipc exports (assetUrl, configGet*, etc.) keep their real
+// implementations so dependent stores load unchanged.
+const mockProjectCreate = vi.hoisted(() => vi.fn());
+vi.mock('../lib/ipc', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/ipc')>();
+  return {
+    ...actual,
+    projectCreate: mockProjectCreate,
+  };
+});
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 
@@ -284,5 +296,58 @@ describe('GL transition persistence (GLT-08)', () => {
 
   describe('version', () => {
     it.todo('saves with version 11');
+  });
+});
+
+describe('260918-ovi: canvas format threading', () => {
+  beforeEach(() => {
+    mockProjectCreate.mockReset();
+    projectStore.width.value = 1920;
+    projectStore.height.value = 1080;
+  });
+
+  describe('manifest round-trip (law pins)', () => {
+    function makeMinimalMceProject(overrides: Partial<RuntimeMceProject> = {}): RuntimeMceProject {
+      return {
+        version: 8,
+        name: 'Test Project',
+        fps: 24,
+        width: 1920,
+        height: 1080,
+        created_at: '2026-01-01',
+        modified_at: '2026-01-01',
+        sequences: [],
+        images: [],
+        ...overrides,
+      };
+    }
+
+    it('buildMceProject round-trips non-default dims', () => {
+      projectStore.width.value = 1080;
+      projectStore.height.value = 1920;
+      const project = projectStore.buildMceProject();
+      expect(project.width).toBe(1080);
+      expect(project.height).toBe(1920);
+    });
+
+    it('hydrateFromMce restores vertical dims', () => {
+      const project = makeMinimalMceProject({ width: 1080, height: 1920 });
+      projectStore.hydrateFromMce(project, '/test/project');
+      expect(projectStore.width.value).toBe(1080);
+      expect(projectStore.height.value).toBe(1920);
+    });
+  });
+
+  describe('createProject threading (260918-ovi)', () => {
+    it('createProject threads width/height through IPC and adopts returned dims', async () => {
+      mockProjectCreate.mockResolvedValue({
+        ok: true,
+        data: { width: 1080, height: 1920 },
+      });
+      await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce', 1080, 1920);
+      expect(mockProjectCreate).toHaveBeenCalledWith('Fresh', 24, '/projects/Fresh.mce', 1080, 1920);
+      expect(projectStore.width.value).toBe(1080);
+      expect(projectStore.height.value).toBe(1920);
+    });
   });
 });

@@ -29,4 +29,19 @@ describe('physicsPaintCanvasSizing', () => {
       height: DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT,
     });
   });
+
+  it('260918-ovi: 1080x1920 vertical is identity (cap is long-edge, orientation-agnostic)', () => {
+    expect(getPhysicsPaintWorkingSize(1080, 1920)).toEqual({ width: 1080, height: 1920 });
+  });
+
+  it('260918-ovi: 1080x1350 portrait and 1080x1080 square are identity', () => {
+    expect(getPhysicsPaintWorkingSize(1080, 1350)).toEqual({ width: 1080, height: 1350 });
+    expect(getPhysicsPaintWorkingSize(1080, 1080)).toEqual({ width: 1080, height: 1080 });
+  });
+
+  it('260918-ovi: 1081x1921 downscales to the 1920 long edge', () => {
+    const result = getPhysicsPaintWorkingSize(1081, 1921);
+    expect(Math.max(result.width, result.height)).toBe(1920);
+    expect(result.width).toBe(Math.round(1081 * (1920 / 1921)));
+  });
 });

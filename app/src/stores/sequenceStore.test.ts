@@ -1,8 +1,8 @@
-import {describe, it, expect, beforeEach} from 'vitest';
+import {describe, it, expect, beforeEach, afterEach} from 'vitest';
 import {redo, resetHistory, undo} from '../lib/history';
 import type {Layer} from '../types/layer';
 import {physicPaintStore} from './physicPaintStore';
-import {sequenceStore} from './sequenceStore';
+import {sequenceStore, _setSequenceProjectDimensionsProvider} from './sequenceStore';
 import {registerDocument, reset as resetEfxPaintStore} from './efxPaintStore';
 import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
 import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
@@ -381,5 +381,60 @@ describe('sequenceStore GL transitions (GLT-05)', () => {
 
   describe('addTransition mutual exclusion', () => {
     it.todo('clears glTransition when adding cross-dissolve (D-02)');
+  });
+});
+
+describe('sequence factory project dims (260918-ovi)', () => {
+  const DEFAULT_DIMS = { width: 1920, height: 1080 };
+
+  beforeEach(() => {
+    resetHistory();
+    sequenceStore.reset();
+  });
+
+  afterEach(() => {
+    // Restore the default provider so sibling describes are not polluted.
+    _setSequenceProjectDimensionsProvider(() => DEFAULT_DIMS);
+  });
+
+  it('createSequence stamps the provider dims onto the new record', () => {
+    _setSequenceProjectDimensionsProvider(() => ({ width: 1080, height: 1920 }));
+    const seq = sequenceStore.createSequence('S');
+    expect(seq.width).toBe(1080);
+    expect(seq.height).toBe(1920);
+  });
+
+  it('createFxSequence stamps the provider dims onto the new record', () => {
+    _setSequenceProjectDimensionsProvider(() => ({ width: 1080, height: 1920 }));
+    const layer = makePhysicPaintLayer('fx-layer', 'fx-canonical');
+    const seq = sequenceStore.createFxSequence('F', layer, 100);
+    expect(seq.width).toBe(1080);
+    expect(seq.height).toBe(1920);
+  });
+
+  it('createContentOverlaySequence stamps the provider dims onto the new record', () => {
+    _setSequenceProjectDimensionsProvider(() => ({ width: 1080, height: 1920 }));
+    const layer: Layer = {
+      id: 'overlay-layer',
+      name: 'overlay-layer',
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+      source: { type: 'paint', layerId: 'overlay-layer' },
+      isBase: false,
+    };
+    const seq = sequenceStore.createContentOverlaySequence('O', layer, 100);
+    expect(seq.width).toBe(1080);
+    expect(seq.height).toBe(1920);
+  });
+
+  it('falls back to 1920x1080 when no provider is wired', () => {
+    // Reset to a state where the provider is the default (matches boot).
+    _setSequenceProjectDimensionsProvider(() => DEFAULT_DIMS);
+    const seq = sequenceStore.createSequence('Default');
+    expect(seq.width).toBe(1920);
+    expect(seq.height).toBe(1080);
   });
 });

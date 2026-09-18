@@ -30,6 +30,8 @@ const hoisted = vi.hoisted(() => ({
   fm: [] as FrameEntry[],
   sequences: [] as Sequence[],
   activeSequenceId: 'seq-1',
+  projectWidth: 4,
+  projectHeight: 3,
 }));
 
 vi.mock('./ipc', () => ({
@@ -59,8 +61,8 @@ vi.mock('../stores/sequenceStore', () => ({
 vi.mock('../stores/projectStore', () => ({
   projectStore: {
     name: { peek: () => 'Multi-Track Export Project' },
-    width: { peek: () => 4, value: 4 },
-    height: { peek: () => 3, value: 3 },
+    width: { peek: () => hoisted.projectWidth, value: hoisted.projectWidth },
+    height: { peek: () => hoisted.projectHeight, value: hoisted.projectHeight },
     fps: { peek: () => 24 },
   },
 }));
@@ -247,6 +249,8 @@ beforeEach(() => {
   hoisted.fm = [];
   hoisted.sequences = [makeSequence([makeRotoLayer()])];
   hoisted.activeSequenceId = 'seq-1';
+  hoisted.projectWidth = 4;
+  hoisted.projectHeight = 3;
   vi.clearAllMocks();
   vi.stubGlobal('window', { devicePixelRatio: 1 });
   vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas() : {} });
@@ -341,5 +345,23 @@ describe('exportEngine', () => {
 
   describe('resumeExport', () => {
     it.todo('starts from resumeFromFrame when available');
+  });
+});
+
+describe('export sizing follows project dims (260918-ovi)', () => {
+  it('vertical project dims produce vertical export canvas (1080x1920 at resolution 1)', async () => {
+    hoisted.projectWidth = 1080;
+    hoisted.projectHeight = 1920;
+    registerDocument(makeTwoTrackDocument(LAYER));
+    install('track-1', [record('A0', 0)], []);
+    hoisted.fm = makeFm(2);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('complete');
+    expect(renderGlobalFrameMock).toHaveBeenCalled();
+    const canvasArg = (renderGlobalFrameMock.mock.calls[0] as unknown[])[1] as { width: number; height: number };
+    expect(canvasArg.width).toBe(1080);
+    expect(canvasArg.height).toBe(1920);
   });
 });
