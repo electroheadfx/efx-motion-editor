@@ -32,7 +32,16 @@ pub fn project_create(
     name: String,
     fps: u32,
     dir_path: String,
+    width: u32,
+    height: u32,
 ) -> Result<MceProject, String> {
+    // 260918-ovi (T-260918-ovi-01, ASVS V5): defense-in-depth clamp. The
+    // renderer's NumericStepper.clampToStep is the primary bound at emission
+    // time; this clamp ensures no caller — IPC or otherwise — can construct a
+    // project whose canvas allocations exceed the 1920 long edge.
+    let width = width.clamp(1, 1920);
+    let height = height.clamp(1, 1920);
+
     // Create project directory structure FIRST so we can canonicalize
     project_io::create_project_dir(&dir_path)?;
 
@@ -51,8 +60,8 @@ pub fn project_create(
         version: 1,
         name,
         fps,
-        width: 1920,
-        height: 1080,
+        width,
+        height,
         created_at: now.clone(),
         modified_at: now,
         sequences: vec![],

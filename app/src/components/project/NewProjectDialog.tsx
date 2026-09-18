@@ -1,8 +1,19 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
+import {signal} from '@preact/signals';
 import {open as openDialog} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
 import {toPackageManifestPath} from '../../lib/openedProjectUrls';
 import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
+import {
+  CANVAS_FORMAT_PRESETS,
+  DEFAULT_CANVAS_FORMAT_PRESET_ID,
+  type CanvasFormatPresetId,
+} from './canvasFormatPresets';
+
+// 260918-ovi (efx-preact-reactivity): NEW dialog state lives in module-scope
+// signals, never useState. The pre-existing name/fps/dirPath useState fields
+// stay untouched (out of scope to refactor).
+const selectedPresetId = signal<CanvasFormatPresetId>(DEFAULT_CANVAS_FORMAT_PRESET_ID);
 
 interface NewProjectDialogProps {
   onClose: () => void;
@@ -55,7 +66,8 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
       const packageDirPath = `${dirPath}/${name.trim()}.mce`;
 
       // Create the project via projectStore (handles IPC + temp migration)
-      await projectStore.createProject(name.trim(), fps, packageDirPath);
+      const preset = CANVAS_FORMAT_PRESETS.find(p => p.id === selectedPresetId.value) ?? CANVAS_FORMAT_PRESETS[0];
+      await projectStore.createProject(name.trim(), fps, packageDirPath, preset.width, preset.height);
 
       // Auto-save the initial package: the manifest inside the package dir.
       await projectStore.saveProjectAs(toPackageManifestPath(packageDirPath));
@@ -142,6 +154,30 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
                 24 fps
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* Canvas Format (260918-ovi) */}
+        <div class="flex flex-col gap-2">
+          <label class="text-[11px] font-semibold text-(--color-text-dim) tracking-wide">
+            CANVAS FORMAT
+          </label>
+          <div class="flex items-center gap-1 rounded-lg bg-(--color-bg-input) p-1 w-fit">
+            {CANVAS_FORMAT_PRESETS.map((preset) => (
+              <div
+                key={preset.id}
+                class={`flex items-center rounded-md px-4 py-2 cursor-pointer transition-colors ${
+                  selectedPresetId.value === preset.id ? 'bg-(--color-accent)' : ''
+                }`}
+                onClick={() => { selectedPresetId.value = preset.id; }}
+              >
+                <span
+                  class={`text-sm ${selectedPresetId.value === preset.id ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
+                >
+                  {preset.id === 'hd' ? 'HD' : 'HD Vertical'}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 

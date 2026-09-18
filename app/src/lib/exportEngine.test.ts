@@ -360,7 +360,7 @@ describe('export sizing follows project dims (260918-ovi)', () => {
 
     expect(exportStore.progress.peek().status).toBe('complete');
     expect(renderGlobalFrameMock).toHaveBeenCalled();
-    const canvasArg = (renderGlobalFrameMock.mock.calls[0] as unknown[])[1] as { width: number; height: number };
+    const canvasArg = (vi.mocked(renderGlobalFrameMock).mock.calls[0] as unknown[])[1] as { width: number; height: number };
     expect(canvasArg.width).toBe(1080);
     expect(canvasArg.height).toBe(1920);
   });

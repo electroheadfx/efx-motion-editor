@@ -1307,7 +1307,7 @@ describe('quick-260913-05k round 3: a created project owns its chosen package pa
   });
 
   it('createProject registers the chosen package path — the first Cmd+S saves instead of falling into Save As', async () => {
-    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce');
+    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce', 1920, 1080);
 
     // The reported defect: after Create, the plain-save leg found no path and
     // opened the Save As picker over the just-created package. The project was
@@ -1318,7 +1318,7 @@ describe('quick-260913-05k round 3: a created project owns its chosen package pa
   });
 
   it('a failed initial save keeps the registered path — never stranded as never-saved', async () => {
-    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce');
+    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce', 1920, 1080);
     bindEfxPaintPackageTransaction.mockResolvedValueOnce({ ok: false, error: 'bind refused' });
 
     await expect(projectStore.saveProjectAs('/projects/Fresh.mce/project.mce')).rejects.toThrow('bind refused');
@@ -1330,7 +1330,7 @@ describe('quick-260913-05k round 3: a created project owns its chosen package pa
   });
 
   it('the next save after a failed initial save heals into the chosen package', async () => {
-    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce');
+    await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce', 1920, 1080);
     bindEfxPaintPackageTransaction.mockResolvedValueOnce({ ok: false, error: 'bind refused' });
     await expect(projectStore.saveProjectAs('/projects/Fresh.mce/project.mce')).rejects.toThrow('bind refused');
 

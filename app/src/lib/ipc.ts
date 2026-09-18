@@ -43,8 +43,8 @@ export async function projectGetDefault(): Promise<Result<ProjectData>> {
   return safeInvoke<ProjectData>('project_get_default');
 }
 
-export async function projectCreate(name: string, fps: number, dirPath: string): Promise<Result<MceProject>> {
-  return safeInvoke<MceProject>('project_create', { name, fps, dirPath });
+export async function projectCreate(name: string, fps: number, dirPath: string, width: number, height: number): Promise<Result<MceProject>> {
+  return safeInvoke<MceProject>('project_create', { name, fps, dirPath, width, height });
 }
 
 /**

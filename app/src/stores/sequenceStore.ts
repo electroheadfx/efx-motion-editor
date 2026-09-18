@@ -29,6 +29,20 @@ function markDirty() {
   _markDirty?.();
 }
 
+// 260918-ovi: project dims are read through an injected provider so the three
+// sequence factories stamp the LIVE project canvas size into each new record.
+// projectStore wires the provider at module init (same ESM cycle workaround as
+// _setMarkDirtyCallback); sequenceStore never imports projectStore. The
+// fallback matches the boot default so an unwired test still produces a
+// coherent record.
+let _projectDimensionsProvider: (() => { width: number; height: number }) | null = null;
+export function _setSequenceProjectDimensionsProvider(fn: () => { width: number; height: number }) {
+  _projectDimensionsProvider = fn;
+}
+function getProjectDimensions(): { width: number; height: number } {
+  return _projectDimensionsProvider?.() ?? { width: 1920, height: 1080 };
+}
+
 /** Capture a snapshot of current state for undo/redo closures. */
 function snapshot() {
   return {
@@ -105,8 +119,7 @@ export const sequenceStore = {
       kind: 'content',
       name,
       fps: 24,
-      width: 1920,
-      height: 1080,
+      ...getProjectDimensions(),
       keyPhotos: [],
       layers: [createBaseLayer()],
     };
@@ -233,8 +246,7 @@ export const sequenceStore = {
       kind: 'fx',
       name,
       fps: 24,
-      width: 1920,
-      height: 1080,
+      ...getProjectDimensions(),
       keyPhotos: [],
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,
@@ -264,8 +276,7 @@ export const sequenceStore = {
       kind: 'content-overlay',
       name,
       fps: 24,
-      width: 1920,
-      height: 1080,
+      ...getProjectDimensions(),
       keyPhotos: [],
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,

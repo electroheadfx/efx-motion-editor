@@ -8,7 +8,7 @@ import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../
 import {createBaseLayer} from '../types/layer';
 import {projectCreate, projectSaveAsWithScriptLibrary, projectOpen as ipcProjectOpen, projectMigrateTempImages, resolvePhysicPaintCacheRoot, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
-import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
+import {sequenceStore, _setMarkDirtyCallback, _setSequenceProjectDimensionsProvider} from './sequenceStore';
 import {audioStore, _setAudioMarkDirtyCallback} from './audioStore';
 import {uiStore} from './uiStore';
 import {timelineStore} from './timelineStore';
@@ -760,7 +760,7 @@ export const projectStore = {
   hydrateFromMce,
 
   /** Create a new project. Migrates temp images if any exist. */
-  async createProject(projectName: string, projectFps: number, projectDirPath: string) {
+  async createProject(projectName: string, projectFps: number, projectDirPath: string, projectWidth: number, projectHeight: number) {
     rotateProjectContext();
     // Close any existing project first (resets all stores, stops engines/timers)
     projectStore.closeProject();
@@ -768,7 +768,7 @@ export const projectStore = {
     // it and the machine-local cache root is derived from it.
     rotateProjectId();
 
-    const result = await projectCreate(projectName, projectFps, projectDirPath);
+    const result = await projectCreate(projectName, projectFps, projectDirPath, projectWidth, projectHeight);
     if (!result.ok) {
       throw new Error(result.error);
     }
@@ -1058,6 +1058,13 @@ export const projectStore = {
 // Wire sequenceStore's markDirty callback to projectStore
 // This avoids circular imports (sequenceStore -> projectStore)
 _setMarkDirtyCallback(() => projectStore.markDirty());
+
+// 260918-ovi: wire sequenceStore's project-dims provider so the three
+// sequence factories (createSequence / createFxSequence /
+// createContentOverlaySequence) stamp the LIVE project canvas size into each
+// new Sequence record. Same ESM module-body cycle workaround as
+// _setMarkDirtyCallback — sequenceStore never imports projectStore.
+_setSequenceProjectDimensionsProvider(() => ({width: width.value, height: height.value}));
 
 // Wire imageStore's markDirty callback to projectStore
 // This avoids circular imports (imageStore -> projectStore)
