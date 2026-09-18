@@ -359,7 +359,7 @@ None yet.
 | 260911-jy4 | Close Phase 51 verification gap — AUD-01..04 | 2026-09-11 | 41d4235e | [260911-jy4-close-phase-51-verification-gap-aud-01-0](./quick/260911-jy4-close-phase-51-verification-gap-aud-01-0/) |
 | 260911-sli | Surface armed solo on the track row — standing badge + chip bound to the document solo flag; folds the pending 260911-g1g hide/solo native UAT | 2026-09-11 | 42a22183 | [260911-sli-surface-armed-solo-on-the-track-row](./quick/260911-sli-surface-armed-solo-on-the-track-row/) |
 | 260913-05k | P0 fix: route .mce package file IO through Rust commands (layer write/read + staging discard; plugin-fs restriction on package paths) + blocking save/open failure modal. Native UAT OWED | 2026-09-13 | 99aa5f2d | [260913-05k-p0-fix-route-mce-package-file-io-through](./quick/260913-05k-p0-fix-route-mce-package-file-io-through/) |
-| 260918-o0n | Regression fix: main-editor timeline FX layer span cannot re-extend after shrinking (derived-total clamp removed from the span-drag path; RED-first tests). Native UAT OWED | 2026-09-18 | da3b9851 | [260918-o0n-regression-main-app-timeline-layer-span-](./quick/260918-o0n-regression-main-app-timeline-layer-span-/) |
+| 260918-o0n | Regression fix: main-editor timeline FX layer span cannot re-extend after shrinking (derived-total clamp removed from the span-drag path; RED-first tests). Native UAT passed 2026-09-18 | 2026-09-18 | da3b9851 | [260918-o0n-regression-main-app-timeline-layer-span-](./quick/260918-o0n-regression-main-app-timeline-layer-span-/) |
 
 ### Roadmap Evolution
 
