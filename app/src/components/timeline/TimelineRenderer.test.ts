@@ -402,7 +402,7 @@ describe('timeline pointer frame resolution (260918-o0n)', () => {
 
   it('delegates frameFromX to it and keeps the live-timeline default ceiling', () => {
     const code = source();
-    const frameFromXIndex = code.indexOf('frameFromX(clientX: number');
+    const frameFromXIndex = code.indexOf('frameFromX(');
     expect(frameFromXIndex).toBeGreaterThan(-1);
     const frameFromXSource = code.slice(frameFromXIndex, frameFromXIndex + 400);
 

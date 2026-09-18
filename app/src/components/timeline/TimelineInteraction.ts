@@ -12,6 +12,7 @@ import {snapToBeat} from '../../lib/beatMarkerEngine';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
+import {resolveFxSpanDragRange} from './timelineFxSpanDrag';
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -120,6 +121,25 @@ export class TimelineInteraction {
       timelineStore.scrollX.peek(),
       timelineStore.zoom.peek(),
       totalFrames,
+    );
+  }
+
+  /**
+   * Resolve the pointer frame for a span drag. Unlike getFrame(), the derived
+   * timeline end is NOT used as a ceiling: the timeline total is derived from
+   * the span ends (lib/frameMap), so clamping a span drag to it is circular and
+   * makes a shrunk span impossible to extend again (260918-o0n).
+   */
+  private getSpanDragFrame(clientX: number): number {
+    if (!this.canvas || !this.renderer) return 0;
+    const rect = this.canvas.getBoundingClientRect();
+    return this.renderer.frameFromX(
+      clientX,
+      rect,
+      timelineStore.scrollX.peek(),
+      timelineStore.zoom.peek(),
+      timelineStore.totalFrames.peek(),
+      null,
     );
   }
 
@@ -619,7 +639,7 @@ export class TimelineInteraction {
           this.isDraggingFx = true;
           this.fxDragMode = mode;
           this.fxDragSeqId = fxTrack.sequenceId;
-          this.fxDragStartFrame = this.getFrame(e.clientX);
+          this.fxDragStartFrame = this.getSpanDragFrame(e.clientX);
           this.fxDragOrigIn = fxTrack.inFrame;
           this.fxDragOrigOut = fxTrack.outFrame;
           timelineStore.setTimelineDragging(true);
@@ -840,29 +860,18 @@ export class TimelineInteraction {
 
     // FX range bar dragging
     if (this.isDraggingFx) {
-      const currentFrame = this.getFrame(e.clientX);
-      const delta = currentFrame - this.fxDragStartFrame;
-      const totalFr = timelineStore.totalFrames.peek();
+      // Delta is measured from the true pointer frame, and the range is resolved
+      // without any timeline ceiling: the timeline total is derived from the span
+      // ends, so the timeline grows to follow the extended span (260918-o0n).
+      const delta = this.getSpanDragFrame(e.clientX) - this.fxDragStartFrame;
+      const { inFrame, outFrame } = resolveFxSpanDragRange({
+        mode: this.fxDragMode,
+        origIn: this.fxDragOrigIn,
+        origOut: this.fxDragOrigOut,
+        delta,
+      });
 
-      let newIn = this.fxDragOrigIn;
-      let newOut = this.fxDragOrigOut;
-
-      if (this.fxDragMode === 'move') {
-        const duration = this.fxDragOrigOut - this.fxDragOrigIn;
-        newIn = Math.max(0, this.fxDragOrigIn + delta);
-        newOut = newIn + duration;
-        // Clamp to timeline bounds
-        if (newOut > totalFr) {
-          newOut = totalFr;
-          newIn = newOut - duration;
-        }
-      } else if (this.fxDragMode === 'resize-left') {
-        newIn = Math.max(0, Math.min(this.fxDragOrigIn + delta, this.fxDragOrigOut - 1));
-      } else if (this.fxDragMode === 'resize-right') {
-        newOut = Math.max(this.fxDragOrigIn + 1, Math.min(this.fxDragOrigOut + delta, totalFr));
-      }
-
-      sequenceStore.updateFxSequenceRange(this.fxDragSeqId, newIn, newOut);
+      sequenceStore.updateFxSequenceRange(this.fxDragSeqId, inFrame, outFrame);
       return;
     }
 
