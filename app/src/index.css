@@ -360,3 +360,9 @@
   width: 0;
   height: 0;
 }
+
+/* Packaged CSP refuses style attributes; the base document background lives
+   here instead of a body inline style. */
+body {
+  background: #0F0F0F;
+}
