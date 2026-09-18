@@ -50,6 +50,12 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
 
   // Focus the name input on mount
   useEffect(() => {
+    // WR-01: the module-scope format signals outlive a mount cycle, unlike
+    // the useState fields — reset them so every open starts at the HD
+    // defaults, symmetric with name/fps/dirPath.
+    selectedPresetId.value = DEFAULT_CANVAS_FORMAT_PRESET_ID;
+    customWidth.value = 1920;
+    customHeight.value = 1080;
     nameInputRef.current?.focus();
     nameInputRef.current?.select();
   }, []);
