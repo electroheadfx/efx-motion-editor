@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 53 (Integrated v1.0.0 Acceptance) — PLANNING
 Plan: — (not started)
 Status: Phase 52.2 complete + verified (12/12) — ready to plan Phase 53
-Last activity: 2026-09-18 — Completed quick task 260918-o0n: main-editor timeline FX layer span cannot re-extend after shrinking (derived-total clamp removed from span drag; RED-first tests; native UAT owed)
+Last activity: 2026-09-18 — Completed quick task 260918-ovi: canvas size + orientation choice at project creation (4 presets + Custom… steppers clamped 16–1920, dims threaded dialog→store→IPC→Rust, sequenceStore provider injection, SettingsView 4K dropped; verified 6/6; native UAT owed)
 
 Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
@@ -360,6 +360,7 @@ None yet.
 | 260911-sli | Surface armed solo on the track row — standing badge + chip bound to the document solo flag; folds the pending 260911-g1g hide/solo native UAT | 2026-09-11 | 42a22183 | [260911-sli-surface-armed-solo-on-the-track-row](./quick/260911-sli-surface-armed-solo-on-the-track-row/) |
 | 260913-05k | P0 fix: route .mce package file IO through Rust commands (layer write/read + staging discard; plugin-fs restriction on package paths) + blocking save/open failure modal. Native UAT OWED | 2026-09-13 | 99aa5f2d | [260913-05k-p0-fix-route-mce-package-file-io-through](./quick/260913-05k-p0-fix-route-mce-package-file-io-through/) |
 | 260918-o0n | Regression fix: main-editor timeline FX layer span cannot re-extend after shrinking (derived-total clamp removed from the span-drag path; RED-first tests). Native UAT passed 2026-09-18 | 2026-09-18 | da3b9851 | [260918-o0n-regression-main-app-timeline-layer-span-](./quick/260918-o0n-regression-main-app-timeline-layer-span-/) |
+| 260918-ovi | Canvas size + orientation choice at project creation — 4 presets (HD / HD Vertical / Portrait / Square) + Custom… steppers clamped 16–1920, dims threaded dialog→store→IPC→Rust, sequenceStore provider injection, SettingsView 4K dropped, dialog reopen resets format (WR-01). Verified 6/6 must-haves; native UAT OWED (7 rows) | 2026-09-18 | 50701e07 | [260918-ovi-canvas-size-orientation-choice-at-projec](./quick/260918-ovi-canvas-size-orientation-choice-at-projec/) |
 
 ### Roadmap Evolution
 
