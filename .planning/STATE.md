@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: "52.2"
-current_phase_name: Project package format — references only
-status: executing
-stopped_at: Completed 52.2-16-PLAN.md — phase 52.2 complete (16/16), verification/close pending
-last_updated: "2026-09-18T14:38:31.000Z"
+current_phase: "53"
+current_phase_name: Integrated v1.0.0 Acceptance
+status: planning
+stopped_at: Phase 52.2 complete, ready to plan Phase 53
+last_updated: "2026-09-18T14:52:36.000Z"
 last_activity: 2026-09-18
-last_activity_desc: Plan 52.2-16 complete — bundled UAT PASS + fixture-open PASS, D-25 re-measurement, pilot verdict + efx-async-orchestration skill
-state_head: 247e2e77f54a71357f11d0f14ea142c4ed9149bc
+last_activity_desc: Phase 52.2 complete, transitioned to Phase 53
+state_head: 43679a0238bfcf14abf96f7cb9726ddf52b03c38
 progress:
   total_phases: 11
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 65
   completed_plans: 65
-  percent: 55
+  percent: 64
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 52.2 (Project package format — references only) — EXECUTION COMPLETE (verification/close pending)
-Plan: 16 of 16 — completed 2026-09-18
-Status: Plan 16 complete — phase close pending
-Last activity: 2026-09-18 — Plan 52.2-16: bundled UAT (five rows + fixture-open) PASS, D-25 re-measurement recorded, pilot verdict + efx-async-orchestration skill written
+Phase: 53 (Integrated v1.0.0 Acceptance) — PLANNING
+Plan: — (not started)
+Status: Phase 52.2 complete + verified (12/12) — ready to plan Phase 53
+Last activity: 2026-09-18 — Phase 52.2 transition: verification PASSED, Nyquist audit clean, ui.safety_gate re-enabled, superseded SPECS draft deleted
 
 Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
@@ -327,6 +327,7 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-16 D-25 numbers (dev runtime of the shipped commit; bundle emits no telemetry by design): finalization median 113 ms (pre ~900 ms); input delay median 16 / p95 104 / max 186 ms, 0 stalls; queue waits stay in the idle-gate class by design (T3-as-written recorded UNMET, max 10 891 ms); persist.total 1 404 ms = commit 872 + media 460 + layers 11 + manifest 10 — the ~4.6 s full-document serialize is abolished, not optimized (n=1, architectural proof); §7 churn MET: tracksStrip 123 vs 369 (−78% per row), rightPanel 4 vs 72, canvas 114 vs 248, no surface up
 - [Phase 52.2]: 52.2-16 pilot verdict — ADMITTED on T4/T5 + inspectability (numbers axis void-not-waived; the D-01 miss, T3-unmet and T4's unrun 10-minute leg recorded honestly); skill .claude/skills/efx-async-orchestration/SKILL.md written (D-17 contract earned); close-out chores committed: 33a92f3d (52r E/H diagnostic cluster removed) + 8e5f219d (body background into the bundled stylesheet — packaged-CSP fix); the next bundle carries both, no behavior change
 - [Phase 52.2]: 52.2-16 carried to phase close — re-enable ui.safety_gate; delete the superseded SPECS/phase-52.3-async-conventions.md draft (user-owned); save progress-modal UX idea stays a registered candidate; the sequence-extension bug is routed as a later quick; the branch merge decision is the user's
+- [Phase 52.2]: PHASE CLOSED 2026-09-18 — verification PASSED (`52.2-VERIFICATION.md`: 12/12 must-haves, 0 behavior-unverified; real-package digest check 32/32, zero-base64 scan 0 matches, bundled plist verified); Nyquist validation clean (0 gaps; `52.2-VALIDATION.md` status: validated, nyquist_compliant: true); close-out chores done (ui.safety_gate re-enabled, superseded SPECS/phase-52.3 draft deleted); next: Phase 53
 
 ### Pending Todos
 

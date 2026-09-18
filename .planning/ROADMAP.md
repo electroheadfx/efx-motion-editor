@@ -587,4 +587,5 @@ Plans:
 | 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Complete | 2026-09-02 |
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
 | 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
+| 52.2. Project package format — references only | v1.0.0 | 16/16 | Complete | 2026-09-18 |
 | 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |
