@@ -189,7 +189,7 @@ None — no new network endpoints, auth paths, file access patterns, or schema c
 
 None - no external service configuration required.
 
-## Native UAT — PENDING (owed by the user; not claimed by this executor)
+## Native UAT — PASSED 2026-09-19 (user: "perfect all work!")
 
 1. Studio window CLOSED: click Export on a paint project. Expected: 'Preparing export...' appears essentially instantly and stays through the preparation seconds (the flush burns its timeout here), then 'Rendering frame N of M'.
 2. Studio window OPEN with fresh unflushed strokes: click Export. Expected: 'Preparing export...' visible during the drain, then Rendering.
@@ -200,7 +200,7 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - Export feedback contract is now pinned by tests; Phase 53 acceptance work (and the 260919-azh paint-export follow-ups) can rely on truthful stage reporting.
-- No blockers. Native UAT rows above remain open until the user runs them.
+- No blockers. Native UAT rows above passed 2026-09-19.
 
 ## Self-Check: PASSED
 
