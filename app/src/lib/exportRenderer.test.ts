@@ -504,6 +504,82 @@ describe('exportRenderer', () => {
       expect(renderFrame.mock.calls.some((args) => args[4] === false)).toBe(true);
     });
 
+    it('fx overlay gates on entry.globalFrame (Pitfall 1)', () => {
+      const layer = makeRotoLayer();
+      const fxSeq: Sequence = {
+        ...makeFxPaintSequence(layer),
+        id: 'fx-p',
+        inFrame: 2,
+        outFrame: 7,
+      };
+      sequenceStore.sequences.value = [fxSeq];
+      // Selected-fx export of an inFrame > 0 sequence (D-08): the exportEngine
+      // filter at exportEngine.ts:148 re-bases fm positionally — gap entries at
+      // true globals 0..1 are excluded — so positional index 0 maps to the entry
+      // whose globalFrame is 2.
+      const fm: FrameEntry[] = [2, 3, 4, 5, 6].map((globalFrame) => ({
+        kind: 'paint' as const,
+        globalFrame,
+        sequenceId: fxSeq.id,
+        layerId: 'roto-layer',
+      }));
+      const renderer = makeRendererStub();
+
+      renderGlobalFrame(renderer, makeCanvasStub(), 0, fm, [fxSeq], [], false);
+
+      const renderFrame = vi.mocked(renderer.renderFrame);
+      const call = renderFrame.mock.calls.find(
+        (args) => (args[0] as Layer[]).some((candidate) => candidate.id === 'roto-layer'),
+      );
+      expect(call).toBeDefined();
+      // fxLocalFrame derives from the entry's own globalFrame (2 - inFrame 2 = 0),
+      // never from the positional index — pre-fix the 0 < inFrame 2 gate skips
+      // the overlay entirely and this assertion never reaches a call.
+      expect(call?.[7]).toBe(0);
+    });
+
+    it('selected export keeps later-sequence overlays riding', () => {
+      // RESEARCH Open Question 1 (shared fix): a content-selected export of a
+      // non-first sequence positionally re-bases fm the same way — positional 0
+      // maps to globalFrame 5 — and the fx overlay spanning 5..10 must still ride
+      // (pre-fix it was silently dropped).
+      const contentSeq: Sequence = {
+        id: 'content-b',
+        kind: 'content',
+        name: 'Later content',
+        fps: 24,
+        width: 1000,
+        height: 650,
+        keyPhotos: [{ id: 'kp-b', imageId: 'base-image', holdFrames: 5 }],
+        layers: [],
+      };
+      const fxSeq: Sequence = {
+        ...makeFxPaintSequence(makeRotoLayer()),
+        id: 'fx-overlay',
+        inFrame: 5,
+        outFrame: 10,
+      };
+      sequenceStore.sequences.value = [contentSeq, fxSeq];
+      const fm: FrameEntry[] = [5, 6, 7, 8, 9].map((globalFrame, localFrame) => ({
+        kind: 'content' as const,
+        globalFrame,
+        sequenceId: contentSeq.id,
+        keyPhotoId: 'kp-b',
+        imageId: 'base-image',
+        localFrame,
+      }));
+      const renderer = makeRendererStub();
+
+      renderGlobalFrame(renderer, makeCanvasStub(), 0, fm, [contentSeq, fxSeq], [], false);
+
+      const renderFrame = vi.mocked(renderer.renderFrame);
+      const call = renderFrame.mock.calls.find(
+        (args) => (args[0] as Layer[]).some((candidate) => candidate.id === 'roto-layer'),
+      );
+      expect(call).toBeDefined();
+      expect(call?.[7]).toBe(0);
+    });
+
     it.todo('renders a single content frame identically to Preview.tsx');
     it.todo('renders cross-dissolve overlap with correct blending');
     it.todo('renders FX overlay sequences with keyframe interpolation');
