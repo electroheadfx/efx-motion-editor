@@ -135,10 +135,13 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Photo/reference track (reference-only / reveal-source / masked-transform-source), excluded from ordinary flattened output — v1.0.0 Phase 50
 - ✓ Read-only main-editor audio preview synchronized to the shared application-frame cursor during internal track playback — v1.0.0 Phase 51 (delivered via quicks 260902-cfa + amendments)
 - ✓ Shared mask compositor and Reveal using photo source plus internal Paint/PlayScript coverage — v1.0.0 Phase 52
+- ✓ Any project containing paint exports its painted frames end-to-end — dense per-frame compositor enumeration (FrameEntry content/paint/gap union), paint-only and mixed projects, both canvas orientations, selected-fx export with fx inFrame > 0 included (CR-01) — v1.0.0 Phase 52.3
 
 ### Active
 
 - [ ] Save/reopen, undo/redo, clean-break legacy rejection, preview/export parity, and native UAT — v1.0.0 Phase 53
+- [ ] Staged export progress (preparation / rendering / encoding) so clicking Export never appears idle for seconds — user request 2026-09-19, routed to a quick
+- [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
@@ -292,6 +295,9 @@ Known technical debt:
 | Phase 43.5 Timeline Toolbox + Push as one rigid atomic multi-object translation | Push is the exclusive multi-object movement owner; Group drag stays local | ✓ Good — persistent 43.1 gap breaks; one Undo/Redo; native UAT approved |
 | Phase 43.6 rail-set selection as a session-only explicit selection scope | Cross-type batch ops need one shared selection with fail-closed reconcile | ✓ Good — pure reducer, batch Move/Delete/Key Spacing/Solo, exact selection restore on Undo |
 | Phase 44 five-surface version single-source (REL-01) + credentialed signed release | Version must never drift across surfaces; publication is one-way and auditable | ✓ Good — signed/notarized/stapled, published as GitHub Latest, 15-item stop-condition checklist |
+| Phase 52.3 FrameEntry discriminated union (content/paint/gap) with dense enumeration gated on `entries.length === 0` | The paint-only enumeration branch was never designed (quick 260919-azh verdict NEVER-WIRED); a fail-closed union keeps D-08/D-10 filter semantics explicit | ✓ Good — parked Cases C/D green, refusal unreachable for paint content, 7/7 native UAT rows across formats/resolutions/scales |
+| Phase 52.3 one shared `entry.globalFrame` predicate across enumeration, render gating, and export preload | Positional-vs-global conflation produced all-transparent selected-fx exports (RESEARCH Pitfall 1) and an empty preload window (review CR-01) at fx inFrame > 0 | ✓ Good — CR-01 closed RED-first (50ecd5e4 → 3e84c120); preload, render gate, and enumeration provably share one predicate |
+| Phase 52.3 playback activation of the owning fx sequence when the playhead enters paint frames is deliberate (D-08-consistent) | Dense enumeration makes playback cross fx-owned frames; deactivating would fight the selected-fx mental model | ✓ Good — pinned in playbackEngine tests; UAT Row 7 confirmed as callout, not a bug |
 
 ## Evolution
 
@@ -311,4 +317,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-04 after Phase 52 — Shared Mask Compositor and Reveal complete; Phases 45-52 requirements moved to Validated. Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*
+*Last updated: 2026-09-19 after Phase 52.3 — Paint content export enumeration complete (14/14 must-haves verified, 7/7 native UAT rows, CR-01 review fix landed). Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*

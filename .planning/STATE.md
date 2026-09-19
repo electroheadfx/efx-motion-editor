@@ -22,10 +22,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
+See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.3 — Paint content export — per-frame compositor enumeration (INSERTED)
+**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
 
 ## Current Position
 
