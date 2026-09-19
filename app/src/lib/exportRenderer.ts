@@ -140,6 +140,17 @@ export function renderGlobalFrame(
   const seq = entry ? allSeqs.find((s) => s.id === entry.sequenceId) : undefined;
   const hasContentEntry = !!seq && seq.kind !== 'fx';
 
+  // 52.3-02 (RESEARCH Pitfall 1): the overlay leg's gates and fx-local frame
+  // math read the entry's OWN globalFrame — never the positional frameIndex.
+  // A selected-sequence export re-bases fm positionally (exportEngine.ts:148),
+  // so positional index 0 maps to the selected sequence's first true global
+  // frame; gating on the positional index would skip every overlay of an
+  // inFrame > 0 selection (all-transparent selected-fx export). The same line
+  // repairs the pre-existing content-selected overlay-drop quirk (RESEARCH
+  // Open Question 1 — shared fix adopted). The content branch's positional
+  // seqStart walk below is genuinely positional and stays untouched.
+  const overlayGlobalFrame = entry ? entry.globalFrame : frameIndex;
+
   // D-06 (52.3-01): every no-content frame starts from clean pixels — one
   // top-level identity-transform clear, same shape as the GL transition path
   // below. Content frames keep byte-identical behavior (this gate stays
@@ -315,12 +326,12 @@ export function renderGlobalFrame(
   const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
   for (let i = overlaySeqs.length - 1; i >= 0; i--) {
     const overlaySeq = overlaySeqs[i];
-    if (overlaySeq.inFrame != null && globalFrame < overlaySeq.inFrame) continue;
-    if (globalFrame >= getTimelineOverlaySequenceOutFrame(overlaySeq, fm.length)) continue;
+    if (overlaySeq.inFrame != null && overlayGlobalFrame < overlaySeq.inFrame) continue;
+    if (overlayGlobalFrame >= getTimelineOverlaySequenceOutFrame(overlaySeq, fm.length)) continue;
 
     if (overlaySeq.kind === 'content-overlay') {
       // Content overlay: compute local frame relative to inFrame, apply keyframe interpolation
-      const overlayLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+      const overlayLocalFrame = overlayGlobalFrame - (overlaySeq.inFrame ?? 0);
       const overlayLayers = overlaySeq.layers.filter(l => l.visible).map(layer => {
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;
         const values = interpolateAt(layer.keyframes, overlayLocalFrame);
@@ -347,7 +358,7 @@ export function renderGlobalFrame(
       }
     } else {
       // FX sequence: apply keyframe interpolation to FX layers
-      const fxLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+      const fxLocalFrame = overlayGlobalFrame - (overlaySeq.inFrame ?? 0);
       const fxTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
       const fxLayers = overlaySeq.layers.filter((l) => l.visible).map(layer => {
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;
