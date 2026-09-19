@@ -111,7 +111,13 @@ const RULE_W024 = {
 function buildValidPhaseSet(snapshot) {
     const valid = new Set();
     for (const dir of snapshot.phaseDirs.value) {
-        const token = extractPhaseToken(dir);
+        // #612: the pre-migration source of this third was
+        // `collectDiskPhases(planBase, convention)`, whose keys came from the
+        // convention-aware extractor. Left convention-less here, a bracket repo's
+        // `GSD.02-05-slug` contributes `GSD.02` instead of `05`, so every STATE.md
+        // reference to a real phase falls outside the valid set and W002 fires on
+        // all of them.
+        const token = extractPhaseToken(dir, snapshot.phaseIdConvention);
         if (token)
             valid.add(token);
     }
@@ -152,6 +158,17 @@ const RULE_W002 = {
         const normalizedValid = normalizePhaseTokenSet(validPhases);
         const sortedValid = [...validPhases].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
         const diagnostics = [];
+        // #4257: the valid set above is WORKSTREAM-scoped by construction (every
+        // source field is read from `planningPaths(cwd)`'s base, which resolves
+        // under `.planning/workstreams/<active-ws>/`), and per-workstream phase
+        // numbering is deliberate — so under a workstream the message must NAME
+        // that scope rather than make an unqualified project-wide claim (a
+        // reference to a phase declared only in a SIBLING workstream reads as
+        // "undeclared" against this list; that is the scope speaking, not drift).
+        // Root scope (`workstream === null`, flat or root-planning projects)
+        // keeps the byte-identical message — no clause is appended when none
+        // applies.
+        const scopeClause = snapshot.workstream ? ` in workstream ${snapshot.workstream}` : '';
         for (const ref of snapshot.statePhaseTokens.value) {
             const dotIdx = ref.indexOf('.');
             const head = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
@@ -162,7 +179,7 @@ const RULE_W002 = {
             diagnostics.push({
                 code: 'W002',
                 severity: SEVERITY.WARNING,
-                message: `STATE.md references phase ${ref}, but only phases ${sortedValid.join(', ')} are declared`,
+                message: `STATE.md references phase ${ref}, but only phases ${sortedValid.join(', ')} are declared${scopeClause}`,
                 remedy: adviseRemedy('Review STATE.md manually before changing it; /gsd-health --repair will not overwrite an existing STATE.md for phase mismatches'),
             });
         }
@@ -233,31 +250,71 @@ const RULE_W021 = {
     description: "Phase's integer prefix implies a different milestone than its ROADMAP section (phase_id_convention: milestone-prefixed)",
     repairable: false,
     check: (snapshot) => {
-        const convention = snapshot.config.value?.['phase_id_convention'];
-        if (convention !== 'milestone-prefixed')
-            return [];
         const diagnostics = [];
-        for (const entry of snapshot.roadmapDeclaredPhases.value) {
-            // `entry.milestone === null` means the builder never found this phase
-            // heading inside any versioned (`v\d+\.\d+`) section — the original
-            // `checkMilestonePrefixMismatches` only ever iterates phases found
-            // WITHIN a section, so a phase outside any section is equivalently
-            // never checked here.
-            if (entry.milestone === null)
-                continue;
-            const expectedMilestone = getMilestoneFromPhaseId(entry.phaseId);
-            if (expectedMilestone === null || expectedMilestone === entry.milestone)
-                continue;
-            diagnostics.push({
-                code: 'W021',
-                severity: SEVERITY.WARNING,
-                message: `Phase ${entry.phaseId}: integer prefix implies ${expectedMilestone} but listed under ${entry.milestone}`,
-                remedy: adviseRemedy('gsd-tools roadmap upgrade --convention milestone-prefixed'),
-            });
+        // Two INDEPENDENT gates, evaluated in the order the pre-migration
+        // `cmdValidateHealth` block emitted them (milestone-prefixed first, then
+        // bracket). They are deliberately NOT written as if/else: the two read
+        // DIFFERENT config bases and can both be true at once.
+        //
+        //   milestone-prefixed — `snapshot.config` (ROOT config only), exactly as
+        //     this gate has always read it. Federating THIS one silently moved a
+        //     legacy convention's answer in BOTH directions on workstream repos: a
+        //     W021 that fires at base vanishing, and one silent at base firing.
+        //   bracket — `snapshot.phaseIdConvention` (federated workstream -> root),
+        //     because the bracket reads this half reports on are themselves
+        //     federated; gating it on the root answer would split the check against
+        //     the reads it describes.
+        //
+        // A workstream that overrides a `milestone-prefixed` ROOT to `bracket` is
+        // the case that makes the distinction observable, and it is the reason an
+        // early `return` here would be a bug: the root-configured M-NN gate must
+        // still fire, or the repo looks healthier than it is.
+        const rootConvention = snapshot.config.value?.['phase_id_convention'];
+        if (rootConvention === 'milestone-prefixed') {
+            diagnostics.push(...checkMilestonePrefixW021(snapshot));
+        }
+        // #612: an ADDITIVE sibling branch — the milestone-prefixed gate above is
+        // untouched. Gated strictly on the ACTIVE convention, never on
+        // project_code presence: reads are selected per convention, and a CHECK
+        // that can fail a repo runs only for the convention that repo opted into.
+        if (snapshot.phaseIdConvention === 'bracket') {
+            for (const mm of snapshot.roadmapBracketIncoherences.value) {
+                diagnostics.push({
+                    code: 'W021',
+                    severity: SEVERITY.WARNING,
+                    message: mm.kind === 'missing-bracket'
+                        ? `Phase ${mm.phaseId}: heading is not in bracket form under the 'bracket' convention (expected \`[CODE.${mm.sectionMilestone}] ${mm.phaseId}:\`)`
+                        : `Phase ${mm.phaseId}: bracket milestone ${mm.phaseMilestone} does not match its section milestone ${mm.sectionMilestone}`,
+                    remedy: adviseRemedy('Bracket migration lands with the #612 migrator (PR-3); until then, manually align the bracket milestone in this heading to match the enclosing section.'),
+                });
+            }
         }
         return diagnostics;
     },
 };
+/** The milestone-prefixed half of W021, unchanged by #612. */
+function checkMilestonePrefixW021(snapshot) {
+    const diagnostics = [];
+    for (const entry of snapshot.roadmapDeclaredPhases.value) {
+        // `entry.milestone === null` means the builder never found this phase
+        // heading inside any versioned (`v\d+\.\d+`) section — the original
+        // `checkMilestonePrefixMismatches` only ever iterates phases found
+        // WITHIN a section, so a phase outside any section is equivalently
+        // never checked here.
+        if (entry.milestone === null)
+            continue;
+        const expectedMilestone = getMilestoneFromPhaseId(entry.phaseId);
+        if (expectedMilestone === null || expectedMilestone === entry.milestone)
+            continue;
+        diagnostics.push({
+            code: 'W021',
+            severity: SEVERITY.WARNING,
+            message: `Phase ${entry.phaseId}: integer prefix implies ${expectedMilestone} but listed under ${entry.milestone}`,
+            remedy: adviseRemedy('gsd-tools roadmap upgrade --convention milestone-prefixed'),
+        });
+    }
+    return diagnostics;
+}
 // ─── W026 — STATE says milestone complete but ROADMAP lists unstarted phase ─
 const RULE_W026 = {
     code: 'W026',
@@ -282,7 +339,14 @@ const RULE_W026 = {
             // unwindowed `phaseDirNames2` (`verify.cts:2372-2382`, a direct
             // `readdirSync` of the phases dir), not the current-milestone-windowed
             // `phaseDirs`.
-            const hasDirectory = matchPhaseDirs(snapshot.allPhaseDirNames.value, normalized).matches.length > 0;
+            // #612: the directory read widens with the heading read that produced
+            // `currentMilestoneRoadmapPhaseIds`, or every bracket phase resolves to
+            // nothing, reads as unstarted, and this UNGATED warning false-fires on
+            // any bracket repo whose STATE says the milestone is complete. #2528
+            // moved the read onto the shared selector; the convention rides along,
+            // since the selector's primary match IS the `phaseTokenMatches` call this
+            // line used to make directly.
+            const hasDirectory = matchPhaseDirs(snapshot.allPhaseDirNames.value, normalized, snapshot.phaseIdConvention).matches.length > 0;
             if (!hasDirectory)
                 unstarted.push(phaseId);
         }

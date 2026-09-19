@@ -11,6 +11,7 @@ import {
   resolvePhysicPaintRotoSpacingProxy,
 } from './physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 /**
  * Phase 43-02 — selection-port exclusion for virtual linked occurrences
@@ -35,7 +36,7 @@ function realKeyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyR
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     },

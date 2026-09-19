@@ -33,11 +33,13 @@ No Pass/Fail buttons. No severity questions. Just: "Here's what should happen. D
 
 <process>
 
+**Compact Content Gate.** Read and follow `gsd-core/references/compact-content-gate.md` now — it states the `workflow.compact_content` check and the resolution rule this spine defers to. When it directs a Read, read `gsd-core/workflows/verify-work/detail/elaboration.md` in full before continuing past this point; its content elaborates on the resume/reconcile steps and the full gap-closure sub-flow below.
+
 <step name="initialize" priority="first">
 If $ARGUMENTS contains a phase number, load context:
 
 ```bash
-_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "${CLAUDE_CONFIG_DIR:-/Users/lmarques/Dev/efx-motion-editor/.claude}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CLAUDE_CONFIG_DIR:-/Users/lmarques/Dev/efx-motion-editor/.claude}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS and gsd-tools is not on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi; if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${GSD_TOOLS:-}" ]; then printf "export PATH='%s':\"\$PATH\"\n" "${GSD_TOOLS%/*}" >> "$CLAUDE_ENV_FILE" 2>/dev/null || true; fi
+_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; _gsd_at() { for _p; do if [ -f "$_p" ]; then GSD_TOOLS="$_p"; return 0; fi; done; return 1; }; if _gsd_at "${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}" "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif unset -f gsd_run; _G="$(command -v gsd_run)"; then GSD_TOOLS="$_G"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif _gsd_at "${CLAUDE_CONFIG_DIR:-/Users/lmarques/Dev/efx-motion-editor/.claude}/gsd-core/bin/${_GSD_SHIM_NAME}" "${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}" "${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}" "${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}" "${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}" "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}" "${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}" "${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}" "${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}" "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}" "${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}" "${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}" "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}" "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}" "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}"; then gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS and gsd_run is not on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi; GSD_IDENTITY_STATUS=unverified; case "$(gsd_run runtime-identity --raw 2>/dev/null || true)" in '{"packageName":"@opengsd/gsd-core"'*'}') GSD_IDENTITY_STATUS=ok;; esac; export GSD_IDENTITY_STATUS; [ "$GSD_IDENTITY_STATUS" = ok ] || echo "WARNING: \"$GSD_TOOLS\" did not prove it is @opengsd/gsd-core - it is either a different package or an @opengsd/gsd-core older than the runtime-identity verb. See docs/how-to/diagnose-a-foreign-gsd-tools.md" >&2; if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${GSD_TOOLS:-}" ]; then printf "export PATH='%s':\"\$PATH\"\n" "${GSD_TOOLS%/*}" >> "$CLAUDE_ENV_FILE" 2>/dev/null || true; fi
 GSD_WS=""
 echo "$ARGUMENTS" | grep -qE -- '--ws[[:space:]]+[A-Za-z0-9._-]+' && GSD_WS=$(echo "$ARGUMENTS" | grep -oE -- '--ws[[:space:]]+[A-Za-z0-9._-]+')
 PHASE_ARG=$(echo "$ARGUMENTS" | sed -E 's/--ws[[:space:]]+[A-Za-z0-9._-]+//g' | xargs)
@@ -50,7 +52,7 @@ AGENT_SKILLS_CHECKER=$(gsd_run query agent-skills gsd-plan-checker)
 
 Parse JSON for: `planner_model`, `checker_model`, `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `has_verification`, `uat_path`, `state_path`, `roadmap_path`, `response_language`.
 
-**If `response_language` is set:** All user-facing questions, prompts, and explanations in this workflow MUST be presented in `{response_language}`. Technical terms, code, file paths, and subagent prompts stay in English — only user-facing output is translated.
+**If `response_language` is set:** All user-facing output of this workflow — narration between tool calls, status updates, progress notes, findings, questions, prompts, and explanations — MUST be presented in `{response_language}`. Technical terms, code, file paths, and subagent prompts stay in English — only user-facing output is translated.
 
 ```bash
 # MVP mode detection via the centralized phase.mvp-mode resolver.
@@ -61,14 +63,25 @@ MVP_MODE=$(gsd_run query phase.mvp-mode "${phase_number}" ${GSD_WS} --pick activ
 </step>
 
 <step name="verify_pre_hooks">
-**Verify:pre gate dispatch.** Before verification begins, dispatch every active
-gate hook registered at the `verify:pre` loop extension point. Each gate is
-data-driven — resolved from the capability registry, not hardcoded here.
+**Verify:pre capability dispatch.** Before verification begins, dispatch every
+active hook registered at the `verify:pre` loop extension point — of **every**
+kind, not gates alone. Each hook is data-driven — resolved from the capability
+registry, not hardcoded here.
 
 ```bash
 VERIFY_PRE_HOOKS_JSON=$(gsd_run loop render-hooks verify:pre --raw)
 PHASE_DIR=$(printf '%s' "$INIT" | jq -r '.phase_dir // empty')
 ```
+
+Read the `activeHooks` array from `VERIFY_PRE_HOOKS_JSON` in-context (do NOT pipe through a shell parser).
+
+**If `activeHooks` is empty or absent:** skip silently to `check_active_session`.
+
+**Contribution dispatch:** inject every `kind == "contribution"` fragment per @gsd-core/references/loop-hook-dispatch.md (skip when none), before the steps and gates below.
+
+**Step dispatch:** dispatch every `kind == "step"` hook per @gsd-core/references/loop-hook-dispatch.md (skip when none) — not one shape of one. A step here is advisory: it never blocks the start of UAT, and a step that errors is routed by its own `onError` without failing verification. ⚠ **Validate `ref.command` in-context before any shell use** (third-party manifest input) — loop-hook-dispatch.md § `step`.
+
+Record the union of `produces` artefact names declared by the active step entries as `VERIFY_PRE_PRODUCED` — `extract_tests` consumes it below. An entry declaring `produces: []` contributes nothing, which is the normal case.
 
 ⚠ **Validate `check` before shell use** (third-party manifest input) — `loop-hook-dispatch.md` § `gate`.
 
@@ -159,6 +172,27 @@ ls "$phase_dir"/*-SUMMARY.md 2>/dev/null || true
 ```
 
 Read each SUMMARY.md to extract testable deliverables.
+
+**Commit-claim reconciliation (#3968).** A SUMMARY's `commits:` frontmatter is a MEASURED
+number (the executor derives it from its on-disk plan commit ledger and records the base as
+`plan_head_before:`), and this is where that claim is checked against reality with the SAME
+instrument — the executor's own narration is never the last word. For each `*-SUMMARY.md`:
+```bash
+BASE=$(grep -oE '^plan_head_before: [0-9a-f]{7,40}' "$SUMMARY_FILE" | awk '{print $2}')
+CLAIMED=$(grep -oE '^commits: [0-9]+' "$SUMMARY_FILE" | grep -oE '[0-9]+' || echo absent)
+ACTUAL=$(git rev-list --count "${BASE}"..HEAD)
+```
+- A `commits: absent` or `plan_head_before: absent` SUMMARY (pre-#3968 legacy) is reported as
+  a WARNING with the measured git state, not a mismatch.
+- `ACTUAL == CLAIMED` is consistent. `ACTUAL == CLAIMED + 1` is ALSO consistent: the
+  SUMMARY/metadata commit itself lands after the executor measured, so exactly one
+  post-measurement commit is expected.
+- Anything else is a **BLOCKER** — the phase must not read as done: real project evidence
+  (#3968) showed 14 plans declaring `commits: 1` with zero git activity, their code sitting
+  uncommitted and one `git reset --hard` from loss. Record it as `commit_claim_mismatch`
+  with both numbers and the SUMMARY path; a mismatch means either the executor narrated
+  instead of measuring or commits were lost after the fact — both require reconciliation
+  before the phase can pass.
 </step>
 
 <step name="extract_tests">
@@ -182,6 +216,35 @@ Read the JSON result (`mode`, `total`, `all_auto_covered`, `auto_passed[]`, `pre
   - Surface any `errors[]` to the user (malformed coverage block) but still treat their entries as human checkpoints — **never drop a deliverable** (fail-safe).
 
 The cold-start smoke test injection below still applies in `coverage` mode.
+
+**Verify:pre produced-artefact seam (#3866).** If `VERIFY_PRE_PRODUCED` (recorded in
+`verify_pre_hooks`) is empty or absent, skip this paragraph entirely — derivation is unchanged.
+Otherwise, for each artefact name in it, locate the artefact the producing step wrote under
+`$PHASE_DIR` and merge its checkpoints into the test list **additively**.
+
+**The artefact contract.** A consumable artefact is a Markdown file holding a list of checkpoint
+entries in the **same shape `extract_tests` already emits and `create_uat_file` already consumes** —
+each entry a `name` (brief test name) and an `expected` (specific, user-observable outcome).
+Nothing else is read: extra fields are ignored, not an error. There is no new schema and no new
+parser — a producing step writes what a checkpoint already looks like. An artefact that yields zero
+parseable entries is treated exactly like an absent one (see below).
+
+Merge rules:
+
+- ⚠ **Validate the artefact name in-context before resolving it** (third-party manifest input).
+  An artefact name is a registry-declared name, **not** a path: check the value you read from
+  `produces` against `^[A-Za-z0-9][A-Za-z0-9._-]*$` yourself — **never** by pasting it into a
+  shell command to be tested there. A name carrying `/`, `..`, a leading `-`, a leading path
+  separator, or any shell metacharacter is a malformed manifest: record a warning, skip that
+  name, continue. Only a validated name is resolved, and only against what the step wrote inside
+  `$PHASE_DIR` — never above it, and never through a symlink that leaves it.
+- A name with no artefact on disk means that step was inactive, skipped, or failed. Note it to the
+  user and derive normally — **never drop a deliverable and never block UAT over it.**
+- Merged entries are added to, never subtracted from, what `coverage:` classification and the
+  prose fallback produce. An `auto_passed[]` entry stays un-presented; a `present[]` entry stays a
+  human checkpoint. This seam can deepen UAT, not suppress it.
+- Deduplicate against already-derived checkpoints by `name`, keeping the earlier entry's
+  `expected` text so a produced artefact cannot silently rewrite a criterion.
 
 **Extract testable deliverables from SUMMARY.md (legacy fallback — used when `mode: legacy`):**
 
@@ -424,50 +487,20 @@ If no more tests → Go to `complete_session`
 </step>
 
 <step name="reconcile_gaps">
-**Reconcile diagnosed gaps against completed gap-closure plans (#1921):**
+**Reconcile diagnosed gaps against completed gap-closure plans (#1921):** when verify-work resumes after `/gsd-execute-phase --gaps-only`, UAT `## Gaps` entries still read `status: failed` even though their fix plans already executed — without reconciliation they'd be re-diagnosed as fresh blockers. For each `status: failed` gap with a `*-PLAN.md` whose `gap_ids` names it AND a matching `*-SUMMARY.md`, mark it `resolved` (with `resolved_by`/`resolved_at`) in place; otherwise leave it `failed`. Resolved gaps are never re-diagnosed or re-planned; a later regression gets a fresh `gap_id`, not a reopened old one.
 
-When verify-work resumes after `/gsd-execute-phase --gaps-only`, the UAT `## Gaps` entries still read `status: failed` even though their fix plans have executed. Without reconciliation verify-work re-diagnoses them as fresh blockers and spawns new gap plans — losing the verification state. This step closes the loop.
-
-Read the UAT `## Gaps` section and the phase dir `*-PLAN.md` frontmatter. For each gap with `status: failed`:
-1. Find a `*-PLAN.md` whose frontmatter `gap_ids` includes the gap's `gap_id` (`G-{phase}-{N}`).
-2. If such a plan exists AND has a matching `*-SUMMARY.md` in the phase dir (the plan was executed by `--gaps-only`), the gap is **resolved** — update its YAML in place:
-   ```yaml
-   - gap_id: G-{phase}-{N}
-     status: resolved        # was: failed
-     resolved_by: {plan basename}
-     resolved_at: {today}
-   ```
-3. If no plan references the `gap_id`, or the plan has no SUMMARY, leave the gap `status: failed` (still open).
-
-Read plan frontmatter directly in-context — do not pipe it through a shell parser. After reconciliation, announce:
-```
-Reconciled gap-closure state: {resolved_count} gap(s) resolved by executed plans, {open_count} still open.
-```
-
-Resolved gaps are NOT re-diagnosed and do NOT spawn new gap plans. If the user later reports the same behavior as still broken, treat it as a new issue (a regression) with a fresh `gap_id`.
+Exact YAML shape and the announcement line: `gsd-core/workflows/verify-work/detail/elaboration.md` § 1.
 </step>
 
 <step name="resume_from_file">
-**Resume testing from UAT file:**
-
-**First run `reconcile_gaps`** (above) so gaps already fixed by `/gsd-execute-phase --gaps-only` are marked `resolved` before testing resumes (#1921).
-
-Read the full UAT file.
+**Resume testing from UAT file:** first run `reconcile_gaps` (above), then read the full UAT file.
 
 Find first test with `result: [pending]`.
 If no `[pending]` test found → go to `complete_session`.
 
-Announce:
-```
-Resuming: Phase {phase} UAT
-Progress: {passed + issues + skipped}/{total}
-Issues found so far: {issues count}
+Otherwise announce progress and continue from that test at `present_test`.
 
-Continuing from Test {N}...
-```
-
-Update Current Test section with the pending test.
-Proceed to `present_test`.
+Exact resume-announcement wording: `gsd-core/workflows/verify-work/detail/elaboration.md` § 2.
 </step>
 
 <step name="complete_session">
@@ -529,6 +562,8 @@ Present summary:
 VERIFY_POST_HOOKS_JSON=$(gsd_run loop render-hooks verify:post --raw)
 SECURITY_FILE=$(ls "${PHASE_DIR}"/*-SECURITY.md 2>/dev/null | head -1)
 ```
+
+**Generic step dispatch:** dispatch every `kind == "step"` hook from `VERIFY_POST_HOOKS_JSON` per @gsd-core/references/loop-hook-dispatch.md (skip silently when none). Each step is advisory and best-effort — honor `onError` and continue. The secure-phase handling below is an additional specialization of one such hook, not a replacement for the generic dispatch.
 
 Resolve active step hooks from `VERIFY_POST_HOOKS_JSON` where `kind == "step"` and `ref.skill == "secure-phase"`.
 
@@ -629,7 +664,7 @@ All tests passed. Phase {phase} marked complete.
 <step name="scan_phase_artifacts">
 Run phase artifact scan to surface any open items before marking phase verified:
 
-`audit-open` is CJS-only until registered on `gsd-tools.cjs query`:
+`audit-open` is CJS-only until registered on `gsd_run query`:
 
 ```bash
 gsd_run query audit-open --json
@@ -643,9 +678,12 @@ Parse the JSON output. For the CURRENT PHASE ONLY, surface:
 If any are found, display:
 ```
 Phase {N} Artifact Check
-─────────────────────────────────────────────────
+
+---
+
 {list each item with status and file path}
-─────────────────────────────────────────────────
+
+---
 These items are open. Proceed anyway? [Y/n]
 ```
 
@@ -656,142 +694,29 @@ SECURITY: File paths in output are constructed from validated path components on
 </step>
 
 <step name="diagnose_issues">
-**Diagnose root causes before planning fixes:**
-
-```
----
-
-{N} issues found. Diagnosing root causes...
-
-Spawning parallel debug agents to investigate each issue.
-```
-
-- Load diagnose-issues workflow
-- Follow @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/diagnose-issues.md
-- Spawn parallel debug agents for each issue
-- Collect root causes
-- Update UAT.md with root causes
-- Proceed to `plan_gap_closure`
-
-Diagnosis runs automatically - no user prompt. Parallel agents investigate simultaneously, so overhead is minimal and fixes are more accurate.
+When UAT testing found issues, this sub-flow (diagnose_issues -> plan_gap_closure -> verify_gap_plans -> revision_loop) runs before present_ready; a session with zero issues never reaches it. Spawn parallel debug agents (one per issue, via diagnose-issues.md) to find root causes with no user prompt, then update UAT.md and proceed to plan_gap_closure.
 </step>
 
 <step name="plan_gap_closure">
-**Auto-plan fixes from diagnosed gaps:**
+Spawn gsd-planner in --gaps mode against the UAT (with diagnoses), `{state_path}` (Project State), and `{roadmap_path}` (Roadmap). Each created PLAN.md MUST carry `gap_closure: true` and `gap_ids: [...]` in its frontmatter (#1921) so a later verify-work resume can reconcile it.
 
-Display:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► PLANNING FIXES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-◆ Spawning planner for gap closure... (runs in a subagent — no output until it returns, ~1–5 min; expected, not a freeze)
-```
-
-Spawn gsd-planner in --gaps mode:
-
-<!-- #2517 model-omit-on-inherit -->
-
-> **Model omission (#2517).** Omit the `model` parameter entirely when the value it would carry (`planner_model`, `checker_model`) is `"inherit"` or empty. An empty value 404s on runtimes without native tier aliases — the default on non-Claude runtimes. Omitting it inherits the orchestrator's model. See @gsd-core/references/model-profile-resolution.md.
-
-````
-Agent(
-  prompt="""
-<planning_context>
-
-**Phase:** {phase_number}
-**Mode:** gap_closure
-
-<required_reading>
-- {phase_dir}/{phase_num}-UAT.md (UAT with diagnoses)
-- {state_path} (Project State)
-- {roadmap_path} (Roadmap)
-</required_reading>
-
-${AGENT_SKILLS_PLANNER}
-
-</planning_context>
-
-<downstream_consumer>
-Output consumed by /gsd-execute-phase
-Plans must be executable prompts.
-
-<!-- #2508 runtime-aware-dispatch -->
-
-> **Runtime-aware dispatch (#2508 Phase 4).** GSD workflows dispatch specialized subagents by role. Before dispatching on a built-in-only runtime (kimi-code — three built-ins only), resolve the role to a built-in via `gsd_run query resolve-dispatch-type --requested <role> --raw`. On named-dispatch runtimes (Claude/OpenCode/…) the role is returned unchanged; on kimi-code it maps to `coder`/`explore`/`plan` by role-suffix. The persona rides `${AGENT_SKILLS_<ROLE>}` (Phase 3) regardless. See @gsd-core/references/runtime-aware-dispatch.md.
-
-**Gap linkage (#1921):** each created `*-PLAN.md` MUST list the UAT gap ids it addresses in its frontmatter:
-```yaml
----
-gap_closure: true
-gap_ids: [G-{phase}-{N}, ...]   # the ## Gaps gap_id values this plan fixes
----
-```
-This lets `/gsd-verify-work` reconcile resolved gaps on resume (a gap whose plan has a matching `*-SUMMARY.md` is marked `status: resolved`, not re-diagnosed as a fresh blocker).
-</downstream_consumer>
-""",
-  subagent_type="gsd-planner",
-  model="{planner_model}",
-  description="Plan gap fixes for Phase {phase}"
-)
-````
-
+<!-- gsd:protected -->
 > **ORCHESTRATOR RULE — CODEX RUNTIME**: After calling Agent() above, stop working on this task immediately. Do not read more files, edit code, or run tests related to this task while the subagent is active. Wait for the subagent to return its result. This prevents duplicate work, conflicting edits, and wasted context. Only resume when the subagent result is available.
 
-On return:
-- **PLANNING COMPLETE:** Proceed to `verify_gap_plans`
-- **PLANNING INCONCLUSIVE:** Report and offer manual intervention
+PLANNING COMPLETE proceeds to verify_gap_plans; PLANNING INCONCLUSIVE reports and offers manual intervention.
 </step>
 
 <step name="verify_gap_plans">
-**Verify fix plans with checker:**
+Spawn gsd-plan-checker against the fix plans (iteration_count starts at 1), model="{checker_model}" (omit on inherit/empty, #2517).
 
-Display:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► VERIFYING FIX PLANS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-◆ Spawning plan checker... (runs in a subagent — no output until it returns, ~1–5 min; expected, not a freeze)
-```
-
-Initialize: `iteration_count = 1`
-
-Spawn gsd-plan-checker:
-
-```
-Agent(
-  prompt="""
-<verification_context>
-
-**Phase:** {phase_number}
-**Phase Goal:** Close diagnosed gaps from UAT
-
-<required_reading>
-- {phase_dir}/*-PLAN.md (Plans to verify)
-</required_reading>
-
-${AGENT_SKILLS_CHECKER}
-
-</verification_context>
-
-<expected_output>
-Return one of:
-- ## VERIFICATION PASSED — all checks pass
-- ## ISSUES FOUND — structured issue list
-</expected_output>
-""",
-  subagent_type="gsd-plan-checker",
-  model="{checker_model}",
-  description="Verify Phase {phase} fix plans"
-)
-```
-
+<!-- gsd:protected -->
 > **ORCHESTRATOR RULE — CODEX RUNTIME**: After calling Agent() above, stop working on this task immediately. Do not read more files, edit code, or run tests related to this task while the subagent is active. Wait for the subagent to return its result. This prevents duplicate work, conflicting edits, and wasted context. Only resume when the subagent result is available.
 
 On return:
 - **VERIFICATION PASSED:** Proceed to `present_ready`
-- **ISSUES FOUND:** Proceed to `revision_loop`
+- **ISSUES FOUND:** Count BLOCKER + WARNING entries in the YAML issues block; an entry whose severity is missing or unrecognized counts as a BLOCKER (fail closed). If zero — every entry is explicitly INFO — display `ℹ advisory — {dimension}: {description}` per entry and proceed to `present_ready`; INFO is advisory and never enters the loop (#3724). Otherwise proceed to `revision_loop`
+
+Exact Agent() prompt fields: `gsd-core/workflows/verify-work/detail/elaboration.md` § 2.
 </step>
 
 <step name="revision_loop">
@@ -803,39 +728,38 @@ Display: `Sending back to planner for revision... (iteration {N}/3)`
 
 Spawn gsd-planner with revision context:
 
-```
-Agent(
-  prompt="""
-<revision_context>
-
-**Phase:** {phase_number}
-**Mode:** revision
-
-<required_reading>
-- {phase_dir}/*-PLAN.md (Existing plans)
-</required_reading>
-
-${AGENT_SKILLS_PLANNER}
-
-**Checker issues:**
-{structured_issues_from_checker}
-
-</revision_context>
-
-<instructions>
 Read existing PLAN.md files. Make targeted updates to address checker issues.
-Do NOT replan from scratch unless issues are fundamental.
-</instructions>
-""",
-  subagent_type="gsd-planner",
-  model="{planner_model}",
-  description="Revise Phase {phase} plans"
-)
-```
 
+`required_property` + evidence + severity BIND. `fix_hint` is ONE non-binding example route: a
+smaller or different mechanism reaching the same property addresses the issue in full — say which
+you used. Re-check locked decisions, capability guidance (CLAUDE.md, project skills) and the
+constraints these plans already encode BEFORE editing; if a hint would contradict one, or the
+property is unreachable without breaking one, return `## REVISION_CONFLICT` with the conflict and
+the alternatives rather than applying or working around it. Full contract:
+`gsd-core/references/planner-revision.md`, which you load in revision mode.
+
+Do NOT replan from scratch unless issues are fundamental.
+
+<!-- gsd:protected -->
 > **ORCHESTRATOR RULE — CODEX RUNTIME**: After calling Agent() above, stop working on this task immediately. Do not read more files, edit code, or run tests related to this task while the subagent is active. Wait for the subagent to return its result. This prevents duplicate work, conflicting edits, and wasted context. Only resume when the subagent result is available.
 
-After planner returns → spawn checker again (verify_gap_plans logic)
+**If the planner returns `## REVISION_CONFLICT`:** do NOT increment `iteration_count` and do NOT
+re-spawn the checker — a conflict is not resolvable by re-running the same loop, so it must not
+consume retry budget. Present the conflict table and its alternatives to the user and ask which
+to take: adopt a named alternative / override the named constraint and apply the hint / amend the
+constraint itself. Every option resolves the conflict; accepting the plans with the blocker still
+open is NOT offered here — that choice belongs to the max-iteration escalation below. Re-spawn
+the planner with the chosen resolution and then **re-evaluate its return from the top of this
+handler** — never fall through to the checker spawn below, because a second conflict is still a
+conflict, not a revised plan, and only a NON-conflict return may reach the checker or increment
+`iteration_count`.
+
+**Bounded:** a conflict naming the SAME `required_property` twice in a row (no successful revision in between) is a stall, and so is
+the THIRD conflict return of this loop whatever property it names — alternating property names
+would otherwise never trip the repeat rule. Stop re-spawning and route it to the same
+max-iteration escalation below.
+
+**On any other return** → spawn checker again (verify_gap_plans logic)
 Increment iteration_count
 
 **If iteration_count >= 3:**
@@ -847,16 +771,17 @@ Offer options:
 2. Provide guidance (user gives direction, retry)
 3. Abandon (exit, user runs /gsd-plan-phase manually)
 
-Wait for user response.
+Then wait for the user to pick one.
+
+Exact Agent() prompt fields (revision_context, required_reading): `gsd-core/workflows/verify-work/detail/elaboration.md` § 3.
 </step>
+
 
 <step name="present_ready">
 **Present completion and next steps:**
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► FIXES READY ✓
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### GSD ► FIXES READY ✓
 
 **Phase {X}: {Name}** — {N} gap(s) diagnosed, {M} fix plan(s) created
 
@@ -867,7 +792,7 @@ Wait for user response.
 
 Plans verified and ready for execution.
 
-───────────────────────────────────────────────────────────────
+---
 
 ## ▶ Next Up — [${PROJECT_CODE}] ${PROJECT_TITLE}
 
@@ -875,7 +800,7 @@ Plans verified and ready for execution.
 
 `/clear` then `/gsd-execute-phase {phase} --gaps-only`
 
-───────────────────────────────────────────────────────────────
+---
 ```
 </step>
 

@@ -6,15 +6,24 @@ import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPai
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
+import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
+import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
+import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
+import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
+import { PhysicsPaintReferenceGhostLayer } from './PhysicsPaintReferenceGhostLayer';
+import { PhysicsPaintReferenceTransformHandles } from './PhysicsPaintReferenceTransformHandles';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowRotoScriptState } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
+import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
+import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -31,6 +40,56 @@ interface PhysicsPaintCanvasStackViewProps {
   inputDisabledMessage?: string;
   onionOverlay: ComponentChildren;
   onInputIntent?: () => void;
+  /**
+   * Phase 48-05 (D-05): the program monitor config. Present when the Studio
+   * has a launch layer. The monitor is mounted BELOW the engine canvas (the
+   * engine supplies the active track's live pixels; the monitor draws the
+   * composite of everything else during editing). While present, the legacy
+   * playback background + playback image slots are suppressed — the flattened
+   * composite already carries the paper and every participating track, so they
+   * would double-draw.
+   */
+  programMonitor?: PhysicsPaintProgramMonitorProps | null;
+  /**
+   * 48-06 (UAT-B): the active track is hidden (or non-soloed under solo) — the
+   * engine canvas is blank by law, so its surface must step aside
+   * (visibility: hidden, the cached-roto-playback treatment) and let the
+   * program monitor own the visible composite of the remaining tracks.
+   */
+  engineSurfaceHidden?: boolean;
+  /**
+   * 48-06 (UAT-C): the document paper fond metadata (the lowest-order track's
+   * non-transparent paper setting). When present, the stack draws it on a
+   * dedicated fond layer BENEATH the isolated tracks group — the program
+   * monitor reads the fond-less composite, so the active track's CSS blend
+   * (the engine shell inside the group) never meets the paper.
+   */
+  fondBackground?: PhysicPaintRotoBackgroundMetadata | null;
+  /**
+   * 49-03 (D-12): the monitor-only transparency checkerboard. True ONLY when
+   * the effective fond is fully transparent for the current frame (transparent
+   * document fallback AND no clip covering the frame — the gap verdict). The
+   * stack draws the checkerboard on a dedicated layer BENEATH the monitor
+   * content, clipped to canvas bounds. Paint-only: never a document state and
+   * never in the flattened raster, main preview, or export.
+   */
+  showTransparencyCheckerboard?: boolean;
+  /**
+   * 50-04 (S3): the reference ghost monitor-paint layer — a narrow leaf canvas
+   * drawn ON TOP of the composite (onion-ghost family, D-09) and the
+   * fail-closed missing-source publication seam (D-04). Present whenever the
+   * Studio has a launch layer; the ghost is absent during playback by not
+   * drawing (D-14).
+   */
+  referenceGhost?: ComponentProps<typeof PhysicsPaintReferenceGhostLayer> | null;
+  /**
+   * 50-05 (Task 2, S4): the reference transform handles overlay — a sibling of
+   * the ghost layer, ABOVE it (z-index 6). Present whenever the Studio has a
+   * launch layer; the overlay owns pointer events ONLY while the transform is
+   * unlocked (the component renders pointer-events none when locked/playing),
+   * so painting gestures pass through by default (D-13).
+   */
+  referenceTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;
 }
 
 /**
@@ -40,8 +99,9 @@ interface PhysicsPaintCanvasStackViewProps {
  * previous url-driven slot (DOM byte-identical).
  */
 function PhysicsPaintRotoPlaybackImage(props: { tick: Signal<RotoCachedPlaybackTick<RenderedFramePayload> | null> | null | undefined }) {
-  const dataUrl = props.tick?.value?.frame?.dataUrl ?? null;
-  return dataUrl ? <img class="physics-paint-cached-roto-playback" src={dataUrl} alt="" /> : null;
+  const bytes = props.tick?.value?.frame?.bytes ?? null;
+  const src = bytes ? getFrameBlobUrl(bytes) : null;
+  return src ? <img class="physics-paint-cached-roto-playback" src={src} alt="" /> : null;
 }
 
 function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {  const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,7 +109,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
     return subscribeRotoPlaybackBackground({
       context,
@@ -109,8 +169,42 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
 
   return (
-    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
-      <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
+      {/* 48-06 (UAT-C): the paper fond lives on its OWN layer beneath the
+          isolated tracks group — the monitor reads the fond-less composite, so
+          the active track's CSS blend (the engine shell inside the group) never
+          meets the paper. The paper is generated at the PROJECT resolution
+          (cachedRotoPlaybackComposition.width/height — the same size the
+          flattened composite used, the compositor size authority) and
+          CSS-scaled to the display bounds; generating it at the display or
+          working size would change the paper motif scale. */}
+      {canvasBounds && props.programMonitor && props.fondBackground ? (
+        <div class="physics-paint-fond-layer" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
+          <PhysicsPaintRotoPlaybackBackground
+            width={props.cachedRotoPlaybackComposition?.width ?? props.programMonitor.width}
+            height={props.cachedRotoPlaybackComposition?.height ?? props.programMonitor.height}
+            background={props.fondBackground}
+          />
+        </div>
+      ) : null}
+      {/* 49-03 (D-12): the monitor-only transparency checkerboard — a sibling
+          layer BENEATH the monitor content, clipped to canvas bounds, shown
+          ONLY when the effective fond is fully transparent for the current
+          frame (transparent fallback AND no clip covering the frame). The
+          two-gray repeating-conic-gradient treatment is paint-only on this
+          monitor layer — never a document state, never in the flattened
+          raster, main preview, or export. */}
+      {canvasBounds && props.programMonitor && props.showTransparencyCheckerboard ? (
+        <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
+      ) : null}
+      <div class="physics-paint-tracks-group">
+        <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
+        {canvasBounds && props.programMonitor ? (
+          <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
+            <PhysicsPaintProgramMonitor {...props.programMonitor} />
+          </div>
+        ) : null}
+      </div>
       {canvasBounds ? (
         <div
           class="physics-paint-onion-overlay canvas-region"
@@ -118,15 +212,41 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           {!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
-          {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition ? (
+          {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && !props.programMonitor ? (
             <PhysicsPaintRotoPlaybackBackground
               width={props.cachedRotoPlaybackComposition.width}
               height={props.cachedRotoPlaybackComposition.height}
               background={props.cachedRotoPlaybackComposition.background}
             />
           ) : null}
-          <PhysicsPaintRotoPlaybackImage tick={props.cachedRotoPlaybackTick} />
+          {!props.programMonitor ? <PhysicsPaintRotoPlaybackImage tick={props.cachedRotoPlaybackTick} /> : null}
           {!props.cachedRotoPlaybackActive ? props.onionOverlay : null}
+        </div>
+      ) : null}
+      {/* 50-04 (S3): the reference ghost monitor-paint layer — a sibling of the
+          onion overlay (same z-index 5 family, above the composite, beneath
+          selection/tool paint). The ghost draws ON TOP of the composite and is
+          monitor paint only — it never enters the flattened raster, main
+          preview, or export (D-06). */}
+      {canvasBounds && props.referenceGhost ? (
+        <div
+          class="physics-paint-reference-ghost"
+          aria-hidden="true"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />
+        </div>
+      ) : null}
+      {/* 50-05 (Task 2, S4): the reference transform handles overlay — a sibling
+          of the ghost layer, ABOVE it (z-index 6). The overlay owns pointer
+          events ONLY while the transform is unlocked (pointer-events none when
+          locked/playing), so painting gestures pass through by default (D-13). */}
+      {canvasBounds && props.referenceTransformHandles ? (
+        <div
+          class="physics-paint-reference-transform"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <PhysicsPaintReferenceTransformHandles {...props.referenceTransformHandles} />
         </div>
       ) : null}
     </div>
@@ -146,15 +266,26 @@ export interface PhysicsPaintStudioViewProps {
   canvas: PhysicsPaintCanvasStackViewProps;
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
+  /** 50-UAT (modal redesign): the floating Photo Reference dialog — a movable
+   *  dialog opened from the strip camera icon (Play Script dialog pattern). */
+  referenceDialog?: ComponentProps<typeof PhysicsPaintPhotoReferenceDialog> | null;
+  /** AM-3 (52 UAT): the Create Rail script picker — interposed when the strip's
+   *  "+ Rail" flow launches with no Action selected in the library. */
+  scriptPickerDialog?: ComponentProps<typeof PhysicsPaintScriptPickerDialog> | null;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
   };
+  /** 49-04 (Task 2): the scoped full-area asset picker (S2) swap. */
+  backgroundPicker?: ComponentProps<typeof BackgroundAssetPickerView>;
+  /** 50-03 (S2): the reference picker — the same full-area region swap reused
+   *  for the Photo row's Import/Replace control (D-01). */
+  referencePicker?: ComponentProps<typeof BackgroundAssetPickerView>;
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
   return (
     <main class="demo-shell">
       <section
@@ -168,6 +299,15 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
           <MemoizedPhysicsPaintCanvasStack {...canvas} />
+          {/* 49-04 (Task 2): the picker is an overlay INSIDE the canvas region —
+              the engine canvas stays mounted underneath (D-01 lock). */}
+          {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
+          {referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}
+          {/* 52.1 quick B: the apply pill lives INSIDE the canvas region
+              (position:relative, no overflow clip — the canvas-toast
+              pattern). It previously rendered inside the workflow strip, whose
+              overflow-y:hidden clipped it away: the pill never appeared. */}
+          <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
         </section>
 
         <PhysicsPaintRightPanelRegion
@@ -177,6 +317,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         />
 
         <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
+
+        {referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
+
+        {scriptPickerDialog?.open ? <PhysicsPaintScriptPickerDialog {...scriptPickerDialog} /> : null}
 
         <PhysicsPaintWorkflowStrip {...workflow} />
 
@@ -191,5 +335,35 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         ) : null}
       </section>
     </main>
+  );
+}
+
+/**
+ * 52.1 quick B: apply progress pill — floats centered over the canvas
+ * region's bottom edge (just above the workflow strip) for the whole apply:
+ * progressive live paint plus per-brush progress. It owns its applyProgress
+ * subscription so per-completion ticks re-render only this pill, never the
+ * Studio view.
+ */
+function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
+  const applyProgress = rotoScript?.applyProgress.value ?? null;
+  if (!applyProgress) return null;
+  return (
+    <div
+      class="physics-paint-apply-progress"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={applyProgress.total}
+      aria-valuenow={applyProgress.completed}
+      aria-label={`Applying Action — ${applyProgress.completed} of ${applyProgress.total} brushes`}
+    >
+      <span class="physics-paint-apply-progress-track" aria-hidden="true">
+        <span
+          class="physics-paint-apply-progress-fill"
+          style={{ width: `${Math.round((applyProgress.completed / Math.max(1, applyProgress.total)) * 100)}%` }}
+        />
+      </span>
+      <span class="physics-paint-apply-progress-label">Applying {applyProgress.completed}/{applyProgress.total}</span>
+    </div>
   );
 }

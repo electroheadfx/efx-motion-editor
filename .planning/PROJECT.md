@@ -126,9 +126,22 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0 Phase 43 (Validated in Phase 43: Hold Loop Clips + Integrated Loop Rail)
 - ✓ Timeline toolbox + directional Push tool: ToolCase popover relocating Interpolation + Key Spacing (zero behavior change), and a mode-toggle Push tool (anchor resolved from the rail under the pointer, moved set = anchor + everything at/after its start, one rigid atomic transaction with one Undo/Redo, nearest-boundary/capacity clamp, straddle guard, persistent 43.1 gap breaks, full drag preview); native UAT approved — v0.9.0 Phase 43.5 (Validated in Phase 43.5: Timeline Toolbox + Directional Push Tools)
 - ✓ Multi-rail selection + batch operations: explicit session-only rail-set selection (plain/toggle/range/union gestures across Key/Motion/Static rails, canonical ordering, fail-closed reconcile), batch Move Rails (rigid clamped translation), direct no-modal Delete Rails, Key Spacing on set with per-rail fixed anchors, and Solo playback presentation filter — every batch op is one atomic history command with exact pre-op selection restore on Undo/Redo (G-43.6-2 undo/recovery-lease defects closed); native UAT approved — v0.9.0 Phase 43.6 (Validated in Phase 43.6: Multi-Rail Selection and Batch Operations)
+- ✓ New versioned v1.0 EFX Paint document owned by one parent layer ID, with stable internal track IDs, document revision, and active track ID — v1.0.0 Phase 45
+- ✓ Clean-break creation of one fresh default Paint track and one fixed Background track for every new v1.0 EFX Paint document; pre-v1.0 Paint data rejected explicitly — v1.0.0 Phase 45
+- ✓ Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, caches, revision, and dirty state — v1.0.0 Phase 46
+- ✓ Internal multi-track timeline inside EFX Paint Studio: add/rename/duplicate/delete/reorder, active selection, hide/solo, opacity, blend mode — v1.0.0 Phase 47
+- ✓ Deterministic internal compositor resolving all Paint tracks into one flattened parent-layer raster per frame — v1.0.0 Phase 48
+- ✓ Fixed Background track with imported still/sequence Loop Clips, finite/infinite repeat, gaps, and solid/transparent fallback — v1.0.0 Phase 49
+- ✓ Photo/reference track (reference-only / reveal-source / masked-transform-source), excluded from ordinary flattened output — v1.0.0 Phase 50
+- ✓ Read-only main-editor audio preview synchronized to the shared application-frame cursor during internal track playback — v1.0.0 Phase 51 (delivered via quicks 260902-cfa + amendments)
+- ✓ Shared mask compositor and Reveal using photo source plus internal Paint/PlayScript coverage — v1.0.0 Phase 52
+- ✓ Any project containing paint exports its painted frames end-to-end — dense per-frame compositor enumeration (FrameEntry content/paint/gap union), paint-only and mixed projects, both canvas orientations, selected-fx export with fx inFrame > 0 included (CR-01) — v1.0.0 Phase 52.3
 
 ### Active
 
+- [ ] Save/reopen, undo/redo, clean-break legacy rejection, preview/export parity, and native UAT — v1.0.0 Phase 53
+- [ ] Staged export progress (preparation / rendering / encoding) so clicking Export never appears idle for seconds — user request 2026-09-19, routed to a quick
+- [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
@@ -136,19 +149,22 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 12 phases (39-44, incl. inserted 43.1-43.6), 100 plans, 962 commits over 17 days. Audit verdict `passed`: 38/38 requirements satisfied, 12/12 phases verified, integration + E2E flows wired (43→44 signed-artifact boundary not dropped), Nyquist fully compliant. Shipped as a signed/notarized/stapled macOS release published as GitHub **Latest** on 2026-08-21 (ahead of the 2026-08-31 target) with all six REL-01 gates green, the 17-step packaged-app UAT approved, downloaded-artifact verification passed, and all 15 stop conditions recorded not active. See `.planning/MILESTONES.md`, `milestones/v0.9.0-MILESTONE-AUDIT.md`, and `milestones/v0.9.0-ROADMAP.md`.
 
-## Next Milestone: v1.0 (multi-track — in planning)
+## Current Milestone: v1.0.0 EFX Paint Multi-Track Frames and Reveal
 
-**Direction:** expand the EFX Paint workflow beyond the single parent Paint layer toward multi-track timeline work, per the v1.0/v1.1 roadmap (v1.0 multi-track; v1.1 Codex+MMX AI). New requirements land under `### Active` below and are sharpened via `/gsd-new-milestone`.
+**Goal:** Allow one parent Paint layer to contain a complete multi-track frame animation document inside EFX Paint — multiple internal Paint frame tracks composited into one flattened parent-layer result.
 
 **Target features:**
-- Blocking prerequisite: Scripts auto-hydration fix — saved-project scripts and Save Script appear without manual Refresh (no delays/polling hacks)
-- macOS release identity: new icon from `SPECS/efxmotioneditor-icon-2.png` (794×794 alpha source, tracked generated icons stay release authority)
-- Desktop build hygiene: `chunkSizeWarningLimit: 1100` documented budget + safe mixed-import corrections only
-- Read-only audio preview inside EFX Paint synchronized to the Paint cursor, with session-local monitoring toggle
-- PlayScript application controls: progressive vs static/hold modes, application-time color override, Hold Loop controls (cycle × repeat 1..∞)
-- Deterministic static/hold rendering with linked Loop Clips (no duplicated source assets, next-clip interruption, filmstrip timeline visualization)
+- New versioned EFX Paint document (clean format break; pre-v1.0 Paint data rejected explicitly, no migration/compat shim)
+- Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, and caches
+- Internal multi-track timeline with filmstrip capsules and controls (add/rename/duplicate/delete/reorder, hide/solo, opacity, blend)
+- Deterministic internal compositor → one flattened parent raster per frame
+- Fixed Background track with imported still/sequence Loop Clips + solid/transparent fallback
+- Photo/reference track (reference-only / reveal-source / masked-transform-source)
+- Read-only main-editor audio preview during internal track playback
+- Shared mask compositor and Reveal via Paint/PlayScript coverage
+- Integrated native UAT + signed release
 
-**Source spec:** `SPECS/milestone-v0.9.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio; EFX Paint edits one parent Paint layer)
+**Source spec:** `SPECS/milestone-v1.0.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio and stays unchanged; multi-track means internal Paint frame tracks inside one opened EFX Paint document; all internal tracks share the parent application-frame axis and never change main-editor sequence duration)
 
 ## Previous Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
 
@@ -279,6 +295,9 @@ Known technical debt:
 | Phase 43.5 Timeline Toolbox + Push as one rigid atomic multi-object translation | Push is the exclusive multi-object movement owner; Group drag stays local | ✓ Good — persistent 43.1 gap breaks; one Undo/Redo; native UAT approved |
 | Phase 43.6 rail-set selection as a session-only explicit selection scope | Cross-type batch ops need one shared selection with fail-closed reconcile | ✓ Good — pure reducer, batch Move/Delete/Key Spacing/Solo, exact selection restore on Undo |
 | Phase 44 five-surface version single-source (REL-01) + credentialed signed release | Version must never drift across surfaces; publication is one-way and auditable | ✓ Good — signed/notarized/stapled, published as GitHub Latest, 15-item stop-condition checklist |
+| Phase 52.3 FrameEntry discriminated union (content/paint/gap) with dense enumeration gated on `entries.length === 0` | The paint-only enumeration branch was never designed (quick 260919-azh verdict NEVER-WIRED); a fail-closed union keeps D-08/D-10 filter semantics explicit | ✓ Good — parked Cases C/D green, refusal unreachable for paint content, 7/7 native UAT rows across formats/resolutions/scales |
+| Phase 52.3 one shared `entry.globalFrame` predicate across enumeration, render gating, and export preload | Positional-vs-global conflation produced all-transparent selected-fx exports (RESEARCH Pitfall 1) and an empty preload window (review CR-01) at fx inFrame > 0 | ✓ Good — CR-01 closed RED-first (50ecd5e4 → 3e84c120); preload, render gate, and enumeration provably share one predicate |
+| Phase 52.3 playback activation of the owning fx sequence when the playhead enters paint frames is deliberate (D-08-consistent) | Dense enumeration makes playback cross fx-owned frames; deactivating would fight the selected-fx mental model | ✓ Good — pinned in playbackEngine tests; UAT Row 7 confirmed as callout, not a bug |
 
 ## Evolution
 
@@ -298,4 +317,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-21 after v0.9.0 milestone close — v0.9.0 shipped (signed/notarized/stapled macOS artifact published as GitHub Latest ahead of the 2026-08-31 target; 38/38 requirements, 12/12 phases, six REL-01 gates green, 17-step packaged-app UAT approved, downloaded-artifact verification + 15-item stop-condition checklist zero-active). Milestone archived to `milestones/v0.9.0-ROADMAP.md` / `v0.9.0-REQUIREMENTS.md`. Next milestone: v1.0 multi-track (via `/gsd-new-milestone`).*
+*Last updated: 2026-09-19 after Phase 52.3 — Paint content export enumeration complete (14/14 must-haves verified, 7/7 native UAT rows, CR-01 review fix landed). Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*

@@ -2,7 +2,7 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phases 34-38.1) proved `packages/efx-physic-paint` as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline, multi-select group operations, Roto Script Play fusion, and render-path performance. v0.9.0 (Phases 39-44) restored automatic Scripts hydration, shipped a legible macOS identity with explicit desktop build hygiene, added read-only frame-synchronized audio preview inside EFX Paint, and delivered PlayScript static/hold application modes with color override, linked Hold Loop Clips authored through an EFX-local Integrated Loop Rail and contextual Scripts inspector, Intentional Gap Insert with local interpolation breaks, Motion/Static Group stabilization and Action lifecycle, Group and Key Rail drag, the Timeline Toolbox with directional Push tools, multi-rail selection with batch operations, and a signed/notarized release published as GitHub Latest.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phases 34-38.1) proved `packages/efx-physic-paint` as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline, multi-select group operations, Roto Script Play fusion, and render-path performance. v0.9.0 (Phases 39-44) restored automatic Scripts hydration, shipped a legible macOS identity with explicit desktop build hygiene, added read-only frame-synchronized audio preview inside EFX Paint, and delivered PlayScript static/hold application modes with color override, linked Hold Loop Clips authored through an EFX-local Integrated Loop Rail and contextual Scripts inspector, Intentional Gap Insert with local interpolation breaks, Motion/Static Group stabilization and Action lifecycle, Group and Key Rail drag, the Timeline Toolbox with directional Push tools, multi-rail selection with batch operations, and a signed/notarized release published as GitHub Latest. v1.0.0 (Phases 45-53) turns one parent Paint layer into a complete multi-track frame animation document: a versioned EFX Paint document with stable internal track IDs, track-local Paint/Roto/PlayScript state and caches, an internal multi-track timeline with filmstrip capsules, a deterministic internal compositor producing one flattened parent raster per frame, a fixed Background track with imported Loop Clips, a photo/reference track, read-only audio preview, a shared mask compositor with Reveal, and a clean-break v1.0 format with explicit pre-v1.0 rejection.
 
 ## Milestones
 
@@ -15,6 +15,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.7.0 Monorepo & Paint Enhancements** — Phases 26-33 (shipped 2026-04-05)
 - ✅ **v0.8.0 Standalone Physics Paint** — Phases 34-38.1 (shipped 2026-08-01)
 - ✅ **v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity** — Phases 39-44 (shipped 2026-08-21)
+- 🚧 **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (in progress)
 
 ## Phases
 
@@ -58,7 +59,7 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 <summary>v0.2.0 Pipeline Complete (Phases 8-14) — SHIPPED 2019-03-21</summary>
 
 - [x] Phase 8: UI Theme System (3/3 plans) — completed 2019-03-12
-- [x] Phase 9: Canvas Zoom (4/4 plans) — completed 2019-03-12
+- [x] Phase 9: Canvas Zoom (4/4 plans) — completed 2019-03-13
 - [x] Phase 10: FX Blur Effect (4/4 plans) — completed 2019-03-13
 - [x] Phase 11: Live Canvas Transform (4/4 plans) — completed 2019-03-14
 - [x] Phase 12: Layer Keyframe Animation (5/5 plans) — completed 2019-03-15
@@ -173,6 +174,445 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 
 </details>
 
+### 🚧 v1.0.0 EFX Paint Multi-Track Frames and Reveal (In Progress)
+
+**Milestone Goal:** Allow one parent Paint layer to contain a complete multi-track frame animation document inside EFX Paint — multiple internal Paint frame tracks composited into one flattened parent-layer result. Clean format break; pre-v1.0 Paint data rejected explicitly. Source spec: `SPECS/milestone-v1.0.0-plan.md` (locked).
+
+- [x] **Phase 45: New EFX Paint Document and Clean Cutover** - Versioned v1.0 document owned by one parent layer, clean-break creation, explicit pre-v1.0 rejection (completed 2026-08-23)
+- [x] **Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches** - Track-local addressing, revisions, dirty state, and async authority (completed 2026-08-27; UAT deferred items re-run in Phase 47 UAT)
+- [x] **Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls** - Multi-row Paint timeline with track CRUD, active selection, hide/solo, opacity/blend (completed 2026-08-27; filmstrip capsule layer removed by user demand, rail status dot close-out)
+- [x] **Phase 48: Internal Compositor and Flattened Parent Result** - One deterministic per-frame flattened parent raster (completed 2026-08-30; Background-row native UAT deferred to Phase 49 — no live authoring UI yet, compositor-side covered by the green matrix suite)
+- [x] **Phase 49: Fixed Background Track and Imported Loop Clips** - Background clips with finite/infinite repeat, gaps, and fallback (completed 2026-09-01; phase-closing native UAT approved)
+- [x] **Phase 50: Photo/Reference Track** - Reference-only / reveal-source / masked-transform-source modes (completed 2026-09-01; phase-closing native UAT approved — dialog modal redesign + round-2/3 fixes validated)
+- [x] **Phase 51: Read-only Audio Preview** - Synchronized main-editor audio monitoring across internal tracks (completed 2026-09-02 via quicks 260902-cfa + amendments)
+- [x] **Phase 52: Shared Mask Compositor and Reveal** - Photo source revealed through Paint/PlayScript coverage (completed 2026-09-04)
+- [ ] **Phase 53: Integrated v1.0.0 Acceptance** - Automated gates, native UAT, signed/notarized release
+
+## Phase Details
+
+### Phase 45: New EFX Paint Document and Clean Cutover
+
+**Goal**: Introduce the new parent-owned EFX Paint document as the only supported Paint runtime and persistence format, with explicit pre-v1.0 rejection.
+**Depends on**: Nothing (first phase of v1.0.0)
+**Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
+**Success Criteria** (what must be TRUE):
+
+  1. Creating a new v1.0 parent Paint layer produces exactly one EFX Paint document with one default Paint track and one fixed Background track with the configured fallback.
+  2. Opening a pre-v1.0 Paint project fails explicitly as unsupported with no partial mutation or fallback rendering.
+  3. No legacy one-track schema reader, converter, renderer, cache path, or compatibility branch remains reachable.
+  4. Save/reopen preserves new document, track, Loop Clip, source asset, and cache identity.
+  5. Main-editor sequence timing and outer layer composition remain unchanged.
+
+**Plans**: 8/8 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 45-01-PLAN.md — v1.0 document model: types, factory, fail-closed parsers, deterministic revisions (TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 45-02-PLAN.md — Rust+TS serde co-change (efx_paint_documents), v1.0 cache dir + native cache service re-point
+- [x] 45-03-PLAN.md — Clean-break rejection gate predicate + fixture truth table (TDD)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 45-04-PLAN.md — efxPaintStore + efxPaintPersistence: staging/commit save, runtime↔default-track projection, path safety
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 45-05-PLAN.md — Open/save funnel cutover: gate + blocking dialog, save-path switch, version 16, AddFxMenu registration
+- [x] 45-06-PLAN.md — v1.0 session-file format, bridge launch-context swap, standalone engine re-wire (D-03)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 45-07-PLAN.md — Legacy hard deletion + DOC-04 grep contract audit + full gates
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 45-08-PLAN.md — D-10 four-part native UAT (blocking checkpoint)
+
+### Phase 46: Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches
+
+**Goal**: Move editable and generated state from parent-layer/frame addressing to parent-document/internal-track/frame addressing.
+**Depends on**: Phase 45
+**Requirements**: TRK-01, TRK-02, TRK-03, TRK-04, TRK-05, TRK-06, TRK-07, TRK-08
+**Success Criteria** (what must be TRUE):
+
+  1. Editing one internal track never changes another track's real keys or caches.
+  2. Stale async PlayScript/Reveal work cannot commit to another selected track (fail-closed on parent/document/track revision mismatch).
+  3. Track deletion cannot orphan accepted assets silently (acknowledged/fail-closed deletion).
+  4. Copy/cut/paste/duplicate/clear/undo/redo operations target the exact internal track.
+  5. Editing one Hold source frame updates every linked occurrence without duplicating assets.
+
+**Plans**: 6/6 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 46-01-PLAN.md — Track-addressed runtime, per-track revisions, track-scoped leases, track lifecycle primitives (TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 46-02-PLAN.md — Multi-track serialize/hydrate projection, trackId cache paths, per-track save/load carriers (TDD)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 46-03-PLAN.md — Track-scoped copy/cut/paste/duplicate/clear, cross-track move primitive, track-tagged undo/redo (TDD)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 46-04-PLAN.md
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 46-05-PLAN.md
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 46-06-PLAN.md
+
+### Phase 47: Internal Multi-track Timeline, Filmstrip Capsules, and Controls
+
+**Goal**: Provide a vertically scrollable multi-row Paint timeline inside EFX Paint Studio with track CRUD, active selection, hide/solo, opacity/blend, and filmstrip capsules.
+**Depends on**: Phase 46
+**Requirements**: TML-01, TML-02, TML-03, TML-04, TML-05, TML-06, TML-07, TML-08
+**Success Criteria** (what must be TRUE):
+
+  1. User can add, rename, duplicate, delete, and reorder internal Paint tracks in a vertically scrollable multi-row timeline; track CRUD survives save/reopen.
+  2. The active Paint track is always visually unambiguous; Paint/Roto/PlayScript/Cut/Copy/Paste/drag route to the active track.
+  3. User can hide/solo Paint tracks and set internal track opacity and blend mode; hide/solo is immediately reflected in the Studio composite.
+  4. Hold and Background Loop Clips show as adaptive filmstrip capsules (source cycle, linked repetition band, ×N/∞, requested/effective duration, partial-cycle interruption).
+  5. Reorder changes compositor order but not track identity; timeline interactions never mutate another row accidentally.
+
+**Plans**: 5/5 plans executed — COMPLETED 2026-08-27 (UAT passed, 18/18 threats verified, 8/8 requirements Nyquist-validated)
+
+Plans:
+**Wave 1**
+
+- [x] 47-01-PLAN.md — tracer: multi-row strip slice + track CRUD store ops + hide/solo/opacity/blend setters + preview filter
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 47-02-PLAN.md — pinned header column, track CRUD interactions, acknowledge-and-delete dialog, vertical scroll with ensure-active-row-visible
+- [x] 47-03-PLAN.md — right-panel track section (opacity/blend) + guarded track CRUD keyboard shortcuts
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 47-04-PLAN.md — filmstrip capsule (source-cycle cells, ×N/∞ badge, partial-cycle cut, high-zoom expansion) + Bg-row clip display
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 47-05-PLAN.md — cross-track drag gesture with destination highlight, moveTrackItems commit, rejection publication
+
+**UI hint**: yes
+
+**Close-out notes (2026-08-27):** The filmstrip capsule rendering layer was REMOVED by user demand in UAT Round 6 (commit 346d47bc) — the rails return to the locked Phase 43 surface and loop facts live in the rail tooltip only. The rail status dot became a 20x4px rectangle over the 4px line on ALL tracks (synchronized #A6D334 / modified #FBBF24 / detached #BBC0C8 / unavailable #FF2E56) with a tooltip status swatch; the lifecycle reads the clip's own scriptId so the active lane and non-active rows agree. The compositor-death watchdog's reload is DISABLED by request (commit ce1008af) — detection stays live as a diagnostic warn.
+
+### Phase 48: Internal Compositor and Flattened Parent Result
+
+**Goal**: Resolve all internal Paint tracks into one deterministic per-frame raster consumed by the unchanged main-editor parent-layer compositor.
+**Depends on**: Phase 47
+**Requirements**: CMP-01, CMP-02, CMP-03, CMP-04, CMP-05, CMP-06
+**Success Criteria** (what must be TRUE):
+
+  1. All internal Paint tracks resolve through one shared composition path into one deterministic flattened parent raster per frame, identical in Studio preview, main preview, and export.
+  2. The hide/solo truth table is applied (no solo → all visible; solo → visible+soloed only; hide wins over solo).
+  3. Internal track opacity and blend mode are applied once inside EFX Paint; parent opacity/blend is applied once by the main editor (never double-applied).
+  4. Track cache key includes track revision and composition dependencies; parent cache invalidates when any participating track/clip/source/fallback changes.
+  5. The pixel acceptance matrix passes (opaque/semi-transparent/multiply/screen/overlay/add, hidden/soloed, empty upper frame, Background loops, gaps, parent opacity/blend).
+
+**Plans**: 6/6 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 48-01-PLAN.md — tracer: pure compositor core (hide/solo truth table, opacity-before-blend pass, straight-alpha result, missing report) + derived flattened cache key/memo (TDD)
+- [x] 48-02-PLAN.md — Background FrameLoopClip → Loop Clip resolver adapter + per-frame content/gap/missing resolution (TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 48-03-PLAN.md — store getFlattenedFrame delivery + previewRenderer flattened seam + export preflight generalized to participating tracks (TDD)
+- [x] 48-04-PLAN.md — Background step in the composite pass + per-track raster cache + CMP-04 invalidation matrix (TDD)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 48-05-PLAN.md — Studio program monitor (composite base + playback) + onion ghosts over composite + missing-source status capsule
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 48-06-PLAN.md — pixel acceptance matrix contract suite + blocking native UAT (parity, missing-source surface, playback smoothness)
+
+### Phase 49: Fixed Background Track and Imported Loop Clips
+
+**Goal**: Add one fixed Background row beneath all internal Paint tracks with imported still/sequence Loop Clips, finite/infinite repeat, gaps, and fallback.
+**Depends on**: Phase 48
+**Requirements**: BKG-01, BKG-02, BKG-03, BKG-04, BKG-05, BKG-06, BKG-07, BKG-08, BKG-09
+**Success Criteria** (what must be TRUE):
+
+  1. User can import one still image or an ordered image sequence as a Background clip on the single fixed Background track beneath all Paint tracks.
+  2. A five-image cycle repeated three times resolves 15 frames while storing only five linked source images; a ten-image cycle repeated twice starting at 15 resolves frames 15-34 ending at exclusive frame 35.
+  3. Finite and infinite loops stop cleanly at the next clip or parent end; a next clip can shorten a loop to a partial cycle without overlap or asset duplication, and moving/removing it recalculates the previous loop deterministically.
+  4. Gaps reveal the document fallback (solid color or transparency) identically in Studio, flattened parent output, main preview, and export.
+  5. Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen.
+
+**Plans**: 6/6 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 49-01-PLAN.md — BackgroundFallback union extension: paper mode + parser + canonical encoder in lockstep, round-trip/rejection contract (D-11 model, TDD)
+- [x] 49-02-PLAN.md — clip CRUD ops + natural sort util (D-02) + undo-by-reference + source-byte hydration (BKG-03/04/05/07/08/09, TDD)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 49-03-PLAN.md — fond re-wire to document fallback, cache-key fallback term, selector wiring (D-11), monitor transparency checkerboard (D-12)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 49-04-PLAN.md — cross-window image-library bridge pair, capability extension, scoped asset picker (D-01) + native capability checkpoint
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 49-05-PLAN.md — Bg-row Import control + Confirm-at-playhead flow with locked collision copy (D-03/D-04) + row-local rail drag (D-05)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 49-06-PLAN.md — right-panel Background Clip properties (D-06/D-07/D-08) + blocking native UAT (BKG-01..BKG-09)
+
+### Phase 50: Photo/Reference Track
+
+**Goal**: Add one durable source track used for painting reference, Reveal source, and accepted masked-transform workflows without turning it into a main-editor content track.
+**Depends on**: Phase 49
+**Requirements**: REF-01, REF-02, REF-03, REF-04, REF-05
+**Success Criteria** (what must be TRUE):
+
+  1. User can add one photo/reference track with stable source identity and revision.
+  2. User can switch the photo/reference track between reference-only, reveal-source, and masked-transform-source modes.
+  3. Toggling reference-only visibility never alters ordinary flattened Paint output.
+  4. Missing source is visible and recoverable; source revision invalidates dependent Reveal/transformation results.
+  5. Save/reopen preserves source identity and mode.
+
+**Plans**: 6/6 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 50-01-PLAN.md — PhotoReferenceTrack model + fail-closed parser + canonical revision encoder (REF-01, REF-05)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 50-02-PLAN.md — store CRUD + source registry + frame-aligned resolution + D-06 exclusion + serialize/hydrate (REF-02, REF-03, REF-04)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 50-03-PLAN.md — Photo row + reference picker import with natural sort and replace (REF-01, REF-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 50-04-PLAN.md — ghost draw + missing-source capsule (REF-03, REF-04)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 50-05-PLAN.md — right-panel section + reference transform (REF-02, REF-03)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 50-06-PLAN.md — persistence round-trip + native UAT (REF-05)
+
+### Phase 51: Read-only Audio Preview
+
+**Goal**: Preserve synchronized listening to main-editor audio while playing the EFX Paint multi-track frame document. Delivered via quicks 260902-cfa + 260902-cfa-amendments instead of a full phase cycle: audio playback and loop-sync verified live pre-phase; seek wiring, D-01 Play-from-cursor, and audible scrub delivered by the quicks (regression tests pin the Phase 41 truth table); remaining criteria (multi-track sync, toggle non-mutation, release-on-close) verified by native UAT. See 51-CONTEXT.md.
+**Depends on**: Phase 47 (shared application-frame cursor)
+**Requirements**: AUD-01, AUD-02, AUD-03, AUD-04
+**Success Criteria** (what must be TRUE):
+
+  1. Main-editor audio remains authoritative and read-only during EFX Paint playback.
+  2. All internal Paint tracks share one application-frame playback cursor; audio monitoring follows it.
+  3. Local monitoring On/Off does not mutate source audio; closing Studio releases audio resources.
+  4. Multi-track Paint playback remains synchronized with main-editor audio across seek, loop, pause, resume, and stop.
+
+**Plans**: Delivered via quicks 260902-cfa + 260902-cfa-amendments (no full phase cycle)
+
+### Phase 52: Shared Mask Compositor and Reveal
+
+**Goal**: Reveal the photo/reference source through animated coverage from one or more internal Paint tracks.
+**Depends on**: Phase 50
+**Requirements**: RVL-01, RVL-02, RVL-03, RVL-04, RVL-05, RVL-06
+**Success Criteria** (what must be TRUE):
+
+  1. One offscreen source-plus-mask compositor shared by Studio and flattened output reveals the photo source through internal Paint/PlayScript coverage.
+  2. Empty mask reveals nothing; full mask reveals the entire source; partial alpha produces soft edges; eraser removes coverage.
+  3. Progressive PlayScript reveals progressively; static/hold PlayScript preserves the completed reveal.
+  4. Reveal result is written to or represented by an internal Paint/result track and included in flattened output; photo reference visibility alone never leaks into output.
+  5. Undo/redo by reference (not raster-byte snapshots); save/reopen and export preserve the result.
+
+**Plans**: 5/5 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 52-01-PLAN.md — End-to-end reveal bake (tracer): model + bake + store + flattened + undo
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 52-02-PLAN.md — D-15 PhotoReferenceMode removal (clean break) + parser round-trip
+- [x] 52-03-PLAN.md — Reveal rail surface: color, status dot, tooltip freshness, Replay control
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 52-04-PLAN.md — "Reveal with script…" modal entry
+- [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
+
+### Phase 52.3: Paint content export — per-frame compositor enumeration (INSERTED)
+
+**Goal:** Any project containing paint exports its painted frames — PNG sequence, paint-only and mixed projects alike, both canvas orientations. Exporting a paint-only project renders every frame of the export range through the compositor; the "No frames to export (timeline is empty)" refusal becomes unreachable for paint content. (User-driven insert; every step gated: discuss → context → plan → execute.)
+**Requirements**: TBD (de-facto contracts: AC-C/AC-D/AC-E/AC-CLEAR/AC-MIX/AC-UAT + D-01..D-10 per 52.3-CONTEXT.md)
+**Depends on:** Phase 52
+**Plans:** 3/3 plans complete
+
+Plans:
+
+**Wave 1**
+
+- [x] 52.3-01-PLAN.md — Tracer: FrameEntry discriminated union (D-01) + paint enumeration branch (D-04/D-05) + D-06 canvas clear; parked Cases C/D green, Case E re-pinned (D-08/D-10)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 52.3-02-PLAN.md — Overlay leg gates on entry.globalFrame (Pitfall 1) + D-09 info-line count + playback activation pin (Pitfall 3)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 52.3-03-PLAN.md — Full automated gates (suite/tsc/cargo/chunk 1340) + blocking native UAT (AC-UAT: §7-pair 31 keys, paint-only × 2 orientations, mixed, visual match)
+
+**Evidence / Why** (fully diagnosed — quick 260919-azh, 2026-09-19):
+
+- `frameMap.ts:16-47` materializes FrameEntry only from `kind === 'content'` keyPhotos; the tail pad (`:42-45`) can only replicate an existing content entry. The paint-only enumeration branch was never DESIGNED — missing, not broken (all runtime probes green: `getRotoRealKeyRecords`, `getPhysicPaintRotoDisplayEndFrame`, `activeTrackId`).
+- `renderGlobalFrame` has NO top-level canvas clear — only the content branch passes `clearCanvas=true`; paint-only frames would composite onto uncleared pixels.
+- Honest history: paint-only export was an explicit non-goal in August (260813-ibo); the 52.1 runtime and 52.2 persist modernizations moved the frame carrier without ever re-auditing the export-render connection.
+- Blocking: paint export is the v1.0.0 milestone's core promise — Phase 53 acceptance cannot pass without it.
+- RED matrix + 2 parked `it.todo` contracts already committed (`app/src/lib/exportEngine.paintEnumeration.test.ts`) — they are this phase's acceptance tests.
+
+**Discuss agenda** — the four design questions (verbatim from 260919-azh-SUMMARY):
+
+1. Paint-only FrameEntry ownership/transparency — what sequenceId/keyPhotoId/imageId does a paint-carrying FrameEntry own, and what does the content branch render (or skip) for it?
+2. N derivation from fx span vs key extent — is the paint-only export length the fx sequence span (inFrame..outFrame), the roto key extent (getPhysicPaintRotoDisplayEndFrame), or their max, and who owns the clamp?
+3. Canvas clear lifecycle on no-content frames — where does the export canvas get cleared when a frame has no content entry?
+4. selectedSequenceOnly semantics when the active sequence is an fx sequence — filter by fx id (today: always empty → hard error, user-reachable) or bypass/redesign the filter for fx actives?
+
+**Scope:**
+
+- IN: designed answers to Q1–Q4; per-frame compositor enumeration for paint content in the export path; the canvas-clear fix; the parked RED contracts turned green; the native UAT below.
+- OUT: resolution-policy changes — the format-free architecture from 260918-ovi stands as shipped (1920 long-edge clamp included); raising the clamp for larger-than-HD experimentation is a separate measured decision, kept for v1.2.0. Also out: fx-sequence work beyond Q4, new export pipelines (ProRes/H.264), platform safe-zone overlays.
+
+**Acceptance:**
+
+- The 2 parked `it.todo` contracts and the RED matrix go green.
+- A paint-only project exports exactly the Q2-decided range of frames; a mixed project (clip + paint) composites both sources; vertical and horizontal projects both export; no-content frames carry clean pixels (Q3 regression pin — no uncleared-canvas ghosts).
+- Native UAT rows: the §7-pair (31 keys) exports its full PNG range; a fresh paint-only project in EACH orientation exports; a mixed project exports; exported frames visually match the on-canvas composite.
+- Gates: suite green (vitest run, never watch), tsc clean, cargo clean, chunk budget holds.
+
+### Phase 52.2: Project package format — references only (INSERTED)
+
+**Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
+**Requirements**: TBD (D-01..D-26 locked decisions)
+**Depends on:** Phase 52
+**Plans:** 16/16 plans executed
+
+Plans:
+
+**Wave 1** *(independent — native media IPC, package contract, UI sweeps)*
+
+- [x] 52.2-01-PLAN.md — Tracer: prefix-locked Rust frame-media read/write commands + TS IPC taxonomy
+- [x] 52.2-02-PLAN.md — Package layout contract (manifest, layer paths, machine-cache paths, media references)
+- [x] 52.2-03-PLAN.md — `− [field] +` numeric steppers swept across main editor and Studio
+- [x] 52.2-04-PLAN.md — Solo play starts at content start and every loop wrap returns there
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [x] 52.2-05-PLAN.md — Multi-file save transaction + machine-local cache relocation
+- [x] 52.2-06-PLAN.md — Roto real-key records become media references (persist + hydrate)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [x] 52.2-07-PLAN.md — Package save: per-file change tokens, media-then-manifest ordering
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [x] 52.2-08-PLAN.md — Pre-52.2 refusal gate + clean break (no legacy carrier field)
+- [x] 52.2-10-PLAN.md — Bridge retargeted to references + digest-keyed byte channel
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [x] 52.2-09-PLAN.md — Read-back leg: digest-verified lazy media decode on reopen
+- [x] 52.2-11-PLAN.md — macOS document-package treatment (`Info.plist`, open handling, dialogs)
+- [x] 52.2-12-PLAN.md — Async conventions doc (Gate 2) + gated render counters
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [x] 52.2-13-PLAN.md — Pilot preconditions: re-verify + pin libraries, re-measure the chunk budget
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [x] 52.2-14-PLAN.md — Async pilot: stroke-finalization machine + bounded-turn finalization queue
+
+**Wave 8** *(blocked on Wave 7)*
+
+- [x] 52.2-15-PLAN.md — Flush pipeline behind the pilot boundary + Studio wiring and retry routing
+
+**Wave 9** *(blocked on Wave 8)*
+
+- [x] 52.2-16-PLAN.md — Bundled native UAT (Gates 4/5) + D-25 re-measurement record, pilot verdict + skill decision
+
+### Phase 52.1: Modern frame runtime + native HD paint (INSERTED)
+
+**Goal:** Replace the base64-dataUrl frame runtime with a bytes/ImageBitmap runtime, move PNG→WebP-lossless encode/decode into Rust, lazy-load sidecars behind a byte-budgeted LRU, and raise the working-resolution cap 1000→1920 — so HD projects paint at native resolution without main-thread jank or heap blowup.
+**Requirements**: TBD (D-01..D-19 locked decisions)
+**Depends on:** Phase 52
+**Plans:** 7/7 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 52.1-01-PLAN.md — Dependency bumps (Tauri 2.11.5 / Preact 10.29.8) + D-04 gates
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 52.1-02-PLAN.md — Tracer: Rust FrameCodec trait + WebPLosslessCodec + encode/decode commands + JS byte bridge
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 52.1-03-PLAN.md — Runtime frame identity retarget (bytes field, WebP probe, registries re-keyed, raw-byte apply path)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 52.1-04-PLAN.md — Byte-budgeted LRU + pinning + ImageBitmap handle + absorb decode-once caches
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 52.1-05-PLAN.md — Main-editor preview/export readers + compositor drawImage(bitmap)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 52.1-06-PLAN.md — Cap raise 1000→1920 + ~1.9x physics/brush rescale
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 52.1-07-PLAN.md — Clean-break contract + full gates + native roto UAT
+
+### Phase 53: Integrated v1.0.0 Acceptance
+
+**Goal**: The enforcement backstop for all stop conditions — automated gates, native UAT, and signed/notarized release.
+**Depends on**: Phase 52.1
+**Requirements**: ACC-01, ACC-02, ACC-03
+**Success Criteria** (what must be TRUE):
+
+  1. All automated gates pass (vitest, typecheck, build, cargo test, release script preflight).
+  2. Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity).
+  3. Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication.
+
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -186,3 +626,14 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
+| 45. New EFX Paint Document and Clean Cutover | v1.0.0 | 8/8 | Complete    | 2026-08-23 |
+| 46. Track-local Paint/Roto/PlayScript State, Loop Clips, and Caches | v1.0.0 | 6/6 | Complete    | 2026-08-27 |
+| 47. Internal Multi-track Timeline, Filmstrip Capsules, and Controls | v1.0.0 | 5/5 | Complete    | 2026-08-27 |
+| 48. Internal Compositor and Flattened Parent Result | v1.0.0 | 6/6 | Complete | 2026-08-30 |
+| 49. Fixed Background Track and Imported Loop Clips | v1.0.0 | 6/6 | Complete    | 2026-09-01 |
+| 50. Photo/Reference Track | v1.0.0 | 6/6 | Complete | 2026-09-01 |
+| 51. Read-only Audio Preview | v1.0.0 | 0/TBD | Complete | 2026-09-02 |
+| 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
+| 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
+| 52.2. Project package format — references only | v1.0.0 | 16/16 | Complete | 2026-09-18 |
+| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |

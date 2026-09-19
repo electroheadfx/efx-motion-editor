@@ -337,12 +337,17 @@ function createNativeReferencedActionDeletionPorts(
   });
   let transactionGeneration = 0;
   const encodeLease = (lease: PhysicPaintRotoPhysicalOperationLeaseToken) =>
-    `${lease.projectContextId}:${lease.layerId}:${lease.generation}:${lease.owner}`;
+    `${lease.projectContextId}:${lease.layerId}:${lease.trackId}:${lease.generation}:${lease.owner}`;
   const deletionPorts: ReferencedActionDeletionPorts = {
-    getPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
+    getPhysicalDocument: (layerId) => {
+      // 46-01: read the ACTIVE track's physical document.
+      const trackId = getPorts().getLaunchContext()?.document?.activeTrackId ?? '';
+      return physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
+    },
     getAuthority: () => getPorts().getLaunchContext()?.project?.scriptLibraryAuthority ?? null,
     acquireLease: (projectContextId, layerId) => {
-      const lease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId);
+      const trackId = getPorts().getLaunchContext()?.document?.activeTrackId ?? '';
+      const lease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId, trackId);
       if (!lease) return null;
       const encoded = encodeLease(lease);
       leases.set(encoded, lease);
@@ -427,12 +432,14 @@ function createNativeReferencedActionDeletionPorts(
       }
       const leaseParts = discovered.leaseToken.split(':');
       const generation = Number(leaseParts[leaseParts.length - 2]);
-      if (!Number.isSafeInteger(generation) || generation < 1) {
+      const trackId = leaseParts[leaseParts.length - 3] ?? '';
+      if (!Number.isSafeInteger(generation) || generation < 1 || !trackId) {
         return { ok: false, error: 'Recovery lease identity is malformed.' };
       }
       const recoveryLease = physicPaintStore.acquireRotoPhysicalRecoveryLease({
         projectContextId: discovered.authority.projectContextId,
         layerId: discovered.authority.layerId,
+        trackId,
         generation,
       });
       if (!recoveryLease) return { ok: false, error: 'Recovery lease is unavailable.' };
@@ -448,7 +455,7 @@ function createNativeReferencedActionDeletionPorts(
       if (recovered.state !== 'recovery-required') {
         return { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Committed Action recovery failed.' };
       }
-      const current = physicPaintStore.getRotoPhysicalDocument(discovered.authority.layerId);
+      const current = physicPaintStore.getRotoPhysicalDocument(discovered.authority.layerId, getPorts().getLaunchContext()?.document?.activeTrackId ?? '');
       if (!current) {
         return { ok: false, error: 'Recovery physical authority is unavailable.' };
       }

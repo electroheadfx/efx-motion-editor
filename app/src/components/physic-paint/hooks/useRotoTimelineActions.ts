@@ -1365,6 +1365,19 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canDuplicateRailSet: ReadonlySignal<boolean>;
   /** Reactive rail-set Duplicate disabled reason, or null when eligible. */
   readonly duplicateRailSetDisabledReason: ReadonlySignal<string | null>;
+  /**
+   * Concise status/LOG publisher (47-02 Task 2): track rename rejections and
+   * delete intents route to the capsule through the same channel the
+   * coordinator's resolver failures use (`RotoTimelineActionsInput.publishStatus`).
+   */
+  readonly publishStatus?: (message: string | null) => void;
+  /**
+   * Status-capsule tone port (47-05 Task 2, D-17): cross-track drag rejections
+   * flip the capsule's red warning triangle through the same setter the
+   * coordinator's resolver failures use — identical to the Phase 46 paste
+   * rejection UX.
+   */
+  readonly setApplyStatus?: (status: 'idle' | 'applying' | 'success' | 'error') => void;
 }
 
 export interface RotoTimelineActionsInput {
@@ -1413,7 +1426,7 @@ export interface RotoTimelineActionsInput {
   /** Complete stable-key-owned incoming interpolation break collection. */
   getIncomingInterpolationBreakKeyIds?: () => readonly string[];
   /** Existing transparent blank-frame builder shared with + Key. */
-  buildBlankRotoFrame?: (appFrame: number) => PhysicPaintRotoCacheFrame;
+  buildBlankRotoFrame?: (appFrame: number) => Promise<PhysicPaintRotoCacheFrame>;
   /** Generic acknowledged coordinator execute seam (Plan 36.14-04). */
   executePhysicalEdit?: (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => Promise<boolean>;
   /** Coordinator pending operation id Signal (Plan 36.14-04). */
@@ -1444,6 +1457,13 @@ export interface RotoTimelineActionsInput {
   }>) => void;
   /** Concise status/LOG publisher for resolver failures. */
   publishStatus?: (message: string | null) => void;
+  /**
+   * Mark the current apply as an error so a rejection message surfaces in the
+   * timeline status capsule (`applyStatus !== 'success'` gate in the strip).
+   * The coordinator sets this for its own rail-set rejections; resolver-level
+   * rejections in this module set it here.
+   */
+  setApplyStatus?: (status: 'idle' | 'applying' | 'success' | 'error') => void;
   /**
    * D-26 detail leg: full resolver failure detail (code + text) routed to the
    * surviving diagnostic channel. The Studio wires this to the same console
@@ -1872,6 +1892,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
     });
     if (!resolution.ok) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.(runnerInput.rejectedCopy?.(resolution.failure) ?? (resolution.failure.text || 'The Roto timeline edit is invalid.'));
       if (
         runnerInput.operationKind === 'delete-key-group'
@@ -1896,7 +1917,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
-  const insertRotoFrame = useCallback((): Promise<boolean> => {
+  const insertRotoFrame = useCallback(async (): Promise<boolean> => {
     const target = classifyRotoInsertTarget(readRotoInsertTargetInput(input));
     const rejection = mapRotoInsertProductReason(target);
     if (rejection !== null) {
@@ -1921,7 +1942,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         kind: 'insert-empty-segment',
         destinationAppFrame: target.appFrame,
         insertedKeyId,
-        blankPayload: toEmptyKeyPayload(input.buildBlankRotoFrame(target.appFrame), target.appFrame),
+        blankPayload: toEmptyKeyPayload(await input.buildBlankRotoFrame(target.appFrame), target.appFrame),
       },
       operationKind: 'insert-empty-segment',
       requiredKeyId: null,
@@ -2063,10 +2084,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     destinationKeyId: string | null,
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select a valid Roto frame before pasting.');
       return Promise.resolve(false);
     }
     if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('The destination Roto key identity is malformed.');
       return Promise.resolve(false);
     }
@@ -2082,6 +2105,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         successMessage: PASTE_SUCCESS_MESSAGE,
       });
     } catch {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('The copied Roto paint is unavailable.');
       return Promise.resolve(false);
     }
@@ -2092,6 +2116,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     entries: readonly RotoSessionCopiedGroupEntry[],
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select a valid Roto frame before pasting.');
       return Promise.resolve(false);
     }
@@ -2101,6 +2126,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // entries or malformed entry fields (T-38-01).
       intent = createPhysicPaintRotoPasteKeyGroupIntent(destinationAppFrame, entries);
     } catch {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('The copied Roto key group is unavailable.');
       return Promise.resolve(false);
     }
@@ -2135,6 +2161,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return Promise.resolve(false);
     }
     if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Rail set selection is stale. Select the Rails again.');
       return Promise.resolve(false);
     }
@@ -2170,12 +2197,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     payload: RotoRailSetCopyPayload,
   ): Promise<boolean> => {
     if (!input.executeRailSetPaste) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Rail set pasting is unavailable.');
       return Promise.resolve(false);
     }
     const destinationAppFrame = placementMode === 'paste' ? input.getCurrentAppFrame?.() ?? null : null;
     if (placementMode === 'paste'
       && (destinationAppFrame === null || !Number.isInteger(destinationAppFrame) || destinationAppFrame < 0)) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select a valid Roto frame before pasting.');
       return Promise.resolve(false);
     }
@@ -2201,14 +2230,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           placementMode: 'duplicate',
           payload,
         });
+    // On rejection the coordinator owns the user-facing capsule message (mapped
+    // from the exact failure reason via mapRotoRailSetPasteFailure and marked
+    // with an error apply status), so the action must not clobber it with a
+    // generic fallback. The action's pre-flight publishes above still cover the
+    // caller-level cases (missing seam, invalid destination frame).
     return input.executeRailSetPaste(executeInput).then((accepted) => {
       if (accepted) {
         input.publishStatus?.(placementMode === 'paste' ? 'Pasted the copied Rails.' : 'Duplicated the selected Rails.');
         return true;
       }
-      input.publishStatus?.(placementMode === 'paste'
-        ? 'Paste rejected — not enough room or the destination is occupied.'
-        : 'Duplicate rejected — not enough room.');
       return false;
     });
   }, [input]);
@@ -2218,6 +2249,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const pasteRailSet = useCallback((): Promise<boolean> => {
     const payload = input.getRailSetClipboard?.() ?? null;
     if (!payload) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Copy a rail set before pasting.');
       return Promise.resolve(false);
     }
@@ -2232,10 +2264,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const duplicateRailSet = useCallback((): Promise<boolean> => {
     const members = input.getRailSetMembers?.() ?? [];
     if (members.length === 0) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Select the Rails to duplicate.');
       return Promise.resolve(false);
     }
     if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+      input.setApplyStatus?.('error');
       input.publishStatus?.('Rail set selection is stale. Select the Rails again.');
       return Promise.resolve(false);
     }
@@ -3327,7 +3361,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     duplicateRailSet,
     canDuplicateRailSet,
     duplicateRailSetDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason]);
+    publishStatus: input.publishStatus,
+    setApplyStatus: input.setApplyStatus,
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

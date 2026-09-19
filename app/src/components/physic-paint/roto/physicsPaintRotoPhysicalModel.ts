@@ -29,16 +29,34 @@
  *   changes no regression file and invokes neither Vitest nor an application
  *   server.
  *
- * This module is dependency-light: it imports only a type from the existing
- * rendered-frame contract for payload composition. It does not import the
- * current source/display model, store, persistence, bridge, project schema,
- * Studio, or any Script controller.
+ * This module is dependency-light: it imports a type from the existing
+ * rendered-frame contract for payload composition, the canonical encoder, and
+ * the package format contract (`lib/efxPaintPackage.ts`, which imports nothing
+ * itself, so no cycle exists). It does not import the current source/display
+ * model, store, persistence, bridge, project schema, Studio, or any Script
+ * controller.
  */
 
 import type {
   PhysicPaintRenderedFrame,
   PhysicPaintRotoBackgroundMetadata,
 } from '../../../types/physicPaint';
+import {
+  base64ToWebpBytes,
+  buildFrameBytesToken,
+  isWebpBytes,
+} from '../../../lib/webpBytes';
+import {
+  encodeCanonicalNumber,
+  encodeCanonicalOptionalNumber,
+  encodeCanonicalString,
+  hashCanonicalPhysicalValue,
+  validatedBoolean,
+} from '../../../efx-paint/document/efxPaintCanonicalEncoder';
+import {
+  parseFrameMediaReference,
+  type FrameMediaReference,
+} from '../../../lib/efxPaintPackage';
 
 /**
  * Stable durable real-key identity.
@@ -77,8 +95,21 @@ export interface PhysicPaintRotoRealKeyPayload {
   readonly frameIndex: number;
   /** Direct editor timeline frame that receives this rendered output. */
   readonly appFrame: number;
-  /** Rendered PNG output only. Editable stroke/engine state is never transported here. */
-  readonly dataUrl: string;
+  /**
+   * Rendered WebP-lossless output only (compact bytes, D-05/D-18). Editable
+   * stroke/engine state is never transported here.
+   *
+   * 52.2-02 (D-07): a payload carries EXACTLY ONE raster carrier. A runtime
+   * (pre-save) record carries `bytes`; a persisted record carries `media`
+   * instead, so no image payload is ever written to a package.
+   */
+  readonly bytes?: Uint8Array;
+  /**
+   * Package-relative `frames/<layerId>/<keyId>.webp` reference plus its
+   * SHA-256 (52.2 D-02/D-07). Present on a persisted record; a runtime record
+   * carries `bytes` instead.
+   */
+  readonly media?: FrameMediaReference;
   readonly width?: number;
   readonly height?: number;
 }
@@ -269,6 +300,13 @@ export interface PhysicPaintRotoLoopClip {
   readonly sourceKeyIds: readonly string[];
   readonly repeat: number | 'infinity';
   readonly mode: 'progressive' | 'static';
+  /**
+   * Rail-kind discriminator (Phase 52, D-03/D-26): the reveal rail is a NEW
+   * member of the existing Loop Clip record family. Absent means `'playscript'`
+   * (existing records — no migration, no default serialization change);
+   * `'reveal'` marks a reveal rail whose baked keys are the source cycle.
+   */
+  readonly railKind?: 'playscript' | 'reveal';
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
@@ -365,11 +403,20 @@ export function createPhysicPaintRotoKeyId(): string {
 
 const PHYSIC_PAINT_ROTO_KEY_ID_MAX_LENGTH = 256;
 const PHYSIC_PAINT_ROTO_REVISION_MAX_LENGTH = 256;
-const PHYSIC_PAINT_ROTO_MAX_PNG_DATA_URL_LENGTH = 64 * 1024 * 1024;
-const RENDERED_DATA_URL_PREFIX = 'data:image/png;base64,';
 
 const PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS = new Set(['keyId', 'appFrame']);
-const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
+/**
+ * Runtime payload allowlist (52.2-02): still admits the inline raster key —
+ * this guard is NOT the persisted-shape rule and must keep accepting the
+ * bytes-carrying record every pre-save runtime record is.
+ */
+export const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'bytes', 'media', 'width', 'height']);
+/**
+ * Persisted payload allowlist (52.2-02, Law 1 / D-07): carries `media` and
+ * NEVER the inline raster key, so a record with payload bytes cannot satisfy
+ * the persisted-shape validator.
+ */
+export const PHYSIC_PAINT_ROTO_PERSISTED_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'media', 'width', 'height']);
 const PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'leftKeyId', 'rightKeyId']);
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
@@ -384,6 +431,7 @@ const PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS = new Set([
 ]);
 const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
   ...PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS,
+  'railKind',
   'scriptId',
   'motion',
   'overrideColor',
@@ -441,11 +489,25 @@ function isPercentInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
 }
 
-function isRenderedPngDataUrl(value: unknown): value is string {
-  if (typeof value !== 'string' || !value.startsWith(RENDERED_DATA_URL_PREFIX)) return false;
-  if (value.length <= RENDERED_DATA_URL_PREFIX.length || value.length > PHYSIC_PAINT_ROTO_MAX_PNG_DATA_URL_LENGTH) return false;
-  const encoded = value.slice(RENDERED_DATA_URL_PREFIX.length);
-  return encoded.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(encoded);
+function isRenderedWebpBytes(value: unknown): value is Uint8Array {
+  return isWebpBytes(value);
+}
+
+/**
+ * 52.1 (D-05): the canonical JSON form carries bytes as base64 (see
+ * `canonicalPhysicalEditPayload` in types/physicPaint.ts). The validator
+ * accepts the canonical base64 form alongside the live Uint8Array form.
+ */
+function isCanonicalBase64WebpBytes(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return isWebpBytes(bytes);
+  } catch {
+    return false;
+  }
 }
 
 function optionalDimension(value: unknown): boolean {
@@ -477,21 +539,85 @@ export function isPhysicPaintRotoKeyIdentity(value: unknown): value is PhysicPai
 }
 
 /**
- * Strict guard for {@link PhysicPaintRotoRealKeyPayload}.
+ * Which payload shape a parse admits (52.2-02, D-07).
  *
- * Rejects unknown members, non-PNG data URLs, non-integer or negative frame
- * indices/frames, and non-finite width/height. Composed from the existing
- * rendered-frame allowlist; `source` and `nearestRealKeyFrame` are excluded
- * so a payload cannot carry source/display or generated-cell provenance.
+ * - `'runtime'` (the default every existing caller keeps): the runtime guard,
+ *   which admits the bytes-carrying record every pre-save runtime record is.
+ * - `'reference-only'`: the persisted-shape guard, selected only by the
+ *   on-disk door, which requires a media reference and refuses any inline
+ *   raster payload.
+ */
+export type PhysicPaintRotoPayloadMode = 'runtime' | 'reference-only';
+
+function isFrameMediaReference(value: unknown): value is FrameMediaReference {
+  try {
+    parseFrameMediaReference(value, 'payload.media');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoRealKeyPayload} — the RUNTIME shape.
+ *
+ * Rejects unknown members, non-integer or negative frame indices/frames,
+ * non-finite width/height, and a payload carrying neither or both raster
+ * carriers. `bytes` may be the live Uint8Array or the canonical base64 JSON
+ * form; `media` must be a validated package media reference.
+ *
+ * This guard is deliberately NOT the persisted-shape rule (52.2-02, D-07): it
+ * gates the bridge apply and edit-intent payloads, the resolver (where a
+ * rejected node THROWS), the revision path and the runtime producers, all of
+ * which hold bytes before the save funnel projects a media reference.
  */
 export function isPhysicPaintRotoRealKeyPayload(value: unknown): value is PhysicPaintRotoRealKeyPayload {
   if (!isRecord(value)) return false;
   if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS)) return false;
   if (!isNonNegativeInteger(value.frameIndex)) return false;
   if (!isNonNegativeInteger(value.appFrame)) return false;
-  if (!isRenderedPngDataUrl(value.dataUrl)) return false;
   if (!optionalDimension(value.width) || !optionalDimension(value.height)) return false;
-  return (value.width === undefined) === (value.height === undefined);
+  if ((value.width === undefined) !== (value.height === undefined)) return false;
+  const hasBytes = value.bytes !== undefined;
+  const hasMedia = value.media !== undefined;
+  if (hasBytes === hasMedia) return false;
+  if (hasMedia) return isFrameMediaReference(value.media);
+  return isRenderedWebpBytes(value.bytes) || isCanonicalBase64WebpBytes(value.bytes);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoRealKeyPayload} — the PERSISTED shape.
+ *
+ * Validated against {@link PHYSIC_PAINT_ROTO_PERSISTED_REAL_KEY_PAYLOAD_KEYS},
+ * whose allowlist has no `bytes` member: a record carrying an inline raster
+ * payload is refused (Law 1, D-07). It is reached only through the payload
+ * mode, and only the on-disk door selects it — it is deliberately not wired
+ * into the runtime guard.
+ */
+export function isPhysicPaintRotoPersistedRealKeyPayload(
+  value: unknown,
+): value is PhysicPaintRotoRealKeyPayload {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_PERSISTED_REAL_KEY_PAYLOAD_KEYS)) return false;
+  if (!isNonNegativeInteger(value.frameIndex)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  if (!optionalDimension(value.width) || !optionalDimension(value.height)) return false;
+  if ((value.width === undefined) !== (value.height === undefined)) return false;
+  return isFrameMediaReference(value.media);
+}
+
+function isPhysicPaintRotoRealKeyRecordForMode(
+  value: unknown,
+  payloadMode: PhysicPaintRotoPayloadMode,
+): value is PhysicPaintRotoRealKeyRecord {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS)) return false;
+  if (value.kind !== 'real-key') return false;
+  if (!isBoundedKeyId(value.keyId)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  return payloadMode === 'reference-only'
+    ? isPhysicPaintRotoPersistedRealKeyPayload(value.payload)
+    : isPhysicPaintRotoRealKeyPayload(value.payload);
 }
 
 /**
@@ -500,14 +626,49 @@ export function isPhysicPaintRotoRealKeyPayload(value: unknown): value is Physic
  * Rejects non-records, unknown members, wrong `kind`, partial identity, and
  * malformed payloads. A generated descriptor (`kind: 'generated-interpolation'`)
  * cannot satisfy this guard, keeping the two interfaces structurally distinct.
+ * This is the runtime-shape reading; the persisted reading is selected through
+ * the payload mode by {@link parsePhysicPaintRotoPhysicalDocument}.
  */
 export function isPhysicPaintRotoRealKeyRecord(value: unknown): value is PhysicPaintRotoRealKeyRecord {
-  if (!isRecord(value)) return false;
-  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS)) return false;
-  if (value.kind !== 'real-key') return false;
-  if (!isBoundedKeyId(value.keyId)) return false;
-  if (!isNonNegativeInteger(value.appFrame)) return false;
-  return isPhysicPaintRotoRealKeyPayload(value.payload);
+  return isPhysicPaintRotoRealKeyRecordForMode(value, 'runtime');
+}
+
+/**
+ * The content token of a payload's raster (52.2-02, D-07), total over both
+ * shapes: the byte content token for a runtime record, the media digest for a
+ * reference-only one — both name the identity of the same pixels, so callers
+ * that compare or de-duplicate by content keep working across a reopen.
+ *
+ * The byte branch is byte-for-byte `buildFrameBytesToken`, so no runtime token
+ * value moves. A payload carrying neither carrier (refused by every guard)
+ * yields `'absent;'`, which no byte token or digest can collide with.
+ */
+export function buildPhysicPaintRotoPayloadContentToken(payload: PhysicPaintRotoRealKeyPayload): string {
+  const media = payload.media;
+  if (media !== undefined) return `media:${media.digest}`;
+  const bytes = payload.bytes;
+  return bytes === undefined ? 'absent;' : buildFrameBytesToken(bytes);
+}
+
+/**
+ * The inline raster carrier of a payload (52.2-02, D-07), asserted.
+ *
+ * `bytes` is optional on {@link PhysicPaintRotoRealKeyPayload} because a
+ * PERSISTED record carries a media reference instead of pixels. Every record
+ * the runtime module graph holds was created in memory or parsed through the
+ * default `'runtime'` mode, so it carries `bytes` by construction; a
+ * reference-only payload only ever exists behind the on-disk door in
+ * `efxPaintDocumentParsers.ts`. A runtime projection that meets one is a
+ * contract violation, so this refuses loudly rather than handing the
+ * compositor a frame with no pixels — an empty buffer would fail the byte
+ * check and be silent corruption (Law 1).
+ */
+export function requirePhysicPaintRotoInlineBytes(payload: PhysicPaintRotoRealKeyPayload): Uint8Array {
+  const bytes = payload.bytes;
+  if (bytes === undefined) {
+    throw new Error('Roto physical real-key payload carries no inline raster bytes (reference-only record on a runtime path).');
+  }
+  return bytes;
 }
 
 /**
@@ -622,6 +783,9 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
     if (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1) return false;
   }
   if (value.mode !== 'progressive' && value.mode !== 'static') return false;
+  // 52-01 (D-03): railKind is a fail-closed allowlist — absent means
+  // 'playscript' (existing records), unknown values are rejected.
+  if (value.railKind !== undefined && value.railKind !== 'playscript' && value.railKind !== 'reveal') return false;
   // 43-06 provenance: all-or-nothing — any provenance key requires all three.
   const hasProvenance = value.scriptId !== undefined || value.motion !== undefined || value.overrideColor !== undefined;
   if (hasProvenance) {
@@ -631,23 +795,6 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
       && !(typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor))) return false;
   }
   return hasValidPhysicPaintRotoGroupLifecycle(value);
-}
-
-function parseExactLegacyFiniteLoopClips(value: unknown): readonly PhysicPaintRotoLoopClip[] | null {
-  if (!Array.isArray(value) || value.length === 0) return null;
-  const clips: PhysicPaintRotoLoopClip[] = [];
-  const seenLoopIds = new Set<string>();
-  for (const entry of value) {
-    if (!isRecord(entry)
-      || Object.keys(entry).length !== PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS.size
-      || !hasOnlyAllowedKeys(entry, PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS)
-      || !isPhysicPaintRotoLoopClip(entry)
-      || entry.repeat === 'infinity'
-      || seenLoopIds.has(entry.loopId)) return null;
-    seenLoopIds.add(entry.loopId);
-    clips.push(entry);
-  }
-  return clips;
 }
 
 function buildDefaultPhysicPaintRotoGroupLifecycle(
@@ -702,6 +849,7 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       sourceKeyIds: Object.freeze([...entry.sourceKeyIds]),
       repeat: entry.repeat,
       mode: entry.mode,
+      ...(entry.railKind !== undefined ? { railKind: entry.railKind } : {}),
       ...(entry.scriptId !== undefined
         ? {
             scriptId: entry.scriptId,
@@ -778,11 +926,19 @@ export function parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(
  * never mutated; unknown properties are never deleted or normalized; no ID is
  * ever allocated by this parser.
  *
+ * `payloadMode` selects which payload shape is admitted: `'runtime'` (the
+ * default every existing caller keeps) admits the bytes-carrying runtime
+ * record, `'reference-only'` requires a validated media reference and refuses
+ * an inline raster payload (52.2-02, D-07). This parser serves BOTH persisted
+ * roto collections — `realKeyRecords` and `groupOverrideRecords` share one
+ * record type — so one mode parameter covers both.
+ *
  * Throws a closed validation failure on any invalid input.
  */
 export function parsePhysicPaintRotoRealKeyRecordCollection(
   value: unknown,
   capacity?: number,
+  payloadMode: PhysicPaintRotoPayloadMode = 'runtime',
 ): readonly PhysicPaintRotoRealKeyRecord[] {
   if (!Array.isArray(value)) {
     throw new Error('PhysicPaintRotoRealKeyRecordCollection: expected an array of real-key records.');
@@ -796,7 +952,7 @@ export function parsePhysicPaintRotoRealKeyRecordCollection(
   const seenAppFrames = new Set<number>();
 
   for (const entry of value) {
-    if (!isPhysicPaintRotoRealKeyRecord(entry)) {
+    if (!isPhysicPaintRotoRealKeyRecordForMode(entry, payloadMode)) {
       throw new Error('PhysicPaintRotoRealKeyRecordCollection: malformed real-key record.');
     }
     if (entry.payload.appFrame !== entry.appFrame) {
@@ -843,6 +999,7 @@ export function parsePhysicPaintRotoRealKeyRecordCollection(
 export function parsePhysicPaintRotoPhysicalState(
   value: unknown,
   capacity?: number,
+  payloadMode: PhysicPaintRotoPayloadMode = 'runtime',
 ): PhysicPaintRotoPhysicalState {
   if (!isRecord(value)) {
     throw new Error('PhysicPaintRotoPhysicalState: expected a record.');
@@ -860,7 +1017,7 @@ export function parsePhysicPaintRotoPhysicalState(
     throw new Error('PhysicPaintRotoPhysicalState: realKeyRecords must be an array.');
   }
 
-  const realKeyRecords = parsePhysicPaintRotoRealKeyRecordCollection(value.realKeyRecords, capacity);
+  const realKeyRecords = parsePhysicPaintRotoRealKeyRecordCollection(value.realKeyRecords, capacity, payloadMode);
   const interpolation = Object.freeze<PhysicPaintRotoInterpolationState>({
     enabled: value.interpolation.enabled,
     mode: value.interpolation.mode,
@@ -878,12 +1035,36 @@ export function parsePhysicPaintRotoPhysicalState(
 }
 
 function cloneAndFreezeRealKeyPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+  const dimensions = {
+    ...(payload.width !== undefined ? { width: payload.width } : {}),
+    ...(payload.height !== undefined ? { height: payload.height } : {}),
+  };
+  // 52.2-02 (D-07): preserve EXACTLY the shape the record carries and never
+  // fabricate the other carrier. A media-only record must not gain an empty
+  // byte buffer (an empty buffer fails the byte check and would read as silent
+  // corruption) and a bytes-only record must not gain placeholder media.
+  const media = payload.media as unknown;
+  if (media !== undefined) {
+    return Object.freeze({
+      frameIndex: payload.frameIndex,
+      appFrame: payload.appFrame,
+      media: parseFrameMediaReference(media, 'payload.media'),
+      ...dimensions,
+    }) as PhysicPaintRotoRealKeyPayload;
+  }
+  // 52.1 (D-05): the durable JSON form carries `bytes` as base64 (the canonical
+  // form accepted by isCanonicalBase64WebpBytes). Normalize it back to a
+  // Uint8Array here so buildFrameBytesToken (revision) and every downstream
+  // consumer see the live in-memory shape, never a base64 string.
+  const rawBytes = payload.bytes as unknown;
+  const bytes = typeof rawBytes === 'string'
+    ? base64ToWebpBytes(rawBytes) ?? new Uint8Array(0)
+    : rawBytes as Uint8Array;
   return Object.freeze({
     frameIndex: payload.frameIndex,
     appFrame: payload.appFrame,
-    dataUrl: payload.dataUrl,
-    ...(payload.width !== undefined ? { width: payload.width } : {}),
-    ...(payload.height !== undefined ? { height: payload.height } : {}),
+    bytes,
+    ...dimensions,
   }) as PhysicPaintRotoRealKeyPayload;
 }
 
@@ -985,26 +1166,66 @@ export function encodePhysicPaintRotoPhysicalContent(
   );
 }
 
+/**
+ * G-52-6: fingerprint a raster payload by a content TOKEN, never the full
+ * bytes. Reveal-baked keys carry multi-MB WebP payloads and this fingerprint
+ * is recomputed at every parse, mutation commit, bridge payload sync + parent
+ * canonical re-verification, and per undo/redo live-authority check —
+ * concatenating the payload cost ~10s per reveal rail at open. Head+tail+length
+ * is O(1) and change-safe for same-encoder WebP output: deflate streams have no
+ * resync points, so any content change cascades to the tail (mirrors the
+ * bytes-token idiom of previewRenderer.ts:114 /
+ * physicPaintStore._trackContentRevision).
+ */
+function encodeCanonicalBytesPayload(bytes: Uint8Array): string {
+  return `d${buildFrameBytesToken(bytes)};`;
+}
+
+function encodeCanonicalRecordPayloadTerm(
+  payload: PhysicPaintRotoRealKeyPayload,
+  encodePayloadBytes: (bytes: Uint8Array) => string,
+): string {
+  /**
+   * 52.2-02 (D-07): one raster-carrier term per record — the media reference
+   * (`relativePath` + `digest`) for a persisted record, the byte content token
+   * for a runtime one. Keeping the byte branch byte-for-byte as it was means
+   * no existing revision value moves.
+   */
+  const media = payload.media;
+  if (media !== undefined) {
+    return `m${encodeCanonicalString(media.relativePath)}${encodeCanonicalString(media.digest)};`;
+  }
+  const bytes = payload.bytes;
+  return bytes === undefined ? 'u;' : encodePayloadBytes(bytes);
+}
+
+function encodeCanonicalRealKeyRecordsTerm(
+  source: readonly PhysicPaintRotoRealKeyRecord[],
+  encodePayloadBytes: (bytes: Uint8Array) => string,
+): string {
+  const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
+  const encoded = ordered.map((record) => [
+    encodeCanonicalString(record.keyId),
+    encodeCanonicalNumber(record.appFrame),
+    encodeCanonicalNumber(record.payload.frameIndex),
+    encodeCanonicalNumber(record.payload.appFrame),
+    encodeCanonicalRecordPayloadTerm(record.payload, encodePayloadBytes),
+    encodeCanonicalOptionalNumber(record.payload.width),
+    encodeCanonicalOptionalNumber(record.payload.height),
+  ].join('')).join('');
+  return `${ordered.length}:${encoded}`;
+}
+
 function encodeValidatedPhysicPaintRotoPhysicalContent(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   interpolation: PhysicPaintRotoInterpolationState,
   loopClips: readonly PhysicPaintRotoLoopClip[],
   incomingInterpolationBreakKeyIds: readonly string[],
   groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [],
+  encodePayloadBytes: (bytes: Uint8Array) => string = encodeCanonicalBytesPayload,
 ): string {
-  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) => {
-    const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
-    const encoded = ordered.map((record) => [
-      encodeCanonicalString(record.keyId),
-      encodeCanonicalNumber(record.appFrame),
-      encodeCanonicalNumber(record.payload.frameIndex),
-      encodeCanonicalNumber(record.payload.appFrame),
-      encodeCanonicalString(record.payload.dataUrl),
-      encodeCanonicalOptionalNumber(record.payload.width),
-      encodeCanonicalOptionalNumber(record.payload.height),
-    ].join('')).join('');
-    return `${ordered.length}:${encoded}`;
-  };
+  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) =>
+    encodeCanonicalRealKeyRecordsTerm(source, encodePayloadBytes);
   return [
     `records:${encodeRecords(records)}`,
     ...(groupOverrideRecords.length > 0 ? [`group-overrides:${encodeRecords(groupOverrideRecords)}`] : []),
@@ -1063,6 +1284,10 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
     ...clip.sourceKeyIds.map(encodeCanonicalString),
     clip.repeat === 'infinity' ? encodeCanonicalString('infinity') : encodeCanonicalNumber(clip.repeat),
     encodeCanonicalString(clip.mode),
+    // 52-01 (D-03): the rail-kind discriminator joins the fingerprint when
+    // present — a reveal rail and a playscript rail with identical cycles are
+    // distinct content.
+    ...(clip.railKind !== undefined ? [encodeCanonicalString(clip.railKind)] : []),
     // 43-06 provenance joins the fingerprint when present (all-or-nothing).
     ...(clip.scriptId !== undefined
       ? [
@@ -1147,8 +1372,19 @@ function validatePhysicPaintRotoGroupReferences(
  * Reconstruct and freeze one complete physical layer document. The persisted
  * revision is checked against canonical content before any caller can publish
  * the candidate.
+ *
+ * `payloadMode` (52.2-02, D-07) selects the payload shape for BOTH persisted
+ * roto collections: the default `'runtime'` keeps every existing caller
+ * parsing bytes-carrying in-memory records, while the on-disk door selects
+ * `'reference-only'` so a layer sub-file carrying an inline raster payload in
+ * either collection is refused. There is no separate group-override validator:
+ * a group override is the same record type parsed by the same collection
+ * parser, which is what makes the dual-collection coverage structural.
  */
-export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPaintRotoPhysicalDocument {
+export function parsePhysicPaintRotoPhysicalDocument(
+  value: unknown,
+  payloadMode: PhysicPaintRotoPayloadMode = 'runtime',
+): PhysicPaintRotoPhysicalDocument {
   if (!isRecord(value) || !hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS)) {
     throw new Error('PhysicPaintRotoPhysicalDocument: unknown or missing document members.');
   }
@@ -1160,7 +1396,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     realKeyRecords: value.realKeyRecords,
     interpolation: value.interpolation,
     scriptMotion: value.scriptMotion,
-  }, capacity);
+  }, capacity, payloadMode);
   if (value.background !== null && !isPhysicPaintRotoBackground(value.background)) {
     throw new Error('PhysicPaintRotoPhysicalDocument: invalid background metadata.');
   }
@@ -1185,15 +1421,12 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   // loopClips is the first genuinely optional document member (D-29): absent
   // means the empty collection (v0.8.1-shaped documents load with no
   // migration); present means parsed fail-closed.
-  const exactLegacyFiniteLoopClips = value.loopClips === undefined
-    ? null
-    : parseExactLegacyFiniteLoopClips(value.loopClips);
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
   const groupOverrideRecords = value.groupOverrideRecords === undefined
     ? Object.freeze([] as PhysicPaintRotoRealKeyRecord[])
-    : parsePhysicPaintRotoRealKeyRecordCollection(value.groupOverrideRecords, capacity);
+    : parsePhysicPaintRotoRealKeyRecordCollection(value.groupOverrideRecords, capacity, payloadMode);
   validatePhysicPaintRotoGroupReferences(loopClips, state.realKeyRecords, groupOverrideRecords, capacity);
   const incomingInterpolationBreakKeyIds = value.incomingInterpolationBreakKeyIds === undefined
     ? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY
@@ -1209,17 +1442,9 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     groupOverrideRecords,
   );
   if (value.revision !== revision) {
-    const exactLegacyRevision = exactLegacyFiniteLoopClips === null
-      ? null
-      : `physical-${hashCanonicalPhysicalValue(encodeValidatedPhysicPaintRotoPhysicalContent(
-          state.realKeyRecords,
-          state.interpolation,
-          exactLegacyFiniteLoopClips,
-          incomingInterpolationBreakKeyIds,
-        ))}`;
-    if (value.revision !== exactLegacyRevision) {
-      throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
-    }
+    // 52.1 clean break (D-01/D-06 one-way): the pre-bytes dataUrl revision
+    // shapes are unsupported — no legacy acceptance, no migration.
+    throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
   }
   const background = value.background === null ? null : Object.freeze({ ...value.background }) as PhysicPaintRotoBackgroundMetadata;
   return Object.freeze({
@@ -1237,22 +1462,6 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   });
 }
 
-function encodeCanonicalString(value: string): string {
-  return `s${value.length}:${value};`;
-}
-
-function encodeCanonicalNumber(value: number): string {
-  return `n${String(value)};`;
-}
-
-function encodeCanonicalOptionalNumber(value: number | undefined): string {
-  return value === undefined ? 'u;' : encodeCanonicalNumber(value);
-}
-
-function validatedBoolean(value: boolean): string {
-  return value ? '1;' : '0;';
-}
-
 function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | null): string {
   if (value === null) return 'null;';
   return [
@@ -1261,13 +1470,4 @@ function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | nu
     encodeCanonicalNumber(value.grainStrength),
     value.color === undefined ? 'u;' : encodeCanonicalString(value.color),
   ].join('');
-}
-
-function hashCanonicalPhysicalValue(source: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `${source.length}-${(hash >>> 0).toString(16)}`;
 }

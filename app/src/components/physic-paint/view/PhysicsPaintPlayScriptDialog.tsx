@@ -19,6 +19,19 @@ const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: strin
   { value: 'static', label: 'Static', helper: 'The complete drawing is applied to every cycle frame.' },
 ];
 
+// 52-05 (G-52-3): the Reveal Photo Rail variant options — the same progressive/static
+// union with the reveal caption copy (52 UI-SPEC Copywriting Contract, mirrors D-03/D-26).
+const REVEAL_RAIL_TYPES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string; helper: string }> = [
+  { value: 'progressive', label: 'Reveal Motion', helper: 'The reveal extends frame after frame across the span.' },
+  { value: 'static', label: 'Reveal Static', helper: 'Every frame carries the entire revealed photo with per-frame brush variation.' },
+];
+
+// 52-05 (G-52-3): the Create Rail dialog tabs (apply mode only).
+const RAIL_TABS = [
+  { value: 'paint' as const, label: 'Paint Rail' },
+  { value: 'reveal' as const, label: 'Reveal Photo Rail' },
+];
+
 // 43-06 S4 (D-05): locked apply-time source-cycle choice options and helper copy
 // (43-UI-SPEC Copywriting Contract — English only).
 const PLAY_SCRIPT_SOURCE_CHOICES = [
@@ -50,6 +63,7 @@ export function PhysicsPaintPlayScriptDialog({
 }: PhysicsPaintPlayScriptDialogProps) {
   recordPhysicsPaintPerformanceCounter('render.playScriptDialog');
   const inputRef = useRef<HTMLInputElement>(null);
+  const revealInputRef = useRef<HTMLInputElement>(null);
   const repeatInputRef = useRef<HTMLInputElement>(null);
   const previousOpen = useRef(false);
   // 43-06 dialog modes (D-01/D-02): loop-edit locks every source field;
@@ -62,10 +76,14 @@ export function PhysicsPaintPlayScriptDialog({
   const regenerateSecondaryRef = useRef<HTMLButtonElement>(null);
   const regenerateTriggerRef = useRef<HTMLButtonElement>(null);
   const restoreRegenerateTriggerFocus = useRef(false);
+  // 52-05 (G-52-3): the tab strip is an apply-mode creation surface — edit and
+  // regenerate modes keep their existing single-surface layout.
+  const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact;
+  const revealTab = tabsVisible && playScript.railTab.value === 'reveal';
 
   useEffect(() => {
     // Focus follows the visible dialog state: G3a starts on its non-destructive
-    // action, while returning to Edit Group restores the Regenerate trigger.
+    // action, while returning to Edit Rail restores the Regenerate trigger.
     if (confirmationOpen) {
       if (regenerateImpact) regenerateSecondaryRef.current?.focus();
       else if (dialogMode === 'loop-edit') {
@@ -73,7 +91,8 @@ export function PhysicsPaintPlayScriptDialog({
           restoreRegenerateTriggerFocus.current = false;
           regenerateTriggerRef.current?.focus();
         } else repeatInputRef.current?.focus();
-      } else inputRef.current?.focus();
+      } else if (playScript.railTab.value === 'reveal') revealInputRef.current?.focus();
+      else inputRef.current?.focus();
     } else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
   }, [confirmationOpen, returnFocusRef, dialogMode, regenerateImpact]);
@@ -133,7 +152,10 @@ export function PhysicsPaintPlayScriptDialog({
   if (!confirmationOpen) return null;
 
   const busy = playScript.canCancel.value;
-  const activeMode = PLAY_SCRIPT_MODES.find((option) => option.value === playScript.mode.value) ?? PLAY_SCRIPT_MODES[0];
+  // 52-05 (G-52-3): the Rail Type control renders the Paint labels on the Paint
+  // tab and the Reveal labels on the Reveal tab — both write the same mode union.
+  const activeModeOptions = revealTab ? REVEAL_RAIL_TYPES : PLAY_SCRIPT_MODES;
+  const activeMode = activeModeOptions.find((option) => option.value === playScript.mode.value) ?? activeModeOptions[0];
 
   const selectMode = (value: RotoPlayScriptMode) => {
     if (loopEdit) return; // D-01: source fields are locked in loop-edit mode
@@ -146,10 +168,10 @@ export function PhysicsPaintPlayScriptDialog({
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     if (playScript.canCancel.value || loopEdit) return;
-    const currentIndex = PLAY_SCRIPT_MODES.findIndex((option) => option.value === playScript.mode.value);
+    const currentIndex = activeModeOptions.findIndex((option) => option.value === playScript.mode.value);
     const delta = event.key === 'ArrowRight' ? 1 : -1;
-    const nextIndex = (currentIndex + delta + PLAY_SCRIPT_MODES.length) % PLAY_SCRIPT_MODES.length;
-    selectMode(PLAY_SCRIPT_MODES[nextIndex].value);
+    const nextIndex = (currentIndex + delta + activeModeOptions.length) % activeModeOptions.length;
+    selectMode(activeModeOptions[nextIndex].value);
     const radios = (event.currentTarget as HTMLElement | null)?.querySelectorAll?.('[role="radio"]');
     (radios?.[nextIndex] as HTMLElement | undefined)?.focus?.();
   };
@@ -177,8 +199,9 @@ export function PhysicsPaintPlayScriptDialog({
   const summaryEffective = loopReadout && effectiveSplitAt >= 0 ? `Effective: ${loopReadout.slice(effectiveSplitAt + EFFECTIVE_SEPARATOR.length)}` : null;
 
   // 43-06 S4 (D-05): the apply-time Link/Create choice renders only when the
-  // controller reports an identical source cycle.
-  const identicalCycle = !loopEdit && !sourceEdit ? playScript.identicalSourceCycle.value : null;
+  // controller reports an identical source cycle — a Paint Rail concept only
+  // (the Reveal tab always bakes a fresh cycle through the reveal mutation).
+  const identicalCycle = !loopEdit && !sourceEdit && !revealTab ? playScript.identicalSourceCycle.value : null;
   const activeSourceChoice = PLAY_SCRIPT_SOURCE_CHOICES.find((option) => option.value === playScript.linkChoice.value) ?? PLAY_SCRIPT_SOURCE_CHOICES[0];
 
   // Same APG radio pattern as Mode/Color for the S4 segmented control.
@@ -201,6 +224,57 @@ export function PhysicsPaintPlayScriptDialog({
     void playScript.openLoopEdit(targetId);
   };
 
+  // 52-05 (G-52-3): the Motion wiggle card is shared by both tabs — the wiggle
+  // feeds the bake for BOTH reveal variants (D-09) and drives the Reveal Static
+  // per-frame variation. Only one tab renders at a time, so the ids are unique.
+  const motionCard = (
+    <div class={`physics-paint-play-script-card physics-paint-play-script-card-motion${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
+      <div class="physics-paint-play-script-card-heading">
+        <span class="physics-paint-play-script-card-title">Motion wiggle</span>
+        <button
+          type="button"
+          class="physics-paint-play-script-heading-link"
+          disabled={busy || loopEdit}
+          onClick={() => playScript.resetDialogMotion()}
+        >
+          Reset defaults
+        </button>
+      </div>
+      <div class="physics-paint-play-script-motion-rows">
+        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-deformation">
+          <span>Deformation</span>
+          <input
+            id="physics-play-script-motion-deformation"
+            type="range"
+            min={0}
+            max={100}
+            value={playScript.dialogMotion.value.deformation}
+            disabled={busy || loopEdit}
+            onInput={(event) => {
+              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+            }}
+          />
+          <output>{playScript.dialogMotion.value.deformation}</output>
+        </label>
+        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-position">
+          <span>Position</span>
+          <input
+            id="physics-play-script-motion-position"
+            type="range"
+            min={0}
+            max={100}
+            value={playScript.dialogMotion.value.position}
+            disabled={busy || loopEdit}
+            onInput={(event) => {
+              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+            }}
+          />
+          <output>{playScript.dialogMotion.value.position}</output>
+        </label>
+      </div>
+    </div>
+  );
+
   return (
     <div
       class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
@@ -214,7 +288,9 @@ export function PhysicsPaintPlayScriptDialog({
           else playScript.cancel();
           return;
         }
-        if (!regenerateImpact && event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value) {
+        if (!regenerateImpact && event.key === 'Enter' && !playScript.canCancel.value) {
+          const tabValidationError = revealTab ? playScript.revealValidationError.value : playScript.validationError.value;
+          if (tabValidationError || playScript.repeatError.value) return;
           event.preventDefault();
           void playScript.confirm();
         }
@@ -235,10 +311,10 @@ export function PhysicsPaintPlayScriptDialog({
           <strong id="physics-play-script-title">{regenerateImpact
             ? `Regenerate “${regenerateImpact.groupName}”?`
             : loopEdit
-              ? 'Edit Group'
+              ? 'Edit Rail'
               : sourceEdit
                 ? 'Edit Source Cycle'
-                : 'Create Group'}</strong>
+                : 'Create Rail'}</strong>
           {regenerateImpact
             ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
             : loopEdit && editTarget
@@ -248,10 +324,10 @@ export function PhysicsPaintPlayScriptDialog({
         <div class="physics-paint-play-script-content">
           {regenerateImpact ? (
             <div class="physics-paint-play-script-regenerate">
-              <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Group changes and restores the result from the saved Action and stored Group settings.</p>
+              <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Rail changes and restores the result from the saved Action and stored Rail settings.</p>
               <dl class="physics-paint-play-script-regenerate-facts">
-                <div class="physics-paint-play-script-regenerate-fact"><dt>Group</dt><dd>{regenerateImpact.groupName}</dd></div>
-                <div class="physics-paint-play-script-regenerate-fact"><dt>Group Type</dt><dd>{regenerateImpact.groupType}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Rail</dt><dd>{regenerateImpact.groupName}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Rail Type</dt><dd>{regenerateImpact.groupType}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Restored range</dt><dd>{regenerateImpact.restoredRange}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Locally painted frames</dt><dd>{regenerateImpact.locallyPaintedFrameCount}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Deleted frames</dt><dd>{regenerateImpact.deletedFrameCount > 0 ? `${regenerateImpact.deletedFrameCount} · ${regenerateImpact.deletedFrameRanges}` : 'None'}</dd></div>
@@ -262,7 +338,7 @@ export function PhysicsPaintPlayScriptDialog({
               </dl>
               {regenerateImpact.affectedGroups.length > 1 ? (
                 <div class="physics-paint-play-script-regenerate-shared">
-                  <p class="physics-paint-play-script-regenerate-shared-lead">Regenerate will update {regenerateImpact.affectedGroups.length} Groups that share the same accepted source cycle.</p>
+                  <p class="physics-paint-play-script-regenerate-shared-lead">Regenerate will update {regenerateImpact.affectedGroups.length} Rails that share the same accepted source cycle.</p>
                   <ul class="physics-paint-play-script-regenerate-group-list">
                     {regenerateImpact.affectedGroups.map((group) => (
                       <li key={group.groupId} class="physics-paint-play-script-regenerate-group-item">{group.name} · {group.range}</li>
@@ -272,22 +348,42 @@ export function PhysicsPaintPlayScriptDialog({
               ) : null}
             </div>
           ) : (<>
+          {tabsVisible ? (
+            <div class="physics-paint-play-script-tabs" role="tablist" aria-label="Rail kind">
+              {RAIL_TABS.map((tab) => {
+                const selected = playScript.railTab.value === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected ? 'true' : 'false'}
+                    class={`physics-paint-play-script-tab${selected ? ' active' : ''}`}
+                    disabled={busy}
+                    onClick={() => playScript.setRailTab(tab.value)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           {sourceEdit ? (
             <p class="physics-paint-play-script-notice">
-              Confirming regenerates the source cycle and updates every linked Group referencing it.
-              {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Groups.` : ''}
+              Confirming regenerates the source cycle and updates every linked Rail referencing it.
+              {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Rails.` : ''}
             </p>
           ) : null}
           <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
-            <span class="physics-paint-play-script-card-title">Group Type</span>
+            <span class="physics-paint-play-script-card-title">Rail Type</span>
             <div
               class="physics-paint-play-script-mode-group"
               role="radiogroup"
-              aria-label="Group Type"
+              aria-label="Rail Type"
               aria-describedby="physics-play-script-mode-helper"
               onKeyDown={onModeKeyDown}
             >
-              {PLAY_SCRIPT_MODES.map((option) => {
+              {activeModeOptions.map((option) => {
                 const checked = playScript.mode.value === option.value;
                 return (
                   <div
@@ -310,6 +406,63 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
             <span id="physics-play-script-mode-helper" class="physics-paint-play-script-mode-helper">{activeMode.helper}</span>
           </div>
+          {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
+              defaults to the script's natural duration with the "from F{n}" hint
+              (the playhead snapshotted at open, D-20); Repeat + Infinity ride
+              the same mutation law as the Paint Rail (D-08). No Max toggle. */}
+          {revealTab ? (
+          <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
+            <span class="physics-paint-play-script-card-title">Timing</span>
+            <div class="physics-paint-play-script-field">
+              <label for="physics-play-script-reveal-count">Frames</label>
+              <div class="physics-paint-play-script-timing-row">
+                <input
+                  ref={revealInputRef}
+                  id="physics-play-script-reveal-count"
+                  inputMode="numeric"
+                  value={playScript.revealCountText.value}
+                  disabled={busy}
+                  aria-invalid={Boolean(playScript.revealValidationError.value)}
+                  aria-describedby="physics-play-script-reveal-help physics-play-script-reveal-error"
+                  onInput={(event) => {
+                    playScript.revealCountText.value = (event.currentTarget as HTMLInputElement).value;
+                  }}
+                />
+                <span class="physics-paint-play-script-hint">from F{playScript.canonicalStart.value ?? 0}</span>
+              </div>
+              <span id="physics-play-script-reveal-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+              {playScript.revealValidationError.value ? <span id="physics-play-script-reveal-error" class="physics-paint-script-inline-error">{playScript.revealValidationError.value}</span> : null}
+            </div>
+            <div class="physics-paint-play-script-field">
+              <label for="physics-play-script-repeat">Repeat</label>
+              <div class="physics-paint-play-script-timing-row">
+                <input
+                  id="physics-play-script-repeat"
+                  inputMode="numeric"
+                  value={playScript.repeatText.value}
+                  disabled={busy || playScript.infinity.value}
+                  aria-invalid={Boolean(playScript.repeatError.value)}
+                  aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
+                  onInput={(event) => {
+                    playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
+                  }}
+                />
+                <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-infinity">
+                  <input
+                    id="physics-play-script-infinity"
+                    type="checkbox"
+                    checked={playScript.infinity.value}
+                    disabled={busy}
+                    onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
+                  />
+                  Infinity
+                </label>
+              </div>
+              <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+              {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
+            </div>
+          </div>
+          ) : (
           <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
             <span class="physics-paint-play-script-card-title">Timing</span>
             <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
@@ -371,6 +524,31 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
             </div>
           </div>
+          )}
+          {revealTab ? (
+          <>
+          <div class="physics-paint-play-script-side-stack">
+            {motionCard}
+          </div>
+          {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
+              error. The action opens the Photo Reference modal so the user places
+              a source, then returns to this dialog. */}
+          {playScript.revealReferencePlaced.value ? null : (
+            <div class="physics-paint-play-script-reveal-notice" role="note">
+              <span>Reveal bakes the placed photo reference — no reference placed yet.</span>
+              <button
+                type="button"
+                class="physics-paint-play-script-heading-link"
+                disabled={busy}
+                onClick={() => playScript.requestPhotoReference()}
+              >
+                Place a reference…
+              </button>
+            </div>
+          )}
+          </>
+          ) : (
+          <>
           <div class="physics-paint-play-script-side-stack">
             <div class={`physics-paint-play-script-card physics-paint-play-script-card-color${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <span class="physics-paint-play-script-card-title">Color</span>
@@ -420,51 +598,7 @@ export function PhysicsPaintPlayScriptDialog({
                 )}
               </div>
             </div>
-            <div class={`physics-paint-play-script-card physics-paint-play-script-card-motion${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
-              <div class="physics-paint-play-script-card-heading">
-                <span class="physics-paint-play-script-card-title">Motion wiggle</span>
-                <button
-                  type="button"
-                  class="physics-paint-play-script-heading-link"
-                  disabled={busy || loopEdit}
-                  onClick={() => playScript.resetDialogMotion()}
-                >
-                  Reset defaults
-                </button>
-              </div>
-              <div class="physics-paint-play-script-motion-rows">
-                <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-deformation">
-                  <span>Deformation</span>
-                  <input
-                    id="physics-play-script-motion-deformation"
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={playScript.dialogMotion.value.deformation}
-                    disabled={busy || loopEdit}
-                    onInput={(event) => {
-                      playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-                    }}
-                  />
-                  <output>{playScript.dialogMotion.value.deformation}</output>
-                </label>
-                <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-position">
-                  <span>Position</span>
-                  <input
-                    id="physics-play-script-motion-position"
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={playScript.dialogMotion.value.position}
-                    disabled={busy || loopEdit}
-                    onInput={(event) => {
-                      playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-                    }}
-                  />
-                  <output>{playScript.dialogMotion.value.position}</output>
-                </label>
-              </div>
-            </div>
+            {motionCard}
           </div>
           {identicalCycle ? (
             <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-source-choice">
@@ -505,6 +639,7 @@ export function PhysicsPaintPlayScriptDialog({
               </span>
             </div>
           ) : null}
+          </>)}
           {summaryRequested ? (
             <p class="physics-paint-play-script-summary-bar">
               <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
@@ -537,8 +672,8 @@ export function PhysicsPaintPlayScriptDialog({
                 onClick={() => { void playScript.confirm(); }}
               >
                 {regenerateImpact.affectedGroups.length > 1
-                  ? `Regenerate ${regenerateImpact.affectedGroups.length} Groups`
-                  : 'Regenerate Group'}
+                  ? `Regenerate ${regenerateImpact.affectedGroups.length} Rails`
+                  : 'Regenerate Rail'}
               </button>
             </>) : (<>
               <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
@@ -552,19 +687,19 @@ export function PhysicsPaintPlayScriptDialog({
                     if (targetId) void playScript.openSourceEdit(targetId);
                   }}
                 >
-                  Regenerate Group
+                  Regenerate Rail
                 </button>
               ) : null}
               {!playScript.canCancel.value ? (
                 <button
                   type="button"
                   class="physics-paint-play-script-button physics-paint-play-script-button-primary"
-                  disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)}
+                  disabled={(revealTab ? Boolean(playScript.revealValidationError.value) : Boolean(playScript.validationError.value)) || Boolean(playScript.repeatError.value)}
                   onClick={() => { void playScript.confirm(); }}
                 >
                   {loopEdit
                     ? playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
-                    : sourceEdit ? 'Regenerate source cycle' : 'Create Group'}
+                    : sourceEdit ? 'Regenerate source cycle' : 'Create Rail'}
                 </button>
               ) : null}
             </>)}

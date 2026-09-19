@@ -1,9 +1,10 @@
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import { requirePhysicPaintRotoInlineBytes } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from '../view/physicsPaintWorkflowPresentation';
 import type { PhysicsPaintWorkflowOnionPreviewFrame } from '../view/PhysicsPaintWorkflowStrip';
 
-export type RotoOnionFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl' | 'source'>> & {
+export type RotoOnionFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes' | 'source'>> & {
   readonly keyId?: string;
   readonly contentRevision?: string;
   readonly cacheRevision?: string;
@@ -48,8 +49,8 @@ function projectLegacyRotoOnionPreviewFrames(input: RotoLegacyOnionInput): Physi
   const count = clampOnionCount(input.onion.count);
   const candidates = new Map<number, RotoOnionFrame & { onionKind?: PhysicsPaintWorkflowOnionPreviewFrame['kind'] }>();
   const realDisplayBySource = new Map<number, number>();
-  const projectCandidate = (frame: RotoOnionFrame, anchorFrame: number) => typeof frame.onionDataUrl === 'string'
-    ? { ...frame, appFrame: anchorFrame, source: 'real-key' as const, dataUrl: frame.onionDataUrl, onionKind: 'stroke-preview' as const }
+  const projectCandidate = (frame: RotoOnionFrame, anchorFrame: number) => frame.onionBytes instanceof Uint8Array
+    ? { ...frame, appFrame: anchorFrame, source: 'real-key' as const, bytes: frame.onionBytes, onionKind: 'stroke-preview' as const }
     : { ...frame, appFrame: anchorFrame, source: 'real-key' as const, onionKind: frame.source === 'real-key' ? 'cached-composite' as const : 'stroke-preview' as const };
   const addRealCandidate = (frame: RotoOnionFrame) => {
     if (frame.source && frame.source !== 'real-key') return;
@@ -83,7 +84,7 @@ function projectOnionCandidates(
 ): PhysicsPaintWorkflowOnionPreviewFrame[] {
   const project = (frame: RotoOnionFrame & { onionKind: PhysicsPaintWorkflowOnionPreviewFrame['kind'] }, direction: 'previous' | 'next', distance: number): PhysicsPaintWorkflowOnionPreviewFrame => ({
     frame: frame.appFrame,
-    dataUrl: frame.dataUrl,
+    bytes: frame.bytes,
     direction,
     distance,
     source: 'roto',
@@ -127,8 +128,12 @@ export function projectRotoOnionPreviewFrames(input: RotoPhysicalOnionInput | Ro
       && preview.contentRevision === source.contentRevision
       ? preview
       : null;
-    const frame = exactPreview ?? {
+    // 52.2-02 (D-07): an onion projection reads pixels, so the runtime render
+    // source's inline carrier is asserted — a reference-only payload is a
+    // persisted shape and never reaches this runtime projection.
+    const frame: RotoOnionFrame = exactPreview ?? {
       ...source.renderedFrame,
+      bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame),
       appFrame: record.appFrame,
       keyId: record.keyId,
       contentRevision: source.contentRevision,
@@ -137,8 +142,8 @@ export function projectRotoOnionPreviewFrames(input: RotoPhysicalOnionInput | Ro
     if (frame.backgroundOnly) continue;
     candidates.push({
       ...frame,
-      dataUrl: frame.onionDataUrl ?? frame.dataUrl,
-      onionKind: exactPreview || frame.onionDataUrl ? 'stroke-preview' : 'cached-composite',
+      bytes: frame.onionBytes ?? frame.bytes,
+      onionKind: exactPreview || frame.onionBytes ? 'stroke-preview' : 'cached-composite',
     });
   }
 

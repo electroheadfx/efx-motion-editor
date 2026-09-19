@@ -1,28 +1,57 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {describe, it, expect, beforeEach} from 'vitest';
+import {describe, it, expect, beforeEach, vi} from 'vitest';
 import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
 import {sequenceStore} from './sequenceStore';
 import {physicPaintStore} from './physicPaintStore';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
+
+// 260918-ovi: spy on the projectCreate IPC wrapper so createProject threading
+// is observable. Other ipc exports (assetUrl, configGet*, etc.) keep their real
+// implementations so dependent stores load unchanged.
+const mockProjectCreate = vi.hoisted(() => vi.fn());
+vi.mock('../lib/ipc', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/ipc')>();
+  return {
+    ...actual,
+    projectCreate: mockProjectCreate,
+  };
+});
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 /** Create a minimal AudioTrack for testing */
-describe('Physics Paint project/cache save transaction', () => {
-  it('keeps Save and Save As project writes inside the rollback-capable cache callback', () => {
+describe('EFX Paint package save transaction (52.2-07)', () => {
+  it('routes Save and Save As through the package save with the project and the package path only', () => {
     const source = readFileSync(fileURLToPath(new URL('./projectStore.ts', import.meta.url)), 'utf8');
     const saveStart = source.indexOf('async saveProject(options?');
     const saveAsStart = source.indexOf('async saveProjectAs(newFilePath');
     const saveSource = source.slice(saveStart, saveAsStart);
     const saveAsSource = source.slice(saveAsStart, source.indexOf('/** Open a project', saveAsStart));
 
-    expect(saveSource).toContain('await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {');
-    expect(saveSource).toContain('}, currentFilePath, cacheTransactionId);');
-    expect(saveAsSource).toContain('await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {');
-    expect(saveAsSource).toContain('newFilePath,\n            cacheTransactionId,');
-    expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);');
-    expect(source).not.toContain('physic_paint_outputs: await savePhysicPaintData(');
+    // Both call sites hand the package root and the write set to the ONE
+    // package funnel — the manifest is assembled inside it (D-09).
+    expect(saveSource).toContain('await savePackageWithTelemetry(projectDir, documents, branch);');
+    expect(saveAsSource).toContain("const manifest = await savePackageWithTelemetry(parentDir, documents, 'manual');");
+
+    // The funnel passes the project and the package path to the package save,
+    // plus the package identity and the machine-local cache root. The cache
+    // transaction id plan 05 Task 3 left dead is gone from every call site —
+    // never forwarded, never a placeholder argument (T-52.2-21).
+    const helperStart = source.indexOf('async function savePackageWithTelemetry(');
+    const helperSource = source.slice(helperStart, source.indexOf('function buildMceProject', helperStart));
+    expect(helperSource).toContain('await savePackage(packageDir, {');
+    expect(helperSource).toContain('project: buildMceProject(),');
+    expect(helperSource).toContain('documents,');
+    expect(helperSource).toContain('projectId: projectId.value,');
+    expect(helperSource).not.toContain('cacheTransactionId');
+    expect(source).not.toContain('cacheTransactionId');
+    // One save path only: no legacy physic-paint persistence remains in projectStore.
+    expect(source).not.toContain('savePhysicPaintDataWithProjectWrite');
+    expect(source).not.toContain('physic_paint_' + 'outputs' + ': await savePhysicPaintData(');
   });
 });
 
@@ -99,9 +128,9 @@ describe('projectStore audio persistence', () => {
       expect(mat.slip_offset).toBe(3);
     });
 
-    it('sets version to 15', () => {
+    it('sets version to 16', () => {
       const project = projectStore.buildMceProject();
-      expect(project.version).toBe(15);
+      expect(project.version).toBe(16);
     });
 
     it('outputs empty audio_tracks when none exist', () => {
@@ -109,7 +138,7 @@ describe('projectStore audio persistence', () => {
       expect(project.audio_tracks).toEqual([]);
     });
 
-    it('omits cached physics paint outputs for deleted layer ids', () => {
+    it('never emits the legacy outputs carrier (v1.0 one save path)', () => {
       sequenceStore.add({
         id: 'seq-1',
         kind: 'fx',
@@ -131,29 +160,23 @@ describe('projectStore audio persistence', () => {
         inFrame: 0,
         outFrame: 24,
       });
-      physicPaintStore.setFrame('active-cache', 1, {
+      physicPaintStore.setFrame('active-cache', TEST_TRACK_ID, 1, {
         frameIndex: 0,
         appFrame: 1,
-        dataUrl: 'data:image/png;base64,AQID',
+        bytes: testWebpBytes('AQID'),
         width: 100,
         height: 50,
       });
-      physicPaintStore.setFrame('active-layer', 1, {
+      physicPaintStore.setFrame('deleted-cache', TEST_TRACK_ID, 1, {
         frameIndex: 0,
         appFrame: 1,
-        dataUrl: 'data:image/png;base64,AwQF',
-        width: 100,
-        height: 50,
-      });
-      physicPaintStore.setFrame('deleted-cache', 1, {
-        frameIndex: 0,
-        appFrame: 1,
-        dataUrl: 'data:image/png;base64,BAUG',
+        bytes: testWebpBytes('BAUG'),
         width: 100,
         height: 50,
       });
 
-      expect(projectStore.buildMceProject().physic_paint_outputs?.map(output => output.layer_id)).toEqual(['active-cache']);
+      const project = projectStore.buildMceProject();
+      expect(('physic_paint_' + 'outputs') in project).toBe(false);
     });
   });
 
@@ -273,5 +296,58 @@ describe('GL transition persistence (GLT-08)', () => {
 
   describe('version', () => {
     it.todo('saves with version 11');
+  });
+});
+
+describe('260918-ovi: canvas format threading', () => {
+  beforeEach(() => {
+    mockProjectCreate.mockReset();
+    projectStore.width.value = 1920;
+    projectStore.height.value = 1080;
+  });
+
+  describe('manifest round-trip (law pins)', () => {
+    function makeMinimalMceProject(overrides: Partial<RuntimeMceProject> = {}): RuntimeMceProject {
+      return {
+        version: 8,
+        name: 'Test Project',
+        fps: 24,
+        width: 1920,
+        height: 1080,
+        created_at: '2026-01-01',
+        modified_at: '2026-01-01',
+        sequences: [],
+        images: [],
+        ...overrides,
+      };
+    }
+
+    it('buildMceProject round-trips non-default dims', () => {
+      projectStore.width.value = 1080;
+      projectStore.height.value = 1920;
+      const project = projectStore.buildMceProject();
+      expect(project.width).toBe(1080);
+      expect(project.height).toBe(1920);
+    });
+
+    it('hydrateFromMce restores vertical dims', () => {
+      const project = makeMinimalMceProject({ width: 1080, height: 1920 });
+      projectStore.hydrateFromMce(project, '/test/project');
+      expect(projectStore.width.value).toBe(1080);
+      expect(projectStore.height.value).toBe(1920);
+    });
+  });
+
+  describe('createProject threading (260918-ovi)', () => {
+    it('createProject threads width/height through IPC and adopts returned dims', async () => {
+      mockProjectCreate.mockResolvedValue({
+        ok: true,
+        data: { width: 1080, height: 1920 },
+      });
+      await projectStore.createProject('Fresh', 24, '/projects/Fresh.mce', 1080, 1920);
+      expect(mockProjectCreate).toHaveBeenCalledWith('Fresh', 24, '/projects/Fresh.mce', 1080, 1920);
+      expect(projectStore.width.value).toBe(1080);
+      expect(projectStore.height.value).toBe(1920);
+    });
   });
 });

@@ -2,6 +2,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+const backgroundPickerView = readFileSync(fileURLToPath(new URL('./view/BackgroundAssetPickerView.tsx', import.meta.url)), 'utf8');
+const capability = readFileSync(fileURLToPath(new URL('../../../src-tauri/capabilities/physics-paint.json', import.meta.url)), 'utf8');
+const trackRow = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTrackRow.tsx', import.meta.url)), 'utf8');
+const headerColumn = readFileSync(fileURLToPath(new URL('./view/physicsPaintTrackHeaderColumn.tsx', import.meta.url)), 'utf8');
+
 const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
 const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const main = readFileSync(fileURLToPath(new URL('../../main.tsx', import.meta.url)), 'utf8');
@@ -11,8 +16,10 @@ const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightP
 const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const launchIntegration = readFileSync(fileURLToPath(new URL('./hooks/usePhysicsPaintLaunchIntegration.ts', import.meta.url)), 'utf8');
 const navigationCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoNavigationCoordinator.ts', import.meta.url)), 'utf8');
 const physicalEditCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditCoordinator.ts', import.meta.url)), 'utf8');
+const historyHook = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditHistory.ts', import.meta.url)), 'utf8');
 const memoizedTopBarPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintTopBar.ts', import.meta.url));
 const memoizedTopBar = existsSync(memoizedTopBarPath) ? readFileSync(memoizedTopBarPath, 'utf8') : '';
 const memoizedPlayScriptDialogPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintPlayScriptDialog.ts', import.meta.url));
@@ -28,6 +35,18 @@ const types = readFileSync(fileURLToPath(new URL('../../types/physicPaint.ts', i
 const projectTypes = readFileSync(fileURLToPath(new URL('../../types/project.ts', import.meta.url)), 'utf8');
 const store = readFileSync(fileURLToPath(new URL('../../stores/physicPaintStore.ts', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url)), 'utf8');
+// 49-03 (D-12, T-49-03-03): the raster non-regression surface — the
+// transparency checkerboard must exist ONLY as a paint layer in the Studio
+// monitor stack, never in the compositor, flattened cache, preview, or export.
+const compositor = readFileSync(fileURLToPath(new URL('../../efx-paint/compositor/efxPaintCompositor.ts', import.meta.url)), 'utf8');
+const flattenedCache = readFileSync(fileURLToPath(new URL('../../efx-paint/compositor/efxPaintCompositeCache.ts', import.meta.url)), 'utf8');
+const previewRenderer = readFileSync(fileURLToPath(new URL('../../lib/previewRenderer.ts', import.meta.url)), 'utf8');
+const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRenderer.ts', import.meta.url)), 'utf8');
+// 50-05 (Task 2, S4): the reference transform handles surface — the interactive
+// overlay + the pure bounds geometry it consumes.
+const referenceTransformHandles = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)), 'utf8');
+const referenceTransform = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransform.ts', import.meta.url)), 'utf8');
+const studioKeyboard = readFileSync(fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -46,10 +65,19 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain('PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT');
   });
 
-  it('keeps Save, Load/Paintbrush, Create Group, and cached Roto playback distinct', () => {
+  it('installs the image-library request listener in the app entry point (49-04 picker)', () => {
+    // The main webview must register the request listener or the Studio's
+    // emitTo('main', ...) has no receiver and every picker request times out.
+    expect(main).toContain('installPhysicPaintImageLibraryListener');
+    expect(main).toContain('installPhysicPaintImageLibraryListener()');
+    expect(bridge).toContain('PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT');
+    expect(bridge).toContain('PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT');
+  });
+
+  it('keeps Save, Load/Paintbrush, Create Rail, and cached Roto playback distinct', () => {
     const save = scriptsPanel.indexOf('label="Save Action"');
     const paintbrush = scriptsPanel.indexOf('label="Load + Apply to Frame"');
-    const playScript = scriptsPanel.indexOf('label="Create Group…"');
+    const playScript = scriptsPanel.indexOf('label="Create Rail…"');
     expect(save).toBeGreaterThan(-1);
     expect(paintbrush).toBeGreaterThan(save);
     expect(playScript).toBeGreaterThan(paintbrush);
@@ -73,8 +101,12 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('rotoCachedPlayback');
   });
 
-  it('extends Studio cached playback through the loop-aware physical end frame', () => {
-    expect(studio).toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId) : null,');
+  it('extends Studio cached playback through the composite content extent (48-06 UAT-D)', () => {
+    // UAT-D: keys/rails up to frame 17 played only 0-10 — the range came from
+    // the LAUNCH track's end alone. Playback enumerates the flattened composite
+    // (CMP-01), so the range must be the max end across EVERY Paint track.
+    expect(studio).toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalCompositeEndFrame(launchContext.layerId) : null,');
+    expect(studio).not.toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId, trackIdOfLaunch(launchContext)) : null,');
     expect(studio).toContain('getFrame: findCachedRotoDisplayFrame,');
     expect(navigationCoordinator).toContain('const playbackEndFrame = input.playback.getEndFrame();');
     expect(navigationCoordinator).toContain('Array.from({ length: playbackEndFrame }');
@@ -94,11 +126,11 @@ describe('Physics Paint Play Script integration contract', () => {
   it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {
     expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
     expect(studio).toContain('getLoopEditSnapshot: (placementStart) => {');
-    expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)');
-    expect(studio).toContain('const layerEndExclusive = launchContext.rotoPhysical?.layerEndExclusive;');
+    expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())');
+    expect(studio).toContain('const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId());');
     expect(studio).toContain('layerEndExclusive,');
     expect(studio).toContain('remainingCapacity: Math.max(0, layerEndExclusive - placementStart)');
-    expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0,');
     expect(studio).not.toContain('rotoParentEndExclusive: rotoPhysicalCapacity');
     expect(studio).not.toContain('layerEndExclusive: physicalCapacity');
     expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
@@ -107,6 +139,115 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('selectedLoopClipId.value = null;');
     expect(scriptsPanel).toContain('void onOpenLoopEdit(selectedLoopClip.loopId);');
     expect(scriptsPanel).not.toContain('onOpenLoopEdit?.');
+  });
+
+  it('routes every paint-path document and record read through the live active track (47-01 multi-track)', () => {
+    // 47-01 UAT: painting on a NEW track stored nothing — the completed-mutation
+    // handler, the first-paint key promotion, and the script target resolver all
+    // read the LAUNCH track's document/records. Each must resolve the document's
+    // live activeTrackId so a paint on the new track persists to the new track.
+    expect(studio).toContain('const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;');
+    expect(studio).toContain('const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());');
+    expect(studio).toContain('const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);');
+    expect(studio).toContain('const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);');
+    // Navigation selection writes must land on the active track, never the launch track.
+    expect(studio).toContain('if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
+    expect(studio).toContain('const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);');
+    expect(studio).toContain('physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
+    // 48-06 (R-2click): the startFrame propagation reseed must also read the
+    // LIVE active track — the launch snapshot's activeTrackId is stale after a
+    // track switch, so the rAF reseed looked up the key on the wrong track,
+    // found nothing, and cleared the synchronous click selection (the first
+    // click selected, the reseed cleared, only the second click survived).
+    expect(studio).toContain('const liveTrackId = getEfxPaintDocument(next.layerId)?.activeTrackId ?? trackIdOfLaunch(next);');
+    expect(studio).toContain('physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null');
+    expect(studio).not.toContain('physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, trackIdOfLaunch(next), next.startFrame)');
+    // The timeline-actions resolver ports (capacity, parent end, loop clips,
+    // interpolation breaks) feed the first-paint key promotion — the launch
+    // track's breaks/clips fail validation against the new track's empty key
+    // set, so every port must resolve the live active track.
+    expect(studio).toContain('getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,');
+    expect(studio).toContain('getParentEndExclusive: () => launchContext\n      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())\n      : 0,');
+    expect(studio).toContain('getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],');
+    expect(studio).toContain('getIncomingInterpolationBreakKeyIds: () => launchContext\n      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())\n      : [],');
+    expect(studio).toContain('getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: \'duplicate\', deform: 0, position: 0 },');
+    expect(studio).toContain('getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, studioActiveTrackId()) : [],');
+    expect(studio).toContain('getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, studioActiveTrackId()) : null,');
+    // History identity and adjacent-key navigation must also follow the active track.
+    expect(studio).toContain('trackId: studioActiveTrackId(),');
+    expect(studio).toContain('const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);');
+  });
+
+  it('resets the track-scoped edit buffers on an in-place active-track switch (48-06 UAT-A)', () => {
+    // UAT-A: any physical edit after a track switch failed closed with
+    // "Frame-indexed child state is not completely owned by the pre-state
+    // real-key identities", and the failed edit's recovery lease then disabled
+    // every paint tool. The frame-indexed edit state holds TRACK-scoped content
+    // in studio-wide buffers; the track-switch effect must reset it exactly
+    // like a launch replacement does. A visibility flip of the SAME track keeps
+    // the buffers (same content authority).
+    const effectStart = studio.indexOf('const lastReferenceDisplayStateRef = useRef');
+    const effectEnd = studio.indexOf('rotoNavigation.configureRuntimePort', effectStart);
+    expect(effectStart).toBeGreaterThanOrEqual(0);
+    expect(effectEnd).toBeGreaterThan(effectStart);
+    const effect = studio.slice(effectStart, effectEnd);
+    expect(effect).toContain('const lastEditStateTrackIdRef = useRef<string | null>(null);');
+    expect(effect).toContain('if (lastEditStateTrackIdRef.current !== trackId) {');
+    expect(effect).toContain('rotoEditBuffer.resetForLaunch();');
+    expect(effect).toContain('rotoPersistence.confirmedFramesRef.current = new Map();');
+    expect(effect).toContain('rotoEditableFramesRef.current = [];');
+    expect(effect).toContain('cachedRotoReferenceUrlRef.current = null;');
+    expect(effect).toContain('cachedRotoRepaintBaseFrameRef.current = null;');
+    expect(effect).toContain('setCachedRotoRepaintBaseFrame(null);');
+    // The reset must run BEFORE the cross-track selection guard's early return
+    // so a cross-track click (crossTrackSelectionPendingRef) never skips it.
+    expect(effect.indexOf('rotoEditBuffer.resetForLaunch();')).toBeLessThan(effect.indexOf('crossTrackSelectionPendingRef.current'));
+  });
+
+  it('syncs the child document to the main window so track CRUD survives the project save (47-01 persistence)', () => {
+    // The Studio window owns its own efxPaintStore instance; the main window's
+    // save path serializes ITS document. The child must push every document
+    // mutation (track CRUD) to the main window or the added track never lands
+    // in the .mce.
+    expect(studio).toContain('sendEfxPaintDocumentSync(');
+    expect(studio).toContain("if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {");
+    // 52.1 (gesture-idle scheduler): mutations set a dirty flag; the push runs
+    // once on the idle transition, not once per mutation.
+    expect(studio).toContain('documentSyncDirty.value = true;');
+    expect(studio).toContain('if (!interactionIdle.value) return;');
+    expect(studio).toContain('if (!documentSyncDirty.value) return;');
+    // 52.1 (Part 1): the dirty flag is set ONLY on structural changes
+    // (efxPaintVersion) — physical edits (physicPaintVersion) ship via
+    // applyPayload and must NOT re-trigger a full-document sync.
+    expect(studio).toContain('}, [efxPaintVersion.value]);');
+    expect(studio).not.toContain('[efxPaintVersion.value, physicPaintVersion.value]');
+    // 52.1 (Part 1): the flush (save/export) pushes the document ONLY when a
+    // structural change is pending — the auto-save → flush path must not
+    // re-serialize the full document on physical edits.
+    expect(studio).toContain('if (!documentSyncDirty.peek()) return;');
+    expect(main).toContain('installPhysicPaintEfxPaintDocumentListener()');
+    // The main-window listener is fail-closed (canonical parser) and
+    // idempotency-guarded by document revision (the launch push is a no-op).
+    expect(bridge).toContain("PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document'");
+    expect(bridge).toContain('installPhysicPaintEfxPaintDocumentListener');
+    expect(bridge).toContain('parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload))');
+    expect(bridge).toContain('buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)');
+    // 49-06 (UAT round 11): the child carries its runtime background source
+    // bytes with the sync (the main window's registry is only hydrated at
+    // project load), and the listener registers them BEFORE the revision guard.
+    expect(studio).toContain('getBackgroundSourceImageBytes(ref)');
+    expect(bridge).toContain('registerBackgroundSourceImage(ref, bytes)');
+  });
+
+  it('the per-row frame-blending toggle ships to the parent through the physical coordinator (quick-260913-52r D)', () => {
+    // The direct store write shipped nowhere: the 52.1 auto-push keys on
+    // efxPaintVersion, and the doc-sync mirror refuses the reference-shaped
+    // wire document (canonical revision mismatch). The one path that reaches
+    // the parent runtime — and therefore the save and the reopen — is the
+    // physical coordinator's interpolation op.
+    expect(studio).toContain("operationKind: 'set-interpolation-enabled',");
+    expect(studio).toContain('void physicalEditCoordinator.executePhysicalEdit({');
+    expect(studio).not.toContain('markDocumentSyncDirtyRef');
   });
 });
 
@@ -118,10 +259,13 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     expect(storeImport).toContain('physicPaintRotoPhysicalOperationLeaseVersion');
     expect(storeImport).toContain('physicPaintStore');
     expect(storeImport).toContain('physicPaintVersion');
-    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);');
-    expect(studio).toContain('getRotoPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),');
-    expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame),');
-    expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, appFrame) : null,');
+    // 47-01 UAT round 8: the strip subscriptions read the THROTTLED paint
+    // revision (trailing 150ms flush) so a stroke burst does not re-render the
+    // whole Studio per paint event.
+    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);');
+    expect(studio).toContain('getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),');
+    expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),');
+    expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
 
     for (const secondAuthority of [
       'useSignal<readonly PhysicPaintRotoLoopClip',
@@ -150,9 +294,9 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     const replacementEnd = studio.indexOf('const replacePhysicalDocumentWithOwnership = (', replacementStart);
     const replacement = studio.slice(replacementStart, replacementEnd);
     expect(replacementStart).toBeGreaterThanOrEqual(0);
-    expect(replacement).toContain('getRotoPhysicalLoopClips(layerId)');
-    expect(replacement).toContain('getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)');
-    expect(replacement).toContain('getRotoGroupOverrideRecords(layerId)');
+    expect(replacement).toContain('getRotoPhysicalLoopClips(layerId, studioActiveTrackId())');
+    expect(replacement).toContain('getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId())');
+    expect(replacement).toContain('getRotoGroupOverrideRecords(layerId, studioActiveTrackId())');
     expect(replacement).toContain('records,\n      interpolation,\n      currentLoopClips,\n      currentIncomingBreaks,\n      currentGroupOverrides,');
     expect(replacement).toContain('contentRevision: nextRevision');
   });
@@ -180,7 +324,7 @@ describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
     expect(studio).toContain('.filter((loopClip) => loopClip.scriptId === actionId)');
     expect(studio).toContain('if (!groupsById.has(loopClip.loopId)) groupsById.set(loopClip.loopId, loopClip);');
     expect(studio).toContain('left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId)');
-    expect(studio).toContain('[launchContext?.layerId, physicPaintVersion.value]');
+    expect(studio).toContain('[launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]');
   });
 
   it('reveals only an available source Action when a stable Group is selected', () => {
@@ -275,7 +419,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     const selection = studio.slice(selectionStart, selectionEnd);
     expect(selectionStart).toBeGreaterThanOrEqual(0);
     expect(selection).toContain('selectedKeyId.value = null;');
-    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        null,\n        currentFrame,\n      );');
+    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        trackIdOfLaunch(launchContext),\n        null,\n        currentFrame,\n      );');
     expect(selection).toContain('selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;\n    rotoSpacingSelection.value = null;');
 
     const clearPrimaryIndex = selection.indexOf('selectedKeyId.value = null;');
@@ -295,7 +439,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     const selectAll = studio.slice(selectAllStart, selectAllEnd);
     expect(selectAllStart).toBeGreaterThanOrEqual(0);
     expect(selectAll).toContain('selectedKeyId.value = null;');
-    expect(selectAll).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        null,\n        currentFrame,\n      );');
+    expect(selectAll).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        trackIdOfLaunch(launchContext),\n        null,\n        currentFrame,\n      );');
     expect(selectAll).toContain('selectAllRotoKeyIds(\n      orderedRealKeyIds,\n      null,\n    );');
     expect(selectAll).toContain('rotoSpacingSelection.value = null;');
     expect(selectAll).toContain('selectedLoopClipIds.value = [];');
@@ -317,10 +461,10 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(snapshotStart).toBeGreaterThanOrEqual(0);
     expect(snapshot).toContain('const liveLaunch = launchContextRef.current;');
     expect(snapshot).toContain('const liveSelectedKeyId = selectedKeyId.peek();');
-    expect(snapshot).toContain('physicPaintStore.getRotoRealKeyRecords(layerId)');
-    expect(snapshot).toContain('physicPaintStore.getRotoGroupOverrideRecords(layerId)');
-    expect(snapshot).toContain('physicPaintStore.getRotoPhysicalLoopClips(layerId)');
-    expect(snapshot).toContain('physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)');
+    expect(snapshot).toContain('physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId())');
+    expect(snapshot).toContain('physicPaintStore.getRotoGroupOverrideRecords(layerId, studioActiveTrackId())');
+    expect(snapshot).toContain('physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId())');
+    expect(snapshot).toContain('physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId())');
     expect(snapshot).toContain('currentAppFrame: liveLaunch?.startFrame ?? 0,');
     expect(snapshot).not.toContain('acceptedOutput');
   });
@@ -456,16 +600,18 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
-    expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
     expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
-    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
+    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`");
   });
 
-  it('pins the shared full-row rail focus ring on both :focus and :focus-visible (43.4 defect 6/8)', () => {
+  it('pins the shared rail focus treatment on both :focus and :focus-visible — no selection box (43.4 defect 6/8, 47 close-out UAT round 10)', () => {
     const focusRule = css.slice(css.indexOf('.physics-paint-rail-target:focus,'));
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
-    expect(css).toContain('.physics-paint-rail-target:focus-visible::after');
+    // The selection ring was removed: every rail family selects with the same
+    // orange segment, and frames/keys paint an orange background fill.
+    expect(css).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(css).not.toContain('.physics-paint-key-rail-target:focus,');
     expect(css).not.toContain('.physics-paint-key-rail-target:focus-visible {\n  outline: 2px solid #2d5be3');
   });
@@ -579,8 +725,12 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 
   it('gates the solo playback window on the armed signal so a plain rail selection never filters playback (43.6-09)', () => {
-    const portStart = studio.indexOf('getSoloWindow: () => {');
-    const portEnd = studio.indexOf('onStart: (frameCount)', portStart);
+    // 52.2-04 (D-21): the window derivation moved into resolveSessionSoloWindow
+    // so one derivation serves both getSoloWindow and getSoloContentStart; the
+    // port delegates. The disarmed guard must still lead the derivation.
+    expect(studio).toContain('getSoloWindow: () => resolveSessionSoloWindow(),');
+    const portStart = studio.indexOf('const resolveSessionSoloWindow = (): SoloPlaybackWindow | null => {');
+    const portEnd = studio.indexOf('getSoloWindow:', portStart);
     const port = studio.slice(portStart, portEnd);
     expect(portStart).toBeGreaterThanOrEqual(0);
     // 43.6-09: a disarmed solo must return null BEFORE member derivation so
@@ -648,7 +798,7 @@ describe('Physics Paint selection-scoped Group deletion (43.2-17)', () => {
 
   it('renders only the focused sole-occurrence Delete Frame warning', () => {
     expect(studio).toContain('Delete the only frame in “{soleOccurrenceDeleteDialog.groupName}”?');
-    expect(studio).toContain('This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data. The Action is kept.');
+    expect(studio).toContain('This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Action is kept.');
     expect(studio).toContain('>Delete Frame</button>');
     expect(studio).toContain('>Cancel</button>');
     expect(studio).not.toContain('This frame belongs to a {groupDeleteDialog.groupType} Group.');
@@ -694,21 +844,29 @@ function countOccurrences(source: string, literal: string): number {
   return source.split(literal).length - 1;
 }
 
-// Phase 43 Plan 09 Task 3 (D-28, audit finding 6): the Studio consumes the
-// 'loop-placeholder' render-source variant explicitly — the playback
-// availability path excludes it without blocking, the display path falls back
-// to the established non-blocking clear, and the frame is never offered as
-// real key content.
-describe('Physics Paint Studio loop placeholder contract (D-28)', () => {
-  it('handles the placeholder variant explicitly in the playback availability memo', () => {
-    expect(studio).toContain("case 'loop-placeholder':");
-    // The placeholder frame never contributes playback payload.
-    expect(studio).not.toContain("source.kind !== 'loop-placeholder' ? [{ appFrame, frame: source.renderedFrame }]");
+// Phase 43 Plan 09 Task 3 (D-28, audit finding 6) re-sourced by Phase 48-05
+// (CMP-01), then made STRUCTURAL by G-52-8 (FIX 2): Studio playback
+// availability is document-presence over the structural playback frame list —
+// a placeholder frame plays transparent (the 48-03 D-09 missing-source report
+// carries the reason) instead of being excluded from availability, exactly as
+// under the flattened law, but answering the question never flattens (each
+// flatten composites a photo-weight raster — 15 storms per Studio mount on a
+// reveal rail). The frame is still never offered as real key content (key
+// identity derives from the projection cell only).
+describe('Physics Paint Studio loop placeholder contract (D-28, flattened-sourced)', () => {
+  it('sources the playback availability memo structurally so Studio playback and the program monitor never diverge from the main editor (G-52-8)', () => {
+    // Document-presence over the structural frame list — never a flatten, and
+    // never a per-track render-source probe (a blend-mode probe would ENCODE
+    // an interpolated raster per generated frame).
+    expect(studio).toContain('getEfxPaintDocument(rotoPlaybackLayerId)');
+    expect(studio).toContain('return rotoPlaybackFrameNumbers.map((appFrame) => ({ appFrame, frame: true }));');
+    expect(studio).not.toContain('physicPaintStore.getFlattenedFrame(rotoPlaybackLayerId');
+    expect(studio).not.toContain('getRotoPhysicalRenderSource(rotoPlaybackLayerId');
+    expect(studio).not.toContain('Unhandled Roto physical render-source kind');
   });
 
-  it('keeps the never-fallback exhaustiveness arm so a future render-source variant is a compile-time error', () => {
-    expect(studio).toContain('Unhandled Roto physical render-source kind');
-    expect(studio).toContain('const exhaustive: never = source');
+  it('keeps the availability memo deps and return shape so the playback transport consumer contract is unchanged', () => {
+    expect(studio).toContain('}, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);');
   });
 
   it('never offers a placeholder frame as key content — key identity derives from the projection cell only', () => {
@@ -803,7 +961,7 @@ describe('Physics Paint navigation render localization', () => {
   });
 
   it('gates the complete physical mutation surface from the reactive lease registry', () => {
-    expect(studio).toContain("import { useComputed, useSignal } from '@preact/signals';");
+    expect(studio).toContain("import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';");
     expect(studio).toContain('physicPaintRotoPhysicalOperationLeaseVersion.value;');
     expect(studio).toContain('physicPaintStore.isRotoPhysicalOperationAvailable(');
     expect(studio).toContain('const mutationLocked = rotoScript.mutationLocked.value || !physicalMutationAvailable.value;');
@@ -920,7 +1078,7 @@ describe('Canvas navigation render localization', () => {
   it('keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack', () => {
     expect(canvasMount).toContain('export function PhysicsPaintCanvasMount(');
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMount);');
+    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
     expect(studioView).not.toContain('<PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />');
@@ -930,7 +1088,6 @@ describe('Canvas navigation render localization', () => {
 describe('Workflow navigation render localization', () => {
   it('assembles Workflow with named stable callbacks instead of inline action closures', () => {
     for (const handler of [
-      'handleRotoInterpolationEnabledChange',
       'handleRotoInterpolationModeChange',
       'handleToggleRotoKeySelection',
       'handleCollapseRotoSelectionToKey',
@@ -944,10 +1101,29 @@ describe('Workflow navigation render localization', () => {
     const workflowEnd = studio.indexOf('status: { shortcutsVisible }', workflowStart);
     const workflowBlock = studio.slice(workflowStart, workflowEnd);
     expect(workflowStart).toBeGreaterThanOrEqual(0);
-    expect(workflowBlock).not.toContain('onRotoInterpolationEnabledChange: (');
+    expect(workflowBlock).not.toContain('onRotoInterpolationModeChange: (');
     expect(workflowBlock).not.toContain('onNavigateToSyncedFrame: (');
-    expect(workflowBlock).toContain('onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange');
+    expect(workflowBlock).toContain('onRotoInterpolationModeChange: handleRotoInterpolationModeChange');
     expect(workflowBlock).toContain('onNavigateToSyncedFrame: handleNavigateToSyncedFrame');
+    // 260911-s1j: the popover's enable toggle is retired — the Studio wires no
+    // onRotoInterpolationEnabledChange (the row blend button owns on/off).
+    expect(studio).not.toContain('onRotoInterpolationEnabledChange');
+    expect(studio).not.toContain('handleRotoInterpolationEnabledChange');
+  });
+
+  it('writes the document-level interpolation mode to EVERY track and preserves each track\'s enabled flag (260911-s1j)', () => {
+    const handlerStart = studio.indexOf('const handleRotoInterpolationModeChange = useCallback(');
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    const handlerEnd = studio.indexOf('const handleSelectRotoSpacingProxy = useCallback(', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handler).toContain('getEfxPaintDocument(layerId)');
+    expect(handler).toContain('for (const track of document.tracks)');
+    expect(handler).toContain('physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id)');
+    expect(handler).toContain('physicPaintStore.setRotoPhysicalInterpolationState(layerId, track.id, { enabled: current.enabled, mode })');
+    expect(handler).toContain('physicalEditCoordinator.pendingOperationId.value !== null');
+    // The old active-track coordinator path is gone entirely.
+    expect(studio).not.toContain('useRotoInterpolationController');
+    expect(studio).not.toContain('updateRotoInterpolationSettings');
   });
 
   it('keeps ordinary Workflow frame navigation outside physical edit, document replacement, and history authority', () => {
@@ -986,6 +1162,69 @@ describe('Workflow navigation render localization', () => {
     ]) {
       expect(navigationOnlyBoundary).not.toContain(editOrHistoryAuthority);
     }
+  });
+
+  it('wires the seek path: skips the playback stop when playing and seeks after navigation (D-02)', () => {
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(');
+    const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    // Seek-while-playing keeps the playback timer running through the flush.
+    expect(navigation).toContain('const wasPlaying = rotoCachedPlayback.isActive;');
+    const wasPlayingIndex = navigation.indexOf('const wasPlaying = rotoCachedPlayback.isActive;');
+    const stopIndex = navigation.indexOf('rotoCachedPlayback.stop();');
+    expect(wasPlayingIndex).toBeGreaterThanOrEqual(0);
+    expect(stopIndex).toBeGreaterThan(wasPlayingIndex);
+    expect(navigation.slice(wasPlayingIndex, stopIndex)).toContain('if (!wasPlaying) {');
+    // The seek call is the single audio funnel and lands AFTER the frame-sync.
+    const syncIndex = navigation.indexOf('sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    const seekIndex = navigation.indexOf('rotoCachedPlayback.seek(frame);');
+    expect(syncIndex).toBeGreaterThanOrEqual(0);
+    expect(seekIndex).toBeGreaterThan(syncIndex);
+  });
+
+  it('wires the audible scrub path: scrubActiveRef gates seek vs scrub and scrubEnd on release (D-02 amendment)', () => {
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(');
+    const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    // The audio funnel routes by the scrub-active flag — scrub (audible
+    // snippet) while the ruler gesture is armed, seek (silent re-anchor) after.
+    expect(navigation).toContain('if (scrubActiveRef.current) {');
+    expect(navigation).toContain('rotoCachedPlayback.scrub(frame);');
+    expect(navigation).toContain('rotoCachedPlayback.seek(frame);');
+    // The strip props carry the scrub lifecycle: armed sets the flag and clears
+    // any stale playhead feed; release clears the flag, stops the snippet, and
+    // runs the ONE settle navigation at the final frame.
+    expect(studio).toContain('onScrubStart: () => { scrubActiveRef.current = true; rotoScrubFrameSignal.value = null; }');
+    const scrubEndStart = studio.indexOf('onScrubEnd: (frame) => {');
+    expect(scrubEndStart).toBeGreaterThanOrEqual(0);
+    const scrubEnd = studio.slice(scrubEndStart, studio.indexOf('},', scrubEndStart));
+    expect(scrubEnd).toContain('scrubActiveRef.current = false;');
+    expect(scrubEnd).toContain('rotoCachedPlayback.scrubEnd(frame);');
+    expect(scrubEnd).toContain('void requestRotoFrameNavigationRef.current(frame);');
+  });
+
+  it('gates mid-drag seeks to the playhead feed + audio snippet only (G-52-9 drag-gate)', () => {
+    const handlerStart = studio.indexOf('const handleNavigateToSyncedFrame = useCallback(');
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    const handlerEnd = studio.indexOf('}, [', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    // The scrub-armed branch runs FIRST and returns before the full navigation:
+    // playhead feed write + audible snippet, nothing else.
+    const gateIndex = handler.indexOf('if (scrubActiveRef.current) {');
+    expect(gateIndex).toBeGreaterThanOrEqual(0);
+    const gate = handler.slice(gateIndex);
+    expect(gate).toContain('rotoScrubFrameSignal.value = frame;');
+    expect(gate).toContain('rotoCachedScrub(frame);');
+    expect(gate).toContain('return;');
+    // The full navigation (publishOperationResult + requestRotoFrameNavigation)
+    // is only reachable BELOW the gate's early return.
+    expect(handler.indexOf('publishOperationResult(null);')).toBeGreaterThan(gateIndex);
+    // The strip receives the scrub playhead feed as a signal reference.
+    expect(studio).toContain('rotoScrubFrame: rotoScrubFrameSignal,');
+    // The sticky feed clears once the settle propagation catches up.
+    expect(studio).toContain('if (scrubFrame !== null && launchContext?.startFrame === scrubFrame) {');
   });
 });
 
@@ -1046,10 +1285,10 @@ describe('localized render instrumentation', () => {
       expect(countOccurrences(engineLifecycle, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
     }
     expect(engineLifecycle).toContain('}, []);');
-    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.rotoPhysical?.background]);');
+    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.layerId, efxPaintVersion.value]);');
   });
 
-  it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and two Studio identity resolves', () => {
+  it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and three Studio identity resolves', () => {
     expect(countOccurrences(toolRail, 'memo(')).toBe(1);
     expect(countOccurrences(rightPanel, 'memo(')).toBe(0);
     expect(countOccurrences(memoizedTopBar, 'memo(')).toBe(1);
@@ -1057,8 +1296,745 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(rightPanelRegion, 'memo(')).toBe(1);
     expect(countOccurrences(studioView, 'memo(')).toBe(1);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(7);
+    // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
+    // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
+    // (AM-3 Create Rail script picker).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
+  });
+});
+
+describe('Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-12)', () => {
+  it('resolves the monitor fond from the document fallback via the store instruction (no inline derivation remains)', () => {
+    // The canvas-stack memo reads the SAME resolved document-fallback
+    // instruction the flattened path uses — one authority, two consumers
+    // (Pitfall 1). The per-track roto background metadata fond walk is gone.
+    expect(studio).toContain('physicPaintStore.getDocumentFondInstruction(programMonitorLayerId)');
+    expect(studio).toContain('const fondBackground = fondInstruction ? fondInstructionToFondMetadata(fondInstruction) : null;');
+    expect(studio).toContain('function fondInstructionToFondMetadata(');
+    // The old inline walk (ordered-track getRotoBackgroundMetadata scan) must
+    // not survive alongside the re-wire.
+    expect(studio).not.toContain('for (const track of [...document.tracks].sort((left, right) => left.order - right.order))');
+    expect(studio).not.toContain('physicPaintStore.getRotoBackgroundMetadata(programMonitorLayerId, track.id)');
+  });
+
+  it('shows the checkerboard only in the no-fond case and keeps the fond layer as today', () => {
+    // The checkerboard flag is true ONLY when the effective fond is fully
+    // transparent for the current frame: transparent fallback (no fond
+    // instruction) AND the engine-side active background mode is transparent
+    // (settings.background — the fond=fallback mapping is not fully wired yet,
+    // so a paper/solid engine mode suppresses the checkerboard even while the
+    // document fallback is still transparent) AND no clip covering the frame
+    // (the gap verdict, consumed from the store's already-resolved
+    // background-frame plumbing).
+    expect(studio).toContain('const showTransparencyCheckerboard = programMonitorLayerId !== null');
+    expect(studio).toContain('&& fondInstruction === null');
+    expect(studio).toContain("&& settings.background === 'transparent'");
+    expect(studio).toContain("&& physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap'");
+    expect(studio).toContain('showTransparencyCheckerboard,');
+    // The view renders the checkerboard layer beneath the monitor content,
+    // conditioned on the flag; the fond layer keeps its own fondBackground
+    // condition (one branch, tested both ways).
+    expect(studioView).toContain('showTransparencyCheckerboard?: boolean;');
+    expect(studioView).toContain('props.showTransparencyCheckerboard ? (');
+    expect(studioView).toContain('class="physics-paint-transparency-checkerboard"');
+    expect(studioView).toContain('props.fondBackground ? (');
+    expect(studioView).toContain('class="physics-paint-fond-layer"');
+  });
+
+  it('uses the two-gray repeating-conic-gradient treatment clipped to canvas bounds', () => {
+    expect(css).toContain('.physics-paint-transparency-checkerboard');
+    expect(css).toContain('background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 20px 20px;');
+    expect(css).toContain('position: absolute;');
+    expect(css).toContain('z-index: 0;');
+    expect(css).toContain('pointer-events: none;');
+    expect(css).toContain('overflow: hidden;');
+    // The layer is positioned at the canvas bounds (the same inline style the
+    // fond layer uses), so the checkerboard is clipped to the canvas.
+    expect(studioView).toContain('left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height');
+  });
+
+  it('keeps the checkerboard out of the flattened raster, preview, and export (T-49-03-03)', () => {
+    // The treatment exists ONLY as a paint layer in the Studio monitor stack —
+    // never a document state, never in the compositor, flattened cache, main
+    // preview, or export renderer.
+    const rasterSurface = [compositor, flattenedCache, previewRenderer, exportRenderer].join('\n');
+    expect(rasterSurface).not.toContain('repeating-conic-gradient');
+    expect(rasterSurface).not.toContain('transparency-checkerboard');
+    expect(rasterSurface).not.toContain('#777 0% 25%');
+  });
+});
+
+describe('Physics Paint background swatch write-through (49-04 UAT fix)', () => {
+  it('writes the document fallback on swatch click so the monitor fond resolves the paper/solid/transparent record', () => {
+    // The 49-03 S6 write-through helper (backgroundModeToFallback) existed but
+    // the click path never invoked it — the document fallback stayed
+    // transparent and the monitor showed black (checkerboard suppressed). The
+    // wrapper must call setBackgroundFallback with backgroundModeToFallback for
+    // the launch layer, and the topBar must consume the wrapper, not the raw
+    // engine action.
+    expect(studio).toContain('const handleBackgroundChange = (mode: BgMode) => {');
+    expect(studio).toContain('setBackground(mode);');
+    expect(studio).toContain('setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));');
+    // The topBar consumes the wrapper, and the memo re-resolves with the new
+    // handler identity (not the raw setBackground action).
+    expect(studio).toContain('onBackgroundChange: handleBackgroundChange,');
+    expect(studio).toContain('handleBackgroundChange, setPaperGrain, setGrainStrength]');
+  });
+});
+
+describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
+  it('wires the signal-driven picker controller to the image-library bridge consumer and imageStore import path', () => {
+    expect(studio).toContain('useBackgroundAssetPickerController({');
+    expect(studio).toContain('requestLibrary: () => requestImageLibrary()');
+    expect(studio).toContain('importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir)');
+    expect(studio).toContain('openNativeImageDialog({');
+    expect(studio).toContain("filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'] }]");
+    expect(studio).toContain('refreshLibrary: async () => {');
+    expect(studio).toContain('mergeImageLibraries(result.ok ? result.images : [], studioImages)');
+    // The controller is signal-driven — no useState hook call in the new
+    // picker wiring (the only "useState" occurrence is the comment).
+    expect(backgroundPickerView).not.toContain('useState(');
+    expect(backgroundPickerView).toContain('useSignal');
+    expect(backgroundPickerView).toContain('useComputed');
+  });
+
+  it('mounts the picker as an overlay inside the canvas region — the engine canvas never unmounts (D-01 lock)', () => {
+    expect(studioView).toContain('backgroundPicker?: ComponentProps<typeof BackgroundAssetPickerView>');
+    expect(studioView).toContain('{backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}');
+    // The picker overlay renders AFTER the always-mounted canvas stack in the
+    // JSX — a sibling overlay, never a replacement. The engine canvas stays
+    // mounted underneath (D-01 lock).
+    const canvasStackIndex = studioView.indexOf('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
+    const pickerOverlayIndex = studioView.indexOf('{backgroundPicker?.open ? <BackgroundAssetPickerView');
+    expect(canvasStackIndex).toBeGreaterThanOrEqual(0);
+    expect(pickerOverlayIndex).toBeGreaterThan(canvasStackIndex);
+    // The canvas mount is unconditional — never gated on the picker being closed.
+    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(studioView).not.toContain('!backgroundPicker?.open ? <MemoizedPhysicsPaintCanvasStack');
+  });
+
+  it('emits the confirmed selection natural-sorted by original filename (D-02, one ordering authority)', () => {
+    expect(studio).toContain('sortImages: (images: readonly MceImageRef[]) => sortImagesByOriginalFilename(images, (image) => image.original_filename)');
+    expect(backgroundPickerView).toContain('sortImagesByOriginalFilename(images, (image) => image.original_filename)');
+    expect(backgroundPickerView).toContain('buildConfirmedImageIds(');
+    // The picker never re-derives ordering from asset UUIDs or click order.
+    expect(backgroundPickerView).not.toContain('.sort((a, b) => a.id');
+  });
+
+  it('keeps the picker decoupled from sequenceStore and audioStore (Pitfall 4)', () => {
+    const pickerSurface = [backgroundPickerView, studioView].join('\n');
+    expect(pickerSurface).not.toContain('sequenceStore');
+    expect(pickerSurface).not.toContain('audioStore');
+    expect(pickerSurface).not.toContain('getAllAssetUsages');
+    expect(pickerSurface).not.toContain('cascadeRemoveAsset');
+  });
+
+  it('grants exactly the dialog:allow-open capability with no fs:* permission (Pitfall 3)', () => {
+    expect(capability).toContain('"dialog:allow-open"');
+    expect(capability).not.toContain('fs:');
+    expect(capability).not.toContain('"fs:');
+  });
+});
+
+describe('Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04)', () => {
+  it('mounts the Import icon button on the locked Bg header with the 24px hit target and aria-label (S1)', () => {
+    // The Bg row header carries exactly ONE action — the Import control —
+    // alongside the lock indicator (D-06 lock semantics: no reorder grab, no
+    // duplicate/delete hover actions).
+    expect(trackRow).toContain('aria-label="Import images"');
+    expect(trackRow).toContain('class="physics-paint-bg-import-button"');
+    expect(trackRow).toContain('onClick={() => onImportBackground?.()}');
+    expect(trackRow).toContain('ImagePlus size={14}');
+    // The 24px hit target is enforced in the stylesheet (UI-SPEC accessibility).
+    expect(css).toContain('.physics-paint-bg-import-button');
+    expect(css).toContain('width: 24px;');
+    expect(css).toContain('height: 24px;');
+  });
+
+  it('threads onImportBackground from the strip through the header column to the Bg header', () => {
+    // The strip exposes the intent and forwards it to the hook-free header
+    // column, which passes it to the Bg PhysicsPaintTrackRowHeader.
+    expect(workflowStrip).toContain('onImportBackground?: () => void;');
+    expect(workflowStrip).toContain('onImportBackground: props.onImportBackground,');
+    expect(headerColumn).toContain('onImportBackground?: () => void;');
+    expect(headerColumn).toContain('onImportBackground={onImportBackground}');
+    // The Studio routes the intent to the 49-04 picker swap (engine untouched).
+    expect(studio).toContain('onImportBackground: () => backgroundPicker.openPicker(),');
+  });
+
+  it('Confirm calls addBackgroundClip exactly once with the placement frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)', () => {
+    // 49-06 (UAT round 2): the handler reads the clicked empty Bg cell frame
+    // (the placement gesture) at Confirm time, falling back to the playhead
+    // when no frame was clicked, and passes the natural-sorted ids as the
+    // source-frame cycle order with the finite-1 default repeat.
+    // 49-06 (UAT round 7): the ADD branch is the ternary's else — a replace
+    // target routes to setBackgroundClipSource instead.
+    expect(studio).toContain('const result = replaceTarget');
+    expect(studio).toContain('? setBackgroundClipSource(layerId, replaceTarget, sortedIds)');
+    expect(studio).toContain(': addBackgroundClip(layerId, {');
+    expect(studio).toContain('const landingFrame = backgroundPlacementFrame.value ?? currentFrame;');
+    expect(studio).toContain('startFrame: landingFrame,');
+    expect(studio).toContain('sourceFrameRefs: sortedIds,');
+    expect(studio).toContain("repeat: { mode: 'finite', count: 1 },");
+    // Exactly one call site — the handler invokes the store op once per Confirm.
+    const callSites = studio.split('addBackgroundClip(layerId, {').length - 1;
+    expect(callSites).toBe(1);
+  });
+
+  it('rejects a playhead strictly inside an existing clip with the exact locked copy and keeps the picker open (BKG-03/D-04)', () => {
+    // The rejection copy appears EXACTLY once and matches the UI-SPEC table
+    // verbatim; the picker stays open so the selection survives (no cancel in
+    // the rejection branch).
+    const copy = "Couldn't place the clip here. The playhead is inside an existing clip. Nothing changed.";
+    const occurrences = studio.split(copy).length - 1;
+    expect(occurrences).toBe(1);
+    expect(studio).toContain("if (result.reason === 'start-collision') {");
+    expect(studio).toContain("setApplyStatus('error');");
+    expect(studio).toContain(`setApplyMessage("${copy}");`);
+    // The rejection branch returns WITHOUT closing the picker.
+    const rejectionBranch = studio.slice(studio.indexOf("if (result.reason === 'start-collision') {"), studio.indexOf('backgroundPicker.cancel();'));
+    expect(rejectionBranch).not.toContain('backgroundPicker.cancel()');
+    // The capsule announces rejections with role="alert" (UI-SPEC).
+    expect(workflowStrip).toContain("role={props.isError ? 'alert' : 'status'}");
+  });
+
+  it('closes the picker on success and leaves Cancel with zero store interaction', () => {
+    // Success path closes the picker (the rail reflects accepted state via the
+    // existing reactive plumbing).
+    expect(studio).toContain('backgroundPicker.cancel();');
+    // Cancel routes to the wrapper that ALSO clears the replace target — the
+    // controller's cancel only clears the open/selection/status signals, never
+    // a store op (49-06 UAT round 7: a stale replace target would swap the
+    // wrong clip on the next confirm).
+    expect(studio).toContain('onCancel: handleCancelBackgroundPicker,');
+    expect(backgroundPickerView).toContain('const cancel = () => {');
+    expect(backgroundPickerView).toContain('open.value = false;');
+    expect(backgroundPickerView).not.toContain('addBackgroundClip');
+  });
+});
+
+describe('Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03)', () => {
+  it('reuses the BackgroundAssetPickerView region swap for the reference picker (D-01)', () => {
+    // The reference picker is a SECOND instance of the same full-area region
+    // swap — the engine canvas stays mounted underneath, never replaced.
+    expect(studioView).toContain('referencePicker?: ComponentProps<typeof BackgroundAssetPickerView>');
+    expect(studioView).toContain('{referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}');
+    // The reference overlay renders AFTER the always-mounted canvas stack.
+    const canvasStackIndex = studioView.indexOf('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
+    const referenceOverlayIndex = studioView.indexOf('{referencePicker?.open ? <BackgroundAssetPickerView');
+    expect(canvasStackIndex).toBeGreaterThanOrEqual(0);
+    expect(referenceOverlayIndex).toBeGreaterThan(canvasStackIndex);
+  });
+
+  it('threads the photo/reference intents from the workflow block to the dialog and the reference picker', () => {
+    // The workflow block forwards the document's photo/reference track and the
+    // open-dialog intent; the dialog bundle owns Import/Replace (D-03, via the
+    // picker) and the store ports (Remove → clearPhotoReference + the unified
+    // undo ledger, D-03 remove).
+    expect(studio).toContain('photoReference: multiTrackRowBundle.photoReference,');
+    expect(studio).toContain('onOpenReference: () => { referenceDialogOpen.value = true; },');
+    expect(studio).toContain('onImportSource: () => referencePicker.openPicker(),');
+    expect(studio).toContain('clearReference: (layerId: string) => {');
+    expect(studio).toContain('const result = clearPhotoReference(layerId);');
+    expect(studio).toContain('if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+  });
+
+  it('assembles the referencePicker view-model block with reference copy and a replace-on-confirm handler', () => {
+    expect(studio).toContain('referencePicker: {');
+    expect(studio).toContain("title: 'Import reference images',");
+    expect(studio).toContain('onConfirm: handleConfirmReferencePicker,');
+    expect(studio).toContain('onCancel: handleCancelReferencePicker,');
+    expect(studio).toContain('onImport: referencePicker.importImages,');
+  });
+
+  it('Confirm calls setPhotoReferenceSource exactly once and announces the replacement capsule note (D-03)', () => {
+    expect(studio).toContain('const result = setPhotoReferenceSource(layerId, sortedIds);');
+    expect(studio).toContain("publishOperationResult('Reference source replaced.');");
+    // Exactly one call site — the handler invokes the store op once per Confirm.
+    const callSites = studio.split('setPhotoReferenceSource(layerId, sortedIds)').length - 1;
+    expect(callSites).toBe(1);
+    // The reference confirm handler REPLACES the source — it never adds a clip.
+    const confirmHandler = studio.slice(
+      studio.indexOf('const handleConfirmReferencePicker = (sortedIds: string[]) => {'),
+      studio.indexOf('const handleCancelReferencePicker = () => {'),
+    );
+    expect(confirmHandler).not.toContain('addBackgroundClip');
+  });
+
+  it('Confirm records the source-set descriptor as one unified-ledger undo entry (50-03 D-03, G-52-5)', () => {
+    const confirmHandler = studio.slice(
+      studio.indexOf('const handleConfirmReferencePicker = (sortedIds: string[]) => {'),
+      studio.indexOf('const handleCancelReferencePicker = () => {'),
+    );
+    // The dropped descriptor left an unrecorded document replacement in the
+    // chain — every ledger entry recorded BEFORE a reference placement or
+    // replacement failed the live-authority guard forever (undo/redo died).
+    expect(confirmHandler).toContain('if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+  });
+
+  it('hydrates the confirmed reference source bytes through the library path (REF-04)', () => {
+    expect(studio).toContain('hydrateReferenceSourceImagesFromLibrary(');
+    expect(studio).toContain('referencePicker.images.peek()');
+    expect(studio).toContain('referencePicker.projectDir.peek()');
+  });
+
+  it('Cancel returns to the Studio untouched — zero store interaction', () => {
+    expect(studio).toContain('onCancel: handleCancelReferencePicker,');
+    expect(studio).toContain('const handleCancelReferencePicker = () => {');
+    expect(studio).toContain('referencePicker.cancel();');
+    // The reference picker's cancel never mutates the document.
+    expect(backgroundPickerView).not.toContain('setPhotoReferenceSource');
+  });
+
+  it('keeps the picker title configurable with the Bg copy as the default', () => {
+    expect(backgroundPickerView).toContain('title?: string;');
+    expect(backgroundPickerView).toContain("const title = props.title ?? 'Import background images';");
+    expect(backgroundPickerView).toContain('aria-label={title}');
+  });
+});
+
+describe('Physics Paint Background Clip section (49-06, S5 right-panel properties)', () => {
+  it('builds the backgroundClipSection prop with the selection signal and identity-stable ports', () => {
+    // The Studio assembles the section props: the 49-05 selection signal (read
+    // by the right panel to flip the Track tab) and the store/imageStore ports.
+    expect(studio).toContain('const selectedBackgroundClipId = useSignal<string | null>(null);');
+    expect(studio).toContain('backgroundClipSection: launchContext?.layerId');
+    expect(studio).toContain('{ layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }');
+    // The ports are identity-stable (useRef) so the memo stays cacheable.
+    expect(studio).toContain('const backgroundClipSectionPortsRef = useRef({');
+    expect(studio).toContain('getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,');
+    expect(studio).toContain('setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),');
+    expect(studio).toContain('deleteClip: (layerId: string, clipId: string) => {');
+    expect(studio).toContain('replaceSource: (_layerId: string, clipId: string) => {');
+    expect(studio).toContain('backgroundReplaceTargetClipId.value = clipId;');
+    expect(studio).toContain('resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,');
+  });
+
+  it('re-resolves the right-panel memo on the selection signal so a rail click flips the section', () => {
+    // The 38-11 signal-bypasses-memo pattern: the selection signal is a memo
+    // dep AND the panel reads its .value directly, so a Bg rail click flips
+    // the Track tab to the Background Clip section without a Studio render.
+    const memoStart = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(');
+    const memoEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', memoStart);
+    const memoBlock = studio.slice(memoStart, memoEnd);
+    expect(memoBlock).toContain('selectedBackgroundClipId');
+    expect(memoBlock).toContain('backgroundClipSectionPortsRef');
+    expect(rightPanel).toContain('const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;');
+  });
+
+  it('renders the Background Clip section mutually exclusively with the Track section', () => {
+    // Clip selected → the section mounts keyed by clip id (fresh draft state);
+    // no clip → the existing Track section renders unchanged (UI-SPEC empty row).
+    expect(rightPanel).toContain("import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';");
+    expect(rightPanel).toContain('backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;');
+    expect(rightPanel).toContain('<PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />');
+    expect(rightPanel).toContain('aria-label="Track options"');
+    expect(rightPanel).toContain('Track: {trackName}');
+  });
+
+  it('keeps the section copy and accessibility contract verbatim from the UI-SPEC table', () => {
+    const section = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
+    expect(section).toContain('aria-label="Background Clip"');
+    expect(section).toContain('aria-label="Repeat"');
+    expect(section).toContain('aria-describedby="physics-bg-repeat-hint"');
+    expect(section).toContain('aria-label="Loop indefinitely"');
+    expect(section).toContain('aria-pressed={isInfinite}');
+    expect(section).toContain('aria-label="Delete clip"');
+    expect(section).toContain('Enter a positive integer.');
+    expect(section).toContain('image(s)');
+    // No raw UUID/keyId may render (UI-SPEC copywriting contract): the VIEW
+    // renders filenames and frame numbers only — the controller may use clip.id
+    // internally for the store ops, but the render surface never prints it.
+    const viewStart = section.indexOf('export function PhysicsPaintBackgroundClipSection');
+    const viewBlock = section.slice(viewStart);
+    expect(viewBlock).not.toContain('clip.id');
+  });
+});
+
+describe('Physics Paint Bg rail timeline delete (49-06 UAT)', () => {
+  it('routes Delete/Backspace through one shared dialog-free handler that records a unified-ledger undo step', () => {
+    // The shared handler mirrors the section's D-08 delete: store op, record the
+    // descriptor so Cmd/Ctrl+Z restores the clip, clear the selection on success
+    // so the Track section stays reachable.
+    expect(studio).toContain('const handleDeleteSelectedBackgroundClip = useCallback(() => {');
+    expect(studio).toContain('const result = deleteBackgroundClip(layerId, clipId);');
+    expect(studio).toContain('if (result.ok) {');
+    expect(studio).toContain('if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+    expect(studio).toContain('selectedBackgroundClipId.value = null;');
+    // The keyboard state/actions expose a SELECTED Bg clip to the dispatcher.
+    expect(studio).toContain('hasSelectedBackgroundClip: selectedBackgroundClipId.value !== null,');
+    expect(studio).toContain('deleteBackgroundClip: handleDeleteSelectedBackgroundClip,');
+    // The sidebar trash delete rides the same unified-ledger undo step.
+    expect(studio).toContain('if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);');
+    // The unified ledger records the delete as one undoable command.
+    expect(historyHook).toContain("const recordBackgroundEdit = useCallback((descriptor: BackgroundEditDescriptor) => {");
+    expect(historyHook).toContain("appliedRef.current.push({ kind: 'background', descriptor });");
+    expect(historyHook).toContain('registerDocument(entry.descriptor.before);');
+    expect(historyHook).toContain('registerDocument(entry.descriptor.after);');
+    expect(historyHook).toContain('recordBackgroundEdit,');
+  });
+
+  it('paints the Bg row header selected in the left sidebar when a Bg rail is selected (no normal track selected)', () => {
+    // The strip derives the Bg-selected state from the forwarded selection id.
+    expect(workflowStrip).toContain('backgroundSelected: (props.selectedBackgroundClipId ?? null) !== null,');
+    // The column blanks every normal track's active highlight and marks the
+    // Bg row selected (visual selection only — the document active track and
+    // the rich lane are unchanged).
+    expect(headerColumn).toContain("readonly backgroundSelected?: boolean;");
+    expect(headerColumn).toContain("const effectiveActiveTrackId = backgroundSelected ? '' : activeTrackId;");
+    expect(headerColumn).toContain('selected={backgroundSelected}');
+    expect(trackRow).toContain("physics-paint-track-row-header-selected");
+    expect(trackRow).toContain("aria-pressed={selected ? 'true' : undefined}");
+    expect(css).toContain('.physics-paint-track-row-header-background.physics-paint-track-row-header-selected');
+  });
+});
+
+describe('Physics Paint missing Background source placeholder fill (49-06 UAT)', () => {
+  it('renders a solid color for a missing Background clip instead of transparent, while track sources stay transparent', () => {
+    // The compositor owns ONE deterministic constant — shared by Studio preview,
+    // main preview, and export (same pure path, CMP-01).
+    expect(compositor).toContain('export const EFX_PAINT_BACKGROUND_MISSING_FILL');
+    expect(compositor).toContain("ctx.fillStyle = EFX_PAINT_BACKGROUND_MISSING_FILL;");
+    expect(compositor).toContain("ctx.globalCompositeOperation = 'destination-over';");
+    // The D-09 track-missing branch still pushes the report entry WITHOUT a fill.
+    const trackMissingBlock = compositor.slice(
+      compositor.indexOf('if (resolution.kind === \'missing\')'),
+      compositor.indexOf('// 2-3. Background contribution'),
+    );
+    expect(trackMissingBlock).not.toContain('fillStyle');
+  });
+});
+
+describe('Physics Paint reference ghost mount + missing-source capsule (50-04, S3/D-04/D-06/D-14)', () => {
+  it('mounts the reference ghost in the monitor-paint layer seat above the composite (S3)', () => {
+    // The Studio threads a referenceGhost config into the canvas stack; the view
+    // renders the ghost layer as a sibling of the onion overlay (z-index 5).
+    expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
+    expect(studio).toContain('zoom: paperTextureScale,');
+    expect(studio).toContain('onMissingSourceChange: handleReferenceMissingSourceChange,');
+    expect(studioView).toContain('referenceGhost?: ComponentProps<typeof PhysicsPaintReferenceGhostLayer> | null;');
+    expect(studioView).toContain('{canvasBounds && props.referenceGhost ? (');
+    expect(studioView).toContain('<PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />');
+    // The ghost layer renders AFTER the tracks group (above the composite).
+    const tracksGroupIndex = studioView.indexOf('physics-paint-tracks-group');
+    const ghostIndex = studioView.indexOf('physics-paint-reference-ghost');
+    expect(tracksGroupIndex).toBeGreaterThanOrEqual(0);
+    expect(ghostIndex).toBeGreaterThan(tracksGroupIndex);
+  });
+
+  it('surfaces the missing reference source through the status capsule with the red warning triangle (D-04)', () => {
+    expect(studio).toContain('const handleReferenceMissingSourceChange = useCallback((missing: boolean) => {');
+    expect(studio).toContain("setApplyStatus('error');");
+    expect(studio).toContain("setApplyMessage('Missing reference source — use Replace source to re-link.');");
+  });
+
+  it('keeps the ghost monitor-paint only — no reference input reaches the compositor or export (D-06)', () => {
+    // The ghost draw module is imported only by the Studio view layer; the
+    // compositor/flattened cache/preview/export never reference the ghost or the
+    // photo/reference track.
+    expect(compositor).not.toContain('drawReferenceGhost');
+    expect(flattenedCache).not.toContain('drawReferenceGhost');
+    expect(previewRenderer).not.toContain('drawReferenceGhost');
+    expect(exportRenderer).not.toContain('drawReferenceGhost');
+    expect(compositor).not.toContain('photoReference');
+  });
+
+  it('hides the ghost during playback by not drawing (D-14)', () => {
+    // The ghost layer passes isPlaying into the draw; the decision returns
+    // draw:false during playback (no opacity trick, no cache entry).
+    expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
+    expect(studio).toContain('isPlaying,');
+  });
+});
+
+describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () => {
+  it('writes the transform to the display property setter, never layerStore/keyframeStore (D-13)', () => {
+    // The reference is not a layer: the handles write to setPhotoReferenceTransform
+    // (a display preference) and must never import layerStore/keyframeStore.
+    expect(referenceTransformHandles).toContain('setPhotoReferenceTransform');
+    expect(referenceTransformHandles).not.toContain("from '../../../stores/layerStore'");
+    expect(referenceTransformHandles).not.toContain("from '../../../stores/keyframeStore'");
+  });
+
+  it('mounts the transform handles overlay above the ghost layer (S4)', () => {
+    // The Studio threads a referenceTransformHandles config into the canvas stack;
+    // the view renders the overlay as a sibling of the ghost layer (z-index 6).
+    expect(studio).toContain('referenceTransformHandles: programMonitorLayerId ? {');
+    expect(studio).toContain('zoom: paperTextureScale,');
+    expect(studioView).toContain('referenceTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;');
+    expect(studioView).toContain('{canvasBounds && props.referenceTransformHandles ? (');
+    expect(studioView).toContain('<PhysicsPaintReferenceTransformHandles {...props.referenceTransformHandles} />');
+    // The overlay renders AFTER the ghost layer (above it).
+    const ghostIndex = studioView.indexOf('physics-paint-reference-ghost');
+    const transformIndex = studioView.indexOf('physics-paint-reference-transform');
+    expect(ghostIndex).toBeGreaterThanOrEqual(0);
+    expect(transformIndex).toBeGreaterThan(ghostIndex);
+  });
+
+  it('is locked by default — no handles, no canvas grab (D-13)', () => {
+    // While transformLocked is true the overlay renders pointer-events none, so
+    // painting gestures pass through to the engine canvas beneath.
+    expect(referenceTransformHandles).toContain('transformLocked');
+    expect(referenceTransformHandles).toContain("pointerEvents: 'none'");
+    expect(referenceTransformHandles).toContain("pointerEvents: 'all'");
+  });
+
+  it('passes painting through the overlay WRAPPER — it is pointer-events none even with no reference (50-UAT round 2 regression)', () => {
+    // The .physics-paint-reference-transform wrapper is mounted over the canvas
+    // region on EVERY layer launch (with or without a photo reference). Removing
+    // the photo reference does NOT unmount it, so the wrapper itself must be
+    // pointer-events none — otherwise it swallows every paint gesture and the
+    // brush cursor turns into the default arrow ("I can't anymore paint").
+    const wrapperRule = css.split('}')
+      .find((block) => block.includes('.physics-paint-reference-transform') && block.includes('pointer-events: none'));
+    expect(wrapperRule, 'Missing pointer-events: none on .physics-paint-reference-transform').toBeDefined();
+    expect(wrapperRule).toContain('z-index: 6');
+  });
+
+  it('keeps the transform monitor-paint only — never the compositor or cache keys (D-13, D-06)', () => {
+    // The transform writes to display properties only; the compositor/flattened
+    // cache/preview/export never reference the transform handles or the
+    // photo/reference transform.
+    expect(compositor).not.toContain('setPhotoReferenceTransform');
+    expect(flattenedCache).not.toContain('setPhotoReferenceTransform');
+    expect(previewRenderer).not.toContain('setPhotoReferenceTransform');
+    expect(exportRenderer).not.toContain('setPhotoReferenceTransform');
+    expect(compositor).not.toContain('PhysicsPaintReferenceTransformHandles');
+  });
+
+  it('computes the bounds in working space from the accepted display transform (D-13)', () => {
+    // The pure geometry module computes the SAME bounding box the ghost draws
+    // (natural size scaled by zoom, centered, then rotated/scaled).
+    expect(referenceTransform).toContain('export function getReferenceBounds');
+    expect(referenceTransform).toContain('imageWidth * zoom');
+    expect(referenceTransform).toContain('transform.rotation');
+  });
+
+  it('renders a VISIBLE and interactive rotation handle above the top edge (D-13 spec)', () => {
+    // The spec (D-13) requires a rotation handle. It is a decorative stem +
+    // knob (stem line pointer-events none; the SVG wrapper is pointer-events
+    // none) whose knob is a DIRECT rotate target in handlePointerDown — checked
+    // before the corner/edge handles and the corner rotation zones.
+    expect(referenceTransformHandles).toContain('const rotHandle = {');
+    expect(referenceTransformHandles).toContain('topMid.x + (normalX / normalLen) * (20 / zoom)');
+    expect(referenceTransformHandles).toContain('cursor: getCursorForHandle(null, true, transform.rotation)');
+    expect(referenceTransformHandles).toContain("handleType: 'rotate',");
+    expect(referenceTransformHandles).toContain('startBounds: bounds');
+  });
+});
+
+describe('Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50-05, S5/D-13/D-06)', () => {
+  it('mounts the Photo Reference dialog opened from the strip camera icon (S5/50-UAT)', () => {
+    // The Studio threads a referenceDialog bundle into the view (memo re-resolves
+    // on every document mutation); the camera icon opens it; the right-panel
+    // Track option tab no longer carries the Photo Reference section (50-UAT
+    // modal redesign — all controls moved into the floating dialog).
+    expect(studio).toContain('const referenceDialog = referenceDialogPropsMemo.resolve(');
+    expect(studio).toContain('referenceDialogOpen.value = true;');
+    expect(studio).toContain('photoReferenceSectionPortsRef');
+    expect(studioView).toContain('<PhysicsPaintPhotoReferenceDialog {...referenceDialog} />');
+    expect(studioView).toContain('MemoizedPhysicsPaintPlayScriptDialog');
+    expect(rightPanel).not.toContain('photoReferenceSection');
+  });
+
+  it('wires the section ports to the store setters (display preferences)', () => {
+    // The section ports route opacity → setPhotoReferenceOpacity, lock →
+    // setPhotoReferenceTransformLocked (display preferences, no undo). The
+    // Phase 50 mode port is REMOVED (52-02, D-15 clean break).
+    expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
+    expect(studio).toContain('setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked)');
+  });
+
+  it('wires Escape to re-lock the transform from anywhere in reference-transform mode (D-13)', () => {
+    // The keyboard action returns true only when the transform was actually
+    // unlocked; the Escape layer consumes at most one layer (Pitfall 2).
+    expect(studio).toContain('relockReferenceTransform: () => {');
+    expect(studio).toContain('setPhotoReferenceTransformLocked(layerId, true);');
+    expect(studioKeyboard).toContain('relockReferenceTransform?: () => boolean;');
+    expect(studioKeyboard).toContain('if (actions.relockReferenceTransform?.())');
+  });
+
+  it('keeps the mode switch flag-only — no compositor change (D-06)', () => {
+    // The mode switch writes to the photo/reference track only; the compositor
+    // never references the mode or the section.
+    expect(compositor).not.toContain('setPhotoReferenceMode');
+    expect(compositor).not.toContain('PhysicsPaintPhotoReferenceSection');
+    expect(compositor).not.toContain('photoReference');
+  });
+});
+
+describe('Physics Paint photo reference end-to-end integration contract (50-06, REF-05)', () => {
+  it('wires the full flow: import → Photo row band → ghost → mode → opacity → transform → Escape re-lock → save/reopen', () => {
+    // Import source (D-01/D-03): the dialog's Import/Replace button opens the
+    // reference picker; Confirm replaces the source via setPhotoReferenceSource.
+    expect(studio).toContain('onImportSource: () => referencePicker.openPicker(),');
+    expect(studio).toContain('const result = setPhotoReferenceSource(layerId, sortedIds);');
+    // 50-UAT redesign: the photo/reference is a strip camera icon, NOT a track
+    // row — the timeline lane carries no Photo band (the ghost is the visual).
+    expect(trackRow).not.toContain('physics-paint-photo-reference-band');
+    // Ghost overlay (S3): the ghost draws in the monitor-paint layer seat.
+    expect(studio).toContain('referenceGhost: programMonitorLayerId ? {');
+    expect(studioView).toContain('<PhysicsPaintReferenceGhostLayer {...props.referenceGhost} />');
+    // Opacity slider (D-12): routes opacity → setPhotoReferenceOpacity.
+    expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
+    // Transform handles (D-13): the overlay writes to setPhotoReferenceTransform.
+    expect(referenceTransformHandles).toContain('setPhotoReferenceTransform');
+    // Escape re-lock (D-13): the keyboard action re-locks the transform.
+    expect(studio).toContain('relockReferenceTransform: () => {');
+    expect(studioKeyboard).toContain('if (actions.relockReferenceTransform?.())');
+    // Save/reopen (REF-05): the reopen path hydrates the reference source bytes.
+    expect(studio).toContain('hydrateReferenceSourceImagesFromLibrary(');
+  });
+
+  it('re-opens a persisted reference — the launch path hydrates the reference source bytes like the background (50-UAT round-2)', () => {
+    // The Physic Paint reopen path installs the carried document and hydrates the
+    // source registries from the loaded project library. It hydrated the
+    // BACKGROUND (Phase 49 round-7 fix) but NOT the reference — registerDocument
+    // alone left `_referenceSourceImages` empty, so every reopened reference
+    // resolved 'missing' and the ghost stayed invisible until a fresh Replace.
+    // The reference hydrates alongside the background WITH the library fallback.
+    expect(launchIntegration).toContain('registerDocument(hydration.context.document);');
+    expect(launchIntegration).toContain("void hydrateBackgroundSourceImagesFromLibrary(hydration.context.document, launchLibrary);");
+    expect(launchIntegration).toContain("void hydrateReferenceSourceImagesFromLibrary(hydration.context.document, launchLibrary);");
+  });
+
+  it('keeps the reference out of flattened output in every mode — no reference input reaches the compositor, cache, preview, or export (D-06)', () => {
+    // The D-06 exclusion is structural: the compositor, flattened cache, preview
+    // renderer, and export renderer receive NO reference-input threading, so the
+    // reference never reaches flattened output in any mode — even after
+    // save/reopen (the persistence path carries the track, not the raster).
+    const rasterSurface = [compositor, flattenedCache, previewRenderer, exportRenderer].join('\n');
+    const referenceTokens = [
+      'photoReference',
+      'drawReferenceGhost',
+      'getReferenceSourceFrameVerdict',
+      'registerReferenceSourceImage',
+      'setPhotoReferenceSource',
+      'setPhotoReferenceVisible',
+      'setPhotoReferenceOpacity',
+      'setPhotoReferenceTransform',
+      'setPhotoReferenceTransformLocked',
+      'PhysicsPaintReferenceGhostLayer',
+      'PhysicsPaintReferenceTransformHandles',
+      'PhysicsPaintPhotoReferenceSection',
+      'getReferenceBounds',
+    ];
+    for (const token of referenceTokens) {
+      expect(rasterSurface).not.toContain(token);
+    }
+  });
+});
+
+describe('Physics Paint Create Rail script picker (AM-3)', () => {
+  it('the "+ Rail" flow ALWAYS opens the picker — one uniform, always-visible flow regardless of the library selection', () => {
+    // The intent signal owns the picker's open state (null = closed).
+    expect(studio).toContain("const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);");
+    // Both menu handlers set the intent UNCONDITIONALLY — no selection gate, so
+    // no click path can silently no-op.
+    expect(studio).toContain(`onCreatePlayScriptRail: (mode) => {
+          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
+          // always-visible flow regardless of the library selection.
+          scriptPickerIntent.value = { kind: 'paint', mode };
+        },`);
+    expect(studio).toContain(`onCreateRevealRail: () => {
+          scriptPickerIntent.value = { kind: 'reveal' };
+        },`);
+  });
+
+  it('a pick sets the library selection and opens the Create Rail dialog on the menu-chosen tab/kind — unless the controller is blocked, which keeps the picker open with a live reason', () => {
+    expect(studio).toContain(`onPick: (id: string) => {
+        const intent = scriptPickerIntent.peek();
+        rotoScriptLibrary.select(id);
+        // Blocked (generated frame, unsaved project, busy): keep the picker
+        // open — the blockedReason notice updates live from disabledReason.
+        if (rotoPlayScript.disabledReason.peek()) return;
+        scriptPickerIntent.value = null;
+        if (intent?.kind === 'paint') {
+          rotoPlayScript.mode.value = intent.mode;
+          void rotoPlayScript.openConfirmation();
+        } else if (intent?.kind === 'reveal') {
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+        }
+      },`);
+    expect(studio).toContain('onClose: () => { scriptPickerIntent.value = null; },');
+    // Rows, the selection highlight, and the live blocked reason ride the
+    // controllers' signals; the no-selection reason is NOT a block (the pick
+    // SETS the selection).
+    expect(studio).toContain('rows: rotoScriptLibrary.rows.value,');
+    expect(studio).toContain('selectedId: rotoScriptLibrary.selectedId.value,');
+    expect(studio).toContain("return reason === 'Select a project script first.' ? null : reason;");
+  });
+
+  it('mounts the picker dialog in the Studio view next to the Photo Reference dialog', () => {
+    expect(studio).toContain('const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(');
+    expect(studioView).toContain('<PhysicsPaintScriptPickerDialog {...scriptPickerDialog} />');
+  });
+});
+
+// 52.2-15 (D-16, sensitivity-map row 2): both Studio flush paths drain through
+// ONE pilot flush pipeline instance. A component-level test cannot mount the
+// Studio (Tauri window/engine deps), so the wiring is pinned by contract — the
+// same style as the rest of this suite. The join itself (two overlapping
+// callers → one drain, one push) is pinned behaviorally in the pipeline's own
+// suite; these cases prove the Studio callers cannot bypass that join.
+describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
+  const listenerFlush = (() => {
+    const start = studio.indexOf('flushStudioStateRef.current = async () => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('installPhysicPaintFlushRequestListener', start));
+  })();
+  const closeFlush = (() => {
+    const start = studio.indexOf('usePhysicsPaintCloseFlush(');
+    return start === -1 ? '' : studio.slice(start, start + 1600);
+  })();
+
+  it('creates exactly one pipeline instance and routes both flush paths through it', () => {
+    expect(studio).toContain("import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';");
+    // One instance, however many callers: a second instance would let a close
+    // start a second sequence while the requested flush is still in flight
+    // (T-52.2-54 — two pushes for one document).
+    expect((studio.match(/createFlushPipeline\(/g) ?? [])).toHaveLength(1);
+    expect(listenerFlush).toContain('runStudioFlush([');
+    expect(closeFlush).toContain('runStudioFlush([');
+    // The one shared runner is the single place the pipeline is entered, so
+    // the two paths cannot diverge.
+    expect(studio).toContain('await flushPipeline.flush({ steps });');
+  });
+
+  it('keeps the close sequence: engine settle, capture flush, playback settings, documentSync push', () => {
+    const order = [
+      'engineRef.current?.flushPendingStrokeFinalizations()',
+      'rotoPersistence.flushLivePixels(currentFrame)',
+      'rotoPlaybackSettingsController.flush()',
+      'flushDocumentSyncRef.current()',
+    ];
+    const positions = order.map((step) => closeFlush.indexOf(step));
+    expect(positions).not.toContain(-1);
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+  });
+
+  it('keeps the requested-flush sequence: idle-gated engine settle, capture flush, documentSync push', () => {
+    const order = [
+      'readInteractionIdle()',
+      'rotoPersistence.flushLivePixels()',
+      'pushLiveProjection(layerId, mode)',
+    ];
+    const positions = order.map((step) => listenerFlush.indexOf(step));
+    expect(positions).not.toContain(-1);
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+  });
+
+  it('keeps a non-flushed outcome visible to the facade and the unmount teardown intact', () => {
+    // The facade's fail-closed contract depends on the flush closure throwing:
+    // the pipeline never rejects, so the runner rethrows the outcome.
+    expect(studio).toContain("if (outcome.status === 'flushed') return;");
+    expect(listenerFlush).toContain('runStudioFlush([');
+    expect(studio).toContain('return () => unlisten?.();');
+  });
+
+  it('drains the capture queue through the pipeline port before the caller steps', () => {
+    expect(studio).toContain('drain: () => rotoPersistenceRef.current.drainLivePixelQueue()');
+    expect(studio).toContain('interrupt: () => rotoPersistenceRef.current.interruptLivePixels()');
   });
 });

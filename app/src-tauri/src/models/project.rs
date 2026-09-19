@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Legacy type -- kept for project_get_default backward compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,39 +25,26 @@ pub struct MceProject {
     pub images: Vec<MceImageRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<MceAudioTrack>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub physic_paint_outputs: Vec<McePhysicPaintOutput>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McePhysicPaintOutput {
-    pub layer_id: String,
-    #[serde(default)]
-    pub frames: Vec<McePhysicPaintCachedFrame>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roto_physical: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roto_playback: Option<McePhysicPaintRotoPlaybackSettings>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McePhysicPaintRotoPlaybackSettings {
-    #[serde(rename = "loop")]
-    pub r#loop: bool,
-    pub fps: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McePhysicPaintCachedFrame {
-    #[serde(rename = "frameIndex")]
-    pub frame_index: u32,
-    #[serde(rename = "appFrame")]
-    pub app_frame: u32,
-    pub cache_path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub width: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub height: Option<u32>,
+    /// v1.0 EFX Paint documents keyed by parent layer id (F1). Carried
+    /// opaquely as serde_json values — TS owns the fail-closed schema,
+    /// mirroring the roto_physical escape hatch.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub efx_paint_documents: HashMap<String, Value>,
+    /// The package format version (D-04), stamped by `buildPackageManifest`
+    /// and judged by the TS refusal gate (52.2-08). `None` on a pre-52.2
+    /// project. Declared here because serde drops undeclared keys: without
+    /// this field every save would erase the version the gate reads.
+    #[serde(default, rename = "formatVersion", skip_serializing_if = "Option::is_none")]
+    pub format_version: Option<u32>,
+    /// The package identity (D-05): a 36-character lower-case UUID carried IN
+    /// the manifest, never derived from the file path (52.2-02).
+    #[serde(default, rename = "projectId", skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    /// The layer index (`layerId` → `{ layerFile, documentRevision,
+    /// compositeRevision }`), carried opaquely like `efx_paint_documents`:
+    /// TS owns the schema (52.2-02 `buildPackageManifest`).
+    #[serde(default, rename = "efxPaint", skip_serializing_if = "HashMap::is_empty")]
+    pub efx_paint: HashMap<String, Value>,
 }
 
 /// Audio track in project file (Phase 15)

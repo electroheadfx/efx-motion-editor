@@ -5,6 +5,7 @@ import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
 import {isolationStore} from './isolationStore';
 import {physicPaintStore, type PhysicPaintLayerSnapshot} from './physicPaintStore';
+import {getDocument as getEfxPaintDocument} from './efxPaintStore';
 
 const sequences = signal<Sequence[]>([]);
 const activeSequenceId = signal<string | null>(null);
@@ -26,6 +27,20 @@ export function _setMarkDirtyCallback(fn: () => void) {
 }
 function markDirty() {
   _markDirty?.();
+}
+
+// 260918-ovi: project dims are read through an injected provider so the three
+// sequence factories stamp the LIVE project canvas size into each new record.
+// projectStore wires the provider at module init (same ESM cycle workaround as
+// _setMarkDirtyCallback); sequenceStore never imports projectStore. The
+// fallback matches the boot default so an unwired test still produces a
+// coherent record.
+let _projectDimensionsProvider: (() => { width: number; height: number }) | null = null;
+export function _setSequenceProjectDimensionsProvider(fn: () => { width: number; height: number }) {
+  _projectDimensionsProvider = fn;
+}
+function getProjectDimensions(): { width: number; height: number } {
+  return _projectDimensionsProvider?.() ?? { width: 1920, height: 1080 };
 }
 
 /** Capture a snapshot of current state for undo/redo closures. */
@@ -62,7 +77,11 @@ function capturePhysicPaintDeletionState(layers: readonly Layer[]): PhysicPaintD
   const layerIds = getCanonicalPhysicPaintLayerIds(layers);
   const snapshots = new Map<string, PhysicPaintLayerSnapshot>();
   for (const layerId of layerIds) {
-    const layerSnapshot = physicPaintStore.snapshotLayer(layerId);
+    // 46-01: snapshot the ACTIVE track of each layer (single-track documents
+    // this wave; the snapshot carries its own trackId so restore targets the
+    // exact track).
+    const trackId = getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+    const layerSnapshot = physicPaintStore.snapshotLayer(layerId, trackId);
     if (layerSnapshot) snapshots.set(layerId, layerSnapshot);
   }
   return { layerIds, snapshots };
@@ -100,8 +119,7 @@ export const sequenceStore = {
       kind: 'content',
       name,
       fps: 24,
-      width: 1920,
-      height: 1080,
+      ...getProjectDimensions(),
       keyPhotos: [],
       layers: [createBaseLayer()],
     };
@@ -228,8 +246,7 @@ export const sequenceStore = {
       kind: 'fx',
       name,
       fps: 24,
-      width: 1920,
-      height: 1080,
+      ...getProjectDimensions(),
       keyPhotos: [],
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,
@@ -259,8 +276,7 @@ export const sequenceStore = {
       kind: 'content-overlay',
       name,
       fps: 24,
-      width: 1920,
-      height: 1080,
+      ...getProjectDimensions(),
       keyPhotos: [],
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,

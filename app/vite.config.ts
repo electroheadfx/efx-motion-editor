@@ -196,7 +196,65 @@ export default defineConfig({
     // the 260819/260820 quicks, and the warning-disposition fixes added
     // +9.8 kB, measured 1117.4 kB. Budget raised to 1120 (measured value +
     // ~2.6 kB headroom).
-    chunkSizeWarningLimit: 1120,
+    // Measurement note (2026-08-23): the 45-05 v1.0 document funnel pulled
+    // efxPaintStore + efxPaintPersistence + the document model into the main
+    // chunk, measured 1124.96 kB. Budget raised to 1130 (measured value +
+    // ~5 kB headroom).
+    // Measurement note (2026-08-23): the 46-03 track-scoped copy/cut/paste/
+    // duplicate/clear ops + the cross-track Hold re-pointing engine pulled the
+    // rail-set copy engine and key-rail segmentation into the main chunk,
+    // measured 1131.51 kB. Budget raised to 1135 (measured value + ~3.5 kB
+    // headroom).
+    // Measurement note (2026-08-24): the 46 UAT fixes (infinity-repeat paste
+    // freeze + lifecycle synthesis, spacing-on-set loop retime) added the
+    // rail-set copy extent and loop-lifecycle normalization to the
+    // main chunk, measured 1136.14 kB. Budget raised to 1140 (measured value +
+    // ~3.9 kB headroom).
+    // Measurement note (2026-08-24): the post-budget phase-46 rail/capsule
+    // fixes (paste boundary law, capsule warning UX, cursor-capture undo) added
+    // the boundary-extent and capsule-state code to the main chunk, measured
+    // 1155.32 kB. Budget raised to 1165 (measured value + ~9.7 kB headroom).
+    // Measurement note (2026-08-26): the 47 compositor-death watchdog
+    // (rAF-stall detection + sessionStorage recovery) added to the main chunk,
+    // measured 1165.15 kB. Budget raised to 1170 (measured value + ~4.9 kB
+    // headroom).
+    // Measurement note (2026-08-28): 48-03's flattened-compositor delivery
+    // (efxPaintCompositor + efxPaintCompositeCache + efxPaintBackgroundResolution
+    // + efxPaintHideSolo + the store's getFlattenedFrame seam) entered the main
+    // chunk via physicPaintStore, measured 1171.47 kB. Budget raised to 1180
+    // (measured value + ~8.5 kB headroom).
+    // Measurement note (2026-08-31): 49-05's Background-row surface (the
+    // row-local Bg clip drag hook + the Bg clip rail presentation + the strip
+    // wiring) entered the main chunk, measured 1180.63 kB. Budget raised to 1190
+    // (measured value + ~9.4 kB headroom).
+    // Measurement note (2026-09-01): 50-02's photo reference store stack (six
+    // photo/reference setters + the reference source registry + reopen
+    // hydration) entered the main chunk via efxPaintStore/physicPaintStore,
+    // measured 1190.19 kB. Budget raised to 1200 (measured value + ~9.8 kB
+    // headroom).
+    // Measurement note (2026-09-02): 52-04's reveal-rail creation surface (the
+    // photo-reference dialog reveal flow + the strip rail-kind menu + the
+    // create-reveal-rail wiring) entered the main chunk, measured 1291.43 kB.
+    // Budget raised to 1300 (measured value + ~8.6 kB headroom).
+    // Measurement note (2026-09-09): Phase 52.1 (modern frame runtime + native
+    // HD paint) — the Step 0 dependency bumps (Tauri 2.11.1, Preact 10.29.8,
+    // @preact/signals, plugin bumps) plus the intervening 260905 quicks added
+    // ~4.8 kB, and the 52.1 feature code (runtime retarget, byte-budgeted LRU,
+    // WebP codec leaf modules) added ~8.9 kB, measured 1305.11 kB. Budget
+    // raised to 1320 (measured value + ~14.9 kB headroom) — a one-time signed
+    // adjustment for the HD runtime, not a precedent.
+    // Measurement note (2026-09-12): the already-landed 52.2 package-format
+    // work (plans 08-12: package funnel, clean-break gates, roto frame-media
+    // push, render counters) carried the main chunk to 1,326.36 kB — the last
+    // measurement points record the climb (52.2-07: 1,322.93 kB, 52.2-10:
+    // 1,325.5 kB). Plan 52.2-13 Task 3 re-measured before and after installing
+    // the pinned pilot dependencies: both builds emitted the byte-identical
+    // index-knu_IwqL.js main chunk (same content hash), so the install's delta
+    // is 0.00 kB — the deps are installed but unimported, and the pilot keeps
+    // them behind the PhysicsPaintStudio lazy boundary. Budget raised to 1340
+    // (measured value + ~13.6 kB headroom); the raise is for the landed format
+    // work, never anticipation of pilot code.
+    chunkSizeWarningLimit: 1340,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

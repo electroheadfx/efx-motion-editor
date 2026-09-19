@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { getDocument, registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
 import { buildPhysicsPaintDebugProof, createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from './usePhysicsPaintSessionController';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+
+vi.mock('@tauri-apps/plugin-fs', () => ({}));
 
 function makeContext(): PhysicPaintLaunchContext {
-  return { operationId: 'operation-1', layerId: 'layer-1', startFrame: 4, width: 1000, height: 650, cachedRotoFrames: [] };
+  return { operationId: 'operation-1', layerId: 'layer-1', startFrame: 4, width: 1000, height: 650 };
 }
 
 function makeFrame(): PhysicPaintRenderedFrame {
-  return { frameIndex: 0, appFrame: 9, dataUrl: 'data:image/png;base64,AA==', width: 800, height: 520 };
+  return { frameIndex: 0, appFrame: 9, bytes: testWebpBytes('AA=='), width: 800, height: 520 };
 }
 
 function sessionHarness() {
@@ -26,6 +31,8 @@ function sessionHarness() {
 
 describe('usePhysicsPaintSessionController helpers', () => {
   it('blocks Save and Load while mutation-locked and resumes immediately', async () => {
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('layer-1'));
     const test = sessionHarness();
     const target = { files: [{ name: 'state.json' }], value: 'state.json' } as unknown as HTMLInputElement;
     await test.controller.saveEditableState();
@@ -35,15 +42,16 @@ describe('usePhysicsPaintSessionController helpers', () => {
     expect(test.reader.readAsText).not.toHaveBeenCalled();
     test.unlock();
     await test.controller.saveEditableState();
-    expect(test.engine.save).toHaveBeenCalledTimes(1);
+    expect(test.engine.save).not.toHaveBeenCalled();
     expect(test.downloadState).toHaveBeenCalledTimes(1);
+    expect(test.downloadState).toHaveBeenCalledWith(getDocument('layer-1'));
     test.controller.loadEditableState({ target } as unknown as Event);
     expect(test.reader.readAsText).toHaveBeenCalledTimes(1);
   });
 
   it('retains captured still and manifest fields in debug proof exports', () => {
     const proof = buildPhysicsPaintDebugProof({ frame: makeFrame(), layerId: 'layer-1', operationId: 'operation-1:debug:1', fps: 24 });
-    expect(proof.still).toMatchObject({ file: 'frame-0000.png', appFrame: 9, width: 800, height: 520, dataUrl: 'data:image/png;base64,AA==' });
+    expect(proof.still).toMatchObject({ file: 'frame-0000.webp', appFrame: 9, width: 800, height: 520, bytes: testWebpBytes('AA==') });
     expect(proof.manifest).toMatchObject({ file: 'manifest.json', layerId: 'layer-1', startFrame: 9, frameCount: 1, fps: 24 });
   });
 });

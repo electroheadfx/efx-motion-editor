@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
+  classifyRotoRailKind,
   collectRotoGroupDragGapPreviewAppFrames,
   getPhysicsPaintEngineStatusTone, getRotoAcceptedCellFillClass, getRotoCellFill,
   getRotoCellPresentationViewModel,
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
+  getRotoRailKindLabel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
   getRotoResolutionCellTooltipCopy, getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext, getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
+  isRevealRotoRail,
   ROTO_STARTS_INTERPOLATION_SEGMENT_COPY,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
@@ -22,6 +25,7 @@ import type {
   PhysicPaintRotoPhysicalEditProposal,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 describe('physicsPaintWorkflowPresentation', () => {
 
@@ -54,8 +58,8 @@ describe('physicsPaintWorkflowPresentation', () => {
 
   it('classifies Roto cells with pixel-only gray and green semantic fills', () => {
     const cachedFrames = [
-      { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,cached-five', source: 'real-key' as const },
-      { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' as const },
+      { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('cached-five'), source: 'real-key' as const },
+      { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('cached-six'), source: 'real-key' as const },
     ];
 
     expect(getRotoCellFill(5, cachedFrames)).toBe('cached-only');
@@ -76,9 +80,9 @@ describe('physicsPaintWorkflowPresentation', () => {
 
   it('builds Roto cell view models for empty, cached, generated, and background-only states', () => {
     const cachedFrames: PhysicPaintRotoCacheFrame[] = [
-      { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' },
-      { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,background-eight', source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 6 },
-      { frameIndex: 0, appFrame: 9, dataUrl: 'data:image/png;base64,generated-nine', source: 'generated-interpolation', nearestRealKeyFrame: 6 },
+      { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('cached-six'), source: 'real-key' },
+      { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('background-eight'), source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 6 },
+      { frameIndex: 0, appFrame: 9, bytes: testWebpBytes('generated-nine'), source: 'generated-interpolation', nearestRealKeyFrame: 6 },
     ];
 
     expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames }).baseMeaning).toBe('empty');
@@ -97,8 +101,8 @@ describe('physicsPaintWorkflowPresentation', () => {
     expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames }).isEditableTarget).toBe(false);
 
     const realAndGeneratedCollision = [
-      { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,generated-ten', source: 'generated-interpolation' as const, nearestRealKeyFrame: 6 },
-      { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,real-ten', source: 'real-key' as const },
+      { frameIndex: 0, appFrame: 10, bytes: testWebpBytes('generated-ten'), source: 'generated-interpolation' as const, nearestRealKeyFrame: 6 },
+      { frameIndex: 0, appFrame: 10, bytes: testWebpBytes('real-ten'), source: 'real-key' as const },
     ];
     expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision }).baseMeaning).toBe('cached');
     expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision }).isEditableTarget).toBe(true);
@@ -256,7 +260,7 @@ describe('getRotoStatusCapsuleIdleContext — current-cell idle mapping (38-08, 
   it('maps each semantic cell kind to its exact physical-frame context', () => {
     expect(getRotoStatusCapsuleIdleContext({ cellKind: 'real', frame: 5 })).toBe('Real Roto key · Frame 5');
     expect(getRotoStatusCapsuleIdleContext({ cellKind: 'generated', frame: 9 })).toBe('Generated frame · Frame 9');
-    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'empty', frame: 7 })).toBe('Empty frame · Frame 7');
+    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'empty', frame: 7 })).toBe('Empty frame · Frame 7 — add a key (+) to paint');
     expect(getRotoStatusCapsuleIdleContext({ cellKind: null, frame: 3 })).toBeNull();
   });
 
@@ -736,5 +740,25 @@ describe('collectRotoGroupDragGapPreviewAppFrames — Group-drag gap preview (43
     );
     expect(collectRotoGroupDragGapPreviewAppFrames(currentCells, proposal, clip))
       .toEqual(new Set([10]));
+  });
+});
+
+describe('rail-kind classification (52-04, D-03/D-19 — the reveal rail is the 4th rail kind)', () => {
+  it('classifies an absent railKind as playscript (no migration)', () => {
+    expect(classifyRotoRailKind(undefined)).toBe('playscript');
+    expect(classifyRotoRailKind('playscript')).toBe('playscript');
+  });
+
+  it('classifies the reveal rail kind (D-03)', () => {
+    expect(classifyRotoRailKind('reveal')).toBe('reveal');
+    expect(isRevealRotoRail('reveal')).toBe(true);
+    expect(isRevealRotoRail(undefined)).toBe(false);
+    expect(isRevealRotoRail('playscript')).toBe(false);
+  });
+
+  it('labels the rail kind for the track surface and rail set copy', () => {
+    expect(getRotoRailKindLabel('reveal')).toBe('Reveal');
+    expect(getRotoRailKindLabel(undefined)).toBe('Play Script');
+    expect(getRotoRailKindLabel('playscript')).toBe('Play Script');
   });
 });

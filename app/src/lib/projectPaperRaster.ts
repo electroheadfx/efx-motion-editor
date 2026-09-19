@@ -109,6 +109,36 @@ export function isProjectPaperTextureResolved(paperTexture: string): boolean {
   return !PAPER_TEXTURE_URLS[paperTexture] || textureCache.has(paperTexture);
 }
 
+/**
+ * Resolve-only subscription: fires ONLY when the texture load settles (load or
+ * error) — never an immediate notify, never a canvas delivery. For watchers
+ * that only need the "texture arrived" signal (the flattened fond watcher)
+ * without pre-warming the cache on the query path.
+ */
+export function subscribeProjectPaperTextureResolve(paperTexture: string, listener: () => void): () => void {
+  const listeners = textureListeners.get(paperTexture) ?? new Set<() => void>();
+  listeners.add(listener);
+  textureListeners.set(paperTexture, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) textureListeners.delete(paperTexture);
+  };
+}
+
 export function clearProjectPaperRasterCache(): void {
   paperCanvasCache.clear();
+}
+
+/**
+ * Test-only deep reset: the texture cache, in-flight loads, and listeners are
+ * module-level and would otherwise leak across tests (a resolved texture flips
+ * getProjectPaperCanvas from the loading null to a real canvas, changing
+ * downstream draw logs). Production uses clearProjectPaperRasterCache so live
+ * subscribers (leaf paper canvases, the flattened fond watcher) survive.
+ */
+export function resetProjectPaperRasterForTests(): void {
+  paperCanvasCache.clear();
+  textureCache.clear();
+  loadingTextures.clear();
+  textureListeners.clear();
 }

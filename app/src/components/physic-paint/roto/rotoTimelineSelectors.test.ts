@@ -16,6 +16,7 @@ import {
   resolvePhysicPaintRotoLoopFrame,
 } from './physicsPaintRotoPhysicalResolver';
 import { createRotoTimelineModel } from '../hooks/useRotoTimelineModel';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 function frame(appFrame: number, sourceFrame: number, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
   return {
@@ -24,7 +25,7 @@ function frame(appFrame: number, sourceFrame: number, source: PhysicPaintRotoCac
     sourceFrame,
     displayFrame: appFrame,
     source,
-    dataUrl: `data:image/png;base64,${source}-${appFrame}`,
+    bytes: testWebpBytes(`${source}-${appFrame}`),
   };
 }
 
@@ -52,12 +53,12 @@ describe('rotoTimelineSelectors', () => {
       appFrame: candidate.appFrame,
       sourceFrame: candidate.sourceFrame,
       displayFrame: candidate.displayFrame,
-      dataUrl: candidate.dataUrl,
+      bytes: candidate.bytes,
     }))).toEqual([
-      { appFrame: 0, sourceFrame: 0, displayFrame: 0, dataUrl: 'data:image/png;base64,real-key-0' },
-      { appFrame: 3, sourceFrame: 1, displayFrame: 3, dataUrl: 'data:image/png;base64,real-key-1' },
-      { appFrame: 6, sourceFrame: 2, displayFrame: 6, dataUrl: 'data:image/png;base64,real-key-2' },
-      { appFrame: 9, sourceFrame: 3, displayFrame: 9, dataUrl: 'data:image/png;base64,real-key-3' },
+      { appFrame: 0, sourceFrame: 0, displayFrame: 0, bytes: testWebpBytes('real-key-0') },
+      { appFrame: 3, sourceFrame: 1, displayFrame: 3, bytes: testWebpBytes('real-key-1') },
+      { appFrame: 6, sourceFrame: 2, displayFrame: 6, bytes: testWebpBytes('real-key-2') },
+      { appFrame: 9, sourceFrame: 3, displayFrame: 9, bytes: testWebpBytes('real-key-3') },
     ]);
   });
 
@@ -241,7 +242,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
         payload: {
           frameIndex: 0,
           appFrame: identity.appFrame,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },

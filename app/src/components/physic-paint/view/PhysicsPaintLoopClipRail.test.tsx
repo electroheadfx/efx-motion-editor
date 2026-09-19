@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
@@ -63,6 +64,8 @@ import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { frameMap, fxTrackLayouts } from '../../../lib/frameMap';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
+import { registerDocument } from '../../../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -97,6 +100,8 @@ import {
   projectPhysicsPaintLoopClipPresentation,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 const physicsPaintStudioCss = readFileSync(
   fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
@@ -237,9 +242,7 @@ function renderScriptsPanel(
     onSave: () => {},
     onActivateRow: () => {},
     onLoadAndApply: () => {},
-    onDiscardScript: () => {},
     onCopyScript: () => {},
-    onApplyScript: () => {},
     onRefresh: () => {},
   });
   return materializeNamedComponents(tree, new Set(['IconButton']));
@@ -285,6 +288,36 @@ function renderWorkflowStrip(
   });
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+/** 52.1: a Uint8Array cannot survive JSON.stringify, so the save/reopen
+ * round-trip serializes frame bytes as base64 and revives them back to
+ * Uint8Array before the physical document parser (which computes a content
+ * token from the live bytes). */
+function roundTripDocument(document: PhysicPaintRotoPhysicalDocument): unknown {
+  const json = JSON.stringify(document, (_key, value) => {
+    if (value instanceof Uint8Array) return { __webpBytes: bytesToBase64(value) };
+    return value;
+  });
+  return JSON.parse(json, (_key, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.__webpBytes === 'string') {
+      return base64ToBytes(value.__webpBytes);
+    }
+    return value;
+  });
+}
+
 function createGeneratedPresentationDocument(
   mode: PhysicPaintRotoLoopClip['mode'],
   options: {
@@ -293,8 +326,8 @@ function createGeneratedPresentationDocument(
   } = {},
 ): PhysicPaintRotoPhysicalDocument {
   const records: PhysicPaintRotoRealKeyRecord[] = [
-    { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,YQ==' } },
-    { keyId: 'B', appFrame: 3, kind: 'real-key', payload: { frameIndex: 1, appFrame: 3, dataUrl: 'data:image/png;base64,Yg==' } },
+    { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('YQ==') } },
+    { keyId: 'B', appFrame: 3, kind: 'real-key', payload: { frameIndex: 1, appFrame: 3, bytes: testWebpBytes('Yg==') } },
   ];
   const clip: PhysicPaintRotoLoopClip = {
     loopId: `generated-${mode}`,
@@ -454,9 +487,9 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(textOf(tree)).not.toContain('Fragment');
     expect(textOf(tree)).not.toContain('Range F');
 
-    const dot = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
-    expect(hasClass(dot, 'modified')).toBe(true);
-    expect(dot.props['aria-hidden']).toBe('true');
+    // AM-2: the in-line lifecycle status dot is removed from every rail — the
+    // status lives only in the tooltip's "Status:" line (swatch kept below).
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'))).toHaveLength(0);
 
     const space = { key: ' ', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof space) => void)(space);
@@ -507,9 +540,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const anchors = findAll(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
     const targets = findAll(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
 
+    // 47-01 UAT round 5: geometry is expressed in the strip's actual pitch
+    // (18px) so a future pitch change never hardcodes stale pixel offsets here.
+    const pitch = rail.props.framePitch as number;
     expect(anchors.map((anchor) => anchor.props.style)).toEqual([
-      { left: '9720px', width: '72px' },
-      { left: '10260px', width: '72px' },
+      { left: `${540 * pitch}px`, width: `${4 * pitch}px` },
+      { left: `${570 * pitch}px`, width: `${4 * pitch}px` },
     ]);
     expect(targets).toHaveLength(2);
     expect(hasClass(targets[0], 'mode-progressive')).toBe(true);
@@ -524,10 +560,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it('publishes the shared Infinity boundary to Group Rail drag despite a deleted tail', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { keyId: 'A', appFrame: 10, kind: 'real-key', payload: { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,YQ==' } },
-      { keyId: 'B', appFrame: 12, kind: 'real-key', payload: { frameIndex: 1, appFrame: 12, dataUrl: 'data:image/png;base64,Yg==' } },
-      { keyId: 'C', appFrame: 30, kind: 'real-key', payload: { frameIndex: 2, appFrame: 30, dataUrl: 'data:image/png;base64,Yw==' } },
-      { keyId: 'D', appFrame: 31, kind: 'real-key', payload: { frameIndex: 3, appFrame: 31, dataUrl: 'data:image/png;base64,ZA==' } },
+      { keyId: 'A', appFrame: 10, kind: 'real-key', payload: { frameIndex: 0, appFrame: 10, bytes: testWebpBytes('YQ==') } },
+      { keyId: 'B', appFrame: 12, kind: 'real-key', payload: { frameIndex: 1, appFrame: 12, bytes: testWebpBytes('Yg==') } },
+      { keyId: 'C', appFrame: 30, kind: 'real-key', payload: { frameIndex: 2, appFrame: 30, bytes: testWebpBytes('Yw==') } },
+      { keyId: 'D', appFrame: 31, kind: 'real-key', payload: { frameIndex: 3, appFrame: 31, bytes: testWebpBytes('ZA==') } },
     ];
     const infinityClip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a',
@@ -591,8 +627,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
   it('keeps deleted Group phases gray under one rail and exposes only true outer endpoint cuts', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
-      { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,YQ==' } },
-      { keyId: 'B', appFrame: 1, kind: 'real-key', payload: { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,Yg==' } },
+      { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('YQ==') } },
+      { keyId: 'B', appFrame: 1, kind: 'real-key', payload: { frameIndex: 1, appFrame: 1, bytes: testWebpBytes('Yg==') } },
     ];
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a',
@@ -674,21 +710,20 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     }
   });
 
-  it.each([
-    ['synchronized', '#34d399'],
-    ['modified', '#fb923c'],
-    ['detached', '#9ca3af'],
-    ['unavailable', '#6b7280'],
-  ] as const)('pins the passive %s lifecycle dot geometry and color', (lifecycle, color) => {
-    const dotRule = cssRule(`.physics-paint-loop-clip-lifecycle-dot.${lifecycle} {`);
-    expect(dotRule).toContain(`background: ${color}`);
-    const baseRule = cssRule('.physics-paint-loop-clip-lifecycle-dot {');
-    expect(baseRule).toContain('width: 6px');
-    expect(baseRule).toContain('height: 6px');
-    expect(baseRule).toContain('pointer-events: none');
+  it('pins the tooltip status swatch to the lifecycle palette', () => {
+    for (const [lifecycle, color] of [
+      ['synchronized', '#a6d334'],
+      ['modified', '#fbbf24'],
+      ['detached', '#bbc0c8'],
+      ['unavailable', '#ff2e56'],
+    ] as const) {
+      const swatchRule = cssRule(`.physics-paint-loop-clip-tooltip-status-dot.${lifecycle} {`);
+      expect(swatchRule).toContain(`background: ${color}`);
+    }
+    expect(cssRule('.physics-paint-loop-clip-tooltip-status {')).toContain('display: inline-flex');
   });
 
-  it('omits the dot for unresolved fragments and gives unresolved copy precedence', () => {
+  it('gives unresolved copy precedence over lifecycle copy', () => {
     const unresolvedRange = explicitGroupRange(10, 12, {
       unresolved: { missingSourceKeyIds: ['private-key-id'] },
     });
@@ -709,7 +744,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       onOpenLoopEdit: vi.fn(async () => {}),
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
 
-    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'))).toHaveLength(0);
     const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(hasClass(target, 'unresolved')).toBe(true);
     expect(target.props['aria-label']).toContain('Source missing');
@@ -792,19 +826,17 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
   });
 
   it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
-    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 3px');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 4px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
-    const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
-    expect(ringRule).toContain('border: 2px solid #f2f5f7');
-    expect(ringRule).toContain('top: -2px');
-    expect(ringRule).toContain('bottom: -24px');
-    expect(ringRule).toContain('border-radius: 8px');
-    expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
-    expect(cssRule('.physics-paint-lane {')).toContain('height: 38px');
+    // 47 close-out UAT round 10: the selection box is gone — the orange
+    // segment is the whole selected treatment for every rail family.
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-rail-target:focus-visible::after');
+    expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(physicsPaintStudioCss).not.toContain('physics-paint-group-lifecycle-lane');
   });
@@ -1253,7 +1285,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
     expect(cssRule('.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
-    expect(railSegmentRule).toContain('height: 3px');
+    expect(railSegmentRule).toContain('height: 4px');
     expect(railSegmentRule).toContain('background: #8b5cf6');
     const railHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,');
     expect(railHoverRule).toContain('background: #c4b5fd');
@@ -1261,7 +1293,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(railSelectedRule).toContain('background: #f59e0b');
     expect(physicsPaintStudioCss).not.toContain('background: #a78bfa');
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
     const railTargetHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(:disabled),');
     expect(railTargetHoverRule).toContain('background: transparent');
     expect(railTargetHoverRule).toContain('box-shadow: none');
@@ -1269,7 +1301,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target::after');
     // 43.4 defect 8: the shared full-row focus ring is the target's only
     // pseudo — the same ::after rule serves the Key Rail target too.
-    expect(physicsPaintStudioCss).toContain('.physics-paint-rail-target:focus-visible::after');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-rail-target:focus-visible::after');
 
     (anchor.props.onPointerEnter as () => void)();
     expect(typeof target.props.onfocusin).toBe('function');
@@ -1390,8 +1422,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(mountedRails[0].props.selectedLoopClipIds).toEqual([selectedLoopClipId]);
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-lane'))).toHaveLength(1);
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lane'))).toHaveLength(0);
-    expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
-    expect(cssRule('.physics-paint-lane {')).toContain('height: 38px');
+    expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
 
     const linkedCells = findAll(workflowTree, (vnode) => String(vnode.props.cellClass ?? '').includes('roto-linked-loop-badge'));
     expect(linkedCells.length).toBeGreaterThan(0);
@@ -1402,7 +1434,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     const onCloseLoopClip = vi.fn();
     const normalPanel = renderScriptsPanel(null, onOpenLoopEdit, onCloseLoopClip);
-    expect(findAll(normalPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Group…')).toHaveLength(1);
+    expect(findAll(normalPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Rail…')).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'))).toHaveLength(0);
@@ -1410,14 +1442,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const selectedPresentation = presentations.get(selectedLoopClipId) ?? null;
     expect(selectedPresentation?.loopId).toBe(selectedLoopClipId);
     const selectedPanel = renderScriptsPanel(selectedPresentation, onOpenLoopEdit, onCloseLoopClip);
-    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Group — Walk Rail');
-    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Group inspector — Walk Rail');
-    expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Group…')).toHaveLength(0);
+    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Rail — Walk Rail');
+    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Rail inspector — Walk Rail');
+    expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create Rail…')).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(0);
     const inspector = findOne(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'));
-    expect(textOf(inspector)).toBe('NameWalk RailSource ActionWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fGroup TypeMotionStatusSynchronized with Action.');
+    expect(textOf(inspector)).toBe('NameWalk RailSource ActionWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fRail TypeMotionStatusSynchronized with Action.');
     expect(textOf(inspector)).not.toContain(rawLoopId);
     (editButton.props.onClick as () => void)();
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(3);
@@ -1426,14 +1458,23 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(onCloseLoopClip).toHaveBeenCalledOnce();
 
     const layerId = 'loop-tracer-layer';
+    // 46-01: fxTrackLayouts resolves the ACTIVE track of a registered document;
+    // register the launch document with the fixed track so production reads land here.
+    const document = createEfxPaintDocument(layerId);
+    const track = document.tracks[0];
+    registerDocument({
+      ...document,
+      activeTrackId: TEST_TRACK_ID,
+      tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    });
     const records: PhysicPaintRotoRealKeyRecord[] = sourceKeyIds.map((keyId, appFrame) => ({
       keyId,
       appFrame,
       kind: 'real-key',
-      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,YQ==' },
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('YQ==') },
     }));
     const loopClips = [clip];
-    physicPaintStore.clearRotoPhysicalRecords(layerId);
+    physicPaintStore.clearRotoPhysicalRecords(layerId, TEST_TRACK_ID);
     sequenceStore.reset();
     const layer: Layer = {
       id: layerId,
@@ -1459,7 +1500,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     };
     sequenceStore.sequences.value = [fxSequence];
     const interpolation = { enabled: false, mode: 'duplicate' as const };
-    const installed = physicPaintStore.replaceRotoPhysicalDocument(layerId, {
+    const installed = physicPaintStore.replaceRotoPhysicalDocument(layerId, TEST_TRACK_ID, {
       capacity: 120,
       realKeyRecords: records,
       interpolation,
@@ -1492,7 +1533,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopCapsules');
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopClips');
 
-    physicPaintStore.clearRotoPhysicalRecords(layerId);
+    physicPaintStore.clearRotoPhysicalRecords(layerId, TEST_TRACK_ID);
     sequenceStore.reset();
     await Promise.resolve();
     vi.useRealTimers();
@@ -1559,10 +1600,55 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(clicked.focused).toBe(true);
     expect(clicked.tabIndex).toBe(0);
     // A focused rail target draws the ring through the shared :focus rule.
-    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 2px solid #f2f5f7');
+    expect(cssRule('.physics-paint-rail-target:focus,')).toContain('outline: none');
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     vi.useRealTimers();
+  });
+
+  // GSD-52: the Loop Clip rail records its focused button through onRailFocus
+  // (mirroring PhysicsPaintKeyRail) so a commit that removes it can restore
+  // focus to the stable timeline container instead of orphaning it to body.
+  it('records the focused rail button through onRailFocus (GSD-52)', () => {
+    const rawLoopId = 'gsd-52-focus-record';
+    const sourceKeyIds = ['source-0', 'source-1'];
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: rawLoopId,
+      placementStart: 0,
+      sourceKeyIds,
+      repeat: 1,
+      mode: 'progressive',
+      scriptId: 'script-walk',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const loopContext = derivePhysicPaintRotoLoopRanges({
+      identities: sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
+      loopClips: [clip],
+      capacity: 12,
+      interpolationEnabled: false,
+    });
+    const presentation = projectPhysicsPaintLoopClipPresentation(loopContext.ranges[0], clip, 'Walk');
+    const presentations = new Map([[rawLoopId, presentation]]);
+    const onRailFocus = vi.fn();
+
+    hooks.reset();
+    const railTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: loopContext.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+      onRailFocus,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    const focused = { closest: () => null };
+    (target.props.onfocusin as (event: { currentTarget: unknown }) => void)({ currentTarget: focused });
+    expect(onRailFocus).toHaveBeenCalledOnce();
+    expect(onRailFocus).toHaveBeenCalledWith(focused);
   });
 
   it('uses a cyan Static Group Rail theme with visible cuts at both Group endpoints', () => {
@@ -1654,8 +1740,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
           { kind: 'generated', appFrame: 8, leftKeyId: 'A', rightKeyId: 'B' },
         ]),
         cachedRotoFrames: [
-          { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,source', source: 'generated-interpolation' },
-          { frameIndex: 8, appFrame: 8, dataUrl: 'data:image/png;base64,repeat', source: 'generated-interpolation' },
+          { frameIndex: 1, appFrame: 1, bytes: testWebpBytes('source'), source: 'generated-interpolation' },
+          { frameIndex: 8, appFrame: 8, bytes: testWebpBytes('repeat'), source: 'generated-interpolation' },
         ],
         rotoSpacingSelection: {
           sourceCycleId: sourceProxy.sourceCycleId,
@@ -1687,10 +1773,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(boundaryEnd.props.cellClass).not.toContain('roto-loop-boundary-start');
     expect(boundaryEnd.props.cellClass).toContain('roto-loop-boundary-end');
     expect(cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-linked-repeat-source-key {')).toContain('background: #43494f');
-    const selectedRepeat = cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {');
-    expect(selectedRepeat).toContain('background: #4b6382');
-    expect(selectedRepeat).not.toContain('#f5a623');
-    expect(selectedRepeat).not.toContain('outline:');
+    // 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
+    // lighter blue-gray (NOT orange) — restored after the round-12 deletion.
+    expect(physicsPaintStudioCss).toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
+    expect(physicsPaintStudioCss).toContain('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current)');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
   });
@@ -1745,7 +1831,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     it.each(['progressive', 'static'] as const)('preserves %s generated classifications and fill classes after save/reopen parsing', (mode) => {
       const beforeDocument = createGeneratedPresentationDocument(mode);
-      const reopenedDocument = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(beforeDocument)));
+      const reopenedDocument = parsePhysicPaintRotoPhysicalDocument(roundTripDocument(beforeDocument));
       const before = renderGeneratedPresentationDocument(beforeDocument);
       const reopened = renderGeneratedPresentationDocument(reopenedDocument);
 
@@ -2181,13 +2267,13 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
           kind: 'real-key',
           keyId: 'A',
           appFrame: 1,
-          payload: Object.freeze({ frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,YQ==' }),
+          payload: Object.freeze({ frameIndex: 0, appFrame: 1, bytes: testWebpBytes('YQ==') }),
         }),
         Object.freeze({
           kind: 'real-key',
           keyId: 'C',
           appFrame: 5,
-          payload: Object.freeze({ frameIndex: 1, appFrame: 5, dataUrl: 'data:image/png;base64,Yw==' }),
+          payload: Object.freeze({ frameIndex: 1, appFrame: 5, bytes: testWebpBytes('Yw==') }),
         }),
       ]);
       const clip: PhysicPaintRotoLoopClip = Object.freeze({
@@ -2387,7 +2473,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       const barRule = cssRule('.physics-paint-loop-clip-rail-ghost-blocked-edge {');
       expect(barRule).toContain('background: #ff6b6b');
       expect(barRule).toContain('width: 2px');
-      expect(barRule).toContain('height: 12px');
+      expect(barRule).toContain('height: 8px');
     });
 
     it('renders no blocked-edge bar when the ghost is unclamped', () => {

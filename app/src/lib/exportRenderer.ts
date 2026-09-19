@@ -20,6 +20,7 @@ function buildSequenceFrames(seq: Sequence): FrameEntry[] {
   for (const kp of seq.keyPhotos) {
     for (let f = 0; f < kp.holdFrames; f++) {
       frames.push({
+        kind: 'content',
         globalFrame: lf,
         sequenceId: seq.id,
         keyPhotoId: kp.id,
@@ -82,10 +83,20 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
 
   for (const seq of sequences) {
     if (seq.kind === 'content' || seq.visible === false) continue;
-    const start = Math.max(0, seq.inFrame ?? 0);
-    const end = Math.max(start, Math.min(fm.length, getTimelineOverlaySequenceOutFrame(seq, fm.length)));
-    for (let globalFrame = start; globalFrame < end; globalFrame += 1) {
-      const localFrame = globalFrame - start;
+    // 52.3 CR-01: share the render gate's predicate — drive the overlay window
+    // from entry.globalFrame, never the positional fm length. A selected
+    // (rebased, exportEngine.ts:148) export of an fx at inFrame > 0 must preload
+    // the same frames the render loop will draw; clamping on fm.length computed
+    // an empty window and exported silently transparent paint. Full exports stay
+    // byte-identical: dense enumeration covers [inFrame, outFrame) exactly.
+    const inFrame = seq.inFrame ?? 0;
+    const outFrame = getTimelineOverlaySequenceOutFrame(seq, fm.length);
+    for (const entry of fm) {
+      if (!entry) continue;
+      const overlayGlobalFrame = entry.globalFrame;
+      if (overlayGlobalFrame < inFrame) continue;
+      if (overlayGlobalFrame >= outFrame) continue;
+      const localFrame = overlayGlobalFrame - inFrame;
       addSources(interpolateLayers(seq, localFrame), localFrame);
     }
   }
@@ -138,6 +149,29 @@ export function renderGlobalFrame(
   const entry = fm[frameIndex];
   const seq = entry ? allSeqs.find((s) => s.id === entry.sequenceId) : undefined;
   const hasContentEntry = !!seq && seq.kind !== 'fx';
+
+  // 52.3-02 (RESEARCH Pitfall 1): the overlay leg's gates and fx-local frame
+  // math read the entry's OWN globalFrame — never the positional frameIndex.
+  // A selected-sequence export re-bases fm positionally (exportEngine.ts:148),
+  // so positional index 0 maps to the selected sequence's first true global
+  // frame; gating on the positional index would skip every overlay of an
+  // inFrame > 0 selection (all-transparent selected-fx export). The same line
+  // repairs the pre-existing content-selected overlay-drop quirk (RESEARCH
+  // Open Question 1 — shared fix adopted). The content branch's positional
+  // seqStart walk below is genuinely positional and stays untouched.
+  const overlayGlobalFrame = entry ? entry.globalFrame : frameIndex;
+
+  // D-06 (52.3-01): every no-content frame starts from clean pixels — one
+  // top-level identity-transform clear, same shape as the GL transition path
+  // below. Content frames keep byte-identical behavior (this gate stays
+  // !hasContentEntry; the content branch's own clears are untouched).
+  if (!hasContentEntry) {
+    const clearCtx = canvas.getContext('2d', { willReadFrequently: true })!;
+    clearCtx.save();
+    clearCtx.setTransform(1, 0, 0, 1, 0, 0);
+    clearCtx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCtx.restore();
+  }
 
   // Compute sequence start frame and local frame from frameMap (content only)
   let seqStart = frameIndex;
@@ -200,7 +234,7 @@ export function renderGlobalFrame(
 
             // Composite onto main canvas
             if (glResult) {
-              const ctx = canvas.getContext('2d')!;
+              const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
               ctx.save();
               ctx.setTransform(1, 0, 0, 1, 0, 0);
               ctx.clearRect(0, 0, w, h);
@@ -282,7 +316,7 @@ export function renderGlobalFrame(
       const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
       if (solidAlpha > 0) {
         const color = activeFade?.color ?? '#000000';
-        const solidCtx = canvas.getContext('2d')!;
+        const solidCtx = canvas.getContext('2d', { willReadFrequently: true })!;
         solidCtx.save();
         solidCtx.setTransform(1, 0, 0, 1, 0, 0);  // physical pixel coords (per Pitfall 5)
         solidCtx.globalAlpha = solidAlpha;
@@ -302,12 +336,12 @@ export function renderGlobalFrame(
   const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
   for (let i = overlaySeqs.length - 1; i >= 0; i--) {
     const overlaySeq = overlaySeqs[i];
-    if (overlaySeq.inFrame != null && globalFrame < overlaySeq.inFrame) continue;
-    if (globalFrame >= getTimelineOverlaySequenceOutFrame(overlaySeq, fm.length)) continue;
+    if (overlaySeq.inFrame != null && overlayGlobalFrame < overlaySeq.inFrame) continue;
+    if (overlayGlobalFrame >= getTimelineOverlaySequenceOutFrame(overlaySeq, fm.length)) continue;
 
     if (overlaySeq.kind === 'content-overlay') {
       // Content overlay: compute local frame relative to inFrame, apply keyframe interpolation
-      const overlayLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+      const overlayLocalFrame = overlayGlobalFrame - (overlaySeq.inFrame ?? 0);
       const overlayLayers = overlaySeq.layers.filter(l => l.visible).map(layer => {
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;
         const values = interpolateAt(layer.keyframes, overlayLocalFrame);
@@ -334,7 +368,7 @@ export function renderGlobalFrame(
       }
     } else {
       // FX sequence: apply keyframe interpolation to FX layers
-      const fxLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+      const fxLocalFrame = overlayGlobalFrame - (overlaySeq.inFrame ?? 0);
       const fxTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
       const fxLayers = overlaySeq.layers.filter((l) => l.visible).map(layer => {
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;
@@ -394,7 +428,7 @@ export function renderFrameWithMotionBlur(
   motionBlurStore.shutterAngle.value = shutterAngle;
 
   try {
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
     const pixelCount = w * h * 4; // RGBA
     // Float32 accumulator to avoid both source-over alpha compounding and lighter overflow
     const accum = new Float32Array(pixelCount);
@@ -435,14 +469,21 @@ export function renderFrameWithMotionBlur(
  * Failed images are logged but do not block the export — frames referencing
  * them will render without that image (blank/missing layer).
  */
-export function preloadExportImages(
+export async function preloadExportImages(
   renderer: PreviewRenderer,
   fm: FrameEntry[],
   signal?: AbortSignal,
   sequences: readonly Sequence[] = [],
 ): Promise<void> {
-  const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
+  // 52.3-01 (D-01): only content entries carry imageId — paint/gap entries have none.
+  const imageIds = [...new Set(fm.flatMap(f => f.kind === 'content' ? [f.imageId] : []).filter(id => id !== ''))];
   const paperTextures = renderer.collectRotoPaperTextures(sequences);
+  // 52.1-05 (D-13): trigger the decode for every physic-paint frame in the
+  // export range (getFlattenedFrame returns null on a cold miss but still kicks
+  // off the async decode), then await the in-flight decodes so the render loop's
+  // getFlattenedFrame returns the baked raster — never a silently missing layer.
+  collectExportPhysicPaintFrameSources(renderer, fm, sequences);
+  await renderer.awaitPhysicPaintDecodes();
   const physicPaintFrames = collectExportPhysicPaintFrameSources(renderer, fm, sequences);
   return new Promise<void>((resolve, reject) => {
     let settled = false;

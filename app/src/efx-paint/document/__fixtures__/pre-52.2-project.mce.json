@@ -1,0 +1,185 @@
+{
+  "version": 16,
+  "name": "Pre-52.2 Project",
+  "fps": 24,
+  "width": 1920,
+  "height": 1080,
+  "created_at": "2026-08-10T09:00:00.000Z",
+  "modified_at": "2026-08-10T09:30:00.000Z",
+  "sequences": [
+    {
+      "id": "seq-1",
+      "name": "Sequence 1",
+      "fps": 24,
+      "width": 1920,
+      "height": 1080,
+      "order": 0,
+      "key_photos": [],
+      "layers": [
+        {
+          "id": "layer-pre-a",
+          "name": "Physic Paint",
+          "type": "physic-paint",
+          "visible": true,
+          "opacity": 1,
+          "blend_mode": "normal",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale_x": 1,
+            "scale_y": 1,
+            "rotation": 0,
+            "crop_top": 0,
+            "crop_right": 0,
+            "crop_bottom": 0,
+            "crop_left": 0
+          },
+          "source": { "type": "physic-paint", "layer_id": "layer-pre-a" },
+          "is_base": false,
+          "order": 0
+        },
+        {
+          "id": "layer-pre-b",
+          "name": "Physic Paint 2",
+          "type": "physic-paint",
+          "visible": true,
+          "opacity": 1,
+          "blend_mode": "normal",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale_x": 1,
+            "scale_y": 1,
+            "rotation": 0,
+            "crop_top": 0,
+            "crop_right": 0,
+            "crop_bottom": 0,
+            "crop_left": 0
+          },
+          "source": { "type": "physic-paint", "layer_id": "layer-pre-b" },
+          "is_base": false,
+          "order": 1
+        }
+      ]
+    }
+  ],
+  "images": [],
+  "physic_paint_outputs": [
+    {
+      "layer_id": "layer-pre-a",
+      "frames": [
+        { "frameIndex": 0, "appFrame": 0, "cache_path": "cache/physic-paint/pre-52.2-a/frame-0000.png" }
+      ]
+    }
+  ],
+  "efx_paint_documents": {
+    "layer-pre-a": {
+      "version": 1,
+      "parentLayerId": "layer-pre-a",
+      "documentRevision": 0,
+      "activeTrackId": "track-pre-a",
+      "tracks": [
+        {
+          "id": "track-pre-a",
+          "name": "Paint",
+          "order": 0,
+          "visible": true,
+          "solo": false,
+          "opacity": 1,
+          "blendMode": "normal",
+          "revision": 0,
+          "frames": {},
+          "rotoPhysical": {
+            "capacity": 24,
+            "realKeyRecords": [
+              {
+                "kind": "real-key",
+                "keyId": "key-pre-a1",
+                "appFrame": 0,
+                "payload": {
+                  "frameIndex": 0,
+                  "appFrame": 0,
+                  "bytes": "UklGRgAAAABXRUJQVlA4TAAAAAAAAAAAAAAAAAAAAABsYXllci1wcmUtYQ==",
+                  "width": 2,
+                  "height": 2
+                }
+              }
+            ],
+            "interpolation": { "enabled": false, "mode": "duplicate" },
+            "scriptMotion": { "deformation": 0, "position": 0 },
+            "background": null,
+            "selectedKeyId": null,
+            "cursorAppFrame": 0,
+            "revision": "rev-pre-a-1",
+            "loopClips": [],
+            "incomingInterpolationBreakKeyIds": []
+          },
+          "loopClips": []
+        }
+      ],
+      "background": {
+        "id": "bg-pre-a",
+        "clips": [],
+        "fallback": { "mode": "transparent" },
+        "visible": true,
+        "revision": 0
+      },
+      "photoReference": null,
+      "compositeRevision": 0
+    },
+    "layer-pre-b": {
+      "version": 1,
+      "parentLayerId": "layer-pre-b",
+      "documentRevision": 0,
+      "activeTrackId": "track-pre-b",
+      "tracks": [
+        {
+          "id": "track-pre-b",
+          "name": "Paint",
+          "order": 0,
+          "visible": true,
+          "solo": false,
+          "opacity": 1,
+          "blendMode": "normal",
+          "revision": 0,
+          "frames": {},
+          "rotoPhysical": {
+            "capacity": 24,
+            "realKeyRecords": [
+              {
+                "kind": "real-key",
+                "keyId": "key-pre-b1",
+                "appFrame": 0,
+                "payload": {
+                  "frameIndex": 0,
+                  "appFrame": 0,
+                  "bytes": "UklGRgAAAABXRUJQVlA4TAAAAAAAAAAAAAAAAAAAAABsYXllci1wcmUtYg==",
+                  "width": 2,
+                  "height": 2
+                }
+              }
+            ],
+            "interpolation": { "enabled": false, "mode": "duplicate" },
+            "scriptMotion": { "deformation": 0, "position": 0 },
+            "background": null,
+            "selectedKeyId": null,
+            "cursorAppFrame": 0,
+            "revision": "rev-pre-b-1",
+            "loopClips": [],
+            "incomingInterpolationBreakKeyIds": []
+          },
+          "loopClips": []
+        }
+      ],
+      "background": {
+        "id": "bg-pre-b",
+        "clips": [],
+        "fallback": { "mode": "transparent" },
+        "visible": true,
+        "revision": 0
+      },
+      "photoReference": null,
+      "compositeRevision": 0
+    }
+  }
+}

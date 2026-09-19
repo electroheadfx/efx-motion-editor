@@ -1,13 +1,112 @@
+import { createHash } from 'node:crypto';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const hardlinkPhysicPaintCacheFrames = vi.hoisted(() => vi.fn());
+const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
+// quick-260913-05k: the package-IO boundary — the layer sub-file write/read
+// and the staging discard are app commands, not fs-plugin calls.
+const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
+const ipcEfxPaintReadPackageLayerFile = vi.hoisted(() => vi.fn());
+const discardEfxPaintPackageStaging = vi.hoisted(() => vi.fn());
+const projectSave = vi.hoisted(() => vi.fn());
+const bindEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const publishEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
+const settleEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
+const PACKAGE_PROJECT_ID = '33333333-3333-4333-8333-333333333333';
+const activePackageTransactions = new Map<
+  string,
+  { readonly packageRoot: string; readonly stagingBasename: string; readonly paths: readonly string[] }
+>();
+
+/** The package transaction surface, simulated over the in-memory filesystem. */
+function installPackageIpcMocks(): void {
+  activePackageTransactions.clear();
+  ipcEfxPaintWriteFrameMedia.mockReset();
+  projectSave.mockReset();
+  bindEfxPaintPackageTransaction.mockReset();
+  publishEfxPaintPackageTransaction.mockReset();
+  settleEfxPaintPackageTransaction.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockReset();
+  ipcEfxPaintReadPackageLayerFile.mockReset();
+  discardEfxPaintPackageStaging.mockReset();
+  ipcEfxPaintWritePackageLayerFile.mockImplementation(
+    async (packageDir: string, stagingBasename: string, layerFile: string, contents: string) => {
+      files.set(`${packageDir}/${stagingBasename}/${layerFile}`, new TextEncoder().encode(contents));
+      dirs.add(`${packageDir}/${stagingBasename}`);
+      return { ok: true, data: null };
+    },
+  );
+  ipcEfxPaintReadPackageLayerFile.mockImplementation(async (packageDir: string, layerFile: string) => {
+    const bytes = files.get(`${packageDir}/${layerFile}`);
+    if (bytes === undefined) return { ok: false, error: { kind: 'missing' } };
+    return { ok: true, data: new TextDecoder().decode(bytes) };
+  });
+  discardEfxPaintPackageStaging.mockImplementation(async (packageDir: string, stagingBasename: string) => {
+    const root = `${packageDir}/${stagingBasename}`;
+    for (const key of Array.from(files.keys())) {
+      if (key === root || key.startsWith(`${root}/`)) files.delete(key);
+    }
+    for (const key of Array.from(dirs)) {
+      if (key === root || key.startsWith(`${root}/`)) dirs.delete(key);
+    }
+    return { ok: true, data: null };
+  });
+  ipcEfxPaintWriteFrameMedia.mockImplementation(
+    async (packageDir: string, layerId: string, keyId: string, bytes: Uint8Array, stagingBasename?: string) => {
+      const relativePath = buildFrameMediaRelativePath(layerId, keyId);
+      const root = stagingBasename === undefined ? packageDir : `${packageDir}/${stagingBasename}`;
+      files.set(`${root}/${relativePath}`, bytes);
+      return {
+        ok: true,
+        data: { relativePath, digest: createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.length },
+      };
+    },
+  );
+  projectSave.mockImplementation(async (project: unknown, path: string) => {
+    files.set(path, new TextEncoder().encode(JSON.stringify(project)));
+    return { ok: true, data: null };
+  });
+  bindEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, stagingBasename: string, paths: string[]) => {
+      const transactionId = crypto.randomUUID();
+      activePackageTransactions.set(transactionId, { packageRoot, stagingBasename, paths });
+      return { ok: true, data: { transactionId, aggregateDigest: 'b'.repeat(64), entries: [] } };
+    },
+  );
+  publishEfxPaintPackageTransaction.mockImplementation(async (packageRoot: string, transactionId: string) => {
+    const transaction = activePackageTransactions.get(transactionId);
+    if (!transaction) return { ok: false, error: 'inactive transaction' };
+    for (const path of transaction.paths) {
+      const staged = files.get(`${transaction.packageRoot}/${transaction.stagingBasename}/${path}`);
+      if (staged !== undefined) files.set(`${packageRoot}/${path}`, staged);
+    }
+    return { ok: true, data: { transactionId, published: transaction.paths.length } };
+  });
+  settleEfxPaintPackageTransaction.mockImplementation(
+    async (packageRoot: string, transactionId: string, _action: 'commit' | 'rollback') => {
+      const transaction = activePackageTransactions.get(transactionId);
+      if (!transaction) return { ok: false, error: 'inactive transaction' };
+      activePackageTransactions.delete(transactionId);
+      const stagingRoot = `${packageRoot}/${transaction.stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      for (const key of Array.from(dirs)) {
+        if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
+      }
+      return { ok: true, data: { cleanupDeferred: false } };
+    },
+  );
+}
 
 function moveGeneration(projectDir: string, stagingBasename: string): void {
   const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
-  const canonicalRoot = `${projectDir}/cache/physic-paint`;
+  const canonicalRoot = `${projectDir}/cache/efx-paint`;
   for (const key of Array.from(files.keys())) {
     if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
   }
@@ -31,6 +130,15 @@ function moveGeneration(projectDir: string, stagingBasename: string): void {
 vi.mock('../../../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
   settlePhysicPaintCacheGeneration,
+  hardlinkPhysicPaintCacheFrames,
+  ipcEfxPaintWriteFrameMedia,
+  ipcEfxPaintWritePackageLayerFile,
+  ipcEfxPaintReadPackageLayerFile,
+  discardEfxPaintPackageStaging,
+  projectSave,
+  bindEfxPaintPackageTransaction,
+  publishEfxPaintPackageTransaction,
+  settleEfxPaintPackageTransaction,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -75,16 +183,71 @@ import {
   type PhysicPaintRotoPhysicalEditProposal,
 } from './physicsPaintRotoPhysicalResolver';
 import type { RailSetDeleteMember } from '../../../types/physicPaint';
-import { loadPhysicPaintData, savePhysicPaintDataWithProjectWrite } from '../../../lib/physicPaintPersistence';
-import type { RuntimePhysicPaintOutput } from '../../../types/project';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import {
+  loadEfxPaintPackage,
+  savePackage,
+  settlePackageFileTokens,
+  type EfxPaintDocumentSaveInput,
+} from '../../../lib/efxPaintPersistence';
+import { buildFrameMediaRelativePath, buildLayerFileRelativePath } from '../../../lib/efxPaintPackage';
+import type { MceProject } from '../../../types/project';
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+/**
+ * Load one published layer back through the 52.2 package loader (52.2-09):
+ * the manifest's `efxPaint` index is the only layer source, and the sub-file
+ * reaches the loader from the in-memory package the save just wrote.
+ */
+function loadPersistedLayer(projectDir: string, layerId: string) {
+  return loadEfxPaintPackage({
+    packageDir: projectDir,
+    manifest: {
+      efxPaint: {
+        [layerId]: {
+          layerFile: buildLayerFileRelativePath(layerId),
+          documentRevision: '0',
+          compositeRevision: '0',
+        },
+      },
+    },
+    machineCacheRoot: null,
+  });
+}
+
+/**
+ * Save one layer through the package write and read its PUBLISHED sub-file
+ * back as the saved shape. The derived-frame cache leg is off (no cache
+ * root): this suite is about the authoritative layer document.
+ */
+async function saveProjectedDocuments(
+  projectDir: string,
+  layerId: string,
+  documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
+): Promise<Record<string, unknown>> {
+  const project: MceProject = {
+    version: 13,
+    name: 'parity',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    created_at: '2026-01-01T00:00:00Z',
+    modified_at: '2026-01-01T00:00:00Z',
+    sequences: [],
+    images: [],
+  };
+  await savePackage(projectDir, { project, documents, projectId: PACKAGE_PROJECT_ID, cacheRoot: null });
+  const bytes = files.get(`${projectDir}/${buildLayerFileRelativePath(layerId)}`);
+  if (bytes === undefined) throw new Error(`missing published layer file: ${layerId}`);
+  return { [layerId]: JSON.parse(new TextDecoder().decode(bytes)) as unknown };
+}
+
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 const realKey = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
   kind: 'real-key',
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
+  payload: { frameIndex: 0, appFrame, bytes: pngDataUrl(`payload-${keyId}`), width: 10, height: 10 },
 });
 
 const MAIN_CYCLE = ['A', 'B', 'C'];
@@ -191,14 +354,14 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
     it('paints one phase across every repeat and leaves the sibling Group and Action untouched', () => {
       const document = buildComboDocument(combo);
       const siblingBefore = JSON.stringify(document.loopClips[1]);
-      const sourceBytesBefore = document.realKeyRecords.map((record) => record.payload.dataUrl);
+      const sourceBytesBefore = document.realKeyRecords.map((record) => record.payload.bytes);
 
       const result = proposePhysicPaintRotoGroupFramePaint({
         document,
         groupId: 'group-main',
         appFrame: paintTarget,
         overrideKeyId: 'override-main',
-        renderedPayload: { frameIndex: 0, appFrame: paintTarget, dataUrl: pngDataUrl('painted'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: paintTarget, bytes: pngDataUrl('painted'), width: 10, height: 10 },
       });
 
       expect(result.ok).toBe(true);
@@ -213,7 +376,7 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
         syncState: 'modified',
         frameOverrides: [{ appFrame: extent.start + 1, keyId: 'override-main' }],
       });
-      expect(result.proposal.realKeyRecords.map((record) => record.payload.dataUrl)).toEqual(sourceBytesBefore);
+      expect(result.proposal.realKeyRecords.map((record) => record.payload.bytes)).toEqual(sourceBytesBefore);
       expect(JSON.stringify(result.proposal.loopClips[1])).toBe(siblingBefore);
     });
 
@@ -258,7 +421,7 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
         groupId: 'group-main',
         appFrame: paintTarget,
         overrideKeyId: 'override-main',
-        renderedPayload: { frameIndex: 0, appFrame: paintTarget, dataUrl: pngDataUrl('painted'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: paintTarget, bytes: pngDataUrl('painted'), width: 10, height: 10 },
       });
       expect(painted.ok).toBe(true);
       if (!painted.ok) return;
@@ -307,7 +470,7 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
         groupId: 'group-main',
         appFrame: paintTarget,
         overrideKeyId: MAIN_CYCLE[0],
-        renderedPayload: { frameIndex: 0, appFrame: paintTarget, dataUrl: pngDataUrl('painted'), width: 10, height: 10 },
+        renderedPayload: { frameIndex: 0, appFrame: paintTarget, bytes: pngDataUrl('painted'), width: 10, height: 10 },
       })).toMatchObject({ ok: false, reason: 'duplicate-override-key-id' });
       expect(proposePhysicPaintRotoDeleteGroupFrame({
         document,
@@ -334,6 +497,8 @@ describe('Group parity persistence matrix', () => {
   beforeEach(() => {
     files.clear();
     dirs.clear();
+    settlePackageFileTokens('commit', new Map());
+    installPackageIpcMocks();
     publishPhysicPaintCacheGeneration.mockReset();
     publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
       moveGeneration(projectDir, stagingBasename);
@@ -353,17 +518,23 @@ describe('Group parity persistence matrix', () => {
     { placementStart: 10, repeat: 3 },
   ])('round-trips placementStart $placementStart · Repeat $repeat byte-identically', async (combo) => {
     const document = buildComboDocument(combo);
-    const outputs: RuntimePhysicPaintOutput[] = [{
-      layer_id: 'parity-layer',
-      frames: [],
-      roto_physical: document,
-    }];
+    const efxDocument = createEfxPaintDocument('parity-layer');
+    const track = efxDocument.tracks[0];
+    const withRoto = {
+      ...efxDocument,
+      tracks: [{ ...track, rotoPhysical: document }],
+    };
+    const documents = new Map<string, EfxPaintDocumentSaveInput>([['parity-layer', {
+      document: withRoto,
+      frames: new Map(),
+    }]]);
 
-    const persisted = await savePhysicPaintDataWithProjectWrite('/project', outputs, async () => {});
-    const hydrated = await loadPhysicPaintData('/project', persisted);
+    await saveProjectedDocuments('/project', 'parity-layer', documents);
+    const hydrated = await loadPersistedLayer('/project', 'parity-layer');
+    const restored = hydrated.get('parity-layer')?.document.tracks[0].rotoPhysical;
 
-    expect(hydrated?.[0].roto_physical?.loopClips).toEqual(document.loopClips);
-    expect(hydrated?.[0].roto_physical?.realKeyRecords.map((record) => record.keyId))
+    expect(restored?.loopClips).toEqual(document.loopClips);
+    expect(restored?.realKeyRecords.map((record) => record.keyId))
       .toEqual(document.realKeyRecords.map((record) => record.keyId));
   });
 });

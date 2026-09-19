@@ -47,6 +47,9 @@ import {
 } from '../../../types/physicPaint';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 /**
  * Group-operation regression anchors. Group Drag uses the current rigid
@@ -77,7 +80,7 @@ function buildBaselineRecords(): PhysicPaintRotoRealKeyRecord[] {
     payload: {
       frameIndex: 0,
       appFrame: identity.appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     },
@@ -130,12 +133,57 @@ function resolveBaselineWithRecords(
   });
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+function normalizeParsedPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+  const bytes = payload.bytes as unknown;
+  return {
+    ...payload,
+    bytes: typeof bytes === 'string' ? base64ToBytes(bytes) : (bytes as Uint8Array),
+  };
+}
+
+function normalizeParsedIntent(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditIntent {
+  switch (intent.kind) {
+    case 'insert-empty-segment':
+      return { ...intent, blankPayload: normalizeParsedPayload(intent.blankPayload) };
+    case 'paste-key':
+      return { ...intent, clipboardPayload: normalizeParsedPayload(intent.clipboardPayload) };
+    case 'paste-key-group':
+      return { ...intent, entries: intent.entries.map((entry) => ({ ...entry, payload: normalizeParsedPayload(entry.payload) })) };
+    default:
+      return intent;
+  }
+}
+
 function parsePhysicalEditIntent(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditIntent {
   const parsed: unknown = JSON.parse(serializePhysicPaintRotoPhysicalEditIntent(intent));
   if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) {
     throw new Error(`Canonical ${intent.kind} intent must parse`);
   }
-  return parsed;
+  return normalizeParsedIntent(parsed);
+}
+
+function roundTripPhysicalDocument(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoPhysicalDocument {
+  const json = JSON.stringify(document, (_key, value) => (
+    value instanceof Uint8Array ? { __webpBytes: bytesToBase64(value) } : value
+  ));
+  return parsePhysicPaintRotoPhysicalDocument(JSON.parse(json, (_key, value) => (
+    value !== null && typeof value === 'object' && !Array.isArray(value) && typeof value.__webpBytes === 'string'
+      ? base64ToBytes(value.__webpBytes)
+      : value
+  )));
 }
 
 describe('transport-safe physical edit intent tracer', () => {
@@ -160,7 +208,7 @@ describe('transport-safe physical edit intent tracer', () => {
     const payloadAt = (appFrame: number): PhysicPaintRotoRealKeyPayload => ({
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     });
@@ -250,11 +298,12 @@ describe('transport-safe physical edit intent tracer', () => {
   it('accepts move-group as an ordinary physical-edit operation kind', () => {
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: 'move-group-1',
       operationKind: 'move-group',
       intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 7 },
       layerId: 'layer-1',
-      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' },
+      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', trackId: TEST_TRACK_ID, generation: 1, owner: 'exclusive' },
       startFrame: 0,
       launchOperationId: 'launch-1',
       expectedRevision: 'revision-1',
@@ -289,11 +338,12 @@ describe('transport-safe physical edit intent tracer', () => {
 
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: 'scissor-1',
       operationKind: 'scissor-key-rail',
       intent,
       layerId: 'layer-1',
-      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' },
+      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', trackId: TEST_TRACK_ID, generation: 1, owner: 'exclusive' },
       startFrame: 0,
       launchOperationId: 'launch-1',
       expectedRevision: 'revision-1',
@@ -367,11 +417,12 @@ describe('transport-safe physical edit intent tracer', () => {
   ])('admits $operationKind as an ordinary physical-edit operation kind', ({ operationKind, intent }) => {
     const payload = {
       kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
       operationId: `${operationKind}-1`,
       operationKind,
       intent,
       layerId: 'layer-1',
-      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' },
+      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', trackId: TEST_TRACK_ID, generation: 1, owner: 'exclusive' },
       startFrame: 0,
       launchOperationId: 'launch-1',
       expectedRevision: 'revision-1',
@@ -428,7 +479,7 @@ describe('intentional incoming interpolation breaks', () => {
         blankPayload: {
           frameIndex: 0,
           appFrame: 3,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },
@@ -451,7 +502,7 @@ describe('intentional incoming interpolation breaks', () => {
         payload: {
           frameIndex: 0,
           appFrame: 3,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },
@@ -485,7 +536,7 @@ describe('intentional incoming interpolation breaks', () => {
     const intent = (destinationAppFrame: number, blankPayload: PhysicPaintRotoRealKeyPayload = {
       frameIndex: 0,
       appFrame: destinationAppFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
     }) => ({
       kind: 'insert-empty-segment' as const,
       destinationAppFrame,
@@ -507,7 +558,7 @@ describe('intentional incoming interpolation breaks', () => {
       }),
       resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(-1) }),
       resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(16) }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, dataUrl: '' } as never) }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, bytes: testWebpBytes('') } as never) }),
     ];
 
     expect(resolutions).toHaveLength(7);
@@ -687,7 +738,7 @@ describe('incoming interpolation break lifecycle', () => {
     expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'painted-X')).toBe(false);
   });
 
-  it('paste-to-empty without startsNewSegment stays connected (Copy/Paste regression)', () => {
+  it('paste-to-empty without startsNewSegment breaks when content lies to its left (Copy/Paste boundary law)', () => {
     const records = buildBaselineRecords();
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -707,11 +758,193 @@ describe('incoming interpolation break lifecycle', () => {
 
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Connected paste-to-empty must resolve');
+    // The destination at 7 is strictly inside the connected segment span
+    // [1..10] (right neighbor D@10 owns no break), so the pasted key joins the
+    // rail — the boundary break only applies to trailing/gap destinations.
     expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'pasted-X')).toBe(true);
   });
 
-  it('insert-empty-segment inside an intentional gap connects left and preserves the right break', () => {
+  it('Copy/Paste into a trailing gap after a rail owns an incoming break (v0.9 boundary law)', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 5,
+        destinationKeyId: null,
+        newKeyId: 'pasted-X',
+        clipboardPayload: records[0].payload,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Trailing paste must resolve');
+    // The destination at 5 lies AFTER the [0,1] rail (no right neighbor), so the
+    // pasted key owns an incoming break — it must not bridge into the previous
+    // rail's interpolation span.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['pasted-X']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'pasted-X')).toBe(false);
+  });
+
+  it('Copy/Paste into a between-rail gap owns an incoming break', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'C', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'D', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 3,
+        destinationKeyId: null,
+        newKeyId: 'pasted-X',
+        clipboardPayload: records[0].payload,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['C'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Gap paste must resolve');
+    // [0,1] and [5,6] are separate rails (break on C@5); the paste at 3 sits in
+    // the gap and must start its own segment, never bridging from A/B.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C', 'pasted-X']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'pasted-X')).toBe(false);
+  });
+
+  it('Copy/Paste before an existing rail isolates the key — the following rail keeps an incoming break (right-mirror boundary law)', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 2,
+        destinationKeyId: null,
+        newKeyId: 'pasted-X',
+        clipboardPayload: records[0].payload,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Leading paste must resolve');
+    // The fresh key owns NO incoming break (nothing lies to its left), but the
+    // following rail's first key A@5 keeps an incoming break — a break owned by
+    // the fresh key alone would only sever its left edge, and the segmenter
+    // would still merge the paste into [5,6] across the empty frames.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'A')).toBe(false);
+  });
+
+  it('Paint on an empty frame before an existing rail stays isolated (mirror of quick 260816-tv7)', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 2,
+        destinationKeyId: null,
+        newKeyId: 'painted-X',
+        clipboardPayload: records[0].payload,
+        startsNewSegment: true,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Paint-on-empty must resolve');
+    // startsNewSegment gives the painted key its own persistent break AND the
+    // right mirror gives the following rail's first key a break — the two keys
+    // form distinct segments [painted-X] and [A,B].
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['painted-X', 'A']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'A')).toBe(false);
+  });
+
+  it('Copy/Paste Group into a trailing gap owns a break on its first pasted key', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 1, payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(5, records.map((record) => Object.freeze({
+      payload: record.payload,
+      sourceAppFrame: record.appFrame,
+      sourceKeyId: record.keyId,
+    })));
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Group paste must resolve');
+    // The group anchor lands at 5 (trailing after [0,1]) - it owns an incoming
+    // break so the pasted group never bridges into the previous rail.
+    const anchorKeyId = intent.entries.find((entry) => entry.sourceAppFrame === Math.min(...intent.entries.map((e) => e.sourceAppFrame)))!.newKeyId;
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toContain(anchorKeyId);
+  });
+
+  it('Copy/Paste Group before an existing rail keeps the rail isolated (right-mirror boundary law)', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { kind: 'real-key', keyId: 'A', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'B', appFrame: 6, payload: { frameIndex: 0, appFrame: 6, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(2, records.map((record) => Object.freeze({
+      payload: record.payload,
+      sourceAppFrame: record.appFrame,
+      sourceKeyId: record.keyId,
+    })));
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Group paste must resolve');
+    // The group anchors at 2, before the [5,6] rail. No content lies to its
+    // left, so the anchor owns no break; the following rail's first key A@5
+    // keeps an incoming break so the pasted group never bridges into the rail.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+  });
+
+  it('insert-empty-segment inside a intentional gap connects left and preserves the right break', () => {
     const records = buildBaselineRecords();
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -723,7 +956,7 @@ describe('incoming interpolation break lifecycle', () => {
         blankPayload: {
           frameIndex: 0,
           appFrame: 7,
-          dataUrl: 'data:image/png;base64,AAAA',
+          bytes: testWebpBytes('AAAA'),
           width: 2,
           height: 2,
         },
@@ -2088,7 +2321,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
       incomingInterpolationBreakKeyIds: [],
       revision,
     });
-    const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(parsed)));
+    const reopened = roundTripPhysicalDocument(parsed);
 
     expect(reopened.revision).toBe(revision);
     expect(reopened.realKeyRecords).toEqual(movedRecords);
@@ -3193,7 +3426,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — paste-key-group (GP-1..GP-7, D-
       payload: {
         frameIndex: 0,
         appFrame,
-        dataUrl: 'data:image/png;base64,AAAA',
+        bytes: testWebpBytes('AAAA'),
         width: 2,
         height: 2,
       },
@@ -3277,7 +3510,7 @@ describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key-group b
       kind: 'real-key' as const,
       keyId: 'undeclared',
       appFrame: 30,
-      payload: { frameIndex: 0, appFrame: 30, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      payload: { frameIndex: 0, appFrame: 30, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
     }];
     const mismatchedKind = {
       kind: 'paste-key',
@@ -3301,6 +3534,54 @@ describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key-group b
   });
 });
 
+describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key branch (52.1 transport)', () => {
+  it('accepts a paste-to-empty delta whose clipboard and pasted bytes are separate Uint8Array objects with identical content', () => {
+    // 52.1 (D-05): the apply payload crosses the Tauri emitTo JSON boundary as
+    // base64 and is decoded back to a fresh Uint8Array per field, so the
+    // clipboardPayload.bytes and nextRecords[].payload.bytes are distinct
+    // objects with equal content. The semantic delta must compare by content,
+    // not reference (the pre-bytes dataUrl form compared by value).
+    const clipboardPayload = {
+      frameIndex: 0,
+      appFrame: 0,
+      bytes: testWebpBytes('paste-transport'),
+      width: 2,
+      height: 2,
+    };
+    const pastedRecord = {
+      kind: 'real-key' as const,
+      keyId: 'pasted-transport',
+      appFrame: 0,
+      payload: {
+        frameIndex: 0,
+        appFrame: 0,
+        bytes: testWebpBytes('paste-transport'),
+        width: 2,
+        height: 2,
+      },
+    };
+    const semanticDelta = {
+      kind: 'paste-key' as const,
+      destinationAppFrame: 0,
+      destinationKeyId: null,
+      newKeyId: 'pasted-transport',
+      clipboardPayload,
+    };
+
+    const result = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: 'paste-key',
+      currentRecords: [],
+      nextRecords: [pastedRecord],
+      semanticDelta,
+      capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+      selectedKeyId: 'pasted-transport',
+      selectedAppFrame: 0,
+    });
+
+    expect(result).toEqual({ ok: true });
+  });
+});
+
 describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7)', () => {
   it('GP-7: throws on malformed input and deeply freezes one fresh identity per entry', () => {
     const entries = buildGroupEntries();
@@ -3309,7 +3590,7 @@ describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(-1, entries)).toThrow();
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(1.5, entries)).toThrow();
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
-      { ...entries[0], payload: { ...entries[0].payload, dataUrl: 'malformed' } },
+      { ...entries[0], payload: { ...entries[0].payload, bytes: new Uint8Array(0) } },
       entries[1],
     ])).toThrow();
     expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
@@ -3341,7 +3622,7 @@ function lifecycleRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKe
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,AAAA',
+      bytes: testWebpBytes('AAAA'),
       width: 2,
       height: 2,
     },
@@ -3584,7 +3865,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       kind: 'real-key' as const,
       keyId,
       appFrame,
-      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
     }));
 
   it('rejects insert-slot when the selected key is Group-referenced', () => {
@@ -5595,8 +5876,42 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     const { proposal } = resolution;
     expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 22 });
     expect(proposal.status.affectedKeyIds).toEqual(['g1']);
-    // placementStart === first source key frame 20, unchanged: no clip translation.
-    expect(proposal.nextLoopClips).toBeNull();
+    // placementStart === first source key frame 20, unchanged: no clip
+    // translation, but the lifecycle IS retimed to the new cycle length (3):
+    // originalEndExclusive = 20 + 3 * 4 = 32 (46 UAT R6).
+    const retimed = proposal.nextLoopClips!.find((clip) => clip.loopId === 'loop-G');
+    expect(retimed).toBeDefined();
+    expect(retimed!.repeat).toBe(4);
+    expect(retimed!.originalEndExclusive).toBe(32);
+    expect(retimed!.visibleRanges).toEqual([{ start: 20, endExclusive: 32 }]);
+  });
+
+  it('retimes a Loop member lifecycle when spacing pushes a source key beyond originalEndExclusive (UAT R6)', () => {
+    // g1 moves from 21 to 29 (emptyFrames 8 -> step 9), past the stale
+    // originalEndExclusive 28. Without retiming the loop range ends at 28 and
+    // the rail band stops before the moved key.
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      emptyFrames: 8,
+      loopClips: buildSingleAttachedGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Loop-member spacing must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 29 });
+    // The loop's lifecycle must be retimed so the band covers the moved key:
+    // originalEndExclusive = placementStart + cycleLength(10) * repeat(4) = 60.
+    expect(proposal.nextLoopClips).not.toBeNull();
+    const retimed = proposal.nextLoopClips!.find((clip) => clip.loopId === 'loop-G');
+    expect(retimed).toBeDefined();
+    expect(retimed!.repeat).toBe(4);
+    expect(retimed!.originalEndExclusive).toBe(60);
+    expect(retimed!.visibleRanges).toEqual([{ start: 20, endExclusive: 60 }]);
   });
 
   it('rejects atomically when a computed destination collides with an unselected key frame', () => {
@@ -5700,7 +6015,11 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Fully-selected family must resolve');
     expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ g0: 20, g1: 22 });
-    expect(resolution.proposal.nextLoopClips).toBeNull();
+    // Both shared-source clips are retimed to the new cycle length (3) so their
+    // bands cover the respaced keys (46 UAT R6).
+    const retimed = resolution.proposal.nextLoopClips!;
+    expect(retimed.find((clip) => clip.loopId === 'loop-G')!.originalEndExclusive).toBe(32);
+    expect(retimed.find((clip) => clip.loopId === 'loop-D')!.originalEndExclusive).toBe(14);
   });
 
   it('fails closed on stale members', () => {

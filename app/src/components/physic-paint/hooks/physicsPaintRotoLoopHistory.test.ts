@@ -18,6 +18,7 @@ import type {
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
 import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   return {
@@ -27,7 +28,7 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      bytes: testWebpBytes('iVBORw0KGgo='),
     },
   };
 }
@@ -111,6 +112,7 @@ function harness(
       layerId: 'layer-1',
       projectContextId: 'project-1',
       capacity: 10,
+      trackId: 'track-a',
     },
     availability,
     coordinator: {

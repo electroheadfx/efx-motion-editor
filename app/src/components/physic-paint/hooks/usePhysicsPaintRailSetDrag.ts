@@ -1,5 +1,6 @@
 import { useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 
 /** Horizontal travel in CSS pixels that must be exceeded before dragging starts. */
 export const RAIL_SET_DRAG_THRESHOLD_PX = 4;
@@ -138,6 +139,7 @@ export function usePhysicsPaintRailSetDrag<Publication extends RailSetDragPublic
     event.stopPropagation();
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (!win || sessionRef.current) return;
+    beginInteraction(event.pointerId);
 
     const sourceElement = event.currentTarget as unknown as RailSetDragSourceElement;
     let active = true;
@@ -172,6 +174,7 @@ export function usePhysicsPaintRailSetDrag<Publication extends RailSetDragPublic
     const cleanup = () => {
       if (!active) return;
       active = false;
+      endInteraction(session.pointerId);
       win.removeEventListener('pointermove', handlePointerMove);
       win.removeEventListener('pointerup', handlePointerUp);
       win.removeEventListener('pointercancel', handlePointerCancel);
@@ -238,6 +241,7 @@ export function usePhysicsPaintRailSetDrag<Publication extends RailSetDragPublic
     };
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
+      markInteractionActive();
       session.latestX = moveEvent.clientX;
       if (!session.started && Math.abs(session.latestX - session.originX) > RAIL_SET_DRAG_THRESHOLD_PX) {
         if (!beginDrag()) return;

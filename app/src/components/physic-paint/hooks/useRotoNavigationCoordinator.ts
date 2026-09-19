@@ -16,11 +16,24 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
   workflowMode: PhysicsPaintWorkflowMode;
   beforeNavigation?: (targetFrame: number) => Promise<boolean>;
   afterNavigation?: () => void;
+  /**
+   * 52.1-04 (D-10): neighbor prewarm hook — invoked on every playhead advance
+   * (playback tick and seek-while-playing both funnel through `onFrame`). The
+   * caller closes over its layerId and calls `prefetchNeighborFrames`; the
+   * coordinator stays layer-agnostic. Absent = zero behavior change.
+   */
+  prefetchNeighbors?: (appFrame: number) => void;
   keyUtilities: Omit<RotoKeyUtilitiesInput, 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
   playback: {
     initialSettings: PhysicPaintRotoPlaybackSettings;
     getEndFrame: () => number | null;
     getFrame: (appFrame: number) => TPreview | null;
+    /**
+     * D-01 (260902-cfa amendment): the shared application-frame cursor at Play
+     * press time — start() re-anchors visual + audio playback there. Absent
+     * falls back to the range start.
+     */
+    getCurrentAppFrame?: () => number;
     /**
      * Optional solo playback window (43.6-06, D-17/D-19). Absent or null
      * returns the byte-identical pre-solo enumeration (disarmed = zero
@@ -33,6 +46,14 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
      * untouched (D-18, Pitfall 3).
      */
     getSoloWindow?: () => SoloPlaybackWindow | null;
+    /**
+     * D-20/D-21/D-22 (52.2-04): the solo content start at Play press time —
+     * null (or absent) when no solo is active. The Studio derives it from the
+     * armed session pill window or the persisted row-S soloed tracks; the
+     * coordinator only forwards it to the cached-playback hook, which anchors
+     * the start AND loop-wrap refs there.
+     */
+    getSoloContentStart?: () => number | null;
     onStart: (frameCount: number) => void;
     onFrame: (frameIndex: number, appFrame: number) => void;
     setIsPlaying: (isPlaying: boolean) => void;
@@ -81,8 +102,18 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
       }));
     },
     onStart: input.playback.onStart,
-    onFrame: input.playback.onFrame,
+    // 52.1-04 (D-10): neighbor prewarm rides the playback lookahead — every
+    // playhead advance (playback tick + seek-while-playing) funnels through
+    // onFrame, so prefetching here covers scrub cold-misses with the LRU +
+    // neighbor prewarm (D-03). The just-drawn frame is most-recently-used, so
+    // prewarm only evicts the distant tail behind the playhead.
+    onFrame: (frameIndex, appFrame) => {
+      inputRef.current.playback.onFrame(frameIndex, appFrame);
+      inputRef.current.prefetchNeighbors?.(appFrame);
+    },
     setIsPlaying: input.playback.setIsPlaying,
+    getCurrentAppFrame: input.playback.getCurrentAppFrame,
+    getSoloContentStart: input.playback.getSoloContentStart,
   });
 
   const requestNavigation = useCallback(async (targetFrame: number) => {

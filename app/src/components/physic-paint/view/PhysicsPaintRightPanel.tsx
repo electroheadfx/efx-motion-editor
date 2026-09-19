@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { signal, type Signal } from '@preact/signals';
 import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
@@ -13,7 +14,9 @@ import {
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
+import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -42,8 +45,30 @@ export interface PhysicsPaintRightPanelProps {
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
+  trackName: string;
+  trackOpacity: number;
+  trackBlendMode: BlendMode;
+  onTrackOpacityChange: (opacity: number) => void;
+  onTrackBlendChange: (mode: BlendMode) => void;
   scripts: PhysicsPaintScriptsPanelProps;
+  /**
+   * 49-06 (S5): the `Background Clip` properties section. Mutually exclusive
+   * with the Track section — a selected Bg clip shows the clip section, a
+   * track-only selection shows the Track section (UI-SPEC right-panel rows).
+   */
+  backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;
+  /**
+   * 49-06 (UAT round 2): the tool-pane tab signal, owned by the Studio so a
+   * Paint track selection returns the panel to Track option and a Bg rail
+   * selection opens the Background option tab (a THIRD tab — it never replaces
+   * Track option). The right panel reads `.value` in its render body (the
+   * 38-11 signal-bypasses-memo pattern) and writes it on tab clicks.
+   */
+  toolTab?: Signal<'paint' | 'track' | 'background'>;
 }
+
+/** The five BlendMode values offered by the track Blend select (TML-04). */
+const TRACK_BLEND_MODES: readonly BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
 
@@ -104,8 +129,26 @@ function PanelSlider(props: {
   max: number;
   onChange: (value: number) => void;
   suffix?: string;
+  step?: number;
   disabled?: boolean;
+  /**
+   * 48-06 (UAT): commit the value only when the thumb is RELEASED (the native
+   * change event), not on every input move. The thumb still follows the mouse
+   * through a local signal draft; the parent's value only updates on release.
+   * Used by the track opacity slider, whose commit recomposites the surface.
+   */
+  commitOnRelease?: boolean;
 }) {
+  // The track opacity (0..1) can arrive out of range from the document;
+  // the slider display always clamps to the declared min/max (47-03 TML-04).
+  const clampedValue = Math.max(props.min, Math.min(props.max, props.value));
+  // 48-06 (UAT): while commitOnRelease is dragging, the thumb position lives in
+  // this signal draft (held in a ref so it survives re-renders without React
+  // state) so the slider stays responsive; the committed value (and the
+  // parent's recomposite) only happens on release.
+  const draftRef = useRef(signal<number | null>(null));
+  const draft = draftRef.current;
+  const displayValue = draft.value ?? clampedValue;
   return (
     <label class="physics-paint-option-row" for={props.id}>
       <span class="physics-paint-right-label">{props.label}</span>
@@ -114,11 +157,40 @@ function PanelSlider(props: {
         type="range"
         min={props.min}
         max={props.max}
-        value={props.value}
+        step={props.step}
+        value={displayValue}
         disabled={props.disabled}
-        onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
+        onInput={(event) => {
+          const next = Number((event.target as HTMLInputElement).value);
+          if (props.commitOnRelease) {
+            draft.value = next;
+          } else {
+            props.onChange(next);
+          }
+        }}
+        // 48-06 (UAT): the release commit is on pointerup/keyup/blur — NOT the
+        // native change event, which WebKit fires on EVERY move for range
+        // inputs (a Tauri/WebKit app would otherwise recomposite per pixel).
+        onPointerUp={(event) => {
+          if (!props.commitOnRelease) return;
+          const next = Number((event.currentTarget as HTMLInputElement).value);
+          draft.value = null;
+          props.onChange(next);
+        }}
+        onKeyUp={(event) => {
+          if (!props.commitOnRelease) return;
+          const next = Number((event.currentTarget as HTMLInputElement).value);
+          draft.value = null;
+          props.onChange(next);
+        }}
+        onBlur={(event) => {
+          if (!props.commitOnRelease) return;
+          const next = Number((event.currentTarget as HTMLInputElement).value);
+          draft.value = null;
+          props.onChange(next);
+        }}
       />
-      <output>{props.value}{props.suffix ?? ''}</output>
+      <output>{displayValue}{props.suffix ?? ''}</output>
     </label>
   );
 }
@@ -174,9 +246,20 @@ export function PhysicsPaintRightPanel({
   onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
+  trackName,
+  trackOpacity,
+  trackBlendMode,
+  onTrackOpacityChange,
+  onTrackBlendChange,
   scripts,
+  backgroundClipSection,
+  toolTab: toolTabSignal,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
+  // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
+  // The signal read subscribes this memoized panel to selection changes (the
+  // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
+  const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
@@ -184,6 +267,26 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
+  // 47 UAT: the tool pane's Paint/Track tabs are MANUAL ONLY — tool changes
+  // and paint activity never move the tab (an earlier auto-select fought a
+  // periodic paint-revision event and reverted the user's choice ~1s later).
+  // 49-06 (UAT round 2): the tab signal is Studio-owned so a Paint track
+  // selection returns to Track option and a Bg rail selection opens the
+  // Background option tab. A selected Bg clip FORCES the Background tab; the
+  // Paint/Track tabs stay manual otherwise.
+  const toolTab = toolTabSignal?.value ?? 'paint';
+  // A selected Bg clip FORCES the Background tab; a stale 'background' tab with
+  // no selection (e.g. the clip was deleted) falls back to Track option.
+  const effectiveToolTab = selectedBackgroundClipId ? 'background' : (toolTab === 'background' ? 'track' : toolTab);
+  const setToolTab = (tab: 'paint' | 'track' | 'background') => {
+    if (toolTabSignal) toolTabSignal.value = tab;
+  };
+  // Clicking a Paint/Track tab while a Bg clip is selected clears the selection
+  // so the click is responsive (the Background tab is forced by the selection).
+  const selectToolTab = (tab: 'paint' | 'track') => {
+    setToolTab(tab);
+    if (backgroundClipSection) backgroundClipSection.selectedBackgroundClipId.value = null;
+  };
   // Three resizable sections (36.15-12, UAT Gap H-4; default shares from
   // 36.15-13 Gap I-2, trimmed by Gap J): brush color, tool, and
   // Scripts/Onion/Motion take 361.25:213:272 of the content height by default;
@@ -233,7 +336,7 @@ export function PhysicsPaintRightPanel({
   const currentHsv = useMemo(() => rgbToHsv(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
   useEffect(() => {
     const canvas = colorBoxRef.current;
-    const context = canvas?.getContext('2d');
+    const context = canvas?.getContext('2d', { willReadFrequently: true });
     if (!canvas || !context) return;
     const hueRgb = hsvToRgb(currentHsv.h, 1, 1);
     context.fillStyle = `rgb(${hueRgb.r}, ${hueRgb.g}, ${hueRgb.b})`;
@@ -517,10 +620,46 @@ export function PhysicsPaintRightPanel({
         </div>
 
         <div class="physics-paint-right-pane physics-paint-right-pane-tools">
+          <div class="physics-paint-options-tabs physics-paint-options-tabs-tool" role="tablist" aria-label="Physics Paint tool option panels">
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-paint-option${effectiveToolTab === 'paint' ? ' active' : ''}`}
+            role="tab"
+            aria-selected={effectiveToolTab === 'paint'}
+            onClick={() => selectToolTab('paint')}
+          >
+            Paint option
+          </button>
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-track-option${effectiveToolTab === 'track' ? ' active' : ''}`}
+            role="tab"
+            aria-selected={effectiveToolTab === 'track'}
+            onClick={() => selectToolTab('track')}
+          >
+            Track option
+          </button>
+          {/* 49-06 (UAT round 2): the Background option tab is a THIRD tab shown
+              only while a Bg clip is selected — it never replaces Track option.
+              A selected clip forces it active; selecting a Paint track (or
+              clicking Paint/Track) clears the selection and returns to Track. */}
+          {selectedBackgroundClipId ? (
+            <button
+              type="button"
+              class="physics-paint-options-tab physics-paint-tab-background-option active"
+              role="tab"
+              aria-selected
+              onClick={() => setToolTab('background')}
+            >
+              Background option
+            </button>
+          ) : null}
+      </div>
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
-          <section class="physics-paint-right-section physics-paint-single-tab-section">
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool">
+      <section class="physics-paint-right-section physics-paint-options-tabs-section">
+        {effectiveToolTab === 'paint' ? (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
             {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
             {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
@@ -536,6 +675,30 @@ export function PhysicsPaintRightPanel({
               </div>
             </div>
           </div>
+        ) : effectiveToolTab === 'background' ? (
+          // 49-06 (S5): a selected Bg clip shows the Background Clip properties
+          // section in its OWN tab. Keyed by clip id so a selection change
+          // remounts the section with fresh draft state (no effect-driven sync).
+          <PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />
+        ) : (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-track" role="tabpanel" aria-label="Track options">
+            <div class="physics-paint-option-group">
+              <span class="physics-paint-right-label">Track: {trackName}</span>
+              <PanelSlider id="physics-track-opacity" label="Opacity" min={0} max={1} step={0.01} value={trackOpacity} onChange={onTrackOpacityChange} commitOnRelease />
+              <label class="physics-paint-option-row" for="physics-track-blend">
+                <span class="physics-paint-right-label">Blend</span>
+                <select
+                  id="physics-track-blend"
+                  class="physics-paint-roto-interpolation-select"
+                  value={trackBlendMode}
+                  onChange={(event) => onTrackBlendChange((event.currentTarget as HTMLSelectElement).value as BlendMode)}
+                >
+                  {TRACK_BLEND_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
           </section>
             </div>
           </SidebarScrollArea>
@@ -562,8 +725,6 @@ export function PhysicsPaintRightPanel({
         </div>
 
         <div class="physics-paint-right-pane physics-paint-right-pane-secondary">
-          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
-            <div class="physics-paint-right-pane-content">
           <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
           <button
             type="button"
@@ -593,11 +754,13 @@ export function PhysicsPaintRightPanel({
             Motion
           </button>
       </div>
-
+          {optionsTab === 'scripts' ? (
+            <PhysicsPaintScriptsPanel {...scripts} />
+          ) : (
+          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
+            <div class="physics-paint-right-pane-content">
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
-        {optionsTab === 'scripts' ? (
-          <PhysicsPaintScriptsPanel {...scripts} />
-        ) : optionsTab === 'onion' ? (
+        {optionsTab === 'onion' ? (
           <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
             <label class="physics-paint-onion-toggle-row">
               <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
@@ -627,6 +790,7 @@ export function PhysicsPaintRightPanel({
           </section>
             </div>
           </SidebarScrollArea>
+          )}
         </div>
       </div>
     </aside>

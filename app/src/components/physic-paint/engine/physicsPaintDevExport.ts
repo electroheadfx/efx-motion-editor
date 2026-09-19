@@ -36,10 +36,10 @@ export interface PhysicsPaintStillExport {
   file: string;
   frameIndex: number;
   appFrame: number;
-  mimeType: 'image/png';
+  mimeType: 'image/webp';
   width?: number;
   height?: number;
-  dataUrl: string;
+  bytes: Uint8Array;
 }
 
 interface BuildPhysicsPaintDebugManifestArgs {
@@ -56,7 +56,7 @@ export function makePhysicsPaintFrameFilename(frameIndex: number): string {
   if (!Number.isInteger(frameIndex) || frameIndex < 0) {
     throw new Error('Physics paint debug export frameIndex must be a non-negative integer');
   }
-  return `frame-${String(frameIndex).padStart(4, '0')}.png`;
+  return `frame-${String(frameIndex).padStart(4, '0')}.webp`;
 }
 
 export function buildPhysicsPaintDebugManifest(args: BuildPhysicsPaintDebugManifestArgs): PhysicsPaintDebugManifest {
@@ -90,7 +90,7 @@ export function buildPhysicsPaintDebugManifest(args: BuildPhysicsPaintDebugManif
 
 export function buildPhysicsPaintStillExport(frame: PhysicPaintRenderedFrame): PhysicsPaintStillExport {
   if (!isPhysicPaintRenderedFrame(frame)) {
-    throw new Error('Physics paint still debug export requires a valid PNG rendered frame');
+    throw new Error('Physics paint still debug export requires a valid WebP rendered frame');
   }
 
   return {
@@ -98,10 +98,10 @@ export function buildPhysicsPaintStillExport(frame: PhysicPaintRenderedFrame): P
     file: makePhysicsPaintFrameFilename(frame.frameIndex),
     frameIndex: frame.frameIndex,
     appFrame: frame.appFrame,
-    mimeType: 'image/png',
+    mimeType: 'image/webp',
     width: frame.width,
     height: frame.height,
-    dataUrl: frame.dataUrl,
+    bytes: frame.bytes,
   };
 }
 

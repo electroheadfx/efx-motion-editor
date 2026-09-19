@@ -7,6 +7,10 @@ export interface PhysicsPaintStudioKeyboardState {
   mutationLocked: boolean;
   /** True when a real key is in the primary selection (43.4 defect 9 gate). */
   hasSelectedRotoKey: boolean;
+  /** 49-06 UAT: true while a Bg clip rail is the primary selection — a
+   *  selection-driven Delete/Backspace then owns that clip (timeline delete
+   *  for Bg rails, mirrored by the selected-rail trash button). */
+  hasSelectedBackgroundClip?: boolean;
   /** True while the toolbox popover is open (role="dialog" aria-modal="false"). */
   toolboxPopoverOpen?: boolean;
 }
@@ -19,10 +23,17 @@ export interface PhysicsPaintStudioKeyboardActions {
   toggleShortcuts: () => void;
   undo: () => void;
   redo: () => void;
+  /** 47-03 Task 2: add a Paint track (Cmd/Ctrl+Shift+N). No trackId — the
+   *  store makes the new track active (TML-02). */
+  addTrack?: () => void;
+  /** 47-03 Task 2: duplicate the ACTIVE Paint track (Cmd/Ctrl+Shift+D). */
+  duplicateTrack?: () => void;
   copyRotoKey?: () => void;
   cutRotoKey?: () => void;
   pasteRotoKey?: () => void;
   deleteRotoKey?: () => void;
+  /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
+  deleteBackgroundClip?: () => void;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
   /** Dismiss the toolbox popover; handled on Escape before collapseRotoSelection
@@ -41,6 +52,10 @@ export interface PhysicsPaintStudioKeyboardActions {
    *  the solo layer sits between the push disarm layer and selection collapse.
    *  No Solo key binding exists — activation is toolbar-only. */
   disarmSolo?: () => boolean;
+  /** 50-05 (Task 3, D-13): re-lock the reference transform. Returns true ONLY
+   *  when the transform was actually unlocked (reference-transform mode), so
+   *  the Escape layer consumes at most one layer (Pitfall 2). */
+  relockReferenceTransform?: () => boolean;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -115,6 +130,23 @@ export function dispatchPhysicsPaintStudioKeyDown(
     actions.undo();
     return;
   }
+  // 47-03 Task 2 (TML-02, Pitfall m4): guarded track CRUD shortcuts — always
+  // the active track, inside the isPhysicsPaintShortcutTarget guard, skipped
+  // while mutations are locked, and preventDefault only when they actually
+  // fire. Delete/Backspace never bind track deletion (D-17) — the roto
+  // delete flow owns those keys below.
+  if (meta && event.shiftKey && key === 'n') {
+    if (state.mutationLocked) return;
+    event.preventDefault();
+    actions.addTrack?.();
+    return;
+  }
+  if (meta && event.shiftKey && key === 'd') {
+    if (state.mutationLocked) return;
+    event.preventDefault();
+    actions.duplicateTrack?.();
+    return;
+  }
   if (meta && !event.shiftKey && !event.altKey && !event.repeat && (key === 'c' || key === 'x' || key === 'v')) {
     const action = key === 'c' ? actions.copyRotoKey : key === 'x' ? actions.cutRotoKey : actions.pasteRotoKey;
     if (!action) return;
@@ -136,6 +168,20 @@ export function dispatchPhysicsPaintStudioKeyDown(
     && !event.altKey
     && !event.shiftKey
   ) {
+    // 49-06 UAT: a SELECTED Bg clip owns Delete/Backspace. The deletion is
+    // selection-driven (the rail click owns selection; the key never needs the
+    // rail to hold focus), so it fires from the strip body or a selected rail
+    // — but never while a real modal is open (the roto-side modal guard) nor
+    // while typing in a field (isPhysicsPaintShortcutTarget at the top).
+    if (state.hasSelectedBackgroundClip && actions.deleteBackgroundClip) {
+      // Same modal guard as the roto-side path (Pitfall 1): the KEY lives
+      // anywhere, so the check is document-wide, not focus-scoped.
+      if (event.target instanceof Element && event.target.ownerDocument.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      if (state.mutationLocked) return;
+      actions.deleteBackgroundClip();
+      return;
+    }
     if (!actions.deleteRotoKey || !isPhysicsPaintRotoDeleteTarget(event.target)) return;
     event.preventDefault();
     if (state.mutationLocked) return;
@@ -187,6 +233,13 @@ export function dispatchPhysicsPaintStudioKeyDown(
     // solo was actually armed — between the push disarm layer and selection
     // collapse. One Escape handles at most one layer.
     if (actions.disarmSolo?.()) {
+      event.preventDefault();
+      return;
+    }
+    // 50-05 (Task 3, D-13): reference-transform re-lock layer — consumes the
+    // Escape only when the transform was actually unlocked (reference-transform
+    // mode). One Escape handles at most one layer (Pitfall 2).
+    if (actions.relockReferenceTransform?.()) {
       event.preventDefault();
       return;
     }

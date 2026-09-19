@@ -1,6 +1,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {AudioTrack} from '../types/audio';
+import type {FrameEntry} from '../types/timeline';
 import {audioStore} from '../stores/audioStore';
+import {sequenceStore} from '../stores/sequenceStore';
 import {timelineStore} from '../stores/timelineStore';
 import {audioEngine} from './audioEngine';
 import {isPhysicPaintChildAudioClaimed, publishPhysicPaintAudioPlaybackState} from './physicPaintBridge';
@@ -151,5 +153,153 @@ describe('playbackEngine ownership guard (41-04 Task 1: D-05 symmetric, AUDIO-06
     );
     playbackEngine.stop();
     expect(mockedAudio.stopAll).toHaveBeenCalled();
+  });
+});
+
+describe('playbackEngine audible scrub (TIME-03)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedClaimed.mockReturnValue(false);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    // Singleton scrub state reset (throttle timestamp + snippet flag).
+    playbackEngine.scrubAudioEnd();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    playbackEngine.stop();
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('dispatches a 4-frame-capped snippet at the dragged frame while idle', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudio.play).toHaveBeenCalledWith(
+      'audio-1',
+      48 / 24,
+      expect.objectContaining({id: 'audio-1'}),
+      24,
+      4 / 24,
+    );
+  });
+
+  it('throttles snippet re-dispatch to the 120ms scrub window', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    playbackEngine.scrubToFrame(10);
+    nowSpy.mockReturnValue(1050); // 50ms inside the throttle window
+    playbackEngine.scrubToFrame(11);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    nowSpy.mockReturnValue(1130); // 130ms past the window
+    playbackEngine.scrubToFrame(12);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
+  it('stays silent while the child audio claim is held (D-05 symmetric guard)', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    mockedClaimed.mockReturnValue(true);
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('seek-restarts full audio while playing instead of the snippet', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    timelineStore.setPlaying(true);
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).toHaveBeenCalledWith(
+      'audio-1',
+      48 / 24,
+      expect.objectContaining({id: 'audio-1'}),
+      24,
+      (240 - 48) / 24,
+    );
+    timelineStore.setPlaying(false);
+  });
+
+  it('scrubAudioEnd stops the snippet and un-throttles the next scrub', () => {
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(2000);
+    playbackEngine.scrubToFrame(10);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    playbackEngine.scrubAudioEnd();
+    expect(mockedAudio.stopAll).toHaveBeenCalledTimes(2);
+    nowSpy.mockReturnValue(2010); // inside the OLD throttle window
+    playbackEngine.scrubToFrame(20);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
+  it('scrubAudioEnd is a silent no-op when no snippet is sounding', () => {
+    playbackEngine.scrubAudioEnd();
+    expect(mockedAudio.stopAll).not.toHaveBeenCalled();
+  });
+
+  it('keeps muted tracks silent during scrub', () => {
+    audioStore.tracks.value = [makeMainAudioTrack({muted: true})];
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+  });
+});
+
+describe('playbackEngine paint-frame activation (52.3-02, Pitfall 3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedClaimed.mockReturnValue(false);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    sequenceStore.reset();
+    // Singleton scrub state reset (throttle timestamp + snippet flag).
+    playbackEngine.scrubAudioEnd();
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    playbackEngine.scrubAudioEnd();
+    playbackEngine.stop();
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    sequenceStore.reset();
+    // Restore the frameMap mock to empty so no paint entries leak into other
+    // describes (the mock module is shared file-wide).
+    const {frameMap} = await import('./frameMap');
+    (frameMap as unknown as {value: FrameEntry[]}).value = [];
+    vi.unstubAllGlobals();
+  });
+
+  it('playback into a paint frame activates the owning fx sequence', async () => {
+    // Pitfall 3 (52.3): the dense frameMap makes paint frames activatable —
+    // playhead entry into one fires sequenceStore.setActive(fxId) through the
+    // same syncActiveSequence path the AUDIO cases drive. Deliberate,
+    // D-08-consistent behavior. (setActive also clears selectedKeyPhotoId —
+    // that is setActive's own tested behavior, out of scope here.)
+    const {frameMap} = await import('./frameMap');
+    const paintEntries: FrameEntry[] = Array.from({length: 10}, (_, globalFrame) => ({
+      kind: 'paint' as const,
+      globalFrame,
+      sequenceId: 'fx-p',
+      layerId: 'roto-layer',
+    }));
+    (frameMap as unknown as {value: FrameEntry[]}).value = paintEntries;
+    const setActive = vi.spyOn(sequenceStore, 'setActive');
+
+    playbackEngine.scrubToFrame(4);
+
+    expect(setActive).toHaveBeenCalledWith('fx-p');
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-p');
   });
 });

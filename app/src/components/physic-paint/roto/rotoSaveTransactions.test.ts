@@ -1,32 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import {
-  buildApplyCanvasPayload,
   buildDeleteRotoFramePayload,
   guardRotoFlush,
   guardRotoSaveFrame,
   isBackgroundOnlyRotoFrame,
   resolveRotoSaveSourceFrame,
-  selectRotoEditableState,
   shouldPersistRotoFrame,
   sortedDirtyRotoFrames,
   type RotoEditableState,
 } from './rotoSaveTransactions';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 const state = (strokes: unknown[] = [], bgMode = 'transparent'): RotoEditableState => ({
   version: 1,
-  strokes,
-  settings: { bgMode },
+  parentLayerId: 'layer-1',
+  documentRevision: 0,
+  activeTrackId: 'track-1',
+  tracks: [{
+    id: 'track-1',
+    name: 'Paint',
+    order: 0,
+    visible: true,
+    solo: false,
+    opacity: 1,
+    blendMode: 'normal',
+    revision: 0,
+    frames: {},
+    rotoPhysical: null,
+    loopClips: [],
+    strokes,
+    settings: { bgMode, paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+  }],
+  background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
+  photoReference: null,
+  compositeRevision: 0,
 } as unknown as RotoEditableState);
 
 const launchContext = {
   operationId: 'launch-1',
   layerId: 'layer-1',
+  // 46-01: the launch IS the document — builders read the active track from it.
+  document: { activeTrackId: TEST_TRACK_ID },
 } as PhysicPaintLaunchContext;
-
-const renderedFrame = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,frame', width: 100, height: 80 };
-
-const interpolationSettings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const, deform: 0, position: 0 };
 
 describe('rotoSaveTransactions', () => {
   it('guards invalid, clean, in-flight, and forced dirty flushes in order', () => {
@@ -34,13 +51,6 @@ describe('rotoSaveTransactions', () => {
     expect(guardRotoFlush({ hasActionContext: true, frame: 2, dirty: false, inFlight: false })).toEqual({ type: 'clean' });
     expect(guardRotoFlush({ hasActionContext: true, frame: 2, force: true, dirty: false, inFlight: true })).toEqual({ type: 'in-flight' });
     expect(guardRotoFlush({ hasActionContext: true, frame: 2, force: true, dirty: false, inFlight: false })).toEqual({ type: 'flush' });
-  });
-
-  it('selects the live current state and restores live engine state around stored-frame saves', () => {
-    const liveState = state([{}]);
-    const storedState = state([], 'white');
-    expect(selectRotoEditableState({ frame: 4, currentFrame: 4, liveState, storedState })).toEqual({ editableState: liveState, previousState: null });
-    expect(selectRotoEditableState({ frame: 3, currentFrame: 4, liveState, storedState })).toEqual({ editableState: storedState, previousState: liveState });
   });
 
   it('classifies delete, painted, and background-only editable states', () => {
@@ -60,46 +70,11 @@ describe('rotoSaveTransactions', () => {
     expect(buildDeleteRotoFramePayload({ launchContext, frame: 8, sourceFrame: 3, now: 42 })).toEqual({
       operationId: 'launch-1:delete-roto:8:42',
       kind: 'delete-roto-frame',
+      trackId: TEST_TRACK_ID,
       layerId: 'layer-1',
       startFrame: 8,
       sourceFrame: 3,
     });
-  });
-
-  it('constructs apply-canvas payloads with background and onion markers only when applicable', () => {
-    expect(buildApplyCanvasPayload({
-      launchContext,
-      frame: 8,
-      sourceFrame: 3,
-      editableState: state([{}]),
-      renderedFrame,
-      backgroundMetadata: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0.45 },
-      interpolationSettings,
-      backgroundOnly: false,
-      onionFrame: renderedFrame,
-      now: 42,
-    })).toMatchObject({
-      operationId: 'launch-1:canvas:8:42',
-      kind: 'apply-canvas',
-      layerId: 'layer-1',
-      startFrame: 8,
-      sourceFrame: 3,
-      renderedFrame,
-      onionDataUrl: renderedFrame.dataUrl,
-      rotoInterpolationSettings: interpolationSettings,
-    });
-    expect(buildApplyCanvasPayload({
-      launchContext,
-      frame: 8,
-      sourceFrame: 8,
-      editableState: state([], 'white'),
-      renderedFrame,
-      backgroundMetadata: { background: 'white', color: '#ffffff', paperGrain: 'canvas1', grainStrength: 0.45 },
-      interpolationSettings,
-      backgroundOnly: true,
-      onionFrame: null,
-      now: 43,
-    })).toMatchObject({ backgroundOnly: true });
   });
 
   it('guards render-only selections and no-new-paint saves with exact user copy', () => {

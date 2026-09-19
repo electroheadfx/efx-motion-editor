@@ -77,12 +77,56 @@ import type {
   RotoPhysicalEditRecordsPort,
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
+import {
+  getActiveTrackId,
+  getDocument,
+  registerDocument,
+  resyncRuntimeForBackgroundEdit,
+  setActiveTrackId,
+  type BackgroundEditDescriptor,
+} from '../../../stores/efxPaintStore';
+import { buildEfxPaintDocumentRevision } from '../../../efx-paint/document/efxPaintDocumentRevision';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+
+/**
+ * G-52-5: the live-authority check for background (document-level) entries.
+ * Identity fast path first, then a CONTENT-REVISION comparison. Reference
+ * display-preference writes (opacity/visibility/lock/transform) replace the
+ * document object WITHOUT touching the content fingerprint (the D-07 split
+ * excludes the display fields and never bumps documentRevision) — a bare
+ * identity comparison failed closed forever after any display tweak, killing
+ * undo/redo for the whole ledger. Unrecorded CONTENT edits still rotate the
+ * fingerprint and fail closed (the CR-01 protection is unchanged). Fail
+ * closed on a parse throw.
+ */
+function liveDocumentMatchesRecorded(live: EfxPaintDocument | null, recorded: EfxPaintDocument): boolean {
+  if (live === recorded) return true;
+  if (live === null) return false;
+  try {
+    return buildEfxPaintDocumentRevision(live) === buildEfxPaintDocumentRevision(recorded);
+  } catch {
+    return false;
+  }
+}
+
+// 46 UAT debug hook: capture why a Paste/Duplicate command is (or is not)
+// recorded and why an Undo replay is rejected. Gated off by default; enable
+// from the console via window.__setDebugRotoUndo(true).
+let debugRotoUndo = false;
+export function setDebugRotoUndo(enabled: boolean): void {
+  debugRotoUndo = enabled;
+}
+function debugUndoLog(message: string): void {
+  if (debugRotoUndo) console.warn(`[roto-undo] ${message}`);
+}
 
 export interface RotoPhysicalEditHistoryIdentity {
   launchOperationId: string;
   layerId: string;
   projectContextId: string | null;
   capacity: number;
+  /** 46-03 (TRK-01): the v1.0 document track the launch operates on (stable id, never index). */
+  trackId: string;
 }
 
 export type RotoPhysicalEditReplaySourceSnapshot = Pick<
@@ -110,6 +154,8 @@ interface RotoPhysicalEditCommand<EngineState> {
   readonly kind: 'physical';
   readonly operationId: string;
   readonly operationKind: RotoPhysicalEditOrdinaryOperationKind;
+  /** 46-03 (D-01..D-04): the document track the accepted edit targeted (undo/redo auto-activates it). */
+  readonly trackId: string;
   readonly before: RotoPhysicalEditSnapshot<EngineState>;
   readonly after: RotoPhysicalEditSnapshot<EngineState>;
   readonly acceptedRevision: string;
@@ -152,10 +198,19 @@ interface PaintBarrier {
   readonly mutationId: number;
 }
 
+/** 49-06 UAT: a committed Background document edit (delete) recorded in the
+ *  unified ledger — undo restores `before`, redo re-applies `after` (BKG-08,
+ *  D-08). The descriptor carries the exact document objects by reference. */
+interface BackgroundEditCommand {
+  readonly kind: 'background';
+  readonly descriptor: BackgroundEditDescriptor;
+}
+
 type RotoPhysicalEditHistoryEntry<EngineState> =
   | RotoPhysicalEditCommand<EngineState>
   | ReferencedActionHistoryCommand
-  | PaintBarrier;
+  | PaintBarrier
+  | BackgroundEditCommand;
 
 interface RotoPhysicalEditCoordinatorRoute<EngineState> {
   executePhysicalEdit: (
@@ -237,7 +292,7 @@ function physicalRecordsEqual(
     const right = rightRecords[index];
     if (left.keyId !== right.keyId) return false;
     if (left.appFrame !== right.appFrame) return false;
-    if (left.payload.dataUrl !== right.payload.dataUrl) return false;
+    if (left.payload.bytes !== right.payload.bytes) return false;
     if (left.payload.frameIndex !== right.payload.frameIndex) return false;
     if (left.payload.appFrame !== right.payload.appFrame) return false;
     if (left.payload.width !== right.payload.width) return false;
@@ -320,6 +375,29 @@ function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot): strin
 }
 
 /**
+ * 46-03 D-03: stored history commands carry records + refs + the prior
+ * deterministic revision hash ONLY — never raster bytes. The coordinator's
+ * captured snapshot rides a cached repaint base plus per-frame raster maps
+ * (frameStates/previewFrames/capturedFrames/confirmedFrames); the history
+ * entry strips them (frames empty, repaint base null) so the undo/redo
+ * recompute path stays the single source of raster truth and the 10-entry
+ * ledger never multiplies frame-by-frame raster weight. The canonical
+ * record dataUrls (references to the cached sidecar) are untouched.
+ */
+function withoutRasterBytes<EngineState>(
+  snapshot: RotoPhysicalEditSnapshot<EngineState>,
+): RotoPhysicalEditSnapshot<EngineState> {
+  return {
+    ...snapshot,
+    frameStates: new Map(),
+    previewFrames: new Map(),
+    capturedFrames: new Map(),
+    confirmedFrames: new Map(),
+    cachedReference: { url: snapshot.cachedReference.url, cachedRepaintBase: null },
+  };
+}
+
+/**
  * Canonical-content replay authority: the snapshot's records, interpolation,
  * loop clips and interpolation breaks compared WITHOUT selection or cursor.
  * Selection and cursor are intentionally absent from the canonical revision
@@ -342,7 +420,7 @@ function snapshotCanonicalContentEqual(
     const l = left.records[index];
     const r = right.records[index];
     if (l.keyId !== r.keyId || l.appFrame !== r.appFrame) return false;
-    if (l.payload.dataUrl !== r.payload.dataUrl
+    if (l.payload.bytes !== r.payload.bytes
       || l.payload.frameIndex !== r.payload.frameIndex
       || l.payload.appFrame !== r.payload.appFrame
       || l.payload.width !== r.payload.width
@@ -566,8 +644,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       || accepted.after.layerId !== identity.layerId
       || accepted.after.projectContextId !== identity.projectContextId
       || accepted.after.capacity !== identity.capacity) return;
-    if (lastAcceptedOperationIdRef.current === accepted.operationId) return;
-    lastAcceptedOperationIdRef.current = accepted.operationId;
+    // 46-03 (D-01): dedupe on operationId + trackId — one cross-track
+    // operation emits one acceptance PER track under the same operationId,
+    // so the track tag is part of the dedupe identity (never collide).
+    const dedupeKey = `${accepted.operationId}:${identity.trackId}`;
+    if (lastAcceptedOperationIdRef.current === dedupeKey) return;
+    lastAcceptedOperationIdRef.current = dedupeKey;
 
     if (!isOrdinaryOperationKind(accepted.operationKind)) {
       // Replay acceptance — move the pending replay command between stacks
@@ -596,18 +678,39 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
 
     // Ordinary acceptance — append one immutable complete command and clear
     // redo exactly once. Reject an equal no-change command.
-    if (snapshotRecordsEqual(accepted.before, accepted.after)) return;
+    if (snapshotRecordsEqual(accepted.before, accepted.after)) {
+      if (accepted.operationKind === 'paste') {
+        debugUndoLog(`paste NOT recorded (before==after): ${accepted.operationId}`);
+      }
+      return;
+    }
+    if (accepted.operationKind === 'paste') {
+      debugUndoLog(`paste recorded: ${accepted.operationId} kind=${String(accepted.semanticDelta?.kind)}`);
+    }
     const command: RotoPhysicalEditCommand<EngineState> = {
       kind: 'physical',
       operationId: accepted.operationId,
       operationKind: accepted.operationKind,
-      before: accepted.before,
-      after: accepted.after,
+      trackId: identity.trackId,
+      before: withoutRasterBytes(accepted.before),
+      after: withoutRasterBytes(accepted.after),
       acceptedRevision: accepted.acceptedRevision,
       selectedKeyId: accepted.after.selectedKeyId,
       selectedAppFrame: accepted.after.selectedAppFrame,
     };
     appliedRef.current.push(command);
+    trimAppliedHistory();
+    discardRedoHistory();
+    publishAvailability();
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
+
+  /** 49-06 UAT: record a committed Background document edit (delete) as one
+   *  unified-ledger command. The descriptor's before/after are the exact
+   *  document objects by reference — undo restores `before`, redo re-applies
+   *  `after` (BKG-08, D-08). Clears redo exactly once, like every ordinary
+   *  command. */
+  const recordBackgroundEdit = useCallback((descriptor: BackgroundEditDescriptor) => {
+    appliedRef.current.push({ kind: 'background', descriptor });
     trimAppliedHistory();
     discardRedoHistory();
     publishAvailability();
@@ -690,6 +793,30 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       publishAvailability();
       return true;
     }
+    if (entry.kind === 'background') {
+      // 49-06 UAT: a Background document edit restores the exact prior
+      // document by reference (BKG-08, D-08) — no coordinator replay seam.
+      // Live-state authority guard (CR-01, G-52-5): undo only when the live
+      // document still matches the recorded `after` by content revision
+      // (identity fast path). An unrecorded CONTENT edit since the record
+      // (add/move/repeat/scale/fallback/source-set) rotates the fingerprint
+      // and fails closed (stack untouched); a display-preference-only write
+      // (reference opacity/lock/visibility/transform) does NOT — it replaces
+      // the document object without touching the fingerprint, and must not
+      // kill the ledger.
+      if (!liveDocumentMatchesRecorded(getDocument(entry.descriptor.after.parentLayerId), entry.descriptor.after)) return false;
+      // 52 CR-01: the reveal mutations write the runtime as well as the
+      // document (baked records + rail clip). Resync the affected track's
+      // runtime from the restored `before` document BEFORE publishing either
+      // change, so a failed install fails the undo closed (document not yet
+      // restored, stacks untouched). Non-reveal background entries no-op.
+      if (!resyncRuntimeForBackgroundEdit(entry.descriptor, 'undo')) return false;
+      appliedRef.current.pop();
+      redoRef.current.push(entry);
+      registerDocument(entry.descriptor.before);
+      publishAvailability();
+      return true;
+    }
     const identity = inputRef.current.identity;
     if (!identity) return false;
     // Selection and cursor are intentionally absent from the canonical
@@ -698,7 +825,18 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     // coordinator or parent mutation boundary.
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
     if (typeof getLiveSourceSnapshot !== 'function'
-      || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) return false;
+      || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) {
+      if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+        debugUndoLog(`undo rejected at live-authority guard: kind=${entry.operationKind} getLive=${typeof getLiveSourceSnapshot === 'function'}`);
+      }
+      return false;
+    }
+    if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+      debugUndoLog(`undo live-authority guard passed for ${entry.operationId}; dispatching replay`);
+    }
+    // 46-03 (D-04): auto-activate the command's track BEFORE the replay seam
+    // when another track is active — replay then targets the live document.
+    if (getActiveTrackId(identity.layerId) !== entry.trackId) setActiveTrackId(identity.layerId, entry.trackId);
     pendingReplayRef.current = { direction: 'undo', command: entry };
     const proposal = buildReplayProposal(entry.before);
     const beforeTargetRevision = snapshotRevision(entry.before);
@@ -717,8 +855,14 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       },
     });
     if (!accepted) {
+      if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+        debugUndoLog(`undo replay rejected by coordinator for ${entry.operationId}`);
+      }
       pendingReplayRef.current = null;
       return false;
+    }
+    if (entry.kind === 'physical' && entry.operationKind === 'paste') {
+      debugUndoLog(`undo replay accepted by coordinator for ${entry.operationId}`);
     }
     return true;
   }, [publishAvailability]);
@@ -753,12 +897,31 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       publishAvailability();
       return true;
     }
+    if (entry.kind === 'background') {
+      // 49-06 UAT: redo re-applies the post-edit document by reference.
+      // Symmetric live-state authority guard (CR-01, G-52-5): redo only when
+      // the live document still matches the recorded `before` by content
+      // revision (identity fast path) — an unrecorded CONTENT edit since the
+      // undo would otherwise be clobbered. Fail closed on divergence.
+      if (!liveDocumentMatchesRecorded(getDocument(entry.descriptor.before.parentLayerId), entry.descriptor.before)) return false;
+      // 52 CR-01: symmetric runtime resync from the restored `after` document
+      // (see the undo branch above).
+      if (!resyncRuntimeForBackgroundEdit(entry.descriptor, 'redo')) return false;
+      redoRef.current.pop();
+      appliedRef.current.push(entry);
+      registerDocument(entry.descriptor.after);
+      publishAvailability();
+      return true;
+    }
     const identity = inputRef.current.identity;
     if (!identity) return false;
     const beforeRevision = snapshotRevision(entry.before);
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
     if (typeof getLiveSourceSnapshot !== 'function'
       || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.before)) return false;
+    // 46-03 (D-04): redo is symmetric — auto-activate the command's track
+    // BEFORE the replay seam when another track is active.
+    if (getActiveTrackId(identity.layerId) !== entry.trackId) setActiveTrackId(identity.layerId, entry.trackId);
     pendingReplayRef.current = { direction: 'redo', command: entry };
     const proposal = buildReplayProposal(entry.after);
     const afterTargetRevision = snapshotRevision(entry.after);
@@ -787,6 +950,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     clear,
     observePaintMutation,
     recordAcceptedEdit,
+    recordBackgroundEdit,
     reconcilePaintBarriers,
     undo,
     redo,

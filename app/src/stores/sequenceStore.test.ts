@@ -1,8 +1,24 @@
-import {describe, it, expect, beforeEach} from 'vitest';
+import {describe, it, expect, beforeEach, afterEach} from 'vitest';
 import {redo, resetHistory, undo} from '../lib/history';
 import type {Layer} from '../types/layer';
 import {physicPaintStore} from './physicPaintStore';
-import {sequenceStore} from './sequenceStore';
+import {sequenceStore, _setSequenceProjectDimensionsProvider} from './sequenceStore';
+import {registerDocument, reset as resetEfxPaintStore} from './efxPaintStore';
+import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
+import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
+import { testWebpBytes } from '../testUtils/testWebpBytes';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 // Use `as any` so TypeScript compiles even before Plan 01 adds the new methods.
 // After Plan 01 extends the store, the `as any` can be removed.
@@ -167,6 +183,9 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     resetHistory();
     sequenceStore.reset();
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument('canonical-target'));
+    registerDocument(makeTrackDocument('canonical-survivor'));
   });
 
   it('clears the canonical Physics Paint state and restores it through Undo/Redo', () => {
@@ -194,61 +213,61 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
       inFrame: 0,
       outFrame: 24,
     });
-    physicPaintStore.upsertRealRotoKeyFrame('canonical-target', 0, {
+    physicPaintStore.upsertRealRotoKeyFrame('canonical-target', TEST_TRACK_ID, 0, {
       frameIndex: 0,
       appFrame: 0,
-      dataUrl: 'data:image/png;base64,dGFyZ2V0LTA=',
+      bytes: testWebpBytes('dGFyZ2V0LTA='),
       width: 100,
       height: 50,
     });
-    physicPaintStore.upsertRealRotoKeyFrame('canonical-target', 2, {
+    physicPaintStore.upsertRealRotoKeyFrame('canonical-target', TEST_TRACK_ID, 2, {
       frameIndex: 0,
       appFrame: 2,
-      dataUrl: 'data:image/png;base64,dGFyZ2V0LTI=',
+      bytes: testWebpBytes('dGFyZ2V0LTI='),
       width: 100,
       height: 50,
     });
-    physicPaintStore.setRotoInterpolationSettings('canonical-target', {
+    physicPaintStore.setRotoInterpolationSettings('canonical-target', TEST_TRACK_ID, {
       enabled: true,
       inBetweenCount: 1,
       mode: 'duplicate',
       position: 0,
       deform: 0,
     });
-    physicPaintStore.setRotoBackgroundMetadata('canonical-target', {
+    physicPaintStore.setRotoBackgroundMetadata('canonical-target', TEST_TRACK_ID, {
       background: 'canvas2',
       paperGrain: 'canvas3',
       grainStrength: 0.65,
     });
-    physicPaintStore.setFrame('canonical-survivor', 4, {
+    physicPaintStore.setFrame('canonical-survivor', TEST_TRACK_ID, 4, {
       frameIndex: 0,
       appFrame: 4,
-      dataUrl: 'data:image/png;base64,c3Vydml2b3I=',
+      bytes: testWebpBytes('c3Vydml2b3I='),
       width: 100,
       height: 50,
     });
-    const targetOutputBefore = physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target');
-    const targetCacheBefore = physicPaintStore.getRotoCacheFrames('canonical-target');
+    const targetOutputBefore = physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID);
+    const targetCacheBefore = physicPaintStore.getRotoCacheFrames('canonical-target', TEST_TRACK_ID);
 
     sequenceStore.removeLayerFromSequence('timeline-target');
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
-    expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target')).toBeUndefined();
-    expect(physicPaintStore.getRotoCacheFrames('canonical-target')).toEqual([]);
-    expect(physicPaintStore.getFrame('canonical-survivor', 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.getRotoCacheFrames('canonical-target', TEST_TRACK_ID)).toEqual([]);
+    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('c3Vydml2b3I='));
 
     undo();
 
     expect(sequenceStore.getById('target-sequence')?.layers[0].source).toEqual({ type: 'physic-paint', layerId: 'canonical-target' });
-    expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target')).toEqual(targetOutputBefore);
-    expect(physicPaintStore.getRotoCacheFrames('canonical-target')).toEqual(targetCacheBefore);
-    expect(physicPaintStore.getFrame('canonical-survivor', 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual(targetOutputBefore);
+    expect(physicPaintStore.getRotoCacheFrames('canonical-target', TEST_TRACK_ID)).toEqual(targetCacheBefore);
+    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('c3Vydml2b3I='));
 
     redo();
 
     expect(sequenceStore.getById('target-sequence')).toBeNull();
-    expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'canonical-target')).toBeUndefined();
-    expect(physicPaintStore.getFrame('canonical-survivor', 4)?.dataUrl).toBe('data:image/png;base64,c3Vydml2b3I=');
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
+    expect(physicPaintStore.getFrame('canonical-survivor', TEST_TRACK_ID, 4)?.bytes).toEqual(testWebpBytes('c3Vydml2b3I='));
   });
 
   it.each([
@@ -276,23 +295,23 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
       inFrame: 0,
       outFrame: 24,
     });
-    physicPaintStore.setFrame('canonical-target', 3, {
+    physicPaintStore.setFrame('canonical-target', TEST_TRACK_ID, 3, {
       frameIndex: 0,
       appFrame: 3,
-      dataUrl: 'data:image/png;base64,dGFyZ2V0LTM=',
+      bytes: testWebpBytes('dGFyZ2V0LTM='),
       width: 100,
       height: 50,
     });
-    const outputBefore = physicPaintStore.toMceOutputs()[0];
+    const outputBefore = physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID);
 
     remove();
-    expect(physicPaintStore.toMceOutputs()).toEqual([]);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
 
     undo();
-    expect(physicPaintStore.toMceOutputs()).toEqual([outputBefore]);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual(outputBefore);
 
     redo();
-    expect(physicPaintStore.toMceOutputs()).toEqual([]);
+    expect(physicPaintStore.extractRuntimeStateForDocument('canonical-target', TEST_TRACK_ID)).toEqual({ trackId: TEST_TRACK_ID, frames: new Map(), rotoPhysical: null });
   });
 
   it('keeps shared canonical state until the final timeline owner is removed', () => {
@@ -310,25 +329,25 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
         outFrame: 24,
       });
     }
-    physicPaintStore.setFrame('shared-canonical', 5, {
+    physicPaintStore.setFrame('shared-canonical', TEST_TRACK_ID, 5, {
       frameIndex: 0,
       appFrame: 5,
-      dataUrl: 'data:image/png;base64,c2hhcmVk',
+      bytes: testWebpBytes('c2hhcmVk'),
       width: 100,
       height: 50,
     });
 
     sequenceStore.remove('first-owner');
-    expect(physicPaintStore.getFrame('shared-canonical', 5)?.dataUrl).toBe('data:image/png;base64,c2hhcmVk');
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.bytes).toEqual(testWebpBytes('c2hhcmVk'));
 
     undo();
-    expect(physicPaintStore.getFrame('shared-canonical', 5)?.dataUrl).toBe('data:image/png;base64,c2hhcmVk');
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.bytes).toEqual(testWebpBytes('c2hhcmVk'));
 
     redo();
-    expect(physicPaintStore.getFrame('shared-canonical', 5)?.dataUrl).toBe('data:image/png;base64,c2hhcmVk');
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)?.bytes).toEqual(testWebpBytes('c2hhcmVk'));
 
     sequenceStore.remove('second-owner');
-    expect(physicPaintStore.getFrame('shared-canonical', 5)).toBeNull();
+    expect(physicPaintStore.getFrame('shared-canonical', TEST_TRACK_ID, 5)).toBeNull();
   });
 });
 
@@ -362,5 +381,60 @@ describe('sequenceStore GL transitions (GLT-05)', () => {
 
   describe('addTransition mutual exclusion', () => {
     it.todo('clears glTransition when adding cross-dissolve (D-02)');
+  });
+});
+
+describe('sequence factory project dims (260918-ovi)', () => {
+  const DEFAULT_DIMS = { width: 1920, height: 1080 };
+
+  beforeEach(() => {
+    resetHistory();
+    sequenceStore.reset();
+  });
+
+  afterEach(() => {
+    // Restore the default provider so sibling describes are not polluted.
+    _setSequenceProjectDimensionsProvider(() => DEFAULT_DIMS);
+  });
+
+  it('createSequence stamps the provider dims onto the new record', () => {
+    _setSequenceProjectDimensionsProvider(() => ({ width: 1080, height: 1920 }));
+    const seq = sequenceStore.createSequence('S');
+    expect(seq.width).toBe(1080);
+    expect(seq.height).toBe(1920);
+  });
+
+  it('createFxSequence stamps the provider dims onto the new record', () => {
+    _setSequenceProjectDimensionsProvider(() => ({ width: 1080, height: 1920 }));
+    const layer = makePhysicPaintLayer('fx-layer', 'fx-canonical');
+    const seq = sequenceStore.createFxSequence('F', layer, 100);
+    expect(seq.width).toBe(1080);
+    expect(seq.height).toBe(1920);
+  });
+
+  it('createContentOverlaySequence stamps the provider dims onto the new record', () => {
+    _setSequenceProjectDimensionsProvider(() => ({ width: 1080, height: 1920 }));
+    const layer: Layer = {
+      id: 'overlay-layer',
+      name: 'overlay-layer',
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+      source: { type: 'paint', layerId: 'overlay-layer' },
+      isBase: false,
+    };
+    const seq = sequenceStore.createContentOverlaySequence('O', layer, 100);
+    expect(seq.width).toBe(1080);
+    expect(seq.height).toBe(1920);
+  });
+
+  it('falls back to 1920x1080 when no provider is wired', () => {
+    // Reset to a state where the provider is the default (matches boot).
+    _setSequenceProjectDimensionsProvider(() => DEFAULT_DIMS);
+    const seq = sequenceStore.createSequence('Default');
+    expect(seq.width).toBe(1920);
+    expect(seq.height).toBe(1080);
   });
 });

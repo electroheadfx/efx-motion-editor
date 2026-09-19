@@ -10,15 +10,36 @@ import {
   resetRotoEditBuffer,
   snapshotRotoFrame,
   undoRotoOverlay,
+  type RotoEditableState,
 } from './rotoEditBufferTransactions';
 
-type State = { strokes: unknown[]; settings: { bgMode: 'transparent' | 'white' } };
+type State = RotoEditableState;
 type Frame = { appFrame: number; dataUrl: string };
 
-const state = (strokeCount: number, bgMode: State['settings']['bgMode'] = 'transparent'): State => ({
-  strokes: Array.from({ length: strokeCount }),
-  settings: { bgMode },
-});
+const state = (strokeCount: number, bgMode: 'transparent' | 'white' = 'transparent'): State => ({
+  version: 1,
+  parentLayerId: 'layer-1',
+  documentRevision: 0,
+  activeTrackId: 'track-1',
+  tracks: [{
+    id: 'track-1',
+    name: 'Paint',
+    order: 0,
+    visible: true,
+    solo: false,
+    opacity: 1,
+    blendMode: 'normal',
+    revision: 0,
+    frames: {},
+    rotoPhysical: null,
+    loopClips: [],
+    strokes: Array.from({ length: strokeCount }),
+    settings: { bgMode, paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+  }],
+  background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
+  photoReference: null,
+  compositeRevision: 0,
+} as unknown as State);
 
 function seededBuffer() {
   const buffer = createRotoEditBuffer<State, Frame>();

@@ -4,6 +4,10 @@ import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardControl
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from '../hooks/usePhysicsPaintSessionController';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
+
+vi.mock('@tauri-apps/plugin-fs', () => ({}));
 
 function stroke(mutationId: number, x = 10): PaintStroke {
   return {
@@ -411,7 +415,7 @@ describe('Roto script clipboard controller', () => {
     await flushMicrotasks();
     expect(test.controller.applying.value).toBe(true);
     expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
-    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
     test.controller.observeCompletedMutation(test.engine, completion(999));
     expect(test.controller.status.value).toBe('Applying 0/2');
     expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
@@ -502,13 +506,14 @@ describe('Roto script clipboard controller', () => {
     expect(cancelled.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     cancelled.controller.observeCompletedMutation(cancelled.engine, completion(100));
     expect(cancelled.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
+    cancelled.controller.observeCompletedMutation(cancelled.engine, completion(101));
     await expect(cancelledApply).resolves.toBe(false);
     expect(cancelled.controller.applying.value).toBe(false);
     expect(cancelled.controller.applyProgress.value).toBeNull();
     expect(cancelled.controller.error.value).toEqual({
       operation: 'apply',
       code: 'apply-cancelled',
-      message: 'Apply Script was cancelled after 1 of 2 brushes completed.',
+      message: 'Apply Script was cancelled after 2 of 2 brushes completed.',
     });
 
     cancelled.engine.enqueueRecordedStroke.mockImplementationOnce(() => 101).mockImplementationOnce(() => 102);
@@ -611,13 +616,16 @@ describe('Roto script clipboard controller', () => {
     const test = harness([stroke(1)]);
     await copyCompletedSource(test, [1]);
     test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+    resetEfxPaintStore();
+    registerDocument(createEfxPaintDocument('layer-1'));
     const save = vi.fn(() => ({ version: 1, strokes: [] }));
     const load = vi.fn();
     const downloadState = vi.fn(async () => ({ status: 'saved' as const, message: 'Saved editable JSON state.' }));
     const reader = { readAsText: vi.fn(), onload: null, onerror: null, result: '' } as unknown as FileReader;
     const session = createPhysicsPaintSessionController({
       engine: { save, load }, framesToApply: 1, canvasSize: { width: 800, height: 520 },
-      launchContext: null, currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
+      launchContext: { operationId: 'operation-1', layerId: 'layer-1', startFrame: 8, width: 1000, height: 650 },
+      currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
       annotatePlayState: vi.fn((state) => state), restorePlayFrameEdits: vi.fn(), clearLatestPlayFrames: vi.fn(),
       setCachedPlayPreviewUrl: vi.fn(), setSavedPlayCacheDirty: vi.fn(), setLocalPlayPreviewFrame: vi.fn(),
       setFramesToApply: vi.fn(), bumpPlayFramesVersion: vi.fn(), setLaunchContext: vi.fn(), setApplyStatus: vi.fn(),
@@ -639,7 +647,7 @@ describe('Roto script clipboard controller', () => {
     await expect(applying).resolves.toBe(false);
     await session.saveEditableState();
     session.loadEditableState({ target } as unknown as Event);
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
     expect(downloadState).toHaveBeenCalledTimes(1);
     expect(reader.readAsText).toHaveBeenCalledTimes(1);
   });
@@ -657,8 +665,9 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.status.value).toBe('Applying 0/2');
 
     test.controller.observeCompletedMutation(test.engine, completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(101));
     await expect(applying).resolves.toBe(false);
-    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
     expect(test.controller.availability.value.busy).toBe(false);
     expect(test.controller.status.value).toBe('Failed');
     await expect(test.controller.prepareNavigation(9)).resolves.toBe(true);
@@ -696,6 +705,7 @@ describe('Roto script clipboard controller', () => {
     test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-12', appFrame: 12 });
 
     test.controller.observeCompletedMutation(test.engine, completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(101));
     await expect(applying).resolves.toBe(false);
     expect(test.controller.getAcceptedTarget(test.engine, 100)).toEqual({
       keyId: 'key-8',
@@ -731,10 +741,11 @@ describe('Roto script clipboard controller', () => {
     test.controller.observeCompletedMutation(replacement, completion(100));
     expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     test.controller.observeCompletedMutation(test.engine, completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(101));
 
     await expect(applying).resolves.toBe(false);
     expect(test.controller.applyProgress.value).toBeNull();
-    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
     expect(replacement.enqueueRecordedStroke).not.toHaveBeenCalled();
   });
 
@@ -834,5 +845,74 @@ describe('Roto script clipboard discard availability port (36.15-07)', () => {
     expect(typeof availability.canApply).toBe('boolean');
     expect(availability.copyDisabledReason === null || typeof availability.copyDisabledReason === 'string').toBe(true);
     expect(availability.applyDisabledReason === null || typeof availability.applyDisabledReason === 'string').toBe(true);
+  });
+
+  // 52.1 quick — Apply enqueues the whole burst up front (the engine's
+  // scripted-coalescing drain paces it, so Apply paints in fast multi-stroke
+  // bursts) and reports per-brush progress until the last completion lands.
+  describe('apply burst', () => {
+    it('enqueues the whole burst up front and tracks progress to completion', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+
+      const applying = test.controller.applyScript();
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(2);
+      expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+      expect(test.controller.getAcceptedTarget(test.engine, 100)?.publishPixels).toBe(false);
+      expect(test.controller.getAcceptedTarget(test.engine, 101)?.publishPixels).toBe(true);
+
+      let resolved: boolean | null = null;
+      void applying.then((value) => { resolved = value; });
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+      await flushMicrotasks();
+      expect(resolved).toBeNull();
+      expect(test.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
+      expect(test.controller.status.value).toBe('Applying 1/2');
+
+      test.controller.observeCompletedMutation(test.engine, completion(101));
+      await expect(applying).resolves.toBe(true);
+      expect(resolved).toBe(true);
+      expect(test.controller.status.value).toBe('Applied 2');
+      expect(test.controller.applyProgress.value).toBeNull();
+    });
+
+    it('waits out the in-flight burst on cancel', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+
+      const applying = test.controller.applyScript();
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(2);
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+      test.controller.cancelApply();
+      test.controller.observeCompletedMutation(test.engine, completion(101));
+
+      await expect(applying).resolves.toBe(false);
+      expect(test.controller.error.value?.code).toBe('apply-cancelled');
+      expect(test.controller.applyProgress.value).toBeNull();
+    });
+
+    it('closes as failed after the in-flight brushes drain when an enqueue throws mid-burst', async () => {
+      const test = harness([stroke(1), stroke(2)]);
+      await copyCompletedSource(test, [1, 2]);
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-8', appFrame: 8 });
+      test.engine.enqueueRecordedStroke.mockImplementationOnce((group) => {
+        test.submitted.push(group);
+        return 100;
+      }).mockImplementationOnce(() => { throw new Error('burst failure'); });
+
+      const applying = test.controller.applyScript();
+      await flushMicrotasks();
+      expect(test.submitted).toHaveLength(1);
+      test.controller.observeCompletedMutation(test.engine, completion(100));
+
+      await expect(applying).resolves.toBe(false);
+      expect(test.controller.error.value?.code).toBe('apply-partial-failure');
+      expect(test.controller.error.value?.message).toBe('Apply Script stopped after 1 of 2 brushes: burst failure');
+      expect(test.controller.error.value?.cause).toBe('burst failure');
+    });
   });
 });

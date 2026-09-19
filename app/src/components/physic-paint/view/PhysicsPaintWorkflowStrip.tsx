@@ -1,9 +1,9 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
-import type { ComponentChildren, RefObject } from 'preact';
+import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useSignal, type Signal } from '@preact/signals';
+import { useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
@@ -33,6 +33,7 @@ import type {
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoFrameResolution } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   classifyPhysicPaintRotoGroupFrameTarget,
   type PhysicPaintRotoGroupFrameTarget,
@@ -67,6 +68,7 @@ import {
   setPushCommitInFlight,
   togglePushTool,
 } from './physicsPaintPushArmedTool';
+import { NumericStepper } from '../../shared/NumericStepper';
 import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
@@ -105,7 +107,34 @@ import {
   usePhysicsPaintRailSetDrag,
   type RailSetDragSessionApi,
 } from '../hooks/usePhysicsPaintRailSetDrag';
+import {
+  usePhysicsPaintCrossTrackDrag,
+  type CrossTrackDragSource,
+  type CrossTrackRowBounds,
+} from '../hooks/usePhysicsPaintCrossTrackDrag';
+import { usePhysicsPaintRulerScrub } from '../hooks/usePhysicsPaintRulerScrub';
+import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackgroundClipDrag';
+import { usePhysicsPaintBackgroundClipResize, type BackgroundClipResizeSource } from '../hooks/usePhysicsPaintBackgroundClipResize';
+import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+// 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
+// requestDeleteTrack preview plus the rename-validation constants — every
+// destructive mutation routes through a controller intent (the delete commit
+// lives exclusively in the PhysicsPaintDeleteTrackDialog leaf).
+import {
+  MAX_TRACK_NAME_LENGTH,
+  moveBackgroundClip,
+  requestDeleteTrack,
+  resizeBackgroundClip,
+  setBackgroundClipRepeat,
+  TRACK_NAME_CONTROL_CHAR,
+  type TrackDeletePreview,
+} from '../../../stores/efxPaintStore';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { PhysicsPaintTrackRow, type TrackRowRailSelection } from './PhysicsPaintTrackRow';
+import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
+import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -170,7 +199,7 @@ export interface PhysicsPaintWorkflowStripFrameMarker {
 
 export interface PhysicsPaintWorkflowOnionPreviewFrame {
   frame: number;
-  dataUrl: string;
+  bytes: Uint8Array;
   direction: 'previous' | 'next';
   distance: number;
   source: 'roto';
@@ -180,6 +209,13 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
 export interface PhysicsPaintWorkflowStripProps {
   workflowLabel?: string;
   currentFrame: number;
+  /**
+   * G-52-9 drag-gate: non-null ONLY while the ruler scrub gesture is armed —
+   * the dragged playhead position. The strip body NEVER reads it; it is passed
+   * as a reference to the playhead bar leaf, the single per-drag-frame
+   * subscriber, so a ruler scrub moves only the vertical line.
+   */
+  rotoScrubFrame?: ReadonlySignal<number | null>;
   isPlaying: boolean;
   ready?: boolean;
   occupiedRotoFrames?: number[];
@@ -189,6 +225,12 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoInterpolationMode?: PhysicPaintRotoInterpolationState['mode'];
   rotoInterpolationPending?: boolean;
   statusMessage?: string | null;
+  /** Capsule icon tone: the current status message is an apply/rejection error. */
+  statusIsError?: boolean;
+  /** 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen.
+   *  The capsule renders a thin bar so the artist knows when the canvas is
+   *  released. Absent/0 = idle. */
+  warmProgress?: ReadonlySignal<number>;
   /** Persisted operation-result line (UAT-3): survives the operation's own
    *  selection publication until a NEW explicit gesture or the next operation. */
   operationResult?: string | null;
@@ -219,7 +261,8 @@ export interface PhysicsPaintWorkflowStripProps {
    * ~120 cells per tick).
    */
   rotoCachedPlaybackTick?: Signal<RotoCachedPlaybackTick | null> | null;
-  onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
+  /** 260911-s1j: the document-level interpolation mode intent (writes every
+   *  track); per-track on/off lives on the row's blend button. */
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
@@ -325,18 +368,164 @@ export interface PhysicsPaintWorkflowStripProps {
   mutationLocked?: boolean;
   rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
+  /** 260905-dso: relocated buffer Apply intent — the Tools popover Actions
+   *  section routes through the Studio's identity-stable handleApplyScript. */
+  onApplyScript?: () => void;
+  /** 260905-dso: relocated buffer Clear intent — the Tools popover Actions
+   *  section routes through the Studio's identity-stable handleDiscardScript. */
+  onDiscardScript?: () => void;
+  /** 260905-dso: the library's transaction-phase mutation lock, passed as a
+   *  signal reference so the workflow memo stays cacheable (the strip reads
+   *  `.value` in render like the sibling physicalActions signal reads). */
+  rotoScriptActionMutationDisabledReason?: ReadonlySignal<string | null>;
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
+  /** D-02 amendment (audible scrub): ruler scrub armed (4px threshold crossed). */
+  onScrubStart?: () => void;
+  /** D-02 amendment: ruler scrub released — the final frame for the audio re-anchor. */
+  onScrubEnd?: (frame: number) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
   onGoToNextFrame: () => void;
   onGoToLastFrame: () => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
+  /**
+   * 47-01 multi-track row slice: when `tracks` is present the strip renders
+   * the rows-region — the active track's rich lane PLUS one presentational
+   * `PhysicsPaintTrackRow` per non-active Paint track and the fixed Background
+   * row. When absent the strip renders byte-identical to the pre-47 single-lane
+   * surface. Row-header clicks route through `onSelectTrack`, never mutating
+   * directly in the view (controller routes through setActiveTrackId).
+   */
+  tracks?: readonly InternalPaintTrack[];
+  /** The document's current active track id — the active lane keeps the rich strip. */
+  activeTrackId?: string;
+  /** The EFX Paint layer the runtime store keys per-row reads on. */
+  layerId?: string;
+  /** Fixed Background track (clips/fallback/visible) rendered as the muted Bg row. */
+  background?: BackgroundTrack | null;
+  /** Row-header click intent; the controller routes it through setActiveTrackId. */
+  onSelectTrack?: (trackId: string) => void;
+  /** 47 close-out UAT round 5: one-click cross-track selection — a click on a
+   *  non-active row's frame/key cell selects it and activates the track in the
+   *  same click (controller routes through setActiveTrackId + selection). */
+  onSelectTrackFrame?: (trackId: string, frame: number) => void;
+  /** One-click rail selection on a non-active row — activates the track and
+   *  selects the clicked Key Rail / Loop Clip rail (controller-owned). */
+  onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
+  /** 47-01 mockup redesign: '+' add-track intent (controller routes through addTrack). */
+  onAddTrack?: () => void;
+  /** Eye toggle intent (controller routes through setTrackVisible). */
+  onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
+  /** 47-02 Task 2: 'S' solo toggle intent (controller routes through setTrackSolo). */
+  onToggleSolo?: (trackId: string, solo: boolean) => void;
+  /** 47 UAT: per-row frame-blending toggle intent — the controller toggles
+   *  the track's canonical interpolation state (physicPaintStore). */
+  onToggleBlend?: (trackId: string) => void;
+  /** Rename commit intent (controller routes through renameTrack). */
+  onRenameTrack?: (trackId: string, name: string) => void;
+  /** Copy intent (controller routes through duplicateTrack). */
+  onDuplicateTrack?: (trackId: string) => void;
+  /** Trash intent — the strip opens the acknowledge-and-delete dialog through
+   *  the pure requestDeleteTrack preview; the dialog's Confirm is the ONLY
+   *  commit surface (D-17). */
+  onDeleteTrack?: (trackId: string) => void;
+  /** 47-02 Task 2: header-drag reorder intent (controller routes through
+   *  reorderTrack(layerId, trackId, newOrder) — writes the order field only). */
+  onReorderTrack?: (trackId: string, newOrder: number) => void;
+  /** 49-05 Task 1 (S1): the locked Bg row's Import control — the controller
+   *  routes it through the Studio's picker swap signal (49-04 mount). */
+  onImportBackground?: () => void;
+  /** 49-05 Task 2 (S4): a click on a Bg clip rail routes clip selection to the
+   *  right-panel `Background Clip` section (consumed by 49-06). The strip never
+   *  owns the selection signal — the controller does. */
+  onSelectBackgroundClip?: (clipId: string) => void;
+  /** 49-06 (UAT round 2): clicking an EMPTY Background row cell is the
+   *  placement gesture — the controller selects the target frame (the import
+   *  icon then imports AT that frame) and clears any selected Bg clip. */
+  onSelectBackgroundFrame?: (frame: number) => void;
+  /** 49-06 (UAT round 2): the selected Bg clip id — the matching rail paints
+   *  the orange selection treatment. */
+  selectedBackgroundClipId?: string | null;
+  /** 49-06 (UAT round 2): the placement-target frame — the clicked empty Bg
+   *  cell carries a subtle marker. */
+  backgroundPlacementFrame?: number | null;
+  /* ---- 50-UAT (modal redesign): the photo/reference affordance — a camera
+     icon in the top strip (NOT a track row, per the 50-UAT redesign). It opens
+     the floating Photo Reference dialog (Import/Replace/Remove and every
+     setting live there — the X-badge remove is gone, 50-UAT round 2). ---- */
+  /** The document's photo/reference track (null = no source yet). */
+  photoReference?: PhotoReferenceTrack | null;
+  /** The strip camera icon's open-dialog intent. */
+  onOpenReference?: () => void;
+  /* ---- 52-05 (G-52-3): the track rail-creation flow — reveal as the 4th rail kind ---- */
+  /** Choosing a PlayScript rail kind (motion/static) opens the Create Rail
+   *  dialog on the Paint tab — the same flow that creates a motion/static
+   *  PlayScript rail today. */
+  onCreatePlayScriptRail?: (mode: 'progressive' | 'static') => void;
+  /** Choosing the reveal rail kind opens the SAME Create Rail dialog on the
+   *  Reveal Photo Rail tab (one model, two entry points, the SAME
+   *  create-reveal-rail mutation). The D-12 reference guard lives inside the
+   *  dialog — it opens the Photo Reference modal proactively, never a disabled
+   *  menu item. */
+  onCreateRevealRail?: () => void;
 }
 
 const RULER_STEP = 3;
+/* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request). This
+   drives lane width, ruler ticks, drag/scroll math, and the per-cell grid; one
+   ruler tick spans RULER_STEP cells (3 × 18px = 54px). */
 const ROTO_CELL_WIDTH_PX = 18;
+/** One ruler tick spans RULER_STEP abutting cells (3 × 18px = 54px). */
+const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
+
+/* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
+   46 (header) + 1 (strip border) + 1 (timeline border) + 28 (ruler) + 34
+   (action row) + 14 (scrollbar) = 124. The strip defaults to exactly enough
+   height for every track row + the Bg row (30px each, UAT round 4 compact
+   rows), capped at 270px so the canvas keeps room; the top-edge drag handle
+   lets the user shrink (vertical scroll appears) or grow up to the full
+   content height — never beyond the number of tracks. */
+// 47-01 UAT round 7: the row is 30px (8px rail band + 22px cells, no overlap).
+const STRIP_ROW_HEIGHT_PX = 30;
+const STRIP_CHROME_HEIGHT_PX = 124;
+const STRIP_MAX_HEIGHT_PX = 270;
+const STRIP_MIN_ROWS = 1;
+
+/**
+ * 47-02 Task 3 (TML-03/D-05): the pure ensure-active-row-visible delta.
+ * Given one row's lane bounds and the rows-region viewport bounds, all in
+ * CONTENT coordinates (lane = absolute scrollable content position;
+ * viewportTop = current scrollTop; viewportBottom = scrollTop + clientHeight),
+ * returns the scrollTop adjustment that brings the row into view:
+ * - row below the viewport → positive delta aligning the row's bottom with
+ *   the viewport's bottom;
+ * - row above the viewport → negative delta aligning the row's top with the
+ *   viewport's top;
+ * - fully visible → 0.
+ * A row TALLER than the viewport can never be fully visible, so the delta
+ * clamps to align the row's TOP with the viewport's top (never scrolls past
+ * the row's own top). The caller additionally clamps the result to the
+ * scroll extent; this function stays pure so the test can prove the whole
+ * geometry table without a DOM.
+ */
+export function computeEnsureRowScrollDelta(
+  laneTop: number,
+  laneBottom: number,
+  viewportTop: number,
+  viewportBottom: number,
+): number {
+  const laneHeight = laneBottom - laneTop;
+  const viewportHeight = viewportBottom - viewportTop;
+  if (laneHeight >= viewportHeight) {
+    // Taller-than-viewport row: pin the row's top to the viewport's top.
+    return laneTop - viewportTop;
+  }
+  if (laneTop < viewportTop) return laneTop - viewportTop;
+  if (laneBottom > viewportBottom) return laneBottom - viewportBottom;
+  return 0;
+}
 const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresentation> = new Map();
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
@@ -399,7 +588,7 @@ export function buildRotoTimelineStructuralIndex(
         cachedFrameByAppFrame.set(appFrame, {
           frameIndex: 0,
           appFrame,
-          dataUrl: 'data:image/png;base64,',
+          bytes: new Uint8Array(0),
           source: 'generated-interpolation',
         });
       }
@@ -426,6 +615,20 @@ function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefine
  */
 function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null): string {
   return disabledReason ? `unavailable: ${disabledReason}` : description;
+}
+
+/**
+ * 260905-d1w amendment: a linked Rail repeat is any virtual linked occurrence
+ * past the source cycle — 'linked-unresolved' (always a repeat) or a
+ * linked/linked-generated/linked-gap cell with repeatInstance > 0. Mirrors the
+ * in-map `isLinkedRepeat` predicate (cell classification stays untouched).
+ */
+function isLinkedRepeatFrameResolution(resolution: PhysicPaintRotoFrameResolution | null | undefined): boolean {
+  return resolution?.kind === 'linked-unresolved'
+    || ((resolution?.kind === 'linked'
+      || resolution?.kind === 'linked-generated'
+      || resolution?.kind === 'linked-gap')
+      && resolution.repeatInstance > 0);
 }
 
 type RotoDragCandidateKind = 'empty' | 'real-key' | 'generated' | 'outside' | 'locked';
@@ -532,19 +735,54 @@ function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; p
   return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>;
 }
 
-function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string> }) {
+/**
+ * 260827-s52 Task 2: the full-height playhead bar — a 2px accent line overlaying
+ * the ruler, every track row, and the Bg row at the current frame. It derives
+ * from the EXISTING current-frame signal plus (only while playback is active)
+ * the per-tick playback signal — mirroring RotoPlaybackCurrentFrameOutput, so
+ * an idle strip holds zero per-tick subscriptions and only this leaf re-renders
+ * per tick during playback. No new position state exists here: cursorAppFrame
+ * (props.currentFrame, fed by launchContext.startFrame) stays the single
+ * position source, so the bar follows seeks, cell navigation, playback ticks,
+ * and undo/redo restores for free. CSS enforces pointer-events: none (T-s52-03).
+ */
+function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFrame?: ReadonlySignal<number | null>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
+  // G-52-9 drag-gate: while the ruler scrub gesture is armed the scrub feed
+  // wins — this leaf is the ONLY strip UI that follows the drag (the Studio
+  // runs no startFrame propagation mid-drag, so props.currentFrame holds the
+  // gesture's origin frame until the release settle).
+  const frame = props.playbackActive
+    ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value)
+    : (props.scrubFrame?.value ?? props.currentFrame.value);
+  const clampedFrame = Math.max(0, Math.min(frame, Math.max(0, props.frameCount - 1)));
+  // 4 = the timeline-scroll padding-left (the ruler/cell origin); +8 = half a
+  // cell (18/2 = 9) minus half the 2px line → the bar centers on the frame.
+  const left = 4 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
+  return <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }} />;
+}
+
+function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean; warmProgress?: ReadonlySignal<number> }) {
   const tooltip = useStyledTooltip();
   const capsuleText = props.capsuleText.value;
+  const warm = props.warmProgress?.value ?? 0;
+  const warming = warm > 0 && warm < 100;
   return (
     <div
-      class="physics-paint-status-capsule"
-      role="status"
+      class={`physics-paint-status-capsule${props.isError ? ' physics-paint-status-capsule-error' : ''}`}
+      role={props.isError ? 'alert' : 'status'}
       aria-live="polite"
       onPointerEnter={tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
-      <Info size={16} aria-hidden="true" />
+      {props.isError
+        ? <TriangleAlert size={16} aria-hidden="true" />
+        : <Info size={16} aria-hidden="true" />}
       <span class="physics-paint-status-capsule-text">{capsuleText}</span>
+      {warming && (
+        <span class="physics-paint-status-capsule-warm" aria-hidden="true">
+          <span class="physics-paint-status-capsule-warm-fill" style={{ width: `${warm}%` }} />
+        </span>
+      )}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
     </div>
   );
@@ -553,6 +791,10 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string> }) 
 interface PhysicsPaintWorkflowStaticChromeProps {
   currentFrame: Signal<number>;
   capsuleText: Signal<string>;
+  /** Capsule icon tone: a warning triangle when the current message is an error. */
+  capsuleIsError: boolean;
+  /** 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen. */
+  warmProgress?: ReadonlySignal<number>;
   ready: boolean;
   playbackAvailable: boolean;
   playbackActive: boolean;
@@ -571,7 +813,13 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   /** 41-04 (D-12/D-13): session-local Audio Preview toggle state + intent. */
   audioPreviewEnabled?: boolean;
   onAudioPreviewToggle?: () => void;
-  onInterpolationEnabledChange?: (enabled: boolean) => void;
+  /** 260905-d1w: relocated Solo toggle state — the pill nav-button reads the
+   *  session solo arm + availability; the armed visual is the pill .active
+   *  treatment (soloArmedClass carries the conditional ' active' suffix). */
+  soloArmed: boolean;
+  soloArmedClass: string;
+  soloToolDisabled: boolean;
+  soloToolDisabledReason: string | null;
   onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
@@ -592,8 +840,20 @@ interface PhysicsPaintWorkflowStaticChromeProps {
    *  nothing (popover byte-identical to 43.5). The popover never creates or
    *  modifies the set — this is a pure read of the Plan 01 mapper output. */
   forceSpacingScopeLine: string | null;
-  onForceSpacingInput?: (event: Event) => void;
+  /** The stepper emits the committed field value (D-23/D-24). */
+  onForceSpacingInput?: (value: string) => void;
   onForceSpacingSubmit?: (event: Event) => void;
+  /** 260905-dso: relocated buffer Apply/Clear ports + derived availability for
+   *  the toolbox popover's third "Actions" section. The handlers are the
+   *  Studio's identity-stable useCallbacks; the four plain values are derived
+   *  in the strip body from the rotoScript availability + library mutation
+   *  lock (same sources the ScriptsPanel read). */
+  onApplyScript?: () => void;
+  onDiscardScript?: () => void;
+  canApplyScriptAction: boolean;
+  applyScriptActionDisabledReason: string | null;
+  canClearScriptBuffer: boolean;
+  clearScriptBufferDisabledReason: string | null;
 }
 
 /**
@@ -726,15 +986,77 @@ function PhysicsPaintToolboxPopover(props: {
   return panel;
 }
 
+/**
+ * 52 UAT (AM-3): the rail-kind menu — a Studio-local, non-modal menu portaled
+ * to document.body so the workflow strip's overflow-y: hidden can never clip it
+ * (the strip's bottom edge is the window's bottom area, so an in-strip menu
+ * opening below the button rendered entirely inside the clipped band and was
+ * never painted). Renders entirely ABOVE the anchor button with its bottom edge
+ * 4px above the anchor's top, left-aligned to the anchor's left edge and clamped
+ * 8px inside the strip's horizontal bounds. The owning chrome passes its own
+ * panel ref so dismissal classification can prove interior hits through the
+ * portal (toolbox popover pattern, 43.5-02 smoke fix 1). No focus trap, no
+ * backdrop; dismissal is handled by the owning chrome (outside pointerdown /
+ * Escape window capture listeners). Must stay transform/filter-free so
+ * position:fixed keeps the viewport as its containing block.
+ */
+function PhysicsPaintRailCreateMenu(props: {
+  anchorRef: RefObject<HTMLSpanElement>;
+  panelRef: RefObject<HTMLDivElement>;
+  open: boolean;
+  children: ComponentChildren;
+}) {
+  useLayoutEffect(() => {
+    const panel = props.panelRef.current;
+    const anchor = props.anchorRef.current;
+    if (!props.open || !panel || !anchor) return;
+    const panelSize = { width: panel.offsetWidth, height: panel.offsetHeight };
+    const anchorRect = anchor.getBoundingClientRect();
+    const strip = anchor.closest('.physics-paint-workflow-strip');
+    const stripRect = strip ? strip.getBoundingClientRect() : anchorRect;
+    const margin = 8;
+    const gap = 4;
+    const minLeft = Math.max(margin, stripRect.left + margin);
+    const maxLeft = Math.max(minLeft, stripRect.right - margin - panelSize.width);
+    const left = Math.max(minLeft, Math.min(anchorRect.left, maxLeft));
+    const top = Math.max(margin, anchorRect.top - gap - panelSize.height);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.visibility = 'visible';
+  });
+
+  if (!props.open) return null;
+  const panel = (
+    <div
+      ref={props.panelRef}
+      class="physics-paint-rail-create-menu"
+      role="group"
+      aria-label="Rail kind"
+      style={{ visibility: 'hidden' }}
+    >
+      {props.children}
+    </div>
+  );
+  if (typeof document !== 'undefined') return createPortal(panel, document.body);
+  return panel;
+}
+
 function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticChromeProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const closeTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
   const audioPreviewTooltip = useStyledTooltip();
+  // 260905-d1w: the relocated Solo nav-button owns its tooltip here, beside
+  // the other playback-pill tooltips.
+  const soloTooltip = useStyledTooltip();
   const toolboxTooltip = useStyledTooltip();
   // 43.5-02 Task 2: the relocated Key Spacing form owns its tooltip here,
   // beside the other popover-internal tooltips.
   const forceSpacingTooltip = useStyledTooltip();
+  // 260905-dso: the relocated buffer Apply/Clear buttons own their tooltips
+  // here, beside the other popover-internal tooltips.
+  const applyScriptTooltip = useStyledTooltip();
+  const clearScriptBufferTooltip = useStyledTooltip();
   // 43.5-02 (D-01/D-02): toolbox popover toggle + self-contained dismissal.
   // Outside pointerdown and Escape dismiss it via window capture-phase listeners
   // registered ONLY while open; no focus trap, no backdrop, no automatic focus
@@ -779,14 +1101,10 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       window.removeEventListener('keydown', onEscapeKeyDown, true);
     };
   }, [toolboxOpen]);
-  function handleRotoPlaybackFpsInput(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
+  // D-23/D-24: the shared − [field] + stepper owns the fps step 0.5 and its
+  // 1–60 clamp; this handler keeps the old finite-value guard.
+  function handleRotoPlaybackFpsChange(value: number) {
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
-  }
-  function handleInterpolationModeChange(event: Event) {
-    const mode = (event.currentTarget as HTMLSelectElement).value;
-    if (mode !== 'duplicate' && mode !== 'blend') return;
-    props.onInterpolationModeChange?.(mode);
   }
   return (
     <div class="physics-paint-workflow-header">
@@ -800,6 +1118,48 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       </div>
       <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
         <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.playbackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={props.playbackLoop} disabled={!props.ready || !props.onPlaybackLoopChange} onClick={() => props.onPlaybackLoopChange?.(!props.playbackLoop)}><RotateCcw size={15} /></button>
+        <span
+          class="physics-paint-roto-solo-toggle-anchor"
+          onPointerEnter={soloTooltip.onPointerEnter}
+          onPointerLeave={soloTooltip.onPointerLeave}
+        >
+          {/* 260905-d1w: Solo relocated from the action row into the playback
+              pill as an icon-only nav-button beside the Loop toggle. The
+              onClick disarms an armed Push tool FIRST, unconditionally (D-20
+              preserved explicitly — the action-row capture guard no longer
+              covers this button). */}
+          <button
+            type="button"
+            class={`physics-paint-nav-button physics-paint-roto-solo-toggle${props.soloArmedClass}`}
+            aria-label="Solo selected Rails"
+            aria-pressed={props.soloArmed ? 'true' : 'false'}
+            aria-disabled={props.soloToolDisabled ? 'true' : undefined}
+            aria-describedby={props.soloToolDisabled ? 'roto-key-action-reason-solo' : undefined}
+            onFocus={soloTooltip.onFocus}
+            onBlur={soloTooltip.onBlur}
+            onClick={() => {
+              disarmPushTool();
+              soloTooltip.hide();
+              if (props.soloToolDisabled) return;
+              // Mode toggle: arming never starts or stops transport
+              // (D-16); re-click disarms.
+              toggleSolo();
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && props.soloToolDisabled) event.preventDefault();
+            }}
+          >
+            <Focus size={15} aria-hidden="true" />
+          </button>
+          {props.soloToolDisabled ? (
+            <span id="roto-key-action-reason-solo" class="physics-paint-sr-only">{props.soloToolDisabledReason}</span>
+          ) : null}
+          <PhysicsPaintStyledTooltip visible={soloTooltip.visible} region="bottom">
+            {props.soloArmed
+              ? 'Exit solo playback.'
+              : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', props.soloToolDisabledReason)}
+          </PhysicsPaintStyledTooltip>
+        </span>
         {props.onAudioPreviewToggle ? (
           <span
             class="physics-paint-audio-preview-toggle-anchor"
@@ -823,9 +1183,35 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             <PhysicsPaintStyledTooltip visible={audioPreviewTooltip.visible} region="bottom">{props.audioPreviewEnabled ? 'Audio preview On — click to mute monitoring' : 'Audio preview Off — click to hear monitoring'}</PhysicsPaintStyledTooltip>
           </span>
         ) : null}
-        <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
+        <label class="physics-paint-roto-fps-control"><span>fps</span><NumericStepper
+          value={props.playbackFps || props.projectFps || 1}
+          onChange={handleRotoPlaybackFpsChange}
+          step={0.5}
+          min={1}
+          max={60}
+          disabled={!props.ready}
+          ariaLabel="Cached Roto playback frames per second"
+          class="physics-paint-roto-fps-stepper"
+          inputStyle={{
+            width: '40px',
+            height: '24px',
+            padding: '2px 4px',
+            border: '1px solid #747980',
+            borderRadius: '3px',
+            backgroundColor: '#5a5c5f',
+            color: '#f8fafc',
+            fontWeight: 700,
+          }}
+          buttonStyle={{
+            width: '22px',
+            height: '24px',
+            border: '1px solid #747980',
+            backgroundColor: '#5a5c5f',
+            color: '#f8fafc',
+          }}
+        /></label>
       </div>
-      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} />
+      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       <span
         class="physics-paint-roto-key-icon-action physics-paint-toolbox-button-anchor"
         ref={toolboxAnchorRef}
@@ -835,7 +1221,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <button
           type="button"
           class={`physics-paint-roto-key-icon-button physics-paint-toolbox-toggle${toolboxOpen ? ' physics-paint-toolbox-toggle-open' : ''}`}
-          aria-label={props.interpolationEnabled ? 'Timeline tools, interpolation on' : 'Timeline tools, interpolation off'}
+          aria-label="Timeline tools"
           aria-haspopup="dialog"
           aria-expanded={toolboxOpen}
           aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
@@ -845,25 +1231,21 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         >
           <span class="physics-paint-toolbox-badge-anchor">
             <ToolCase size={18} aria-hidden="true" />
-            {props.interpolationEnabled ? <span class="physics-paint-toolbox-badge" aria-hidden="true" /> : null}
           </span>
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation and Key Spacing.', null)}
+          {buildGuardedActionTooltipCopy('Open timeline tools — Key Spacing and Actions.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
-      {props.onInterpolationEnabledChange ? (
+      {(props.onApplyScript || props.onDiscardScript) ? (
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
-          <div class="physics-paint-toolbox-section">
-            <div class="physics-paint-toolbox-section-heading">Interpolation</div>
-            <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-              <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
-              <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
-              <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
-            </div>
-          </div>
-          <div class="physics-paint-toolbox-divider" />
+          {/* 260911-s1j follow-up: the Interpolation section (mode dropdown +
+              status pill) is removed from the UI — the mode is fixed on Frame
+              duplicate until the engine's Frame blending slowdown work lands
+              (the store coerces every blend state to duplicate). The retained
+              interpolation props/handler stay wired on the static chrome for
+              the re-introduction. */}
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Key Spacing</div>
             {props.forceSpacingScopeLine ? (
@@ -878,20 +1260,21 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 >
                   <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
                   <span class="physics-paint-roto-key-icon-label">Key spacing</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={props.forceSpacingInput}
-                    aria-label="Empty frames between real keys"
-                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
-                    aria-describedby={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
+                  <NumericStepper
+                    value={Number.isFinite(Number(props.forceSpacingInput)) ? Number(props.forceSpacingInput) : 0}
+                    onChange={(value) => {
+                      if (!props.canApplyForceSpacing) return;
+                      props.onForceSpacingInput?.(String(value));
+                    }}
+                    step={1}
+                    min={0}
+                    ariaLabel="Empty frames between real keys"
+                    ariaDisabled={!props.canApplyForceSpacing}
+                    ariaDescribedBy={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
                     onFocus={forceSpacingTooltip.onFocus}
                     onBlur={forceSpacingTooltip.onBlur}
-                    onInput={(event) => {
-                      if (!props.canApplyForceSpacing) return;
-                      props.onForceSpacingInput?.(event);
-                    }}
+                    inputStyle={{ width: '34px', padding: '2px 4px' }}
+                    buttonStyle={{ width: '18px', height: '18px' }}
                   />
                   <button
                     type="submit"
@@ -910,6 +1293,68 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 </PhysicsPaintStyledTooltip>
               </span>
             ) : null}
+          </div>
+          <div class="physics-paint-toolbox-divider" />
+          <div class="physics-paint-toolbox-section">
+            <div class="physics-paint-toolbox-section-heading">Actions</div>
+            <div class="physics-paint-toolbox-actions-row">
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Apply Action to Frame"
+                  aria-disabled={!props.canApplyScriptAction ? 'true' : undefined}
+                  aria-describedby={!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? 'roto-key-action-reason-apply' : undefined}
+                  onFocus={applyScriptTooltip.onFocus}
+                  onBlur={applyScriptTooltip.onBlur}
+                  onClick={() => {
+                    applyScriptTooltip.hide();
+                    if (!props.canApplyScriptAction) return;
+                    props.onApplyScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction) event.preventDefault();
+                  }}
+                >
+                  <ClipboardPen size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Apply</span>
+                </button>
+                {!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? (
+                  <span id="roto-key-action-reason-apply" class="physics-paint-sr-only">{props.applyScriptActionDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Apply Action to Frame', props.applyScriptActionDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Clear Action Buffer"
+                  aria-disabled={!props.canClearScriptBuffer ? 'true' : undefined}
+                  aria-describedby={!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? 'roto-key-action-reason-clear' : undefined}
+                  onFocus={clearScriptBufferTooltip.onFocus}
+                  onBlur={clearScriptBufferTooltip.onBlur}
+                  onClick={() => {
+                    clearScriptBufferTooltip.hide();
+                    if (!props.canClearScriptBuffer) return;
+                    props.onDiscardScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canClearScriptBuffer) event.preventDefault();
+                  }}
+                >
+                  <ClipboardX size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Clear</span>
+                </button>
+                {!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? (
+                  <span id="roto-key-action-reason-clear" class="physics-paint-sr-only">{props.clearScriptBufferDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Clear Action from buffer', props.clearScriptBufferDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+            </div>
           </div>
         </PhysicsPaintToolboxPopover>
       ) : null}
@@ -1009,11 +1454,54 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
   );
 }
 
-const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);
+// 52.1 (fresh-key glitch): the per-cell derivation cache full-invalidates
+// whenever physicalCellByAppFrame identity changes (a fresh key inserts a new
+// cell), handing EVERY cell a brand-new RotoCellViewModel object. The default
+// memo identity check then re-renders all ~626 cells on each key creation even
+// though their content is byte-identical — a ~157ms JS burst + DOM-diff churn
+// inside the paint window. Compare VM CONTENT (not identity) so unchanged cells
+// bail and only the frame(s) whose derivation actually changed re-render.
+function rotoCellVmValuesEqual(a: RotoCellViewModel, b: RotoCellViewModel): boolean {
+  if (a.frame !== b.frame) return false;
+  if (a.baseMeaning !== b.baseMeaning) return false;
+  if (a.state !== b.state) return false;
+  if (a.label !== b.label) return false;
+  if (a.title !== b.title) return false;
+  if (a.ariaLabel !== b.ariaLabel) return false;
+  if (a.fillClass !== b.fillClass) return false;
+  if (a.isEditableTarget !== b.isEditableTarget) return false;
+  if (a.isCurrent !== b.isCurrent) return false;
+  if (a.isDirty !== b.isDirty) return false;
+  if (a.isPending !== b.isPending) return false;
+  if (a.overlays.length !== b.overlays.length) return false;
+  for (let i = 0; i < a.overlays.length; i++) {
+    if (a.overlays[i] !== b.overlays[i]) return false;
+  }
+  return true;
+}
+
+const RotoTimelineCellButton = memo(
+  RotoTimelineCellButtonImpl,
+  (prev, next) => prev.frame === next.frame
+    && prev.semanticKind === next.semanticKind
+    && prev.cellKeyId === next.cellKeyId
+    && prev.cellClass === next.cellClass
+    && prev.dragEligible === next.dragEligible
+    && prev.startsInterpolationSegment === next.startsInterpolationSegment
+    && prev.ariaLabel === next.ariaLabel
+    && prev.ariaSelected === next.ariaSelected
+    && prev.tooltipCopy === next.tooltipCopy
+    && prev.onCellPointerDown === next.onCellPointerDown
+    && prev.onCellClick === next.onCellClick
+    && rotoCellVmValuesEqual(prev.vm, next.vm),
+);
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
+  // 47-01 UAT round 4: custom vertical scrollbar state (thumb top/height),
+  // mirroring the horizontal pill design for the rows-region.
+  const [verticalScrollbar, setVerticalScrollbar] = useState({ top: 0, height: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   // Group Rail drag preview (plan 03): session-only publication surfaced by the
   // rail's session hook, consumed for the gap preview paint only (Pitfall 5).
@@ -1023,6 +1511,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   >(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
+  // 47-01 header column: the pinned header-rows container and the rows-region
+  // share the same vertical scroll position (D-05). The sync is a no-op while
+  // the track count fits the band; it keeps header cells aligned with their
+  // rows once the region overflows.
+  const headerRowsRef = useRef<HTMLDivElement>(null);
+  // 47-02 Task 3: the pinned header-column element itself never scrolls (D-01)
+  // — the band INSIDE it carries the vertical scroll position. The strip owns
+  // the ref so the pinned contract is observable (scrollTop stays 0 while the
+  // rows region scrolls).
+  const headerColumnRef = useRef<HTMLDivElement>(null);
+  const rowsRegionRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
   const suppressNextRotoClickRef = useRef(false);
@@ -1030,9 +1529,194 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 43.4 defect 6: the last focused Key Rail button and its timeline container,
   // so a Delete/Undo/Redo commit that removes the button can restore focus to
   // the stable container instead of leaving it orphaned on body.
-  const lastFocusedKeyRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
+  const lastFocusedRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
+  // 52-04 (D-19): the track rail-creation menu open state — the "Create rail"
+  // button in the action row offers the rail kinds (motion/static/reveal).
+  const railCreateMenuOpen = useSignal(false);
+  // 52 UAT (AM-3): the rail-kind menu is portaled to document.body (the strip's
+  // overflow-y: hidden clips an in-strip menu that opens below the button at the
+  // strip's bottom edge). The owning chrome keeps the anchor + panel refs so the
+  // outside-pointerdown classifier can prove interior hits through the portal
+  // (toolbox popover pattern, 43.5-02 smoke fix 1).
+  const railCreateAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const railCreateMenuPanelRef = useRef<HTMLDivElement>(null);
+  const closeRailCreateMenu = useCallback(() => {
+    railCreateMenuOpen.value = false;
+  }, []);
+  useEffect(() => {
+    if (!railCreateMenuOpen.value) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (shouldDismissToolboxPopover(
+        event.target,
+        [railCreateAnchorRef.current, railCreateMenuPanelRef.current],
+      )) closeRailCreateMenu();
+    };
+    const onEscapeKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopImmediatePropagation();
+      closeRailCreateMenu();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onEscapeKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onEscapeKeyDown, true);
+    };
+  }, [railCreateMenuOpen.value]);
+  // 47-01 header column: the active lane's header cell shows the active
+  // track's name (UI-SPEC header column layout — every row gets a label).
+  // 47-01 mockup redesign: edit-in-place rename state. The header column is
+  // presentational and hook-free, so the draft + active-edit track live here
+  // and flow down to the matching `PhysicsPaintTrackRowHeader` as props.
+  const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  // 47-01 UAT round 3: flexible/resizable strip height. `null` = auto (default
+  // = exactly enough for all rows + Bg, capped at 270px); a number = the user's
+  // session-local manual resize. Clamped to [1 row, full content height] so the
+  // user can never grow the timeline beyond the number of tracks.
+  const [stripHeightOverride, setStripHeightOverride] = useState<number | null>(null);
+  const stripResizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const trackCount = props.tracks?.length ?? 0;
+  // 50-UAT redesign: the photo/reference is a strip camera icon, NOT a row, so
+  // the auto strip height reserves only the Paint rows + the Bg row.
+  const rowCount = trackCount > 0 ? trackCount + (props.background ? 1 : 0) : 1;
+  const contentHeightPx = rowCount * STRIP_ROW_HEIGHT_PX;
+  const maxStripHeightPx = STRIP_CHROME_HEIGHT_PX + contentHeightPx;
+  const minStripHeightPx = STRIP_CHROME_HEIGHT_PX + STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX;
+  const defaultStripHeightPx = Math.min(maxStripHeightPx, STRIP_MAX_HEIGHT_PX);
+  const stripHeightPx = Math.max(minStripHeightPx, Math.min(stripHeightOverride ?? defaultStripHeightPx, maxStripHeightPx));
+  const handleStripResizePointerDown = useCallback((event: PointerEvent) => {
+    event.preventDefault();
+    stripResizeStartRef.current = { startY: event.clientY, startHeight: stripHeightPx };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  }, [stripHeightPx]);
+  const handleStripResizePointerMove = useCallback((event: PointerEvent) => {
+    const start = stripResizeStartRef.current;
+    if (!start) return;
+    // Dragging up (clientY decreases) grows the strip; down shrinks it.
+    const delta = start.startY - event.clientY;
+    const next = Math.max(minStripHeightPx, Math.min(start.startHeight + delta, maxStripHeightPx));
+    setStripHeightOverride(next);
+  }, [minStripHeightPx, maxStripHeightPx]);
+  const handleStripResizePointerEnd = useCallback((event: PointerEvent) => {
+    stripResizeStartRef.current = null;
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
+  }, []);
+  const handleStartRename = useCallback((trackId: string) => {
+    const track = props.tracks?.find((candidate) => candidate.id === trackId);
+    setRenamingTrackId(trackId);
+    setRenameDraft(track?.name ?? '');
+  }, [props.tracks]);
+  const handleRenameDraftChange = useCallback((_trackId: string, value: string) => {
+    setRenameDraft(value);
+  }, []);
+  // 47-02 Task 2 (T-47-02-01 / ASVS V5): the rename commit path validates
+  // fail-closed BEFORE any store write — the draft is trimmed and rejected for
+  // empty/whitespace-only, control characters, and over-length names (the same
+  // rules the store's renameTrack applies). A rejected commit keeps the prior
+  // name and publishes the rejection to the status capsule; only a valid draft
+  // reaches the controller intent exactly once.
+  const handleCommitRename = useCallback((trackId: string) => {
+    const trimmed = renameDraft.trim();
+    if (trimmed.length === 0) {
+      setRenamingTrackId(null);
+      props.rotoPhysicalActions?.publishStatus?.('Track names cannot be empty.');
+      return;
+    }
+    if (TRACK_NAME_CONTROL_CHAR.test(trimmed)) {
+      setRenamingTrackId(null);
+      props.rotoPhysicalActions?.publishStatus?.('Track names cannot contain control characters.');
+      return;
+    }
+    if (trimmed.length > MAX_TRACK_NAME_LENGTH) {
+      setRenamingTrackId(null);
+      props.rotoPhysicalActions?.publishStatus?.(`Track names are limited to ${MAX_TRACK_NAME_LENGTH} characters.`);
+      return;
+    }
+    setRenamingTrackId(null);
+    props.onRenameTrack?.(trackId, trimmed);
+  }, [props.tracks, props.onRenameTrack, renameDraft, props.rotoPhysicalActions]);
+  const handleCancelRename = useCallback(() => {
+    setRenamingTrackId(null);
+  }, []);
+  // 47-02 Task 2: 'S' solo toggle intent — the row's armed state reflects the
+  // track's DOCUMENT solo flag (260911-sli/s1j); the click routes the desired
+  // visibility to the controller (setTrackSolo). The session playback arm
+  // (physicsPaintSoloArm) stays exclusive to the playback pill.
+  const handleToggleSolo = useCallback((trackId: string) => {
+    const track = props.tracks?.find((candidate) => candidate.id === trackId);
+    props.onToggleSolo?.(trackId, !track?.solo);
+  }, [props.tracks, props.onToggleSolo]);
+  // 47-02 Task 2: acknowledge-and-delete dialog state. The trash intent opens
+  // the dialog with the pure `requestDeleteTrack` preview (D-17/ASVS V4); the
+  // dialog's Confirm is the ONLY delete commit entry (Phase 46 D-14).
+  const [deletePreview, setDeletePreview] = useState<TrackDeletePreview | null>(null);
+  const handleRequestDeleteTrack = useCallback((trackId: string) => {
+    const layerId = props.layerId;
+    if (!layerId) return;
+    const preview = requestDeleteTrack(layerId, trackId);
+    if (!preview) {
+      props.rotoPhysicalActions?.publishStatus?.('Could not delete track.');
+      return;
+    }
+    setDeletePreview(preview);
+  }, [props.layerId, props.rotoPhysicalActions]);
+  const handleCancelDeleteTrack = useCallback(() => {
+    setDeletePreview(null);
+  }, []);
+  const handleDeleteTrackStatus = useCallback((message: string | null) => {
+    setDeletePreview(null);
+    if (message) props.rotoPhysicalActions?.publishStatus?.(message);
+  }, [props.rotoPhysicalActions]);
+  // 47-02 Task 2: header-drag reorder (TML-05/D-08/D-18). Pointerdown on the
+  // distinct grab area starts a captured session on the target; pointermove
+  // recomputes the live insertion index from the pointer Y over the header-rows
+  // band; release commits the order-only intent exactly once (pointercancel
+  // never commits). The drag never attaches to a non-grab area and never fires
+  // during a content drag.
+  const [reorderDrag, setReorderDrag] = useState<{ trackId: string; index: number } | null>(null);
+  const computeReorderInsertionIndex = useCallback((clientY: number): number => {
+    const band = headerRowsRef.current;
+    const paintCount = props.tracks?.length ?? 0;
+    if (!band || paintCount === 0) return 0;
+    const rect = band.getBoundingClientRect();
+    const raw = Math.floor((clientY - rect.top + band.scrollTop) / STRIP_ROW_HEIGHT_PX);
+    return Math.max(0, Math.min(paintCount - 1, raw));
+  }, [props.tracks?.length]);
+  const handleGripPointerDown = useCallback((event: PointerEvent, trackId: string) => {
+    event.preventDefault();
+    const target = event.currentTarget as HTMLElement | null;
+    if (!target) return;
+    target.setPointerCapture?.(event.pointerId);
+    setReorderDrag({ trackId, index: computeReorderInsertionIndex(event.clientY) });
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setReorderDrag((current) => (
+        current ? { ...current, index: computeReorderInsertionIndex(moveEvent.clientY) } : current
+      ));
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture?.(upEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerCancel);
+      setReorderDrag(null);
+      // The release position is the committed insertion index — reorderTrack
+      // writes ONLY the order field on the stable UUID (Pitfall 1).
+      props.onReorderTrack?.(trackId, computeReorderInsertionIndex(upEvent.clientY));
+    };
+    const handlePointerCancel = (cancelEvent: PointerEvent) => {
+      target.releasePointerCapture?.(cancelEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerCancel);
+      setReorderDrag(null);
+    };
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUp);
+    target.addEventListener('pointercancel', handlePointerCancel);
+  }, [computeReorderInsertionIndex, props.onReorderTrack]);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells;
@@ -1106,18 +1790,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       .map((member) => member.loopId),
     [railSetMoveMembers],
   );
-  // 43.4 defect 6: record the focused Key Rail button so a commit that removes
-  // it (Delete/Undo/Redo) can restore focus to the stable timeline container.
-  const handleKeyRailFocus = useCallback((element: HTMLElement) => {
-    lastFocusedKeyRailRef.current = { element, container: timelineScrollRef.current };
+  // 43.4 defect 6 (GSD-52): record the focused rail button — Key Rail AND
+  // Loop Clip (Motion/Static/Reveal) rail — so a commit that removes it
+  // (Delete/Undo/Redo) can restore focus to the stable timeline container.
+  // The restore effect fires on BOTH rail-family derivations: a key-rail
+  // removal changes keyRailSegments, a loop-rail removal changes
+  // loopResolutionContext (rail-set deletes can change either).
+  const handleRailFocus = useCallback((element: HTMLElement) => {
+    lastFocusedRailRef.current = { element, container: timelineScrollRef.current };
   }, []);
   useEffect(() => {
-    const lastFocused = lastFocusedKeyRailRef.current;
+    const lastFocused = lastFocusedRailRef.current;
     if (lastFocused && shouldRestoreOrphanedKeyRailFocus(lastFocused.element, document.activeElement)) {
       lastFocused.container?.focus();
-      lastFocusedKeyRailRef.current = null;
+      lastFocusedRailRef.current = null;
     }
-  }, [keyRailSegments]);
+  }, [keyRailSegments, loopResolutionContext]);
   const visibleFrameResolutions = useMemo(
     () => loopResolutionContext === null
       ? null
@@ -1235,6 +1923,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     ? null
     : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
   const scriptStatus = props.rotoScript?.status.value ?? null;
+  // 260905-dso: the relocated buffer Apply/Clear availability — mirrors the
+  // ScriptsPanel derivation exactly, reading the signals in render the same
+  // way the strip already reads physicalActions?.canInsertFrame.value.
+  const scriptActionMutationDisabledReason = props.rotoScriptActionMutationDisabledReason?.value ?? null;
+  const scriptAvailability = props.rotoScript?.availability.value;
+  const canApplyScriptAction = scriptActionMutationDisabledReason === null && (scriptAvailability?.canApply ?? false);
+  const applyScriptActionDisabledReason = scriptActionMutationDisabledReason ?? (canApplyScriptAction ? null : (scriptAvailability?.applyDisabledReason ?? null));
+  const canClearScriptBuffer = scriptActionMutationDisabledReason === null && (scriptAvailability?.canDiscard ?? false);
+  const clearScriptBufferDisabledReason = scriptActionMutationDisabledReason ?? (canClearScriptBuffer ? null : (scriptAvailability?.discardDisabledReason ?? null));
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
@@ -1267,6 +1964,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : keyUtilitiesDisabledByBusyState || props.ready === false
       ? 'Finish the current key action before using key tools.'
       : physicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
+  // 260905-d1w amendment: + Rail extends the + Key base law with two
+  // current-frame exclusions — a generated in-between and a linked Rail
+  // repeat. Reason priority: the base addEmptyKeyDisabledReason first
+  // (busy/ready/real-key), then repeat, then generated.
+  const currentFrameResolution = visibleFrameResolutions?.get(props.currentFrame) ?? null;
+  const isCurrentFrameGenerated = physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated';
+  const isCurrentFrameLinkedRepeat = isLinkedRepeatFrameResolution(currentFrameResolution);
+  const canCreateRail = canAddRotoKey && !isCurrentFrameGenerated && !isCurrentFrameLinkedRepeat;
+  const railCreateDisabledReason = canCreateRail
+    ? null
+    : addRotoKeyDisabledReason
+      ?? (isCurrentFrameLinkedRepeat
+        ? 'The current frame is a linked Rail repeat — move to an empty frame to create a Rail.'
+        : isCurrentFrameGenerated
+          ? 'The current frame is a generated in-between — move to an empty frame to create a Rail.'
+          : 'Creating a Rail is unavailable.');
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
@@ -1346,7 +2059,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // isn't mutation-locked. Armed state lives in the sibling session-only
   // module; the .value read subscribes this render to arm/disarm changes.
   const soloArmed = isSoloArmed();
-  const soloArmedClass = soloArmed ? ' physics-paint-push-tool-armed' : '';
+  // 260905-d1w: Solo is now a playback-pill nav-button, so the armed visual is
+  // the pill .active treatment (the physics-paint-push-tool-armed class is a
+  // compound selector requiring the physics-paint-push-tool-button base class,
+  // which a nav-button does not carry) — one armed visual, no new color
+  // literals.
+  const soloArmedClass = soloArmed ? ' active' : '';
   const hasAnyRailSelection = (props.railSetMemberLoopIds?.length ?? 0)
     + (props.railSetMemberKeyRailIds?.length ?? 0)
     + (props.selectedRotoLoopClipIds?.length ?? 0)
@@ -1357,7 +2075,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? 'Select a Rail to solo.'
       : ROTO_KEY_BUSY_STATUS_TEMPLATE
     : null;
-  const soloTooltip = useStyledTooltip();
+  // 52-04 (D-19): the "Create rail" button tooltip.
+  const railCreateTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -1640,7 +2359,305 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     windowLike: undefined,
   });
   railSetDragApiRef.current = railSetDragApi;
-  // ── 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
+  // ── 47-05 (TML-05, D-15/D-16/D-18): the cross-track drag gesture ──────────
+  // Every draggable (real keys, Key Rails, Loop Clip Rails, rail-set members)
+  // can cross track rows with NO modifier key. The gesture is a passive rows
+  // observer: while the pointer stays on the source row it does nothing (the
+  // same-row drag owns the interaction — plain-drag preservation, D-16), and
+  // it takes pointer capture on the rows-region the first time the pointer
+  // crosses a row boundary — the same-row drag's source element loses capture
+  // and cancels non-committing, so no same-row drag can commit to a target on
+  // another row. The header reorder grab lives OUTSIDE the rows-region (the
+  // pinned header column), so a grab-drag never reaches onPointerDown (D-18).
+  const collectRailSetMembers = useCallback((): string[] => {
+    const keys: string[] = [];
+    for (const member of railSetMoveMembers) {
+      if (member.kind === 'key-rail') {
+        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
+        if (segment) keys.push(...segment.keyIds);
+      } else {
+        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === member.loopId);
+        if (range) keys.push(...range.sourceKeyIds);
+      }
+    }
+    return keys;
+  }, [railSetMoveMembers, keyRailSegments, loopResolutionContext]);
+  // Source resolution authority: the pressed element's data attributes map to
+  // the dragged items' keyIds (D-17 — membership is never re-derived in the
+  // view). A real key cell carries its identity directly; rails carry only
+  // their first frame, so the strip resolves the segment/range the rail
+  // belongs to. A rail-set move member hands the WHOLE explicit set over —
+  // the same D-17 list the resolver validates.
+  const resolveCrossTrackDragSource = useCallback((event: PointerEvent): CrossTrackDragSource | null => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return null;
+    const rowElement = target.closest<HTMLElement>('[data-track-id]');
+    const fromTrackId = rowElement?.dataset.trackId;
+    if (!fromTrackId) return null;
+    const keyCell = target.closest<HTMLElement>('[data-roto-key-id]');
+    const keyId = keyCell?.dataset.rotoKeyId;
+    if (keyId) return { fromTrackId, keyIds: [keyId] };
+    const rail = target.closest<HTMLElement>('[data-rail-first-frame]');
+    if (!rail) return null;
+    const firstFrame = Number(rail.dataset.railFirstFrame);
+    if (!Number.isInteger(firstFrame)) return null;
+    if (rail.classList.contains('physics-paint-loop-clip-rail-target')) {
+      const range = loopResolutionContext?.ranges.find((candidate) => candidate.placementStart === firstFrame);
+      if (!range) return null;
+      if (railSetMoveMemberLoopIds.includes(range.loopId)) {
+        return { fromTrackId, keyIds: collectRailSetMembers() };
+      }
+      return { fromTrackId, keyIds: range.sourceKeyIds };
+    }
+    if (rail.classList.contains('physics-paint-key-rail-target')) {
+      const segment = keyRailSegments.find((candidate) => candidate.firstKeyFrame === firstFrame);
+      if (!segment) return null;
+      if (railSetMoveMemberKeyRailIds.includes(segment.firstKeyId)) {
+        return { fromTrackId, keyIds: collectRailSetMembers() };
+      }
+      return { fromTrackId, keyIds: segment.keyIds };
+    }
+    return null;
+  }, [keyRailSegments, loopResolutionContext, railSetMoveMemberKeyRailIds, railSetMoveMemberLoopIds, collectRailSetMembers]);
+  const crossTrackDrag = usePhysicsPaintCrossTrackDrag({
+    // The hook falls back to the real window; node-env contract tests render
+    // the strip without a global window (same pattern as the other drags).
+    windowLike: undefined,
+    // Paint-track rows only — the Bg row is never a move destination (the
+    // store owns the fail-closed 'track-missing' contract for it).
+    getRowBounds: () => {
+      const region = rowsRegionRef.current;
+      if (!region || !props.tracks || !props.activeTrackId) return [];
+      const bounds: CrossTrackRowBounds[] = [];
+      for (const track of props.tracks) {
+        const row = region.querySelector<HTMLElement>(`[data-track-id="${track.id}"]`);
+        if (!row) continue;
+        const rect = row.getBoundingClientRect();
+        bounds.push({ trackId: track.id, top: rect.top, bottom: rect.bottom });
+      }
+      return bounds;
+    },
+    getCaptureElement: () => rowsRegionRef.current,
+    getContentLeft: () => timelineScrollRef.current?.getBoundingClientRect().left ?? 0,
+    getScrollLeft: () => timelineScrollRef.current?.scrollLeft ?? 0,
+    framePitch: ROTO_CELL_WIDTH_PX,
+    // The rows only render with a layer, so an empty fallback never commits
+    // (a session cannot start without a resolved row element).
+    layerId: props.layerId ?? '',
+    // The single commit path (D-17): moveTrackItems owns copy-paste-delete —
+    // the hook only captures the destination and calls the store (D-09). The
+    // closure binds the store method (it uses `this`). A committed move also
+    // activates the destination track (47 close-out UAT) through the same
+    // onSelectTrack route a row click uses — the drop lands where the user
+    // is looking, with the canvas and lane following the new active track.
+    moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {
+      const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame);
+      if (result.ok) props.onSelectTrack?.(toTrackId);
+      return result;
+    },
+    publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message),
+    setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status),
+    resolveSource: resolveCrossTrackDragSource,
+  });
+  // 49-05 Task 2 (S4): the fixed Background row's clip rails ────────────────
+  // The row-local drag hook adapts the Phase 43 machinery to the single fixed
+  // Bg row (row-fixed law, Phase 47 D-15): the gesture never leaves the row,
+  // never enters the cross-track machinery, and never mutates the document
+  // before release (release-time commit only). The resolver is the ONLY extent
+  // authority — the strip derives the background resolution context once per
+  // background record identity and the hook reads facts through the injected
+  // ports (capsule-never-math, Pitfall 10/m2).
+  const backgroundResolutionContext = useMemo(() => {
+    if (!props.background) return null;
+    try {
+      return deriveEfxPaintBackgroundResolution(props.background, frameCells.length);
+    } catch {
+      // Fails closed (mirrors the store's collision verdict): a malformed
+      // background never crashes the strip — the row renders skeleton cells.
+      return null;
+    }
+  }, [props.background, frameCells.length]);
+  // The current drag source, captured at pointer-down and consumed by the
+  // clamp/prepare ports (the hook's prepareAtDestination receives only the
+  // destination — the strip owns the clip identity).
+  const backgroundDragSourceRef = useRef<{ clipId: string; startFrame: number } | null>(null);
+  // Subscribes the strip to the hook's ghost/preview signal changes (the hook
+  // bumps onPreviewChange on every live preview update).
+  const backgroundClipPaintTick = useSignal(0);
+  const backgroundClipDrag = usePhysicsPaintBackgroundClipDrag({
+    windowLike: undefined,
+    resolveSource: (event) => {
+      const target = event.currentTarget as HTMLElement | null;
+      const rail = target?.closest?.('[data-bg-clip-id]') as HTMLElement | null;
+      if (!rail) return null;
+      const clipId = rail.dataset.bgClipId;
+      const startFrame = Number(rail.dataset.bgClipStart);
+      if (!clipId || !Number.isInteger(startFrame)) return null;
+      const source = { clipId, startFrame };
+      backgroundDragSourceRef.current = source;
+      return source;
+    },
+    // Row-fixed projection: horizontal pointer geometry only — vertical
+    // movement can never influence the landing frame (row-fixed law). Returns
+    // the DELTA in frames (current − grab), so the ghost starts at the rail's
+    // CURRENT position on pointerdown (delta 0) and moves by the cursor delta —
+    // the grab offset is never baked into the preview (49-06 UAT round 8: the
+    // ghost used to jump 3-4 frames right before the mouse moved).
+    projectDestination: ({ originClientX, clientX }) => {
+      const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
+      const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
+      const originFrame = Math.round((originClientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      const currentFrame = Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      return currentFrame - originFrame;
+    },
+    clampDestination: (proposedDelta) => {
+      const source = backgroundDragSourceRef.current;
+      const range = source && backgroundResolutionContext
+        ? backgroundResolutionContext.ranges.find((candidate) => candidate.loopId === source.clipId)
+        : null;
+      // The ghost width mirrors the clip's CURRENT effective extent (a resolver
+      // fact) — never recomputed loop math (capsule-never-math).
+      const durationFrames = range ? Math.max(1, range.effectiveEnd - range.phaseOrigin) : 1;
+      const startFrame = source?.startFrame ?? 0;
+      const requested = startFrame + proposedDelta;
+      const destination = Math.max(0, Math.min(frameCells.length - 1, requested));
+      return {
+        destination,
+        left: destination * ROTO_CELL_WIDTH_PX,
+        width: Math.max(ROTO_CELL_WIDTH_PX, durationFrames * ROTO_CELL_WIDTH_PX),
+        blockedEdge: destination === requested
+          ? null
+          : requested > destination ? 'right' : 'left',
+      };
+    },
+    prepareAtDestination: (destination) => {
+      const source = backgroundDragSourceRef.current;
+      if (!source) return { ok: false, reason: 'clip-not-found' };
+      return { ok: true, publication: Object.freeze({ clipId: source.clipId, landingFrame: destination }) };
+    },
+    // The single commit path (D-05): moveBackgroundClip owns the collision
+    // verdict — the hook never computes move semantics.
+    onDropCommit: (publication) => {
+      if (!props.layerId) return { ok: false, reason: 'clip-not-found' };
+      return moveBackgroundClip(props.layerId, publication.clipId, publication.landingFrame);
+    },
+    // D-04 symmetric law: the drag rejection surfaces the locked drag copy
+    // through the same capsule the import path uses.
+    onRejected: (reason) => {
+      if (reason === 'start-collision') {
+        props.rotoPhysicalActions?.setApplyStatus?.('error');
+        props.rotoPhysicalActions?.publishStatus?.("Couldn't move the clip here. The landing frame is inside an existing clip. Nothing changed.");
+      }
+    },
+    onPreviewChange: () => { backgroundClipPaintTick.value += 1; },
+    clearClickSequence: () => {},
+    onCancel: () => { backgroundDragSourceRef.current = null; },
+  });
+  // 49-06 (UAT round 2): the Bg clip RESIZE gesture — the FIRST and LAST cells
+  // of each clip carry resize handles. The start edge commits through
+  // resizeBackgroundClip (new start + the repeat that keeps the END fixed);
+  // the end edge commits through setBackgroundClipRepeat with the repeat that
+  // makes the requested end reach the dragged frame (the resolver's cycle
+  // length is the only math — capsule-never-math).
+  const backgroundResizeSourceRef = useRef<{
+    clipId: string; edge: 'start' | 'end'; startFrame: number; endFrame: number; cycleLength: number;
+  } | null>(null);
+  const backgroundClipResize = usePhysicsPaintBackgroundClipResize({
+    windowLike: undefined,
+    resolveSource: (event) => {
+      const target = event.currentTarget as HTMLElement | null;
+      const cell = target?.closest?.('[data-bg-clip-id]') as HTMLElement | null;
+      if (!cell) return null;
+      const clipId = cell.dataset.bgClipId;
+      const edge = cell.dataset.bgClipEdge;
+      const startFrame = Number(cell.dataset.bgClipStart);
+      if (!clipId || (edge !== 'start' && edge !== 'end') || !Number.isInteger(startFrame)) return null;
+      const range = backgroundResolutionContext?.ranges.find((candidate) => candidate.loopId === clipId);
+      if (!range) return null;
+      const source: BackgroundClipResizeSource = {
+        clipId,
+        edge,
+        startFrame,
+        endFrame: range.effectiveEnd,
+        cycleLength: Math.max(1, range.cycleLength),
+      };
+      backgroundResizeSourceRef.current = source;
+      return source;
+    },
+    projectFrame: ({ clientX }) => {
+      const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
+      const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
+      return Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+    },
+    clampFrame: (proposedFrame) => {
+      const source = backgroundResizeSourceRef.current;
+      if (!source) return { frame: proposedFrame, left: 0, width: 0, blockedEdge: null };
+      if (source.edge === 'start') {
+        const frame = Math.max(0, Math.min(source.endFrame - 1, proposedFrame));
+        return {
+          frame,
+          left: frame * ROTO_CELL_WIDTH_PX,
+          width: Math.max(ROTO_CELL_WIDTH_PX, (source.endFrame - frame) * ROTO_CELL_WIDTH_PX),
+          blockedEdge: frame === proposedFrame ? null : (proposedFrame > frame ? 'right' : 'left'),
+        };
+      }
+      const frame = Math.max(source.startFrame + 1, Math.min(frameCells.length, proposedFrame));
+      return {
+        frame,
+        left: source.startFrame * ROTO_CELL_WIDTH_PX,
+        width: Math.max(ROTO_CELL_WIDTH_PX, (frame - source.startFrame) * ROTO_CELL_WIDTH_PX),
+        blockedEdge: frame === proposedFrame ? null : (proposedFrame > frame ? 'right' : 'left'),
+      };
+    },
+    prepareAtFrame: (frame) => {
+      const source = backgroundResizeSourceRef.current;
+      if (!source) return { ok: false, reason: 'clip-not-found' };
+      return { ok: true, publication: Object.freeze({ clipId: source.clipId, edge: source.edge, frame }) };
+    },
+    onDropCommit: (publication) => {
+      if (!props.layerId) return { ok: false, reason: 'clip-not-found' };
+      const source = backgroundResizeSourceRef.current;
+      if (!source) return { ok: false, reason: 'clip-not-found' };
+      if (publication.edge === 'start') {
+        // 49-06 (UAT round 3): the START edge keeps the clip's END fixed — the
+        // new start moves AND the repeat shrinks so the effective end stays at
+        // the dragged-from frame. A plain moveBackgroundClip would shift the
+        // whole clip (the "left frame drags the whole rail" symptom). The repeat
+        // derives from the resolver's cycle length (capsule-never-math).
+        const newDuration = Math.max(1, source.endFrame - publication.frame);
+        const count = Math.max(1, Math.ceil(newDuration / source.cycleLength));
+        return resizeBackgroundClip(props.layerId, publication.clipId, publication.frame, { mode: 'finite', count });
+      }
+      const duration = Math.max(1, publication.frame - source.startFrame);
+      const count = Math.max(1, Math.ceil(duration / source.cycleLength));
+      return setBackgroundClipRepeat(props.layerId, publication.clipId, { mode: 'finite', count });
+    },
+    onRejected: (reason) => {
+      if (reason === 'start-collision') {
+        props.rotoPhysicalActions?.setApplyStatus?.('error');
+        props.rotoPhysicalActions?.publishStatus?.("Couldn't resize the clip here. The frame is inside an existing clip. Nothing changed.");
+      }
+    },
+    onGhostChange: () => { backgroundClipPaintTick.value += 1; },
+    clearClickSequence: () => {},
+    onCancel: () => { backgroundResizeSourceRef.current = null; },
+  });
+  // Read the tick so the strip re-renders on live ghost/preview updates.
+  backgroundClipPaintTick.value;
+  // 260827-s52 Task 1 (NLE ruler seek): a pointer-down on the time ruler seeks
+  // the playhead through the SAME cursor-only navigation port the armed-Push
+  // click uses (handleLanePushClickCapture) — never selection, never the active
+  // track. Past the 4px threshold the hook rAF-throttles scrub seeks to at most
+  // one navigation call per animation frame (the Studio render path is already
+  // rAF-batched, so flushLivePixels never runs per pointer event).
+  const rulerScrub = usePhysicsPaintRulerScrub({
+    frameCount: () => frameCells.length,
+    cellWidthPx: ROTO_CELL_WIDTH_PX,
+    onSeek: (frame) => props.onNavigateToSyncedFrame?.(frame),
+    onScrubStart: () => props.onScrubStart?.(),
+    onScrubEnd: (frame) => props.onScrubEnd?.(frame),
+  });
+  // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the
   // pushPaintTick signal (bumped in onPreviewChange) subscribes the component
   // to their changes. Ghost destination is NEVER recomputed here — the hook's
@@ -2062,8 +3079,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 43.5-02 Task 2: the relocated Key Spacing form lives inside the memoized
   // static chrome, so the handlers it wires must keep stable identity (same
   // guard bodies as the bottom-row version — byte-identical behavior).
-  const handleForceSpacingInput = useCallback((event: Event) => {
-    physicalActions?.setForceSpacingInput((event.currentTarget as HTMLInputElement).value);
+  const handleForceSpacingInput = useCallback((value: string) => {
+    physicalActions?.setForceSpacingInput(value);
   }, [physicalActions]);
 
   const handleForceSpacingSubmit = useCallback((event: Event) => {
@@ -2122,6 +3139,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       }
     }
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
+      // 47 close-out UAT round 11: selecting an interpolated frame owns the
+      // selection — a previously selected key clears, never two orange cells.
+      current.onClearRotoKeySelection?.();
+      current.onClearRotoSpacingSelection?.();
       current.onNavigateToSyncedFrame(frame);
       return;
     }
@@ -2194,6 +3215,83 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       visible,
     });
   }, []);
+
+  // 47-01 UAT round 4: custom vertical scrollbar thumb state, mirroring
+  // updateScrollbar for the rows-region's vertical axis (top/height/visible).
+  const updateVerticalScrollbar = useCallback(() => {
+    const el = rowsRegionRef.current;
+    if (!el) return;
+    const { clientHeight, scrollTop, scrollHeight } = el;
+    const visible = scrollHeight > clientHeight + 1;
+    if (!visible) {
+      setVerticalScrollbar({ top: 0, height: 0, visible: false });
+      return;
+    }
+    const thumbHeight = Math.max(40, (clientHeight / scrollHeight) * clientHeight);
+    const thumbRange = clientHeight - thumbHeight;
+    const scrollRange = scrollHeight - clientHeight;
+    setVerticalScrollbar({
+      top: scrollRange > 0 ? (scrollTop / scrollRange) * thumbRange : 0,
+      height: thumbHeight,
+      visible,
+    });
+  }, []);
+
+  // 47-01 header-column sync (D-05): the header rows and the rows-region share
+  // one vertical scroll position. Each handler mirrors the other container's
+  // scrollTop; the equality guard prevents a ping-pong loop (setting scrollTop
+  // to the same value fires no scroll event).
+  const syncHeaderScroll = useCallback(() => {
+    if (headerRowsRef.current && rowsRegionRef.current && headerRowsRef.current.scrollTop !== rowsRegionRef.current.scrollTop) {
+      rowsRegionRef.current.scrollTop = headerRowsRef.current.scrollTop;
+    }
+  }, []);
+
+  const syncRowsScroll = useCallback(() => {
+    if (headerRowsRef.current && rowsRegionRef.current && headerRowsRef.current.scrollTop !== rowsRegionRef.current.scrollTop) {
+      headerRowsRef.current.scrollTop = rowsRegionRef.current.scrollTop;
+    }
+  }, []);
+
+  // Rows-region scroll handler: keeps the header band in lockstep AND the
+  // header pill scrollbar thumb in sync (single path — no double derivation).
+  const handleRowsRegionScroll = useCallback(() => {
+    syncRowsScroll();
+    updateVerticalScrollbar();
+  }, [syncRowsScroll, updateVerticalScrollbar]);
+
+  // 47-02 Task 3 (TML-03/D-05): ensure-active-row-visible. When the active
+  // track changes (row click, undo auto-activation, keyboard navigation) the
+  // rows-region scrolls so the active row enters view; the band follows
+  // through the existing syncRowsScroll path and the pill thumb re-derives.
+  // The pure computeEnsureRowScrollDelta handles the direction + the
+  // taller-than-viewport clamp; the scroll extent clamp is applied here.
+  const ensureActiveRowVisible = useCallback(() => {
+    const region = rowsRegionRef.current;
+    const activeTrackId = props.activeTrackId;
+    if (!region || !activeTrackId) return;
+    const row = region.querySelector<HTMLElement>(`[data-track-id="${activeTrackId}"]`);
+    if (!row) return;
+    const regionRect = region.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const viewportTop = region.scrollTop;
+    const viewportBottom = viewportTop + region.clientHeight;
+    const delta = computeEnsureRowScrollDelta(
+      viewportTop + (rowRect.top - regionRect.top),
+      viewportTop + (rowRect.bottom - regionRect.top),
+      viewportTop,
+      viewportBottom,
+    );
+    if (delta === 0) return;
+    const maxScrollTop = Math.max(0, region.scrollHeight - region.clientHeight);
+    region.scrollTop = Math.min(maxScrollTop, Math.max(0, region.scrollTop + delta));
+    syncRowsScroll();
+    updateVerticalScrollbar();
+  }, [props.activeTrackId, syncRowsScroll, updateVerticalScrollbar]);
+
+  useEffect(() => {
+    ensureActiveRowVisible();
+  }, [ensureActiveRowVisible]);
 
   const classifyRotoDragTarget = useCallback((clientX: number, clientY: number, movedKeyId: string, sourceAppFrame: number): {
     target: RotoDragTarget | null;
@@ -2437,7 +3535,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       const releaseMatchesRetained = release.valid && release.target !== null && retainedPublication !== null && targetSignaturesEqual(release.target, retainedPublication.targetSignature);
       if (!releaseMatchesRetained) {
         cleanup();
-        clearSuppressionSoon();
+        // 47 close-out: clear the click suppression SYNCHRONOUSLY. The old
+        // setTimeout(0) clear ran AFTER the click event, so any click whose
+        // pointer wobbled >= ROTO_DRAG_THRESHOLD_PX armed the drag and then
+        // had its click swallowed even though no key moved — the 2-click bug.
+        suppressNextRotoClickRef.current = false;
         // Release-time group-drag reject publication (D-07/D-09, 37-03
         // contract): fires exactly once per rejected group release and only
         // for resolver-level failures (candidateDetail non-null).
@@ -2550,21 +3652,28 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   useEffect(() => {
     const el = timelineScrollRef.current;
     const content = timelineContentRef.current;
-    if (!el || !content) return;
+    const rows = rowsRegionRef.current;
     updateScrollbar();
-    const observer = new ResizeObserver(updateScrollbar);
-    observer.observe(el);
-    observer.observe(content);
+    updateVerticalScrollbar();
+    const refresh = () => {
+      updateScrollbar();
+      updateVerticalScrollbar();
+    };
+    const observer = new ResizeObserver(refresh);
+    if (el) observer.observe(el);
+    if (content) observer.observe(content);
+    if (rows) observer.observe(rows);
     recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install');
     return () => {
       recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup');
       observer.disconnect();
     };
-  }, [updateScrollbar]);
+  }, [updateScrollbar, updateVerticalScrollbar]);
 
   useLayoutEffect(() => {
     updateScrollbar();
-  }, [frameCells, currentPhysicalCells, updateScrollbar]);
+    updateVerticalScrollbar();
+  }, [frameCells, currentPhysicalCells, updateScrollbar, updateVerticalScrollbar]);
 
   // Plain-wheel horizontal scrolling (38-10, 38.1-06 deferred follow-up #2):
   // a vertical wheel delta over the timeline scroller drives scrollLeft.
@@ -2625,6 +3734,41 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     target.addEventListener('pointercancel', handlePointerUp);
   }
 
+  // 47-01 UAT round 5: vertical pill scrollbar drag/click-to-scroll handler,
+  // mirroring handleTimelineScrollbarPointerDown for the rows-region's vertical
+  // axis. The scrollbar lives in the SIDEBAR (header column). Thumb drag
+  // scrolls the rows-region (the pinned header-rows band follows through the
+  // existing syncRowsScroll path).
+  function handleVerticalScrollbarPointerDown(event: PointerEvent) {
+    const el = rowsRegionRef.current;
+    const target = event.currentTarget as HTMLElement;
+    if (!el) return;
+    const rect = target.getBoundingClientRect();
+    const thumbTop = verticalScrollbar.top;
+    const thumbBottom = verticalScrollbar.top + verticalScrollbar.height;
+    const pointerY = event.clientY - rect.top;
+    const thumbOffset = pointerY >= thumbTop && pointerY <= thumbBottom ? pointerY - thumbTop : verticalScrollbar.height / 2;
+    const scrollFromPointer = (clientY: number) => {
+      const y = Math.max(0, Math.min(rect.height - verticalScrollbar.height, clientY - rect.top - thumbOffset));
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const maxThumb = rect.height - verticalScrollbar.height;
+      el.scrollTop = maxThumb > 0 ? (y / maxThumb) * maxScroll : 0;
+      updateVerticalScrollbar();
+    };
+    target.setPointerCapture(event.pointerId);
+    scrollFromPointer(event.clientY);
+    const handlePointerMove = (moveEvent: PointerEvent) => scrollFromPointer(moveEvent.clientY);
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerUp);
+    };
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUp);
+    target.addEventListener('pointercancel', handlePointerUp);
+  }
+
   // Blocked-direction verdict while a drag is live: the dragged direction has
   // zero valid movement — the not-allowed cursor + guarded tooltip show for
   // that direction only, and the other direction stays available (tool armed).
@@ -2659,16 +3803,385 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const ghostWidth = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
     return preview.blockedEdge === 'left' ? ghostLeft : ghostLeft + ghostWidth - 2;
   })();
+  /**
+   * 47-01 mockup redesign: the active track's rich lane is re-usable. It
+   * renders at its DOCUMENT position among the presentational rows (the
+   * mockup highlights the active row in place), and alone when the strip
+   * has no multi-track bundle (pre-47 single-lane DOM contract). Every
+   * value it reads stays in the component body — this function captures
+   * the full closure scope, so the lane can be mounted at any row index.
+   */
+  // 47-01 hide: the active lane dims as a whole when its track is hidden —
+  // every cell stays rendered, only the fade changes (TML-04 presentation).
+  const activeTrackHidden = props.tracks?.find((candidate) => candidate.id === props.activeTrackId)?.visible === false;
+  const renderActiveLane = (): ComponentChildren => (
+              <div
+                ref={timelineContentRef}
+                class={`physics-paint-lane${activeTrackHidden ? ' physics-paint-lane-hidden' : ''}`}
+                data-track-id={props.activeTrackId || undefined}
+                data-push-armed={pushArmed ? 'true' : undefined}
+                data-push-hover-invalid={pushHoverInvalid ? 'true' : undefined}
+                onPointerDownCapture={handleLanePushPointerDownCapture}
+                onClickCapture={handleLanePushClickCapture}
+                style={{
+                  width: `${rotoLaneWidthPx}px`,
+                  minWidth: `${rotoLaneWidthPx}px`,
+                  gridTemplateColumns: `${rotoLaneWidthPx}px`,
+                }}
+              >
+                {keyRailSegments.length > 0 ? (
+                  <PhysicsPaintKeyRail
+                    segments={keyRailSegments}
+                    visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+                    framePitch={ROTO_CELL_WIDTH_PX}
+                    selectedKeyRail={props.selectedRotoKeyRail ?? null}
+                    railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
+                    railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
+                    railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
+                    railSetSize={railSetSize}
+                    onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
+                    prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
+                    commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
+                    getClampInput={getRotoKeyRailDragClampInput}
+                    onKeyRailDragRejected={props.onRotoKeyRailDragRejected}
+                    onPreviewChange={setRotoKeyRailDragPreview}
+                    dragUnavailableReason={keyUtilitiesDisabledByBusyState
+                      ? ROTO_KEY_BUSY_STATUS_TEMPLATE
+                      : undefined}
+                    deleteUnavailableReason={deleteRotoKeyDisabledReason}
+                    busy={keyUtilitiesDisabledByBusyState}
+                    onRailFocus={handleRailFocus}
+                    onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
+                    onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                    suppressTooltip={crossTrackDrag.isCrossing.value}
+                  />
+                ) : null}
+                {loopResolutionContext !== null
+                  && loopResolutionContext.ranges.length > 0
+                  && props.onSelectRotoLoopClip
+                  && props.onOpenRotoLoopEdit ? (
+                  <PhysicsPaintLoopClipRail
+                    ranges={loopResolutionContext.ranges}
+                    presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
+                    visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+                    framePitch={ROTO_CELL_WIDTH_PX}
+                    selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
+                    railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
+                    railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}
+                    railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
+                    railSetSize={railSetSize}
+                    linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
+                    linkedActionName={props.linkedRotoActionName ?? null}
+                    onSelectLoopClip={props.onSelectRotoLoopClip}
+                    onOpenLoopEdit={props.onOpenRotoLoopEdit}
+                    prepareRotoGroupDrag={physicalActions?.prepareRotoGroupDrag}
+                    commitRotoGroupDrag={physicalActions?.commitRotoGroupDrag}
+                    getClampInput={getRotoGroupDragClampInput}
+                    onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? '')}
+                    onPreviewChange={setRotoGroupDragPreview}
+                    onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
+                    onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                    suppressTooltip={crossTrackDrag.isCrossing.value}
+                    registerClickSequenceCanceller={(canceller) => {
+                      railClickSequenceCancellersRef.current.add(canceller);
+                      return () => {
+                        railClickSequenceCancellersRef.current.delete(canceller);
+                      };
+                    }}
+                    onRailFocus={handleRailFocus}
+                  />
+                ) : null}
+                <div
+                  class="physics-paint-roto-cells"
+                  role="row"
+                  style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
+                >
+                  {frameCells.map(frame => {
+                    const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
+                    const isGenerated = semanticCell?.kind === 'generated';
+                    // Phase 43: lazy per-frame resolution for this visible cell
+                    // (null when no loop context is supplied). Exhaustive mappers
+                    // gate every virtual linked occurrence out of selection/drag
+                    // (D-11/D-23) while preserving the existing cell-state fill
+                    // (D-18). The local badge/aria predicate intentionally groups
+                    // the four linked variants as presentation-only occurrences.
+                    const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
+                    const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;
+                    const isSpacingProxySelected = spacingProxy !== null
+                      && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
+                      && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
+                    const isLoopBoundaryStart = loopBoundaryFrames.starts.has(frame);
+                    const isLoopBoundaryEnd = loopBoundaryFrames.ends.has(frame);
+                    const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
+                      || frameResolution?.kind === 'linked-generated'
+                      || frameResolution?.kind === 'linked-gap'
+                      || frameResolution?.kind === 'linked-unresolved';
+                    const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
+                      || ((frameResolution?.kind === 'linked'
+                        || frameResolution?.kind === 'linked-generated'
+                        || frameResolution?.kind === 'linked-gap')
+                        && frameResolution.repeatInstance > 0);
+                    const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
+                      && frameResolution.repeatInstance > 0
+                      && !isGenerated;
+                    const linkedLoopClass = isLinkedRepeat
+                      ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
+                      : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
+                        ? 'roto-linked-source-generated'
+                        : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
+                          : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
+                            : '';
+                    const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
+                    // Cached per-cell derivation (38.1-04, Option A): recomputed
+                    // for at most the previous+new current cells on a pure frame
+                    // change; the value is byte-identical to the pre-cache
+                    // inline derivation.
+                    const { vm, fill } = getRotoCellDerivation(frame);
+                    const isPhysicalRealKey = semanticCell?.kind === 'real';
+                    const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
+                    const fillClass = getRotoAcceptedCellFillClass({
+                      lifecycleTargetKind: lifecycleTarget.kind,
+                      resolutionKind: frameResolution?.kind ?? 'empty',
+                      isPhysicalRealKey,
+                      fill,
+                      viewModelFillClass: vm.fillClass,
+                    });
+                    const isOccupiedRealKey = isPhysicalRealKey;
+                    const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
+                    const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
+                    const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
+                    const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
+                    // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
+                    const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
+                    const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
+                    const isDragMoved = previewCell?.role === 'moved';
+                    const isDragShifted = previewCell?.role === 'shifted';
+                    const isDragTarget = previewCell?.role === 'target';
+                    const isDragGenerated = previewCell?.role === 'generated';
+                    const isDragVacated = rotoDragVacatedAppFrames.has(frame);
+                    const isDragCommitting = Boolean(rotoDragPreview?.pending && rotoDragPreviewViewModel);
+                    const hasTargetFeedback = Boolean(rotoDragFeedback && (isDragMoved || isDragShifted || isDragTarget || isDragGenerated || isDragVacated || isDragSource));
+                    const dragLabel = hasTargetFeedback
+                      ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
+                      : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
+                    const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
+                      ? 'real-key'
+                      : isGenerated
+                        ? 'generated'
+                        : vm.baseMeaning === 'cached'
+                          ? 'cached'
+                          : vm.baseMeaning === 'background-only'
+                            ? 'background-only'
+                            : 'empty';
+                    // D-18: linked cells keep their existing cell-state fill,
+                    // while tooltip/aria copy comes from the typed resolution and
+                    // the one compact loopId → source-frame-count index above.
+                    const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
+                      ? existingCellTooltipKind
+                      : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
+                    const baseCellTooltipCopy = frameResolution === null
+                      ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
+                      : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
+                    // Real keys use primary-versus-complete selection treatment;
+                    // non-real cells keep the cursor unless Select All owns selection.
+                    const isCurrentFrame = vm.overlays.includes('current');
+                    const isPrimarySelected = !isSpacingProxySelected
+                      && cellKeyId !== null
+                      && props.rotoPrimarySelectedKeyId === cellKeyId;
+                    const isSecondarySelected = !isSpacingProxySelected
+                      && cellKeyId !== null
+                      && rotoSelectedKeyIdSet.has(cellKeyId)
+                      && rotoSelectedKeyIdSet.size >= 2
+                      && !isPrimarySelected;
+                    const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
+                    // 47 close-out: the current-frame cell paints orange even
+                    // when it is a real key — real keys previously painted ONLY
+                    // via the primary-selection match, so a key at the playhead
+                    // stayed dark when that match didn't land (the persistent
+                    // "real keys never turn orange" bug). The selection match
+                    // still applies for non-current selected keys.
+                    const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;
+                    const cellBaseTooltipCopy = isSpacingProxySelected
+                      ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
+                      : isSecondarySelected
+                        ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
+                        : baseCellTooltipCopy;
+                    const cellBaseAriaLabel = isSpacingProxySelected
+                      ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
+                      : hasLinkedLoopBadge
+                        ? `${baseCellTooltipCopy} · Frame ${frame}`
+                        : isSecondarySelected
+                          ? `${dragLabel} Selected.`
+                          : dragLabel;
+                    const cellPresentation = getRotoCellPresentationViewModel({
+                      kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
+                      keyId: cellKeyId,
+                      orderedRealKeyIds: realKeyOrderById,
+                      incomingInterpolationBreakKeyIds: incomingInterpolationBreakKeyIdSet,
+                      baseCopy: cellBaseTooltipCopy,
+                      ariaLabel: cellBaseAriaLabel,
+                    });
+                    const cellAriaLabel = cellPresentation.ariaLabel;
+                    const cellTooltipCopy = cellPresentation.tooltipCopy;
+                    // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
+                    // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
+                    // gap treatment (D-02). Class application only — no new DOM nodes.
+                    const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
+                    const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);
+                    // 43.5-05 Task 2 (T5): the push would-open gap previews as
+                    // ordinary roto-fill-empty cells, byte-identical to the
+                    // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
+                    const isPushGapPreview = pushGapPreviewAppFrames.has(frame);
+                    // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
+                    // preview as ordinary roto-fill-empty cells, byte-identical
+                    // to the 43.2-43.5 gap treatment (D-09).
+                    const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
+                    const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
+                      ? 'roto-fill-empty' : fillClass;
+                    const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                    return (
+                      <RotoTimelineCellButton
+                        key={frame}
+                        frame={frame}
+                        vm={vm}
+                        cellClass={cellClass}
+                        semanticKind={semanticKind}
+                        cellKeyId={cellKeyId}
+                        dragEligible={dragEligible}
+                        startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
+                        ariaLabel={cellAriaLabel}
+                        ariaSelected={isSpacingProxySelected || isSecondarySelected}
+                        tooltipCopy={cellTooltipCopy}
+                        onCellPointerDown={handleRotoTimelineCellPointerDown}
+                        onCellClick={handleRotoTimelineCellClick}
+                      />
+                    );
+                  })}
+                </div>
+                {/* 43.5-05 design revision: armed anchor pre-highlight — the
+                    selected Rail shows the prospective-set treatment as soon as
+                    armed (the direction is chosen by the drag, so no pivot tick
+                    until the drag locks it). On drag start the per-rail ghosts
+                    take over. */}
+                {pushArmedAnchorRail !== null && !pushDragGhost.active ? (
+                  <div class="physics-paint-push-hover-layer" aria-hidden="true">
+                    <span
+                      class={`physics-paint-push-hover-rail${pushHoverRailKindClass(pushArmedAnchorRail)}`}
+                      style={{
+                        left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                        width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                      }}
+                    />
+                  </div>
+                ) : null}
+                {/* 43.5-05 Task 2 push ghost layer (T5): every moved-set rail
+                    ghosts at 55% kind-color opacity at the clamped destination
+                    (original interval + the hook's clamped signed delta — rigid
+                    translation, never recomputed here); the clamped blocked edge
+                    paints the 2x12px #FF6B6B bar on the set's outermost ghost
+                    edge. Originals stay at 100% until exact parent
+                    acknowledgement (Pitfall 9). */}
+                {pushDragGhost.active ? (
+                  <div class="physics-paint-push-ghost-layer" aria-hidden="true">
+                    {pushSessionRef.current?.movedRails.map((rail) => {
+                      const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * ROTO_CELL_WIDTH_PX;
+                      const width = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
+                      return (
+                        <span
+                          key={rail.id}
+                          class={`physics-paint-push-ghost${pushGhostRailKindClass(rail)}`}
+                          style={{ left: `${left}px`, width: `${width}px` }}
+                        />
+                      );
+                    })}
+                    {pushDragGhost.blockedEdge !== null && pushSessionRef.current !== null ? (
+                      <span
+                        class="physics-paint-push-blocked-edge"
+                        style={{
+                          left: `${(pushDragGhost.blockedEdge === 'left'
+                            ? pushSessionRef.current.movedSetBounds.firstFrame
+                            : pushSessionRef.current.movedSetBounds.lastEndExclusive) * ROTO_CELL_WIDTH_PX
+                            + pushDragGhost.deltaFrames * ROTO_CELL_WIDTH_PX
+                            - (pushDragGhost.blockedEdge === 'right' ? 2 : 0)
+                            - frameCells[0] * ROTO_CELL_WIDTH_PX}px`,
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+                {/* 43.6-03 Task 2 batch Move ghost layer (UI-SPEC M3): every set
+                    member ghosts at 55% kind-color opacity at the clamped
+                    destination (original interval + the hook's clamped delta —
+                    rigid translation, never recomputed here); the clamped
+                    blocked edge paints the 2x12px #FF6B6B bar on the colliding
+                    member's ghost blocked edge. Originals stay at 100% with
+                    their orange selection lines for the whole drag. */}
+                {railSetDragPreview !== null ? (
+                  <div class="physics-paint-rail-set-ghost-layer" aria-hidden="true">
+                    {railSetMoveGhostRails.map((rail) => (
+                      <span
+                        key={rail.id}
+                        class={`physics-paint-rail-set-ghost${railSetGhostRailKindClass(rail)}`}
+                        style={{
+                          left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                          width: `${Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                        }}
+                      />
+                    ))}
+                    {railSetBlockedEdgeLeftPx !== null ? (
+                      <span
+                        class="physics-paint-rail-set-blocked-edge"
+                        style={{ left: `${railSetBlockedEdgeLeftPx}px` }}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+                {/* 43.5-05 smoke revision: the anchor Rail's orange capsule always
+                    renders ABOVE the hover pre-highlight (7) and the ghosts (8),
+                    so the anchor reference stays fully visible while armed and
+                    during the whole drag. Pre-highlight and ghosts complement it;
+                    they never replace the anchor's selection visual. On commit
+                    the anchor re-binds to its new position and stays selected. */}
+                {pushArmedAnchorRail !== null ? (
+                  <span
+                    class="physics-paint-push-anchor-capsule"
+                    aria-hidden="true"
+                    style={{
+                      left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                      width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                    }}
+                  />
+                ) : null}
+              </div>
+  );
+
   return (
     <section
       class={`physics-paint-workflow-strip${pushArmed ? ' physics-paint-push-armed' : ''}`}
       data-push-paint-tick={pushPaintTick.value}
       data-rail-set-paint-tick={railSetPaintTick.value}
       aria-label="Physics Paint workflow strip"
+      style={{ height: `${stripHeightPx}px` }}
     >
+      {/* 47-01 UAT round 3: the timeline's top-edge resize handle. Dragging up
+          grows the strip (up to the full content height), down shrinks it
+          (the rows-region + header-rows band scroll). */}
+      <div
+        class="physics-paint-strip-resize-handle"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize timeline height"
+        title="Drag to resize the timeline height"
+        onPointerDown={handleStripResizePointerDown}
+        onPointerMove={handleStripResizePointerMove}
+        onPointerUp={handleStripResizePointerEnd}
+        onPointerCancel={handleStripResizePointerEnd}
+      />
       <PhysicsPaintWorkflowStaticChrome
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
+        capsuleIsError={Boolean(props.statusIsError)}
+        warmProgress={props.warmProgress}
         ready={props.ready !== false}
         playbackAvailable={Boolean(props.rotoCachedPlaybackAvailable)}
         playbackActive={Boolean(props.isRotoCachedPlaybackActive)}
@@ -2686,7 +4199,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onPlaybackFpsChange={props.onRotoPlaybackFpsChange}
         audioPreviewEnabled={props.audioPreviewEnabled}
         onAudioPreviewToggle={props.onAudioPreviewToggle}
-        onInterpolationEnabledChange={props.onRotoInterpolationEnabledChange}
+        soloArmed={soloArmed}
+        soloArmedClass={soloArmedClass}
+        soloToolDisabled={soloToolDisabled}
+        soloToolDisabledReason={soloToolDisabledReason}
         onInterpolationModeChange={props.onRotoInterpolationModeChange}
         onGoToFirstFrame={props.onGoToFirstFrame}
         onGoToPreviousFrame={props.onGoToPreviousFrame}
@@ -2701,344 +4217,161 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         forceSpacingScopeLine={railSetCopy}
         onForceSpacingInput={handleForceSpacingInput}
         onForceSpacingSubmit={handleForceSpacingSubmit}
+        onApplyScript={props.onApplyScript}
+        onDiscardScript={props.onDiscardScript}
+        canApplyScriptAction={canApplyScriptAction}
+        applyScriptActionDisabledReason={applyScriptActionDisabledReason}
+        canClearScriptBuffer={canClearScriptBuffer}
+        clearScriptBufferDisabledReason={clearScriptBufferDisabledReason}
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
-        <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
-            {rotoRulerTicks.map(frame => (
-              <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
-            ))}
-          </div>
-
+        <div class="physics-paint-timeline-body">
+          {/* 47-01/47-02 pinned header column (UI-SPEC D-01/D-05, Task 1): the
+              hook-free `physicsPaintTrackHeaderColumn` renders the fixed
+              185px column OUTSIDE the horizontal scroller, listing every row's
+              track name plus the locked 'Bg' row; its header-rows band shares the
+              rows-region's vertical scroll position
+              (syncHeaderScroll/syncRowsScroll). The strip owns the interactive
+              state (rename draft, tools panel, vertical scrollbar geometry,
+              delete preview, reorder drag) and flows it down as props.
+              Invoked as a plain function (hook-free by contract) so the
+              rendered DOM appears directly in the strip's output — a lowercase
+              JSX tag would compile to an intrinsic element and render nothing. */}
+          {physicsPaintTrackHeaderColumn({
+            tracks: props.tracks ?? [],
+            activeTrackId: props.activeTrackId ?? '',
+            background: props.background ?? null,
+            onSelectTrack: props.onSelectTrack ?? (() => {}),
+            onToggleVisible: (trackId) => {
+              const track = props.tracks?.find((candidate) => candidate.id === trackId);
+              props.onToggleTrackVisible?.(trackId, !track?.visible);
+            },
+            onToggleSolo: handleToggleSolo,
+            layerId: props.layerId,
+            onToggleBlend: props.onToggleBlend ?? (() => {}),
+            onAddTrack: props.onAddTrack ?? (() => {}),
+            onDuplicateTrack: props.onDuplicateTrack ?? (() => {}),
+            onRequestDeleteTrack: handleRequestDeleteTrack,
+            onGripPointerDown: handleGripPointerDown,
+            reorderDragTrackId: reorderDrag?.trackId ?? null,
+            reorderDragIndex: reorderDrag?.index ?? null,
+            renamingTrackId: renamingTrackId,
+            renameDraft: renameDraft,
+            onStartRename: handleStartRename,
+            onRenameDraftChange: handleRenameDraftChange,
+            onCommitRename: handleCommitRename,
+            onCancelRename: handleCancelRename,
+            headerRowsRef: headerRowsRef,
+            headerColumnRef: headerColumnRef,
+            onHeaderScroll: syncHeaderScroll,
+            verticalScrollbar: verticalScrollbar,
+            onVerticalScrollbarPointerDown: handleVerticalScrollbarPointerDown,
+            onImportBackground: props.onImportBackground,
+            // 49-06 UAT: a selected Bg clip paints the Bg row header selected
+            // (like a selected track) and blanks every normal track's active
+            // highlight — the Bg row reads as THE current selection.
+            backgroundSelected: (props.selectedBackgroundClipId ?? null) !== null,
+            // 50-UAT (modal redesign): the photo/reference camera icon opens the
+            // floating Photo Reference dialog (the dialog owns Import/Replace/
+            // Remove — no X badge on the icon, 50-UAT round 2).
+            photoReference: props.photoReference ?? null,
+            onOpenReference: props.onOpenReference,
+          })}
+          <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
+            {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
+                the playhead cursor-only (usePhysicsPaintRulerScrub). No
+                role="slider": without a live aria-valuenow that would be an
+                ARIA violation, and wiring valuenow would re-render the strip
+                per frame; the nav pill already announces the current frame. */}
             <div
-              ref={timelineContentRef}
-              class="physics-paint-lane"
-              data-push-armed={pushArmed ? 'true' : undefined}
-              data-push-hover-invalid={pushHoverInvalid ? 'true' : undefined}
-              onPointerDownCapture={handleLanePushPointerDownCapture}
-              onClickCapture={handleLanePushClickCapture}
-              style={{
-                width: `${rotoLaneWidthPx}px`,
-                minWidth: `${rotoLaneWidthPx}px`,
-                gridTemplateColumns: `${rotoLaneWidthPx}px`,
-              }}
+              class="physics-paint-ruler"
+              style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
+              title="Seek playhead"
+              onPointerDown={(event) => rulerScrub.onPointerDown(event as unknown as PointerEvent)}
             >
-              {keyRailSegments.length > 0 ? (
-                <PhysicsPaintKeyRail
-                  segments={keyRailSegments}
-                  visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-                  framePitch={ROTO_CELL_WIDTH_PX}
-                  selectedKeyRail={props.selectedRotoKeyRail ?? null}
-                  railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
-                  railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
-                  railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
-                  railSetSize={railSetSize}
-                  onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
-                  prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
-                  commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
-                  getClampInput={getRotoKeyRailDragClampInput}
-                  onKeyRailDragRejected={props.onRotoKeyRailDragRejected}
-                  onPreviewChange={setRotoKeyRailDragPreview}
-                  dragUnavailableReason={keyUtilitiesDisabledByBusyState
-                    ? ROTO_KEY_BUSY_STATUS_TEMPLATE
-                    : undefined}
-                  deleteUnavailableReason={deleteRotoKeyDisabledReason}
-                  busy={keyUtilitiesDisabledByBusyState}
-                  onRailFocus={handleKeyRailFocus}
-                  onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
-                  onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
-                />
-              ) : null}
-              {loopResolutionContext !== null
-                && loopResolutionContext.ranges.length > 0
-                && props.onSelectRotoLoopClip
-                && props.onOpenRotoLoopEdit ? (
-                <PhysicsPaintLoopClipRail
-                  ranges={loopResolutionContext.ranges}
-                  presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
-                  visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-                  framePitch={ROTO_CELL_WIDTH_PX}
-                  selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
-                  railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
-                  railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}
-                  railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
-                  railSetSize={railSetSize}
-                  linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
-                  linkedActionName={props.linkedRotoActionName ?? null}
-                  onSelectLoopClip={props.onSelectRotoLoopClip}
-                  onOpenLoopEdit={props.onOpenRotoLoopEdit}
-                  prepareRotoGroupDrag={physicalActions?.prepareRotoGroupDrag}
-                  commitRotoGroupDrag={physicalActions?.commitRotoGroupDrag}
-                  getClampInput={getRotoGroupDragClampInput}
-                  onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? '')}
-                  onPreviewChange={setRotoGroupDragPreview}
-                  onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
-                  onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
-                  registerClickSequenceCanceller={(canceller) => {
-                    railClickSequenceCancellersRef.current.add(canceller);
-                    return () => {
-                      railClickSequenceCancellersRef.current.delete(canceller);
-                    };
-                  }}
-                />
-              ) : null}
-              <div
-                class="physics-paint-roto-cells"
-                role="row"
-                style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
-              >
-                {frameCells.map(frame => {
-                  const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
-                  const isGenerated = semanticCell?.kind === 'generated';
-                  // Phase 43: lazy per-frame resolution for this visible cell
-                  // (null when no loop context is supplied). Exhaustive mappers
-                  // gate every virtual linked occurrence out of selection/drag
-                  // (D-11/D-23) while preserving the existing cell-state fill
-                  // (D-18). The local badge/aria predicate intentionally groups
-                  // the four linked variants as presentation-only occurrences.
-                  const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
-                  const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;
-                  const isSpacingProxySelected = spacingProxy !== null
-                    && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
-                    && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
-                  const isLoopBoundaryStart = loopBoundaryFrames.starts.has(frame);
-                  const isLoopBoundaryEnd = loopBoundaryFrames.ends.has(frame);
-                  const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
-                    || frameResolution?.kind === 'linked-generated'
-                    || frameResolution?.kind === 'linked-gap'
-                    || frameResolution?.kind === 'linked-unresolved';
-                  const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
-                    || ((frameResolution?.kind === 'linked'
-                      || frameResolution?.kind === 'linked-generated'
-                      || frameResolution?.kind === 'linked-gap')
-                      && frameResolution.repeatInstance > 0);
-                  const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
-                    && frameResolution.repeatInstance > 0
-                    && !isGenerated;
-                  const linkedLoopClass = isLinkedRepeat
-                    ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
-                    : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
-                      ? 'roto-linked-source-generated'
-                      : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
-                        : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
-                          : '';
-                  const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
-                  // Cached per-cell derivation (38.1-04, Option A): recomputed
-                  // for at most the previous+new current cells on a pure frame
-                  // change; the value is byte-identical to the pre-cache
-                  // inline derivation.
-                  const { vm, fill } = getRotoCellDerivation(frame);
-                  const isPhysicalRealKey = semanticCell?.kind === 'real';
-                  const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
-                  const fillClass = getRotoAcceptedCellFillClass({
-                    lifecycleTargetKind: lifecycleTarget.kind,
-                    resolutionKind: frameResolution?.kind ?? 'empty',
-                    isPhysicalRealKey,
-                    fill,
-                    viewModelFillClass: vm.fillClass,
-                  });
-                  const isOccupiedRealKey = isPhysicalRealKey;
-                  const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
-                  const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
-                  const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
-                  const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
-                  // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
-                  const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
-                  const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
-                  const isDragMoved = previewCell?.role === 'moved';
-                  const isDragShifted = previewCell?.role === 'shifted';
-                  const isDragTarget = previewCell?.role === 'target';
-                  const isDragGenerated = previewCell?.role === 'generated';
-                  const isDragVacated = rotoDragVacatedAppFrames.has(frame);
-                  const isDragCommitting = Boolean(rotoDragPreview?.pending && rotoDragPreviewViewModel);
-                  const hasTargetFeedback = Boolean(rotoDragFeedback && (isDragMoved || isDragShifted || isDragTarget || isDragGenerated || isDragVacated || isDragSource));
-                  const dragLabel = hasTargetFeedback
-                    ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
-                    : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
-                  const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
-                    ? 'real-key'
-                    : isGenerated
-                      ? 'generated'
-                      : vm.baseMeaning === 'cached'
-                        ? 'cached'
-                        : vm.baseMeaning === 'background-only'
-                          ? 'background-only'
-                          : 'empty';
-                  // D-18: linked cells keep their existing cell-state fill,
-                  // while tooltip/aria copy comes from the typed resolution and
-                  // the one compact loopId → source-frame-count index above.
-                  const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
-                    ? existingCellTooltipKind
-                    : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
-                  const baseCellTooltipCopy = frameResolution === null
-                    ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
-                    : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
-                  // Real keys use primary-versus-complete selection treatment;
-                  // non-real cells keep the cursor unless Select All owns selection.
-                  const isCurrentFrame = vm.overlays.includes('current');
-                  const isPrimarySelected = !isSpacingProxySelected
-                    && cellKeyId !== null
-                    && props.rotoPrimarySelectedKeyId === cellKeyId;
-                  const isSecondarySelected = !isSpacingProxySelected
-                    && cellKeyId !== null
-                    && rotoSelectedKeyIdSet.has(cellKeyId)
-                    && rotoSelectedKeyIdSet.size >= 2
-                    && !isPrimarySelected;
-                  const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
-                  const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;
-                  const cellBaseTooltipCopy = isSpacingProxySelected
-                    ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
-                    : isSecondarySelected
-                      ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
-                      : baseCellTooltipCopy;
-                  const cellBaseAriaLabel = isSpacingProxySelected
-                    ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
-                    : hasLinkedLoopBadge
-                      ? `${baseCellTooltipCopy} · Frame ${frame}`
-                      : isSecondarySelected
-                        ? `${dragLabel} Selected.`
-                        : dragLabel;
-                  const cellPresentation = getRotoCellPresentationViewModel({
-                    kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
-                    keyId: cellKeyId,
-                    orderedRealKeyIds: realKeyOrderById,
-                    incomingInterpolationBreakKeyIds: incomingInterpolationBreakKeyIdSet,
-                    baseCopy: cellBaseTooltipCopy,
-                    ariaLabel: cellBaseAriaLabel,
-                  });
-                  const cellAriaLabel = cellPresentation.ariaLabel;
-                  const cellTooltipCopy = cellPresentation.tooltipCopy;
-                  // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
-                  // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
-                  // gap treatment (D-02). Class application only — no new DOM nodes.
-                  const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
-                  const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);
-                  // 43.5-05 Task 2 (T5): the push would-open gap previews as
-                  // ordinary roto-fill-empty cells, byte-identical to the
-                  // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
-                  const isPushGapPreview = pushGapPreviewAppFrames.has(frame);
-                  // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
-                  // preview as ordinary roto-fill-empty cells, byte-identical
-                  // to the 43.2-43.5 gap treatment (D-09).
-                  const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
-                  const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
-                    ? 'roto-fill-empty' : fillClass;
-                  const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
-                  return (
-                    <RotoTimelineCellButton
-                      key={frame}
-                      frame={frame}
-                      vm={vm}
-                      cellClass={cellClass}
-                      semanticKind={semanticKind}
-                      cellKeyId={cellKeyId}
-                      dragEligible={dragEligible}
-                      startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
-                      ariaLabel={cellAriaLabel}
-                      ariaSelected={isSpacingProxySelected || isSecondarySelected}
-                      tooltipCopy={cellTooltipCopy}
-                      onCellPointerDown={handleRotoTimelineCellPointerDown}
-                      onCellClick={handleRotoTimelineCellClick}
-                    />
-                  );
-                })}
-              </div>
-              {/* 43.5-05 design revision: armed anchor pre-highlight — the
-                  selected Rail shows the prospective-set treatment as soon as
-                  armed (the direction is chosen by the drag, so no pivot tick
-                  until the drag locks it). On drag start the per-rail ghosts
-                  take over. */}
-              {pushArmedAnchorRail !== null && !pushDragGhost.active ? (
-                <div class="physics-paint-push-hover-layer" aria-hidden="true">
-                  <span
-                    class={`physics-paint-push-hover-rail${pushHoverRailKindClass(pushArmedAnchorRail)}`}
-                    style={{
-                      left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                      width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
-                    }}
-                  />
-                </div>
-              ) : null}
-              {/* 43.5-05 Task 2 push ghost layer (T5): every moved-set rail
-                  ghosts at 55% kind-color opacity at the clamped destination
-                  (original interval + the hook's clamped signed delta — rigid
-                  translation, never recomputed here); the clamped blocked edge
-                  paints the 2x12px #FF6B6B bar on the set's outermost ghost
-                  edge. Originals stay at 100% until exact parent
-                  acknowledgement (Pitfall 9). */}
-              {pushDragGhost.active ? (
-                <div class="physics-paint-push-ghost-layer" aria-hidden="true">
-                  {pushSessionRef.current?.movedRails.map((rail) => {
-                    const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * ROTO_CELL_WIDTH_PX;
-                    const width = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
-                    return (
-                      <span
-                        key={rail.id}
-                        class={`physics-paint-push-ghost${pushGhostRailKindClass(rail)}`}
-                        style={{ left: `${left}px`, width: `${width}px` }}
-                      />
-                    );
-                  })}
-                  {pushDragGhost.blockedEdge !== null && pushSessionRef.current !== null ? (
-                    <span
-                      class="physics-paint-push-blocked-edge"
-                      style={{
-                        left: `${(pushDragGhost.blockedEdge === 'left'
-                          ? pushSessionRef.current.movedSetBounds.firstFrame
-                          : pushSessionRef.current.movedSetBounds.lastEndExclusive) * ROTO_CELL_WIDTH_PX
-                          + pushDragGhost.deltaFrames * ROTO_CELL_WIDTH_PX
-                          - (pushDragGhost.blockedEdge === 'right' ? 2 : 0)
-                          - frameCells[0] * ROTO_CELL_WIDTH_PX}px`,
-                      }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              {/* 43.6-03 Task 2 batch Move ghost layer (UI-SPEC M3): every set
-                  member ghosts at 55% kind-color opacity at the clamped
-                  destination (original interval + the hook's clamped delta —
-                  rigid translation, never recomputed here); the clamped
-                  blocked edge paints the 2x12px #FF6B6B bar on the colliding
-                  member's ghost blocked edge. Originals stay at 100% with
-                  their orange selection lines for the whole drag. */}
-              {railSetDragPreview !== null ? (
-                <div class="physics-paint-rail-set-ghost-layer" aria-hidden="true">
-                  {railSetMoveGhostRails.map((rail) => (
-                    <span
-                      key={rail.id}
-                      class={`physics-paint-rail-set-ghost${railSetGhostRailKindClass(rail)}`}
-                      style={{
-                        left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                        width: `${Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
-                      }}
-                    />
-                  ))}
-                  {railSetBlockedEdgeLeftPx !== null ? (
-                    <span
-                      class="physics-paint-rail-set-blocked-edge"
-                      style={{ left: `${railSetBlockedEdgeLeftPx}px` }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              {/* 43.5-05 smoke revision: the anchor Rail's orange capsule always
-                  renders ABOVE the hover pre-highlight (7) and the ghosts (8),
-                  so the anchor reference stays fully visible while armed and
-                  during the whole drag. Pre-highlight and ghosts complement it;
-                  they never replace the anchor's selection visual. On commit
-                  the anchor re-binds to its new position and stays selected. */}
-              {pushArmedAnchorRail !== null ? (
-                <span
-                  class="physics-paint-push-anchor-capsule"
-                  aria-hidden="true"
-                  style={{
-                    left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                    width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
-                  }}
-                />
-              ) : null}
+              {rotoRulerTicks.map(frame => (
+                <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
+              ))}
             </div>
+
+            {/* 47-01: the active track's rich lane lives INSIDE the shared
+                rows-region stacked above one presentational row per non-active
+                Paint track and the fixed Background row. When no multi-track
+                bundle is supplied the region holds only the lane, keeping the
+                pre-47 single-lane surface's DOM contract. */}
+            {/* 47-01 UAT round 2: the rows-region carries the SAME full
+                frame-capacity width as the ruler and the active lane, so the
+                per-track frame cells extend past the viewport and scroll with
+                the ruler instead of clipping at the window width. */}
+            <div
+              ref={rowsRegionRef}
+              class="physics-paint-rows-region"
+              data-rows={props.tracks ? 'multi' : 'single'}
+              onScroll={handleRowsRegionScroll}
+              onPointerDownCapture={(event) => crossTrackDrag.onPointerDown(event as unknown as PointerEvent)}
+              style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
+            >
+              {props.tracks && props.activeTrackId && props.layerId ? (
+                <>
+                  {props.tracks.map((track) =>
+                    track.id === props.activeTrackId
+                      ? <Fragment key={track.id}>{renderActiveLane()}</Fragment>
+                      : (
+                        <PhysicsPaintTrackRow
+                          key={track.id}
+                          trackId={track.id}
+                          layerId={props.layerId!}
+                          frameCells={frameCells}
+                          visible={track.visible}
+                          // 47-05 Task 1 (TML-05, D-16): read-only cross-track
+                          // drag feedback — the destination highlight + the
+                          // live insertion preview. The gesture never mutates
+                          // the row; these props are presentation only.
+                          crossDestination={crossTrackDrag.destinationTrackId.value === track.id && crossTrackDrag.isCrossing.value}
+                          crossInsertionFrame={crossTrackDrag.isCrossing.value && crossTrackDrag.destinationTrackId.value === track.id
+                            ? crossTrackDrag.insertionFrame.value
+                            : null}
+                          onSelectTrack={props.onSelectTrack}
+                          onNavigateToFrame={props.onNavigateToSyncedFrame}
+                          onSelectTrackFrame={props.onSelectTrackFrame}
+                          onSelectTrackRail={props.onSelectTrackRail}
+                        />
+                      ),
+                  )}
+                  {props.background ? (
+                    <PhysicsPaintTrackRow
+                      key={props.background.id}
+                      trackId={props.background.id}
+                      layerId={props.layerId!}
+                      frameCells={frameCells}
+                      kind="background"
+                      background={props.background}
+                      backgroundResolutionContext={backgroundResolutionContext}
+                      backgroundClipDrag={backgroundClipDrag}
+                      backgroundClipResize={backgroundClipResize}
+                      backgroundClipDragGhost={backgroundClipDrag.ghost}
+                      backgroundClipDragPreview={backgroundClipDrag.preview}
+                      onSelectBackgroundClip={props.onSelectBackgroundClip}
+                      onSelectBackgroundFrame={props.onSelectBackgroundFrame}
+                      selectedBackgroundClipId={props.selectedBackgroundClipId}
+                      backgroundPlacementFrame={props.backgroundPlacementFrame}
+                    />
+                  ) : null}
+                </>
+              ) : renderActiveLane()}
+            </div>
+            {/* 260827-s52 Task 2: the playhead bar is the LAST child so it
+                overlays the ruler + every row + the Bg row; pointer-events:
+                none keeps every cell/rail/capsule/ruler gesture untouched. */}
+            <PhysicsPaintPlayheadBar
+              currentFrame={currentFrameSignal}
+              scrubFrame={props.rotoScrubFrame}
+              playbackActive={props.isPlaying}
+              playbackTick={props.rotoCachedPlaybackTick}
+              frameCount={frameCells.length}
+            />
+          </div>
         </div>
         <div
           class="physics-paint-roto-action-row"
@@ -3085,6 +4418,107 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
+                    button offering the rail kinds. Motion/Static open the Create
+                    Rail dialog on the Paint tab; Reveal opens the SAME dialog on
+                    the Reveal Photo Rail tab (the SAME create-reveal-rail
+                    mutation — one model, two entry points). 260905-d1w: + Rail
+                    now sits immediately after + Key and is gated by the SAME
+                    availability law (canAddRotoKey + ready + busy-state guard).
+                    260905-d1w amendment: + Rail additionally greys on a generated
+                    in-between or a linked Rail repeat (canCreateRail). */}
+                <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
+                  <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class="physics-paint-roto-key-icon-button"
+                      aria-label="Create rail"
+                      aria-disabled={!canCreateRail ? 'true' : undefined}
+                      aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}
+                      aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
+                      onFocus={railCreateTooltip.onFocus}
+                      onBlur={railCreateTooltip.onBlur}
+                      onClick={() => {
+                        railCreateTooltip.hide();
+                        if (!canCreateRail) return;
+                        railCreateMenuOpen.value = !railCreateMenuOpen.value;
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && !canCreateRail) event.preventDefault();
+                      }}
+                    >
+                      <Plus size={18} aria-hidden="true" />
+                      <span class="physics-paint-roto-key-icon-label">Rail</span>
+                    </button>
+                    {!canCreateRail && railCreateDisabledReason ? (
+                      <span id="roto-key-action-reason-rail-create" class="physics-paint-sr-only">{railCreateDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                    <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('progressive');
+                        }}
+                      >
+                        Motion
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreatePlayScriptRail?.('static');
+                        }}
+                      >
+                        Static
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreateRevealRail?.();
+                        }}
+                      >
+                        Reveal
+                      </button>
+                    </PhysicsPaintRailCreateMenu>
+                  </span>
+                </div>
+                <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
+                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
+                      aria-label="Push"
+                      aria-pressed={pushArmed ? 'true' : 'false'}
+                      aria-disabled={pushToolDisabled ? 'true' : undefined}
+                      aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
+                      onFocus={pushTooltip.onFocus}
+                      onBlur={pushTooltip.onBlur}
+                      onClick={() => {
+                        pushTooltip.hide();
+                        if (pushToolDisabled) return;
+                        // Mode toggle: the anchor is resolved from the rail under
+                        // the pointer on drag — no selection is required to arm.
+                        togglePushTool();
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
+                      }}
+                    >
+                      <MoveHorizontal size={18} aria-hidden="true" />
+                    </button>
+                    {pushToolDisabled ? (
+                      <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                  </span>
+                </div>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -3169,6 +4603,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Copy key', copyRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Paste key"
+                    aria-disabled={!canPasteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canPasteRotoKey && pasteRotoKeyDisabledReason ? 'roto-key-action-reason-paste' : undefined}
+                    onFocus={pasteKeyTooltip.onFocus}
+                    onBlur={pasteKeyTooltip.onBlur}
+                    onClick={() => {
+                      pasteKeyTooltip.hide();
+                      if (!canPasteRotoKey) return;
+                      props.onPasteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardPaste size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Paste</span>
+                  </button>
+                  {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={cutKeyTooltip.onPointerEnter} onPointerLeave={cutKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -3223,34 +4685,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={scissorKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy(physicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.', scissorRotoKeyDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button"
-                    aria-label="Paste key"
-                    aria-disabled={!canPasteRotoKey ? 'true' : undefined}
-                    aria-describedby={!canPasteRotoKey && pasteRotoKeyDisabledReason ? 'roto-key-action-reason-paste' : undefined}
-                    onFocus={pasteKeyTooltip.onFocus}
-                    onBlur={pasteKeyTooltip.onBlur}
-                    onClick={() => {
-                      pasteKeyTooltip.hide();
-                      if (!canPasteRotoKey) return;
-                      props.onPasteRotoFrame?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
-                    }}
-                  >
-                    <ClipboardPaste size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Paste</span>
-                  </button>
-                  {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={selectAllTooltip.onPointerEnter} onPointerLeave={selectAllTooltip.onPointerLeave}>
@@ -3309,80 +4743,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
-              <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
-                    aria-label="Push"
-                    aria-pressed={pushArmed ? 'true' : 'false'}
-                    aria-disabled={pushToolDisabled ? 'true' : undefined}
-                    aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
-                    onFocus={pushTooltip.onFocus}
-                    onBlur={pushTooltip.onBlur}
-                    onClick={() => {
-                      pushTooltip.hide();
-                      if (pushToolDisabled) return;
-                      // Mode toggle: the anchor is resolved from the rail under
-                      // the pointer on drag — no selection is required to arm.
-                      togglePushTool();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
-                    }}
-                  >
-                    <MoveHorizontal size={18} aria-hidden="true" />
-                  </button>
-                  {pushToolDisabled ? (
-                    <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-              </div>
-              {/* 43.6-06 Solo arm (UI-SPEC M2): ONE compact icon button in its
-                  own group immediately after the Push group — a mode toggle
-                  enabled whenever ANY rail selection exists (single rail = set
-                  of one, D-15). Armed paint reuses the 43.5 armed-tool classes
-                  byte-for-byte (no new color literal); aria-pressed reflects
-                  armed state; the guarded tooltip idiom matches the sibling
-                  key tools. */}
-              <div class="physics-paint-solo-tool-group" role="group" aria-label="Solo playback">
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={soloTooltip.onPointerEnter} onPointerLeave={soloTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${soloArmedClass}`}
-                    aria-label="Solo selected Rails"
-                    aria-pressed={soloArmed ? 'true' : 'false'}
-                    aria-disabled={soloToolDisabled ? 'true' : undefined}
-                    aria-describedby={soloToolDisabled ? 'roto-key-action-reason-solo' : undefined}
-                    onFocus={soloTooltip.onFocus}
-                    onBlur={soloTooltip.onBlur}
-                    onClick={() => {
-                      soloTooltip.hide();
-                      if (soloToolDisabled) return;
-                      // Mode toggle: arming never starts or stops transport
-                      // (D-16); re-click disarms.
-                      toggleSolo();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && soloToolDisabled) event.preventDefault();
-                    }}
-                  >
-                    <Focus size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Solo</span>
-                  </button>
-                  {soloToolDisabled ? (
-                    <span id="roto-key-action-reason-solo" class="physics-paint-sr-only">{soloToolDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={soloTooltip.visible} region="bottom">
-                    {soloArmed
-                      ? 'Exit solo playback.'
-                      : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', soloToolDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-              </div>
             </div>
         <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
           {scrollbar.visible ? (
@@ -3415,6 +4775,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       <PhysicsPaintStyledTooltip visible={pushDragBlocked.value !== null} region="bottom" anchorRef={pushBlockedAnchorRef} topmost>
         {pushHoverGuardCopy}
       </PhysicsPaintStyledTooltip>
+
+      {/* 47-02 Task 2: the acknowledge-and-delete dialog — mounted only while a
+          requestDeleteTrack preview is open; the Confirm is the ONLY delete
+          commit entry in the strip surface (D-17, Phase 46 D-14). */}
+      {deletePreview ? (
+        <PhysicsPaintDeleteTrackDialog
+          layerId={props.layerId!}
+          trackName={props.tracks?.find((track) => track.id === deletePreview.trackId)?.name ?? 'this track'}
+          preview={deletePreview}
+          onCancel={handleCancelDeleteTrack}
+          onStatus={handleDeleteTrackStatus}
+        />
+      ) : null}
    </section>
   );
 }

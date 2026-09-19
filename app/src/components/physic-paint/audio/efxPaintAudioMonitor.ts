@@ -4,6 +4,13 @@ import { audioEngine } from '../../../lib/audioEngine';
 import { applyRevisionedEfxPaintAudioPreview, resolveTrackPlayback } from './efxPaintAudioPreviewContext';
 import { audioPreviewEnabled, configureAudioPreviewToggleEffect, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
 import { efxPaintAudioOwnership } from './efxPaintAudioOwnership';
+import { isPhysicsPaintProfilingEnabled } from '../performance/physicsPaintPerformanceTrace';
+
+/** Profile-gated scrub diagnostics (G-52-9): names the exact gate that silenced
+ * a scrub snippet so a silent-scrub report carries its cause in the console. */
+function logAudioScrubDiagnostic(...args: unknown[]): void {
+  if (isPhysicsPaintProfilingEnabled()) console.warn('[efx-paint-audio]', ...args);
+}
 
 /**
  * EFX Paint child-window audio monitor (41-02 tracer).
@@ -36,6 +43,13 @@ type MonitorState = 'idle' | 'positioned' | 'playing';
  */
 export const EFX_PAINT_AUDIO_DRIFT_THRESHOLD_SEC = 0.04;
 export const EFX_PAINT_AUDIO_DRIFT_CHECK_INTERVAL_TICKS = 10;
+// D-02 amendment (260902-cfa): audible scrub. While dragging the ruler with
+// playback idle and monitoring enabled, each scrub update re-dispatches a short
+// snippet from the current position, throttled to avoid stopAll/re-prepare
+// spam and crackle. The snippet window is a few frames past the cursor; the
+// monitor's playAtCursor caps it at each track's audible window.
+export const EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS = 120;
+export const EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES = 4;
 
 let state: MonitorState = 'idle';
 let context: EfxPaintAudioPreviewContext | null = null;
@@ -49,6 +63,10 @@ let driftTickCounter = 0;
 // A6: the fps-mismatch note is published once per playback session (reset on
 // stop). No playbackRate scaling ever occurs.
 let fpsMismatchNoted = false;
+// D-02 amendment: last audible-scrub snippet dispatch time (performance.now()).
+// Initialized so the first scrub of a session always dispatches; reset by the
+// single stop funnel so a fresh scrub starts unthrottled.
+let lastScrubAt = -EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS;
 // Live Paint cursor + loop window, tracked from playAtCursor / positionedAt /
 // checkDrift calls — the restart position for mid-playback revisioned updates
 // (D-03).
@@ -111,11 +129,13 @@ export const efxPaintAudioMonitor = {
       return;
     }
     if (!efxPaintAudioOwnership.canStartAudio()) {
+      logAudioScrubDiagnostic('playAtCursor suppressed: main window holds audio');
       efxPaintAudioOwnership.noteSuppressed();
       return;
     }
     const ctx = audioEngine.ensureContext();
     if (state === 'playing') audioEngine.stopAll();
+    let dispatched = 0;
     for (const track of current.tracks) {
       if (track.muted || !preparedTrackIds.has(track.id)) continue;
       const resolution = resolveTrackPlayback(track, cursorAppFrame, playbackRangeEnd, current.fps);
@@ -129,7 +149,9 @@ export const efxPaintAudioMonitor = {
       } else {
         audioEngine.playDelayed(track.id, resolution.delaySec, resolution.sourceOffsetSec, trackLike, current.fps, resolution.maxPlaySec);
       }
+      dispatched += 1;
     }
+    logAudioScrubDiagnostic('playAtCursor:', cursorAppFrame, '| dispatched', dispatched, 'tracks | AudioContext', ctx.state);
     anchorAppFrame = cursorAppFrame;
     anchorCtx = ctx;
     anchorCtxTime = ctx.currentTime;
@@ -149,6 +171,9 @@ export const efxPaintAudioMonitor = {
    */
   stop(): void {
     toggleSilenced = false;
+    // D-02 amendment: any stop (visual stop, toggle Off, scrub release) resets
+    // the audible-scrub throttle so the next scrub starts unthrottled.
+    lastScrubAt = -EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS;
     efxPaintAudioOwnership.releaseAudio();
     efxPaintAudioOwnership.noteVisualStop();
     if (state !== 'playing') return;
@@ -166,6 +191,40 @@ export const efxPaintAudioMonitor = {
     anchorAppFrame = cursorAppFrame;
     liveCursorAppFrame = cursorAppFrame;
     if (state === 'idle') state = 'positioned';
+  },
+
+  /**
+   * D-02 amendment (audible scrub): re-dispatch a short snippet at the dragged
+   * position through the normal playAtCursor funnel (stopAll + re-dispatch),
+   * throttled to EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS so a fast drag never spams
+   * stopAll/re-prepare. The snippet window is a few frames past the cursor
+   * (EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES); playAtCursor caps it at each
+   * track's audible window. With the session toggle Off (or no audio section)
+   * the scrub stays silent — a D-09 positionedAt re-anchor, zero engine
+   * dispatch. The toggle check happens HERE (not inside playAtCursor) so a
+   * muted scrub never sets the D-14 toggleSilenced flag.
+   */
+  scrubAt(cursorAppFrame: number): void {
+    if (!context || !audioPreviewEnabled.peek()) {
+      logAudioScrubDiagnostic('scrubAt gated:', !context ? 'no-context (prepare never ran)' : 'toggle-off', 'frame', cursorAppFrame);
+      this.positionedAt(cursorAppFrame);
+      return;
+    }
+    const now = performance.now();
+    if (now - lastScrubAt < EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS) return;
+    lastScrubAt = now;
+    logAudioScrubDiagnostic('scrubAt dispatch:', cursorAppFrame, '| prepared', preparedTrackIds.size, '/', context.tracks.length, 'tracks | canStart', efxPaintAudioOwnership.canStartAudio());
+    this.playAtCursor(cursorAppFrame, cursorAppFrame + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES);
+  },
+
+  /**
+   * D-02 amendment: drag release — stop the snippet through the single stop
+   * funnel (releases the transient ownership claim) and re-anchor the audio at
+   * the final frame so the next Play resumes there.
+   */
+  scrubEnd(finalAppFrame: number): void {
+    this.stop();
+    this.positionedAt(finalAppFrame);
   },
 
   /**

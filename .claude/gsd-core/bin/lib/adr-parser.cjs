@@ -14,6 +14,9 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const security_cjs_1 = require("./security.cjs");
 const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const cliExitModule = require("./cli-exit.cjs");
+const { ExitError, runMain } = cliExitModule;
 const STATUS_REJECT_SET = new Set(['superseded', 'rejected', 'deprecated']);
 const CANONICAL_HEADERS = {
     status: ['status', 'state', 'lifecycle', 'stage'],
@@ -399,19 +402,22 @@ function parseCliArgs(argv) {
 }
 function main(argv) {
     const opts = parseCliArgs(argv);
-    const safePath = (0, security_cjs_1.requireSafePath)(opts.input, node_path_1.default.resolve(opts.projectDir), 'ADR input path', { allowAbsolute: true });
+    const safePath = (0, security_cjs_1.requireSafePath)(opts.input, node_path_1.default.resolve(opts.projectDir), 'ADR input path', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
     const content = node_fs_1.default.readFileSync(safePath, 'utf8');
     const parsed = parseAdrMarkdown(content, { sourcePath: opts.input ?? undefined, format: opts.format });
     process.stdout.write(JSON.stringify(parsed, null, 2));
 }
 if (require.main === module) {
-    try {
-        main(process.argv.slice(2));
-    }
-    catch (error) {
-        process.stderr.write(`Error: ${error.message}\n`);
-        process.exit(1);
-    }
+    runMain(() => {
+        try {
+            main(process.argv.slice(2));
+        }
+        catch (err) {
+            // ExitError with a message so runMain's catch writes it verbatim
+            // (byte-identical to the prior `Error: ${message}\n` process.exit(1)).
+            throw new ExitError(1, `Error: ${err.message}`);
+        }
+    });
 }
 module.exports = {
     CANONICAL_HEADERS,

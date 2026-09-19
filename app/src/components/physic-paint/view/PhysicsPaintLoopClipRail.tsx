@@ -16,6 +16,8 @@ import type {
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   projectPhysicsPaintLoopClipGeometry,
+  REVEAL_MOTION_HOVER_COLOR,
+  REVEAL_STATIC_HOVER_COLOR,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import {
@@ -88,6 +90,13 @@ export interface PhysicsPaintLoopClipRailProps {
    *  must not collapse or mutate the set mid-drag. Returns the unregister
    *  function. */
   readonly registerClickSequenceCanceller?: (canceller: () => void) => () => void;
+  /** 47 close-out UAT round 3: true while a cross-track drag session is
+   *  crossing rows — the rail pill never pops mid-drag. */
+  readonly suppressTooltip?: boolean;
+  /** 52 UAT (GSD-52): records the focused Loop Clip rail button so a commit
+   *  that removes it (Delete/Undo/Redo) can restore focus to the stable
+   *  timeline container — mirrors PhysicsPaintKeyRail's onRailFocus. */
+  readonly onRailFocus?: (element: HTMLElement) => void;
 }
 
 interface RailMouseEvent {
@@ -147,11 +156,23 @@ interface RailTargetProps {
   readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
   readonly onRailSetDragClickSuppressed?: () => boolean;
   readonly registerClickSequenceCanceller?: (canceller: () => void) => () => void;
+  /** 47 close-out UAT round 3: true while a cross-track drag session is
+   *  crossing rows — the rail pill never pops mid-drag. */
+  readonly suppressTooltip?: boolean;
+  /** 52 UAT (GSD-52): records the focused rail button for orphan-focus
+   *  restore — mirrors PhysicsPaintKeyRail's onRailFocus. */
+  readonly onRailFocus?: (element: HTMLElement) => void;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
+  // 47 close-out UAT round 3: a hover timer armed before the cross-track drag
+  // took the pointer capture would pop the pill mid-drag (pointerleave never
+  // fires under capture) — hide it the moment a session starts crossing.
+  useEffect(() => {
+    if (props.suppressTooltip) tooltip.hide();
+  }, [props.suppressTooltip]);
   const pendingSingleClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickTimestampRef = useRef<number | null>(null);
   const { range, presentation } = props;
@@ -167,6 +188,23 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const tooltipLines = setSentence
     ? [...presentation.tooltipLines, setSentence.trim()]
     : presentation.tooltipLines;
+  // 52-03 (D-22): the reveal rail inherits the Loop Clip overrideColor
+  // mechanism — the variant color is the DEFAULT overrideColor, overridable
+  // per rail. The rail line color rides a CSS variable so the existing
+  // mode/selected/unresolved rules keep working (one color system, not two).
+  const isReveal = presentation.railKind === 'reveal';
+  const railColor = isReveal ? presentation.overrideColor : null;
+  const railColorHover = isReveal
+    ? (presentation.mode === 'static' ? REVEAL_STATIC_HOVER_COLOR : REVEAL_MOTION_HOVER_COLOR)
+    : null;
+  const railStyle = railColor
+    ? { '--rail-color': railColor, ...(railColorHover ? { '--rail-color-hover': railColorHover } : {}) }
+    : undefined;
+  // 52-03 (D-24): the red unresolved state stays EXCLUSIVELY for the
+  // fail-closed cases (reference removed after creation / script deleted) —
+  // never for a normal pending state. A reveal rail with a Replay disabled
+  // reason IS a fail-closed case, so it paints the shared unresolved red.
+  const revealUnresolved = isReveal && presentation.replayDisabledReason !== null;
 
   const clearPendingSingleClick = () => {
     if (pendingSingleClickRef.current === null) return;
@@ -292,12 +330,13 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       ref={anchorRef}
       class="physics-paint-loop-clip-rail-anchor"
       style={{ left: `${props.left}px`, width: `${props.width}px` }}
-      onPointerEnter={tooltip.onPointerEnter}
+      onPointerEnter={props.suppressTooltip ? tooltip.hide : tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
       <button
         type="button"
-        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${isReveal ? ' rail-kind-reveal' : ''}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved || revealUnresolved ? ' unresolved' : ''}`}
+        style={railStyle}
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
         data-rail-first-frame={range.placementStart}
@@ -320,15 +359,13 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
           const current = event?.currentTarget as HTMLElement | null;
           const lane = current?.closest ? current.closest(RAIL_LANE_SELECTOR) : null;
           if (current && lane) roveRailTargetFocus(lane, current);
+          props.onRailFocus?.(event?.currentTarget as HTMLElement);
         }}
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" aria-hidden="true" />
         {props.isSetAnchor ? (
           <span class="physics-paint-rail-anchor-tick" aria-hidden="true" />
-        ) : null}
-        {presentation.synchronizationDot ? (
-          <span class={`physics-paint-loop-clip-lifecycle-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
         ) : null}
       </button>
       {ghost.active ? (
@@ -347,9 +384,20 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       ) : null}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
-          {tooltipLines.map((line, index) => index === 0
-            ? <strong key={line}>{line}</strong>
-            : <span key={`${index}:${line}`}>{line}</span>)}
+          {tooltipLines.map((line, index) => {
+            if (index === 0) return <strong key={line}>{line}</strong>;
+            if (line.startsWith('Status:')) {
+              return (
+                <span key={`${index}:${line}`} class="physics-paint-loop-clip-tooltip-status">
+                  {presentation.synchronizationDot ? (
+                    <span class={`physics-paint-loop-clip-tooltip-status-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
+                  ) : null}
+                  {line}
+                </span>
+              );
+            }
+            return <span key={`${index}:${line}`}>{line}</span>;
+          })}
         </span>
       </PhysicsPaintStyledTooltip>
     </span>
@@ -441,9 +489,15 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           windowLike={props.windowLike}
           onRailSetDragPointerDown={props.onRailSetDragPointerDown}
           onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
+          suppressTooltip={props.suppressTooltip}
           registerClickSequenceCanceller={props.registerClickSequenceCanceller}
+          onRailFocus={props.onRailFocus}
         />
       ))}
+      {/* 47 UAT: the filmstrip capsule overlay is REMOVED — the Motion/
+          Static rails keep the locked Phase 43 surface (no cells, no
+          badge, no repetition band on the rail). All loop facts live in
+          the tooltip only. */}
     </div>
   );
 }

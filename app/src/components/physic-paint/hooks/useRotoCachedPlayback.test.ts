@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hookRuntime = vi.hoisted(() => ({
@@ -38,6 +39,9 @@ const audioMocks = vi.hoisted(() => ({
   prepare: vi.fn<(...args: unknown[]) => Promise<void>>(),
   playAtCursor: vi.fn(),
   stop: vi.fn(),
+  positionedAt: vi.fn(),
+  scrubAt: vi.fn(),
+  scrubEnd: vi.fn(),
   noteFpsMismatchOnce: vi.fn(() => null as string | null),
   notifyLoopWrap: vi.fn(),
   checkDrift: vi.fn(),
@@ -51,6 +55,9 @@ vi.mock('../audio/efxPaintAudioMonitor', () => ({
     prepare: audioMocks.prepare,
     playAtCursor: audioMocks.playAtCursor,
     stop: audioMocks.stop,
+    positionedAt: audioMocks.positionedAt,
+    scrubAt: audioMocks.scrubAt,
+    scrubEnd: audioMocks.scrubEnd,
     noteFpsMismatchOnce: audioMocks.noteFpsMismatchOnce,
     notifyLoopWrap: audioMocks.notifyLoopWrap,
     checkDrift: audioMocks.checkDrift,
@@ -103,6 +110,16 @@ function createHarness(input: UseRotoCachedPlaybackInput<Frame>) {
   };
   return {
     render,
+    /**
+     * The playback anchor refs, white-box (D-22 asserts they hold the SAME
+     * index). The mock indexes refs by `useRef` call order and the 4 `useState`
+     * calls consume slots 0-3 first: settingsRef(4), timerRef(5),
+     * frameIndexRef(6), loopStartIndexRef(7) — see the hook's call order.
+     */
+    anchors: () => ({
+      frameIndex: hookRuntime.refs[6] as { current: unknown },
+      loopStart: hookRuntime.refs[7] as { current: unknown },
+    }),
     update: (next: Partial<UseRotoCachedPlaybackInput<Frame>>) => {
       current = { ...current, ...next };
       return render();
@@ -441,6 +458,328 @@ describe('useRotoCachedPlayback', () => {
       expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
     });
   });
+
+  // D-02 seek wiring (260902-cfa): seek-while-playing is a full audio
+  // seek-restart at the new cursor (playAtCursor = stopAll + re-dispatch,
+  // truth table section 5); seek-while-idle / out-of-range / after-stop is a
+  // silent re-anchor (positionedAt, D-09) with zero engine dispatch.
+  describe('seek (D-02 seek-restart / D-09 silent re-anchor)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      installWindowTimers();
+      audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+      audioMocks.playAtCursor.mockReset();
+      audioMocks.stop.mockReset();
+      audioMocks.positionedAt.mockReset();
+      audioMocks.scrubAt.mockReset();
+      audioMocks.scrubEnd.mockReset();
+      audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+      audioMocks.notifyLoopWrap.mockReset();
+      audioMocks.checkDrift.mockReset();
+      audioMocks.claimAudio.mockReset();
+      audioMocks.ownershipConfigure.mockReset();
+      audioMocks.getSection.mockReset().mockReturnValue(null);
+    });
+
+    const seekFrames = [
+      { appFrame: 8, frame: { id: 'first' } },
+      { appFrame: 9, frame: { id: 'second' } },
+      { appFrame: 10, frame: { id: 'third' } },
+    ];
+
+    function createSeekHarness() {
+      const onFrame = vi.fn();
+      const harness = createHarness({
+        initialSettings: { loop: false, fps: 2 },
+        workflowMode: 'roto',
+        getFrames: () => seekFrames,
+        onStart: vi.fn(),
+        onFrame,
+        setIsPlaying: vi.fn(),
+      });
+      return { harness, onFrame };
+    }
+
+    it('seek while active re-anchors at the target and dispatches playAtCursor exactly once', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(playback.isActive).toBe(true);
+      expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+
+      // Advance one tick: now showing frame 9 (index 1).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+
+      // Seek to frame 9 while playing: re-anchor + full audio seek-restart.
+      playback.seek(9);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledTimes(1);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledWith(9, 11);
+      expect(playback.frame).toEqual({ id: 'second' });
+
+      // The next timer tick shows the frame AFTER the target (frame 10).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+      vi.useRealTimers();
+    });
+
+    it('seek while idle dispatches positionedAt with zero engine calls', () => {
+      const { harness } = createSeekHarness();
+      const playback = harness.render();
+      expect(playback.isActive).toBe(false);
+
+      playback.seek(9);
+      expect(audioMocks.positionedAt).toHaveBeenCalledWith(9);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      expect(audioMocks.prepare).not.toHaveBeenCalled();
+    });
+
+    it('seek to an out-of-range appFrame is a silent re-anchor — positionedAt only, no frame-index change', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(playback.isActive).toBe(true);
+      expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+
+      playback.seek(99); // not in getFrames()
+      expect(audioMocks.positionedAt).toHaveBeenCalledWith(99);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      // No frame-index change: the next tick still shows frame 9 (index 1).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+      vi.useRealTimers();
+    });
+
+    it('seek after stop() is a silent re-anchor — positionedAt only', () => {
+      const { harness } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      playback.stop();
+      playback = harness.render();
+      expect(playback.isActive).toBe(false);
+
+      playback.seek(9);
+      expect(audioMocks.positionedAt).toHaveBeenCalledWith(9);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    // D-02 amendment (audible scrub): the scrub funnel routes idle scrubs to
+    // the monitor's throttled snippet (scrubAt) and active scrubs to the
+    // seek-restart path; scrubEnd stops the snippet and re-anchors.
+    it('scrub while idle dispatches scrubAt (audible snippet funnel)', () => {
+      const { harness } = createSeekHarness();
+      const playback = harness.render();
+      expect(playback.isActive).toBe(false);
+
+      playback.scrub(9);
+      expect(audioMocks.scrubAt).toHaveBeenCalledWith(9);
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      expect(audioMocks.positionedAt).not.toHaveBeenCalled();
+    });
+
+    it('scrub while active re-anchors and dispatches playAtCursor (seek-restart)', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(playback.isActive).toBe(true);
+
+      playback.scrub(9);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledWith(9, 11);
+      expect(audioMocks.scrubAt).not.toHaveBeenCalled();
+      expect(playback.frame).toEqual({ id: 'second' });
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+      vi.useRealTimers();
+    });
+
+    it('scrubEnd while idle stops the snippet and re-anchors at the final frame', () => {
+      const { harness } = createSeekHarness();
+      const playback = harness.render();
+      playback.scrubEnd(9);
+      expect(audioMocks.scrubEnd).toHaveBeenCalledWith(9);
+    });
+
+    it('scrubEnd while active is a no-op (the seek-restart already handled audio)', () => {
+      const { harness } = createSeekHarness();
+      let playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      playback.scrubEnd(9);
+      expect(audioMocks.scrubEnd).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('seek while playing re-anchors the loop start at the seek target (loop wraps there)', () => {
+      const { harness, onFrame } = createSeekHarness();
+      let playback = harness.render();
+      playback.setLoop(true);
+      playback = harness.render();
+      playback.start();
+      playback = harness.render();
+      expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+      // Seek to frame 9 while playing: the loop now wraps to frame 9.
+      playback.seek(9);
+      expect(playback.frame).toEqual({ id: 'second' });
+      // Advance to the end (frame 10, index 2), then wrap to frame 9 (index 1).
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+      vi.advanceTimersByTime(500);
+      expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+      vi.useRealTimers();
+    });
+  });
+});
+
+// D-01 (260902-cfa amendment): Play must honor the cursor. start() resolves
+// the current application-frame cursor at press time, finds its index in
+// cachedFrames, and begins visual playback there, dispatching
+// playAtCursor(cursorAppFrame, rangeEnd). An out-of-range cursor (or no
+// matching frame) falls back to the range start; loop wrap still returns to
+// the range start.
+describe('start honors the current application-frame cursor (D-01)', () => {
+  function audioSection(): EfxPaintAudioPreviewContext {
+    return {
+      revision: 1,
+      fps: 24,
+      tracks: [
+        {
+          id: 'track-1',
+          assetUrl: 'efxasset://localhost/tmp/d01-fixture.wav',
+          offsetFrame: 0,
+          inFrame: 0,
+          outFrame: 48,
+          slipOffset: 0,
+          fadeInFrames: 0,
+          fadeOutFrames: 0,
+          volume: 1,
+          muted: false,
+          fadeInCurve: 'linear',
+          fadeOutCurve: 'linear',
+        },
+      ],
+    };
+  }
+
+  function installWindowTimers() {
+    vi.stubGlobal('window', {
+      clearInterval,
+      setInterval,
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+    audioMocks.playAtCursor.mockReset();
+    audioMocks.stop.mockReset();
+    audioMocks.positionedAt.mockReset();
+    audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+    audioMocks.notifyLoopWrap.mockReset();
+    audioMocks.checkDrift.mockReset();
+    audioMocks.claimAudio.mockReset();
+    audioMocks.ownershipConfigure.mockReset();
+    audioMocks.getSection.mockReset().mockReturnValue(null);
+  });
+
+  const d01Frames = [
+    { appFrame: 8, frame: { id: 'first' } },
+    { appFrame: 9, frame: { id: 'second' } },
+    { appFrame: 10, frame: { id: 'third' } },
+  ];
+
+  function createD01Harness(getCurrentAppFrame: () => number) {
+    const onFrame = vi.fn();
+    const harness = createHarness({
+      initialSettings: { loop: false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => d01Frames,
+      getCurrentAppFrame,
+      onStart: vi.fn(),
+      onFrame,
+      setIsPlaying: vi.fn(),
+    });
+    return { harness, onFrame };
+  }
+
+  async function flushMicrotasks() {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  it('starts playback at the current application-frame cursor after an idle seek (D-01)', async () => {
+    audioMocks.getSection.mockReturnValue(audioSection());
+    const { harness, onFrame } = createD01Harness(() => 9);
+    let playback = harness.render();
+    // Idle seek to frame 9 re-anchors the audio anchor silently (D-09).
+    playback.seek(9);
+    expect(audioMocks.positionedAt).toHaveBeenCalledWith(9);
+    playback = harness.render();
+    // Play resumes at the cursor — visual playback begins at frame 9 and the
+    // audio dispatches playAtCursor(9, rangeEnd), never the range start.
+    playback.start();
+    await flushMicrotasks();
+    playback = harness.render();
+    expect(playback.isActive).toBe(true);
+    expect(playback.frame).toEqual({ id: 'second' });
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    expect(audioMocks.playAtCursor).toHaveBeenCalledWith(9, 11);
+    vi.useRealTimers();
+  });
+
+  it('falls back to the range start when the current cursor is out of range (D-01 clamp)', async () => {
+    audioMocks.getSection.mockReturnValue(audioSection());
+    const { harness, onFrame } = createD01Harness(() => 99);
+    let playback = harness.render();
+    playback.start();
+    await flushMicrotasks();
+    playback = harness.render();
+    expect(playback.isActive).toBe(true);
+    expect(playback.frame).toEqual({ id: 'first' });
+    expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+    expect(audioMocks.playAtCursor).toHaveBeenCalledWith(8, 11);
+    vi.useRealTimers();
+  });
+
+  it('loop wrap returns to the initial scrub position, not the range start (D-01 amendment)', () => {
+    const { harness, onFrame } = createD01Harness(() => 9);
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    // Walk to the end of the enumeration: index 2 (frame 10), then wrap to the
+    // initial scrub position (index 1, frame 9) — never the range start.
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    vi.useRealTimers();
+  });
+
+  it('loop wrap from the range start still returns to the range start (default cursor)', () => {
+    const { harness, onFrame } = createD01Harness(() => 0);
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(0, 8);
+    vi.useRealTimers();
+  });
 });
 
 /**
@@ -457,6 +796,8 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     getEndFrame: () => number | null;
     getFrame: (appFrame: number) => Preview | null;
     getSoloWindow?: () => SoloPlaybackWindow | null;
+    getSoloContentStart?: () => number | null;
+    getCurrentAppFrame?: () => number;
   }
 
   function createCoordinatorHarness(playback: CoordinatorPlaybackInput) {
@@ -496,6 +837,12 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
           getFrame: (appFrame) => current.getFrame(appFrame),
           ...(current.getSoloWindow !== undefined
             ? { getSoloWindow: () => current.getSoloWindow!() }
+            : {}),
+          ...(current.getCurrentAppFrame !== undefined
+            ? { getCurrentAppFrame: () => current.getCurrentAppFrame!() }
+            : {}),
+          ...(current.getSoloContentStart !== undefined
+            ? { getSoloContentStart: () => current.getSoloContentStart!() }
             : {}),
           onStart,
           onFrame,
@@ -613,6 +960,63 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     expect(harness.setIsPlaying).not.toHaveBeenCalled();
   });
 
+  it('armed solo + loop wraps to the initial scrub position inside the solo window (D-01 amendment)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 50,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getSoloWindow: () => ({
+        start: 12,
+        endExclusive: 40,
+        includesFrame: (appFrame) => appFrame % 2 === 0,
+      }),
+      getCurrentAppFrame: () => 14,
+    });
+
+    const coordinator = harness.render();
+    coordinator.playback.start();
+    const next = harness.render();
+
+    expect(next.playback.isActive).toBe(true);
+    // Starts at frame 14 (index 2 in the solo enumeration 12..39).
+    expect(harness.onFrame).toHaveBeenLastCalledWith(2, 14);
+    // Walk to the end of the solo window (index 27 = frame 39), then wrap to
+    // the initial scrub position (index 2 = frame 14) — never the window start.
+    vi.advanceTimersByTime(500 * 25);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(27, 39);
+    vi.advanceTimersByTime(500);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(2, 14);
+    vi.useRealTimers();
+  });
+
+  it('start anchors at the caller-supplied solo content start while armed (D-20/D-21)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 50,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getSoloWindow: () => ({
+        start: 12,
+        endExclusive: 40,
+        includesFrame: () => true,
+      }),
+      getSoloContentStart: () => 12,
+      getCurrentAppFrame: () => 20,
+    });
+
+    let coordinator = harness.render();
+    coordinator.playback.start();
+    coordinator = harness.render();
+
+    // The solo window enumeration starts at 12 (index 0) even though the
+    // cursor sits at 20 (index 8) — the content start wins while solo is armed.
+    expect(harness.onFrame).toHaveBeenLastCalledWith(0, 12);
+    vi.advanceTimersByTime(500);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(1, 13);
+    vi.useRealTimers();
+  });
+
   it('Pitfall 3 regression: armed solo does not alter the stopped-canvas display lookup (D-18)', () => {
     // The stopped canvas renders everything at any cursor position:
     // findCachedRotoDisplayFrame has no solo input and returns the physical
@@ -622,7 +1026,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
       endExclusive: 40,
       includesFrame: (appFrame) => appFrame >= 12 && appFrame < 40,
     };
-    const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+    const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
     const physical = (appFrame: number) => ({
       kind: 'real' as const,
       layerId: 'layer-1',
@@ -630,7 +1034,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
       keyId: `k${appFrame}`,
       contentRevision: 'rev-1',
       cacheRevision: `rev-1:real:k${appFrame}`,
-      renderedFrame: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(`k${appFrame}`) },
+      renderedFrame: { frameIndex: appFrame, appFrame, bytes: pngDataUrl(`k${appFrame}`) },
     });
     const display = (appFrame: number) => findCachedRotoDisplayFrame(appFrame, {
       getPhysicalRenderSource: (frame) => physical(frame),
@@ -645,3 +1049,148 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     expect(soloWindow.includesFrame(5)).toBe(false);
   });
 });
+
+/**
+ * D-20/D-21/D-22: when a solo is active, Play starts at the solo content start
+ * — not at the cursor — and every loop wrap returns there. The solo state
+ * arrives as a caller-supplied getter (null = no solo active): this hook never
+ * reads the solo signal, the document, or persistence, consistent with its
+ * existing `getCurrentAppFrame` seam.
+ */
+describe('solo content start (D-20..D-22)', () => {
+  function installWindowTimers() {
+    vi.stubGlobal('window', {
+      clearInterval,
+      setInterval,
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+    audioMocks.playAtCursor.mockReset();
+    audioMocks.stop.mockReset();
+    audioMocks.positionedAt.mockReset();
+    audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+    audioMocks.notifyLoopWrap.mockReset();
+    audioMocks.checkDrift.mockReset();
+    audioMocks.claimAudio.mockReset();
+    audioMocks.ownershipConfigure.mockReset();
+    audioMocks.getSection.mockReset().mockReturnValue(null);
+  });
+
+  // appFrames 8, 9, 10: the pre-solo cursor (10) is index 2, the solo content
+  // start (9) is index 1 — the two anchors are distinguishable.
+  const soloFrames = [
+    { appFrame: 8, frame: { id: 'first' } },
+    { appFrame: 9, frame: { id: 'second' } },
+    { appFrame: 10, frame: { id: 'third' } },
+  ];
+
+  function createSoloHarness(getSoloContentStart: (() => number | null) | undefined) {
+    const onFrame = vi.fn();
+    const harness = createHarness({
+      initialSettings: { loop: false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => soloFrames,
+      getCurrentAppFrame: () => 10,
+      ...(getSoloContentStart !== undefined ? { getSoloContentStart } : {}),
+      onStart: vi.fn(),
+      onFrame,
+      setIsPlaying: vi.fn(),
+    });
+    return { harness, onFrame };
+  }
+
+  it('start() anchors BOTH the frame and loop refs at the solo content start (D-20/D-22)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const onFrame = vi.fn();
+    const anchorsAtFirstTick: Array<{ frameIndex: unknown; loopStart: unknown }> = [];
+    const harness = createHarness({
+      initialSettings: { loop: false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => soloFrames,
+      getCurrentAppFrame: () => 10,
+      getSoloContentStart: () => 9,
+      onStart: vi.fn(),
+      onFrame: (frameIndex, appFrame) => {
+        // The first tick fires BEFORE the hook advances frameIndexRef, so this
+        // is the moment the two anchors are still the same value (D-22).
+        if (anchorsAtFirstTick.length === 0) {
+          const anchors = harness.anchors();
+          anchorsAtFirstTick.push({
+            frameIndex: anchors.frameIndex.current,
+            loopStart: anchors.loopStart.current,
+          });
+        }
+        onFrame(frameIndex, appFrame);
+      },
+      setIsPlaying: vi.fn(),
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(true);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    expect(anchorsAtFirstTick[0]).toEqual({ frameIndex: 1, loopStart: 1 });
+    expect(anchorsAtFirstTick[0]!.frameIndex).toBe(anchorsAtFirstTick[0]!.loopStart);
+    // Post-tick: the loop anchor holds the solo start index (the D-22 wrap
+    // target) and the frame index advanced from that same base.
+    const anchors = harness.anchors();
+    expect(anchors.loopStart.current).toBe(1);
+    expect(anchors.frameIndex.current).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it('every loop wrap returns to the solo content start, never the pre-solo cursor (D-22)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const { harness, onFrame } = createSoloHarness(() => 9);
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+
+    // Walk past the end of the enumeration: index 2 (frame 10), then the wrap
+    // returns to the solo content start (index 1, frame 9) — never index 2,
+    // the cursor the user happened to sit on before Play.
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    // Iteration 2 behaves identically (same wrap target).
+    vi.advanceTimersByTime(1_000);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 9);
+    vi.useRealTimers();
+  });
+
+  it('no solo: the Phase 51 cursor re-anchor path is unchanged', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const { harness, onFrame } = createSoloHarness(() => null);
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    // Cursor 10 → index 2; the wrap returns to that same cursor index.
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    const anchors = harness.anchors();
+    expect(anchors.frameIndex.current).toBe(3); // next tick target after index 2
+    expect(anchors.loopStart.current).toBe(2);
+    vi.advanceTimersByTime(1_000);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 10);
+    vi.useRealTimers();
+  });
+
+});
+

@@ -20,7 +20,7 @@ export async function createRotoScriptThumbnail(input: {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('WebP thumbnail canvas is unavailable');
   context.fillStyle = input.background.background === 'white' || input.background.background === 'transparent'
     ? '#ffffff'
@@ -59,7 +59,7 @@ export async function measureRotoScriptWebpSupport(): Promise<{ supported: boole
   const canvas = document.createElement('canvas');
   canvas.width = 2;
   canvas.height = 2;
-  canvas.getContext('2d')?.fillRect(0, 0, 2, 2);
+  canvas.getContext('2d', { willReadFrequently: true })?.fillRect(0, 0, 2, 2);
   const blob = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY);
   if (!blob) return { supported: false, mimeType: null, size: 0, signature: null };
   const bytes = new Uint8Array(await blob.arrayBuffer());

@@ -72,7 +72,7 @@ export function fillPolyGrain(
 
   const tc = document.createElement('canvas')
   tc.width = bw; tc.height = bh
-  const tx = tc.getContext('2d')!
+  const tx = tc.getContext('2d', { willReadFrequently: true })!
   tx.fillStyle = `rgba(${r},${g},${b},${alpha})`
   tx.beginPath()
   tx.moveTo(pts[0][0] - ox, pts[0][1] - oy)
@@ -343,7 +343,7 @@ export function applyWetComposite(
   height: number,
 ): void {
   const md = mc.getImageData(0, 0, width, height)
-  const sd = sc.getContext('2d')!.getImageData(0, 0, width, height)
+  const sd = sc.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, width, height)
   const m = md.data, s = sd.data
   for (let i = 0; i < m.length; i += 4) {
     const sa = s[i + 3] / 255; if (sa < 0.003) continue
@@ -373,7 +373,7 @@ export function applyWetCompositeClipped(
   bounds: { x: number; y: number; w: number; h: number },
 ): void {
   const md = mc.getImageData(bounds.x, bounds.y, bounds.w, bounds.h)
-  const sd = sc.getContext('2d')!.getImageData(0, 0, bounds.w, bounds.h)
+  const sd = sc.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, bounds.w, bounds.h)
   const m = md.data, s = sd.data
   for (let i = 0; i < m.length; i += 4) {
     const sa = s[i + 3] / 255; if (sa < 0.003) continue
@@ -503,7 +503,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
       const bounds = curveBounds(curve, radius + variance * 5, width, height)
       const off = document.createElement('canvas')
       off.width = bounds.w; off.height = bounds.h
-      const oc = off.getContext('2d')!
+      const oc = off.getContext('2d', { willReadFrequently: true })!
       oc.translate(-bounds.x0, -bounds.y0)
       const base = ribbon(curve, radius, 0.8, hasPenInput), baseD = deformN(base, 4, variance)
       const layers = Math.round((22 + 15) / (speedDeplete || 1))
@@ -550,7 +550,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
       const segBounds = curveBounds(seg, radius + variance * 5, width, height)
       const off2 = document.createElement('canvas')
       off2.width = segBounds.w; off2.height = segBounds.h
-      const oc2 = off2.getContext('2d')!
+      const oc2 = off2.getContext('2d', { willReadFrequently: true })!
       oc2.translate(-segBounds.x0, -segBounds.y0)
       const base = ribbon(seg, radius, 0.8, hasPenInput), baseD = deformN(base, 4, variance)
       const layers = Math.round((22 + opac * 15) / speedDeplete)
@@ -616,7 +616,7 @@ export function renderPaintStrokeSingleColor(
   const bounds = curveBounds(curve, radius + variance * 5, width, height)
   const off = document.createElement('canvas')
   off.width = bounds.w; off.height = bounds.h
-  const oc = off.getContext('2d')!
+  const oc = off.getContext('2d', { willReadFrequently: true })!
   oc.translate(-bounds.x0, -bounds.y0) // shift so curve coords work directly
 
   const base = ribbon(curve, radius, 0.8, hasPenInput), baseD = deformN(base, 4, variance)

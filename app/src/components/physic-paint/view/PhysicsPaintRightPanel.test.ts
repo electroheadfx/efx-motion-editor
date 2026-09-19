@@ -1,5 +1,407 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createPhysicsPaintPaneResizeDrag } from './PhysicsPaintRightPanel';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ComponentChildren, VNode } from 'preact';
+import { signal } from '@preact/signals';
+import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
+import { physicPaintVersion } from '../../../stores/physicPaintStore';
+
+type AnyVNode = VNode<Record<string, any>>;
+
+const mocks = vi.hoisted(() => ({
+  loadFavoriteColors: vi.fn<() => Promise<string[]>>(),
+  loadRecentColors: vi.fn<() => Promise<string[]>>(),
+  loadHiddenPaletteColors: vi.fn<() => Promise<string[]>>(),
+  saveFavoriteColors: vi.fn<(colors: string[]) => Promise<void>>(),
+  saveRecentColors: vi.fn<(colors: string[]) => Promise<void>>(),
+  saveHiddenPaletteColors: vi.fn<(colors: string[]) => Promise<void>>(),
+}));
+
+class HookRuntime {
+  private cursor = 0;
+  private slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }> = [];
+  private pendingEffects: Array<() => void> = [];
+
+  beginRender() {
+    this.cursor = 0;
+    this.pendingEffects = [];
+  }
+
+  finishRender() {
+    for (const effect of this.pendingEffects) effect();
+  }
+
+  useState<T>(initial: T | (() => T)): [T, (next: T | ((current: T) => T)) => void] {
+    const index = this.cursor++;
+    const slot = this.slots[index] ??= {};
+    if (!('value' in slot)) slot.value = typeof initial === 'function' ? (initial as () => T)() : initial;
+    return [slot.value as T, (next) => {
+      slot.value = typeof next === 'function' ? (next as (current: T) => T)(slot.value as T) : next;
+    }];
+  }
+
+  useRef<T>(initial: T) {
+    const index = this.cursor++;
+    const slot = this.slots[index] ??= { value: { current: initial } };
+    return slot.value as { current: T };
+  }
+
+  useMemo<T>(factory: () => T, deps: unknown[]): T {
+    const index = this.cursor++;
+    const slot = this.slots[index] ??= {};
+    if (!sameDeps(slot.deps, deps)) {
+      slot.value = factory();
+      slot.deps = deps;
+    }
+    return slot.value as T;
+  }
+
+  useCallback<T>(callback: T, deps: unknown[]): T {
+    return this.useMemo(() => callback, deps);
+  }
+
+  useEffect(effect: () => void | (() => void), deps?: unknown[]) {
+    const index = this.cursor++;
+    const slot = this.slots[index] ??= {};
+    if (deps && sameDeps(slot.deps, deps)) return;
+    this.pendingEffects.push(() => {
+      slot.cleanup?.();
+      const cleanup = effect();
+      slot.cleanup = typeof cleanup === 'function' ? cleanup : undefined;
+      slot.deps = deps;
+    });
+  }
+}
+
+function sameDeps(previous: unknown[] | undefined, next: unknown[]) {
+  return Boolean(previous && previous.length === next.length && previous.every((value, index) => Object.is(value, next[index])));
+}
+
+let runtime = new HookRuntime();
+// 49-06 (UAT round 2): the tool-pane tab is a Studio-owned signal. The harness
+// shares ONE signal across renders so a manual tab click sticks through
+// re-renders (the 47 UAT contract) and a Bg clip selection forces Background.
+let toolTabSignal = signal<'paint' | 'track' | 'background'>('paint');
+
+vi.mock('preact/hooks', () => ({
+  useState: <T,>(initial: T | (() => T)) => runtime.useState(initial),
+  useRef: <T,>(initial: T) => runtime.useRef(initial),
+  useMemo: <T,>(factory: () => T, deps: unknown[]) => runtime.useMemo(factory, deps),
+  useCallback: <T,>(callback: T, deps: unknown[]) => runtime.useCallback(callback, deps),
+  useEffect: (effect: () => void | (() => void), deps?: unknown[]) => runtime.useEffect(effect, deps),
+}));
+
+vi.mock('../../../lib/paintPreferences', () => mocks);
+vi.mock('../../sidebar/SidebarScrollArea', () => ({
+  // 260905-epb: a marker div exposes the scroll-region boundary in the vnode
+  // tree so the hierarchy tests can assert what is pinned vs. what scrolls.
+  SidebarScrollArea: ({ children }: { children: ComponentChildren }) => ({ type: 'div', props: { class: 'sidebar-scroll-area-mock', children } }),
+}));
+vi.mock('./PhysicsPaintScriptsPanel', () => ({
+  PhysicsPaintScriptsPanel: () => null,
+}));
+vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null }));
+// The Background Clip section is signals-driven (useSignal only); the harness
+// walks components as plain function calls, so useSignal maps to the real
+// signal core (the BackgroundAssetPickerView.test.ts pattern).
+vi.mock('@preact/signals', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@preact/signals')>();
+  return {
+    ...actual,
+    useSignal: <Value,>(value: Value) => actual.signal(value),
+  };
+});
+
+function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
+  return {
+    activeTool: 'paint',
+    color: '#103c65',
+    opacity: 100,
+    edgeDetail: 50,
+    pickup: 50,
+    spread: 50,
+    smoothing: 1,
+    eraseStrength: 50,
+    physicsMode: 'local',
+    onion: { enabled: true, previous: true, next: true, count: 1, opacity: 50 },
+    playWiggle: { strokeDeformation: 0, strokePosition: 0 },
+    onColorChange: vi.fn(),
+    onEdgeDetailChange: vi.fn(),
+    onPickupChange: vi.fn(),
+    onSpreadChange: vi.fn(),
+    onSmoothingChange: vi.fn(),
+    onEraseStrengthChange: vi.fn(),
+    onOnionChange: vi.fn(),
+    onPlayWiggleChange: vi.fn(),
+    trackName: 'Paint 1',
+    trackOpacity: 1,
+    trackBlendMode: 'normal',
+    onTrackOpacityChange: vi.fn(),
+    onTrackBlendChange: vi.fn(),
+    scripts: { library: { enterScripts: vi.fn() } } as unknown as PhysicsPaintRightPanelProps['scripts'],
+    toolTab: toolTabSignal,
+    ...overrides,
+  };
+}
+
+function renderPanel(props: PhysicsPaintRightPanelProps): AnyVNode {
+  runtime.beginRender();
+  const tree = PhysicsPaintRightPanel(props) as AnyVNode;
+  runtime.finishRender();
+  return tree;
+}
+
+function childrenOf(node: unknown): unknown[] {
+  if (Array.isArray(node)) return node.flatMap(childrenOf);
+  if (!node || typeof node !== 'object') return [];
+  const vnode = node as AnyVNode;
+  if (typeof vnode.type === 'function') {
+    // The harness invokes components by hand, so function vnodes stay
+    // unexpanded in the returned tree — expand them so lookups and the text
+    // walker reach the elements the component actually renders.
+    const rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
+    return [vnode, ...childrenOf(rendered)];
+  }
+  const children = vnode.props?.children;
+  return [vnode, ...childrenOf(children)];
+}
+
+function textContent(node: unknown): string {
+  const parts: string[] = [];
+  const walk = (current: unknown) => {
+    if (typeof current === 'string' || typeof current === 'number') { parts.push(String(current)); return; }
+    if (!current || typeof current !== 'object') return;
+    if (Array.isArray(current)) { for (const child of current) walk(child); return; }
+    walk((current as AnyVNode).props?.children);
+  };
+  walk(node);
+  return parts.join(' ');
+}
+
+function findById(tree: AnyVNode, id: string): AnyVNode {
+  // Skip function-component vnodes (their props.id mirrors the element's)
+  // so the lookup lands on the rendered host element, e.g. the range input
+  // inside PanelSlider rather than the PanelSlider vnode itself.
+  const match = childrenOf(tree).find((node) => {
+    const vnode = node as AnyVNode;
+    return vnode.props?.id === id && typeof vnode.type !== 'function';
+  }) as AnyVNode | undefined;
+  expect(match, `Missing element with id ${id}`).toBeDefined();
+  return match!;
+}
+
+/** The five-option blend select in the Track section (TML-04). */
+const TRACK_BLEND_OPTIONS = ['normal', 'screen', 'multiply', 'overlay', 'add'];
+
+/** Find a host element by class (the harness walks expanded components). */
+function findByClass(tree: AnyVNode, className: string): AnyVNode {
+  const match = childrenOf(tree).find((node) => {
+    const vnode = node as AnyVNode;
+    return typeof vnode.type !== 'function' && String(vnode.props?.class ?? '').split(/\s+/).includes(className);
+  }) as AnyVNode | undefined;
+  expect(match, `Missing element with class ${className}`).toBeDefined();
+  return match!;
+}
+
+/** True when a host element vnode carries the given class (260905-epb). */
+function hasClass(node: unknown, className: string): boolean {
+  const vnode = node as AnyVNode;
+  return typeof vnode?.type !== 'function' && String(vnode?.props?.class ?? '').split(/\s+/).includes(className);
+}
+
+/** The raw children of a host element vnode — no function-vnode expansion. */
+function directChildrenOf(node: AnyVNode): unknown[] {
+  const children = node.props?.children;
+  if (children === null || children === undefined || typeof children === 'boolean') return [];
+  return Array.isArray(children) ? children : [children];
+}
+
+/** Click a tool-pane tab and re-render so the harness picks up the state. */
+function clickToolTab(tree: AnyVNode, tabClass: string): void {
+  const tab = findByClass(tree, tabClass);
+  (tab.props.onClick as () => void)();
+}
+
+/** Render the panel and open the 'Track option' tab (the initial tab is
+ *  'Paint option'). */
+function renderPanelWithTrackTab(props: PhysicsPaintRightPanelProps): AnyVNode {
+  const tree = renderPanel(props);
+  clickToolTab(tree, 'physics-paint-tab-track-option');
+  return renderPanel(props);
+}
+
+beforeEach(() => {
+  runtime = new HookRuntime();
+  toolTabSignal = signal<'paint' | 'track' | 'background'>('paint');
+  vi.clearAllMocks();
+  mocks.loadFavoriteColors.mockResolvedValue([]);
+  mocks.loadRecentColors.mockResolvedValue([]);
+  mocks.loadHiddenPaletteColors.mockResolvedValue([]);
+  mocks.saveFavoriteColors.mockResolvedValue();
+  mocks.saveRecentColors.mockResolvedValue();
+  mocks.saveHiddenPaletteColors.mockResolvedValue();
+});
+
+describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)', () => {
+  it('hosts the track options behind the Track option tab: active track name, opacity slider value, and blend select value', () => {
+    const tree = renderPanelWithTrackTab(baseProps({
+      trackName: 'Paint 1',
+      trackOpacity: 0.5,
+      trackBlendMode: 'multiply',
+    }));
+
+    expect(textContent(tree)).toContain('Paint option');
+    expect(textContent(tree)).toContain('Track option');
+    expect(textContent(tree)).toContain('Blend');
+    expect(textContent(tree)).toContain('Paint 1');
+    expect(findById(tree, 'physics-track-opacity').props.value).toBe(0.5);
+    expect(findById(tree, 'physics-track-blend').props.value).toBe('multiply');
+  });
+
+  it('keeps the track controls out of the Paint option panel (47 UAT)', () => {
+    const tree = renderPanel(baseProps());
+    expect(findByClass(tree, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+    expect(findByClass(tree, 'physics-paint-tab-track-option').props['aria-selected']).toBe(false);
+    expect(textContent(tree)).not.toContain('Track:');
+  });
+
+  it('commits the track opacity only when the thumb is released (48-06 UAT)', () => {
+    // Clamping first (fresh signal draft): the slider display always clamps to
+    // the declared 0..1 range (47-03 TML-04).
+    const clampedUp = renderPanelWithTrackTab(baseProps({ trackOpacity: 1.5 }));
+    expect(findById(clampedUp, 'physics-track-opacity').props.value).toBe(1);
+
+    const clampedDown = renderPanelWithTrackTab(baseProps({ trackOpacity: -0.2 }));
+    expect(findById(clampedDown, 'physics-track-opacity').props.value).toBe(0);
+
+    const props = baseProps({ trackOpacity: 0.5 });
+    const tree = renderPanelWithTrackTab(props);
+
+    // Dragging updates the local signal draft (the thumb follows the mouse) but
+    // does NOT commit — the opacity recomposite is deferred to release.
+    findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
+    expect(props.onTrackOpacityChange).not.toHaveBeenCalled();
+
+    // Releasing the thumb commits exactly once (pointerup — the native change
+    // event fires on every move in WebKit, so it must never commit).
+    findById(tree, 'physics-track-opacity').props.onPointerUp({ currentTarget: { value: '0.8' } });
+    expect(props.onTrackOpacityChange).toHaveBeenCalledOnce();
+    expect(props.onTrackOpacityChange).toHaveBeenCalledWith(0.8);
+    expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);
+    expect(findById(tree, 'physics-track-opacity').props.max).toBe(1);
+  });
+
+  it('commits the selected blend mode once and offers exactly the five BlendMode options', () => {
+    const props = baseProps({ trackBlendMode: 'normal' });
+    const tree = renderPanelWithTrackTab(props);
+
+    findById(tree, 'physics-track-blend').props.onChange({ currentTarget: { value: 'screen' } });
+
+    expect(props.onTrackBlendChange).toHaveBeenCalledOnce();
+    expect(props.onTrackBlendChange).toHaveBeenCalledWith('screen');
+
+    const select = findById(tree, 'physics-track-blend');
+    const options = childrenOf(select)
+      .filter((node) => (node as AnyVNode).type === 'option')
+      .map((node) => (node as AnyVNode).props.value);
+    expect(options).toEqual(TRACK_BLEND_OPTIONS);
+  });
+
+  it('re-renders to the new active track values when the active track changes (D-05)', () => {
+    const first = renderPanelWithTrackTab(baseProps({
+      trackName: 'Paint 1',
+      trackOpacity: 0.5,
+      trackBlendMode: 'multiply',
+    }));
+
+    expect(textContent(first)).toContain('Paint 1');
+    expect(findById(first, 'physics-track-opacity').props.value).toBe(0.5);
+    expect(findById(first, 'physics-track-blend').props.value).toBe('multiply');
+
+    const second = renderPanelWithTrackTab(baseProps({
+      trackName: 'Paint 2',
+      trackOpacity: 1,
+      trackBlendMode: 'normal',
+    }));
+
+    expect(textContent(second)).toContain('Paint 2');
+    expect(textContent(second)).not.toContain('Paint 1');
+    expect(findById(second, 'physics-track-opacity').props.value).toBe(1);
+    expect(findById(second, 'physics-track-blend').props.value).toBe('normal');
+  });
+
+  it('keeps the manually selected tab across re-renders — no auto-select fights the user\'s choice (47 UAT)', () => {
+    // Track selection, tool changes, and paint activity must NEVER move the
+    // tab: a manual 'Track option' click sticks through re-renders with
+    // different active tracks/tools, and a paint revision bump does not
+    // revert it.
+    const first = renderPanel(baseProps());
+    clickToolTab(first, 'physics-paint-tab-track-option');
+    const onTrack = renderPanel(baseProps());
+    expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+
+    // Active track changes + a paint revision bump: the tab stays put.
+    renderPanel(baseProps({ trackName: 'Paint 2' }));
+    physicPaintVersion.value++;
+    const afterPaintBump = renderPanel(baseProps({ trackName: 'Paint 2' }));
+
+    expect(findByClass(afterPaintBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+    expect(findById(afterPaintBump, 'physics-track-opacity')).toBeDefined();
+
+    // Manual 'Paint option' click also sticks.
+    clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
+    const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
+    expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+    expect(findById(onPaint, 'physics-edge-detail')).toBeDefined();
+  });
+
+  it('49-06 UAT round 2: a selected Bg clip shows the Background option tab — a THIRD tab that never replaces Track option', () => {
+    const selectedBackgroundClipId = signal<string | null>('clip-1');
+    const tree = renderPanel(baseProps({
+      backgroundClipSection: {
+        layerId: 'layer-1',
+        selectedBackgroundClipId,
+        ports: {},
+      },
+    }));
+    // The Background option tab appears and is active.
+    expect(findByClass(tree, 'physics-paint-tab-background-option').props['aria-selected']).toBe(true);
+    // Track option is STILL present — it is never replaced by the clip section.
+    expect(findByClass(tree, 'physics-paint-tab-track-option')).toBeDefined();
+    expect(findByClass(tree, 'physics-paint-tab-paint-option')).toBeDefined();
+    // The Track section content is NOT shown while a clip is selected.
+    const trackOpacity = childrenOf(tree).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function' && vnode.props?.id === 'physics-track-opacity';
+    });
+    expect(trackOpacity).toBeUndefined();
+  });
+
+  it('49-06 UAT round 2: clearing the Bg selection returns the panel to the manual tab (Track option)', () => {
+    const selectedBackgroundClipId = signal<string | null>('clip-1');
+    const props = baseProps({
+      backgroundClipSection: {
+        layerId: 'layer-1',
+        selectedBackgroundClipId,
+        ports: {},
+      },
+    });
+    const withClip = renderPanel(props);
+    expect(findByClass(withClip, 'physics-paint-tab-background-option').props['aria-selected']).toBe(true);
+    // The controller clears the selection (a Paint track click) AND returns
+    // the tool tab to Track — the Background tab disappears and the manual
+    // Track tab shows again.
+    selectedBackgroundClipId.value = null;
+    toolTabSignal.value = 'track';
+    const cleared = renderPanel(props);
+    const backgroundTab = childrenOf(cleared).find((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).includes('physics-paint-tab-background-option');
+    });
+    expect(backgroundTab).toBeUndefined();
+    expect(findByClass(cleared, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+    expect(findById(cleared, 'physics-track-opacity')).toBeDefined();
+  });
+});
 
 class PointerTarget extends EventTarget {
   captured = true;
@@ -85,5 +487,59 @@ describe('Physics Paint right panel session controls', () => {
     expect(firstResize).not.toHaveBeenCalled();
     expect(secondResize).toHaveBeenCalledOnce();
     expect(secondResize).toHaveBeenCalledWith(77);
+  });
+});
+
+describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
+  it('pins the tools pane tablist as a sibling of the scroll area with the tab panel inside it', () => {
+    const tree = renderPanel(baseProps());
+    const toolsPane = findByClass(tree, 'physics-paint-right-pane-tools');
+    const direct = directChildrenOf(toolsPane);
+    // The tablist is a direct child of the pane — a sibling of the scroll area,
+    // never a descendant of it.
+    const tablist = direct.find((child) => hasClass(child, 'physics-paint-options-tabs-tool'));
+    expect(tablist).toBeDefined();
+    const scrollAreaVnode = direct.find((child) => {
+      const vnode = child as AnyVNode;
+      return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
+    });
+    expect(scrollAreaVnode).toBeDefined();
+    // The tab panel content IS inside the scroll area.
+    const section = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-options-tabs-section'));
+    expect(section).toBeDefined();
+  });
+
+  it('pins the secondary pane tablist as a sibling of the scroll area with the tab panel inside it', () => {
+    const tree = renderPanel(baseProps());
+    // Open the Onion tab so the pane-level scroll area wraps the tab panel
+    // (the scripts tab renders the ScriptsPanel directly, no pane scroll area).
+    const onionTab = findByClass(tree, 'physics-paint-tab-onion');
+    (onionTab.props.onClick as () => void)();
+    const onionTree = renderPanel(baseProps());
+    const secondaryPane = findByClass(onionTree, 'physics-paint-right-pane-secondary');
+    const direct = directChildrenOf(secondaryPane);
+    const tablist = direct.find((child) => hasClass(child, 'physics-paint-options-tabs-navigation'));
+    expect(tablist).toBeDefined();
+    const scrollAreaVnode = direct.find((child) => {
+      const vnode = child as AnyVNode;
+      return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
+    });
+    expect(scrollAreaVnode).toBeDefined();
+    const section = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-options-tabs-section'));
+    expect(section).toBeDefined();
+  });
+
+  it('keeps the primary pane chrome-less: no tablist, content inside the scroll area', () => {
+    const tree = renderPanel(baseProps());
+    const primaryPane = findByClass(tree, 'physics-paint-right-pane-primary');
+    const direct = directChildrenOf(primaryPane);
+    expect(direct.some((child) => hasClass(child, 'physics-paint-options-tabs'))).toBe(false);
+    const scrollAreaVnode = direct.find((child) => {
+      const vnode = child as AnyVNode;
+      return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
+    });
+    expect(scrollAreaVnode).toBeDefined();
+    const content = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-right-pane-content'));
+    expect(content).toBeDefined();
   });
 });

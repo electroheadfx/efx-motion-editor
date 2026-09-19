@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
@@ -38,25 +39,45 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { layerStore } from '../../../stores/layerStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import { projectStore } from '../../../stores/projectStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 type HookPorts = Parameters<typeof useRotoPlayScriptController>[0];
 
 const LAYER_ID = 'phys-layer-1';
 const CONTEXT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`);
 
 function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
-  return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
+  return { frameIndex: 0, appFrame, bytes: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
+}
+
+/** 46-04: the authority revalidates the document → track dimensions, so the
+ *  real round-trip needs a registered document whose active track is the
+ *  runtime track the suite seeds. */
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
 }
 
 function seedStoreWithKeys(): void {
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument(LAYER_ID));
   projectStore.projectContextId.value = CONTEXT_ID;
   const layer = {
     id: LAYER_ID,
@@ -87,7 +108,7 @@ function seedStoreWithKeys(): void {
     realKeyRecords.push({ kind: 'real-key', keyId: `k${frame}`, appFrame: frame, payload: blankPayload(frame) });
   }
   const revision = buildPhysicPaintRotoPhysicalRevision(realKeyRecords, { enabled: false, mode: 'duplicate' }, [], []);
-  const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, {
+  const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID, {
     capacity: 600,
     realKeyRecords,
     interpolation: { enabled: false, mode: 'duplicate' },
@@ -118,15 +139,16 @@ function ports(): HookPorts {
   return {
     library: { selected: signal({ id: 'script-1' }), selectedId: signal('script-1'), busy: signal(false) } as unknown as RotoPlayScriptControllerPorts['library'],
     getLaunchContext: () => context,
+    getActiveTrackId: () => context.document?.activeTrackId ?? '',
     getSelection: () => ({ kind: 'real-key' as const, keyId: 'k96', appFrame: 96 }),
     getMotion: () => ({ deformation: 0, position: 0 }),
     getBrushColor: () => '#103c65',
     getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }),
     getOperationLocked: () => false,
     getSize: () => ({ width: 1920, height: 1080 }),
-    getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID),
+    getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID, TEST_TRACK_ID),
     getLoopEditSnapshot: (placementStart) => {
-      const document = physicPaintStore.getRotoPhysicalDocument(LAYER_ID);
+      const document = physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID);
       if (!document) return null;
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -136,7 +158,7 @@ function ports(): HookPorts {
         interpolationEnabled: document.interpolation.enabled,
       };
     },
-    getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID),
+    getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID),
     stopPlayback: vi.fn(),
     log: vi.fn(),
     executePhysicalEdit: vi.fn(async () => true),
@@ -172,6 +194,7 @@ describe('useRotoPlayScriptController Create Group modal (43.4 regression seam)'
       projectContextId: CONTEXT_ID,
       layerId: LAYER_ID,
       canonicalStart: sent.canonicalStart,
+      trackId: TEST_TRACK_ID,
     });
     captured.authorityListener!(authority);
 
@@ -208,6 +231,7 @@ describe('useRotoPlayScriptController Create Group modal (43.4 regression seam)'
       projectContextId: CONTEXT_ID,
       layerId: LAYER_ID,
       canonicalStart: sent.canonicalStart,
+      trackId: TEST_TRACK_ID,
     });
     captured.authorityListener!(authority);
 

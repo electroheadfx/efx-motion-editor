@@ -1,12 +1,4 @@
 import type {MceAudioTrack} from './audio';
-import type {PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings} from './physicPaint';
-import type {
-  PhysicPaintRotoGroupFrameOverride,
-  PhysicPaintRotoGroupVisibleRange,
-  PhysicPaintRotoInterpolationState,
-  PhysicPaintRotoPhysicalDocument,
-  PhysicPaintRotoScriptMotionSettings,
-} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
@@ -34,97 +26,39 @@ export interface MceProject {
     preview_quality: string;       // 'off' | 'low' | 'medium'
     export_sub_frames: number;     // 4, 8, or 16
   };
-  physic_paint_outputs?: McePhysicPaintOutput[];
-}
-
-export type RuntimeMceProject = Omit<MceProject, 'physic_paint_outputs'> & {
-  physic_paint_outputs?: RuntimePhysicPaintOutput[];
-};
-
-export interface McePhysicPaintCachedFrame {
-  frameIndex: number;
-  appFrame: number;
-  cache_path: string;
-  width?: number;
-  height?: number;
-}
-
-export type McePhysicPaintRotoCachedFrame = Omit<PhysicPaintRotoCacheFrame, 'dataUrl' | 'onionDataUrl'> & {
-  cache_path?: string;
-  onion_cache_path?: string;
-};
-
-export interface McePhysicPaintRotoPhysicalRecord {
-  readonly kind: 'real-key';
-  readonly keyId: string;
-  readonly appFrame: number;
-  readonly payload: {
-    readonly frameIndex: number;
-    readonly appFrame: number;
-    readonly cache_path: string;
-    readonly width?: number;
-    readonly height?: number;
-  };
-}
-
-/**
- * Persisted linked Loop Clip record (Phase 43, D-29/D-31). The persisted
- * shape is identical to the runtime record: Loop Clips carry stable keyId
- * references only — no cache paths — so the collection serializes verbatim.
- */
-export interface McePhysicPaintRotoLoopClip {
-  readonly loopId: string;
-  readonly placementStart: number;
-  readonly sourceKeyIds: readonly string[];
-  readonly repeat: number | 'infinity';
-  readonly mode: 'progressive' | 'static';
-  /** 43-06 optional source-cycle provenance (all-or-nothing). */
-  readonly scriptId?: string;
-  readonly motion?: PhysicPaintRotoScriptMotionSettings;
-  readonly overrideColor?: string | null;
-  /** Complete canonical Group lifecycle facts (Phase 43.2), absent only on pre-lifecycle records. */
-  readonly syncState?: 'synchronized' | 'modified';
-  readonly provenanceState?: 'attached' | 'detached';
-  readonly phaseOrigin?: number;
-  readonly originalEndExclusive?: number;
-  readonly visibleRanges?: readonly PhysicPaintRotoGroupVisibleRange[];
-  readonly frameOverrides?: readonly PhysicPaintRotoGroupFrameOverride[];
-}
-
-export interface McePhysicPaintRotoPhysicalDocument {
-  readonly capacity: number;
-  readonly realKeyRecords: readonly McePhysicPaintRotoPhysicalRecord[];
-  readonly groupOverrideRecords?: readonly McePhysicPaintRotoPhysicalRecord[];
-  readonly interpolation: PhysicPaintRotoInterpolationState;
-  readonly scriptMotion: PhysicPaintRotoScriptMotionSettings;
-  readonly background: PhysicPaintRotoBackgroundMetadata | null;
-  readonly selectedKeyId: string | null;
-  readonly cursorAppFrame: number;
-  readonly revision: string;
   /**
-   * Additive optional loopClips collection (D-29): v0.8.1-shaped documents
-   * without the member load as an empty loop collection with no migration.
+   * v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust).
+   *
+   * 52.2-07 (D-04): the package format no longer ships layer content inside the
+   * project file — each layer now lives in its own `layers/<layerId>.json`
+   * sub-file and each raster in `frames/<layerId>/<keyId>.webp`. A pre-52.2
+   * project still carries the map on the way in, but plan 08's gate refuses the
+   * manifest before this field is read; plan 09's read-back leg then loads
+   * layer content from the sub-files and retires this field.
    */
-  readonly loopClips?: readonly McePhysicPaintRotoLoopClip[];
-  /** Stable real-key IDs that own an intentional incoming interpolation break. */
-  readonly incomingInterpolationBreakKeyIds?: readonly string[];
+  efx_paint_documents?: Record<string, unknown>;
+  /**
+   * The package format version (D-04), stamped by `buildPackageManifest` and
+   * read by the refusal gate (52.2-08). Absent on a pre-52.2 project — the
+   * gate's "older format" reason.
+   */
+  formatVersion?: number;
+  /**
+   * The package identity (D-05): a 36-character lower-case UUID carried IN the
+   * manifest — never derived from the file path — so the same package keeps the
+   * same identity (and therefore the same disposable cache) on another machine.
+   */
+  projectId?: string;
+  /**
+   * The layer index (D-04, co-change with Rust): `layerId` → `{ layerFile,
+   * documentRevision, compositeRevision }`, built by `buildPackageManifest`.
+   * Carried opaquely here — `efxPaintPackage.ts` owns the schema.
+   */
+  efxPaint?: Record<string, unknown>;
 }
 
-export interface McePhysicPaintOutput {
-  layer_id: string;
-  frames: McePhysicPaintCachedFrame[];
-  roto_physical?: McePhysicPaintRotoPhysicalDocument;
-  roto_playback?: PhysicPaintRotoPlaybackSettings;
-  roto_cache_metadata?: McePhysicPaintRotoCachedFrame[];
-  roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
-  roto_background?: PhysicPaintRotoBackgroundMetadata;
-}
-
-export type RuntimePhysicPaintOutput = Omit<McePhysicPaintOutput, 'frames' | 'roto_physical' | 'roto_cache_metadata'> & {
-  frames: PhysicPaintRenderedFrame[];
-  roto_physical?: PhysicPaintRotoPhysicalDocument;
-  roto_cache_metadata?: PhysicPaintRotoCacheFrame[];
-};
+/** Runtime project shape: identical to the persisted MceProject (v1.0). */
+export type RuntimeMceProject = MceProject;
 
 /** Sequence definition within a project file */
 export interface MceSequence {

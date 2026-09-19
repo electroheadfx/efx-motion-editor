@@ -3,8 +3,9 @@ import type { Dispatch, StateUpdater } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../engine/physicsPaintDevExport';
-import { resizePhysicsPaintState } from '../engine/physicsPaintCanvasSizing';
-import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
+import { downloadPhysicsPaintState, LOAD_STATE_SUCCESS_COPY, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
+import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
+import { getDocument, registerDocument } from '../../../stores/efxPaintStore';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 
@@ -69,8 +70,10 @@ export function createPhysicsPaintSessionController(
     const engine = input.engine;
     if (!engine || mutationLocked()) return;
     try {
-      const editableState = engine.save();
-      const result = await (dependencies.downloadState ?? downloadPhysicsPaintState)(editableState);
+      const layerId = input.launchContext?.layerId;
+      const document = layerId ? getDocument(layerId) : null;
+      if (!document) return;
+      const result = await (dependencies.downloadState ?? downloadPhysicsPaintState)(document);
       if (result.status === 'cancelled') {
         input.setApplyStatus('idle');
         input.setApplyMessage(result.message);
@@ -87,13 +90,14 @@ export function createPhysicsPaintSessionController(
     const engine = input.engine;
     if (!engine || mutationLocked()) return;
     try {
-      const state = resizePhysicsPaintState(
-        parsePhysicsPaintStateFile(contents),
-        input.canvasSize.width,
-        input.canvasSize.height,
-      );
-      engine.load(state);
-      setSuccess('Loaded editable JSON state.');
+      const document = parsePhysicsPaintStateFile(contents);
+      // The v1.0 session file IS the document. Install it into the store so
+      // the Studio runtime reflects the loaded session, and hand it to the
+      // engine so the package engine validates the same payload fail-closed
+      // (D-03: one document format everywhere).
+      registerDocument(document);
+      engine.load(document);
+      setSuccess(LOAD_STATE_SUCCESS_COPY);
     } catch (error) {
       setFailure(error);
     }
@@ -117,16 +121,20 @@ export function createPhysicsPaintSessionController(
     reader.readAsText(file);
   };
 
-  const exportDebugProof = () => {
+  const exportDebugProof = async () => {
     const engine = input.engine;
     const launchContext = input.launchContext;
     if (!engine || !launchContext) return;
     try {
       const canvas = engine.exportCompositeCanvas();
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('Debug proof canvas is unavailable.');
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const bytes = await encodeWebpFrame({ rgba: new Uint8Array(imageData.data), width: canvas.width, height: canvas.height });
       const frame: PhysicPaintRenderedFrame = {
         frameIndex: 0,
         appFrame: input.currentFrame,
-        dataUrl: canvas.toDataURL('image/png'),
+        bytes,
         width: canvas.width,
         height: canvas.height,
       };

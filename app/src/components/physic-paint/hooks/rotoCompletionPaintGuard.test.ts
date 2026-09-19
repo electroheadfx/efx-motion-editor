@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import { armRotoCompletionPaintGuard } from './rotoCompletionPaintGuard';
 import { createRotoReferenceLoader } from './useRotoReferenceController';
+import { getFrameBlobUrl } from './useRotoReferenceController';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 // regression-refresh-multi-paint: the acceptance reconcile paint is the FINAL
 // preview-base paint of a multi-stroke completion. When its cache-miss decode
@@ -49,6 +51,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => 8,
       reload,
     });
@@ -58,9 +61,9 @@ describe('armRotoCompletionPaintGuard', () => {
 
   it('does nothing without an engine, an intended dataUrl, or the engine settle APIs', () => {
     const reload = vi.fn();
-    armRotoCompletionPaintGuard({ engine: null, appFrame: 8, intendedDataUrl: INTENDED, getCurrentAppFrame: () => 8, reload });
-    armRotoCompletionPaintGuard({ engine: makeMockEngine(), appFrame: 8, intendedDataUrl: null, getCurrentAppFrame: () => 8, reload });
-    armRotoCompletionPaintGuard({ engine: {}, appFrame: 8, intendedDataUrl: INTENDED, getCurrentAppFrame: () => 8, reload });
+    armRotoCompletionPaintGuard({ engine: null, appFrame: 8, intendedDataUrl: INTENDED, intendedBytes: testWebpBytes('guard'), getCurrentAppFrame: () => 8, reload });
+    armRotoCompletionPaintGuard({ engine: makeMockEngine(), appFrame: 8, intendedDataUrl: null, intendedBytes: testWebpBytes('guard'), getCurrentAppFrame: () => 8, reload });
+    armRotoCompletionPaintGuard({ engine: {}, appFrame: 8, intendedDataUrl: INTENDED, intendedBytes: testWebpBytes('guard'), getCurrentAppFrame: () => 8, reload });
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -75,6 +78,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => 8,
       reload,
       log,
@@ -83,7 +87,7 @@ describe('armRotoCompletionPaintGuard', () => {
 
     engine.settle(INTENDED, 'dropped');
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(reload).toHaveBeenCalledWith(8, INTENDED, 0);
+    expect(reload).toHaveBeenCalledWith(8, testWebpBytes('guard'), 0);
     expect(log).toHaveBeenCalledTimes(1);
     expect(engine.listeners.length, 'the guard disarms after the repair lands').toBe(0);
 
@@ -98,6 +102,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => 8,
       reload,
     });
@@ -115,6 +120,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => currentFrame,
       reload,
     });
@@ -131,6 +137,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => 8,
       reload,
     });
@@ -146,6 +153,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => 8,
       reload,
     });
@@ -165,6 +173,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       intendedGeneration: 7,
       getCurrentAppFrame: () => 8,
       reload,
@@ -184,6 +193,7 @@ describe('armRotoCompletionPaintGuard', () => {
       engine,
       appFrame: 8,
       intendedDataUrl: INTENDED,
+    intendedBytes: testWebpBytes('guard'),
       getCurrentAppFrame: () => 8,
       reload,
       log,
@@ -249,14 +259,14 @@ describe('completion paint through the reference loader (integration)', () => {
     vi.unstubAllGlobals();
   });
 
-  function makeLoader(frame: { appFrame: number; dataUrl: string }) {
+  function makeLoader(frame: { appFrame: number; bytes: Uint8Array }) {
     return createRotoReferenceLoader({
       getWorkflowMode: () => 'roto',
       getSettingsBackground: () => 'white',
       dirtyFrames: new Set(),
       liveOverlayActionCounts: new Map(),
       getReferenceFrame: (appFrame) => appFrame === frame.appFrame
-        ? { frameIndex: 0, appFrame: frame.appFrame, dataUrl: frame.dataUrl, width: 8, height: 6 }
+        ? { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: 8, height: 6 }
         : null,
       setReferenceUrl: () => {},
       setRepaintBaseFrame: () => {},
@@ -267,7 +277,7 @@ describe('completion paint through the reference loader (integration)', () => {
   }
 
   it('converges to the committed frame when an invalidation lands inside the completion decode window', () => {
-    const committed = { appFrame: 8, dataUrl: 'data:image/png;base64,committed-many-stroke-frame' };
+    const committed = { appFrame: 8, bytes: testWebpBytes('committed-many-stroke-frame') };
     const engine = makeEngine();
     const loader = makeLoader(committed);
     const log = vi.fn();
@@ -278,7 +288,8 @@ describe('completion paint through the reference loader (integration)', () => {
       armRotoCompletionPaintGuard({
         engine,
         appFrame,
-        intendedDataUrl: committed.dataUrl,
+        intendedDataUrl: getFrameBlobUrl(committed.bytes),
+        intendedBytes: committed.bytes,
         getCurrentAppFrame: () => 8,
         reload: (frame) => { loader.load(frame, engine); },
         log,
@@ -295,13 +306,13 @@ describe('completion paint through the reference loader (integration)', () => {
     expect(
       engine.getAppliedPreviewBaseDataUrl(),
       'the committed frame must be the applied preview base after completion settles',
-    ).toBe(committed.dataUrl);
+    ).toBe(getFrameBlobUrl(committed.bytes));
     expect((engine as unknown as Record<string, unknown>).previewBaseImage).toBe(images[0]);
     expect(log).toHaveBeenCalledTimes(1);
   });
 
   it('applies the completion paint without repair when no invalidation lands (control)', () => {
-    const committed = { appFrame: 8, dataUrl: 'data:image/png;base64,committed-two-stroke-frame' };
+    const committed = { appFrame: 8, bytes: testWebpBytes('committed-two-stroke-frame') };
     const engine = makeEngine();
     const loader = makeLoader(committed);
     const log = vi.fn();
@@ -310,14 +321,15 @@ describe('completion paint through the reference loader (integration)', () => {
     armRotoCompletionPaintGuard({
       engine,
       appFrame: 8,
-      intendedDataUrl: committed.dataUrl,
+      intendedDataUrl: getFrameBlobUrl(committed.bytes),
+      intendedBytes: committed.bytes,
       getCurrentAppFrame: () => 8,
       reload: (frame) => { loader.load(frame, engine); },
       log,
     });
     images[0].onload!();
 
-    expect(engine.getAppliedPreviewBaseDataUrl()).toBe(committed.dataUrl);
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe(getFrameBlobUrl(committed.bytes));
     expect(log, 'no repair when the paint lands cleanly').not.toHaveBeenCalled();
   });
 });

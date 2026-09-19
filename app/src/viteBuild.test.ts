@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1120 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1340 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1120 desktop budget').toBe(1120);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1340 desktop budget').toBe(1340);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1120 desktop budget',
+    'emits no chunk-size warning at the 1340 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -187,11 +187,55 @@ describe('production vite build', () => {
       // (amends milestone criterion V09-C04). Measured 2026-08-20: 1117.4 kB
       // after the debug engine layers, 260819/260820 quicks, and the
       // warning-disposition fixes (+9.8 kB); budget raised 1110 → 1120.
+      // Measured 2026-08-23: 1124.96 kB after the 45-05 v1.0 document funnel
+      // (efxPaintStore + efxPaintPersistence + document model enter the main
+      // chunk); budget raised 1120 → 1130.
+      // Measured 2026-08-23: 1131.51 kB after the 46-03 track-scoped copy/cut/
+      // paste/duplicate/clear ops and the cross-track Hold re-pointing engine
+      // (rail-set copy engine + key-rail segmentation enter the main chunk);
+      // budget raised 1130 → 1135.
+      // Measured 2026-08-24: 1136.14 kB after the 46 UAT fixes (infinity-repeat
+      // paste freeze + lifecycle synthesis, spacing-on-set loop retime);
+      // budget raised 1135 → 1140.
+      // Measured 2026-08-24: 1155.32 kB after the post-budget phase-46 rail/
+      // capsule fixes (paste boundary law, capsule warning UX, cursor-capture
+      // undo); budget raised 1140 → 1165.
+      // Measured 2026-08-28: 1171.47 kB after 48-03's flattened-compositor
+      // delivery entered the main chunk via physicPaintStore; budget raised
+      // 1165 → 1180.
+      // Measured 2026-08-31: 1180.63 kB after 49-05's Background-row surface
+      // (Bg clip drag hook + rail presentation + strip wiring) entered the main
+      // chunk; budget raised 1180 → 1190.
+      // Measured 2026-09-01: 1190.19 kB after 50-02's photo reference store
+      // stack (six photo/reference setters + the reference source registry +
+      // reopen hydration) entered the main chunk via efxPaintStore/
+      // physicPaintStore; budget raised 1190 → 1200.
+      // Measured 2026-09-02: 1291.43 kB after 52-04's reveal-rail creation
+      // surface (the photo-reference dialog reveal flow + the strip rail-kind
+      // menu + the create-reveal-rail wiring) entered the main chunk; budget
+      // raised 1200 → 1300.
+      // Measured 2026-09-09: 1305.11 kB after Phase 52.1 (modern frame runtime
+      // + native HD paint). Attribution (one-time signed adjustment, not a
+      // precedent):
+      //   baseline (2026-09-02, old deps)          1291.43 kB
+      //   + Step 0 dep bumps + 260905 quicks         +4.8 kB
+      //   + 52.1 feature code (runtime/LRU/WebP)     +8.9 kB
+      //   = current main chunk                      1305.11 kB
+      // Budget raised 1300 → 1320 (measured value + ~14.9 kB headroom).
+      // Measured 2026-09-12: 1326.36 kB after the already-landed 52.2
+      // package-format work (plans 08-12; the 52.2-07 / 52.2-10 points in the
+      // trail above record the climb). Plan 52.2-13 Task 3 proved the pinned
+      // pilot-dependency install contributed 0.00 kB: the pre-install and
+      // post-install builds emitted the byte-identical index-knu_IwqL.js main
+      // chunk (same content hash), the deps staying unimported behind the
+      // PhysicsPaintStudio lazy boundary. Budget raised 1320 → 1340 (measured
+      // value + ~13.6 kB headroom) for the landed format work, not for
+      // anticipated pilot code.
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1120 desktop budget',
+        'no chunk-size warning may be emitted at the 1340 desktop budget',
       ).toBe(0);
     },
   );

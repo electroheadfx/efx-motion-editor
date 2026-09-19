@@ -1,4 +1,4 @@
-import { useRef } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintRotoKeyRailDragClampInput } from '../roto/physicsPaintRotoPhysicalResolver';
 import { clampPhysicPaintKeyRailDragDestination } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
@@ -100,6 +100,9 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
   readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
   /** 43.6-03 D-08: batch rail-set trailing-click suppression consumer. */
   readonly onRailSetDragClickSuppressed?: () => boolean;
+  /** 47 close-out UAT round 3: true while a cross-track drag session is
+   *  crossing rows — the rail pill never pops mid-drag. */
+  readonly suppressTooltip?: boolean;
 }
 
 interface RailMouseEvent {
@@ -142,6 +145,9 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly onRailFocus?: (element: HTMLElement) => void;
   readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
   readonly onRailSetDragClickSuppressed?: () => boolean;
+  /** 47 close-out UAT round 3: true while a cross-track drag session is
+   *  crossing rows — the rail pill never pops mid-drag. */
+  readonly suppressTooltip?: boolean;
 }
 
 function sameKeyRailSelection(
@@ -156,6 +162,12 @@ function sameKeyRailSelection(
 function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
+  // 47 close-out UAT round 3: a hover timer armed before the cross-track drag
+  // took the pointer capture would pop the pill mid-drag (pointerleave never
+  // fires under capture) — hide it the moment a session starts crossing.
+  useEffect(() => {
+    if (props.suppressTooltip) tooltip.hide();
+  }, [props.suppressTooltip]);
   const { segment, geometry } = props;
   // 260820-lwd: drag-routing membership (explicit movable set) is separate
   // from the paint/set-of-one classifier. A plain-selected single rail is a
@@ -261,7 +273,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
       ref={anchorRef}
       class="physics-paint-key-rail-anchor"
       style={{ left: `${geometry.left}px`, width: `${geometry.width}px` }}
-      onPointerEnter={tooltip.onPointerEnter}
+      onPointerEnter={props.suppressTooltip ? tooltip.hide : tooltip.onPointerEnter}
       onPointerLeave={tooltip.onPointerLeave}
     >
       <button
@@ -369,6 +381,7 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           onRailFocus={props.onRailFocus}
           onRailSetDragPointerDown={props.onRailSetDragPointerDown}
           onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
+          suppressTooltip={props.suppressTooltip}
         />
       ))}
     </div>

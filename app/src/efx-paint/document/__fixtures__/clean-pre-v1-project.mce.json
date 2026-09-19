@@ -1,0 +1,79 @@
+{
+  "version": 15,
+  "name": "Clean Pre-v1 Project",
+  "fps": 24,
+  "width": 1920,
+  "height": 1080,
+  "created_at": "2026-01-15T10:00:00.000Z",
+  "modified_at": "2026-01-15T10:00:00.000Z",
+  "sequences": [
+    {
+      "id": "seq-1",
+      "name": "Sequence 1",
+      "fps": 24,
+      "width": 1920,
+      "height": 1080,
+      "order": 0,
+      "key_photos": [
+        { "id": "photo-1", "image_id": "img-1", "hold_frames": 12, "order": 0 }
+      ],
+      "layers": [
+        {
+          "id": "layer-static-1",
+          "name": "Base",
+          "type": "static-image",
+          "visible": true,
+          "opacity": 1,
+          "blend_mode": "normal",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale_x": 1,
+            "scale_y": 1,
+            "rotation": 0,
+            "crop_top": 0,
+            "crop_right": 0,
+            "crop_bottom": 0,
+            "crop_left": 0
+          },
+          "source": { "type": "static-image", "image_id": "img-1" },
+          "is_base": true,
+          "order": 0
+        },
+        {
+          "id": "layer-paint-1",
+          "name": "Paint",
+          "type": "paint",
+          "visible": true,
+          "opacity": 1,
+          "blend_mode": "normal",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale_x": 1,
+            "scale_y": 1,
+            "rotation": 0,
+            "crop_top": 0,
+            "crop_right": 0,
+            "crop_bottom": 0,
+            "crop_left": 0
+          },
+          "source": { "type": "paint", "layer_id": "layer-paint-1" },
+          "is_base": false,
+          "order": 1
+        }
+      ]
+    }
+  ],
+  "images": [
+    {
+      "id": "img-1",
+      "original_filename": "photo.jpg",
+      "relative_path": "images/photo.jpg",
+      "thumbnail_relative_path": "thumbs/photo.jpg",
+      "width": 1920,
+      "height": 1080,
+      "format": "jpg"
+    }
+  ]
+}

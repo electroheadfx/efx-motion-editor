@@ -339,14 +339,14 @@ describe('PhysicsPaintStyledTooltip surface contract', () => {
     const styles = css();
     const tooltipCss = styles.slice(
       styles.indexOf('.physics-paint-styled-tooltip'),
-      styles.indexOf('.physics-paint-roto-interpolation-controls'),
+      styles.indexOf('.physics-paint-roto-force-spacing-controls'),
     );
     const surface = tooltipCss.slice(0, tooltipCss.indexOf('}'));
     expect(TOOLTIP_VIEWPORT_MARGIN).toBe(8);
     expect(TOOLTIP_PILL_MAX_WIDTH).toBe(280);
     expect(surface).toContain('position: fixed');
     expect(surface).toContain('max-width: 280px');
-    expect(surface).toContain('max-height: 96px');
+    expect(surface).toContain('max-height: 200px');
     expect(surface).toContain('white-space: normal');
     expect(surface).toContain('pointer-events: none');
     expect(indexCss()).toContain('--color-tooltip-bg: #17191c');

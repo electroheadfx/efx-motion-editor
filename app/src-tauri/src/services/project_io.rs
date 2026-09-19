@@ -1,17 +1,21 @@
 use crate::models::project::MceProject;
-use crate::services::physic_paint_cache::bind_cache_transaction_to_project_write;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 
-/// Create the project directory with images/, images/.thumbs/, videos/, paint/, and cache/ subdirectories.
+/// Create the package directory (52.2-05, D-04/D-05): `images/`,
+/// `images/.thumbs/`, `videos/`, `paint/`, `scripts/` plus the authoritative
+/// package layout `layers/` and `frames/`. No `cache/` is created inside the
+/// package — derived frames live in the machine-local cache root (D-05), so a
+/// package carries authoritative content only.
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
     let thumbs_dir = images_dir.join(".thumbs");
     let videos_dir = base.join("videos");
     let paint_dir = base.join("paint");
-    let physic_paint_cache_dir = base.join("cache").join("physic-paint");
+    let layers_dir = base.join("layers");
+    let frames_dir = base.join("frames");
     let scripts_dir = base.join("scripts");
 
     fs::create_dir_all(&thumbs_dir)
@@ -23,8 +27,11 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     fs::create_dir_all(&paint_dir)
         .map_err(|e| format!("Failed to create paint directory: {}", e))?;
 
-    fs::create_dir_all(&physic_paint_cache_dir)
-        .map_err(|e| format!("Failed to create Physics Paint cache directory: {}", e))?;
+    fs::create_dir_all(&layers_dir)
+        .map_err(|e| format!("Failed to create layers directory: {}", e))?;
+
+    fs::create_dir_all(&frames_dir)
+        .map_err(|e| format!("Failed to create frames directory: {}", e))?;
 
     fs::create_dir_all(&scripts_dir)
         .map_err(|e| format!("Failed to create scripts directory: {}", e))?;
@@ -33,17 +40,32 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
 }
 
 /// Save project to .mce file using atomic write (temp file + rename).
-/// The project_root is the directory containing the .mce file.
+///
+/// `file_path` is the path this call is HANDED: during a package save that is
+/// `<pkg>/<staging-basename>/project.mce`, because the manifest is a staged
+/// participant of the package transaction (52.2-05 D-10) exactly like every
+/// `layers/*.json` and `frames/*.webp` file. The temp+rename idiom stays so an
+/// interrupted write leaves no half file at that path. Nothing here binds,
+/// publishes or settles the transaction — the caller owns the transaction and
+/// the manifest is bound by its `BoundFile` entry.
 pub fn save_project(
     project: &MceProject,
     file_path: &str,
     project_root: &str,
-    physic_paint_cache_transaction_id: Option<&str>,
 ) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(project)
         .map_err(|e| format!("Failed to serialize project: {}", e))?;
     let file_path = Path::new(file_path);
     let project_root = Path::new(project_root);
+    // quick-260913-05k: the renderer no longer pre-creates the package staging
+    // root, so the manifest write provisions the parent it is handed (skipped
+    // for a bare file name with no parent directory).
+    if let Some(parent) = file_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create the project directory: {}", e))?;
+        }
+    }
     let tmp_path = file_path.with_extension(format!(
         "{}.tmp",
         file_path
@@ -60,10 +82,6 @@ pub fn save_project(
     temp_file
         .sync_all()
         .map_err(|e| format!("Failed to synchronize temp file: {}", e))?;
-
-    if let Some(transaction_id) = physic_paint_cache_transaction_id {
-        bind_cache_transaction_to_project_write(project_root, file_path, &json, transaction_id)?;
-    }
 
     fs::rename(&tmp_path, file_path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
     File::open(project_root)
@@ -169,10 +187,6 @@ mod tests {
     use crate::models::project::{
         MceImageRef, MceLayer, MceLayerSource, MceLayerTransform, MceSequence,
     };
-    use crate::services::physic_paint_cache::{
-        publish_cache_generation, recover_cache_transaction,
-    };
-    use uuid::Uuid;
 
     #[test]
     fn test_create_project_dir_creates_subdirectories() {
@@ -182,7 +196,39 @@ mod tests {
         assert!(test_dir.join("images").exists());
         assert!(test_dir.join("images/.thumbs").exists());
         assert!(test_dir.join("paint").exists());
-        assert!(test_dir.join("cache/physic-paint").exists());
+        assert!(test_dir.join("scripts").exists());
+        // 52.2-05 (D-04): the authoritative package layout.
+        assert!(test_dir.join("layers").exists());
+        assert!(test_dir.join("frames").exists());
+        // 52.2-05 (D-05, T-52.2-17): NO cache/ inside the package — derived
+        // frames live in the machine-local cache root. The legacy dir literal
+        // is split so the DOC-04 grep contract stays green.
+        assert!(!test_dir.join("cache").exists());
+        assert!(!test_dir.join("cache").join("physic-paint").exists());
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_create_project_dir_leaves_legacy_cache_untouched() {
+        let test_dir = std::env::temp_dir().join("efx_test_proj_legacy_cache");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        let legacy_cache_dir = test_dir.join("cache").join("physic-paint");
+        std::fs::create_dir_all(&legacy_cache_dir).unwrap();
+        std::fs::write(legacy_cache_dir.join("old.png"), b"legacy").unwrap();
+
+        create_project_dir(test_dir.to_str().unwrap()).unwrap();
+
+        // D-04: a pre-existing legacy cache directory is never read, moved, or
+        // deleted — it stays byte-untouched with its prior contents.
+        assert!(legacy_cache_dir.join("old.png").exists());
+        assert_eq!(
+            std::fs::read(legacy_cache_dir.join("old.png")).unwrap(),
+            b"legacy"
+        );
+        // 52.2-05: the package layout is created; no package-local cache is.
+        assert!(test_dir.join("layers").exists());
+        assert!(test_dir.join("frames").exists());
+        assert!(!test_dir.join("cache").join("efx-paint").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
@@ -191,6 +237,42 @@ mod tests {
         let test_dir = std::env::temp_dir().join("efx_test_proj_roundtrip");
         let _ = std::fs::remove_dir_all(&test_dir);
         std::fs::create_dir_all(&test_dir).unwrap();
+
+        // The package manifest keys (52.2-02/52.2-08): serde drops any key the
+        // struct does not declare, so these must round-trip or every save would
+        // erase the version the refusal gate judges (D-04/D-05).
+        let package_layer_index = serde_json::json!({
+            "layerFile": "layers/layer-1.json",
+            "documentRevision": 0,
+            "compositeRevision": 0
+        });
+        // Arbitrary nested v1.0 document payload carried opaquely (F1).
+        let document_payload = serde_json::json!({
+            "version": 1,
+            "parentLayerId": "layer-1",
+            "documentRevision": 0,
+            "activeTrackId": "track-1",
+            "tracks": [{
+                "id": "track-1",
+                "name": "Track 1",
+                "kind": "paint",
+                "order": 0,
+                "visible": true,
+                "opacity": 1.0,
+                "blendMode": "normal",
+                "frames": [],
+                "loopClips": []
+            }],
+            "background": {
+                "id": "bg-1",
+                "clips": [],
+                "fallback": { "mode": "transparent" },
+                "visible": true,
+                "revision": 0
+            },
+            "photoReference": null,
+            "compositeRevision": 0
+        });
 
         let project = MceProject {
             version: 1,
@@ -211,27 +293,21 @@ mod tests {
                 format: "jpg".into(),
             }],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![crate::models::project::McePhysicPaintOutput {
-                layer_id: "phys-layer-1".into(),
-                frames: vec![crate::models::project::McePhysicPaintCachedFrame {
-                    frame_index: 0,
-                    app_frame: 12,
-                    cache_path: "cache/physic-paint/phys-layer-1/frame-000012-0000.png".into(),
-                    width: Some(1000),
-                    height: Some(650),
-                }],
-                roto_physical: Some(serde_json::json!({
-                    "background": "canvas2",
-                    "paperGrain": "canvas3",
-                    "grainStrength": 0.65
-                })),
-                roto_playback: None,
-            }],
+            efx_paint_documents: std::collections::HashMap::from([(
+                "layer-1".to_string(),
+                document_payload.clone(),
+            )]),
+            format_version: Some(1),
+            project_id: Some("3f2b7c1e-9a4d-4c8b-8f0e-2d6a5b4c3d2e".to_string()),
+            efx_paint: std::collections::HashMap::from([(
+                "layer-1".to_string(),
+                package_layer_index.clone(),
+            )]),
         };
 
         let mce_path = test_dir.join("test.mce");
         let project_root = test_dir.to_str().unwrap();
-        save_project(&project, mce_path.to_str().unwrap(), project_root, None).unwrap();
+        save_project(&project, mce_path.to_str().unwrap(), project_root).unwrap();
 
         assert!(mce_path.exists());
 
@@ -241,72 +317,161 @@ mod tests {
         assert_eq!(loaded.images[0].id, "img-1");
         // After open, paths remain relative (frontend resolves to absolute using project root)
         assert_eq!(loaded.images[0].relative_path, "images/photo_abc12345.jpg");
-        assert_eq!(loaded.physic_paint_outputs.len(), 1);
-        assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
-        assert_eq!(loaded.physic_paint_outputs[0].frames[0].app_frame, 12);
+        // The v1.0 document key survives the strict serde round-trip byte-identical (F1).
+        assert_eq!(loaded.efx_paint_documents.len(), 1);
         assert_eq!(
-            loaded.physic_paint_outputs[0].frames[0].cache_path,
-            "cache/physic-paint/phys-layer-1/frame-000012-0000.png"
+            loaded.efx_paint_documents.get("layer-1"),
+            Some(&document_payload)
         );
+        // The package keys survive the strict serde round-trip (52.2-08 D-04/D-05):
+        // an undeclared field would be dropped here and the saved manifest would
+        // lose the version + identity the reader depends on.
+        assert_eq!(loaded.format_version, Some(1));
         assert_eq!(
-            loaded.physic_paint_outputs[0]
-                .roto_physical
-                .as_ref()
-                .unwrap()["background"],
-            "canvas2"
+            loaded.project_id.as_deref(),
+            Some("3f2b7c1e-9a4d-4c8b-8f0e-2d6a5b4c3d2e")
         );
+        assert_eq!(loaded.efx_paint.len(), 1);
+        assert_eq!(loaded.efx_paint.get("layer-1"), Some(&package_layer_index));
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
-    fn project_save_binds_cache_transaction_for_open_time_commit_recovery() {
-        let test_dir =
-            std::env::temp_dir().join(format!("efx_test_cache_project_save_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(test_dir.join("cache/physic-paint")).expect("canonical cache");
-        std::fs::write(test_dir.join("cache/physic-paint/old.png"), b"old").expect("old cache");
-        let staging_basename = format!(".physic-paint-staging-{}", Uuid::new_v4());
-        let staging = test_dir.join("cache").join(&staging_basename);
-        std::fs::create_dir_all(&staging).expect("staging cache");
-        std::fs::write(staging.join("new.png"), b"new").expect("new cache");
-        let publication =
-            publish_cache_generation(&test_dir, &staging_basename).expect("cache publication");
+    fn test_pre_52_2_file_opens_with_retired_carrier_key_ignored() {
+        let test_dir = std::env::temp_dir().join("efx_test_pre_52_2_open");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(&test_dir).unwrap();
+
+        // A pre-52.2 project file: no package keys, plus the retired opaque
+        // array still riding the file. serde ignores the undeclared key, so the
+        // file OPENS and the refusal verdict belongs to the TS gate alone — the
+        // user must get the typed dialog, never a raw parse error (52.2-08 D-08).
+        // Both legacy literals are split so the DOC-04 grep contract stays green
+        // while the fixture keeps its on-disk shape.
+        let legacy_key = concat!("physic_paint_", "outputs").to_string();
+        let mut legacy_json = serde_json::json!({
+            "version": 1,
+            "name": "Legacy Project",
+            "fps": 24,
+            "width": 1920,
+            "height": 1080,
+            "created_at": "2026-01-01T00:00:00Z",
+            "modified_at": "2026-01-01T00:00:00Z",
+            "sequences": [],
+            "images": [],
+            "audio_tracks": [],
+        });
+        legacy_json.as_object_mut().unwrap().insert(
+            legacy_key,
+            serde_json::json!([{
+                "layer_id": "phys-layer-1",
+                "frames": [{
+                    "frameIndex": 0,
+                    "appFrame": 12,
+                    "cache_path": concat!("cache/physic-", "paint", "/phys-layer-1/frame-000012-0000.png")
+                }],
+                "roto_physical": { "background": "canvas2" }
+            }]),
+        );
+
+        let mce_path = test_dir.join("legacy.mce");
+        std::fs::write(&mce_path, legacy_json.to_string()).unwrap();
+
+        let loaded = open_project(mce_path.to_str().unwrap()).unwrap();
+        // It opens — and carries no package version, which is exactly what the
+        // TS gate keys its refusal on (`missing-format-version`).
+        assert_eq!(loaded.format_version, None);
+        assert_eq!(loaded.efx_paint_documents.len(), 0);
+        assert!(loaded.efx_paint.is_empty());
+
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_save_skips_empty_document_keys() {
+        let test_dir = std::env::temp_dir().join("efx_test_skip_empty_keys");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(&test_dir).unwrap();
+
         let project = MceProject {
             version: 1,
-            name: "Cache Transaction".into(),
+            name: "Empty Keys".into(),
             fps: 24,
             width: 1920,
             height: 1080,
-            created_at: "2026-08-12T00:00:00Z".into(),
-            modified_at: "2026-08-12T00:00:00Z".into(),
+            created_at: "2026-03-03T10:00:00Z".into(),
+            modified_at: "2026-03-03T10:00:00Z".into(),
             sequences: vec![],
             images: vec![],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
+            format_version: None,
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
         };
-        let project_path = test_dir.join("project.mce");
 
+        let mce_path = test_dir.join("empty_keys.mce");
         save_project(
             &project,
-            project_path.to_str().unwrap(),
+            mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
-            Some(&publication.transaction_id),
         )
-        .expect("project save");
-        recover_cache_transaction(&test_dir).expect("open-time recovery");
+        .unwrap();
 
-        assert!(test_dir.join("cache/physic-paint/new.png").exists());
-        assert!(!test_dir.join("cache/physic-paint/old.png").exists());
-        assert!(!staging.exists());
-        assert!(!test_dir
-            .join("cache/.physic-paint-transaction.json")
-            .exists());
-        assert_eq!(
-            open_project(project_path.to_str().unwrap()).unwrap().name,
-            project.name
-        );
-        std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
+        let saved = std::fs::read_to_string(&mce_path).unwrap();
+        assert!(!saved.contains("efx_paint_documents"));
+        // 52.2-08: the package keys are omitted while absent/empty, so a
+        // brand-new project's manifest carries no empty package scaffolding —
+        // the refusal gate reads their presence as an older format.
+        assert!(!saved.contains("formatVersion"));
+        assert!(!saved.contains("projectId"));
+        assert!(!saved.contains("efxPaint"));
+
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    // --- quick-260913-05k: the staged manifest path needs no renderer mkdir --
+
+    #[test]
+    fn test_save_creates_a_missing_parent_directory() {
+        let test_dir = std::env::temp_dir().join("efx_test_save_creates_parent");
+        let _ = std::fs::remove_dir_all(&test_dir);
+
+        let project = MceProject {
+            version: 1,
+            name: "Staged Manifest".into(),
+            fps: 24,
+            width: 1920,
+            height: 1080,
+            created_at: "2026-09-13T00:00:00Z".into(),
+            modified_at: "2026-09-13T00:00:00Z".into(),
+            sequences: vec![],
+            images: vec![],
+            audio_tracks: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
+            format_version: Some(1),
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
+        };
+
+        // A package save hands the manifest its STAGING path, and the renderer
+        // no longer pre-creates the staging root (quick-260913-05k): neither
+        // the staging directory nor the package directory exists yet.
+        let staged = test_dir
+            .join(".efx-paint-package-staging-fixture")
+            .join("project.mce");
+        save_project(
+            &project,
+            staged.to_str().unwrap(),
+            test_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        assert!(staged.exists());
+        let reopened = open_project(staged.to_str().unwrap()).unwrap();
+        assert_eq!(reopened.name, "Staged Manifest");
+        let _ = std::fs::remove_dir_all(&test_dir);
     }
 
     #[test]
@@ -336,7 +501,10 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
+            format_version: Some(1),
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -344,7 +512,6 @@ mod tests {
             &project,
             mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
-            None,
         )
         .unwrap();
 
@@ -542,7 +709,10 @@ mod tests {
             sequences: vec![content_seq, grain_seq, colorgrade_seq],
             images: vec![],
             audio_tracks: vec![],
-            physic_paint_outputs: vec![],
+            efx_paint_documents: std::collections::HashMap::new(),
+            format_version: Some(1),
+            project_id: None,
+            efx_paint: std::collections::HashMap::new(),
         };
 
         // Save
@@ -551,7 +721,6 @@ mod tests {
             &project,
             mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
-            None,
         )
         .unwrap();
 

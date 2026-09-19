@@ -53,6 +53,24 @@ export interface RotoRailSetCopyLoopMember {
   readonly placementStart: number;
   /** Frozen Loop Clip snapshot; paste duplicates the shared-source placement. */
   readonly clip: PhysicPaintRotoLoopClip;
+  /**
+   * Resolver-resolved source end-exclusive (computed against the source
+   * document at copy time). For a plain infinity clip the resolver would
+   * otherwise re-resolve `naturalEnd = capacity` against the empty paste
+   * destination and expand beyond the source's visible duration (UAT
+   * paste-repeat regression). Capturing the true source end lets occupancy,
+   * range checks, and the pasted extent all mirror what the source actually
+   * rendered.
+   */
+  readonly effectiveEndExclusive: number;
+  /**
+   * Finite repeat applied on paste for an infinity-repeat source — the
+   * source's visible cycle count, so the pasted copy is frozen to the finite
+   * duration it effectively had instead of staying 'infinity' and growing with
+   * the destination's parent end. Undefined for finite sources (their own
+   * `clip.repeat` is reused verbatim).
+   */
+  readonly repeat?: number;
 }
 
 export type RotoRailSetCopyMember = RotoRailSetCopyKeyRailMember | RotoRailSetCopyLoopMember;
@@ -63,6 +81,12 @@ export interface RotoRailSetCopyPayload {
   readonly anchorAppFrame: number;
   /** Members in canonical order (placementStart asc, then kind/id tie-break). */
   readonly members: readonly RotoRailSetCopyMember[];
+  /**
+   * The stable track id the set was copied from (46-03 D-06). Empty string on
+   * legacy payloads built without track context — those never trigger
+   * cross-track re-pointing.
+   */
+  readonly sourceTrackId: string;
 }
 
 export type RotoRailSetCopyPlacementMode = 'paste' | 'duplicate';
@@ -86,6 +110,14 @@ export interface RotoRailSetPasteInput {
   readonly placementMode: RotoRailSetCopyPlacementMode;
   /** Required for 'paste' (the cursor frame); absent for 'duplicate'. */
   readonly destinationAppFrame?: number;
+  /**
+   * The destination track id (46-03 D-06). When present and different from
+   * `payload.sourceTrackId`, loop members are re-pointed onto the
+   * destination's freshly allocated source frames — a referenced source
+   * outside the pasted set fails the paste closed instead of dangling.
+   * Absent on pre-46-03 callers: verbatim shared-source placement.
+   */
+  readonly targetTrackId?: string;
   /**
    * Optional prescribed fresh identities. Absent on the child Copy propose
    * (fresh UUIDs allocated); present on the parent recompute (replay the
@@ -132,7 +164,13 @@ export type RotoRailSetPasteFailureReason =
   | 'stale-member'
   | 'out-of-range-frame'
   | 'over-capacity'
-  | 'duplicate-destination-frame';
+  | 'duplicate-destination-frame'
+  /**
+   * 46-03 D-06: a cross-track paste whose Loop Clip references a source key
+   * that is not part of the pasted set cannot re-point — rejected closed
+   * rather than producing a dangling or foreign-track reference.
+   */
+  | 'loop-source-outside-pasted-set';
 
 export type RotoRailSetPasteResult =
   | Readonly<{ ok: true; proposal: PhysicPaintRotoPhysicalDocument; impact: RotoRailSetPasteImpact }>
@@ -151,6 +189,32 @@ function rejectPaste(
     : Object.freeze({ ok: false, reason, conflictingAppFrames: Object.freeze([...conflictingAppFrames]) });
 }
 
+/**
+ * User-facing capsule copy for a rejected rail-set Paste/Duplicate. One locked
+ * message per failure class, distinct for the two placement modes so the user
+ * knows which gesture failed.
+ */
+export function mapRotoRailSetPasteFailure(
+  placementMode: RotoRailSetCopyPlacementMode,
+  reason: RotoRailSetPasteFailureReason,
+): string {
+  const verb = placementMode === 'paste' ? 'Paste' : 'Duplicate';
+  switch (reason) {
+    case 'out-of-range-frame':
+    case 'over-capacity':
+      return `${verb} failed — not enough space in the timeline.`;
+    case 'duplicate-destination-frame':
+      return `${verb} failed — a key already occupies the destination frame.`;
+    case 'empty-payload':
+    case 'malformed-payload':
+    case 'unknown-member':
+    case 'stale-member':
+      return `${verb} failed — the copied rail set is no longer available. Select the rails again.`;
+    case 'loop-source-outside-pasted-set':
+      return `${verb} failed — a linked Hold can't be re-pointed to that destination.`;
+  }
+}
+
 function isBoundedKeyId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
 }
@@ -159,6 +223,9 @@ function freezePayload(payload: RotoRailSetCopyPayload): RotoRailSetCopyPayload 
   return Object.freeze({
     anchorAppFrame: payload.anchorAppFrame,
     members: Object.freeze([...payload.members]),
+    // '' = a legacy payload with no track context (never emit `undefined` —
+    // the bridge's structured-clone-plain-data check rejects undefined values).
+    sourceTrackId: payload.sourceTrackId ?? '',
   }) as RotoRailSetCopyPayload;
 }
 
@@ -185,11 +252,72 @@ function orderMembers(members: readonly RotoRailSetCopyMember[]): readonly RotoR
   }));
 }
 
+/**
+ * Resolve a Loop Clip's copied extent. The freeze-to-finite behavior (46 UAT
+ * paste-repeat regression) applies ONLY to infinity-repeat sources: their
+ * extent must be mirrored from the resolver's boundary scan (next unowned real
+ * key, then next loop-start to the right, clamped to capacity) so the pasted
+ * copy reproduces the visible duration it actually had instead of re-resolving
+ * `naturalEnd = capacity`. Finite/static clips keep the established v0.9
+ * extent semantics verbatim — `sourceKeyIds.length`-based cycle, or
+ * `originalEndExclusive` when lifecycle is present — so copying them is
+ * byte-for-byte unchanged (46 UAT R1).
+ */
+function resolveLoopCopyExtent(
+  document: PhysicPaintRotoPhysicalDocument,
+  clip: PhysicPaintRotoLoopClip,
+): { readonly effectiveEndExclusive: number; readonly repeat: number | undefined } {
+  if (clip.repeat !== 'infinity') {
+    return {
+      effectiveEndExclusive: typeof clip.originalEndExclusive === 'number'
+        ? clip.originalEndExclusive
+        : clip.placementStart + clip.sourceKeyIds.length * clip.repeat,
+      repeat: undefined,
+    };
+  }
+
+  const recordByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  // Mirror the resolver's sourceOffsets-derived cycle length exactly (falls
+  // back to the source key count when the source cycle is dangling/unsorted).
+  const sourceFrameCount = clip.sourceKeyIds.length;
+  const sourcePositions = clip.sourceKeyIds.map((keyId) => recordByKeyId.get(keyId)?.appFrame);
+  const missingSourceKeyIds = clip.sourceKeyIds.filter((keyId) => !recordByKeyId.has(keyId));
+  const sourceTimingIsValid = missingSourceKeyIds.length === 0
+    && sourcePositions.every((position): position is number => position !== undefined)
+    && sourcePositions.every((position, index) => index === 0 || sourcePositions[index - 1]! < position);
+  const cycleLength = sourceTimingIsValid
+    ? sourcePositions[sourcePositions.length - 1]! - sourcePositions[0]! + 1
+    : sourceFrameCount;
+
+  const ownedSourceKeyIds = new Set([
+    ...clip.sourceKeyIds,
+    ...(clip.frameOverrides?.map((override) => override.keyId) ?? []),
+  ]);
+  let boundary = document.capacity;
+  for (const record of document.realKeyRecords) {
+    if (record.appFrame < clip.placementStart) continue;
+    if (ownedSourceKeyIds.has(record.keyId)) continue;
+    if (record.appFrame < boundary) boundary = record.appFrame;
+  }
+  for (const other of document.loopClips) {
+    if (other.loopId === clip.loopId) continue;
+    if (other.placementStart <= clip.placementStart) continue;
+    if (other.placementStart < boundary) boundary = other.placementStart;
+  }
+  const effectiveEndExclusive = Math.max(clip.placementStart, Math.min(document.capacity, boundary));
+  return {
+    effectiveEndExclusive,
+    repeat: Math.max(1, Math.round((effectiveEndExclusive - clip.placementStart) / cycleLength)),
+  };
+}
+
 export function buildRotoRailSetCopyPayload(input: {
   readonly document: PhysicPaintRotoPhysicalDocument;
   readonly members: readonly RailSetIdentity[];
+  /** 46-03 D-06: the stable track id the set is copied from. */
+  readonly trackId?: string;
 }): RotoRailSetCopyPayloadResult {
-  const { document, members } = input;
+  const { document, members, trackId } = input;
   if (!Array.isArray(members) || members.length === 0) {
     return Object.freeze({ ok: false, reason: 'empty-set' });
   }
@@ -242,11 +370,14 @@ export function buildRotoRailSetCopyPayload(input: {
       if (clip === undefined) {
         return Object.freeze({ ok: false, reason: 'stale-member' });
       }
+      const extent = resolveLoopCopyExtent(document, clip);
       built.push(Object.freeze({
         kind: 'loop',
         loopId: member.loopId,
         placementStart: clip.placementStart,
         clip: Object.freeze(clip),
+        effectiveEndExclusive: extent.effectiveEndExclusive,
+        ...(extent.repeat !== undefined ? { repeat: extent.repeat } : {}),
       }));
     }
   }
@@ -257,22 +388,76 @@ export function buildRotoRailSetCopyPayload(input: {
   if (!Number.isInteger(anchor) || anchor < 0) {
     return Object.freeze({ ok: false, reason: 'malformed-member' });
   }
-  return Object.freeze({ ok: true, payload: freezePayload({ anchorAppFrame: anchor, members: ordered }) });
+  return Object.freeze({
+    ok: true,
+    payload: freezePayload({ anchorAppFrame: anchor, members: ordered, sourceTrackId: trackId ?? '' }),
+  });
 }
 
-/** Translate a loop lifecycle by the same signed delta used for the key records. */
+/**
+ * 46-03 D-06: remap a loop body's track-local source key references onto the
+ * destination track's freshly allocated keyIds (cross-track paste). Returns
+ * null when any referenced source is outside the pasted set — the caller
+ * rejects the paste closed instead of producing a dangling or foreign-track
+ * reference. Both `sourceKeyIds` and group `frameOverrides` key refs are
+ * re-pointed (they live on the same track dimension).
+ */
+function repointLoopClipSources(
+  clip: PhysicPaintRotoLoopClip,
+  freshKeyIds: Readonly<Record<string, string>>,
+): { readonly sourceKeyIds: readonly string[]; readonly frameOverrides: readonly { appFrame: number; keyId: string }[] | undefined } | null {
+  const sourceKeyIds: string[] = [];
+  for (const sourceKeyId of clip.sourceKeyIds) {
+    const fresh = freshKeyIds[sourceKeyId];
+    if (fresh === undefined) return null;
+    sourceKeyIds.push(fresh);
+  }
+  let frameOverrides: readonly { appFrame: number; keyId: string }[] | undefined;
+  if (clip.frameOverrides !== undefined) {
+    const repointed: { appFrame: number; keyId: string }[] = [];
+    for (const override of clip.frameOverrides) {
+      const fresh = freshKeyIds[override.keyId];
+      if (fresh === undefined) return null;
+      repointed.push(Object.freeze({ appFrame: override.appFrame, keyId: fresh }));
+    }
+    frameOverrides = Object.freeze(repointed);
+  }
+  return { sourceKeyIds: Object.freeze(sourceKeyIds), frameOverrides };
+}
+
+/** Translate a loop body by the same signed delta used for the key records. */
 function buildDuplicatedLoopClip(
   clip: PhysicPaintRotoLoopClip,
   freshLoopId: string,
   destinationStart: number,
   delta: number,
+  repeatOverride?: number,
+  sourceEffectiveEndExclusive?: number,
+  repoint?: { readonly sourceKeyIds: readonly string[]; readonly frameOverrides?: readonly { appFrame: number; keyId: string }[] },
 ): PhysicPaintRotoLoopClip {
+  const sourceKeyIds = repoint?.sourceKeyIds ?? clip.sourceKeyIds;
+  const frameOverrides = repoint?.frameOverrides ?? clip.frameOverrides;
+  // 46 UAT R5: the bridge apply validator requires every loop clip in a
+  // replace-roto-physical-map payload to be lifecycle-complete
+  // (isLifecycleCompletePhysicPaintRotoLoopClip). An infinity source frozen to
+  // a finite repeat carries no lifecycle (infinity clips never do), and a
+  // finite source with syncState === undefined (never synchronized) carries
+  // none either. Synthesize a complete lifecycle for ANY pasted clip that
+  // lacks one, pinned to its effective end — the copied member's resolved
+  // extent translated by delta — so the pasted clip passes apply validation
+  // and renders to exactly the source's visible duration.
+  const synthesizedEndExclusive = sourceEffectiveEndExclusive !== undefined
+    ? destinationStart + (sourceEffectiveEndExclusive - clip.placementStart)
+    : undefined;
   return Object.freeze({
     loopId: freshLoopId,
     placementStart: destinationStart,
-    sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
-    repeat: clip.repeat,
+    sourceKeyIds: Object.freeze([...sourceKeyIds]),
+    repeat: repeatOverride ?? clip.repeat,
     mode: clip.mode,
+    // 52-05 (G-52-4): a copied reveal rail stays a reveal rail — railKind is a
+    // canonical fingerprint term and must ride the duplicate.
+    ...(clip.railKind !== undefined ? { railKind: clip.railKind } : {}),
     ...(clip.scriptId !== undefined
       ? {
           scriptId: clip.scriptId,
@@ -290,12 +475,21 @@ function buildDuplicatedLoopClip(
             start: range.start + delta,
             endExclusive: range.endExclusive + delta,
           }))),
-          frameOverrides: Object.freeze(clip.frameOverrides!.map((override) => Object.freeze({
+          frameOverrides: Object.freeze(frameOverrides!.map((override) => Object.freeze({
             appFrame: override.appFrame + delta,
             keyId: override.keyId,
           }))),
         }
-      : {}),
+      : synthesizedEndExclusive !== undefined
+        ? {
+            syncState: 'synchronized',
+            provenanceState: 'attached',
+            phaseOrigin: destinationStart,
+            originalEndExclusive: synthesizedEndExclusive,
+            visibleRanges: Object.freeze([Object.freeze({ start: destinationStart, endExclusive: synthesizedEndExclusive })]),
+            frameOverrides: Object.freeze([]),
+          }
+        : {}),
   }) as PhysicPaintRotoLoopClip;
 }
 
@@ -304,26 +498,26 @@ function buildFreshKeyRecord(
   freshKeyId: string,
   freshFrame: number,
 ): PhysicPaintRotoRealKeyRecord {
+  const dimensions = {
+    ...(sourcePayload.width !== undefined ? { width: sourcePayload.width } : {}),
+    ...(sourcePayload.height !== undefined ? { height: sourcePayload.height } : {}),
+  };
+  // 52.2-06 (D-07): preserve the source's raster CARRIER. A copy taken from a
+  // reopened (reference-only) document carries `media`, never bytes — copying
+  // only `bytes` would build a record with NEITHER carrier, which the
+  // collection parser refuses, so the whole paste/duplicate proposal would
+  // throw instead of refusing cleanly. A duplicated key renders the same
+  // pixels, so its media reference names the same digest (plan 09 resolves
+  // pixels from it; the save projection re-points it at the fresh keyId).
+  const payload = sourcePayload.media !== undefined
+    ? { frameIndex: sourcePayload.frameIndex, appFrame: freshFrame, media: sourcePayload.media, ...dimensions }
+    : { frameIndex: sourcePayload.frameIndex, appFrame: freshFrame, bytes: sourcePayload.bytes, ...dimensions };
   return Object.freeze({
     kind: 'real-key',
     keyId: freshKeyId,
     appFrame: freshFrame,
-    payload: Object.freeze({
-      frameIndex: sourcePayload.frameIndex,
-      appFrame: freshFrame,
-      dataUrl: sourcePayload.dataUrl,
-      ...(sourcePayload.width !== undefined ? { width: sourcePayload.width } : {}),
-      ...(sourcePayload.height !== undefined ? { height: sourcePayload.height } : {}),
-    }),
+    payload: Object.freeze(payload),
   }) as PhysicPaintRotoRealKeyRecord;
-}
-
-/** Source extent of one copied loop (end-exclusive) for occupancy and scanning. */
-function loopSourceEndExclusive(clip: PhysicPaintRotoLoopClip): number {
-  if (typeof clip.originalEndExclusive === 'number') return clip.originalEndExclusive;
-  const cycleLength = clip.sourceKeyIds.length;
-  const repeats = clip.repeat === 'infinity' ? 1 : clip.repeat;
-  return clip.placementStart + cycleLength * repeats;
 }
 
 interface PastedExtent {
@@ -348,7 +542,7 @@ function computePastedExtent(
         if (destinationFrame > lastFrame) lastFrame = destinationFrame;
       }
     } else {
-      const endExclusive = loopSourceEndExclusive(member.clip) + delta;
+      const endExclusive = member.effectiveEndExclusive + delta;
       loopEndExclusives.push(endExclusive);
       if (endExclusive - 1 > lastFrame) lastFrame = endExclusive - 1;
     }
@@ -364,7 +558,7 @@ function computeLastSetEnd(members: readonly RotoRailSetCopyMember[]): number {
       const lastEntry = member.entries[member.entries.length - 1];
       if (lastEntry && lastEntry.sourceAppFrame > last) last = lastEntry.sourceAppFrame;
     } else {
-      const end = loopSourceEndExclusive(member.clip) - 1;
+      const end = member.effectiveEndExclusive - 1;
       if (end > last) last = end;
     }
   }
@@ -403,6 +597,7 @@ interface FreshAllocation {
 function allocateFreshIdentities(
   payload: RotoRailSetCopyPayload,
   prescribed: RotoRailSetFreshIdentityAllocation | undefined,
+  crossTrack: boolean,
 ): FreshAllocation {
   const keyIds: Record<string, string> = {};
   const loopIds: Record<string, string> = {};
@@ -415,6 +610,17 @@ function allocateFreshIdentities(
     } else {
       if (loopIds[member.loopId] !== undefined) continue;
       loopIds[member.loopId] = prescribed?.loopIds?.[member.loopId] ?? createPhysicPaintRotoKeyId();
+      // 46 UAT: a same-track pasted Loop Clip duplicates its source cycle, so
+      // allocate a fresh key for every source key — the parent recompute must
+      // replay the SAME fresh keys or the semantic impact mismatches. Cross-track
+      // pastes re-point onto the key-rail members' fresh keys instead (and fail
+      // closed when a source key is not covered), so no loop-source allocation.
+      if (!crossTrack) {
+        for (const sourceKeyId of member.clip.sourceKeyIds) {
+          if (keyIds[sourceKeyId] !== undefined) continue;
+          keyIds[sourceKeyId] = prescribed?.keyIds?.[sourceKeyId] ?? createPhysicPaintRotoKeyId();
+        }
+      }
     }
   }
   return { keyIds, loopIds };
@@ -471,13 +677,25 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
   }
 
   // Fresh identities (replay the child allocation on the parent recompute).
-  const allocation = allocateFreshIdentities(payload, input.freshIdentityAllocation);
+  const crossTrack = input.targetTrackId !== undefined
+    && payload.sourceTrackId !== ''
+    && payload.sourceTrackId !== input.targetTrackId;
+  const allocation = allocateFreshIdentities(payload, input.freshIdentityAllocation, crossTrack);
 
   // Build fresh records, duplicated loops, breaks.
   const freshRecords: PhysicPaintRotoRealKeyRecord[] = [];
   const duplicatedLoopClips: PhysicPaintRotoLoopClip[] = [];
   const freshBreakOwners = new Set<string>();
   const memberFirstFrames: { readonly freshFirstFrame: number; readonly freshFirstKeyId: string }[] = [];
+  // Source keys already covered by a key-rail member in the set — those get
+  // their fresh records from the key-rail branch, so a loop member must not
+  // duplicate them.
+  const keyRailCoveredSourceKeys = new Set<string>();
+  for (const member of payload.members) {
+    if (member.kind === 'key-rail') {
+      for (const entry of member.entries) keyRailCoveredSourceKeys.add(entry.sourceKeyId);
+    }
+  }
   for (const member of payload.members) {
     if (member.kind === 'key-rail') {
       let firstFrame: number | null = null;
@@ -498,7 +716,50 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     } else {
       const freshLoopId = allocation.loopIds[member.loopId] ?? createPhysicPaintRotoKeyId();
       const destinationStart = member.placementStart + delta;
-      duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta));
+      if (crossTrack) {
+        // 46-03 D-06: re-point every track-local source reference onto the
+        // destination's freshly allocated frames (created by the key-rail
+        // members of the set); impossible re-pointing fails the paste closed.
+        const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
+        if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));
+      } else {
+        // 46 UAT: a same-track pasted Loop Clip duplicates its source cycle —
+        // create fresh real keys at the destination frames (destinationStart +
+        // source offset) so the pasted rail shows blue source keys, not
+        // unresolved gray cells. A source cycle that cannot be fully duplicated
+        // (a missing source key) fails closed.
+        const sourceRecords = (member.clip.sourceKeyIds as readonly string[])
+          .map((keyId: string) => document.realKeyRecords.find((record: PhysicPaintRotoRealKeyRecord) => record.keyId === keyId))
+          .filter((record): record is PhysicPaintRotoRealKeyRecord => record !== undefined);
+        if (sourceRecords.length !== member.clip.sourceKeyIds.length) {
+          return rejectPaste('loop-source-outside-pasted-set');
+        }
+        const firstSourceFrame = sourceRecords[0]?.appFrame;
+        if (firstSourceFrame !== undefined) {
+          for (const sourceRecord of sourceRecords) {
+            // A key-rail member in the set already created this source key's
+            // fresh record; the loop only creates records for keys it owns alone.
+            if (keyRailCoveredSourceKeys.has(sourceRecord.keyId)) continue;
+            const freshKeyId = allocation.keyIds[sourceRecord.keyId] ?? createPhysicPaintRotoKeyId();
+            allocation.keyIds[sourceRecord.keyId] = freshKeyId;
+            const freshFrame = destinationStart + (sourceRecord.appFrame - firstSourceFrame);
+            freshRecords.push(buildFreshKeyRecord(sourceRecord.payload, freshKeyId, freshFrame));
+          }
+        }
+        // The loop's first source key starts a new segment (break-before-first-
+        // key), exactly like a pasted key rail — no interpolation before it.
+        const firstSourceRecord = sourceRecords[0];
+        if (firstSourceRecord !== undefined && !keyRailCoveredSourceKeys.has(firstSourceRecord.keyId)) {
+          const firstFreshKeyId = allocation.keyIds[firstSourceRecord.keyId];
+          if (firstFreshKeyId !== undefined) {
+            memberFirstFrames.push({ freshFirstFrame: destinationStart, freshFirstKeyId: firstFreshKeyId });
+          }
+        }
+        const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
+        if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
+        duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));
+      }
     }
   }
 
@@ -527,6 +788,37 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
       if (leftFrame < 0) continue;
       const leftRecord = document.realKeyRecords.find((record) => record.appFrame === leftFrame);
       if (leftRecord) nextBreaks.add(firstOf.freshFirstKeyId);
+    }
+  }
+  // Right-mirror of the rail-boundary rule: the pasted set must not bridge into
+  // existing content to its RIGHT either. A break on the set's first key only
+  // severs its left edge; the first existing key after the set's last fresh
+  // frame must own an incoming break, otherwise the segmenter merges the set's
+  // last key with the following rail across the empty frames. Skipped when the
+  // destination is strictly INSIDE a connected segment span (the set joins that
+  // rail). Idempotent when the following key already owns a break.
+  const setFirstFreshFrame = freshRecords.reduce(
+    (minFrame, record) => Math.min(minFrame, record.appFrame),
+    Number.POSITIVE_INFINITY,
+  );
+  const setLastFreshFrame = freshRecords.reduce(
+    (maxFrame, record) => Math.max(maxFrame, record.appFrame),
+    Number.NEGATIVE_INFINITY,
+  );
+  if (freshRecords.length > 0) {
+    let setLeftBelow: PhysicPaintRotoRealKeyRecord | undefined;
+    let setRightAbove: PhysicPaintRotoRealKeyRecord | undefined;
+    for (const record of document.realKeyRecords) {
+      if (record.appFrame < setFirstFreshFrame) {
+        if (setLeftBelow === undefined || record.appFrame > setLeftBelow.appFrame) setLeftBelow = record;
+      } else if (record.appFrame > setLastFreshFrame) {
+        if (setRightAbove === undefined || record.appFrame < setRightAbove.appFrame) setRightAbove = record;
+      }
+    }
+    const setInsideConnectedSpan = setLeftBelow !== undefined && setRightAbove !== undefined
+      && !document.incomingInterpolationBreakKeyIds.includes(setRightAbove.keyId);
+    if (setRightAbove !== undefined && !setInsideConnectedSpan) {
+      nextBreaks.add(setRightAbove.keyId);
     }
   }
 
@@ -574,7 +866,7 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
       kind: 'loop' as const,
       id: freshLoopId,
       firstFrame: member.placementStart + delta,
-      effectiveEndExclusive: loopSourceEndExclusive(member.clip) + delta,
+      effectiveEndExclusive: member.effectiveEndExclusive + delta,
     });
   });
 

@@ -17,7 +17,7 @@ export interface RotoKeyUtilitiesInput {
   canvasSize: { width: number; height: number };
   applyStatus: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight: boolean;
-  buildBlankRotoFrame: (frame: number) => PhysicPaintRotoCacheFrame;
+  buildBlankRotoFrame: (frame: number) => Promise<PhysicPaintRotoCacheFrame>;
   setDirtyFrames: (frames: Set<number>) => void;
   syncPendingRotoFrames: () => void;
   restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
@@ -305,14 +305,14 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
   // + Key: promote the current empty/generated frame to a real, paintable key
   // carrying empty paint. Routes through the physical paste-to-empty machinery
   // with a blank payload, mirroring the script-target promotion path.
-  const addKey = useCallback(() => {
+  const addKey = useCallback(async () => {
     if (blocked) return;
     const actionState = session.actionAvailability.value;
     if (actionState.currentIsRealKey) {
       input.setApplyMessage('The current frame already has a real Roto key.');
       return;
     }
-    const blank = input.buildBlankRotoFrame(input.currentFrame);
+    const blank = await input.buildBlankRotoFrame(input.currentFrame);
     setKeyActionInFlight(true);
     void input.physicalKeyUtilities.addEmptyKey(
       input.currentFrame,
@@ -347,7 +347,7 @@ function toClipboardPayload(copiedKey: RotoSessionCopiedKey): PhysicPaintRotoRea
   return Object.freeze({
     frameIndex: frame.frameIndex,
     appFrame: copiedKey.frame,
-    dataUrl: frame.dataUrl,
+    bytes: frame.bytes,
     ...(frame.width !== undefined ? { width: frame.width } : {}),
     ...(frame.height !== undefined ? { height: frame.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
@@ -357,7 +357,7 @@ export function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationA
   return Object.freeze({
     frameIndex: blank.frameIndex,
     appFrame: destinationAppFrame,
-    dataUrl: blank.dataUrl,
+    bytes: blank.bytes,
     ...(blank.width !== undefined ? { width: blank.width } : {}),
     ...(blank.height !== undefined ? { height: blank.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;

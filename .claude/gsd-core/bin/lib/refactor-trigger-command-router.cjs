@@ -35,6 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 const node_path_1 = __importDefault(require("node:path"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
+const security_cjs_1 = require("./security.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const io = require("./io.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -174,8 +175,11 @@ function resolvePhaseDirForArg(cwd, phaseArg) {
  */
 function resolveConfinedPath(cwd, relFile) {
     const root = node_path_1.default.resolve(cwd);
-    const resolved = node_path_1.default.resolve(root, relFile);
-    if (resolved !== root && !resolved.startsWith(root + node_path_1.default.sep))
+    // ADR-4650 decision 6: lexical family — resolving the symlink here would
+    // undo the refuse-don't-resolve posture documented above; `lstatSync` below
+    // is the gate that actually refuses a symlink.
+    const resolved = (0, security_cjs_1.tryWithinRootLexical)(relFile, root);
+    if (resolved === null)
         return null;
     try {
         if (!node_fs_1.default.lstatSync(resolved).isFile())
@@ -322,6 +326,32 @@ function loadWindowsOrDegrade(cwd, windowsOverride) {
     return { ok: true, windows, ledger };
 }
 /**
+ * #3780: lazy (module-load cost, see file header) require of the ledger's
+ * serialization seam — the same `.planning/.WINDOWS.lock` the windows cmd*
+ * writers hold, so this router's own read-compute-write cycles on
+ * WINDOWS.md cannot lose updates against them. Required from the REAL
+ * compiled module, never through the injectable `windowsOverride` seam:
+ * the lock is infrastructure, not a parser stand-in.
+ */
+function withLedgerLock(cwd, fn) {
+    let lockMod;
+    try {
+        /* eslint-disable @typescript-eslint/no-require-imports */
+        lockMod = require('./broken-windows.cjs');
+        /* eslint-enable @typescript-eslint/no-require-imports */
+    }
+    catch {
+        // Ledger module unavailable (the #1953 degrade world — see the row-86
+        // notesLedgerUnavailableWithoutBrokenWindows contract): no lock-holding
+        // writer can exist either, because every WINDOWS.md writer requires this
+        // same module. Run the body unlocked and let loadWindowsOrDegrade
+        // produce the canonical degrade note — wrapping that world in lock
+        // ceremony would only rewrite the note the degrade contract pins.
+        return fn();
+    }
+    return lockMod.withLedgerLock(cwd, fn);
+}
+/**
  * Strict-mode window append (step 9 of `evaluate`). Degrades to
  * `{ recorded: false, note }` per `loadWindowsOrDegrade` — never an error,
  * never throws. Idempotent: re-evaluating the same still-untriaged phase
@@ -329,6 +359,23 @@ function loadWindowsOrDegrade(cwd, windowsOverride) {
  * file/line) and does not append a second one.
  */
 function recordStrictWindow(cwd, padded, target, windowsOverride) {
+    // #3780: hold the same cross-process ledger lock the windows cmd* writers
+    // hold — this site's read-compute-write on WINDOWS.md is otherwise the
+    // same lost-update race: a concurrent `gsd_run windows append` (or another
+    // evaluator) could silently overwrite this entry, or be overwritten by
+    // it. The lock comes from the real ledger module, not the injectable
+    // `windowsOverride` seam — it is infrastructure, not a parser stand-in.
+    // The wrapper keeps the #1953-defect-2 degrade contract: the lock's typed
+    // refusal degrades to `{ recorded: false, note }` like every other
+    // failure, it never throws out of this function.
+    try {
+        return withLedgerLock(cwd, () => recordStrictWindowLocked(cwd, padded, target, windowsOverride));
+    }
+    catch (e) {
+        return { recorded: false, note: `failed to record broken-windows entry: ${e instanceof Error ? e.message : String(e)}` };
+    }
+}
+function recordStrictWindowLocked(cwd, padded, target, windowsOverride) {
     const loaded = loadWindowsOrDegrade(cwd, windowsOverride);
     if (!loaded.ok)
         return { recorded: false, note: loaded.note };
@@ -357,6 +404,18 @@ function recordStrictWindow(cwd, padded, target, windowsOverride) {
  * `accept`/`decline` never tell a user "it failed" without saying why.
  */
 function resolveLedgerWindow(cwd, padded, file, line, kind, reasonText, windowsOverride) {
+    // #3780: same serialization as recordStrictWindow — a concurrent ledger
+    // writer holding a stale snapshot would silently revert this resolve (or
+    // lose its own write to this one). Same degrade contract: the lock's
+    // typed refusal degrades, never throws.
+    try {
+        return withLedgerLock(cwd, () => resolveLedgerWindowLocked(cwd, padded, file, line, kind, reasonText, windowsOverride));
+    }
+    catch (e) {
+        return { resolved: false, note: `failed to resolve broken-windows entry: ${e instanceof Error ? e.message : String(e)}` };
+    }
+}
+function resolveLedgerWindowLocked(cwd, padded, file, line, kind, reasonText, windowsOverride) {
     const loaded = loadWindowsOrDegrade(cwd, windowsOverride);
     if (!loaded.ok)
         return { resolved: false, note: loaded.note };
@@ -379,42 +438,18 @@ function resolveLedgerWindow(cwd, padded, file, line, kind, reasonText, windowsO
 }
 // ─── evaluate ────────────────────────────────────────────────────────────────
 const EVALUATE_USAGE = 'Usage: gsd-tools refactor evaluate --phase <N> [--since <ref>] [--raw]';
-function handleEvaluate(args, cwd, raw, c, complexity, git, windowsOverride) {
-    const rest = args.slice(2);
-    const phaseCheck = requirePhaseArg(rest, complexity, EVALUATE_USAGE);
-    if (!phaseCheck.ok)
-        return phaseCheck.result;
-    // Step 3: resolve PHASE_DIR + anchor (phaseStartCommit, or --since override).
-    const resolved = resolvePhaseDirForArg(cwd, phaseCheck.phase);
-    if (resolved === null) {
-        c.output({ verdict: complexity.VERDICT.SKIPPED, reason: complexity.REASON.REFACTOR_INVALID_PHASE, phase: phaseCheck.phase }, raw);
-        return undefined;
-    }
-    const { phaseDir, padded } = resolved;
-    const sinceFlag = readFlag(rest, '--since');
-    const sinceOverride = sinceFlag.present && !sinceFlag.flagShaped ? sinceFlag.value.trim() : '';
-    const sinceRef = sinceOverride !== '' ? sinceOverride : git.phaseStartCommit(cwd, phaseDir);
-    if (sinceRef === null) {
-        c.output({ verdict: complexity.VERDICT.SKIPPED, reason: complexity.REASON.REFACTOR_GIT_UNAVAILABLE, phase: padded }, raw);
-        return undefined;
-    }
-    const touched = git.changedFilesSince(cwd, sinceRef);
-    if (touched === null) {
-        c.output({ verdict: complexity.VERDICT.SKIPPED, reason: complexity.REASON.REFACTOR_GIT_UNAVAILABLE, phase: padded }, raw);
-        return undefined;
-    }
-    // Step 4: empty touched set.
-    if (touched.length === 0) {
-        c.output({ verdict: complexity.VERDICT.BELOW_THRESHOLD, reason: complexity.REASON.REFACTOR_NO_TOUCHED_FILES, phase: padded }, raw);
-        return undefined;
-    }
-    // Step 5: filter with isAnalyzablePath; read each survivor. A read failure
-    // (or a path that escapes the project root) skips that one file with a
-    // reason and the run continues — never aborts the evaluation.
+/**
+ * Step 5 of `evaluate`: filter `touched` with `isAnalyzablePath`, read each
+ * survivor and classify it into `analyzed`. A read failure (or a path that
+ * escapes the project root) skips that one file with
+ * `REFACTOR_FILE_UNREADABLE` and the loop continues — never aborts the
+ * evaluation. Only files that were SUCCESSFULLY analyzed feed
+ * `successfullyAnalyzedFiles` — an unreadable file must never wipe that
+ * file's baseline history via nextBaseline's "file in analyzedFiles but
+ * function missing" prune rule.
+ */
+function analyzeTouchedFiles(cwd, touched, complexity) {
     const analyzed = [];
-    // Only files that were SUCCESSFULLY analyzed feed nextBaseline's prune set
-    // — an unreadable file must never wipe that file's baseline history via
-    // the "file in analyzedFiles but function missing" prune rule.
     const successfullyAnalyzedFiles = [];
     for (const relFile of touched) {
         if (!complexity.isAnalyzablePath(relFile))
@@ -441,16 +476,18 @@ function handleEvaluate(args, cwd, raw, c, complexity, git, windowsOverride) {
             successfullyAnalyzedFiles.push(relFile);
         }
     }
-    // Step 6.
-    const planningDirPath = planningDir(cwd);
-    const baselineRead = complexity.readBaseline(planningDirPath);
-    const evalConfig = readEvalConfig(cwd);
-    const evaluation = complexity.evaluateCandidates({
-        analyzed,
-        baseline: baselineRead.baseline,
-        threshold: evalConfig.threshold,
-        jumpDelta: evalConfig.jumpDelta,
-    });
+    return { analyzed, successfullyAnalyzedFiles };
+}
+/**
+ * Steps 7-9 of `evaluate`: write the proposal artifact when TRIGGERED, write
+ * the next baseline (failure is reported but never fails the command),
+ * record the strict-mode ledger window when applicable, and assemble the
+ * final result object. Pure orchestration over the side-effecting helpers —
+ * every degrade path (artifact write throw, baseline write failure, ledger
+ * unavailable) keeps its existing reason code and result shape.
+ */
+function finalizeEvaluation(opts) {
+    const { cwd, phaseDir, padded, planningDirPath, complexity, evaluation, evalConfig, baselineRead, analyzed, successfullyAnalyzedFiles, windowsOverride, } = opts;
     // Step 7.
     let artifactWritten = false;
     let artifactPath = null;
@@ -518,6 +555,54 @@ function handleEvaluate(args, cwd, raw, c, complexity, git, windowsOverride) {
         result.ledger_note = ledgerNote;
     if (warnings.length > 0)
         result.warnings = warnings;
+    return result;
+}
+function handleEvaluate(args, cwd, raw, c, complexity, git, windowsOverride) {
+    const rest = args.slice(2);
+    const phaseCheck = requirePhaseArg(rest, complexity, EVALUATE_USAGE);
+    if (!phaseCheck.ok)
+        return phaseCheck.result;
+    // Step 3: resolve PHASE_DIR + anchor (phaseStartCommit, or --since override).
+    const resolved = resolvePhaseDirForArg(cwd, phaseCheck.phase);
+    if (resolved === null) {
+        c.output({ verdict: complexity.VERDICT.SKIPPED, reason: complexity.REASON.REFACTOR_INVALID_PHASE, phase: phaseCheck.phase }, raw);
+        return undefined;
+    }
+    const { phaseDir, padded } = resolved;
+    const sinceFlag = readFlag(rest, '--since');
+    const sinceOverride = sinceFlag.present && !sinceFlag.flagShaped ? sinceFlag.value.trim() : '';
+    const sinceRef = sinceOverride !== '' ? sinceOverride : git.phaseStartCommit(cwd, phaseDir);
+    if (sinceRef === null) {
+        c.output({ verdict: complexity.VERDICT.SKIPPED, reason: complexity.REASON.REFACTOR_GIT_UNAVAILABLE, phase: padded }, raw);
+        return undefined;
+    }
+    const touched = git.changedFilesSince(cwd, sinceRef);
+    if (touched === null) {
+        c.output({ verdict: complexity.VERDICT.SKIPPED, reason: complexity.REASON.REFACTOR_GIT_UNAVAILABLE, phase: padded }, raw);
+        return undefined;
+    }
+    // Step 4: empty touched set.
+    if (touched.length === 0) {
+        c.output({ verdict: complexity.VERDICT.BELOW_THRESHOLD, reason: complexity.REASON.REFACTOR_NO_TOUCHED_FILES, phase: padded }, raw);
+        return undefined;
+    }
+    // Step 5: filter, read, and classify each touched file.
+    const { analyzed, successfullyAnalyzedFiles } = analyzeTouchedFiles(cwd, touched, complexity);
+    // Step 6.
+    const planningDirPath = planningDir(cwd);
+    const baselineRead = complexity.readBaseline(planningDirPath);
+    const evalConfig = readEvalConfig(cwd);
+    const evaluation = complexity.evaluateCandidates({
+        analyzed,
+        baseline: baselineRead.baseline,
+        threshold: evalConfig.threshold,
+        jumpDelta: evalConfig.jumpDelta,
+    });
+    // Steps 7-9: artifact write, baseline persistence, strict-mode ledger.
+    const result = finalizeEvaluation({
+        cwd, phaseDir, padded, planningDirPath, complexity, evaluation, evalConfig,
+        baselineRead, analyzed, successfullyAnalyzedFiles, windowsOverride,
+    });
     c.output(result, raw);
     return undefined;
 }

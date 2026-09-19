@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('preact/hooks', () => {
@@ -35,7 +36,7 @@ function realKeyFrame(appFrame: number): PhysicPaintRotoCacheFrame {
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: BLANK_PNG_DATA_URL,
+    bytes: testWebpBytes(BLANK_PNG_DATA_URL),
     width: 100,
     height: 80,
     source: 'real-key',
@@ -50,7 +51,7 @@ function realKeyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyR
     payload: Object.freeze({
       frameIndex: 0,
       appFrame,
-      dataUrl: BLANK_PNG_DATA_URL,
+      bytes: testWebpBytes(BLANK_PNG_DATA_URL),
       width: 100,
       height: 80,
     }) as PhysicPaintRotoRealKeyPayload,
@@ -88,7 +89,7 @@ function createHarness(options: HarnessOptions = {}) {
     canvasSize: { width: 100, height: 80 },
     applyStatus: options.applyStatus ?? 'idle',
     flushInFlight: options.flushInFlight ?? false,
-    buildBlankRotoFrame: (frame) => realKeyFrame(frame),
+    buildBlankRotoFrame: async (frame) => realKeyFrame(frame),
     setDirtyFrames: vi.fn(),
     syncPendingRotoFrames: vi.fn(),
     restoreFrame: vi.fn(),
@@ -127,7 +128,7 @@ describe('useRotoKeyUtilities cutKey', () => {
     expect(clipboard).not.toBeNull();
     expect(isRotoSessionCopiedKeyGroup(clipboard!)).toBe(false);
     expect((clipboard as RotoSessionCopiedKey).frame).toBe(3);
-    expect((clipboard as RotoSessionCopiedKey).cachedFrame.dataUrl).toBe(BLANK_PNG_DATA_URL);
+    expect((clipboard as RotoSessionCopiedKey).cachedFrame.bytes).toEqual(testWebpBytes(BLANK_PNG_DATA_URL));
     expect(setApplyMessage).toHaveBeenCalledWith('Cut the Roto key to the clipboard.');
     expect(setLastError).toHaveBeenCalledWith(null);
   });
@@ -300,6 +301,8 @@ describe('useRotoKeyUtilities copyKey regression (shared selection resolution)',
 describe('useRotoKeyUtilities rail-set clipboard (quick 260820-bjw)', () => {
   const railPayload = () => ({
     anchorAppFrame: 0,
+    // '' = legacy payload with no track context (46-03).
+    sourceTrackId: '',
     members: [{
       kind: 'key-rail' as const,
       firstKeyId: 'k0',
@@ -312,7 +315,7 @@ describe('useRotoKeyUtilities rail-set clipboard (quick 260820-bjw)', () => {
         payload: {
           frameIndex: 0,
           appFrame: 0,
-          dataUrl: BLANK_PNG_DATA_URL,
+          bytes: testWebpBytes(BLANK_PNG_DATA_URL),
           width: 100,
           height: 80,
         } as PhysicPaintRotoRealKeyPayload,

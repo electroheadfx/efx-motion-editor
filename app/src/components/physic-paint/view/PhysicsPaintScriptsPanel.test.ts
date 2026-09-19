@@ -72,16 +72,45 @@ function getScriptsToolbarBlock(code: string): string {
   return code.slice(toolbarStart, toolbarEnd === -1 ? code.length : toolbarEnd);
 }
 
+function getIconButtonBlock(code: string, label: string): string {
+  const labelIndex = code.indexOf(`label="${label}"`);
+  if (labelIndex === -1) return '';
+  const start = code.lastIndexOf('<IconButton', labelIndex);
+  if (start === -1) return '';
+  const end = code.indexOf('</IconButton>', labelIndex) + '</IconButton>'.length;
+  return code.slice(start, end);
+}
+
+function getIconButtonHelperBlock(code: string): string {
+  const start = code.indexOf('function IconButton(');
+  if (start === -1) return '';
+  const end = code.indexOf('function formatFrameRange', start);
+  return code.slice(start, end === -1 ? code.length : end);
+}
+
+function expectInOrder(source: string, tokens: readonly string[]) {
+  let cursor = -1;
+  for (const token of tokens) {
+    const next = source.indexOf(token, cursor + 1);
+    expect(next, `Expected ${token} after source offset ${cursor}`).toBeGreaterThan(cursor);
+    cursor = next;
+  }
+}
+
 describe('Physics Paint SCRIPTS panel contract', () => {
-  it('keeps the lower Scripts/Onion/Motion tab group with no Brush color / Tool tab chrome and explicitly scans on Scripts entry', () => {
+  it('keeps the lower Scripts/Onion/Motion tab group, adds the tool pane\'s Paint/Track option tabs (47 UAT), and exposes scans on Scripts entry', () => {
     for (const tab of ['Actions', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
-    // 36.15-12, UAT Gap H-1/H-2: the Brush color and Tool single-tab header
-    // strips are removed — those sections render their content directly. Only
-    // the lower group keeps tabs; the LOG tab stays gone.
+    // 36.15-12, UAT Gap H-1/H-2: the Brush color single-tab header strip is
+    // removed — that section renders its content directly. 47 UAT: the tool
+    // pane gained its own two-tab group ('Paint option' / 'Track option'),
+    // so the lower group keeps its three tabs and the LOG tab stays gone.
     expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
     expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(3);
-    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(1);
+    // 49-06 (UAT round 2): the tool pane's Paint/Track tabs plus the
+    // conditional Background option tab (shown only while a Bg clip is
+    // selected) — 6 role=tab buttons in the source.
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
     expect(rightPanel).toContain("setOptionsTab('scripts'); void scripts.library.enterScripts()");
     expect(rightPanel).toContain("optionsTab === 'scripts'");
   });
@@ -110,28 +139,28 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     for (const label of labels) expect(panel).toContain(`label="${label}"`);
     expect(panel.indexOf('label="Save Action"')).toBeLessThan(panel.indexOf('label="Load + Apply to Frame"'));
     expect(panel).toContain('if (selectedLoopClip)');
-    expect(panel).toContain('aria-label={`Selected Group — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}');
     expect(panel).toContain('<dt>Source Action</dt>');
-    expect(panel).toContain('<dt>Group Type</dt>');
-    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Group…"'));
-    expect(panel.indexOf('label="Create Group…"')).toBeLessThan(panel.indexOf('label="Delete Action"'));
+    expect(panel).toContain('<dt>Rail Type</dt>');
+    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Rail…"'));
+    expect(panel.indexOf('label="Create Rail…"')).toBeLessThan(panel.indexOf('label="Delete Action"'));
     expect(panel.indexOf('label="Delete Action"')).toBeLessThan(panel.indexOf('label="Refresh Actions"'));
-    expect(panel).toContain('aria-label={`Edit Group — ${selectedLoopClip.displayName}`}');
-    expect(panel).toContain('label="Create Group…"');
+    expect(panel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('label="Create Rail…"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
-    expect(panel).toContain('title={props.title}');
+    expect(panel).toContain('PhysicsPaintStyledTooltip visible={tooltip.visible}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
-    expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action'");
+    expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action'");
     expect(panel).not.toContain('Import Script');
     expect(panel).toContain('aria-label="Project Actions"');
     expect(panel).toContain('aria-label="Saved Roto Actions"');
     expect(panel).toContain('No project Actions yet.');
-    expect(panel).toContain('Save the current real Roto frame as an Action to create a Group.');
+    expect(panel).toContain('Save the current real Roto frame as an Action to create a Rail.');
   });
 
-  it('provides an accessible Create Group… dialog distinct from cached Roto playback', () => {
+  it('provides an accessible Create Rail… dialog distinct from cached Roto playback', () => {
     expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
     expect(playScriptDialog).toContain('role="dialog"');
     expect(playScriptDialog).not.toContain('aria-modal="true"');
@@ -140,7 +169,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(playScriptDialog).toContain('id="physics-play-script-max"');
     expect(playScriptDialog).toContain('Enter a positive integer.');
     expect(playScriptDialog).toContain("if (event.key === 'Escape')");
-    expect(playScriptDialog).toContain("if (!regenerateImpact && event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value)");
+    expect(playScriptDialog).toContain("if (!regenerateImpact && event.key === 'Enter' && !playScript.canCancel.value)");
     expect(playScriptDialog).not.toContain("event.key !== 'Tab'");
     expect(playScriptDialog).toContain('inputRef.current?.focus()');
     expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
@@ -172,140 +201,129 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(css).toMatch(/\.physics-paint-options-tabs[\s\S]*?white-space:\s*nowrap/);
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toMatch(/\.physics-paint-scripts-panel[\s\S]*?min-width:\s*0/);
-    expect(css).toMatch(/\.physics-paint-scripts-list[\s\S]*?overflow-x:\s*hidden[\s\S]*?overflow-y:\s*auto/);
+    // 260905-epb: the list no longer owns vertical scrolling — it fills its own
+    // SidebarScrollArea (min-height: 100%, padding-right: 6px) and keeps only
+    // overflow-x: hidden; the new scroll-area rule pins width: 100%.
+    const listRuleStart = css.indexOf('.physics-paint-scripts-list {');
+    expect(listRuleStart).toBeGreaterThanOrEqual(0);
+    const listRuleEnd = css.indexOf('}', listRuleStart);
+    const listRule = css.slice(listRuleStart, listRuleEnd === -1 ? css.length : listRuleEnd + 1);
+    expect(listRule).toMatch(/overflow-x:\s*hidden/);
+    expect(listRule).toMatch(/min-height:\s*100%/);
+    expect(listRule).toMatch(/padding-right:\s*6px/);
+    expect(listRule).not.toMatch(/overflow-y:\s*auto/);
+    const scrollAreaRuleStart = css.indexOf('.physics-paint-scripts-list-scroll-area {');
+    expect(scrollAreaRuleStart).toBeGreaterThanOrEqual(0);
+    const scrollAreaRuleEnd = css.indexOf('}', scrollAreaRuleStart);
+    const scrollAreaRule = css.slice(scrollAreaRuleStart, scrollAreaRuleEnd === -1 ? css.length : scrollAreaRuleEnd + 1);
+    expect(scrollAreaRule).toMatch(/width:\s*100%/);
     expect(css).toMatch(/\.physics-paint-script-thumbnail[\s\S]*?(?:width|height):\s*48px/);
     expect(css).toMatch(/text-overflow:\s*ellipsis/);
     expect(css).toMatch(/@media[\s\S]*?max-width:\s*860px[\s\S]*?grid-template-columns:\s*1fr/);
   });
 });
 
-describe('Physics Paint Scripts panel Clear Action Buffer contract (36.15-07, renamed 36.15-08 Gap C)', () => {
-  it('renders a guarded Clear Action Buffer clipboard-x control without native disabled or title', () => {
-    expect(panel).toContain('ClipboardX');
-    expect(panel).toContain('aria-label="Clear Action Buffer"');
-    expect(panel).not.toContain('Discard Script');
-    const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
-    expect(block).toContain('aria-disabled');
-    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(block).not.toContain('title=');
+describe('Physics Paint Scripts panel Clear Action Buffer relocation contract (260905-dso)', () => {
+  it('removes the Clear Action Buffer control from the panel toolbar', () => {
+    expect(panel).not.toContain('ClipboardX');
+    expect(panel).not.toContain('aria-label="Clear Action Buffer"');
+    expect(panel).not.toContain('Clear Action from buffer');
+    expect(panel).not.toContain('onDiscardScript');
   });
 
-  it('uses the user wording clear script from buffer with de-prefixed tooltip grammar and guards activation before the handler', () => {
-    const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
-    expect(block).toContain('Clear Action from buffer');
-    expect(block).toContain('unavailable: ${clearScriptBufferDisabledReason}');
-    expect(block).not.toContain(' — unavailable: ');
-    expect(block).toContain('aria-describedby');
-    expect(block).toContain('PhysicsPaintStyledTooltip');
-    const guardIndex = block.indexOf('if (!canClearScriptBuffer) return;');
-    const handlerIndex = block.indexOf('onDiscardScript()');
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canClearScriptBuffer");
-  });
-
-  it('declares rotoScript and onDiscardScript props and renders Clear Action Buffer inside the toolbar', () => {
-    const propsInterface = getScriptsPanelPropsInterface(panel);
-    expect(propsInterface).toContain('rotoScript: RotoScriptClipboardController');
-    expect(propsInterface).toContain('onDiscardScript: () => void');
-    const toolbar = getScriptsToolbarBlock(panel);
-    expect(toolbar).toContain('aria-label="Clear Action Buffer"');
-    expect(toolbar.indexOf('aria-label="Clear Action Buffer"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Actions"'));
-  });
-
-  it('removes onDiscardRotoScript from the strip and Studio workflow props while scripts props invoke discardScript', () => {
-    expect(strip).not.toContain('onDiscardRotoScript');
-    expect(studio).not.toContain('onDiscardRotoScript');
-    expect(studio).toContain('onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); }');
+  it('moves the discard handler to the Studio as a stable useCallback wired into the workflow memo', () => {
+    expect(studio).not.toContain('onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); }');
+    expect(studio).toContain('const handleDiscardScript = useCallback(() => {');
+    expect(studio).toContain('rotoScript.discardScript();');
+    expect(studio).toContain('setLastError(null);');
+    expect(studio).toContain('onDiscardScript: handleDiscardScript,');
   });
 });
 
-describe('Physics Paint Scripts panel Copy/Apply to Frame toolbar contract (36.15-08, UAT Gap C)', () => {
-  it('renders guarded Copy Action and Apply to Frame controls before Clear Action Buffer without native disabled or title', () => {
+describe('Physics Paint Scripts panel Copy toolbar contract (36.15-08, UAT Gap C; 260905-dso Copy-only)', () => {
+  it('renders the guarded Copy Action control without native disabled or title', () => {
     expect(panel).toContain('Clipboard,');
-    expect(panel).toContain('ClipboardPen');
+    expect(panel).not.toContain('ClipboardPen');
+    expect(panel).not.toContain('ClipboardX');
     const toolbar = getScriptsToolbarBlock(panel);
     const refreshIndex = toolbar.indexOf('label="Refresh Actions"');
     const copyIndex = toolbar.indexOf('aria-label="Copy Action"');
-    const applyIndex = toolbar.indexOf('aria-label="Apply to Frame"');
-    const clearIndex = toolbar.indexOf('aria-label="Clear Action Buffer"');
-    for (const index of [refreshIndex, copyIndex, applyIndex, clearIndex]) {
-      expect(index).toBeGreaterThanOrEqual(0);
-    }
+    expect(refreshIndex).toBeGreaterThanOrEqual(0);
     expect(copyIndex).toBeGreaterThan(refreshIndex);
-    expect(applyIndex).toBeGreaterThan(copyIndex);
-    expect(clearIndex).toBeGreaterThan(applyIndex);
-    for (const label of ['Copy Action', 'Apply to Frame']) {
-      const block = getGuardedToolbarBlock(panel, label);
-      expect(block).toContain('aria-disabled');
-      expect(block).toContain('aria-describedby');
-      expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-      expect(block).not.toContain('title=');
-      expect(block).toContain('PhysicsPaintStyledTooltip');
-    }
+    const block = getGuardedToolbarBlock(panel, 'Copy Action');
+    expect(block).toContain('aria-disabled');
+    expect(block).toContain('aria-describedby');
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    expect(block).toContain('PhysicsPaintStyledTooltip');
   });
 
-  it('reads availability from the rotoScript controller ports and guards activation before the handlers', () => {
+  it('reads availability from the rotoScript controller ports and guards activation before the handler', () => {
     expect(panel).toContain('rotoScript.availability.value.canCopy');
-    expect(panel).toContain('rotoScript.availability.value.canApply');
     expect(panel).toContain('copyDisabledReason');
-    expect(panel).toContain('applyDisabledReason');
     const copyBlock = getGuardedToolbarBlock(panel, 'Copy Action');
-    const applyBlock = getGuardedToolbarBlock(panel, 'Apply to Frame');
     const copyGuard = copyBlock.indexOf('if (!canCopyRotoScript) return;');
     expect(copyGuard).toBeGreaterThanOrEqual(0);
     expect(copyBlock.indexOf('onCopyScript()')).toBeGreaterThan(copyGuard);
     expect(copyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript");
-    const applyGuard = applyBlock.indexOf('if (!canApplyRotoScript) return;');
-    expect(applyGuard).toBeGreaterThanOrEqual(0);
-    expect(applyBlock.indexOf('onApplyScript()')).toBeGreaterThan(applyGuard);
-    expect(applyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript");
     // De-prefixed tooltip grammar (Gap D): description or 'unavailable: {reason}'.
     expect(copyBlock).toContain('unavailable: ${copyRotoScriptDisabledReason}');
-    expect(applyBlock).toContain('unavailable: ${applyRotoScriptDisabledReason}');
     expect(copyBlock).not.toContain(' — unavailable: ');
-    expect(applyBlock).not.toContain(' — unavailable: ');
   });
 
-  it('declares onCopyScript/onApplyScript props, wires them in Studio scripts props, and removes the strip script actions', () => {
+  it('declares only onCopyScript on the panel and wires the relocated Apply/Clear handlers to the workflow memo', () => {
     const propsInterface = getScriptsPanelPropsInterface(panel);
     expect(propsInterface).toContain('onCopyScript: () => void');
-    expect(propsInterface).toContain('onApplyScript: () => void');
+    expect(propsInterface).not.toContain('onApplyScript');
+    expect(propsInterface).not.toContain('onDiscardScript');
     expect(studio).toContain('onCopyScript: () => { void rotoScript.copyScript()');
-    expect(studio).toContain('onApplyScript: () => { void rotoScript.applyScript()');
+    expect(studio).toContain('const handleApplyScript = useCallback(() => {');
+    expect(studio).toContain('const handleDiscardScript = useCallback(() => {');
+    expect(studio).toContain('onApplyScript: handleApplyScript,');
+    expect(studio).toContain('onDiscardScript: handleDiscardScript,');
     expect(studio).not.toContain('onCopyRotoScript');
     expect(studio).not.toContain('onApplyRotoScript');
     expect(strip).not.toContain('onCopyRotoScript');
     expect(strip).not.toContain('onApplyRotoScript');
     expect(strip).not.toContain('aria-label="Copy Action"');
-    expect(strip).not.toContain('aria-label="Apply to Frame"');
+    expect(strip).toContain('aria-label="Apply Action to Frame"');
+    expect(strip).toContain('aria-label="Clear Action Buffer"');
   });
 
-  it('lays the nine toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
-    const toolbar = getScriptsToolbarBlock(panel);
+  it('lays the toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
+    // Scope to the toolbar div only — the Linked Rails nav section (with its
+    // own guarded Edit Rail wrapper) sits between the toolbar and the list.
+    const toolbarStart = panel.indexOf('physics-paint-scripts-toolbar');
+    const toolbarDivEnd = panel.indexOf('</div>', toolbarStart);
+    const toolbar = panel.slice(toolbarStart, toolbarDivEnd);
     const guardedCount = (toolbar.match(/physics-paint-roto-key-icon-action/g) ?? []).length;
-    // Three guarded clipboard actions (Copy, Apply, Clear) form the second row.
-    expect(guardedCount).toBeGreaterThanOrEqual(3);
+    // One guarded clipboard action (Copy) forms the second row; the first-row
+    // buttons get the same guarded idiom via the shared IconButton helper
+    // (260905-dso).
+    expect(guardedCount).toBe(1);
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');
   });
+
+  it('greys out the guarded toolbar buttons when unavailable (aria-disabled visual)', () => {
+    const ruleStart = css.indexOf('.physics-paint-script-icon-button[aria-disabled="true"]');
+    expect(ruleStart).toBeGreaterThanOrEqual(0);
+    const ruleEnd = css.indexOf('}', ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
+    expect(rule).toContain('background: #2a3036');
+    expect(rule).toContain('color: #7d8791');
+    expect(rule).toContain('cursor: default');
+  });
 });
 
-describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1)', () => {
-  it('renders a short visible label after each guarded second-row icon like the bottom action row', () => {
-    const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
-      { action: 'Copy Action', icon: '<Clipboard size={16}', label: 'Copy' },
-      { action: 'Apply to Frame', icon: '<ClipboardPen size={16}', label: 'Apply' },
-      { action: 'Clear Action Buffer', icon: '<ClipboardX size={16}', label: 'Clear' },
-    ];
-    for (const { action, icon, label } of labeledActions) {
-      const block = getGuardedToolbarBlock(panel, action);
-      expect(block).not.toBe('');
-      const iconIndex = block.indexOf(icon);
-      expect(iconIndex).toBeGreaterThanOrEqual(0);
-      const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-      expect(labelIndex).toBeGreaterThan(iconIndex);
-    }
+describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1; 260905-dso Copy-only)', () => {
+  it('renders a short visible label after the guarded second-row icon like the bottom action row', () => {
+    const block = getGuardedToolbarBlock(panel, 'Copy Action');
+    expect(block).not.toBe('');
+    const iconIndex = block.indexOf('<Clipboard size={16}');
+    expect(iconIndex).toBeGreaterThanOrEqual(0);
+    const labelIndex = block.indexOf('<span class="physics-paint-roto-key-icon-label">Copy</span>');
+    expect(labelIndex).toBeGreaterThan(iconIndex);
   });
 
   it('lays the labeled toolbar buttons out with an icon-label gap and side padding', () => {
@@ -318,10 +336,10 @@ describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT G
   });
 });
 
-describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT Gap F-1)', () => {
-  it('renders the second-row labels lowercase by opting the script icon buttons out of the global uppercase button rule', () => {
+describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT Gap F-1; 260905-dso Copy-only)', () => {
+  it('renders the second-row label lowercase by opting the script icon buttons out of the global uppercase button rule', () => {
     // The global `button { text-transform: uppercase }` rule rendered the
-    // Copy / Apply / Clear labels as CAPS; the script icon buttons opt out.
+    // Copy label as CAPS; the script icon buttons opt out.
     // Anchored at a line start so compound selectors (e.g. the toolbar
     // width rule) do not match first.
     const ruleStart = css.indexOf('\n.physics-paint-script-icon-button {');
@@ -329,15 +347,15 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
     const ruleEnd = css.indexOf('}', ruleStart);
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toContain('text-transform: none');
-    // Source labels stay lowercase single words.
-    for (const label of ['Copy', 'Apply', 'Clear']) {
-      expect(panel).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-    }
+    // Source label stays a lowercase single word.
+    expect(panel).toContain('<span class="physics-paint-roto-key-icon-label">Copy</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Apply</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Clear</span>');
   });
 
   it('keeps the second-row icons at the first-row size by preventing flex shrink in the grid cells', () => {
-    // Both rows use size={16} Lucide icons; the labeled second-row buttons
-    // overflow their narrow grid cells, so the icon shrank below 16px
+    // Both rows use size={16} Lucide icons; the labeled second-row button
+    // overflows its narrow grid cell, so the icon shrank below 16px
     // ("ridiculous small"). flex: 0 0 auto keeps the icon at full size.
     const ruleStart = css.indexOf('.physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {');
     expect(ruleStart).toBeGreaterThanOrEqual(0);
@@ -345,9 +363,9 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toMatch(/flex:\s*0\s+0\s+auto|flex-shrink:\s*0/);
     const toolbar = getScriptsToolbarBlock(panel);
-    for (const icon of ['<Clipboard size={16}', '<ClipboardPen size={16}', '<ClipboardX size={16}']) {
-      expect(toolbar).toContain(icon);
-    }
+    expect(toolbar).toContain('<Clipboard size={16}');
+    expect(toolbar).not.toContain('<ClipboardPen size={16}');
+    expect(toolbar).not.toContain('<ClipboardX size={16}');
     // First-row icons stay size={16} too — true size parity.
     for (const icon of ['<Save size={16}', '<Paintbrush size={16}', '<Play size={16}']) {
       expect(toolbar).toContain(icon);
@@ -355,10 +373,10 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
   });
 });
 
-describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5)', () => {
-  it('sizes the toolbar cells to content so the Copy / Apply / Clear labels render in full (no truncation)', () => {
+describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5; 260905-dso Copy-only)', () => {
+  it('sizes the toolbar cells to content so the Copy label renders in full (no truncation)', () => {
     // Content-sized columns replace the fixed-fraction cells that ellipsized
-    // the second-row labels down to 'C…' / 'A…' / 'Cl…' (UAT Gap G-1).
+    // the second-row labels down to 'C…' (UAT Gap G-1).
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).not.toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
     // The second-row label rule keeps the full short label visible.
@@ -371,10 +389,10 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     expect(labelRule).not.toContain('overflow: hidden');
     // Buttons no longer stretch to fill fixed-fraction cells.
     expect(css).not.toContain('.physics-paint-script-icon-button { width: 100% }');
-    // Source labels stay the full short words.
-    for (const label of ['Copy', 'Apply', 'Clear']) {
-      expect(panel).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
-    }
+    // Source label stays the full short word.
+    expect(panel).toContain('<span class="physics-paint-roto-key-icon-label">Copy</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Apply</span>');
+    expect(panel).not.toContain('<span class="physics-paint-roto-key-icon-label">Clear</span>');
   });
 
   it('separates the two toolbar icon rows with a visible row gap (UAT Gap G-5)', () => {
@@ -383,6 +401,64 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     const ruleEnd = css.indexOf('}', ruleStart);
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toMatch(/row-gap:\s*([4-9]|\d{2,})px/);
+  });
+});
+
+describe('Physics Paint Scripts panel guarded toolbar contract (260905-f3v)', () => {
+  const toolbarButtonLabels = ['Save Action', 'Load + Apply to Frame', 'Create Rail…', 'Delete Action', 'Refresh Actions'];
+
+  it('routes every toolbar button through the guarded IconButton idiom with no native title', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    for (const label of toolbarButtonLabels) {
+      const block = getIconButtonBlock(toolbar, label);
+      expect(block, `IconButton block for ${label}`).not.toBe('');
+      expect(block).toContain('disabledReason=');
+    }
+    // The shared helper renders the guarded button element: aria-disabled,
+    // aria-describedby when a reason is present, the styled tooltip, and NO
+    // native title attribute on the button element.
+    const helper = getIconButtonHelperBlock(panel);
+    expect(helper).toContain('aria-disabled={isDisabled ? \'true\' : undefined}');
+    expect(helper).toContain('aria-describedby={isDisabled && reason ? props.descriptionId : undefined}');
+    expect(helper).toContain('PhysicsPaintStyledTooltip');
+    const buttonStart = helper.indexOf('<button');
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    const buttonEnd = helper.indexOf('</button>', buttonStart) + '</button>'.length;
+    const buttonElement = helper.slice(buttonStart, buttonEnd);
+    expect(buttonElement).not.toContain('title=');
+  });
+
+  it('uses the de-prefixed tooltip grammar and keeps the Delete button ref for the cancel focus flow', () => {
+    const helper = getIconButtonHelperBlock(panel);
+    expect(helper).toContain('unavailable: ${reason}');
+    expect(helper).not.toContain(' — unavailable: ');
+    const deleteBlock = getIconButtonBlock(getScriptsToolbarBlock(panel), 'Delete Action');
+    expect(deleteBlock).toContain('buttonRef={deleteButtonRef}');
+    expect(panel).toContain('deleteButtonRef.current?.focus()');
+  });
+
+  it('keeps the five toolbar labels ordered with Copy as the last guarded control', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    let cursor = -1;
+    for (const label of toolbarButtonLabels) {
+      const next = toolbar.indexOf(`label="${label}"`, cursor + 1);
+      expect(next, `Expected ${label} after offset ${cursor}`).toBeGreaterThan(cursor);
+      cursor = next;
+    }
+    const copyIndex = toolbar.indexOf('aria-label="Copy Action"');
+    expect(copyIndex).toBeGreaterThan(cursor);
+    const copyBlock = getGuardedToolbarBlock(panel, 'Copy Action');
+    expect(copyBlock).toContain('aria-disabled');
+    expect(copyBlock).toContain('PhysicsPaintStyledTooltip');
+  });
+
+  it('wires descriptionId on every toolbar IconButton so sr-only disabled reasons are announced (260905-hfd)', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    for (const label of toolbarButtonLabels) {
+      const block = getIconButtonBlock(toolbar, label);
+      expect(block, `IconButton block for ${label}`).not.toBe('');
+      expect(block).toContain('descriptionId=');
+    }
   });
 });
 
@@ -482,9 +558,7 @@ function renderPanel(
     onSave: () => {},
     onActivateRow: () => {},
     onLoadAndApply: () => {},
-    onDiscardScript: () => {},
     onCopyScript: () => {},
-    onApplyScript: () => {},
     onRefresh: () => {},
     ...overrides,
   }) as unknown as TestVNode;
@@ -560,11 +634,11 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
     expect(copy).toContain('This removes the project Action file and cannot be undone.');
     expect(buttonWithText(tree, 'Cancel')).toBeTruthy();
     expect(buttonWithText(tree, 'Delete Action')).toBeTruthy();
-    expect(copy).not.toContain('Keep Groups');
-    expect(copy).not.toContain('Delete Action and Groups');
+    expect(copy).not.toContain('Keep Rails');
+    expect(copy).not.toContain('Delete Action and Rails');
   });
 
-  it('discloses exact one/many reference counts, visible ranges, ordered Groups, and consequences', () => {
+  it('discloses exact one/many reference counts, visible ranges, ordered Rails, and consequences', () => {
     const library = createFakeLibrary({
       deleteConfirmation: {
         ...actionRow,
@@ -581,15 +655,15 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
     const tree = renderPanel(createFakePlayScript(), library);
     const copy = textOf(tree);
 
-    expect(copy).toContain('This Action is referenced by 2 Groups across 3 visible ranges.');
+    expect(copy).toContain('This Action is referenced by 2 Rails across 3 visible ranges.');
     expect(copy.indexOf('F4–F11')).toBeLessThan(copy.indexOf('F20–F23'));
     expect(copy).toContain('F4–F7, F10–F11');
     expect(copy).toContain('2 ranges');
-    expect(copy).toContain('Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.');
-    expect(copy).toContain('Delete the Action and all 2 referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.');
-    expect(findAll(tree, (vnode) => vnode.type === 'button' && ['Keep Groups', 'Delete Action and Groups', 'Cancel'].includes(String(vnode.props['aria-label']))).map((vnode) => vnode.props['aria-label'])).toEqual([
-      'Keep Groups',
-      'Delete Action and Groups',
+    expect(copy).toContain('Recommended. Delete the Action but keep every Rail, fragment, key, timing value, cache, and rendered result. Rails become detached and timeline space stays occupied.');
+    expect(copy).toContain('Delete the Action and all 2 referencing Rails, including uniquely owned source, cache, and Rail-gap data. Their occupied timeline ranges are freed.');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && ['Keep Rails', 'Delete Action and Rails', 'Cancel'].includes(String(vnode.props['aria-label']))).map((vnode) => vnode.props['aria-label'])).toEqual([
+      'Keep Rails',
+      'Delete Action and Rails',
       'Cancel',
     ]);
   });
@@ -607,8 +681,8 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
       },
     });
     const tree = renderPanel(createFakePlayScript(), library);
-    const keep = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Keep Groups');
-    const cascade = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Delete Action and Groups');
+    const keep = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Keep Rails');
+    const cascade = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Delete Action and Rails');
 
     await (keep.props.onClick as () => Promise<void>)();
     await (cascade.props.onClick as () => Promise<void>)();
@@ -645,16 +719,16 @@ describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
 
     expect(findAll(tree, (vnode) => vnode.props.role === 'option')).toHaveLength(1);
     expect(findAll(tree, (vnode) => vnode.props.role === 'dialog')).toHaveLength(1);
-    for (const label of ['Save Action', 'Load + Apply to Frame', 'Create Group…', 'Delete Action', 'Refresh Actions']) {
+    for (const label of ['Save Action', 'Load + Apply to Frame', 'Create Rail…', 'Delete Action', 'Refresh Actions']) {
       expect(findOne(tree, (vnode) => vnode.props.label === label).props.disabled).toBe(true);
     }
-    for (const label of ['Copy Action', 'Apply to Frame', 'Clear Action Buffer', 'Keep Groups', 'Delete Action and Groups']) {
+    for (const label of ['Copy Action', 'Keep Rails', 'Delete Action and Rails']) {
       expect(findOne(tree, (vnode) => vnode.props['aria-label'] === label).props['aria-disabled']).toBe('true');
     }
   });
 
   it('shows only controller-mapped recovery or stale copy and never raw diagnostics', () => {
-    const mapped = 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+    const mapped = 'Action or Rail references changed. Nothing changed. Review the affected Rails and try again.';
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary({
       rows: [actionRow], selectedId: actionRow.id, deleteConfirmation: { ...actionRow, referenceImpact },
       deleteError: mapped,
@@ -701,41 +775,87 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     accessibleName: 'Walk Group. Motion Group. Synchronized with Action.',
   } as const;
 
-  it('hides linked navigation when the selected Action has no linked Groups', () => {
+  it('hides linked navigation when the selected Action has no linked Rails', () => {
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: null,
     });
-    expect(textOf(tree)).not.toContain('Linked Groups');
-    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group')).toHaveLength(0);
+    expect(textOf(tree)).not.toContain('Linked Rails');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Rail')).toHaveLength(0);
   });
 
-  it('shows one current link with a single Go to Group action', () => {
+  it('shows one current link with a single Go to Rail action', () => {
     const onGoToGroup = vi.fn();
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: { currentIndex: 0, total: 1, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup },
     });
-    expect(textOf(tree)).toContain('Linked Groups — 1 of 1');
-    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group');
+    expect(textOf(tree)).toContain('Linked Rails — 1 of 1');
+    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Rail');
     (go.props.onClick as () => void)();
     expect(onGoToGroup).toHaveBeenCalledTimes(1);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Previous' || textOf(vnode) === 'Next')).toHaveLength(0);
   });
 
-  it('shows non-wrapping Previous and Next controls disabled at their ends', () => {
+  it('shows non-wrapping Previous and Next controls guarded at their ends', () => {
     const onNext = vi.fn();
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       selectedLoopClip: selectedGroup,
       linkedGroupNavigation: { currentIndex: 0, total: 3, onPrevious: vi.fn(), onNext, onGoToGroup: vi.fn() },
     });
-    expect(textOf(tree)).toContain('Linked Groups — 1 of 3');
-    const previous = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Previous');
-    const next = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Next');
+    expect(textOf(tree)).toContain('Linked Rails — 1 of 3');
+    // The nav buttons route through the guarded IconButton helper (a function
+    // component the harness does not expand), so the vnode exposes the guarded
+    // `disabled` prop; the source-code assertions above verify the rendered
+    // button uses aria-disabled instead of native disabled.
+    const previous = findOne(tree, (vnode) => vnode.props?.label === 'Previous Rail');
+    const next = findOne(tree, (vnode) => vnode.props?.label === 'Next Rail');
     expect(previous.props.disabled).toBe(true);
     expect(next.props.disabled).toBe(false);
     (next.props.onClick as () => void)();
     expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses guarded IconButton Previous/Next with Chevron icons and boundary reasons in both renderings', () => {
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    const list = panel.slice(inspectorEnd);
+    for (const section of [inspector, list]) {
+      expect(section).toContain('<IconButton label="Previous Rail"');
+      expect(section).toContain('<IconButton label="Next Rail"');
+      expect(section).toContain('ChevronLeft size={16}');
+      expect(section).toContain('ChevronRight size={16}');
+    }
+    expect(panel).toContain("disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined}");
+    expect(panel).toContain("disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined}");
+    // No native disabled= on the nav buttons — they route through IconButton,
+    // whose rendered button element uses aria-disabled instead.
+    const helper = getIconButtonHelperBlock(panel);
+    const buttonStart = helper.indexOf('<button');
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    const buttonEnd = helper.indexOf('</button>', buttonStart) + '</button>'.length;
+    const buttonElement = helper.slice(buttonStart, buttonEnd);
+    expect(buttonElement.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+  });
+
+  it('no longer derives cursorOnCurrentLinkedRail or wires onEditCurrent through the Studio memo (260905-hfd)', () => {
+    expect(studio).not.toContain('cursorOnCurrentLinkedRail');
+    expect(studio).not.toContain('handleEditCurrentLinkedGroup');
+    expect(studio).not.toContain('cursorOnCurrentRail');
+    expect(studio).not.toContain('onEditCurrent');
+  });
+
+  it('renders only Edit Rail and Close in the inspector top row when linked navigation is null', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedLoopClip: selectedGroup,
+      linkedGroupNavigation: null,
+    });
+    expect(findOne(tree, (vnode) => vnode.props?.label === `Edit Rail — ${selectedGroup.displayName}`)).toBeTruthy();
+    expect(findOne(tree, (vnode) => vnode.props?.label === `Close Rail inspector — ${selectedGroup.displayName}`)).toBeTruthy();
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Previous Rail')).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Next Rail')).toHaveLength(0);
   });
 });
 
@@ -752,16 +872,172 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
     const topLevel = childrenOf(tree).filter(
       (child): child is TestVNode => typeof child === 'object' && child !== null && !Array.isArray(child),
     );
+    // 260905-epb: the toolbar stays pinned as the first direct child; the list
+    // now lives inside its own SidebarScrollArea, which is the next direct child.
     const toolbarIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'));
-    const listIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-list'));
+    const scrollAreaIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-list-scroll-area'));
     expect(toolbarIndex).toBeGreaterThanOrEqual(0);
-    expect(listIndex).toBe(toolbarIndex + 1);
+    expect(scrollAreaIndex).toBe(toolbarIndex + 1);
   });
 
-  it('keeps the Create Group… tooltip fallback covering both modes', () => {
+  it('keeps the Create Rail… tooltip fallback covering both modes', () => {
     const tree = renderPanel(createFakePlayScript());
-    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Group…');
-    expect(playButton.props.title).toBe('Create Group… — Create a Motion or Static Group from the selected Action');
+    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Rail…');
+    expect(playButton.props.title).toBe('Create Rail… — Create a Motion or Static Rail from the selected Action');
     expect(String(playButton.props.title)).not.toContain('Progressive');
+  });
+});
+
+describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
+  it('keeps the toolbar and Linked Rails nav pinned above the scripts list scroll area in the normal view', () => {
+    const normalViewStart = panel.indexOf('aria-label="Project Actions"');
+    expect(normalViewStart).toBeGreaterThanOrEqual(0);
+    const normalView = panel.slice(normalViewStart);
+    const scrollAreaOpen = normalView.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
+    expectInOrder(normalView.slice(0, scrollAreaOpen), ['physics-paint-scripts-toolbar', 'physics-paint-loop-clip-linked-navigation']);
+  });
+
+  it('wraps only the scripts list in the scroll area and keeps the confirmation dialog outside it', () => {
+    const normalViewStart = panel.indexOf('aria-label="Project Actions"');
+    expect(normalViewStart).toBeGreaterThanOrEqual(0);
+    const normalView = panel.slice(normalViewStart);
+    const scrollAreaOpen = normalView.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
+    const scrollAreaClose = normalView.indexOf('</SidebarScrollArea>', scrollAreaOpen);
+    expect(scrollAreaClose).toBeGreaterThan(scrollAreaOpen);
+    const inside = normalView.slice(scrollAreaOpen, scrollAreaClose);
+    expect(inside).toContain('physics-paint-scripts-list');
+    const after = normalView.slice(scrollAreaClose);
+    expect(after).toContain('physics-paint-script-confirmation');
+  });
+
+  it('wraps the inspector view content in a scroll area', () => {
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    expect(inspectorEnd).toBeGreaterThan(inspectorStart);
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    const scrollAreaOpen = inspector.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
+    const scrollAreaClose = inspector.indexOf('</SidebarScrollArea>', scrollAreaOpen);
+    expect(scrollAreaClose).toBeGreaterThan(scrollAreaOpen);
+    const inside = inspector.slice(scrollAreaOpen, scrollAreaClose);
+    expect(inside).toContain('physics-paint-loop-clip-inspector');
+    expect(inside).toContain('physics-paint-loop-clip-linked-navigation');
+    expect(inside).not.toContain('physics-paint-loop-clip-inspector-actions');
+    // 260905-hfd: the top action row is pinned chrome — it sits BEFORE the
+    // SidebarScrollArea open tag, outside the scroll area.
+    const topRowStart = inspector.indexOf('physics-paint-loop-clip-inspector-top-actions');
+    expect(topRowStart).toBeGreaterThanOrEqual(0);
+    expect(topRowStart).toBeLessThan(scrollAreaOpen);
+  });
+
+  it('compacts the list-view Linked Rails nav to one row with two icon-only chevron buttons (260905-hfd)', () => {
+    const listStart = panel.indexOf('aria-label="Project Actions"');
+    expect(listStart).toBeGreaterThanOrEqual(0);
+    const list = panel.slice(listStart);
+    const navStart = list.indexOf('physics-paint-loop-clip-linked-navigation');
+    expect(navStart).toBeGreaterThanOrEqual(0);
+    const navEnd = list.indexOf('physics-paint-scripts-list', navStart);
+    const nav = list.slice(navStart, navEnd === -1 ? list.length : navEnd);
+    expect(nav).toContain('physics-paint-loop-clip-nav-compact');
+    expect(nav).toContain('<strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>');
+    expect(nav).toContain('physics-paint-loop-clip-nav-compact-actions');
+    expect(nav.match(/<IconButton label="Previous Rail"/g)).toHaveLength(1);
+    expect(nav.match(/<IconButton label="Next Rail"/g)).toHaveLength(1);
+    expect(nav).not.toContain('physics-paint-roto-key-icon-label');
+    expect(nav).not.toContain('Edit Rail');
+    expect(nav).not.toContain('physics-paint-loop-clip-inspector-actions');
+    // Go to Group stays for total === 1.
+    expect(panel).toContain('Go to Group');
+  });
+
+  it('renders a single 4-button top action row above the inspector scroll area (260905-hfd)', () => {
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    expect(inspectorEnd).toBeGreaterThan(inspectorStart);
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    const topRowStart = inspector.indexOf('physics-paint-loop-clip-inspector-top-actions');
+    expect(topRowStart).toBeGreaterThanOrEqual(0);
+    const scrollAreaOpen = inspector.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    expect(scrollAreaOpen).toBeGreaterThan(topRowStart);
+    const topRow = inspector.slice(topRowStart, scrollAreaOpen);
+    expectInOrder(topRow, [
+      'label={`Edit Rail — ${selectedLoopClip.displayName}`}',
+      'label="Previous Rail"',
+      'label="Next Rail"',
+      'label={`Close Rail inspector — ${selectedLoopClip.displayName}`}',
+    ]);
+    expect(topRow).toContain('linkedGroupNavigation && linkedGroupNavigation.total > 1');
+    expect(topRow).toContain('descriptionId={previousRailReasonId}');
+    expect(topRow).toContain('descriptionId={nextRailReasonId}');
+    // 260905-hfd (UAT): Edit/Previous/Next keep visible labels; Close stays icon-only.
+    expect(topRow).toContain('<span class="physics-paint-roto-key-icon-label">Edit Rail</span>');
+    expect(topRow).toContain('<span class="physics-paint-roto-key-icon-label">Previous Rail</span>');
+    expect(topRow).toContain('<span class="physics-paint-roto-key-icon-label">Next Rail</span>');
+    expect(topRow).toContain('className="physics-paint-loop-clip-nav-compact-button primary labeled"');
+    expect(topRow).toContain('className="physics-paint-loop-clip-nav-compact-button labeled"');
+    expect(topRow).not.toContain('Close Rail inspector — ${selectedLoopClip.displayName}"><X size={16} aria-hidden="true" /><span');
+    // The old bottom actions row and the nav buttons container are gone.
+    expect(inspector).not.toContain('physics-paint-loop-clip-inspector-actions');
+    expect(inspector).not.toContain('<span>Edit Rail</span>');
+    expect(inspector).not.toContain('<span>Close</span>');
+    // The labeled modifier lets the top-row buttons grow to fit text while the
+    // list-view chevrons and Close stay 24px icon-only.
+    const labeledStart = css.indexOf('.physics-paint-loop-clip-nav-compact-button.labeled {');
+    expect(labeledStart).toBeGreaterThanOrEqual(0);
+    const labeledEnd = css.indexOf('}', labeledStart);
+    const labeledRule = css.slice(labeledStart, labeledEnd === -1 ? css.length : labeledEnd + 1);
+    expect(labeledRule).toContain('width: auto');
+    expect(labeledRule).toContain('padding: 0 8px');
+    expect(labeledRule).toContain('gap: 4px');
+  });
+});
+
+describe('Physics Paint Scripts panel readable rows contract (260905-f3v)', () => {
+  it('renders script rows readable by default with a distinct selected state', () => {
+    const rowRuleStart = css.indexOf('.physics-paint-script-row {');
+    expect(rowRuleStart).toBeGreaterThanOrEqual(0);
+    const rowRuleEnd = css.indexOf('}', rowRuleStart);
+    const rowRule = css.slice(rowRuleStart, rowRuleEnd === -1 ? css.length : rowRuleEnd + 1);
+    expect(rowRule).toContain('background: transparent');
+    expect(rowRule).not.toContain('#3b3d3f');
+    expect(rowRule).toContain('color: #eef1f4');
+
+    const subRuleStart = css.indexOf('.physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-empty');
+    expect(subRuleStart).toBeGreaterThanOrEqual(0);
+    const subRuleEnd = css.indexOf('}', subRuleStart);
+    const subRule = css.slice(subRuleStart, subRuleEnd === -1 ? css.length : subRuleEnd + 1);
+    expect(subRule).toContain('color: #eef1f4');
+
+    const selectedRuleStart = css.indexOf('.physics-paint-script-row.selected {');
+    expect(selectedRuleStart).toBeGreaterThanOrEqual(0);
+    const selectedRuleEnd = css.indexOf('}', selectedRuleStart);
+    const selectedRule = css.slice(selectedRuleStart, selectedRuleEnd === -1 ? css.length : selectedRuleEnd + 1);
+    expect(selectedRule).toContain('border-color: #7e9cff');
+
+    expect(css).toContain('.physics-paint-script-row:hover');
+    expect(css).toContain('.physics-paint-script-row:focus-visible');
+  });
+
+  it('neutralizes the disabled script-title grey-out with a scoped override (260905-hfd)', () => {
+    const overrideStart = css.indexOf('.physics-paint-script-name:disabled {');
+    expect(overrideStart).toBeGreaterThanOrEqual(0);
+    const overrideEnd = css.indexOf('}', overrideStart);
+    const override = css.slice(overrideStart, overrideEnd === -1 ? css.length : overrideEnd + 1);
+    expect(override).toContain('color: inherit');
+    expect(override).toContain('opacity: 1');
+    expect(override).toContain('background: transparent');
+    expect(override).toContain('cursor: default');
+
+    // The global button:disabled rule must be untouched so the override is provably scoped.
+    const globalStart = css.indexOf('button:disabled,');
+    expect(globalStart).toBeGreaterThanOrEqual(0);
+    const globalEnd = css.indexOf('}', globalStart);
+    const globalRule = css.slice(globalStart, globalEnd === -1 ? css.length : globalEnd + 1);
+    expect(globalRule).toContain('opacity: 0.5');
+    expect(globalRule).toContain('color: #6b7280');
   });
 });

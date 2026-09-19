@@ -1,8 +1,13 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
   _setPhysicPaintMarkDirtyCallback,
+  type EfxPaintFlattenedFrameRecord,
 } from '../stores/physicPaintStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { exportStore } from '../stores/exportStore';
 import type {
   PhysicPaintRotoLoopClip,
@@ -69,6 +74,12 @@ vi.mock('./audioExportMixer', () => ({ renderMixedAudio: vi.fn(async () => new U
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: 'main' }) }));
 vi.mock('../stores/paintStore', () => ({ paintStore: { getFrame: vi.fn(() => null) } }));
 
+// 52.1-05 (D-13): the compositor decodes frame bytes through the shared LRU
+// (`decodeWebpFrame` → `createImageBitmap` → ImageBitmap). Mock the Rust decode
+// leaf so the async decode is observable without reaching the Tauri boundary.
+const { decodeWebpFrameMock } = vi.hoisted(() => ({ decodeWebpFrameMock: vi.fn() }));
+vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }));
+
 vi.mock('./exportRenderer', () => ({
   renderGlobalFrame: vi.fn(),
   renderFrameWithMotionBlur: vi.fn(),
@@ -83,12 +94,24 @@ import {
 } from './exportRenderer';
 import { exportCreateDir as exportCreateDirMock } from './ipc';
 import { PreviewRenderer } from './previewRenderer';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
+
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
 
 // --- Minimal canvas/image harness (same discipline as previewRenderer.test.ts) ---
 
 type RecordedCanvasOp =
   | { type: 'fillRect'; fillStyle: string; args: number[] }
-  | { type: 'drawImage'; source: string; args: number[] }
+  | { type: 'drawImage'; source: string; sourceRef?: unknown; args: number[] }
   | { type: 'fillText'; text: string; args: number[] }
   | { type: 'clearRect' }
   | { type: 'save' }
@@ -116,6 +139,9 @@ class RecordingCanvasContext {
     this.operations.push({
       type: 'drawImage',
       source: source instanceof TestImage ? source.src : source instanceof TestCanvas ? 'canvas' : 'unknown',
+      // G-52-8: the flattened record's raster is drawn directly (no decoded
+      // Image), so raster-identity parity needs the raw source object.
+      sourceRef: source,
       args,
     });
   }
@@ -140,6 +166,14 @@ class TestCanvas {
   toBlob(callback: (blob: Blob | null) => void): void {
     callback(new Blob(['png-bytes'], { type: 'image/png' }));
   }
+
+  // 48-03: the store's flattened path calls canvas.toDataURL() to produce the
+  // raster payload. Serializing the recorded op log makes the flattened
+  // dataUrl deterministic per content — identical composite ops yield the
+  // identical raster, so per-frame parity assertions are stable.
+  toDataURL(): string {
+    return `data:image/png;base64,${Buffer.from(JSON.stringify(this.ctx.operations)).toString('base64')}`;
+  }
 }
 
 class TestImage {
@@ -157,6 +191,16 @@ class TestImage {
     return this.currentSrc;
   }
 }
+
+/** The decoded ImageBitmap the LRU hands back (no `src` — a real ImageBitmap). */
+class FlatTestBitmap {
+  width = 4;
+  height = 3;
+  close = vi.fn();
+}
+
+/** Flush the microtask queue so a kicked-off async decode completes. */
+const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function makeCanvas(ctx: RecordingCanvasContext): HTMLCanvasElement {
   return {
@@ -180,7 +224,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-export:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-export:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };
@@ -223,9 +267,9 @@ function lifecycleGroup(
 }
 
 function install(records: readonly PhysicPaintRotoRealKeyRecord[], loops: readonly PhysicPaintRotoLoopClip[], capacity = CAPACITY): void {
-  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, INTERPOLATION, capacity);
+  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, records, INTERPOLATION, capacity);
   if (!recordsResult.ok) throw new Error(recordsResult.error);
-  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, loops);
+  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, loops);
   if (!loopsResult.ok) throw new Error(loopsResult.error);
 }
 
@@ -257,6 +301,7 @@ function makeSequence(layers: Layer[]): Sequence {
 
 function makeFm(count: number): FrameEntry[] {
   return Array.from({ length: count }, (_, index) => ({
+    kind: 'content' as const,
     globalFrame: index,
     sequenceId: 'seq-1',
     keyPhotoId: 'kp',
@@ -272,6 +317,8 @@ function cycleRecords(keyIds: readonly string[]): PhysicPaintRotoRealKeyRecord[]
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument(LAYER));
   exportStore.resetProgress();
   exportStore.outputFolder.value = '/tmp/efx-export-loops';
   exportStore.includeAudio.value = false;
@@ -288,6 +335,16 @@ beforeEach(() => {
   vi.stubGlobal('HTMLImageElement', TestImage);
   vi.stubGlobal('HTMLCanvasElement', TestCanvas);
   vi.stubGlobal('HTMLVideoElement', class {});
+  // 52.1-05 (D-13): the decode path is `decodeWebpFrame` → ImageData →
+  // createImageBitmap. The parity harness only needs a deterministic bitmap
+  // handle (raster identity is asserted via the flattened canvas, not the
+  // bitmap), so a single shared FlatTestBitmap shape suffices.
+  decodeWebpFrameMock.mockReset();
+  decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
+  vi.stubGlobal('ImageData', class {
+    constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+  });
+  vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
 });
 
 afterEach(() => {
@@ -381,13 +438,13 @@ describe('export loop preflight (failure path, D-28)', () => {
     // same keyId would remain unresolved because physical source timing must be
     // strictly increasing; the next export surfaces the remaining late loop.
     const repairedRecords = physicPaintStore.replaceRotoPhysicalRecords(
-      LAYER,
+      LAYER, TEST_TRACK_ID,
       [record('A', 0), record('B', 1)],
       INTERPOLATION,
       CAPACITY,
     );
     expect(repairedRecords.ok).toBe(true);
-    const repaired = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [
+    const repaired = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, [
       loopClip('loop-late', 20, ['A', 'missing-late'], 2),
       loopClip('loop-early', 6, ['A', 'B'], 2),
     ]);
@@ -442,17 +499,21 @@ describe('export loop preflight (failure path, D-28)', () => {
 
 describe('valid-loop preview/export parity (success path, D-27, audit finding 8)', () => {
   interface ParityResult {
-    exportByFrame: Map<number, Extract<PhysicPaintRotoPhysicalRenderSource, { kind: 'real' }>>;
+    exportByFrame: Map<number, { cacheKey: string; bytes: Uint8Array } | null>;
+    exportKeyByFrame: Map<number, string>;
     exportNullFrames: Set<number>;
-    previewByFrame: Map<number, { cacheKey: string; dataUrl: string } | null>;
-    drawnSources: Set<string>;
+    previewByFrame: Map<number, { cacheKey: string; bytes: Uint8Array } | null>;
+    previewRasterByFrame: Map<number, HTMLCanvasElement | undefined>;
+    drawnSources: Set<unknown>;
   }
 
   /**
    * Drive BOTH surfaces for the same installed document revision:
    * - export side: the real renderGlobalFrame loop (the exact function
-   *   startExport calls per frame), observing its per-frame store resolutions
-   *   through a spy and collecting the rasters it actually paints;
+   *   startExport calls per frame), observing its per-frame FLATTENED
+   *   deliveries (getFlattenedFrame — the 48-03 D-11/CMP-01 single seam) and
+   *   the per-frame source-key resolutions it induces, plus the rasters it
+   *   actually paints;
    * - preview side: PreviewRenderer.collectPhysicPaintFrameSources — the
    *   preview/playback frame-collection seam — per frame.
    */
@@ -465,46 +526,61 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     const layers = hoisted.sequences[0].layers;
 
     const exportByFrame: ParityResult['exportByFrame'] = new Map();
+    const exportKeyByFrame: ParityResult['exportKeyByFrame'] = new Map();
     const exportNullFrames = new Set<number>();
-    const spy = vi.spyOn(physicPaintStore, 'getRotoPhysicalRenderSource');
+    const flattenSpy = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
+    const keySpy = vi.spyOn(physicPaintStore, 'getRotoPhysicalRenderSource');
     try {
       for (const frame of frames) {
-        // Two passes per frame: the first loads the resolved raster into the
-        // image cache, the second paints it — the same load-then-draw
-        // discipline the preload + render loop gives the real export.
+        // Two passes per frame: the first kicks off the async decode, the
+        // second (after the decode completes) paints the flattened raster —
+        // the same load-then-draw discipline the preload + render loop gives
+        // the real export.
         actual.renderGlobalFrame(renderer, canvas, frame, hoisted.fm, hoisted.sequences, [], false);
+        await flushDecode();
         actual.renderGlobalFrame(renderer, canvas, frame, hoisted.fm, hoisted.sequences, [], false);
       }
     } finally {
-      const calls = spy.mock.calls;
-      const results = spy.mock.results;
-      spy.mockRestore();
-      for (let index = 0; index < calls.length; index += 1) {
-        const [layerId, appFrame] = calls[index] as [string, number];
-        const result = results[index]?.value as PhysicPaintRotoPhysicalRenderSource | null;
+      const flattenCalls = flattenSpy.mock.calls;
+      const flattenResults = flattenSpy.mock.results;
+      const keyCalls = keySpy.mock.calls;
+      const keyResults = keySpy.mock.results;
+      flattenSpy.mockRestore();
+      keySpy.mockRestore();
+      for (let index = 0; index < flattenCalls.length; index += 1) {
+        const [layerId, appFrame] = flattenCalls[index] as [string, number];
         if (layerId !== LAYER) continue;
+        const result = flattenResults[index]?.value as EfxPaintFlattenedFrameRecord | null;
         if (result === null) {
           exportNullFrames.add(appFrame);
           continue;
         }
+        exportByFrame.set(appFrame, { cacheKey: result.cacheKey, bytes: result.renderedFrame.bytes });
+      }
+      for (let index = 0; index < keyCalls.length; index += 1) {
+        const [layerId, , appFrame] = keyCalls[index] as [string, string, number];
+        const result = keyResults[index]?.value as PhysicPaintRotoPhysicalRenderSource | null;
+        if (layerId !== LAYER || result === null) continue;
         if (result.kind !== 'real') {
           throw new Error(`Parity scenarios resolve every export frame as 'real'; frame ${appFrame} resolved '${result.kind}'.`);
         }
-        exportByFrame.set(appFrame, result);
+        exportKeyByFrame.set(appFrame, result.keyId);
       }
     }
 
     const previewByFrame: ParityResult['previewByFrame'] = new Map();
+    const previewRasterByFrame: ParityResult['previewRasterByFrame'] = new Map();
     for (const frame of frames) {
       const sources = renderer.collectPhysicPaintFrameSources(layers, frame);
       const source = sources.find((candidate) => candidate.layerId === LAYER) ?? null;
-      previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', dataUrl: source.renderedFrame.dataUrl } : null);
+      previewByFrame.set(frame, source ? { cacheKey: source.cacheKey ?? '', bytes: source.renderedFrame.bytes } : null);
+      previewRasterByFrame.set(frame, source?.raster);
     }
 
     const drawnSources = new Set(
-      ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage').map((op) => op.source),
+      ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage').map((op) => op.sourceRef),
     );
-    return { exportByFrame, exportNullFrames, previewByFrame, drawnSources };
+    return { exportByFrame, exportKeyByFrame, exportNullFrames, previewByFrame, previewRasterByFrame, drawnSources };
   }
 
   function expectParity(
@@ -512,24 +588,21 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     frameCount: number,
     expectedKeyId: (frame: number) => string,
   ): void {
-    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER);
-    expect(revision).toBeTruthy();
     for (let frame = 0; frame < frameCount; frame += 1) {
       const exportSource = result.exportByFrame.get(frame);
       const previewSource = result.previewByFrame.get(frame);
       expect(exportSource, `export path resolves frame ${frame}`).toBeTruthy();
       expect(previewSource, `preview path resolves frame ${frame}`).toBeTruthy();
       const keyId = expectedKeyId(frame);
-      // Same sourceKeyId on both surfaces.
-      expect(exportSource!.keyId, `frame ${frame} sourceKeyId`).toBe(keyId);
-      // Same provenance: the preview cache key embeds the export-observed
-      // source-scoped cache revision.
-      expect(exportSource!.cacheRevision, `frame ${frame} provenance`).toBe(`${revision}:real:${keyId}`);
-      expect(previewSource!.cacheKey, `frame ${frame} preview provenance`).toBe(
-        `physic-paint:${LAYER}:physical:${exportSource!.cacheRevision}`,
-      );
+      // Same sourceKeyId on both surfaces (the flattened composite resolved the
+      // loop's source key at the same frame on the export path).
+      expect(result.exportKeyByFrame.get(frame), `frame ${frame} sourceKeyId`).toBe(keyId);
+      // Flattened-seam parity (48-03 D-11/CMP-01): both surfaces consume the
+      // SAME flattened delivery — identical flattened cacheKey and identical
+      // flattened raster.
+      expect(previewSource!.cacheKey, `frame ${frame} flattened provenance`).toBe(exportSource!.cacheKey);
       // Deterministic raster equality BETWEEN the two paths (never fixed hashes).
-      expect(previewSource!.dataUrl, `frame ${frame} raster parity`).toBe(exportSource!.renderedFrame.dataUrl);
+      expect(previewSource!.bytes, `frame ${frame} flattened raster parity`).toBe(exportSource!.bytes);
     }
   }
 
@@ -541,9 +614,13 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     const result = await resolveBothSurfaces(25);
 
     expectParity(result, 25, (frame) => keys[frame % 5]);
-    // Pixel-level parity: the export render path painted exactly the raster
-    // set the preview path resolved — no other source, no missing frame.
-    const previewRasters = new Set(keys.map((_, index) => payload(index).dataUrl));
+    // Pixel-level parity (G-52-8: raster identity): the export render path
+    // painted exactly the flattened rasters the preview path resolved — the
+    // SAME memoized canvas objects, no other source, no missing frame.
+    const previewRasters = new Set(
+      Array.from({ length: 25 }, (_, frame) => result.previewRasterByFrame.get(frame))
+        .filter((raster): raster is HTMLCanvasElement => raster !== undefined && raster !== null),
+    );
     expect(result.drawnSources).toEqual(previewRasters);
   });
 
@@ -601,8 +678,15 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     const result = await resolveBothSurfaces(9);
 
     expectParity(result, 8, (frame) => frame < 7 ? keys[frame % 5] : 'M');
-    expect(result.exportNullFrames.has(8), 'export path resolves frame 8 as empty').toBe(true);
-    expect(result.previewByFrame.get(8), 'preview path resolves frame 8 as empty').toBeNull();
+    // D-09 (48-03): frame 8 sits past the truncated boundary — the flattened
+    // delivery is a transparent raster (missing report, never placeholder
+    // pixels) with NO key resolution, and both surfaces return the same empty
+    // flattened record.
+    expect(result.exportKeyByFrame.has(8), 'export path resolves no key at frame 8').toBe(false);
+    expect(result.previewByFrame.get(8), 'preview path resolves frame 8 as the same transparent record').toEqual(
+      result.exportByFrame.get(8),
+    );
+    expect(result.previewByFrame.get(8)).not.toBeNull();
   });
 
   it('exports detached overrides and fragmented gaps exactly like a cache-cold preview, then reflects regeneration', async () => {
@@ -619,16 +703,21 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     for (const [frame, keyId] of expectedKeys) {
       const exportSource = detached.exportByFrame.get(frame);
       const previewSource = detached.previewByFrame.get(frame);
-      expect(exportSource?.keyId, `export frame ${frame}`).toBe(keyId);
-      expect(previewSource?.dataUrl, `preview frame ${frame}`).toBe(exportSource?.renderedFrame.dataUrl);
-      expect(previewSource?.cacheKey, `cache-cold preview frame ${frame}`).toBe(
-        `physic-paint:${LAYER}:physical:${exportSource?.cacheRevision}`,
-      );
+      expect(exportSource, `export frame ${frame}`).toBeTruthy();
+      expect(previewSource, `preview frame ${frame}`).toBeTruthy();
+      expect(detached.exportKeyByFrame.get(frame), `export frame ${frame} key`).toBe(keyId);
+      // Flattened-seam parity (48-03): the cache-cold preview and the export
+      // path consume the SAME flattened record.
+      expect(previewSource!.cacheKey, `flattened provenance frame ${frame}`).toBe(exportSource!.cacheKey);
+      expect(previewSource!.bytes, `flattened raster parity frame ${frame}`).toBe(exportSource!.bytes);
     }
-    expect(detached.exportNullFrames.has(2)).toBe(true);
-    expect(detached.previewByFrame.get(2)).toBeNull();
+    // D-09 (48-03): frame 2 is a fragmented gap — transparent flattened record
+    // with no key resolution on both surfaces.
+    expect(detached.exportKeyByFrame.has(2)).toBe(false);
+    expect(detached.previewByFrame.get(2)).toEqual(detached.exportByFrame.get(2));
+    expect(detached.previewByFrame.get(2)).not.toBeNull();
 
-    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [lifecycleGroup({
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, [lifecycleGroup({
       syncState: 'synchronized',
       provenanceState: 'attached',
       visibleRanges: [{ start: 0, endExclusive: 6 }],
@@ -637,7 +726,26 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     if (!regenerated.ok) throw new Error(regenerated.error);
 
     const synchronized = await resolveBothSurfaces(6);
-    expect(synchronized.exportByFrame.get(2)?.keyId).toBe('A0');
-    expect(synchronized.previewByFrame.get(2)?.dataUrl).toBe(payload(0).dataUrl);
+    expect(synchronized.exportKeyByFrame.get(2)).toBe('A0');
+    expect(synchronized.previewByFrame.get(2)?.bytes).toBe(synchronized.exportByFrame.get(2)?.bytes);
+  });
+
+  it('52.1-05 (D-13): preloadExportImages awaits the async decode — a cold frame never renders with a missing layer', async () => {
+    install(cycleRecords(['A']), [loopClip('loop-1', 0, ['A'], 1)]);
+    hoisted.fm = makeFm(1);
+
+    const actual = await vi.importActual<typeof import('./exportRenderer')>('./exportRenderer');
+    const ctx = new RecordingCanvasContext();
+    const canvas = makeCanvas(ctx);
+    const renderer = new PreviewRenderer(canvas);
+
+    // Cold: the decode is pending, so the flattened delivery is null this tick.
+    expect(physicPaintStore.getFlattenedFrame(LAYER, 0)).toBeNull();
+
+    await actual.preloadExportImages(renderer, hoisted.fm, undefined, hoisted.sequences);
+
+    // After the preload, the decode completed and the flattened raster is baked
+    // — the export render loop can never observe a cold-miss null.
+    expect(physicPaintStore.getFlattenedFrame(LAYER, 0)).not.toBeNull();
   });
 });

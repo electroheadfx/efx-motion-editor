@@ -6,6 +6,8 @@ import {paintStore} from '../../stores/paintStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {timelineStore} from '../../stores/timelineStore';
+import {registerDocument} from '../../stores/efxPaintStore';
+import {createEfxPaintDocument} from '../../efx-paint/document/efxPaintDocument';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer, LayerSourceData} from '../../types/layer';
@@ -151,6 +153,9 @@ export function AddLayerMenu() {
     } else {
       sequenceStore.createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek());
     }
+    // v1.0 (DOC-01/DOC-02): one parent layer owns exactly one document with
+    // one default Paint track + fixed Background track (transparent fallback).
+    registerDocument(createEfxPaintDocument(layerId));
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
   };

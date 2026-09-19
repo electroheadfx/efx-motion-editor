@@ -21,16 +21,21 @@
  *   - Issue #4 (open-gsd/gsd-core)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.locateProgressTable = locateProgressTable;
 exports.deriveProgressFromRoadmap = deriveProgressFromRoadmap;
 exports.clampPercentFromFraction = clampPercentFromFraction;
 exports.clampPercent = clampPercent;
+exports.progressBarFilledCells = progressBarFilledCells;
+exports.renderProgressBar = renderProgressBar;
 const markdown_table_cjs_1 = require("./markdown-table.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-id.cjs is an export= CommonJS module
 const phaseIdMod = require("./phase-id.cjs");
 const { isSentinelPhaseId } = phaseIdMod;
 /**
- * Derive completed_phases, total_phases, and total_plans from ROADMAP content.
- * Root cause fix for issue #4 — see gen-phase-lifecycle.mjs for full documentation.
+ * #3227: the single owner of "where is this ROADMAP's Progress table".
+ * Lifted verbatim out of deriveProgressFromRoadmap so `state-contract.cts`
+ * enumerates phases from THE SAME table this module derives its counts from.
+ * A second copy of this locator is the DEFECT.GENERATIVE-FIX shape.
  *
  * ADR-2143 §3 ("addressed by NAME, never ordinal"): the Progress table is
  * located via the markdown-table seam's `findTableWithColumns`, which is
@@ -49,6 +54,24 @@ const { isSentinelPhaseId } = phaseIdMod;
  * to scanning the whole input, preserving the "Progress table not under a
  * `## Progress` heading, or not the first table in the document, still
  * resolves" behaviour.
+ */
+function locateProgressTable(roadmapContent) {
+    const progressMatch = roadmapContent.match(/^##[ \t]+Progress\b/im);
+    let scoped = roadmapContent;
+    if (progressMatch && progressMatch.index !== undefined) {
+        const afterHeading = roadmapContent.slice(progressMatch.index);
+        const nextHeading = afterHeading.search(/\n#{1,2}[ \t]/);
+        scoped = nextHeading >= 0 ? afterHeading.slice(0, nextHeading) : afterHeading;
+    }
+    return (0, markdown_table_cjs_1.findTableWithColumns)(scoped, ['Phase', 'Plans Complete', 'Status', 'Completed']);
+}
+/**
+ * Derive completed_phases, total_phases, and total_plans from ROADMAP content.
+ * Root cause fix for issue #4 — see gen-phase-lifecycle.mjs for full documentation.
+ *
+ * The Progress table itself is located by `locateProgressTable` (ADR-2143 §3,
+ * lifted out as #3227's single-owner extraction) — this function consumes
+ * that table.
  *
  * Cells are read by column NAME (`r['Status']`, `r['Plans Complete']`,
  * `r['Phase']`), fixing #2137 (the old position-based regex assumed "Status"
@@ -67,20 +90,7 @@ function deriveProgressFromRoadmap(roadmapContent) {
     // `{ ok: false, reason }`, not an exception — so the catch was masking
     // nothing but dead code paths. Removed per ADR-2143 §5; the public
     // `RoadmapProgress` contract (nulls = absent) is unchanged.
-    //
-    // ADR-2143 §3: read the Progress table by column NAME (order/injection-invariant),
-    // via the markdown-table seam. Scope to the `## Progress` section when present
-    // (#2012 decoy avoidance); a headingless milestone slice (#1445) falls back to the
-    // whole input. Requires the canonical Phase/Plans Complete/Status/Completed columns
-    // in any order (extra columns ignored) — supersedes findTableBySchema's exact-schema lookup.
-    const progressMatch = roadmapContent.match(/^##[ \t]+Progress\b/im);
-    let scoped = roadmapContent;
-    if (progressMatch && progressMatch.index !== undefined) {
-        const afterHeading = roadmapContent.slice(progressMatch.index);
-        const nextHeading = afterHeading.search(/\n#{1,2}[ \t]/);
-        scoped = nextHeading >= 0 ? afterHeading.slice(0, nextHeading) : afterHeading;
-    }
-    const table = (0, markdown_table_cjs_1.findTableWithColumns)(scoped, ['Phase', 'Plans Complete', 'Status', 'Completed']);
+    const table = locateProgressTable(roadmapContent);
     if (table) {
         const allRows = table.rows;
         const completed = allRows.filter((r) => /^complete$/i.test((r['Status'] ?? '').trim())).length;
@@ -131,4 +141,63 @@ function clampPercent(completed, total) {
     if (!total || total <= 0)
         return 0;
     return clampPercentFromFraction(completed / total);
+}
+/**
+ * How many cells of a `width`-cell progress bar are filled for `percent`.
+ *
+ * #4294: the RENDER half's kernel — the counterpart of `clampPercentFromFraction`
+ * one layer down. That function owns `fraction -> integer percent`; this one
+ * owns `integer percent -> filled cells`, and is the single place that rounding
+ * is expressed. Five inline copies of the rounding carried it before this
+ * change — three in `commands.cts`, and one each in `gsd2-import.cts` and
+ * `formatProgressMachineSegment` here; the latter two used `/ 10` with the
+ * width already substituted (`pct` in `gsd2-import.cts`, `clamped` in the
+ * formatter). (#4294 counts SIX call sites because it counts
+ * `cmdStateUpdateProgress` and `syncCore` separately; #4231 had already routed
+ * both through `formatProgressMachineSegment` — as it does
+ * `applyPostSyncPreservation` — so by this branch's base they share one copy.)
+ * Every copy saturated: at width 10 that rounds to a full bar from 95 up, at
+ * width 20 from 98 up, so a project at 19/20 plans drew the same bar as a
+ * shipped one beside a number that said otherwise.
+ *
+ * Contract:
+ *   - A FULL bar is reserved for an actual 100. Below 100 the fill is held one
+ *     cell short of the width. This is the only departure from the old formula:
+ *     at width 10 exactly 95-99 move (10 -> 9), at width 20 exactly 98-99
+ *     (20 -> 19); every other percent in 0-100 rounds as before.
+ *   - `null` / `undefined` / non-finite renders an empty bar, matching the
+ *     `percent === null ? 0 : ...` guard the `progress` renderers already carried.
+ *   - Out-of-range input is clamped to 0-100 before rounding, so the count is
+ *     always within `[0, width]` and a `'░'.repeat(width - filled)` can never
+ *     be handed a negative count (the old inline form threw `RangeError` at
+ *     120%). A non-positive width yields 0.
+ *
+ * Callers wanting the glyph run call `renderProgressBar`; this is exported so
+ * the rounding rule can be pinned directly against the legacy curve.
+ */
+function progressBarFilledCells(percent, width) {
+    const cells = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
+    if (cells === 0)
+        return 0;
+    if (typeof percent !== 'number' || !Number.isFinite(percent))
+        return 0;
+    const clamped = Math.max(0, Math.min(100, percent));
+    if (clamped >= 100)
+        return cells;
+    // Scale by the WIDTH, not by 100 — this is cells-from-percent, not the
+    // completion-ratio derivation lint-completion-ratio-drift.cjs guards.
+    const rounded = Math.round((clamped / 100) * cells);
+    return Math.min(rounded, cells - 1);
+}
+/**
+ * Render the glyph run of a `width`-cell progress bar for `percent` —
+ * `'█'` for each filled cell, `'░'` for the rest, always exactly `width`
+ * glyphs (an empty string for a non-positive width). Brackets, the printed
+ * percent and any suffix stay with the caller; the fill rule is
+ * `progressBarFilledCells` (#4294).
+ */
+function renderProgressBar(percent, width) {
+    const filled = progressBarFilledCells(percent, width);
+    const cells = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
+    return '█'.repeat(filled) + '░'.repeat(cells - filled);
 }

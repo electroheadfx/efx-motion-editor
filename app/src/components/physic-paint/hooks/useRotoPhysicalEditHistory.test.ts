@@ -1,5 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
+
+const revealHarness = vi.hoisted(() => ({ renderReveal: vi.fn() }));
+
+vi.mock('../roto/physicsPaintRotoPlayScriptRenderer', () => ({
+  renderRotoRevealFrames: revealHarness.renderReveal,
+}));
 
 vi.mock('preact/hooks', () => ({
   useCallback: <Value>(callback: Value) => callback,
@@ -7,11 +14,45 @@ vi.mock('preact/hooks', () => ({
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
+// 46-03 Task 3: spy the efxPaintStore track-activation seam (D-04) while
+// keeping the real document store behavior — setActiveTrackId must really
+// write the document and bump documentRevision; the tests only observe the
+// call order around the coordinator replay.
+vi.mock('../../../stores/efxPaintStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../stores/efxPaintStore')>();
+  return {
+    ...actual,
+    getActiveTrackId: vi.fn((layerId: string) => actual.getActiveTrackId(layerId)),
+    setActiveTrackId: vi.fn((layerId: string, trackId: string) => actual.setActiveTrackId(layerId, trackId)),
+  };
+});
+
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import {
+  _setEfxPaintMarkDirtyCallback,
+  _setEfxPaintRevealScriptLoader,
+  addBackgroundClip,
+  createRevealRail,
+  deleteBackgroundClip,
+  getActiveTrackId,
+  getDocument,
+  registerDocument,
+  reset as resetEfxPaintDocumentStore,
+  setActiveTrackId,
+  setPhotoReferenceOpacity,
+  setPhotoReferenceSource,
+} from '../../../stores/efxPaintStore';
+import {
+  _setPhysicPaintCompositorSizeProvider,
+  _setPhysicPaintMarkDirtyCallback,
+  physicPaintStore,
+  registerReferenceSourceImage,
+} from '../../../stores/physicPaintStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -37,7 +78,7 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
     payload: {
       frameIndex: 0,
       appFrame,
-      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      bytes: testWebpBytes('iVBORw0KGgo='),
     },
   };
 }
@@ -251,6 +292,7 @@ describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -318,6 +360,109 @@ describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
   });
 });
 
+describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => {
+  it('records a Bg clip delete as one unified-ledger undo step and restores/re-applies the document by reference', async () => {
+    const layerId = 'layer-bg-undo';
+    registerDocument(createEfxPaintDocument(layerId));
+    const added = addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 } });
+    expect(added.ok).toBe(true);
+    if (!added.ok) throw new Error('add must succeed');
+    const deleted = deleteBackgroundClip(layerId, added.clipId);
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error('delete must succeed');
+    const descriptor = deleted.descriptor;
+    expect(descriptor).not.toBeNull();
+    if (!descriptor) throw new Error('delete must emit a descriptor');
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    // after the delete, the clip is gone
+    expect(getDocument(layerId)!.background.clips).toHaveLength(0);
+
+    // Undo restores the exact pre-delete document by reference (BKG-08, D-08).
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(1);
+    expect(getDocument(layerId)!.background.clips[0]!.id).toBe(added.clipId);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // Redo re-applies the post-delete document.
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(0);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('fails closed on Undo when an unrecorded edit diverged the live document (CR-01)', async () => {
+    const layerId = 'layer-bg-guard';
+    registerDocument(createEfxPaintDocument(layerId));
+    const added = addBackgroundClip(layerId, { startFrame: 0, sourceFrameRefs: ['asset-a'], repeat: { mode: 'finite', count: 1 } });
+    expect(added.ok).toBe(true);
+    if (!added.ok) throw new Error('add must succeed');
+    const deleted = deleteBackgroundClip(layerId, added.clipId);
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error('delete must succeed');
+    const descriptor = deleted.descriptor;
+    if (!descriptor) throw new Error('delete must emit a descriptor');
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // An UNRECORDED add after the delete diverges the live document from the
+    // recorded `after` object — Undo must fail closed (stack untouched, the
+    // added clip survives) instead of clobbering it with the snapshot restore.
+    const unrecorded = addBackgroundClip(layerId, { startFrame: 5, sourceFrameRefs: ['asset-b'], repeat: { mode: 'finite', count: 1 } });
+    expect(unrecorded.ok).toBe(true);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(1);
+
+    expect(await history.undo()).toBe(false);
+    expect(getDocument(layerId)!.background.clips).toHaveLength(1);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+});
+
 describe('useRotoPhysicalEditHistory rigid group drag', () => {
   it('records one accepted move, then moves the same command through one Undo and one Redo', async () => {
     const before = snapshot([
@@ -360,6 +505,7 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -437,6 +583,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
 
     useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -495,6 +642,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
 
     useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -587,6 +735,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -719,6 +868,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -849,6 +999,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -962,6 +1113,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -1054,6 +1206,7 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -1194,7 +1347,7 @@ describe('useRotoPhysicalEditHistory referenced Action replay', () => {
     });
     const executePhysicalEdit = vi.fn(async () => true);
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId: signal(null), acceptedOutput: signal(null) },
       recordsPort: {
@@ -1277,7 +1430,7 @@ describe('useRotoPhysicalEditHistory retained Action ownership', () => {
     const availability = signal({ undo: 0, redo: 0 });
     const release = vi.fn(async () => true);
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: vi.fn() as never, pendingOperationId: signal(null), acceptedOutput },
       recordsPort: {
@@ -1377,7 +1530,7 @@ describe('useRotoPhysicalEditHistory Key Rail atomic commands (43.4-08)', () => 
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -1438,7 +1591,7 @@ describe('useRotoPhysicalEditHistory Key Rail atomic commands (43.4-08)', () => 
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId: signal(null), acceptedOutput },
       recordsPort: {
@@ -1516,6 +1669,7 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
 
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-1',
@@ -1572,6 +1726,7 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
 
     useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch-1',
         layerId: 'layer-1',
         projectContextId: 'project-2',
@@ -1681,7 +1836,7 @@ describe('useRotoPhysicalEditHistory push atomic command (43.5-03 Task 2)', () =
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30 },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -1737,12 +1892,12 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
   // (physicsPaintRotoGroupParity.test.ts): the delete-rails proposer validates
   // lifecycle facts through isLifecycleGroup, so Group members must carry all
   // six durable lifecycle fields.
-  const batchPngDataUrl = (label: string) => `data:image/png;base64,${btoa(`batch-${label}`)}`;
+  const batchPngDataUrl = (label: string) => testWebpBytes(`batch-${label}`);
   const batchRealKey = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
     kind: 'real-key',
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl: batchPngDataUrl(keyId), width: 10, height: 10 },
+    payload: { frameIndex: 0, appFrame, bytes: batchPngDataUrl(keyId), width: 10, height: 10 },
   });
   const batchLifecycleGroup = (
     loopId: string,
@@ -1806,7 +1961,7 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity },
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity, trackId: 'track-a' },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -2096,5 +2251,456 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
       before: snapshotFromDocument(beforeDocument),
       after: snapshotFromDocument(afterDocument),
     });
+  });
+});
+
+describe('useRotoPhysicalEditHistory track-tagged undo/redo (46-03 Task 3 — D-01..D-04)', () => {
+  const TRACK_A = 'track-a';
+  const TRACK_B = 'track-b';
+
+  /** Two-track v1.0 document: A (with optional seeded records) and B. */
+  function registerTwoTrackDocument(activeTrackId: string, aRecords: readonly PhysicPaintRotoRealKeyRecord[] = []): void {
+    const base = createEfxPaintDocument('layer-1');
+    const trackA: EfxPaintDocument['tracks'][number] = Object.freeze({
+      ...base.tracks[0],
+      id: TRACK_A,
+      name: 'Track A',
+      order: 0,
+      rotoPhysical: Object.freeze({
+        capacity: 100,
+        realKeyRecords: Object.freeze([...aRecords]),
+        interpolation: Object.freeze({ enabled: false, mode: 'duplicate' as const }),
+        scriptMotion: Object.freeze({ deformation: 0, position: 0 }),
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        // Canonical revision of the seeded records — the 45-01 docrev
+        // builders re-parse fail-closed, so a non-canonical fixture revision
+        // (like a bare 'seed-a') is rejected by setActiveTrackId.
+        revision: buildPhysicPaintRotoPhysicalRevision(aRecords, { enabled: false, mode: 'duplicate' }, [], []),
+        loopClips: Object.freeze([]),
+        incomingInterpolationBreakKeyIds: Object.freeze([]),
+      }) as PhysicPaintRotoPhysicalDocument,
+    });
+    const trackB: EfxPaintDocument['tracks'][number] = Object.freeze({
+      ...base.tracks[0],
+      id: TRACK_B,
+      name: 'Track B',
+      order: 1,
+    });
+    registerDocument(Object.freeze({
+      ...base,
+      activeTrackId,
+      tracks: Object.freeze([trackA, trackB]),
+    }));
+  }
+
+  /**
+   * Track-aware history harness: one identity whose trackId is LIVE (the test
+   * mutates it between acceptances), a coordinator replay seam that swaps
+   * `state.current` to the exact replay target, and the efxPaintStore
+   * document store behind the real setActiveTrackId/getActiveTrackId.
+   */
+  function createTrackHarness(options: { trackId: string; current?: RotoPhysicalEditSnapshot<null> }) {
+    const { trackId } = options;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const state = { current: options.current ?? snapshot([record('B', 0)], 'B', 0) };
+    const identity = { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10, trackId };
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = state.current;
+      state.current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity,
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        getLoopClips: () => state.current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+    return { acceptedOutput, availability, executePhysicalEdit, history, identity, state };
+  }
+
+  /** Collect every path whose value is a data:image/png raster (deep walk, Maps included). */
+  function collectRasterPaths(value: unknown, path = 'snapshot', out: string[] = []): string[] {
+    if (typeof value === 'string') {
+      if (value.startsWith('data:image/png')) out.push(path);
+    } else if (Array.isArray(value)) {
+      value.forEach((item, index) => collectRasterPaths(item, `${path}[${index}]`, out));
+    } else if (value && typeof value === 'object') {
+      if (value instanceof Map) {
+        for (const [key, entry] of value) collectRasterPaths(entry, `${path}.map(${String(key)})`, out);
+      } else if (value instanceof Set) {
+        for (const entry of value) collectRasterPaths(entry, `${path}.set`, out);
+      } else {
+        for (const [key, entry] of Object.entries(value)) collectRasterPaths(entry, `${path}.${key}`, out);
+      }
+    }
+    return out;
+  }
+
+  beforeEach(() => {
+    _setEfxPaintMarkDirtyCallback(() => {});
+    resetEfxPaintDocumentStore();
+    vi.mocked(setActiveTrackId).mockClear();
+    vi.mocked(getActiveTrackId).mockClear();
+  });
+
+  it('RED: the applied-stack top entry carries trackId B; undoing it replays B\'s before-state and leaves A\'s records untouched', async () => {
+    registerTwoTrackDocument(TRACK_A, [record('A', 0)]);
+    const beforeB = snapshot([record('B', 1)], 'B', 1);
+    const afterB = snapshot([record('B', 1), record('B2', 2)], 'B', 1);
+    const harness = createTrackHarness({ trackId: TRACK_B, current: afterB });
+
+    // One accepted edit on track B.
+    harness.acceptedOutput.value = {
+      before: beforeB,
+      after: afterB,
+      acceptedRevision: afterB.stagedRevision,
+      operationId: 'op-b',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // Undo auto-activates the entry's track BEFORE the coordinator replay —
+    // the observable proof that the entry was tagged with trackId B.
+    expect(await harness.history.undo()).toBe(true);
+    expect(vi.mocked(setActiveTrackId)).toHaveBeenCalledWith('layer-1', TRACK_B);
+    expect(vi.mocked(setActiveTrackId).mock.invocationCallOrder[0])
+      .toBeLessThan(harness.executePhysicalEdit.mock.invocationCallOrder[0]);
+    // B's before-state was replayed.
+    expect(harness.state.current).toEqual(beforeB);
+    // A's records in the document store are untouched.
+    const trackA = getDocument('layer-1')!.tracks.find((track) => track.id === TRACK_A)!;
+    expect(trackA.rotoPhysical!.realKeyRecords.map((entry) => entry.keyId)).toEqual(['A']);
+  });
+
+  it('RED: 12 ordinary edits (6 cross-track operations) on mixed tracks trim to the 10-level cap', () => {
+    const harness = createTrackHarness({ trackId: TRACK_A });
+    let records: readonly PhysicPaintRotoRealKeyRecord[] = [];
+    for (let operation = 0; operation < 6; operation += 1) {
+      // One cross-track operation emits one acceptance PER track with the
+      // same operationId (the 46-03 move primitive's paste+delete halves).
+      for (const trackId of [TRACK_A, TRACK_B]) {
+        harness.identity.trackId = trackId;
+        const before = snapshot(records, 'A', 0);
+        records = [...records, record(`k${operation}-${trackId === TRACK_A ? 'a' : 'b'}`, records.length)];
+        const after = snapshot(records, 'A', 0);
+        harness.acceptedOutput.value = {
+          before,
+          after,
+          acceptedRevision: after.stagedRevision,
+          operationId: `op-${operation}`,
+          operationKind: 'insert-slot',
+          historyProvenance: null,
+        };
+      }
+    }
+    // 12 track-tagged acceptances recorded (trackId breaks the same-op
+    // dedupe), then the existing 10-level trim holds.
+    expect(harness.availability.value).toEqual({ undo: 10, redo: 0 });
+  });
+
+  it('RED: undoing a B-tagged entry with track A active sets the document activeTrackId to B and bumps documentRevision', async () => {
+    registerTwoTrackDocument(TRACK_A);
+    const beforeRevision = getDocument('layer-1')!.documentRevision;
+    const before = snapshot([record('B', 1)], 'B', 1);
+    const after = snapshot([record('B', 1), record('B2', 2)], 'B', 1);
+    const harness = createTrackHarness({ trackId: TRACK_B, current: after });
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'op-b',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+
+    expect(await harness.history.undo()).toBe(true);
+
+    expect(getActiveTrackId('layer-1')).toBe(TRACK_B);
+    const document = getDocument('layer-1')!;
+    expect(document.activeTrackId).toBe(TRACK_B);
+    expect(document.documentRevision).toBe(beforeRevision + 1);
+  });
+
+  it('RED: two accepted edits with the same operationId on different tracks both record; same track still dedupes', () => {
+    const harness = createTrackHarness({ trackId: TRACK_A });
+    harness.identity.trackId = TRACK_A;
+    harness.acceptedOutput.value = {
+      before: snapshot([], 'A', 0),
+      after: snapshot([record('k0', 0)], 'A', 0),
+      acceptedRevision: 'rev-1',
+      operationId: 'op-shared',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    harness.identity.trackId = TRACK_B;
+    harness.acceptedOutput.value = {
+      before: snapshot([], 'B', 0),
+      after: snapshot([record('b0', 0)], 'B', 0),
+      acceptedRevision: 'rev-2',
+      operationId: 'op-shared',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 2, redo: 0 });
+    // Same operationId on the SAME track is still one command (dedupe key
+    // includes the track).
+    harness.acceptedOutput.value = {
+      before: snapshot([], 'B', 0),
+      after: snapshot([record('b0', 0)], 'B', 0),
+      acceptedRevision: 'rev-2',
+      operationId: 'op-shared',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 2, redo: 0 });
+  });
+
+  it('RED: no stored snapshot field holds a dataUrl raster (D-03 — records + refs + revision hash only)', async () => {
+    // A pre-D-03-style snapshot carrying a raster in the cached repaint base —
+    // the coordinator captures it, the HISTORY ENTRY must not.
+    const raster = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const after: RotoPhysicalEditSnapshot<null> = {
+      ...snapshot([record('k0', 0)], 'k0', 0),
+      cachedReference: {
+        url: '/cache/track-a/frame-0.png',
+        cachedRepaintBase: { bytes: raster } as never,
+      },
+    };
+    const harness = createTrackHarness({ trackId: TRACK_A, current: after });
+    const before = snapshot([], 'k0', 0);
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'op-bytes',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+
+    // Undo then Redo so the STORED after entry (not just the fixture) crosses
+    // the replay seam as the redo target.
+    expect(await harness.history.undo()).toBe(true);
+    expect(await harness.history.redo()).toBe(true);
+    const storedAfter = harness.executePhysicalEdit.mock.calls[1][0].replayTargetSnapshot as unknown;
+    const rasterPaths = collectRasterPaths(storedAfter);
+    // The canonical record dataUrls (reference to the cached sidecar) are the
+    // only data: rasters allowed in the entry — never a frame-map or repaint base.
+    const outsideRecords = rasterPaths.filter((path) => (
+      !path.startsWith('snapshot.records[') && !path.startsWith('snapshot.groupOverrideRecords[')
+    ));
+    expect(outsideRecords).toEqual([]);
+  });
+});
+
+describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
+  const REVEAL_TRACK_ID = 'track-1';
+  const REVEAL_PNG = testWebpBytes('reveal');
+  const revealScript = {
+    provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
+    sourceFrame: 0,
+    sourceDisplayFrame: 0,
+    sourceRevision: 1,
+    brushes: [],
+  };
+
+  function registerRevealTrackDocument(layerId: string): void {
+    const base = createEfxPaintDocument(layerId);
+    const track = base.tracks[0]!;
+    registerDocument({
+      ...base,
+      activeTrackId: REVEAL_TRACK_ID,
+      tracks: [{ ...track, id: REVEAL_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    });
+  }
+
+  async function createRevealDescriptor(layerId: string) {
+    revealHarness.renderReveal.mockResolvedValue([
+      { frameIndex: 0, appFrame: 10, bytes: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
+      { frameIndex: 1, appFrame: 11, bytes: REVEAL_PNG, width: 4, height: 3, source: 'real-key' },
+    ]);
+    const result = await createRevealRail(layerId, {
+      trackId: REVEAL_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('reveal create must succeed');
+    expect(result.descriptor).not.toBeNull();
+    return result.descriptor!;
+  }
+
+  function createRevealHistory(layerId: string) {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: REVEAL_TRACK_ID, launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+    return { history, availability };
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintDocumentStore();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+    _setEfxPaintRevealScriptLoader(async () => revealScript);
+    revealHarness.renderReveal.mockReset();
+  });
+
+  it('undoes and redoes a reveal-create entry by reference, resyncing the runtime (G-52-5)', async () => {
+    const layerId = 'layer-reveal-undo';
+    registerRevealTrackDocument(layerId);
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    const descriptor = await createRevealDescriptor(layerId);
+
+    const { history, availability } = createRevealHistory(layerId);
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, REVEAL_TRACK_ID)).toHaveLength(2);
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(0);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, REVEAL_TRACK_ID)).toHaveLength(0);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, REVEAL_TRACK_ID)).toHaveLength(2);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('survives an unrecorded reference display-preference write after the record (G-52-5)', async () => {
+    const layerId = 'layer-reveal-display';
+    registerRevealTrackDocument(layerId);
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    const descriptor = await createRevealDescriptor(layerId);
+
+    const { history } = createRevealHistory(layerId);
+    history.recordBackgroundEdit(descriptor);
+
+    // An unrecorded DISPLAY-PREFERENCE write (opacity/visibility/lock/transform):
+    // replaces the document OBJECT without touching the content fingerprint
+    // (the D-07 split excludes display fields and never bumps documentRevision).
+    // The bare identity guard failed closed forever here — undo/redo died the
+    // moment any reference display control was touched after a recorded entry.
+    expect(setPhotoReferenceOpacity(layerId, 0.9).ok).toBe(true);
+    expect(getDocument(layerId)).not.toBe(descriptor.after);
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(0);
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+  });
+
+  it('still fails closed on an unrecorded CONTENT write after the record (G-52-5: CR-01 unchanged)', async () => {
+    const layerId = 'layer-reveal-content-guard';
+    registerRevealTrackDocument(layerId);
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    const descriptor = await createRevealDescriptor(layerId);
+
+    const { history, availability } = createRevealHistory(layerId);
+    history.recordBackgroundEdit(descriptor);
+
+    // An unrecorded CONTENT replacement (the reference SOURCE set bumps the
+    // content fingerprint — docrev + source refs): the guard must keep failing
+    // closed so the snapshot restore never clobbers the newer source.
+    expect(setPhotoReferenceSource(layerId, ['ref-b']).ok).toBe(true);
+    expect(await history.undo()).toBe(false);
+    expect(getDocument(layerId)).not.toBe(descriptor.before);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('chains a recorded reference-set entry below a reveal-create entry (G-52-5)', async () => {
+    const layerId = 'layer-reveal-chain';
+    registerRevealTrackDocument(layerId);
+
+    const { history, availability } = createRevealHistory(layerId);
+
+    // The Studio reference-confirm path now records the source-set descriptor
+    // (50-03's "one undoable operation" contract — previously dropped, which
+    // broke the ledger chain for every entry recorded before a placement).
+    const setResult = setPhotoReferenceSource(layerId, ['ref-a']);
+    expect(setResult.ok).toBe(true);
+    if (!setResult.ok || !setResult.descriptor) throw new Error('reference set must emit a descriptor');
+    history.recordBackgroundEdit(setResult.descriptor);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+
+    const descriptor = await createRevealDescriptor(layerId);
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 2, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(getDocument(layerId)).toBe(setResult.descriptor.after);
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(setResult.descriptor.before);
+    expect(getDocument(layerId)!.photoReference).toBeNull();
+    expect(availability.value).toEqual({ undo: 0, redo: 2 });
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(setResult.descriptor.after);
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
+    expect(availability.value).toEqual({ undo: 2, redo: 0 });
   });
 });

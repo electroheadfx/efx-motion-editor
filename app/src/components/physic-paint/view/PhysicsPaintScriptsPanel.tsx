@@ -1,4 +1,4 @@
-import { Clipboard, ClipboardPen, ClipboardX, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, Clipboard, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -6,6 +6,7 @@ import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScript
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
+import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
@@ -25,9 +26,7 @@ export interface PhysicsPaintScriptsPanelProps {
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
-  onDiscardScript: () => void;
   onCopyScript: () => void;
-  onApplyScript: () => void;
   onRefresh: () => void;
 }
 
@@ -43,9 +42,7 @@ export function PhysicsPaintScriptsPanel({
   onSave,
   onActivateRow,
   onLoadAndApply,
-  onDiscardScript,
   onCopyScript,
-  onApplyScript,
   onRefresh,
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
@@ -73,17 +70,13 @@ export function PhysicsPaintScriptsPanel({
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
   const copyScriptReasonId = useId();
-  const applyScriptReasonId = useId();
-  const clearScriptBufferReasonId = useId();
+  const previousRailReasonId = useId();
+  const nextRailReasonId = useId();
+  const deleteReasonId = useId();
+  const refreshReasonId = useId();
   const copyScriptTooltip = useStyledTooltip();
-  const applyScriptTooltip = useStyledTooltip();
-  const clearScriptBufferTooltip = useStyledTooltip();
   const canCopyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canCopy;
-  const canApplyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canApply;
   const copyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason);
-  const applyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canApplyRotoScript ? null : rotoScript.availability.value.applyDisabledReason);
-  const canClearScriptBuffer = actionMutationDisabledReason === null && rotoScript.availability.value.canDiscard;
-  const clearScriptBufferDisabledReason = actionMutationDisabledReason ?? (canClearScriptBuffer ? null : rotoScript.availability.value.discardDisabledReason);
   useEffect(() => {
     const previous = previousConfirmation.current;
     previousConfirmation.current = confirmation;
@@ -115,72 +108,42 @@ export function PhysicsPaintScriptsPanel({
 
   if (selectedLoopClip) {
     return (
-      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Group — ${selectedLoopClip.displayName}`}>
+      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}>
+        <div class="physics-paint-loop-clip-inspector-top-actions">
+          <IconButton buttonRef={playButtonRef} label={`Edit Rail — ${selectedLoopClip.displayName}`} title={`Edit Rail — ${selectedLoopClip.displayName}`} onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }} className="physics-paint-loop-clip-nav-compact-button primary labeled" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><Pencil size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Edit Rail</span></IconButton>
+          {linkedGroupNavigation && linkedGroupNavigation.total > 1 ? (
+            <>
+              <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button labeled" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Previous Rail</span></IconButton>
+              <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-nav-compact-button labeled" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronRight size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Next Rail</span></IconButton>
+            </>
+          ) : null}
+          <IconButton label={`Close Rail inspector — ${selectedLoopClip.displayName}`} title={`Close Rail inspector — ${selectedLoopClip.displayName}`} onClick={onCloseLoopClip} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
+        </div>
+        <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
           <div><dt>Source Action</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
           <div><dt>Placement</dt><dd>{selectedLoopClip.placementLabel}</dd></div>
           <div><dt>Cycle</dt><dd>{selectedLoopClip.cycleLabel}</dd></div>
           <div><dt>Effective</dt><dd>{selectedLoopClip.effectiveLabel}</dd></div>
-          <div><dt>Group Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
+          <div><dt>Rail Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
           <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
         </dl>
         {linkedGroupNavigation ? (
-          <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Group navigation">
-            <strong>Linked Groups — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
-            <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
-              {linkedGroupNavigation.total === 1 ? (
-                <button
-                  type="button"
-                  class="physics-paint-loop-clip-inspector-action"
-                  onClick={linkedGroupNavigation.onGoToGroup}
-                >
-                  Go to Group
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    class="physics-paint-loop-clip-inspector-action"
-                    disabled={linkedGroupNavigation.currentIndex === 0}
-                    onClick={linkedGroupNavigation.onPrevious}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    class="physics-paint-loop-clip-inspector-action"
-                    disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1}
-                    onClick={linkedGroupNavigation.onNext}
-                  >
-                    Next
-                  </button>
-                </>
-              )}
-            </div>
+          <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Rail navigation">
+            <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
+            {linkedGroupNavigation.total === 1 ? (
+              <button
+                type="button"
+                class="physics-paint-loop-clip-inspector-action"
+                onClick={linkedGroupNavigation.onGoToGroup}
+              >
+                Go to Rail
+              </button>
+            ) : null}
           </section>
         ) : null}
-        <div class="physics-paint-loop-clip-inspector-actions">
-          <button
-            ref={playButtonRef}
-            type="button"
-            class="physics-paint-loop-clip-inspector-action primary"
-            aria-label={`Edit Group — ${selectedLoopClip.displayName}`}
-            onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }}
-          >
-            <Pencil size={16} aria-hidden="true" />
-            <span>Edit Group</span>
-          </button>
-          <button
-            type="button"
-            class="physics-paint-loop-clip-inspector-action"
-            aria-label={`Close Group inspector — ${selectedLoopClip.displayName}`}
-            onClick={onCloseLoopClip}
-          >
-            <X size={16} aria-hidden="true" />
-            <span>Close</span>
-          </button>
-        </div>
+        </SidebarScrollArea>
       </div>
     );
   }
@@ -190,9 +153,9 @@ export function PhysicsPaintScriptsPanel({
       <div ref={toolbarRef} class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Actions">
         <IconButton label="Save Action" title={`Save Action — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
         <IconButton label="Load + Apply to Frame" title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Create Group…" title={`Create Group… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
-        <IconButton buttonRef={deleteButtonRef} label="Delete Action" title={`Delete Action — ${actionMutationDisabledReason ?? 'Remove the selected project Action'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
-        <IconButton label="Refresh Actions" title={`Refresh Actions — ${actionMutationDisabledReason ?? 'Scan the project Actions folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
+        <IconButton buttonRef={playButtonRef} label="Create Rail…" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
+        <IconButton buttonRef={deleteButtonRef} label="Delete Action" title={`Delete Action — ${actionMutationDisabledReason ?? 'Remove the selected project Action'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={deleteReasonId} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
+        <IconButton label="Refresh Actions" title={`Refresh Actions — ${actionMutationDisabledReason ?? 'Scan the project Actions folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
           <button
             type="button"
@@ -221,78 +184,21 @@ export function PhysicsPaintScriptsPanel({
             {!canCopyRotoScript && copyRotoScriptDisabledReason ? `unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Action'}
           </PhysicsPaintStyledTooltip>
         </span>
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-script-icon-button"
-            aria-label="Apply to Frame"
-            aria-disabled={!canApplyRotoScript ? 'true' : undefined}
-            aria-describedby={!canApplyRotoScript && applyRotoScriptDisabledReason ? applyScriptReasonId : undefined}
-            onFocus={applyScriptTooltip.onFocus}
-            onBlur={applyScriptTooltip.onBlur}
-            onClick={() => {
-              applyScriptTooltip.hide();
-              if (!canApplyRotoScript) return;
-              onApplyScript();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript) event.preventDefault();
-            }}
-          >
-            <ClipboardPen size={16} aria-hidden="true" />
-            <span class="physics-paint-roto-key-icon-label">Apply</span>
-          </button>
-          {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
-            <span id={applyScriptReasonId} class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canApplyRotoScript && applyRotoScriptDisabledReason ? `unavailable: ${applyRotoScriptDisabledReason}` : 'Apply to Frame'}
-          </PhysicsPaintStyledTooltip>
-        </span>
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-script-icon-button"
-            aria-label="Clear Action Buffer"
-            aria-disabled={!canClearScriptBuffer ? 'true' : undefined}
-            aria-describedby={!canClearScriptBuffer && clearScriptBufferDisabledReason ? clearScriptBufferReasonId : undefined}
-            onFocus={clearScriptBufferTooltip.onFocus}
-            onBlur={clearScriptBufferTooltip.onBlur}
-            onClick={() => {
-              clearScriptBufferTooltip.hide();
-              if (!canClearScriptBuffer) return;
-              onDiscardScript();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canClearScriptBuffer) event.preventDefault();
-            }}
-          >
-            <ClipboardX size={16} aria-hidden="true" />
-            <span class="physics-paint-roto-key-icon-label">Clear</span>
-          </button>
-          {!canClearScriptBuffer && clearScriptBufferDisabledReason ? (
-            <span id={clearScriptBufferReasonId} class="physics-paint-sr-only">{clearScriptBufferDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canClearScriptBuffer && clearScriptBufferDisabledReason ? `unavailable: ${clearScriptBufferDisabledReason}` : 'Clear Action from buffer'}
-          </PhysicsPaintStyledTooltip>
-        </span>
       </div>
       {linkedGroupNavigation ? (
-        <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Group navigation">
-          <strong>Linked Groups — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
-          <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
-            {linkedGroupNavigation.total === 1 ? (
-              <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
-            ) : (
-              <>
-                <button type="button" class="physics-paint-loop-clip-inspector-action" disabled={linkedGroupNavigation.currentIndex === 0} onClick={linkedGroupNavigation.onPrevious}>Previous</button>
-                <button type="button" class="physics-paint-loop-clip-inspector-action" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} onClick={linkedGroupNavigation.onNext}>Next</button>
-              </>
-            )}
-          </div>
+        <section class="physics-paint-loop-clip-linked-navigation physics-paint-loop-clip-nav-compact" aria-label="Linked Rail navigation">
+          <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
+          {linkedGroupNavigation.total === 1 ? (
+            <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
+          ) : (
+            <div class="physics-paint-loop-clip-nav-compact-actions">
+              <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /></IconButton>
+              <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronRight size={16} aria-hidden="true" /></IconButton>
+            </div>
+          )}
         </section>
       ) : null}
+      <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
       <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto Actions">
         {rows.map((row) => (
           <div
@@ -356,10 +262,11 @@ export function PhysicsPaintScriptsPanel({
         {!rows.length ? (
           <div class="physics-paint-scripts-empty">
             <p>No project Actions yet.</p>
-            <p>Save the current real Roto frame as an Action to create a Group.</p>
+            <p>Save the current real Roto frame as an Action to create a Rail.</p>
           </div>
         ) : null}
       </div>
+      </SidebarScrollArea>
       {confirmation ? (
         <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
           onKeyDown={(event) => {
@@ -382,9 +289,9 @@ export function PhysicsPaintScriptsPanel({
           {referenceImpact ? (
             <div class="physics-paint-action-delete-groups">
               <p>
-                This Action is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? 'Group' : 'Groups'} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? 'range' : 'ranges'}.
+                This Action is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? 'Rail' : 'Rails'} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? 'range' : 'ranges'}.
               </p>
-              <ul aria-label="Affected Groups">
+              <ul aria-label="Affected Rails">
                 {referenceImpact.affectedGroups.map((group) => (
                   <li key={group.groupId}>
                     <strong>{group.name} · {formatFrameRange(group.placementStart, group.endExclusive)}</strong>
@@ -397,28 +304,28 @@ export function PhysicsPaintScriptsPanel({
                 <button
                   type="button"
                   class="physics-paint-action-delete-choice recommended"
-                  aria-label="Keep Groups"
+                  aria-label="Keep Rails"
                   aria-disabled={confirmationBusy ? 'true' : undefined}
                   onClick={() => {
                     if (confirmationBusy) return;
                     void library.confirmDelete('keep-groups');
                   }}
                 >
-                  <strong>Keep Groups</strong>
-                  <span>Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.</span>
+                  <strong>Keep Rails</strong>
+                  <span>Recommended. Delete the Action but keep every Rail, fragment, key, timing value, cache, and rendered result. Rails become detached and timeline space stays occupied.</span>
                 </button>
                 <button
                   type="button"
                   class="physics-paint-action-delete-choice danger"
-                  aria-label="Delete Action and Groups"
+                  aria-label="Delete Action and Rails"
                   aria-disabled={confirmationBusy ? 'true' : undefined}
                   onClick={() => {
                     if (confirmationBusy) return;
                     void library.confirmDelete('delete-action-and-groups');
                   }}
                 >
-                  <strong>Delete Action and Groups</strong>
-                  <span>Delete the Action and all {referenceImpact.groupCount} referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.</span>
+                  <strong>Delete Action and Rails</strong>
+                  <span>Delete the Action and all {referenceImpact.groupCount} referencing Rails, including uniquely owned source, cache, and Rail-gap data. Their occupied timeline ranges are freed.</span>
                 </button>
                 <button
                   ref={cancelDeleteRef}
@@ -473,8 +380,40 @@ function formatFrameRange(start: number, endExclusive: number): string {
   return `F${start}–F${endExclusive - 1}`;
 }
 
-function IconButton(props: { buttonRef?: Ref<HTMLButtonElement>; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () => void; children: ComponentChildren }) {
-  const button = <button ref={props.buttonRef} type="button" class="physics-paint-script-icon-button" aria-label={props.label} title={props.title} disabled={props.disabled} aria-describedby={props.disabledReason ? props.descriptionId : undefined} onClick={props.onClick}>{props.children}</button>;
-  if (!props.disabledReason || !props.descriptionId) return button;
-  return <span class="physics-paint-script-disabled-control" tabIndex={0} title={props.title} aria-describedby={props.descriptionId}>{button}<span id={props.descriptionId} class="physics-paint-sr-only">{props.disabledReason}</span></span>;
+function IconButton(props: { buttonRef?: Ref<HTMLButtonElement>; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () => void; className?: string; wrapperClassName?: string; children: ComponentChildren }) {
+  const tooltip = useStyledTooltip();
+  const isDisabled = props.disabled ?? false;
+  const reason = props.disabledReason ?? null;
+  const buttonClass = props.className ?? 'physics-paint-script-icon-button';
+  const wrapperClass = props.wrapperClassName ?? 'physics-paint-roto-key-icon-action';
+  return (
+    <span class={wrapperClass} onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}>
+      <button
+        ref={props.buttonRef}
+        type="button"
+        class={buttonClass}
+        aria-label={props.label}
+        aria-disabled={isDisabled ? 'true' : undefined}
+        aria-describedby={isDisabled && reason ? props.descriptionId : undefined}
+        onFocus={tooltip.onFocus}
+        onBlur={tooltip.onBlur}
+        onClick={() => {
+          tooltip.hide();
+          if (isDisabled) return;
+          props.onClick?.();
+        }}
+        onKeyDown={(event) => {
+          if ((event.key === 'Enter' || event.key === ' ') && isDisabled) event.preventDefault();
+        }}
+      >
+        {props.children}
+      </button>
+      {isDisabled && reason ? (
+        <span id={props.descriptionId} class="physics-paint-sr-only">{reason}</span>
+      ) : null}
+      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="right-edge" avoidRowOverlap>
+        {isDisabled && reason ? `unavailable: ${reason}` : props.title}
+      </PhysicsPaintStyledTooltip>
+    </span>
+  );
 }

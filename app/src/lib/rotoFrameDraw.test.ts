@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { drawRotoFrameComposite, getMissingRotoFrameSpan, resolveMissingRotoFrameDraw } from './rotoFrameDraw';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 describe('drawRotoFrameComposite', () => {
   it('applies independent positive-strength grain after a prepared background paper canvas', () => {
@@ -75,7 +77,7 @@ describe('resolveMissingRotoFrameDraw', () => {
     expect(setFrame).not.toHaveBeenCalled();
     expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
     expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
-    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1', TEST_TRACK_ID)).toEqual([]);
   });
 
   it('resolves persisted paper and canvas grain metadata for missing Roto frames before layer fallback', () => {
@@ -99,7 +101,7 @@ describe('resolveMissingRotoFrameDraw', () => {
       materialize: true,
     });
     expect(setFrame).not.toHaveBeenCalled();
-    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1', TEST_TRACK_ID)).toEqual([]);
   });
 
   it('classifies strict interior missing frames as materialization-eligible and edge spans as dynamic', () => {

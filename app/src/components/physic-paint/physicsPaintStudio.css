@@ -256,7 +256,10 @@ button.destructive {
   border-color: #4caf70 !important;
   background: #12331f !important;
   color: #4caf70 !important;
-  animation: pulse 2s infinite;
+  /* 47-05: bounded, not infinite — an endlessly animating element keeps the
+     WKWebView compositor presenting frames forever, and each presented frame
+     leaks the window backing (~45 MB/s — the 7-min OOM black window). */
+  animation: pulse 2s 3;
 }
 
 .physics-idle {
@@ -409,7 +412,11 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px;
+  /* 47-01 UAT round 3: row 3 is `auto` — the workflow strip sets its own
+     dynamic height (default = exactly enough for all tracks + Bg, capped at
+     270px; the top-edge drag handle resizes it). The canvas row absorbs the
+     difference. */
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto;
   grid-template-columns: 52px minmax(0, 1fr) minmax(316px, 340px);
   width: 100vw;
   height: 100vh;
@@ -740,7 +747,16 @@ button.destructive {
   overflow: hidden;
 }
 
+.physics-paint-right-pane-tools,
+.physics-paint-right-pane-secondary {
+  flex-direction: column;
+}
+
 .physics-paint-right-pane-scroll-area {
+  width: 100%;
+}
+
+.physics-paint-scripts-list-scroll-area {
   width: 100%;
 }
 
@@ -996,6 +1012,7 @@ button.destructive {
   align-items: stretch;
   gap: 0;
   min-width: 0;
+  flex: 0 0 auto;
   height: 35px;
   padding: 0 4px;
   border-bottom: 1px solid #696d72;
@@ -1034,6 +1051,13 @@ button.destructive {
 .physics-paint-tab-onion,
 .physics-paint-tab-motion,
 .physics-paint-tab-scripts {
+  flex: 1 1 0;
+}
+
+/* 47 UAT: the tool pane's two tabs ('Paint option' / 'Track option') share
+   the bottom pane's tab look and split the pane width equally. */
+.physics-paint-tab-paint-option,
+.physics-paint-tab-track-option {
   flex: 1 1 0;
 }
 
@@ -1080,7 +1104,8 @@ button.destructive {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  min-height: 180px;
+  min-height: 0;
+  flex: 1 1 auto;
   padding: 12px 4px 4px;
   overflow: hidden;
 }
@@ -1099,14 +1124,8 @@ button.destructive {
   min-width: 0;
 }
 
-.physics-paint-script-disabled-control {
-  display: flex;
-  min-width: 0;
-}
-
-/* Guarded clipboard actions (Copy Script / Apply Script / Clear Script
-   Buffer) form the second toolbar row styled like the first (36.15-08, UAT
-   Gap C). */
+/* Guarded toolbar actions (Save / Load + Apply / Create Rail / Delete /
+   Refresh / Copy) all use the guarded styled-tooltip idiom (260905-dso). */
 .physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action {
   display: flex;
   min-width: 0;
@@ -1138,6 +1157,21 @@ button.destructive {
   text-transform: none;
 }
 
+/* Guarded toolbar buttons stay focusable while unavailable (aria-disabled,
+   never the native disabled attribute) so the styled tooltip can explain the
+   reason — the grey-out below mirrors the roto-key-icon-button disabled
+   language and also pins the hover/focus colors so an unavailable button
+   never looks interactive (260905-dso). */
+.physics-paint-script-icon-button[aria-disabled="true"],
+.physics-paint-script-icon-button[aria-disabled="true"]:hover,
+.physics-paint-script-icon-button[aria-disabled="true"]:focus-visible {
+  border-color: #3f4851;
+  background: #2a3036;
+  color: #7d8791;
+  cursor: default;
+  opacity: 1;
+}
+
 /* The labeled second-row buttons keep their Lucide icons pinned at the full
    first-row 16px size — the svg never flex-shrinks (36.15-10, UAT Gap F-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {
@@ -1151,13 +1185,12 @@ button.destructive {
 
 .physics-paint-scripts-list {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
-  min-height: 0;
+  min-height: 100%;
+  padding-right: 6px;
   overflow-x: hidden;
-  overflow-y: auto;
 }
 
 .physics-paint-script-row {
@@ -1170,7 +1203,7 @@ button.destructive {
   padding: 5px;
   border: 1px solid #565b61;
   border-radius: 6px;
-  background: #3b3d3f;
+  background: transparent;
   color: #eef1f4;
   text-align: left;
   cursor: pointer;
@@ -1183,7 +1216,12 @@ button.destructive {
 .physics-paint-script-row-copy, .physics-paint-script-rename-wrap { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .physics-paint-script-name, .physics-paint-script-provenance, .physics-paint-script-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .physics-paint-script-name { min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font-size: 12px; font-weight: 700; }
-.physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-empty { margin: 0; color: #aeb5be; font-size: 10px; }
+/* 260905-hfd: the disabled rename button must not inherit the global button:disabled
+   grey-out (opacity 0.5, color #6b7280, background #111827). Specificity 0-2-0 beats
+   the global rule (0-1-1), so the disabled affordance keeps its disabled behavior
+   (rename still requires selection) but renders white at full opacity with no dark strip. */
+.physics-paint-script-name:disabled { color: inherit; opacity: 1; background: transparent; cursor: default; }
+.physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-empty { margin: 0; color: #eef1f4; font-size: 10px; }
 .physics-paint-script-rename-wrap input { min-width: 0; width: 100%; box-sizing: border-box; }
 .physics-paint-script-inline-error { color: #ff8585; font-size: 10px; }
 .physics-paint-loop-clip-panel { justify-content: flex-start; }
@@ -1193,12 +1231,33 @@ button.destructive {
 .physics-paint-loop-clip-inspector dd { min-width: 0; margin: 0; overflow: hidden; color: #eef1f4; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .physics-paint-loop-clip-linked-navigation { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin-top: 4px; }
 .physics-paint-loop-clip-linked-navigation > strong { overflow: hidden; color: #eef1f4; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.physics-paint-loop-clip-inspector-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
-.physics-paint-loop-clip-inspector-actions.single { grid-template-columns: minmax(0, 1fr); }
 .physics-paint-loop-clip-inspector-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid #62676d; border-radius: 5px; background: #4b4e51; color: #f3f5f7; text-transform: none; }
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
 .physics-paint-loop-clip-inspector-action:disabled { border-color: #4d5156; background: #34373a; color: #777e86; cursor: not-allowed; }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
+/* 260905-hfd: compact one-line Linked Rails nav — heading left, icon-only
+   chevron buttons right. The row-direction override wins at equal specificity
+   because it is declared after the column-direction linked-navigation rule. */
+.physics-paint-loop-clip-nav-compact { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 6px; }
+.physics-paint-loop-clip-nav-compact-actions { display: flex; flex: 0 0 auto; gap: 4px; }
+.physics-paint-loop-clip-nav-compact-action { display: flex; flex: 0 0 auto; }
+.physics-paint-loop-clip-nav-compact-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; min-width: 24px; padding: 0; border: 1px solid #62676d; border-radius: 5px; background: #4b4e51; color: #f3f5f7; text-transform: none; }
+.physics-paint-loop-clip-nav-compact-button.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
+/* 260905-hfd (UAT): the inspector top row's Edit/Previous/Next keep visible
+   labels — the labeled modifier lets the button grow to fit the text while
+   the list-view chevrons and Close stay 24px icon-only. */
+.physics-paint-loop-clip-nav-compact-button.labeled { width: auto; min-width: 0; padding: 0 8px; gap: 4px; }
+.physics-paint-loop-clip-nav-compact-button svg { flex: 0 0 auto; }
+.physics-paint-loop-clip-nav-compact-button[aria-disabled="true"],
+.physics-paint-loop-clip-nav-compact-button[aria-disabled="true"]:hover,
+.physics-paint-loop-clip-nav-compact-button[aria-disabled="true"]:focus-visible {
+  border-color: #4d5156;
+  background: #34373a;
+  color: #777e86;
+  cursor: not-allowed;
+}
+.physics-paint-loop-clip-nav-compact-button:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
+.physics-paint-loop-clip-inspector-top-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; min-width: min(420px, calc(100% - 8px)); max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
 .physics-paint-action-delete-groups { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .physics-paint-action-delete-groups > p { margin: 0; color: #eef1f4; font-size: 12px; line-height: 1.5; }
@@ -1369,6 +1428,63 @@ button.destructive {
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* 52-05 (G-52-3): the Create Rail tab strip (apply mode only) — the same
+   segmented language as the mode-group control, spanning the card grid. */
+.physics-paint-play-script-tabs {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
+  background: var(--ps-inset);
+}
+
+.physics-paint-play-script-tab {
+  min-width: 0;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ps-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.physics-paint-play-script-tab:hover:not([aria-selected="true"]):not(:disabled) {
+  background: var(--ps-raised);
+  color: var(--ps-fg);
+}
+
+.physics-paint-play-script-tab[aria-selected="true"] {
+  background: var(--ps-accent);
+  color: oklch(0.99 0 0);
+  box-shadow: 0 1px 4px oklch(0 0 0 / 0.35);
+}
+
+.physics-paint-play-script-tab:disabled { cursor: default; opacity: 0.5; }
+
+/* 52-05 (G-52-3, D-12): the reveal reference guard notice — an actionable row,
+   never a bare error. */
+.physics-paint-play-script-reveal-notice {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 13px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
+  color: var(--ps-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* Body (D-16): two-column card grid; Mode/Motion wiggle/summary bar span both columns.
@@ -1964,12 +2080,15 @@ button.destructive {
 .physics-paint-workflow-strip {
   grid-row: 3;
   grid-column: 2;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0;
-  /* 161px = Plan 06 155px with the user-approved Gap H-6 action-row
-     relaxation (28px to 34px): 46 + 1 + 28 + 38 + 34 + 14. */
-  height: 161px;
+  /* 47-01 UAT round 3: the strip height is DYNAMIC — set inline by the
+     component (default = exactly enough for every track row + the Bg row,
+     capped at 270px so the canvas keeps room; the top-edge drag handle
+     resizes it within [1 row, full content height]). The fixed 264px band is
+     gone; the canvas row absorbs the difference. */
   min-height: 0;
   padding: 0 12px;
   border-top: 1px solid #5a5e63;
@@ -1977,6 +2096,39 @@ button.destructive {
   overflow-y: hidden;
   background: #3e3f41;
   user-select: none;
+}
+
+/* 47-01 UAT round 3: the timeline's top-edge resize handle — a thin grab bar
+   between the canvas and the strip. Dragging up grows the strip (up to the
+   full content height = all rows visible), dragging down shrinks it (down to
+   1 row; the rows-region + header-rows band scroll). Absolutely positioned so
+   it never adds to the strip's chrome band sum. */
+.physics-paint-strip-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.physics-paint-strip-resize-handle::before {
+  content: '';
+  width: 56px;
+  height: 3px;
+  border-radius: 999px;
+  background: #585a5c;
+  transition: background 0.12s ease;
+}
+
+.physics-paint-strip-resize-handle:hover::before,
+.physics-paint-strip-resize-handle:active::before {
+  background: #6f90ff;
 }
 
 .physics-paint-workflow-header,
@@ -2022,6 +2174,12 @@ button.destructive {
 .physics-paint-status-capsule .lucide {
   flex: 0 0 auto;
   color: #f8c96b;
+  position: relative;
+  z-index: 1;
+}
+
+.physics-paint-status-capsule-error .lucide {
+  color: #ff6b6b;
 }
 
 .physics-paint-status-capsule-text {
@@ -2030,6 +2188,29 @@ button.destructive {
   color: #dde7f0;
   text-overflow: ellipsis;
   white-space: nowrap;
+  position: relative;
+  z-index: 1;
+}
+
+.physics-paint-status-capsule-warm {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.physics-paint-status-capsule-warm-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(248, 201, 107, 0.45);
+  transition: width 60ms linear;
 }
 
 .physics-paint-pill {
@@ -2049,13 +2230,6 @@ button.destructive {
 .physics-paint-pill--navigation {
   border-color: #575e66;
   background: #34383c;
-}
-
-/* 43.5-02 final polish: inside the liquid-glass toolbox popover the pill's
-   own tonal background reads as a double surface; the border and the inner
-   control hover/focus/disabled states stay unchanged. */
-.physics-paint-pill--interpolation {
-  border-color: #596775;
 }
 
 .physics-paint-pill--playback {
@@ -2185,10 +2359,17 @@ button.destructive {
   line-height: 1;
 }
 
-.physics-paint-roto-loop-toggle.active {
+.physics-paint-roto-loop-toggle.active,
+.physics-paint-roto-solo-toggle.active {
   border: 1px solid var(--color-accent, #2d5be3);
   background: color-mix(in srgb, var(--color-accent, #2d5be3) 44%, transparent);
   color: #fff;
+}
+
+/* 260905-d1w: the relocated Solo nav-button dims in its aria-disabled guarded
+   state exactly like the pill siblings' native-disabled treatment. */
+.physics-paint-roto-solo-toggle[aria-disabled="true"] {
+  opacity: 0.35;
 }
 
 .physics-paint-roto-fps-control input {
@@ -2494,7 +2675,7 @@ button.destructive {
   position: absolute;
   top: 0;
   width: 2px;
-  height: 12px;
+  height: 8px;
   background: #ff6b6b;
   pointer-events: none;
 }
@@ -2538,7 +2719,7 @@ button.destructive {
   position: fixed;
   z-index: 60;
   max-width: 280px;
-  max-height: 96px;
+  max-height: 200px;
   padding: 5px 10px 6px;
   border: 0;
   border-radius: 4px;
@@ -2597,61 +2778,6 @@ button.destructive {
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
   border-right: 6px solid var(--color-tooltip-bg);
-}
-
-.physics-paint-roto-interpolation-controls {
-  min-width: 0;
-}
-
-.physics-paint-roto-interpolation-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #e3e6ea;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.physics-paint-roto-interpolation-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: transparent;
-  color: #b8c7ff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-
-.physics-paint-roto-interpolation-toggle:hover:not(:disabled) {
-  background: rgba(184, 199, 255, 0.14);
-}
-
-.physics-paint-roto-interpolation-toggle.active {
-  background: rgba(184, 199, 255, 0.2);
-  color: #dbe4ff;
-}
-
-.physics-paint-roto-interpolation-toggle:focus-visible {
-  outline: 2px solid #9bb7ff;
-  outline-offset: 2px;
-}
-
-.physics-paint-roto-interpolation-toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.physics-paint-roto-interpolation-controls[data-pending="true"] .physics-paint-roto-interpolation-toggle {
-  cursor: wait;
 }
 
 .physics-paint-roto-force-spacing-controls {
@@ -2722,7 +2848,6 @@ button.destructive {
   opacity: 0.58;
 }
 
-.physics-paint-roto-interpolation-select,
 .physics-paint-roto-motion-toggle {
   min-height: 22px;
   padding: 2px 6px;
@@ -2856,6 +2981,10 @@ button.destructive {
 .physics-paint-timeline {
   display: flex;
   flex-direction: column;
+  /* 47-01 UAT round 3: the timeline fills the strip's dynamic height; the
+     rows-region inside scrolls when the strip is too short for all rows. */
+  flex: 1 1 auto;
+  min-height: 0;
   border-top: 1px solid #5a5e63;
   border-radius: 6px;
   overflow: hidden;
@@ -2863,7 +2992,17 @@ button.destructive {
 }
 
 .physics-paint-timeline-scroll {
+  /* 47-01 UAT round 3: a column flex so the ruler stays pinned at 28px and
+     the rows-region fills the remaining height (flex: 1 1 auto; min-height: 0)
+     and scrolls vertically when the strip is too short for all rows. */
+  display: flex;
+  flex-direction: column;
+  /* 260827-s52 Task 2: positioning context for the full-height playhead bar
+     (absolute overlay spanning the ruler through the visible Bg-row band). */
+  position: relative;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   /* Small left offset shared by the ruler and lane so the selected frame-0
      cell's orange ring (2px outline + 1px offset + 1px shadow) is not clipped
      by the scroll edge (36.15-12, UAT Gap H-5). The 18px pitch and
@@ -2872,6 +3011,12 @@ button.destructive {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  /* 47-01 UAT: the horizontal scroll stops at frame boundaries so the
+     viewport right edge never slices a cell mid-frame. `scroll-padding-left`
+     mirrors the 4px padding so frame 0 snaps to the same origin the ruler
+     uses. */
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 4px;
 }
 
 .physics-paint-timeline-scroll::-webkit-scrollbar {
@@ -2880,6 +3025,7 @@ button.destructive {
 
 .physics-paint-timeline-scrollbar {
   position: relative;
+  flex: 0 0 14px;
   height: 14px;
   margin: 0;
   border: 0;
@@ -2901,13 +3047,20 @@ button.destructive {
 .physics-paint-ruler {
   display: flex;
   align-items: center;
+  flex: 0 0 28px;
   height: 28px;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
+  /* 260827-s52: the ruler is the NLE seek/scrub surface. */
+  cursor: pointer;
 }
 
 .physics-paint-ruler-tick {
   position: relative;
+  /* 47-01 UAT round 5: one tick spans RULER_STEP (3) abutting 18px cells, so
+     its flex basis is 3 × 18px = 54px — the label stays centered on its 3-frame
+     group as the pitch grows. (The strip also sets the same basis inline from
+     RULER_STEP × ROTO_CELL_WIDTH_PX; this rule is the CSS-level fallback.) */
   flex: 0 0 54px;
   box-sizing: border-box;
   align-self: stretch;
@@ -2929,19 +3082,36 @@ button.destructive {
   content: '';
 }
 
+/* 260827-s52 Task 2: full-height playhead bar. top:0/bottom:0 spans exactly
+   the visible ruler-through-Bg band (the rows-region scrolls vertically
+   INSIDE itself; timeline-scroll only scrolls horizontally, so the bar rides
+   the horizontal scroll with the content). #A6D334 is the locked synchronized
+   accent (47 close-out palette); z-index 30 clears the cell/rail layers while
+   staying under tooltips. pointer-events: none is the hard contract (T-s52-03):
+   cells, rails, capsules, and the ruler receive every click/drag as before. */
+.physics-paint-playhead-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #A6D334;
+  pointer-events: none;
+  z-index: 30;
+}
+
 .physics-paint-loop-clip-rail {
   position: absolute;
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 12px;
+  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-loop-clip-rail-anchor {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -2950,7 +3120,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -2968,8 +3138,9 @@ button.destructive {
 
 .physics-paint-loop-clip-rail-segment {
   position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
+  /* Same 4px drop as the Key Rail segment (UAT round 4): 1px above the cells. */
+  inset: 4px 0 auto 0;
+  height: 4px;
   background: #8b5cf6;
   pointer-events: none;
 }
@@ -3004,39 +3175,49 @@ button.destructive {
   background: #67e8f9;
 }
 
-.physics-paint-loop-clip-lifecycle-dot {
-  position: absolute;
-  top: 1.5px;
-  left: 50%;
-  z-index: 1;
-  width: 6px;
-  height: 6px;
-  border: 1px solid #20262d;
-  border-radius: 50%;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
+/* 52-03 (D-22, amended AM-1): the reveal rail's blue line color. The variant
+   color is the DEFAULT overrideColor (one blue for motion and static),
+   overridable per rail via the existing 43-06 mechanism — the rail target sets
+   --rail-color and --rail-color-hover from the presentation. These rules win
+   over the playscript mode rules by specificity; the shared selected/unresolved
+   colors stay identical across every rail family (one color system, not two). */
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color, #69BBC8);
 }
 
-.physics-paint-loop-clip-lifecycle-dot.synchronized {
-  background: #34d399;
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color, #69BBC8);
 }
 
-.physics-paint-loop-clip-lifecycle-dot.modified {
-  background: #fb923c;
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #8FCFD9);
 }
 
-.physics-paint-loop-clip-lifecycle-dot.detached {
-  background: #9ca3af;
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #8FCFD9);
 }
 
-.physics-paint-loop-clip-lifecycle-dot.unavailable {
-  border-color: #d1d5db;
-  background: #6b7280;
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.selected .physics-paint-loop-clip-rail-segment {
+  background: #f59e0b;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.unresolved .physics-paint-loop-clip-rail-segment {
+  background: #ff6b6b;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-progressive.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #8FCFD9);
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-reveal.mode-static.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: var(--rail-color-hover, #8FCFD9);
 }
 
 /* Shared rail boundary treatment (43.4 follow-up): every rail family
    (Motion/Static Loop Clip and Key Rail) draws the same boundary edges on its
-   first and last covered cells — the 2px x 3px band cap on the rail segment
+   first and last covered cells — the 2px x 4px band cap on the rail segment
    plus the 1px #F8FAFC full-height cell edge. One rule set consumed by both
    hosts via the shared physics-paint-rail-target / physics-paint-rail-segment
    classes; per-family base colors stay untouched. */
@@ -3045,7 +3226,7 @@ button.destructive {
   position: absolute;
   top: 0;
   width: 2px;
-  height: 3px;
+  height: 4px;
   background: #f8fafc;
   content: '';
 }
@@ -3066,38 +3247,20 @@ button.destructive {
   border-right: 1px solid #f8fafc;
 }
 
-/* Shared rail focus ring (43.4 defect 8): ONE full-row rectangle for every
-   rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
-   focused target's ::after so it wraps the whole 38px lane (3px band + full
-   24px cell row) at a 2px offset instead of only the 12px hit target, and no
-   container clips it; pointer-events none keeps the 12px hit target
-   unchanged. :focus draws the ring too so a mouse-clicked rail never falls
-   back to the UA default outline (Defect 6). */
+/* Shared rail focus treatment (43.4 feature 8; 47 close-out UAT round 10):
+   NO selection box — the ring was removed. Selection paints as an orange
+   background fill (cells) / orange segment (rails, identical across the Key
+   Rail and Motion/Static Loop Clip families). The outline suppression stays
+   so a mouse-clicked rail never falls back to the UA default outline
+   (Defect 6). */
 .physics-paint-rail-target:focus,
 .physics-paint-rail-target:focus-visible {
   outline: none;
 }
 
-.physics-paint-rail-target:focus::after,
-.physics-paint-rail-target:focus-visible::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -24px;
-  z-index: 2;
-  border: 2px solid #f2f5f7;
-  /* Capsule-ish rounding on the full-row ring (8px reads rounded on the
-     ~38px-tall rectangle without going full pill); identical across every
-     rail family via the shared class. */
-  border-radius: 8px;
-  pointer-events: none;
-}
-
 /* 43.6 D-01 anchor tick: painted on the set anchor rail's leading edge so the
    user can always identify which member anchors the range/union expansion.
-   2px wide x 8px high #F2F5F7 at 70% opacity, top: 4px inside the 12px band;
+   2px wide x 8px high #F2F5F7 at 70% opacity, top: 4px inside the 8px band;
    aria-hidden in markup and pointer-events none here so the 12px hit target
    stays unchanged. Shared across every rail family via the shared class. */
 .physics-paint-rail-anchor-tick {
@@ -3143,11 +3306,240 @@ button.destructive {
 .physics-paint-loop-clip-rail-ghost-blocked-edge {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   width: 2px;
   background: #ff6b6b;
   pointer-events: none;
   z-index: 1;
+}
+
+/* 49-05 (S4): the fixed Background row's clip rails — neutral (purple/cyan-free)
+   styling on the muted row. The rail reads resolver facts only (capsule-never-math):
+   the requested badge, the shortened visual, and the diagonal cut on a partial
+   cycle all come from deriveEfxPaintBackgroundResolution. The badge always shows
+   the REQUESTED duration; the shortened state is a distinct visual + tooltip label
+   (D-12). */
+.physics-paint-bg-clip-rail {
+  position: absolute;
+  /* 49-06 (UAT round 5): the container fills the WHOLE lane (top: 0) so the
+     anchors position the rail line in the 8px band and the cells below it —
+     a `top: 8px` container double-offset the cells (8px container + 8px cell
+     top) and cut their bottom 8px off the 30px row. */
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 100%;
+  pointer-events: none;
+}
+
+.physics-paint-bg-clip-rail-anchor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 12px;
+  pointer-events: auto;
+}
+
+/* 49-06 (UAT round 2): the Bg clip renders as a GROUP OF CELLS — one filled
+   cell per frame of the clip's extent (like Paint track cells). 49-06 UAT
+   round 8: the cells are the whole-rail MOVE handle — a pointerdown on any
+   cell routes to the drag hook (same as the line), so the entire rail is
+   draggable and a sub-threshold release selects the clip. The cells sit below
+   the 8px rail band (top: 8px), matching the track layout. */
+.physics-paint-bg-clip-cells {
+  position: absolute;
+  top: 8px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  pointer-events: auto;
+}
+
+.physics-paint-bg-clip-cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* The filled cell color — #4a7eac (a visible neutral blue, purple/cyan-free
+     per UI-SPEC S3). */
+  background: #4a7eac;
+}
+
+.physics-paint-bg-clip-cell:hover {
+  background: #5a8fc0;
+}
+
+/* 49-06 (UAT round 9): the filmstrip — a cell with a source image paints it
+   cover-fit (the ≤2048px dataUrl downscales to the 18px cell; the browser
+   reuses the already-decoded registry image, so no extra decode). */
+.physics-paint-bg-clip-cell.has-image {
+  background-size: cover;
+  background-position: center;
+}
+
+/* 49-06 (UAT round 3): the vertical separator between adjacent cells — an
+   inset 1px line on every cell except the first, so the clip reads as a GROUP
+   OF CELLS (the user's round-3 correction). box-shadow (not border) keeps the
+   flex box model intact. */
+.physics-paint-bg-clip-cell:not(:first-child) {
+  box-shadow: inset 1px 0 0 0 rgba(0, 0, 0, 0.28);
+}
+
+/* 49-06 (UAT round 6): the clip's START/END full-height cell edges — the SAME
+   #f8fafc 1px edge the track Key Rail draws via boundary-cell-start/end. Two
+   adjacent Bg clips each carry their own edges, so the boundary between them
+   reads as clearly as between two track rails. */
+.physics-paint-bg-clip-cells::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: #f8fafc;
+  pointer-events: none;
+}
+
+.physics-paint-bg-clip-cells::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  background: #f8fafc;
+  pointer-events: none;
+}
+
+/* 49-06 (UAT round 4): the rail LINE — exactly like the track's Key Rail
+   graphic line (a 4px segment in the 8px band). The element is the whole-rail
+   MOVE handle (full 8px band hit area, grab cursor); the visual segment is the
+   ::before. The cells beneath are the fill. */
+.physics-paint-bg-clip-rail-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: grab;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.physics-paint-bg-clip-rail-line::before {
+  content: '';
+  position: absolute;
+  /* 49-06 (UAT round 6): the line sits 4px into the 8px band — EXACTLY the
+     track Key Rail's segment position (physics-paint-key-rail-segment). The
+     freed 4px at the band's top reads as the vertical gap between stacked
+     tracks, so two adjacent Bg clips stay as distinguishable as two track
+     rails. */
+  inset: 4px 0 auto 0;
+  height: 4px;
+  /* 49-06 (UAT round 7): the RESTING line color is #195991 (the user's
+     requested darker blue). The line does NOT change during a move/resize —
+     only the white phantom preview is drawn on top of it. */
+  background: #195991;
+  pointer-events: none;
+}
+
+.physics-paint-bg-clip-rail-line:hover::before {
+  background: #1f6bb0;
+}
+
+/* 49-06 (UAT round 7): the SELECTED line is the SAME orange as the selected
+   cells (#f5a623, the timeline selection contract) — the selected rail reads
+   orange, and the right-panel Background Clip options relate to it. The anchor
+   prefix raises the specificity above the hover rule so a selected line stays
+   orange even while the cursor is over it. */
+.physics-paint-bg-clip-rail-anchor .physics-paint-bg-clip-rail-line.selected::before {
+  background: #f5a623;
+}
+
+/* 49-06 (UAT round 5): the START/END markers — the RESIZE handles. The element
+   IS the visual cap (2px x 4px #f8fafc, the shared rail boundary cap — exactly
+   the track's Key Rail boundary treatment, no extra rectangle); the ::after is
+   a transparent 7px hit strip so the ew-resize grab stays usable. */
+.physics-paint-bg-clip-rail-marker {
+  position: absolute;
+  /* 49-06 (UAT round 6): the cap sits at the SAME 4px-into-the-band position
+     as the track Key Rail's boundary cap (the segment's ::before/::after at
+     top: 0 of a 4px-into-the-band segment) — the marker IS the shared rail
+     boundary cap, no extra rectangle. */
+  top: 4px;
+  width: 2px;
+  height: 4px;
+  background: #f8fafc;
+  cursor: ew-resize;
+  pointer-events: auto;
+  z-index: 3;
+}
+
+.physics-paint-bg-clip-rail-marker::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -3px;
+  right: -3px;
+}
+
+.physics-paint-bg-clip-rail-marker-start {
+  left: 0;
+}
+
+.physics-paint-bg-clip-rail-marker-end {
+  right: 0;
+}
+
+/* 49-06 (UAT round 9): the selected Bg clip turns ONLY the rail LINE orange
+   (#f5a623) — the cells keep their neutral blue fill. The `selected` class on
+   the cells container is kept so the shortened warning stays suppressed while
+   selected (the :not(.selected) guard below). */
+
+/* Shortened visual (D-12): the loop stops at the next clip / parent bound —
+   the LAST cell tints warning (UI-SPEC Warning #FFB020, truncated-end and
+   shortened-loop treatments only). */
+.physics-paint-bg-clip-cells.shortened:not(.selected) .physics-paint-bg-clip-cell:last-child {
+  background: #ffb020;
+}
+
+/* Diagonal cut on a partial cycle (D-21): the effective end lands mid-cycle —
+   a 45° notch on the last cell's right edge. */
+.physics-paint-bg-clip-cells.partial-cycle .physics-paint-bg-clip-cell:last-child {
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 100%, 0 100%);
+}
+
+/* 49-06 (UAT round 2): the placement-target marker on the clicked empty Bg
+   cell — a 2px accent line at the cell's top so the import-at-frame gesture
+   reads. The cell keeps its transparent fill (the marker is the only paint). */
+.physics-paint-roto-cell.physics-paint-bg-placement-target {
+  box-shadow: inset 0 2px 0 0 #f5a623;
+}
+
+/* 49-06 (UAT round 7): the drag/resize GHOST (the realtime destination
+   preview) is a WHITE line drawn ON TOP of the rail's line — over the orange
+   selected rail it reads "white on orange", making the change clearly visible
+   while dragging. Positioned at the SAME 4px-into-the-band slot as the rail
+   line (top: 4px, height: 4px) and z-indexed above it (line 2, markers 3). */
+.physics-paint-bg-clip-rail-ghost {
+  position: absolute;
+  top: 4px;
+  height: 4px;
+  background: #f8fafc;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.physics-paint-bg-clip-rail-ghost.blocked-edge-left,
+.physics-paint-bg-clip-rail-ghost.blocked-edge-right {
+  box-shadow: inset 0 0 0 2px #ff6b6b;
+}
+
+/* 49-06 (UAT round 7): the RESIZE ghost is the same white phantom — the new
+   extent preview while pushing the first/last cell. */
+.physics-paint-bg-clip-resize-ghost {
+  background: #f8fafc;
 }
 
 /* 43.4 Key Rails share the integrated 12px rail band without changing its
@@ -3158,14 +3550,14 @@ button.destructive {
   inset: 0;
   z-index: 4;
   width: 100%;
-  height: 12px;
+  height: 8px;
   pointer-events: none;
 }
 
 .physics-paint-key-rail-anchor {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   pointer-events: auto;
 }
@@ -3174,7 +3566,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 12px;
+  height: 8px;
   min-width: 12px;
   padding: 0;
   border: 0;
@@ -3196,8 +3588,11 @@ button.destructive {
 
 .physics-paint-key-rail-segment {
   position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
+  /* 47 close-out UAT round 4: the line sits 1px above the cells (4px into the
+     8px band) instead of at the band's top — the freed 4px reads as the
+     vertical gap between stacked tracks. */
+  inset: 4px 0 auto 0;
+  height: 4px;
   background: #8a939c;
   pointer-events: none;
 }
@@ -3260,13 +3655,1451 @@ button.destructive {
   white-space: nowrap;
 }
 
+/* Status row in the loop-clip tooltip: the lifecycle color swatch sits before
+   the "Status: …" line so the status reads at a glance (47 close-out). */
+.physics-paint-loop-clip-tooltip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.synchronized {
+  background: #a6d334;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.modified {
+  background: #fbbf24;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.detached {
+  background: #bbc0c8;
+}
+
+.physics-paint-loop-clip-tooltip-status-dot.unavailable {
+  background: #ff2e56;
+}
+
 .physics-paint-lane {
   position: relative;
   display: grid;
   align-items: center;
-  height: 38px;
-  padding: 0;
+  /* 47-01 UAT round 6: compact 30px row — the rail band sits ABOVE the
+     22px-tall cells (padding-top pushes the cell row below the band's visual
+     line). The previous 30px row let the absolute-positioned rail band (top
+     12px, z 4) overlap the cells' top 8px, so frame/key clicks sometimes hit
+     the rail. 47-01 UAT round 7 shrank the band 12px -> 8px; the 47 close-out
+     briefly re-widened it to 12px and UAT round 9 confirmed the original
+     finding (cell clicks stolen) — 8px, no cell overlap, is final.
+  */
+  height: 30px;
+  padding-top: 8px;
   background: #37393a;
+}
+
+/* 47-01 timeline body: the pinned header column (140px) sits beside the
+   horizontally-scrolling frame area. The header column never scrolls
+   horizontally (D-05); the frame area scrolls beneath it. */
+.physics-paint-timeline-body {
+  display: flex;
+  flex-direction: row;
+  /* 47-01 UAT round 3: fills the timeline's dynamic height so the rows-region
+     and the pinned header-rows band share the same available space. */
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Pinned 140px header column (UI-SPEC D-01): lists every row's track name.
+   Its 28px ruler spacer + header-rows band mirror the ruler + rows region so
+   header cells align 1:1 with their rows. */
+.physics-paint-header-column {
+  display: flex;
+  flex-direction: column;
+  /* 47 UAT: widened 140px -> 185px so the standing row controls (grip + eye +
+     blend + name + more-button) breathe — the eye moved out of the hover
+     tools into the always-visible row controls, then the per-row frame-
+     blending toggle joined it after the eye. */
+  flex: 0 0 185px;
+  min-width: 0;
+  /* 47-01 UAT round 3: allows the column to shrink to the timeline-body's
+     dynamic height so the header-rows band scrolls in lockstep with the
+     rows-region instead of overflowing. */
+  min-height: 0;
+  background: #333536;
+  border-right: 1px solid #4c4e50;
+}
+
+/* 47-01 mockup redesign: the header column's top strip (mockup "Tracks" bar).
+   Layers icon + "Tracks" title + count badge + '+' add-track button, sitting in
+   the 28px ruler-spacer slot so it aligns with the frame ruler above the rows. */
+.physics-paint-track-column-strip {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-bottom: 1px solid #5c6066;
+  background: #47494b;
+}
+
+.physics-paint-track-column-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.physics-paint-track-column-layers-icon {
+  flex: 0 0 auto;
+  color: #7799bb;
+}
+
+.physics-paint-track-column-title {
+  color: #e5edf8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.physics-paint-track-column-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #585a5c;
+  color: #7799bb;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.physics-paint-track-column-add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 6px;
+  background: #3a424c;
+  color: #e5edf8;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-track-column-add svg {
+  flex: 0 0 auto;
+}
+
+.physics-paint-track-column-add:hover {
+  background: #45505c;
+}
+
+.physics-paint-track-column-add:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* 50-03 (S1): the strip's right-side action cluster — the photo/reference
+   camera icon and the '+' add-track button. */
+.physics-paint-track-column-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 50-UAT (modal redesign): the photo/reference camera icon in the top strip —
+   the floating-setting entry point that replaced the Photo track row (50-UAT
+   redesign). Same 18px hit target as the '+' button; the active state (a
+   source exists) tints the icon. The X remove badge is GONE — Remove lives in
+   the Photo Reference dialog (50-UAT round 2). */
+.physics-paint-track-column-photo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 6px;
+  background: #3a424c;
+  color: #8a939c;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-track-column-photo:hover {
+  background: #45505c;
+  color: #e5edf8;
+}
+
+.physics-paint-track-column-photo:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-track-column-photo.has-reference {
+  color: #7799bb;
+  border-color: #4a5a6e;
+}
+
+
+/* 50-UAT (modal redesign, round 2): the floating Photo Reference dialog — a
+   MOVABLE settings card opened from the strip camera icon (Play Script dialog
+   pattern: the fixed root stays pointer-events none so the Studio palette stays
+   interactive; only the surface is hit-testable). The layout matches the user's
+   compact 252px mockup: dark card, short segment labels, custom slider,
+   two-state toggles, source chip, and a labeled primary action + icon-only
+   Remove. ALL photo/reference controls live here — the right-panel section is
+   gone. */
+.physics-paint-photo-reference-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #eceff2;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.physics-paint-photo-reference-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 252px;
+  max-width: 92%;
+  max-height: 90%;
+  /* 50-UAT round 3: liquid-glass surface (the toolbox popover treatment) — a
+     translucent dark panel over a ::before backdrop blur so the canvas paints
+     show through the frosted card. */
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: rgba(28, 30, 34, 0.66);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
+  outline: none;
+}
+
+/* Liquid-glass backdrop layer (43.5-02 toolbox treatment): the blur/saturate
+   tint sits on an empty ::before so the surface stays a plain positioned
+   card — no containing-block surprise for the floating element beneath. */
+.physics-paint-photo-reference-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(10, 12, 15, 0.28);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+  pointer-events: none;
+}
+
+.physics-paint-photo-reference-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.physics-paint-photo-reference-dialog.physics-paint-photo-reference-dragging .physics-paint-photo-reference-header {
+  cursor: grabbing;
+}
+
+.physics-paint-photo-reference-header-icon {
+  flex: 0 0 auto;
+  color: #7fa1ff;
+}
+
+.physics-paint-photo-reference-header strong {
+  color: #eceff2;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-header-spacer {
+  flex: 1 1 0;
+}
+
+.physics-paint-photo-reference-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #2a3540;
+  color: #b9c3ce;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-close:hover {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-photo-reference-close:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* Apply progress pill — floats centered over the canvas region's
+   bottom edge (just above the workflow strip) while an apply drains.
+   It must live OUTSIDE the strip: the strip's
+   overflow-y:hidden clips anything anchored past its top edge, which hid the
+   pill entirely in its first release. */
+.physics-paint-apply-progress {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(28, 30, 34, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 60;
+}
+
+.physics-paint-apply-progress-track {
+  position: relative;
+  flex: 1 1 0;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.physics-paint-apply-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: #7fa1ff;
+  transition: width 120ms linear;
+}
+
+.physics-paint-apply-progress-label {
+  flex: 0 0 auto;
+  color: #b9c3ce;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Mode segmented control — 3 equal segments on a recessed rail. */
+.physics-paint-photo-reference-mode {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  height: 28px;
+  border: 1px solid #2a3540;
+  border-radius: 8px;
+  background: #161d25;
+}
+
+.physics-paint-photo-reference-mode-segment {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa5b1;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-mode-segment:hover {
+  color: #c6cfd8;
+}
+
+.physics-paint-photo-reference-mode-segment.active {
+  border-color: #5a87ff;
+  background: #2f67e8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.physics-paint-photo-reference-mode-segment:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-hint {
+  color: #7e8894;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+/* Opacity block — uppercase tracked label, custom slider. */
+.physics-paint-photo-reference-opacity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.physics-paint-photo-reference-opacity-labels {
+  display: flex;
+  align-items: center;
+}
+
+.physics-paint-photo-reference-label {
+  text-transform: uppercase;
+  color: #8a94a0;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-label-spacer {
+  flex: 1 1 0;
+  height: 1px;
+}
+
+.physics-paint-photo-reference-opacity output {
+  color: #eceff2;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-slider {
+  position: relative;
+  height: 14px;
+}
+
+.physics-paint-photo-reference-slider-rail,
+.physics-paint-photo-reference-slider-fill {
+  position: absolute;
+  top: 5px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.physics-paint-photo-reference-slider-rail {
+  left: 0;
+  right: 0;
+  background: #37424e;
+}
+
+.physics-paint-photo-reference-slider-fill {
+  left: 0;
+  background: #2f67e8;
+}
+
+.physics-paint-photo-reference-slider-thumb {
+  position: absolute;
+  top: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.53);
+}
+
+/* The transparent native input owns all slider gestures (it is the real
+   aria-bearing control); the rail/fill/thumb above are its visual proxy. */
+.physics-paint-photo-reference-slider-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-slider-input:focus-visible {
+  outline: none;
+}
+
+.physics-paint-photo-reference-slider:focus-within {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* Two-state toggle row — Locked/Visible. */
+.physics-paint-photo-reference-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.physics-paint-photo-reference-toggle {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #3d5fb0;
+  border-radius: 8px;
+  background: #1d2e4e;
+  color: #cfe0ff;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-toggle svg {
+  color: #8fb0ff;
+}
+
+.physics-paint-photo-reference-toggle[aria-pressed='false'] {
+  border-color: #3a4652;
+  background: #232d38;
+  color: #9aa5b1;
+}
+
+.physics-paint-photo-reference-toggle[aria-pressed='false'] svg {
+  color: #7e8894;
+}
+
+.physics-paint-photo-reference-toggle:hover {
+  filter: brightness(1.12);
+}
+
+.physics-paint-photo-reference-toggle:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-divider {
+  height: 1px;
+  background: #2a3540;
+}
+
+/* Source row — uppercase label, count chip. */
+.physics-paint-photo-reference-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.physics-paint-photo-reference-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid #3a4652;
+  border-radius: 5px;
+  background: #232d38;
+  color: #c6cfd8;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.physics-paint-photo-reference-chip-icon {
+  color: #9aa5b1;
+}
+
+.physics-paint-photo-reference-empty {
+  color: #7e8894;
+  font-size: 10px;
+}
+
+/* Action row — labeled primary (Import/Replace) + icon-only Remove. */
+.physics-paint-photo-reference-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.physics-paint-photo-reference-import {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #5a87ff;
+  border-radius: 8px;
+  background: #2f67e8;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-import:hover {
+  background: #3a75f0;
+}
+
+.physics-paint-photo-reference-import:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-photo-reference-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #6e3a34;
+  border-radius: 8px;
+  background: #3a2321;
+  color: #f0907e;
+  cursor: pointer;
+}
+
+.physics-paint-photo-reference-remove:hover {
+  background: #4a2b28;
+}
+
+.physics-paint-photo-reference-remove:focus-visible {
+  outline: 2px solid #f0907e;
+  outline-offset: 1px;
+}
+
+/* 52-05 (G-52-3): the track rail-creation flow — the "Create rail" button and
+   its rail-kind menu (Motion / Static / Reveal). Reveal opens the Create Rail
+   dialog's Reveal Photo Rail tab; the reference guard lives inside the dialog.
+   The menu is a compact popover anchored to the button (the icon-action
+   wrapper is position: relative). */
+.physics-paint-rail-create-group {
+  display: inline-flex;
+  align-items: center;
+}
+
+.physics-paint-rail-create-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #1a222b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.physics-paint-rail-create-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #c6cfd8;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.physics-paint-rail-create-menu button:hover:not(:disabled) {
+  background: #232d38;
+  color: #f2f5f7;
+}
+
+.physics-paint-rail-create-menu button:focus-visible {
+  outline: 2px solid #9aa5b1;
+  outline-offset: 1px;
+}
+
+.physics-paint-rail-create-menu button:disabled {
+  color: #7d8791;
+  cursor: not-allowed;
+}
+
+/* Pinned header-rows band, vertically synced with the rows-region (D-05).
+   47-01 UAT round 5: the band and the vertical pill scrollbar share one flex
+   row (.physics-paint-header-rows-wrap) inside the pinned column, so the
+   vertical scrollbar lives ALONGSIDE the track names in the sidebar — not at
+   the timeline's right edge. The band's native scrollbar stays hidden; the
+   pill is the single visible vertical control and only appears on overflow
+   (exactly when the rows-region overflows), so it behaves as a real control,
+   never a static decorative bar. */
+.physics-paint-header-rows-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+}
+
+.physics-paint-header-rows {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.physics-paint-header-rows::-webkit-scrollbar {
+  display: none;
+}
+
+/* 47-01 mockup redesign rows-region: the region SIZES TO ITS CONTENT — every
+   Track row + the fixed Background row at 34px each — with NO fixed band and
+   no dead space below the Background row.
+
+   47-01 UAT round 2: the region carries the FULL frame-capacity width
+   (inline width/minWidth set by the strip) so the frame cells extend past the
+   viewport and scroll with the ruler instead of clipping at the window width.
+
+   47-01 UAT round 3: the region's height is driven by the strip's DYNAMIC
+   height (flex: 1 1 auto; min-height: 0 inside the timeline-scroll column) —
+   it fills whatever space the strip leaves below the ruler and scrolls
+   vertically when the strip is too short for all rows.
+
+   47-01 UAT round 4: the region's native vertical scrollbar stays hidden (it
+   always was); the custom pill scrollbar below is now the single visible
+   vertical control. */
+.physics-paint-rows-region {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  background: #3e3f41;
+}
+
+.physics-paint-rows-region::-webkit-scrollbar {
+  display: none;
+}
+
+/* 47-01 UAT round 5: vertical pill scrollbar IN THE SIDEBAR (header column),
+   matching the horizontal pill design. The thumb is the visible rounded
+   #8a8a8a pill; the track is transparent (no full-height #585a5c rounded bar —
+   that is the "strange div" the user flagged under the slider). Rendered only
+   on overflow; dragging the thumb / clicking the track scrolls the rows-region
+   and the band together. */
+.physics-paint-vertical-scrollbar {
+  position: relative;
+  flex: 0 0 14px;
+  min-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-vertical-scrollbar-thumb {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  min-height: 40px;
+  border-radius: 999px;
+  background: #8a8a8a;
+  pointer-events: none;
+}
+
+/* One presentational 34px track row: per-track cells lane only. The row's
+   header cell lives in the pinned header column (PhysicsPaintTrackRowHeader),
+   so the row itself carries no label column. */
+.physics-paint-track-row {
+  height: 30px;
+  min-height: 30px;
+  /* 47 close-out UAT round 6: the separator is an INSET SHADOW, not a
+     border-top — the border consumed 1px of the row's border-box 30px, so
+     the 30px lane overflowed a 29px content box and the next row painted
+     over the cells' bottom edge ("frame cut"). The shadow costs no layout
+     space: every row shows the full 22px cells, identical to the active
+     lane. */
+  box-shadow: inset 0 1px 0 0 #47494b;
+  background: #3a3c3d;
+}
+
+/* 47 close-out UAT round 5: Paint rows are one-click select targets — the
+   select cursor over the frames/keys (the Bg row stays locked). */
+.physics-paint-track-row:not(.physics-paint-track-row-background) {
+  cursor: pointer;
+}
+
+.physics-paint-track-row-lane {
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* 47 close-out UAT round 3/6: the row lane matches the active lane's layout
+     exactly — 8px rail band on top, 22px cells below (padding-top pushes the
+     cells to y8-30), full 30px height (100% of the shadow-separated row).
+     Same rail line position on every track at all times. */
+  height: 100%;
+  padding-top: 8px;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 47-05 Task 1 (TML-05, D-16): the read-only destination highlight on the
+   row under the pointer during a cross-track drag. Same accent family as the
+   active row header — tinted fill + 1px accent inset — so the drop target
+   reads at a glance. The gesture never mutates the row; the class is pure
+   feedback until release commits through moveTrackItems. */
+.physics-paint-track-row.physics-paint-track-row-cross-destination {
+  background: #2f3a4d;
+  box-shadow: inset 0 0 0 1px #6f90ff;
+}
+
+/* 47-05 Task 1 (TML-05, D-16): the live insertion preview inside the
+   destination row — a 2px accent line at the frame position where the
+   dragged content lands (left set from the resolved frame × the 18px pitch;
+   the lane is the containing block). Pointer-events none so row clicks keep
+   working under the gesture. */
+.physics-paint-track-row-insertion-preview {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  margin-left: -1px;
+  background: #6f90ff;
+  box-shadow: 0 0 4px rgba(111, 144, 255, 0.8);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Always-on rail lines (47 close-out UAT round 4): every non-active Paint row
+   renders its rails with the ACTIVE lane's own classes — a read-only
+   .physics-paint-rail-target wrapper (12px band) holding the family's
+   .physics-paint-rail-segment. All colors, boundary caps and full-height cell
+   edges come from the shared rules, so a rail is pixel-identical on every
+   track and selecting a track changes nothing in the timeline. UAT round 5:
+   the band is clickable — one click selects the rail AND activates the track. */
+.physics-paint-track-row-rail {
+  position: absolute;
+  top: 0;
+  height: 8px;
+  cursor: pointer;
+  z-index: 1;
+}
+
+/* 47-01 UAT round 2 (tight packing): the FIRST row in the region carries no
+   top separator — the ruler's own border-bottom is the only line above the
+   first lane, so the frame cells sit flush under the ruler with the mockup's
+   2px rhythm. Later rows keep their 1px separator (inset shadow, round 6). */
+.physics-paint-rows-region > :first-child {
+  box-shadow: none;
+}
+
+/* One 30px header cell in the pinned header column. Every row — including
+   the active lane and the fixed Background row — gets exactly one header
+   cell showing its track name (UI-SPEC header column layout). The 30px
+   height matches the frame lanes so headers align 1:1 with their rows.
+   47-01 mockup redesign: reorder grip + truncated name + hover/replace
+   tools (eye/pencil/copy/trash); a reserved 3px left border keeps content
+   from shifting when the active accent appears. */
+.physics-paint-track-row-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 6px 0 5px;
+  border-bottom: 1px solid #4c4e50;
+  border-left: 3px solid transparent;
+  background: #333536;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.physics-paint-track-row-header:hover {
+  /* 47-01 UAT round 2: slightly lighter than the resting state so the track
+     name keeps full contrast when the hover tools appear. */
+  background: #3f4145;
+}
+
+/* Active-track marking (D-04): accent left border + row tint + bold name,
+   distinct from selection orange and rail purple/cyan. */
+.physics-paint-track-row-header-active {
+  border-left: 3px solid #6f90ff;
+  background: #2f3a4d;
+}
+
+.physics-paint-track-row-header-active:hover {
+  background: #33425a;
+}
+
+.physics-paint-track-row-header-active .physics-paint-track-row-label {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+/* Fixed Background header: muted tone + lock semantics (D-06) — no grab,
+   no rename, no duplicate, no delete. */
+.physics-paint-track-row-header-background {
+  background: #3c3e40;
+  cursor: default;
+}
+
+.physics-paint-track-row-header-background:hover {
+  background: #3c3e40;
+}
+
+/* 49-06 UAT: the Bg row header paints SELECTED when a Bg clip rail is selected —
+   matching the orange rail selection (#f5a623) as the left border + a tinted
+   row, so the Bg row reads as "a track that is selected". Sits below the
+   background rules (same specificity, later wins), and the active-track style
+   is blanked at the column level while a Bg clip is selected. */
+.physics-paint-track-row-header-background.physics-paint-track-row-header-selected {
+  border-left: 3px solid #f5a623;
+  background: #4a3f2a;
+}
+
+.physics-paint-track-row-header-background.physics-paint-track-row-header-selected .physics-paint-track-row-label {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Fixed Background row lane: muted tone (D-06). */
+.physics-paint-track-row-background {
+  background: #3c3e40;
+}
+
+/* 50-03 (S1): the fixed Photo row header — the same muted fixed-row tone as
+   the Bg header, but never selectable (no role=button, no tab-select). */
+.physics-paint-track-row-header-photo-reference {
+  background: #3c3e40;
+  cursor: default;
+}
+
+.physics-paint-track-row-header-photo-reference:hover {
+  background: #3c3e40;
+}
+
+/* 50-03 (S1): the Photo row's identity glyph — a camera icon, NEVER the Bg
+   checker swatch (spec stop condition: Background confused with the
+   photo/reference track). */
+.physics-paint-photo-reference-glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #8a939c;
+}
+
+/* 50-03 (S1): the fixed Photo row lane — muted tone, never a select target
+   (the reference is not a content track, D-06). */
+.physics-paint-track-row-photo-reference {
+  background: #3c3e40;
+  cursor: default;
+}
+
+/* 50-03 (S1): the passive reference band — a muted desaturated full-range bar
+   spanning frame 0..parent end when a source exists (D-15 1:1 law). Distinct
+   from every Paint rail color (no purple/cyan, no orange, no status colors);
+   presence/absence is the only signal. Pure feedback: no hit target. */
+.physics-paint-photo-reference-band {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: #5a5e62;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.physics-paint-track-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 47-01 UAT round 3: the hover tools now reserve their width in flow, so
+     the label truncates to the remaining space (never covered). A small right
+     padding keeps the ellipsis clear of the tool buttons. */
+  padding-right: 4px;
+  color: #d8dde3;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reorder grip: a 6-dot affordance with a DISTINCT cursor. Content drag (a
+   plain header click) selects the track and never reorders — the drag gesture
+   itself is plan 47-05 scope. 47-01 UAT round 3: lightened from #4c4e50 so
+   the 6 dots read on the #333536 header (dark-on-dark was illegible). */
+.physics-paint-track-row-grip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #8a939c;
+  cursor: grab;
+}
+
+.physics-paint-track-row-grip:active {
+  cursor: grabbing;
+}
+
+/* 47-02 Task 2 (TML-05, D-08): the live reorder insertion indicator — a 2px
+   accent line at the target row boundary inside the pinned header band. The
+   band is the containing block (position: relative), the top lands on the
+   row boundary via the inline style (index * 30px row pitch), and it scrolls
+   with the band's content while a header-grab drag is live. */
+.physics-paint-header-rows {
+  position: relative;
+}
+
+.physics-paint-track-row-insertion-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: #6f90ff;
+  box-shadow: 0 0 4px rgba(111, 144, 255, 0.8);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* 47-02 Task 1 (D-02): the explicit truncation class on every Paint track
+   label — ellipsis truncation with the full name kept in the title tooltip.
+   The label's base rule already truncates; this class makes the contract
+   explicit and grep-able. */
+.physics-paint-track-row-label-ellipsis {
+  /* 260911-s1j mockup layout: the name is pushed right (auto margin) and the
+     trash stays pinned at the far right; the 8px right padding keeps the
+     mockup's name→trash gap (8px padding + the row's 5px gap). flex-grow is
+     cleared so the auto margin — not the label box — consumes the free space
+     (a growing label would keep its text left-aligned after the buttons). */
+  flex: 0 1 auto;
+  margin-left: auto;
+  padding-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 47-02 Task 1 (260911-s1j): the standing inline solo (S) chip — the row-level
+   solo indicator, always visible. Its pressed state reflects the track's
+   document `solo` flag (the one the click toggles and the compositor filters
+   on); armed paints the unmistakable orange family. */
+.physics-paint-track-row-solo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 5px;
+  background: #3a424c;
+  color: #b9c2cc;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.physics-paint-track-row-solo:hover {
+  background: #45505c;
+  color: #e5edf8;
+}
+
+.physics-paint-track-row-solo-armed {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.physics-paint-track-row-solo-armed:hover {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
+}
+
+.physics-paint-track-row-solo:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* 47 UAT (260911-s1j): the per-row frame-blending toggle's armed state — the
+   same unmistakable orange family as the armed solo chip. The compound
+   selectors beat the base `.physics-paint-track-row-tool-button` rule, which
+   sits LATER in this file at equal specificity and would otherwise win the
+   cascade and paint the neutral gray. */
+.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
+}
+
+/* 47-01 hide: a hidden Paint track fades its cells to gray — every key and
+   interpolation cell stays rendered (hide never removes elements, TML-04);
+   re-show restores full opacity instantly (the flag write is the only
+   mutation). */
+.physics-paint-track-row-hidden {
+  opacity: 0.4;
+  filter: grayscale(0.9);
+}
+
+.physics-paint-lane-hidden {
+  opacity: 0.4;
+  filter: grayscale(0.9);
+}
+
+.physics-paint-track-row-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #d8dde3;
+  cursor: pointer;
+}
+
+.physics-paint-track-row-tool-button:hover {
+  background: #45505c;
+  border-color: #69727c;
+  color: #e5edf8;
+}
+
+.physics-paint-track-row-tool-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.physics-paint-track-row-tool-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* 47-01 UAT round 3: the lucide icons stay pinned at 12x12 and never
+   flex-shrink inside the 18px buttons (same pattern as the scripts toolbar),
+   so the eye/pencil/copy/trash glyphs actually render instead of collapsing
+   into empty dark boxes. */
+.physics-paint-track-row-tool-button svg {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+/* Edit-in-place rename input (Enter commits, Escape cancels). */
+.physics-paint-track-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #2a2c2e;
+  color: #e5edf8;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+}
+
+.physics-paint-track-rename-input:focus {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* Background row lock affordance. */
+.physics-paint-track-row-lock {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #6d7378;
+}
+
+/* 49-05 (S1): the Bg row's single action — the Import control. Muted row
+   family (same tones as the lock + tool buttons) with the 24px hit target
+   (UI-SPEC accessibility); the icon stays pinned at 14x14 so it never
+   collapses inside the button. */
+.physics-paint-bg-import-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #d8dde3;
+  cursor: pointer;
+}
+
+.physics-paint-bg-import-button:hover {
+  background: #45505c;
+  border-color: #69727c;
+  color: #e5edf8;
+}
+
+.physics-paint-bg-import-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-import-button svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+/* Background checkerboard icon (4 cells, mockup Bg row). */
+.physics-paint-bg-checker {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 5px 5px;
+  grid-template-rows: 5px 5px;
+  width: 10px;
+  height: 10px;
+  background: #333536;
+}
+
+.physics-paint-bg-checker-cell-a,
+.physics-paint-bg-checker-cell-d {
+  background: #c6ccd4;
+}
+
+.physics-paint-bg-checker-cell-b,
+.physics-paint-bg-checker-cell-c {
+  background: #8a939c;
+}
+
+/* 49-06 (S5): the right-panel `Background Clip` properties section. Reuses the
+   right-panel Track-section card geometry (md 16px section spacing, Label/Body
+   typography rows); values are fixed-format tabular numerics (UI-SPEC). */
+.physics-paint-bg-clip-section {
+  gap: 10px;
+}
+
+.physics-paint-bg-clip-value {
+  color: var(--sidebar-text-primary, #e5edf8);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.physics-paint-bg-repeat-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid #4a5058;
+  border-radius: 4px;
+  background: #20262d;
+  color: #e5edf8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-bg-repeat-input:focus {
+  border-color: #6f90ff;
+  outline: none;
+}
+
+.physics-paint-bg-repeat-input:disabled {
+  opacity: 0.4;
+}
+
+/* 49-06 (UAT round 9): the resize % inputs — same numeric-input geometry as
+   the repeat input, fixed-width so the three rows align. */
+.physics-paint-bg-scale-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid #4a5058;
+  border-radius: 4px;
+  background: #20262d;
+  color: #e5edf8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-bg-scale-input:focus {
+  border-color: #6f90ff;
+  outline: none;
+}
+
+.physics-paint-bg-repeat-infinity {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #d8dde3;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.physics-paint-bg-repeat-infinity:hover {
+  background: #45505c;
+  border-color: #69727c;
+  color: #e5edf8;
+}
+
+.physics-paint-bg-repeat-infinity[aria-pressed="true"] {
+  background: #365ed6;
+  border-color: #6f90ff;
+  color: #fff;
+}
+
+.physics-paint-bg-repeat-infinity:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-repeat-hint {
+  color: #6d7378;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.physics-paint-bg-repeat-hint-error {
+  color: #ff8585;
+}
+
+/* 49-06 (UAT round 7): the section's action row — Replace + Delete side by
+   side, right-aligned under the option rows. */
+.physics-paint-bg-clip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.physics-paint-bg-replace-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(111, 144, 255, 0.45);
+  border-radius: 4px;
+  background: #3a424c;
+  color: #aeb9ff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.physics-paint-bg-replace-button:hover {
+  background: #45505c;
+  border-color: rgba(111, 144, 255, 0.7);
+  color: #c6cfff;
+}
+
+.physics-paint-bg-replace-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-delete-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 102, 102, 0.45);
+  border-radius: 4px;
+  background: #3a424c;
+  color: #ff9999;
+  cursor: pointer;
+}
+
+.physics-paint-bg-delete-button:hover {
+  background: #45505c;
+  border-color: rgba(255, 102, 102, 0.7);
+  color: #ffb3b3;
+}
+
+.physics-paint-bg-delete-button:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-bg-delete-button svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.physics-paint-track-row-cells {
+  display: grid;
+  gap: 0;
+  min-width: 0;
 }
 
 .physics-paint-roto-action-row {
@@ -3277,7 +5110,8 @@ button.destructive {
   gap: 8px;
   /* 34px band (36.15-12, UAT Gap H-6) + 6px bottom padding weighting the
      clearance below the 26px groups (36.15-13, UAT Gap I-1; border-box sizing
-     keeps the 34px band and the 161px band sum intact). */
+     keeps the 34px band and the 47-01 dynamic band sum intact). */
+  flex: 0 0 34px;
   height: 34px;
   min-width: 0;
   max-width: 100%;
@@ -3335,13 +5169,25 @@ button.destructive {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 24px;
+  /* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request). The
+     width follows the 18px grid column (border-box, ~16px visible interior);
+     the fixed 22px height sits flush below the lane's 12px rail band (the
+     lane's padding-top) — never stretched to fill the row. */
+  height: 22px;
   padding: 0;
   border: 1px solid #3d454d;
   border-radius: 1px;
   overflow: hidden;
   background: #505860;
   color: transparent;
+  /* 47-01 UAT round 8: every frame cell is a click target (select frame /
+     activate track / navigate), so it carries the pointer cursor — without
+     it the frame-number text inside the cell shows the default I-beam on the
+     non-active track rows. */
+  cursor: pointer;
+  /* 47-01 UAT: each cell is a horizontal snap point so the horizontal scroll
+     stops at frame boundaries (the viewport right edge never slices a cell). */
+  scroll-snap-align: start;
 }
 
 .physics-paint-roto-cell.roto-fill-empty {
@@ -3449,36 +5295,88 @@ button.destructive {
 
 .physics-paint-roto-cell.pending {
   border-style: dashed;
-  animation: roto-cell-pending 1.2s ease-in-out infinite;
+  /* 47-05: bounded — an infinite pulse keeps the compositor presenting and
+     leaks the frame backing (the 7-min OOM black window). */
+  animation: roto-cell-pending 1.2s ease-in-out 4;
 }
 
 .physics-paint-roto-cell.current {
-  /* Lift the selected cell above its abutting right neighbor so the orange
-     selection outline renders on all four sides instead of being painted
-     over at the right edge (36.15-09, UAT Gap E-3). The 18px pitch and band
-     geometry are unchanged. */
-  z-index: 1;
-  border-color: #f5a623;
-  outline: 2px solid rgba(245, 166, 35, 0.9);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
+  /* 47 close-out UAT rounds 10-12: selection paints as an ORANGE BACKGROUND
+     FILL only — no box, no border recolor — and it MUST win over every cell
+     fill/linked treatment. The global button:hover rule (background #2a5a8a)
+     and the linked-repeat source-key grey (background #43494f, specificity
+     (0,3,0)) both out-rank a single-class rule by specificity, so the fill is
+     !important: ALL frames and keys, in every rail type, stay orange when
+     selected/current, on hover and focus included. */
+  background: #f5a623 !important;
 }
 
 .physics-paint-roto-cell.selected {
-  z-index: 1;
-  border-color: #f5a623;
-  outline: 2px solid rgba(245, 166, 35, 0.9);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
+  background: #f5a623 !important;
 }
 
+.physics-paint-roto-cell.current:hover,
+.physics-paint-roto-cell.current:focus,
+.physics-paint-roto-cell.current:focus-visible,
+.physics-paint-roto-cell.selected:hover,
+.physics-paint-roto-cell.selected:focus,
+.physics-paint-roto-cell.selected:focus-visible {
+  background: #f5a623 !important;
+}
+
+/* 48-06 UAT cosmetics: the PRIMARY selection/cursor treatment (`.current`)
+   tracks the cell's fill family instead of the blanket orange — a selected
+   painted key reads light green (#86c55a over the #2d6f48 base), a selected
+   interpolated frame reads light blue (#4d98f9 over #365ed6), and a selected
+   empty frame reads light gray (#a0adbb over #4d535a). Secondary multi-select
+   members (`.selected`) and every other fill family keep the orange. */
+.physics-paint-roto-cell.roto-fill-cached.current,
+.physics-paint-roto-cell.roto-fill-cached-only.current {
+  background: #86c55a !important;
+}
+
+.physics-paint-roto-cell.roto-fill-empty.current {
+  background: #a0adbb !important;
+}
+
+.physics-paint-roto-cell.roto-fill-generated.current {
+  background: #4d98f9 !important;
+}
+
+.physics-paint-roto-cell.roto-fill-cached.current:hover,
+.physics-paint-roto-cell.roto-fill-cached.current:focus,
+.physics-paint-roto-cell.roto-fill-cached.current:focus-visible,
+.physics-paint-roto-cell.roto-fill-cached-only.current:hover,
+.physics-paint-roto-cell.roto-fill-cached-only.current:focus,
+.physics-paint-roto-cell.roto-fill-cached-only.current:focus-visible {
+  background: #86c55a !important;
+}
+
+.physics-paint-roto-cell.roto-fill-empty.current:hover,
+.physics-paint-roto-cell.roto-fill-empty.current:focus,
+.physics-paint-roto-cell.roto-fill-empty.current:focus-visible {
+  background: #a0adbb !important;
+}
+
+.physics-paint-roto-cell.roto-fill-generated.current:hover,
+.physics-paint-roto-cell.roto-fill-generated.current:focus,
+.physics-paint-roto-cell.roto-fill-generated.current:focus-visible {
+  background: #4d98f9 !important;
+}
+
+/* The cell buttons' default blue focus outline is suppressed — the orange
+   background fill is the whole selection/focus treatment. */
+.physics-paint-roto-cell:focus,
+.physics-paint-roto-cell:focus-visible {
+  outline: none;
+}
+
+/* 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
+   lighter blue-gray — they are NOT the selection itself (which stays orange
+   via .current/.selected !important) but show WHICH frames are the mirrors
+   of the clicked key. Restored after the round-12 deletion. */
 .physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
-  z-index: 1;
-  border-color: #f5a623;
   background: #4b6382;
-  outline: 2px solid rgba(245, 166, 35, 0.9);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
 }
 
 .physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {
@@ -3496,7 +5394,11 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.roto-drag-eligible {
-  cursor: grab;
+  /* 47-01 UAT round 8: hover shows the SELECT pointer, not a grab hand — the
+     hand implied "move" while the user's intent is "select" (the key still
+     drags on pointer-down; the active drag keeps the grabbing cursor via
+     .roto-drag-source). */
+  cursor: pointer;
   touch-action: none;
 }
 
@@ -3543,7 +5445,8 @@ button.destructive {
   border-style: dashed;
   outline: 2px solid rgba(245, 166, 35, 0.86);
   outline-offset: 1px;
-  animation: roto-cell-pending 0.8s ease-in-out infinite;
+  /* 47-05: bounded — see the pending cell note above. */
+  animation: roto-cell-pending 0.8s ease-in-out 4;
 }
 
 /* Single-key ripple Drag preview states (Plan 36.14-07).
@@ -3647,6 +5550,42 @@ button.destructive {
   position: absolute;
   z-index: 3;
   overflow: hidden;
+  pointer-events: none;
+}
+
+/* 50-04 (S3): the reference ghost monitor-paint layer — a sibling of the onion
+   overlay (z-index 5 family, above the composite, beneath selection/tool
+   paint). Monitor paint only: pointer-events none so every interaction passes
+   through to the engine canvas beneath. */
+.physics-paint-reference-ghost {
+  position: absolute;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.physics-paint-reference-ghost > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 50-05 (Task 2, S4): the reference transform handles overlay — a sibling of
+   the ghost layer, ABOVE it (z-index 6) so the handles are visible and
+   interactive. The overlay owns pointer events ONLY on its own interactive
+   children (the bounds polygon, rotation-zone circles, and handle rects — each
+   pointer-events: all); the wrapper AND the locked inner div are
+   pointer-events NONE so every paint gesture passes through to the engine
+   canvas beneath by default (50-UAT round 2 — the wrapper was auto, which
+   swallowed ALL painting over the canvas region even with no photo reference). */
+.physics-paint-reference-transform {
+  position: absolute;
+  z-index: 6;
+  /* 50-UAT: overflow visible so the rotation handle (a stem + knob above the
+     box's top edge, D-13) renders and stays clickable even when it extends past
+     the canvas region boundary; pointer-events none keeps every paint gesture
+     pass-through (the interactive children own pointer-events all). */
+  overflow: visible;
   pointer-events: none;
 }
 
@@ -3769,18 +5708,74 @@ button.destructive {
   min-height: 0;
 }
 
-.physics-paint-canvas-stack > .demo-canvas-shell {
+/* 48-06 (UAT-C): the isolated tracks group — a new stacking context that holds
+   the engine shell (active track, CSS blend) and the program monitor (fond-less
+   composite of the remaining tracks). isolation: isolate confines the shell's
+   mix-blend-mode to the monitor, so the active track's blend never meets the
+   paper fond layer beneath. */
+.physics-paint-tracks-group {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+/* 48-06 (UAT-C): the paper fond layer — drawn BENEATH the isolated tracks
+   group (the monitor reads the fond-less composite). */
+.physics-paint-fond-layer {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.physics-paint-fond-layer > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 49-03 (D-12): the monitor-only transparency checkerboard — a sibling of the
+   fond layer BENEATH the isolated tracks group, shown only when the effective
+   fond is fully transparent for the current frame. The two-gray
+   repeating-conic-gradient treatment is paint-only on this monitor layer
+   (never a document state, never in the flattened raster/preview/export). */
+.physics-paint-transparency-checkerboard {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 20px 20px;
+}
+
+.physics-paint-tracks-group > .demo-canvas-shell {
   width: auto;
   height: 100%;
   max-width: 100%;
   max-height: 100%;
 }
 
-.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready > .demo-canvas-shell .paint-canvas {
+.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {
   background-color: transparent;
 }
 
-.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready > .demo-canvas-shell .paint-canvas > canvas {
+.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {
+  visibility: hidden;
+}
+
+/* 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks the
+   engine canvas by law, but the cleared engine surface can still carry the
+   engine's own background paint and would occlude the program monitor beneath
+   (the monitor owns the remaining visible tracks + the document fond). Mirror
+   the cached-roto-playback treatment: the engine canvases step aside so the
+   monitor owns the surface until the track is visible again. */
+.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {
+  background-color: transparent;
+}
+
+.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {
   visibility: hidden;
 }
 
@@ -3795,6 +5790,33 @@ button.destructive {
 
 .demo-canvas-shell .paint-canvas canvas + canvas {
   z-index: 4 !important;
+}
+
+/* 48-06 (N2/N3): the engine shell can carry the active track's opacity/blend
+   as CSS group opacity + mix-blend-mode (the D-05 exclusion keeps the active
+   track out of the monitor's composite). The standalone white .paint-canvas
+   background must not join that blend group (screen would read it as white,
+   opacity would wash the monitor out) — the program monitor owns the visible
+   background, so the wrapper stays transparent in the Studio shell. */
+.demo-canvas-shell .paint-canvas {
+  background-color: transparent;
+}
+
+/* 48-05 (D-05): the program monitor sits BELOW the engine canvas (the engine
+   canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
+   engine < onion. It draws the flattened composite only — pointer-events none
+   so every interaction passes through to the engine canvas above. */
+.physics-paint-program-monitor {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.physics-paint-program-monitor > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .physics-paint-cached-roto-reference,
@@ -3981,6 +6003,16 @@ button.destructive {
   background: #3f4851;
 }
 
+/* 260905-dso: the Actions section lays its two buffer buttons (Apply / Clear)
+   side by side on one line, mirroring the Key Spacing control row. */
+.physics-paint-toolbox-actions-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 /* Micro role (10px/600, 1.2), title case, letter-spacing 0.04em. */
 .physics-paint-toolbox-section-heading {
   font-size: 10px;
@@ -4005,22 +6037,469 @@ button.destructive {
   font-variant-numeric: tabular-nums;
 }
 
-/* Blend-state badge (D-04): 6px filled dot pinned at the icon's top-right
-   corner (2px insets), read-only projection of the timeline-owned
-   interpolation state — never interactive, never a second authority. */
+/* The ToolCase icon wrapper (260911-s1j: the interpolation-state badge is
+   retired — the row's blend button is the per-track state, and the mode
+   dropdown is the only interpolation control left in the popover). */
 .physics-paint-toolbox-badge-anchor {
   position: relative;
   display: inline-flex;
 }
 
-.physics-paint-toolbox-badge {
+/* 47-02 Task 2 (TML-02, D-17): the acknowledge-and-delete dialog surface.
+   47 UAT: centered on the EFX Paint window (position: fixed — no transformed
+   ancestor, so the fixed box tracks the webview viewport) with no backdrop —
+   the studio stays interactive behind it, mirroring the Play Script floating
+   dialog convention. The title names the exact track; the summary explains
+   the destruction surface verbatim; the refusal turns the Confirm off for
+   the last surviving Paint track. */
+.physics-paint-delete-track-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  padding: 14px 16px;
+  border: 1px solid #4c4e50;
+  border-radius: 10px;
+  background: #2b2d2f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.physics-paint-delete-track-dialog-title {
+  color: #e5edf8;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.physics-paint-delete-track-dialog-detail {
+  margin: 0;
+  color: #b9c2cc;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.physics-paint-delete-track-dialog-refusal {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #7a5a2e;
+  border-radius: 6px;
+  background: #46361f;
+  color: #e8c98a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.physics-paint-delete-track-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.physics-paint-delete-track-cancel,
+.physics-paint-delete-track-confirm {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.physics-paint-delete-track-cancel {
+  border: 1px solid #58616b;
+  background: #3a424c;
+  color: #b9c2cc;
+}
+
+.physics-paint-delete-track-cancel:hover {
+  background: #45505c;
+  color: #e5edf8;
+}
+
+.physics-paint-delete-track-confirm {
+  border: 1px solid #a54848;
+  background: #7d3535;
+  color: #ffffff;
+}
+
+.physics-paint-delete-track-confirm:hover {
+  background: #8f3e3e;
+}
+
+.physics-paint-delete-track-confirm:disabled {
+  border-color: #4c4e50;
+  background: #3a3c3e;
+  color: #6f7478;
+  cursor: not-allowed;
+}
+
+.physics-paint-delete-track-cancel:focus-visible,
+.physics-paint-delete-track-confirm:focus-visible {
+  outline: 2px solid #6f90ff;
+  outline-offset: 1px;
+}
+
+/* 49-04 (Task 2): scoped full-area asset picker (S2). A bordered panel filling
+   the canvas region — a paint/visibility swap, never a canvas recreation. The
+   engine stays mounted underneath (paused by the overlay capturing input). */
+.physics-paint-background-picker {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #dbe4ff;
-  box-shadow: 0 0 0 1px #37393a;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #5a5e63;
+  background: #1b1d1f;
+  color: #e6e9ec;
+}
+
+.physics-paint-background-picker-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #5a5e63;
+  background: #3e3f41;
+}
+
+.physics-paint-background-picker-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.physics-paint-background-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.physics-paint-background-picker-confirm {
+  border-color: var(--color-accent, #2d5be3);
+  background: var(--color-accent, #2d5be3);
+  color: #fff;
+}
+
+.physics-paint-background-picker-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.physics-paint-background-picker-status {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 102, 102, 0.45);
+  border-radius: 4px;
+  background: rgba(125, 53, 53, 0.25);
+  color: #ff9999;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.physics-paint-background-picker-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 80px;
+  padding: 0 16px;
+}
+
+.physics-paint-background-picker-empty span {
+  color: var(--color-text-dim, #8a9199);
+  font-size: 12px;
+  text-align: center;
+}
+
+.physics-paint-background-picker-grid {
+  display: grid;
+  /* 49-04 (S2): grid cells reuse ImportGrid tile geometry — a fixed 4-column
+     grid (ImportGrid's `grid-cols-4`), never an auto-fill minmax track. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.physics-paint-background-picker-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  border: 1px solid #3a3c3e;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #111315;
+  cursor: pointer;
+}
+
+.physics-paint-background-picker-tile:hover {
+  border-color: var(--color-accent, #2d5be3);
+}
+
+.physics-paint-background-picker-tile.selected {
+  border-color: var(--color-accent, #2d5be3);
+  box-shadow: 0 0 0 2px var(--color-accent, #2d5be3);
+}
+
+.physics-paint-background-picker-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   pointer-events: none;
+}
+
+.physics-paint-background-picker-tile-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.physics-paint-background-picker-tile-check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-accent, #2d5be3);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.physics-paint-background-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-top: 1px solid #5a5e63;
+  background: #3e3f41;
+}
+
+.physics-paint-background-picker-import {
+  border-color: #2a5588;
+  background: #1a3a5a;
+  color: #c0ddf0;
+}
+
+.physics-paint-background-picker :focus-visible {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: 2px;
+}
+
+/* AM-3 (52 UAT): the Create Rail script picker — a floating MOVABLE dialog in
+   the Photo Reference family (no backdrop: the root is pointer-events none and
+   only the surface is interactive, so the Studio palette stays usable). The
+   rows reuse the Scripts panel row visual (physics-paint-script-row). */
+.physics-paint-script-picker-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #eceff2;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.physics-paint-script-picker-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 300px;
+  max-width: 92%;
+  max-height: 90%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: rgba(28, 30, 34, 0.66);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
+  outline: none;
+}
+
+.physics-paint-script-picker-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(10, 12, 15, 0.28);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+  pointer-events: none;
+}
+
+.physics-paint-script-picker-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.physics-paint-script-picker-dialog.physics-paint-script-picker-dragging .physics-paint-script-picker-header {
+  cursor: grabbing;
+}
+
+.physics-paint-script-picker-header-icon {
+  flex: 0 0 auto;
+  color: #7fa1ff;
+}
+
+.physics-paint-script-picker-header strong {
+  color: #eceff2;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.physics-paint-script-picker-header-spacer {
+  flex: 1 1 0;
+}
+
+.physics-paint-script-picker-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #2a3540;
+  color: #b9c3ce;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-script-picker-close:hover {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-script-picker-close:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-script-picker-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  min-height: 0;
+}
+
+.physics-paint-script-picker-hint {
+  margin: 0;
+  color: #8a94a0;
+  font-size: 10px;
+}
+
+.physics-paint-script-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 0;
+  max-height: 280px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.physics-paint-script-picker-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
+}
+
+.physics-paint-script-picker-empty p {
+  margin: 0;
+  color: #aeb5be;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.physics-paint-script-picker-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.physics-paint-script-picker-cancel {
+  padding: 5px 12px;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #2a3540;
+  color: #b9c3ce;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.physics-paint-script-picker-cancel:hover {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-script-picker-cancel:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+/* AM-3 revised: the live blocked notice (generated frame, unsaved project,
+   busy) — the flow never dead-ends silently; the disabled rows read as such. */
+.physics-paint-script-picker-notice {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #7a5a20;
+  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  font-size: 10.5px;
+  line-height: 14px;
+}
+
+.physics-paint-script-picker-list .physics-paint-script-row:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.physics-paint-script-picker-list .physics-paint-script-row:disabled:hover {
+  border-color: #565b61;
+  background: #3b3d3f;
 }

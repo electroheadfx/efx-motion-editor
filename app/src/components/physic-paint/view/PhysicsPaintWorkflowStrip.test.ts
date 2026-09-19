@@ -115,9 +115,9 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
+  { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Split Key Rail', guard: 'canScissorRotoKey', handler: 'props.onScissorKeyRail?.()' },
-  { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
 ];
 
@@ -150,6 +150,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
   });
 
+  it('260827-s52: onNavigateToSyncedFrame is the ONLY navigation port the ruler seek path uses', () => {
+    // Region-scoped to the rulerScrub hook instantiation: the ruler gesture
+    // navigates the cursor through the single cursor-only port and nothing
+    // else — never the go-to navigation quartet, never a selection prop.
+    const code = source();
+    const start = code.indexOf('usePhysicsPaintRulerScrub({');
+    expect(start).toBeGreaterThan(-1);
+    const end = code.indexOf('});', start);
+    const block = code.slice(start, end + 3);
+    expect(block).toContain('onNavigateToSyncedFrame');
+    for (const forbidden of ['onGoToFirstFrame', 'onGoToPreviousFrame', 'onGoToNextFrame', 'onGoToLastFrame', 'onSelectTrack']) {
+      expect(block).not.toContain(forbidden);
+    }
+  });
+
   it('uses the same dynamic Delete scope for the accessible name and guarded tooltip while keeping the button icon-only', () => {
     const code = source();
     const row = getActionRowBlock(code);
@@ -164,12 +179,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(block).not.toContain('Delete key');
   });
 
-  it('keeps interpolation, onion, and key utility controls', () => {
+  it('keeps the onion and key utility controls; the interpolation dropdown no longer renders (260911-s1j follow-up)', () => {
     const code = source();
-    expect(code).toContain('physics-paint-roto-interpolation-controls');
-    expect(code).toContain('physics-paint-roto-interpolation-toggle');
-    expect(code).toContain('aria-label="Interpolation mode"');
-    expect(code).toContain('aria-label="Empty frames between real keys"');
+    // 260911-s1j follow-up: the Interpolation section (mode dropdown + status
+    // pill) left the Tools popover — the mode is fixed on Frame duplicate
+    // until the engine's Frame blending work lands.
+    expect(code).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(code).not.toContain('aria-label="Interpolation mode"');
+    expect(code).not.toContain('physics-paint-roto-interpolation-select');
+    // 260911-s1j: the Blend on/off toggle left the Tools popover — the row
+    // button owns on/off per track.
+    expect(code).not.toContain('physics-paint-roto-interpolation-toggle');
+    expect(code).not.toContain('Disable generated in-betweens');
+    // 52.2-03 (D-23): the field is a NumericStepper now, so the accessible
+    // name travels as its ariaLabel prop.
+    expect(code).toContain('ariaLabel="Empty frames between real keys"');
     expect(code).toContain('onOnionChange');
     expect(code).toContain('onInsertRotoFrame');
     expect(code).toContain('onDeleteRotoFrame');
@@ -177,12 +201,15 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onPasteRotoFrame');
   });
 
-  it('disables and handler-guards interpolation controls only while the mutation lock is active', () => {
+  it('retires the interpolation dropdown markup while the retained wiring stays declared (260911-s1j follow-up)', () => {
     const code = source();
     expect(getWorkflowStripPropsInterface(code)).toContain('mutationLocked?: boolean');
+    // Retained wiring: the disabled-state derivation and the port stay
+    // declared for the re-introduction; only the rendered dropdown is gone.
     expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);');
-    expect(code).toContain('disabled={props.interpolationControlsDisabled}');
-    expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
+    expect(code).not.toContain('disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange}');
+    // The retired toggle's click guard is gone with it.
+    expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toBeNull();
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
 
@@ -240,11 +267,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(source()).toContain('Scissors');
     expect(source()).toContain('ClipboardPaste');
     expect(source()).toContain('Trash2');
-    // Copy Script / Apply Script moved to the Scripts sidebar toolbar (Gap C).
+    // Copy Script / Apply Script moved to the Scripts sidebar toolbar (Gap C);
+    // 260905-dso: the buffer Apply/Clear icons now live in the Tools popover
+    // Actions section, not the bottom action row.
     expect(row).not.toContain('aria-label="Copy Script"');
     expect(row).not.toContain('aria-label="Apply Script"');
     expect(source()).not.toMatch(/[^a-zA-Z]Clipboard[^a-zA-Z]/);
-    expect(source()).not.toContain('ClipboardPen');
+    expect(row).not.toContain('ClipboardPen');
+    expect(getHeaderBlock(source())).toContain('ClipboardPen');
   });
 
   it('removes the seven text buttons, the Discard Script button, and the script action props from the row (D-11, Gap C)', () => {
@@ -291,9 +321,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // Eight guarded icon actions plus the Set Key Space form.
     expect(builderCalls).toBeGreaterThanOrEqual(9);
     // Script copy/apply availability reasons now surface in the Scripts
-    // sidebar toolbar, not the strip (Gap C).
-    expect(code).not.toContain('copyDisabledReason');
-    expect(code).not.toContain('applyDisabledReason');
+    // sidebar toolbar, not the strip (Gap C); 260905-dso: the buffer
+    // Apply/Clear availability reads now live in the Tools popover Actions
+    // section, not the bottom action row.
+    expect(row).not.toContain('copyDisabledReason');
+    expect(row).not.toContain('applyDisabledReason');
   });
 
   it('renders a short visible label after each enlarged bottom-row icon (Gap D)', () => {
@@ -389,7 +421,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(repeatDot).toContain('height: 4px');
     expect(repeatDot).toContain('top: 2px');
     expect(repeatDot).toContain('right: 2px');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
+    // 47-01 UAT round 5: the cell is 18px wide × 22px tall (17px wide + 1px
+    // border, 21px tall + 1px border), centered vertically in the 30px row —
+    // the frames must not stretch to fill the row height.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 22px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
   });
 
@@ -423,7 +458,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(cut).toContain('pointer-events: none');
     expect(cut).not.toMatch(/background:\s*(?:white|#fff(?:fff)?|#f8fafc|rgba?\(255)/i);
     expect(cut).not.toMatch(/(?:^|\n)\s*(?:height|padding|margin|min-width|max-width):/);
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
+    // 47-01 UAT round 5: the cell is 18px wide × 22px tall (17px wide + 1px
+    // border, 21px tall + 1px border), centered vertically in the 30px row —
+    // the frames must not stretch to fill the row height.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 22px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
@@ -443,18 +481,18 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
-  it('renders the clipboard row in locked Copy, Cut, Scissor, Paste, Delete order', () => {
+  it('renders the clipboard row in locked Copy, Paste, Cut, Scissor, Delete order', () => {
     const row = getActionRowBlock(source());
     const copyIndex = row.indexOf('aria-label="Copy key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
     const cutIndex = row.indexOf('aria-label="Cut key"');
     const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     expect(copyIndex).toBeGreaterThanOrEqual(0);
-    expect(cutIndex).toBeGreaterThan(copyIndex);
+    expect(pasteIndex).toBeGreaterThan(copyIndex);
+    expect(cutIndex).toBeGreaterThan(pasteIndex);
     expect(scissorIndex).toBeGreaterThan(cutIndex);
-    expect(pasteIndex).toBeGreaterThan(scissorIndex);
-    expect(deleteIndex).toBeGreaterThan(pasteIndex);
+    expect(deleteIndex).toBeGreaterThan(scissorIndex);
   });
 
   it('enables Cut only when BOTH copy and delete availability hold, chaining the verbatim controller reasons', () => {
@@ -514,18 +552,20 @@ describe('localized render contract', () => {
   it('owns timeline observers for the mount lifetime and refreshes geometry separately', () => {
     const code = source();
     expect(code).toContain('const timelineContentRef = useRef<HTMLDivElement>(null);');
-    const observerEnd = code.indexOf('}, [updateScrollbar]);');
+    const observerEnd = code.indexOf('}, [updateScrollbar, updateVerticalScrollbar]);');
     const observerStart = code.lastIndexOf('useEffect(() => {', observerEnd);
-    const observerEffect = code.slice(observerStart, observerEnd + '}, [updateScrollbar]);'.length);
+    const observerEffect = code.slice(observerStart, observerEnd + '}, [updateScrollbar, updateVerticalScrollbar]);'.length);
     expect(observerStart).toBeGreaterThanOrEqual(0);
     expect(observerEffect).toContain('const content = timelineContentRef.current;');
     expect(observerEffect).toContain('observer.observe(content);');
+    expect(observerEffect).toContain('observer.observe(rows);');
+    expect(observerEffect).toContain('updateVerticalScrollbar();');
     expect(observerEffect).not.toContain('frameCells');
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
-    expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n  }, [frameCells, currentPhysicalCells, updateScrollbar]);');
+    expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n    updateVerticalScrollbar();\n  }, [frameCells, currentPhysicalCells, updateScrollbar, updateVerticalScrollbar]);');
     expect(code).toContain('ref={timelineContentRef}');
-    expect(code).toContain('class="physics-paint-lane"');
+    expect(code).toContain('class={`physics-paint-lane');
     expect(code).toContain('gridTemplateColumns: `${rotoLaneWidthPx}px`');
   });
 
@@ -549,7 +589,10 @@ describe('localized render contract', () => {
     expect(cellStart).toBeGreaterThanOrEqual(0);
     expect(cellBlock).toContain("recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton')");
     expect(cellBlock).toContain('const tooltip = useStyledTooltip();');
-    expect(code).toContain('const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);');
+    expect(code).toContain('const RotoTimelineCellButton = memo(');
+    // 52.1 (fresh-key glitch): the memo compares VM CONTENT (not identity) so a
+    // key-creation rebuild does not re-render all ~626 unchanged cells.
+    expect(code).toContain('rotoCellVmValuesEqual(prev.vm, next.vm)');
     expect(code).toContain('const handleRotoTimelineCellClick = useCallback(');
     expect(code).toContain('const handleRotoTimelineCellPointerDown = useCallback(');
     expect(map).toContain('key={frame}');
@@ -577,7 +620,7 @@ describe('localized static and live Workflow regions', () => {
     expect(staticBlock).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
     expect(staticBlock).toContain('physics-paint-workflow-header');
     expect(staticBlock).toContain('physics-paint-pill--playback');
-    expect(staticBlock).toContain('physics-paint-pill--interpolation');
+    expect(staticBlock).not.toContain('physics-paint-pill--interpolation');
     expect(staticBlock).toContain('aria-label="Close"');
     expect(staticBlock).toContain('<PhysicsPaintWorkflowLiveStatus');
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')")).toBe(1);
@@ -620,16 +663,16 @@ describe('localized render instrumentation', () => {
 
   it('counts timeline ResizeObserver install and cleanup at the mount-stable owner', () => {
     const code = source();
-    const effectEnd = code.indexOf('}, [updateScrollbar]);');
+    const effectEnd = code.indexOf('}, [updateScrollbar, updateVerticalScrollbar]);');
     const effectStart = code.lastIndexOf('useEffect(() => {', effectEnd);
-    const observerEffect = code.slice(effectStart, effectEnd + '}, [updateScrollbar]);'.length);
+    const observerEffect = code.slice(effectStart, effectEnd + '}, [updateScrollbar, updateVerticalScrollbar]);'.length);
 
     expect(effectStart).toBeGreaterThanOrEqual(0);
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')")).toBe(1);
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')")).toBe(1);
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
-    expect(observerEffect).toContain('}, [updateScrollbar]);');
+    expect(observerEffect).toContain('}, [updateScrollbar, updateVerticalScrollbar]);');
   });
 });
 
@@ -648,18 +691,19 @@ function getCssRuleBlock(styles: string, selector: string): string {
 }
 
 describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
-  it('renders the interpolation toggle as a borderless Blend icon toggle with no count input or text label', () => {
+  it('removes the Interpolation section from the tools popover — the mode is fixed on Frame duplicate (260911-s1j follow-up)', () => {
     const code = source();
-    const labelIndex = code.indexOf("'Disable generated in-betweens'");
-    const toggleStart = code.lastIndexOf('<button', labelIndex);
-    const toggleEnd = code.indexOf('</button>', labelIndex) + '</button>'.length;
-    const toggle = code.slice(toggleStart, toggleEnd);
-    expect(toggle).toContain('physics-paint-roto-interpolation-toggle');
-    expect(toggle).toContain('aria-pressed');
-    expect(toggle).toContain('<Blend size={15}');
-    expect(toggle).not.toContain('bordered');
-    expect(toggle).not.toContain('<span>');
-    expect(code).not.toContain('>Interpolation</span>');
+    expect(code).not.toContain('physics-paint-toolbox-section-heading">Interpolation');
+    expect(code).not.toContain('aria-label="Interpolation mode"');
+    expect(code).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(code).not.toContain('physics-paint-roto-interpolation-select');
+    expect(code).not.toContain('physics-paint-roto-interpolation-mode');
+    expect(code).not.toContain('Frame duplicate');
+    // The popover keeps its remaining sections.
+    expect(code).toContain('physics-paint-toolbox-section-heading">Key Spacing');
+    expect(code).toContain('physics-paint-toolbox-section-heading">Actions');
+    expect(code).not.toContain('physics-paint-roto-interpolation-toggle');
+    expect(code).not.toContain('generated in-betweens');
     expect(code).not.toContain('Interpolation count');
     expect(code).not.toContain('inBetweenCount');
   });
@@ -671,7 +715,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const pillEnd = code.indexOf('</form>', pillIndex);
     const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
     const iconIndex = pill.indexOf('<AlignHorizontalSpaceAround');
-    const inputIndex = pill.indexOf('aria-label="Empty frames between real keys"');
+    const inputIndex = pill.indexOf('ariaLabel="Empty frames between real keys"');
     expect(iconIndex).toBeGreaterThanOrEqual(0);
     expect(inputIndex).toBeGreaterThan(iconIndex);
     expect(pill).toContain('>Apply</button>');
@@ -687,13 +731,12 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const navigationBlock = getCssRuleBlock(styles, '.physics-paint-pill--navigation {');
     expect(navigationBlock).toContain('#34383c');
     expect(navigationBlock).toContain('#575e66');
-    // 43.5-02 final polish: the relocated interpolation and Key Spacing pills
-    // live inside the liquid-glass popover, where their tonal backgrounds read
-    // as a double surface — the background is removed, the border stays.
-    const interpolationBlock = getCssRuleBlock(styles, '.physics-paint-pill--interpolation {');
-    expect(interpolationBlock).not.toContain('#323a43');
-    expect(interpolationBlock).not.toContain('background:');
-    expect(interpolationBlock).toContain('#596775');
+    // 260911-s1j follow-up: the Interpolation pill left the popover with its
+    // dropdown — its dedicated rules are retired outright.
+    expect(styles).not.toContain('.physics-paint-pill--interpolation');
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-controls');
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-mode');
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-select');
     const playbackBlock = getCssRuleBlock(styles, '.physics-paint-pill--playback {');
     expect(playbackBlock).toContain('#34383c');
     expect(playbackBlock).toContain('#59616a');
@@ -701,17 +744,16 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     expect(applySpacingBlock).not.toBe('');
     expect(applySpacingBlock).not.toContain('background:');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-playback-controls {')).not.toContain('border-left');
-    const toggleBlock = getCssRuleBlock(styles, '.physics-paint-roto-interpolation-toggle {');
-    expect(toggleBlock).not.toMatch(/border(-color|-left|-right|-top|-bottom)?:/);
-    expect(toggleBlock).toContain('#b8c7ff');
+    // 260911-s1j: the retired Blend toggle's CSS is gone with it.
+    expect(styles).not.toContain('.physics-paint-roto-interpolation-toggle');
+    expect(styles).not.toContain('.physics-paint-toolbox-badge {');
     expect(styles).not.toContain('#2f7258');
     expect(styles).not.toContain('border-left: 1px solid rgba(145, 165, 189, 0.34)');
   });
 
-  it('keeps the force-spacing and interpolation mutation-lock guards verbatim', () => {
+  it('keeps the force-spacing mutation-lock guard verbatim (260911-s1j: the interpolation click guard retired with its toggle)', () => {
     const code = source();
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
-    expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
   });
 
   it('exposes a header Close affordance through a plain onClose prop with no Tauri import', () => {
@@ -730,17 +772,20 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
-  it('renders the elastic status capsule between the navigation and interpolation pills with the Info glyph', () => {
+  it('renders the elastic status capsule between the navigation controls and Close with the Info glyph', () => {
     const code = source();
     const header = getHeaderBlock(code);
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
     const capsuleIndex = header.indexOf('<PhysicsPaintWorkflowLiveStatus');
-    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
+    const closeIndex = header.indexOf('aria-label="Close"');
     expect(navigationIndex).toBeGreaterThanOrEqual(0);
     expect(capsuleIndex).toBeGreaterThan(navigationIndex);
-    expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
+    expect(closeIndex).toBeGreaterThan(capsuleIndex);
     const capsule = code.slice(code.indexOf('function PhysicsPaintWorkflowLiveStatus'), code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'));
-    expect(capsule).toContain('role="status"');
+    // 49-05 (UI-SPEC): the capsule keeps the polite live region, and rejections
+    // additionally announce with role="alert" — the role is conditional on the
+    // error tone, never a static status role.
+    expect(capsule).toContain("role={props.isError ? 'alert' : 'status'}");
     expect(capsule).toContain('aria-live="polite"');
     expect(capsule).toContain('<Info size={16}');
     expect(capsule).toContain('physics-paint-status-capsule-text');
@@ -776,7 +821,13 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     const map = getRotoMapBlock(code);
     expect(map).toContain('getRotoCellStateTooltipCopy(');
     expect(map).toContain('RotoTimelineCellButton');
-    expect(map).not.toContain('title=');
+    // 47-01 UAT round 3: the strip's resize handle legitimately carries a
+    // native `title=` (strip-level chrome), so the no-native-title guard is
+    // scoped to the cell button usage itself, not the whole map slice.
+    const cellButtonStart = map.indexOf('<RotoTimelineCellButton');
+    const cellButtonEnd = map.indexOf('/>', cellButtonStart) + 2;
+    const cellButton = map.slice(cellButtonStart, cellButtonEnd);
+    expect(cellButton).not.toContain('title=');
     expect(map).not.toContain('dragTitle');
     // Drag machinery untouched: identity attributes and handlers stay.
     expect(map).toContain('handleRotoTimelineCellPointerDown');
@@ -790,14 +841,6 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(cellComponent).toContain('data-roto-app-frame');
     expect(cellComponent).toContain('data-roto-kind');
     expect(cellComponent).toContain('data-roto-key-id');
-    // The interpolation pill adopts the styled tooltip in place of its native title (Pitfall 4).
-    const pillIndex = code.indexOf('physics-paint-pill--interpolation');
-    expect(pillIndex).toBeGreaterThanOrEqual(0);
-    const pillEnd = code.indexOf('<div class="physics-paint-state-actions"', pillIndex);
-    const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
-    expect(pill).not.toContain('title=');
-    expect(pill).toContain('PhysicsPaintStyledTooltip');
-    expect(pill).toContain('{props.interpolationStatus}');
   });
 
   it('styles the capsule as the sole flex:1 truncating region and deletes the retired stack/legend CSS', () => {
@@ -817,6 +860,7 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(capsuleTextBlock).toContain('white-space: nowrap');
     expect(capsuleTextBlock.toLowerCase()).toContain('#dde7f0');
     expect(getCssRuleBlock(styles, '.physics-paint-status-capsule .lucide {').toLowerCase()).toContain('#f8c96b');
+    expect(getCssRuleBlock(styles, '.physics-paint-status-capsule-error .lucide {').toLowerCase()).toContain('#ff6b6b');
     for (const retired of [
       '.physics-paint-roto-status-stack',
       '.physics-paint-roto-cell-legend',
@@ -900,18 +944,23 @@ function getMediaQueryBlock(styles: string, query: string): string {
   return styles.slice(start, end);
 }
 
-describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)', () => {
-  it('locks the strip shell and studio grid third track to 161px with no legacy or override height literals', () => {
+describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2 / 47-01 UAT round 3)', () => {
+  it('makes the strip shell and studio grid third track dynamic (auto) with no legacy fixed-height literals', () => {
     const styles = css();
-    // 161px = the Plan 06 155px total with the user-approved Gap H-6 action-row
-    // relaxation (28px to 34px); every other band keeps its Plan 06 height.
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px');
-    expect(styles).not.toContain('256px');
-    expect(styles).not.toContain('260px');
+    // 47-01 UAT round 3: the strip height is DYNAMIC — set inline by the
+    // component (default = exactly enough for every track row + the Bg row,
+    // capped at 270px; the top-edge drag handle resizes within [1 row, full
+    // content height]). The fixed 264px band is gone; the studio grid third
+    // track is `auto` so the canvas row absorbs the difference.
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('position: relative');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
+    expect(styles).not.toContain('height: 256px');
+    expect(styles).not.toContain('height: 260px');
+    expect(styles).not.toContain('height: 264px');
   });
 
-  it('declares the exact 46/1/28/38/34/14 band geometry with zeroed strip padding and gap', () => {
+  it('declares the dynamic 46/1/28/flex/34/14 band geometry with zeroed strip padding and gap', () => {
     const styles = css();
     const strip = getCssRuleBlock(styles, '.physics-paint-workflow-strip {');
     expect(strip).toContain('gap: 0');
@@ -919,9 +968,12 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-header {')).toContain('height: 46px');
     const timeline = getCssRuleBlock(styles, '.physics-paint-timeline {');
     expect(timeline).toContain('border-top: 1px');
-    expect(timeline).not.toContain('min-height');
+    expect(timeline).toContain('min-height: 0');
+    const region = getCssRuleBlock(styles, '.physics-paint-rows-region {');
+    expect(region).toContain('flex: 1 1 auto');
+    expect(region).toContain('min-height: 0');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
-    expect(lane).toContain('height: 38px');
+    expect(lane).toContain('height: 30px');
     expect(lane).not.toContain('min-height');
     expect(lane).not.toContain('padding: 8px 0');
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
@@ -939,19 +991,22 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     const code = source();
     const scrollIndex = code.indexOf('class="physics-paint-timeline-scroll"');
     const scrollEnd = getMatchingDivEnd(code, code.lastIndexOf('<div', scrollIndex));
-    const laneIndex = code.indexOf('class="physics-paint-lane"', scrollIndex);
-    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneIndex);
+    // 47-01 mockup redesign: the active lane source now lives in the reusable
+    // `renderActiveLane()` helper, mounted inside the rows-region here — so the
+    // mount point, not the lane class string, is the scroll-containment anchor.
+    const laneMountIndex = code.indexOf('renderActiveLane()', scrollIndex);
+    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneMountIndex);
     const utilitiesIndex = code.indexOf('physics-paint-roto-key-utilities', actionRowIndex);
     const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', utilitiesIndex);
-    for (const index of [scrollIndex, scrollEnd, laneIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
+    for (const index of [scrollIndex, scrollEnd, laneMountIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
-    expect(laneIndex).toBeLessThan(scrollEnd);
+    expect(laneMountIndex).toBeLessThan(scrollEnd);
     expect(actionRowIndex).toBeGreaterThan(scrollEnd);
     expect(utilitiesIndex).toBeGreaterThan(actionRowIndex);
     expect(scrollbarIndex).toBeGreaterThan(utilitiesIndex);
     expect(code.slice(scrollIndex, scrollEnd)).not.toContain('physics-paint-roto-action-row');
-    expect(code.slice(scrollIndex, scrollEnd)).toContain('physics-paint-roto-cells');
+    expect(code.slice(scrollIndex, scrollEnd)).toContain('renderActiveLane()');
   });
 
   it('makes the timeline scroll container focusable so Cmd+Z/Cmd+Shift+Z routing survives rail commits (43.4 defect 7)', () => {
@@ -989,20 +1044,19 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
 });
 
 describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT Gap A)', () => {
-  it('orders the top bar as navigation, playback, capsule, interpolation, Close with no Tools menu or header key actions', () => {
+  it('orders the top bar as navigation, playback, capsule, Close with no interpolation pill, Tools menu, or header key actions (260911-s1j follow-up)', () => {
     const header = getHeaderBlock(source());
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
     const playbackIndex = header.indexOf('physics-paint-pill--playback');
     const capsuleIndex = header.indexOf('<PhysicsPaintWorkflowLiveStatus');
-    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
     const closeIndex = header.indexOf('aria-label="Close"');
-    for (const index of [navigationIndex, playbackIndex, capsuleIndex, interpolationIndex, closeIndex]) {
+    for (const index of [navigationIndex, playbackIndex, capsuleIndex, closeIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(playbackIndex).toBeGreaterThan(navigationIndex);
     expect(capsuleIndex).toBeGreaterThan(playbackIndex);
-    expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
-    expect(closeIndex).toBeGreaterThan(interpolationIndex);
+    expect(closeIndex).toBeGreaterThan(capsuleIndex);
+    expect(header).not.toContain('physics-paint-pill--interpolation');
     // 43.5-02: the ToolCase button (dynamic aria-label carrying live
     // interpolation state) and the relocated Key Spacing form now live in the
     // header block inside the toolbox popover, so the apply-spacing pill is
@@ -1016,24 +1070,25 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
 
   it('removes the Tools dropdown machinery and its CSS outright', () => {
     const code = source();
-    for (const removed of ['toolsOpen', 'setToolsOpen', 'toolsMenuRef', 'aria-haspopup="menu"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown']) {
+    // The obsolete top-bar Tools dropdown is gone. (260911-s1j also retired
+    // the 47-01 track-row ⋯ tools state — no toolsOpen machinery remains.)
+    for (const removed of ['toolsMenuRef', 'aria-haspopup="menu"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Tools"']) {
       expect(code).not.toContain(removed);
     }
+    expect(code).not.toContain('toolsOpenTrackId');
     const styles = css();
     for (const removed of ['.physics-paint-tools-menu', '.physics-paint-tools-trigger', '.physics-paint-tools-dropdown']) {
       expect(styles).not.toContain(removed);
     }
   });
 
-  it('renders the interpolation pill as a dropdown offering Frame duplicate and Frame blending', () => {
+  it('removes the interpolation mode dropdown outright — no select, no mode options (260911-s1j follow-up)', () => {
     const code = source();
-    expect(code).toContain('aria-label="Interpolation mode"');
-    expect(code).toContain('<option value="duplicate">Frame duplicate</option>');
-    // Renamed 'Frame blend' → 'Frame blending' (36.15-09, UAT Gap E-4).
-    expect(code).toContain('<option value="blend">Frame blending</option>');
-    expect(code).not.toContain('<option value="blend">Frame blend</option>');
-    expect(code).not.toContain('<option value="duplicate">Duplicate</option>');
-    expect(code).not.toContain('<option value="blend">Blend</option>');
+    expect(code).not.toContain('aria-label="Interpolation mode"');
+    expect(code).not.toContain('<select');
+    expect(code).not.toContain('<option');
+    expect(code).not.toContain('value="duplicate"');
+    expect(code).not.toContain('value="blend"');
   });
 
   it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete (Key Spacing relocated to the popover)', () => {
@@ -1079,8 +1134,10 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const form = header.slice(spacingIndex, formEnd === -1 ? header.length : formEnd);
     expect(form.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(form).not.toContain('title=');
-    expect(form).toContain('aria-disabled={!props.canApplyForceSpacing');
-    expect(form).toContain('aria-label="Empty frames between real keys"');
+    // 52.2-03 (D-23): the guarded pattern now travels as NumericStepper props
+    // (camelCase in source) — no native disabled lands in the form markup.
+    expect(form).toContain('ariaDisabled={!props.canApplyForceSpacing');
+    expect(form).toContain('ariaLabel="Empty frames between real keys"');
     expect(form).toContain('aria-label="Apply force spacing"');
     expect(form).toContain('>Apply</button>');
     expect(header).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
@@ -1119,26 +1176,16 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
     const header = getHeaderBlock(source());
     const headerTopRegionCount = (header.match(/region="top"/g) ?? []).length;
     const allTopRegionCount = (source().match(/region="top"/g) ?? []).length;
-    // Interpolation and Close declare the header region in this block; the
-    // extracted status-capsule child declares the same region at its owner.
-    expect(headerTopRegionCount).toBe(2);
-    expect(allTopRegionCount).toBe(3);
+    // Close declares the header region in this block (the interpolation pill
+    // left with its dropdown — 260911-s1j follow-up); the extracted
+    // status-capsule child declares the same region at its owner.
+    expect(headerTopRegionCount).toBe(1);
+    expect(allTopRegionCount).toBe(2);
     const styles = css();
     const surface = getCssRuleBlock(styles, '.physics-paint-styled-tooltip {');
     const belowNotch = getCssRuleBlock(styles, '.physics-paint-styled-tooltip--below .physics-paint-styled-tooltip-notch {');
     expect(surface).toContain('position: fixed');
     expect(belowNotch).toContain('border-bottom: 6px solid var(--color-tooltip-bg)');
-  });
-
-  it('keeps the interpolation mode select native so the open dropdown renders above studio chrome', () => {
-    const code = source();
-    const selectIndex = code.indexOf('aria-label="Interpolation mode"');
-    expect(selectIndex).toBeGreaterThanOrEqual(0);
-    const selectStart = code.lastIndexOf('<select', selectIndex);
-    expect(selectStart).toBeGreaterThanOrEqual(0);
-    // No custom listbox/menu replaces the native dropdown.
-    expect(code).not.toContain('role="listbox"');
-    expect(code).not.toContain('role="menu"');
   });
 });
 
@@ -1160,15 +1207,41 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     expect(apply).toContain('border-radius: 4px');
   });
 
-  it('raises the selected key cell above its right neighbor so the full orange selection border renders', () => {
+  it('paints the selected key cell as an in-frame orange border with no outline or lift', () => {
     const styles = css();
     const current = getCssRuleBlock(styles, '.physics-paint-roto-cell.current {');
     expect(current).not.toBe('');
-    // Abutting 18px cells paint in DOM order, so the next cell covered the
-    // selected cell's right outline edge; a positive z-index on the selected
-    // state lifts the full four-side outline above the neighbor without
-    // touching the 18px pitch or the band geometry.
-    expect(current).toMatch(/z-index:\s*[1-9]\d*;/);
+    // 47 close-out UAT round 7/9: the selection is the cell's own orange
+    // border (green fill stays for keys, blue + '-' dash for interpolated
+    // frames) — no outer outline box, and no z-index lift (the lift existed
+    // to clear the removed outline's right edge; with a plain border it only
+    // doubled the abutting neighbors' borders).
+    expect(current).toContain('background: #f5a623');
+    expect(current).not.toContain('outline:');
+    expect(current).not.toMatch(/z-index:\s*[1-9]\d*;/);
+  });
+
+  it('tracks the primary current treatment per fill family (48-06 UAT cosmetics)', () => {
+    const styles = css();
+    // 48-06 UAT: the PRIMARY selection/cursor (`.current`) follows the cell's
+    // fill family — painted key #86c55a (over #2d6f48), interpolated #4d98f9
+    // (over #365ed6), empty #a0adbb (over #4d535a) — while secondary
+    // multi-select members (`.selected`) and the other fill families keep the
+    // blanket orange. Hover/focus variants ride along at higher specificity.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-cached.current,')).not.toBe('');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-cached-only.current');
+    expect(styles).toContain('background: #86c55a !important;');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-empty.current {')).toContain('background: #a0adbb !important;');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-generated.current {')).toContain('background: #4d98f9 !important;');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-cached.current:hover');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-empty.current:hover');
+    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-generated.current:hover');
+    // The per-fill rules must come AFTER the blanket orange current/hover
+    // rules (equal !important specificity is settled by source order).
+    const blanketIndex = styles.indexOf('.physics-paint-roto-cell.current:hover,');
+    const perFillIndex = styles.indexOf('.physics-paint-roto-cell.roto-fill-cached.current,');
+    expect(blanketIndex).toBeGreaterThanOrEqual(0);
+    expect(perFillIndex).toBeGreaterThan(blanketIndex);
   });
 });
 
@@ -1206,10 +1279,9 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     expect(identity).not.toBe('');
     expect(identity).toContain('border:');
     expect(identity).toContain('background:');
-    // The 34px band and 161px strip geometry stay intact (Plan 06 contract
-    // with the user-approved Gap H-6 action-row relaxation).
+    // The 34px band stays intact; the strip shell is dynamic (47-01 UAT round 3).
     expect(actionRow).toContain('height: 34px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 
   it('renders bottom-row tool labels lowercase by opting the icon buttons out of the global uppercase button rule', () => {
@@ -1265,9 +1337,8 @@ describe('PhysicsPaintWorkflowStrip Gap G bottom-row polish contract (36.15-11, 
     // icon buttons (the retired pill's padding + border pushed it to 30px,
     // which is what threw the row off-center, UAT Gap G-3).
     expect(getCssRuleBlock(styles, '.physics-paint-roto-key-utilities {')).toContain('height: 26px');
-    // The 34px band and 161px strip geometry stay intact (Plan 06 contract
-    // with the user-approved Gap H-6 action-row relaxation).
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
+    // The 34px band stays intact; the strip shell is dynamic (47-01 UAT round 3).
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 });
 
@@ -1291,21 +1362,25 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     expect(getCssRuleBlock(styles, '.physics-paint-ruler-tick {')).toContain('54px');
   });
 
-  it('locks the user-approved 34px action-row band with a 161px band sum and every other Plan 06 band unchanged', () => {
+  it('locks the 34px action-row band with the dynamic strip shell and every other band unchanged', () => {
     const styles = css();
-    // UAT Gap H-6 (user-approved relaxation of the Plan 06 Fixed Layout
-    // Contract): the action row grows 28px to 34px — the smallest height that
-    // gives the 26px groups clear 4px top/bottom padding — so the band sum
-    // becomes 46 + 1 + 28 + 38 + 34 + 14 = 161.
+    // 47-01 UAT round 3: the fixed 264px band sum is gone — the strip shell
+    // height is DYNAMIC (inline, default = exactly enough for every track row
+    // + the Bg row, capped at 270px; drag handle resizes within [1 row, full
+    // content height]). The ruler, action row and scrollbar keep their Plan 06
+    // heights; the rows-region flex-fills the remaining height and scrolls.
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-header {')).toContain('height: 46px');
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 28px');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 38px');
+    expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('flex: 1 1 auto');
+    expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px');
-    // No other height literal may grow: the retired 155px total is gone.
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
+    // No other historical literal may survive: the retired 155px and 161px totals are gone.
     expect(styles).not.toContain('height: 155px');
+    expect(styles).not.toContain('height: 161px');
   });
 
   it('vertically centers the three 26px groups with visible top and bottom padding in the 34px band', () => {
@@ -1323,18 +1398,18 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
 });
 
 describe('PhysicsPaintWorkflowStrip Gap I action-row padding contract (36.15-13, UAT Gap I-1)', () => {
-  it('adds 6px bottom padding to the action row without changing the 34px band or the 161px band sum', () => {
+  it('adds 6px bottom padding to the action row without changing the 34px band or the dynamic strip shell', () => {
     const styles = css();
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
     // UAT Gap I-1 (user's final polish round): padding-bottom: 6px on the
     // action-row div.
     expect(actionRow).toContain('padding-bottom: 6px');
     // The stylesheet sets box-sizing: border-box globally, so the padding
-    // shrinks the content box instead of growing the band: the 34px band, the
-    // 161px strip shell, and the studio grid third track stay intact.
+    // shrinks the content box instead of growing the band: the 34px band stays
+    // intact and the strip shell stays dynamic (47-01 UAT round 3).
     expect(actionRow).toContain('height: 34px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
     expect(styles).not.toContain('height: 155px');
   });
 });
@@ -1417,9 +1492,14 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
   it('keeps only the integrated rail inside the unchanged physical row', () => {
     const code = source();
     const rulerIndex = code.indexOf('class="physics-paint-ruler"');
-    const physicalLaneIndex = code.indexOf('class="physics-paint-lane"');
-    const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail');
-    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"');
+    // 47-01 mockup redesign: the lane source lives in the reusable
+    // `renderActiveLane()` helper (rendered after the ruler in the DOM), so the
+    // rail/cells containment assertions anchor to that helper instead of a
+    // global source offset.
+    const laneFnIndex = code.indexOf('const renderActiveLane');
+    const physicalLaneIndex = code.indexOf('class={`physics-paint-lane', laneFnIndex);
+    const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail', physicalLaneIndex);
+    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"', loopRailIndex);
 
     expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipIds?: readonly string[];');
     expect(getWorkflowStripPropsInterface(code)).not.toContain('selectedRotoLoopSourceKeyIds');
@@ -1430,7 +1510,8 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(code).toContain('ranges={loopResolutionContext.ranges}');
     expect(code).toContain('visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}');
     expect(rulerIndex).toBeGreaterThanOrEqual(0);
-    expect(physicalLaneIndex).toBeGreaterThan(rulerIndex);
+    expect(laneFnIndex).toBeGreaterThanOrEqual(0);
+    expect(physicalLaneIndex).toBeGreaterThan(laneFnIndex);
     expect(loopRailIndex).toBeGreaterThan(physicalLaneIndex);
     expect(cellsIndex).toBeGreaterThan(loopRailIndex);
     expect(code).not.toContain('PhysicsPaintLoopClipLane');
@@ -1517,10 +1598,10 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       { startFrame: 0, endFrameExclusive: 120 },
       18,
     )).toEqual({ left: 180, width: 450 });
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#8b5cf6/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*4px[^}]*background:\s*#8b5cf6/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#c4b5fd/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\.selected[^}]*background:\s*#f59e0b/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*8px/s);
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 
@@ -1570,7 +1651,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyBranch).toContain('current.onNavigateToSyncedFrame(frame);');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
     expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
-    expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;');
+    expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
   });
 
@@ -1599,7 +1680,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(handler).not.toMatch(/selectedAction|linkedRotoLoopClipIds|linkedRotoActionName/);
   });
 
-  it('rejects target-level linked paint while preserving selected, endpoint, dot, focus, and strip geometry', () => {
+  it('rejects target-level linked paint while preserving selected, endpoint, focus, and strip geometry', () => {
     const styles = css();
     expect(styles).not.toMatch(/\.physics-paint-loop-clip-rail-target\.mode-(?:progressive|static)\.action-linked:not\(\.selected\)\s*\{/);
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.mode-progressive.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {'))
@@ -1608,14 +1689,13 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       .toContain('background: #67e8f9');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {'))
       .toContain('background: #f59e0b');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,')).toContain('height: 3px');
+    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,')).toContain('height: 4px');
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
-    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #f2f5f7');
+    expect(styles).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 38px');
-    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 
   it('keeps rail selection line-only while explicit physical spacing proxies remain visible', () => {
@@ -1642,26 +1722,21 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('&& !isPrimarySelected;');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
     expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
-    expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;');
+    expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
-    const proxySelection = getCssRuleBlock(
-      css(),
-      '.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {',
-    );
-    expect(proxySelection).toContain('background: #4b6382');
-    expect(proxySelection).toContain('border-color: #f5a623');
-    expect(proxySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
-    const selectedRepeat = getCssRuleBlock(
-      css(),
-      '.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {',
-    );
-    expect(selectedRepeat).toContain('background: #4b6382');
-    expect(selectedRepeat).not.toContain('#f5a623');
-    expect(selectedRepeat).not.toContain('outline:');
+    // 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
+    // lighter blue-gray (NOT the orange selection — only the selected/current
+    // cell is orange). Restored after the round-12 deletion.
+    expect(css()).toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
+    expect(css()).toContain('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current)');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
-    expect(ordinarySelection).toContain('border-color: #f5a623');
-    expect(ordinarySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
+    // 47 close-out UAT rounds 10-11: the selection is an orange background
+    // fill only — no border recolor, no box, no hover variant.
+    expect(ordinarySelection).toContain('background: #f5a623');
+    expect(ordinarySelection).not.toContain('border-color:');
+    expect(ordinarySelection).not.toContain('outline:');
+    expect(ordinarySelection).not.toContain('box-shadow:');
   });
 });
 
@@ -1714,7 +1789,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(keyRailGate).not.toContain('loopResolutionContext');
     expect(keyRailGate).not.toContain('onSelectRotoLoopClip');
     expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
-    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class="physics-paint-lane"'));
+    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class={`physics-paint-lane'));
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
   });
 
@@ -2007,29 +2082,387 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
   });
 });
 
-describe('Solo armed orange tint source contract (43.6-09: base class joins the conditional armed class)', () => {
-  it('the Solo button className template carries physics-paint-push-tool-button AND ${soloArmedClass} in the same template literal', () => {
+describe('Solo armed tint source contract (260905-d1w: relocated into the playback pill as a nav-button)', () => {
+  it('the relocated Solo button block carries the pill nav-button classes and the .active armed class, and soloArmedClass uses the pill .active convention', () => {
     const code = source();
-    // Slice the Solo tool group block (the block containing 'Solo selected Rails').
-    const groupStart = code.indexOf('physics-paint-solo-tool-group');
-    expect(groupStart).toBeGreaterThan(-1);
-    const group = code.slice(groupStart, code.indexOf('Solo selected Rails', groupStart));
-    // Root cause RC-C (G-43.6-2 / G-43.6-7): the template reused the
-    // .physics-paint-push-tool-armed class NAME but omitted the sibling
-    // .physics-paint-push-tool-button base class required by the compound CSS
-    // selector .physics-paint-push-tool-button.physics-paint-push-tool-armed
-    // (physicsPaintStudio.css) — so the armed class was inert and the orange
-    // tint never rendered. The template must carry BOTH the base class and the
-    // conditional armed class in the same template literal, mirroring the Push
-    // button exactly.
-    const classStart = group.indexOf('class={`');
-    expect(classStart).toBeGreaterThan(-1);
-    const classTemplate = group.slice(classStart, group.indexOf('}`}', classStart) + 3);
-    expect(classTemplate).toContain('physics-paint-roto-key-icon-button');
-    expect(classTemplate).toContain('physics-paint-push-tool-button');
-    expect(classTemplate).toContain('${soloArmedClass}');
-    // The armed class stays conditional — soloArmedClass is defined from the
-    // soloArmed signal (L1329) and is untouched by this fix.
-    expect(code).toContain("const soloArmedClass = soloArmed ? ' physics-paint-push-tool-armed' : '';");
+    const header = getHeaderBlock(code);
+    // Slice the relocated Solo button block from the header (the block
+    // containing 'Solo selected Rails').
+    const labelIndex = header.indexOf('aria-label="Solo selected Rails"');
+    expect(labelIndex).toBeGreaterThan(-1);
+    const buttonStart = header.lastIndexOf('<button', labelIndex);
+    const buttonEnd = header.indexOf('</button>', labelIndex) + '</button>'.length;
+    const button = header.slice(buttonStart, buttonEnd);
+    expect(button).toContain('physics-paint-nav-button');
+    expect(button).toContain('physics-paint-roto-solo-toggle');
+    // The relocated button lives in the memoized static-chrome component, so
+    // the armed class arrives as a prop (the main component still defines
+    // soloArmedClass with the pill .active convention, asserted below).
+    expect(button).toContain('${props.soloArmedClass}');
+    // The relocated button is icon-only — no action-row icon-button class and
+    // no visible label.
+    expect(button).not.toContain('physics-paint-roto-key-icon-button');
+    expect(button).not.toContain('>Solo</span>');
+    // The armed class is the pill .active convention (the
+    // physics-paint-push-tool-armed compound selector requires the
+    // physics-paint-push-tool-button base class, which a nav-button does not
+    // carry) — one armed visual, no new color literals.
+    expect(code).toContain("const soloArmedClass = soloArmed ? ' active' : '';");
+  });
+});
+
+describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
+  it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)', () => {
+    const row = getActionRowBlock(source());
+    const tokens = [
+      'aria-label="Add key"',
+      'aria-label="Create rail"',
+      'aria-label="Push"',
+      getActionAriaLabelToken('Insert key before'),
+      'aria-label="Duplicate key"',
+      'aria-label="Copy key"',
+      'aria-label="Paste key"',
+      'aria-label="Cut key"',
+      getActionAriaLabelToken('Split Key Rail'),
+      getActionAriaLabelToken('Delete Frame'),
+    ];
+    const indices = tokens.map((token) => row.indexOf(token));
+    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
+    for (let i = 1; i < indices.length; i += 1) {
+      expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
+    // The Solo group is gone from the action row (relocated to the pill).
+    expect(row).not.toContain('physics-paint-solo-tool-group');
+  });
+
+  it('gates + Rail with the extended canCreateRail law (260905-d1w)', () => {
+    const row = getActionRowBlock(source());
+    // The group div AND the button both carry aria-label="Create rail"; the
+    // button's is the LAST occurrence, so lastIndexOf targets the button block.
+    const labelIndex = row.lastIndexOf('aria-label="Create rail"');
+    expect(labelIndex).toBeGreaterThan(-1);
+    const start = row.lastIndexOf('<button', labelIndex);
+    const end = row.indexOf('</button>', labelIndex) + '</button>'.length;
+    const block = row.slice(start, end);
+    expect(block).toContain("aria-disabled={!canCreateRail ? 'true' : undefined}");
+    expect(block).toContain("aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}");
+    expect(block).toContain("aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}");
+    const guardIndex = block.indexOf('if (!canCreateRail) return;');
+    const toggleIndex = block.indexOf('railCreateMenuOpen.value = !railCreateMenuOpen.value;');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(toggleIndex).toBeGreaterThan(guardIndex);
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCreateRail");
+    expect(block).toContain('roto-key-action-reason-rail-create');
+    // The guarded tooltip copy lives in the wrapper span (a sibling of the
+    // button), so it is asserted on the row.
+    expect(row).toContain("buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)");
+  });
+
+  it('derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)', () => {
+    const code = source();
+    const derivationStart = code.indexOf('const currentFrameResolution = ');
+    expect(derivationStart).toBeGreaterThan(-1);
+    const derivationEnd = code.indexOf('const copyRotoKeyDisabledReason', derivationStart);
+    const derivation = code.slice(derivationStart, derivationEnd);
+    // Base law: canAddRotoKey must still gate (busy/ready/real-key).
+    expect(derivation).toContain('canAddRotoKey &&');
+    // Generated in-between exclusion reads the current frame's semantic cell.
+    expect(derivation).toContain("physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated'");
+    // Linked repeat exclusion reads the current frame's loop resolution.
+    expect(derivation).toContain('isLinkedRepeatFrameResolution(currentFrameResolution)');
+    expect(derivation).toContain('visibleFrameResolutions?.get(props.currentFrame) ?? null');
+    // Reason priority: base addEmptyKeyDisabledReason first, then repeat, then generated.
+    expect(derivation).toContain('addRotoKeyDisabledReason');
+    expect(derivation).toContain('isCurrentFrameLinkedRepeat');
+    expect(derivation).toContain('isCurrentFrameGenerated');
+    expect(derivation).toContain('The current frame is a linked Rail repeat — move to an empty frame to create a Rail.');
+    expect(derivation).toContain('The current frame is a generated in-between — move to an empty frame to create a Rail.');
+    // The helper treats linked-unresolved and repeatInstance > 0 as repeats.
+    const helperStart = code.indexOf('function isLinkedRepeatFrameResolution');
+    expect(helperStart).toBeGreaterThan(-1);
+    const helper = code.slice(helperStart, code.indexOf('\n}\n', helperStart) + 3);
+    expect(helper).toContain("resolution?.kind === 'linked-unresolved'");
+    expect(helper).toContain('resolution.repeatInstance > 0');
+  });
+
+  it('relocates Solo into the playback pill as an icon-only nav-button (260905-d1w)', () => {
+    const code = source();
+    const header = getHeaderBlock(code);
+    const loopIndex = header.indexOf('physics-paint-roto-loop-toggle');
+    const soloIndex = header.indexOf('aria-label="Solo selected Rails"');
+    const audioIndex = header.indexOf('physics-paint-audio-preview-toggle-anchor');
+    expect(loopIndex).toBeGreaterThanOrEqual(0);
+    expect(soloIndex).toBeGreaterThan(loopIndex);
+    expect(audioIndex).toBeGreaterThan(soloIndex);
+    const buttonStart = header.lastIndexOf('<button', soloIndex);
+    const buttonEnd = header.indexOf('</button>', soloIndex) + '</button>'.length;
+    const button = header.slice(buttonStart, buttonEnd);
+    expect(button).toContain('physics-paint-nav-button');
+    expect(button).toContain('physics-paint-roto-solo-toggle');
+    expect(button).toContain('${props.soloArmedClass}');
+    expect(button).toContain('aria-pressed');
+    expect(button).toContain('aria-disabled={props.soloToolDisabled');
+    expect(button).toContain('toggleSolo()');
+    expect(button).toContain('disarmPushTool()');
+    expect(button).not.toContain('physics-paint-roto-key-icon-button');
+    expect(button).not.toContain('>Solo</span>');
+    expect(css()).toContain('.physics-paint-roto-solo-toggle.active');
+    expect(code).toContain("const soloArmedClass = soloArmed ? ' active' : '';");
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
+  const dialogPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintDeleteTrackDialog.tsx');
+  const dialogSource = () => readFileSync(dialogPath, 'utf8');
+  const headerColumnPath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintTrackHeaderColumn.tsx');
+  const headerColumnSource = () => readFileSync(headerColumnPath, 'utf8');
+  const trackRowPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintTrackRow.tsx');
+  const trackRowSource = () => readFileSync(trackRowPath, 'utf8');
+  // French-only copy tokens never allowed on the CRUD surfaces (D-14); note
+  // 'clips' is intentionally excluded — the English labels 'loop clips' and
+  // the 'rotoLoopClips' identifiers contain it legitimately. Word boundaries
+  // keep English identifiers like 'copiedAppFrame'/'copiedStrokeCount' (the
+  // roto copy/paste surface) from tripping the 'copie' token.
+  const frenchCopyPattern = /\b(copie|supprimer|renommer|bloquant|confirmer|annuler)\b/;
+
+  it('commits rename fail-closed in the strip: trim, 64-char cap, control-char rejection, then the intent (T-47-02-01 / ASVS V5)', () => {
+    const strip = source();
+    expect(strip).toContain('.trim()');
+    expect(strip).toContain('MAX_TRACK_NAME_LENGTH');
+    expect(strip).toContain('TRACK_NAME_CONTROL_CHAR');
+    expect(strip).toContain('props.onRenameTrack?.(');
+  });
+
+  it('opens the acknowledge-and-delete dialog only through requestDeleteTrack; the commit lives only in the dialog (D-17)', () => {
+    const strip = source();
+    expect(strip).toContain('requestDeleteTrack(layerId, trackId)');
+    // The strip never commits — the dialog's Confirm is the only delete entry.
+    expect(strip).not.toContain('commitDeleteTrack');
+    const dialog = dialogSource();
+    expect(dialog).toContain('commitDeleteTrack(layerId, trackId, true)');
+    expect(dialog).toContain('At least one Paint track is required.');
+  });
+
+  it('routes the header-drag reorder through reorderTrack with the stable id and a numeric order only (T-47-02-03 / Pitfall 1)', () => {
+    const strip = source();
+    expect(strip).toContain('onReorderTrack?.(');
+    // The grip lives on the row surface (PhysicsPaintTrackRowHeader renders
+    // it and fires onGripPointerDown); the column passes the intent through to
+    // the rows, and the strip never renders the grip itself.
+    const rowSource = trackRowSource();
+    expect(rowSource).toContain('physics-paint-track-row-grip');
+    expect(rowSource).toContain('onGripPointerDown');
+    expect(headerColumnSource()).toContain('onGripPointerDown');
+    const studio = studioSource();
+    expect(studio).toContain('reorderTrack(layerId, trackId, newOrder)');
+    expect(studio).toContain('setTrackSolo(layerId, trackId, solo)');
+  });
+
+  it('keeps every new CRUD surface copy English (D-14)', () => {
+    const surfaces = `${source()}\n${dialogSource()}\n${headerColumnSource()}`;
+    expect(surfaces).not.toMatch(frenchCopyPattern);
+    const dialog = dialogSource();
+    expect(dialog).toContain('Delete track');
+    expect(dialog).toContain('frames');
+    expect(dialog).toContain('Hold reference');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip cross-track drag wiring (47-05 Task 1)', () => {
+  it('wires the cross-track gesture ONLY through the rows-region capture listener, never through the header reorder grab (D-18)', () => {
+    const strip = source();
+    // The gesture hook is mounted in the strip.
+    expect(strip).toContain('usePhysicsPaintCrossTrackDrag');
+    expect(strip).toContain('crossTrackDrag.onPointerDown');
+    // The rows-region is the only entry point for the content gesture.
+    expect(strip).toContain('physics-paint-rows-region');
+    // The reorder grip (47-02) never starts the cross-track session — the
+    // grip wires ONLY handleGripPointerDown, which routes through reorderTrack.
+    expect(strip).not.toContain('onGripPointerDown={crossTrackDrag');
+    expect(strip).not.toContain('onGripPointerDown={(event) => crossTrackDrag');
+  });
+
+  it('passes the read-only destination highlight and insertion preview to the rows (D-16)', () => {
+    const strip = source();
+    expect(strip).toContain('crossDestination={');
+    expect(strip).toContain('crossInsertionFrame={');
+  });
+
+  it('ships the destination-highlight and insertion-preview CSS classes', () => {
+    const stylesheet = css();
+    expect(stylesheet).toContain('.physics-paint-track-row-cross-destination');
+    expect(stylesheet).toContain('.physics-paint-track-row-insertion-preview');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', () => {
+  it('routes the crossed release through physicPaintStore.moveTrackItems and publishes through the action bundle (D-17)', () => {
+    const strip = source();
+    expect(strip).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame)');
+    expect(strip).toContain('moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) =>');
+    expect(strip).toContain('publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message)');
+    expect(strip).toContain('setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status)');
+  });
+
+  it('wires one-click cross-track frame/rail selection through the rows (47 close-out UAT round 5)', () => {
+    const strip = source();
+    expect(strip).toContain('onSelectTrackFrame?: (trackId: string, frame: number) => void');
+    expect(strip).toContain('onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void');
+    // Every non-active row receives both intents — a click selects AND
+    // activates the track in one gesture.
+    expect(strip).toContain('onSelectTrackFrame={props.onSelectTrackFrame}');
+    expect(strip).toContain('onSelectTrackRail={props.onSelectTrackRail}');
+  });
+
+  it('wires the one-click cross-track selection intents in the Studio bundle (47 close-out UAT rounds 5+7)', () => {
+    const studio = studioSource();
+    // The Studio owns the intents: the click activates the track and applies
+    // the selection SYNCHRONOUSLY in the click handler (the deferred seam
+    // effect ran after the paint, so the first click's selection was never
+    // visible — the 2-click bug). The ref guard keeps the track-switch reset
+    // effect from reseeding over the just-applied selection.
+    expect(studio).toContain('onSelectTrackFrame: handleSelectTrackFrame');
+    expect(studio).toContain('onSelectTrackRail: handleSelectTrackRail');
+    expect(studio).toContain('const handleSelectTrackFrame');
+    expect(studio).toContain('const handleSelectTrackRail');
+    const frameStart = studio.indexOf('const handleSelectTrackFrame');
+    const frameBlock = studio.slice(frameStart, studio.indexOf('const handleSelectTrackRail', frameStart));
+    expect(frameBlock).toContain('setActiveTrackId(layerId, trackId)');
+    expect(frameBlock).toContain('crossTrackSelectionPendingRef.current = true');
+    expect(frameBlock).toContain('handleNavigateToSyncedFrame(frame)');
+    expect(frameBlock).toContain('getRotoRealKeyRecordByAppFrame');
+    expect(frameBlock).toContain('selectedKeyId.value = key?.keyId ?? null');
+    // The rail intent routes through the canonical plain-selection handler.
+    const railStart = studio.indexOf('const handleSelectTrackRail');
+    const railBlock = studio.slice(railStart, studio.indexOf('const navigateLinkedGroup', railStart));
+    expect(railBlock).toContain("handleSelectRotoKeyRail({ firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }, 'plain')");
+    expect(railBlock).toContain('selectedLoopClipIds.value = [rail.loopId]');
+  });
+
+  it('activates the destination track after a committed move (47 close-out UAT)', () => {
+    const strip = source();
+    // The commit wrapper activates the destination through the same
+    // onSelectTrack route a row click uses — only on success, never on a
+    // rejection (the source track stays active on a failed move).
+    const portStart = strip.indexOf('moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {');
+    const portEnd = strip.indexOf('publishStatus: (message)', portStart);
+    const port = strip.slice(portStart, portEnd);
+    expect(port).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame)');
+    expect(port).toContain('if (result.ok) props.onSelectTrack?.(toTrackId)');
+  });
+
+  it('keeps the header reorder grab release completely outside the cross-track commit (D-18)', () => {
+    const strip = source();
+    const gripStart = strip.indexOf('const handleGripPointerDown');
+    const gripBlock = strip.slice(gripStart, strip.indexOf('}, [computeReorderInsertionIndex, props.onReorderTrack]);', gripStart));
+    // The grip routes through reorderTrack (47-02) — order-only intent.
+    expect(gripBlock).toContain('onReorderTrack');
+    expect(gripBlock).not.toContain('moveTrackItems');
+    expect(gripBlock).not.toContain('crossTrackDrag');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip Bg rail click-to-select pass-through (49-06 UAT round 8)', () => {
+  it('passes onSelectBackgroundClip down to the Bg row so a rail click reaches the controller', () => {
+    const strip = source();
+    const bgRowStart = strip.indexOf('kind="background"');
+    expect(bgRowStart).toBeGreaterThanOrEqual(0);
+    const bgRowEnd = strip.indexOf('/>', bgRowStart);
+    const bgRow = strip.slice(bgRowStart, bgRowEnd);
+    // The whole-rail onClick routes to the controller — without this pass-through
+    // the rail's onClick fires with an undefined handler and selection never
+    // happens.
+    expect(bgRow).toContain('onSelectBackgroundClip={props.onSelectBackgroundClip}');
+    expect(bgRow).toContain('selectedBackgroundClipId={props.selectedBackgroundClipId}');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () => {
+  it('renders the Actions section with guarded Apply and Clear buffer buttons in the toolbox popover', () => {
+    const header = getHeaderBlock(source());
+    const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Actions</div>');
+    expect(headingIndex).toBeGreaterThanOrEqual(0);
+    // The two buffer buttons sit side by side on one line (260905-dso).
+    expect(header).toContain('physics-paint-toolbox-actions-row');
+    const applyIndex = header.indexOf('aria-label="Apply Action to Frame"', headingIndex);
+    const clearIndex = header.indexOf('aria-label="Clear Action Buffer"', headingIndex);
+    expect(applyIndex).toBeGreaterThan(headingIndex);
+    expect(clearIndex).toBeGreaterThan(applyIndex);
+    const applyBlock = getButtonBlock(header, 'Apply Action to Frame');
+    expect(applyBlock).toContain('aria-disabled');
+    expect(applyBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(applyBlock).toContain('aria-describedby');
+    expect(applyBlock).not.toContain('title=');
+    expect(applyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction");
+    // Both buttons use the guarded styled-tooltip idiom with region bottom.
+    expect(header).toContain("buildGuardedActionTooltipCopy('Apply Action to Frame'");
+    expect(header).toContain("buildGuardedActionTooltipCopy('Clear Action from buffer'");
+    expect(header).toContain('region="bottom"');
+  });
+
+  it('guards activation before the handler and reads availability reactively from the controller ports', () => {
+    const code = source();
+    expect(code).toContain('props.rotoScript?.availability.value');
+    expect(code).toContain('scriptAvailability?.canApply');
+    expect(code).toContain('scriptAvailability?.canDiscard');
+    expect(code).toContain('props.rotoScriptActionMutationDisabledReason?.value');
+    const applyGuard = code.indexOf('if (!props.canApplyScriptAction) return;');
+    expect(applyGuard).toBeGreaterThanOrEqual(0);
+    expect(code.indexOf('props.onApplyScript?.()')).toBeGreaterThan(applyGuard);
+    const clearGuard = code.indexOf('if (!props.canClearScriptBuffer) return;');
+    expect(clearGuard).toBeGreaterThanOrEqual(0);
+    expect(code.indexOf('props.onDiscardScript?.()')).toBeGreaterThan(clearGuard);
+  });
+
+  it('opens the popover from the Actions section alone and carries the plain Tools label (260911-s1j)', () => {
+    const code = source();
+    expect(code).toContain('props.onApplyScript || props.onDiscardScript');
+    // 260911-s1j: the enable intent + its state-carrying aria-label and the
+    // interpolation badge are retired — the row button owns per-track on/off.
+    expect(code).not.toContain('onInterpolationEnabledChange');
+    expect(code).toContain('aria-label="Timeline tools"');
+    expect(code).not.toContain('class="physics-paint-toolbox-badge"');
+  });
+
+  it('declares the Actions ports on the strip and static chrome props and wires them from the Studio workflow memo', () => {
+    const code = source();
+    const propsInterface = getWorkflowStripPropsInterface(code);
+    expect(propsInterface).toContain('onApplyScript?: () => void;');
+    expect(propsInterface).toContain('onDiscardScript?: () => void;');
+    expect(propsInterface).toContain('rotoScriptActionMutationDisabledReason?: ReadonlySignal<string | null>;');
+    const staticChrome = getStaticChromePropsInterface(code);
+    expect(staticChrome).toContain('onApplyScript?: () => void;');
+    expect(staticChrome).toContain('onDiscardScript?: () => void;');
+    expect(staticChrome).toContain('canApplyScriptAction: boolean;');
+    expect(staticChrome).toContain('applyScriptActionDisabledReason: string | null;');
+    expect(staticChrome).toContain('canClearScriptBuffer: boolean;');
+    expect(staticChrome).toContain('clearScriptBufferDisabledReason: string | null;');
+    const studio = studioSource();
+    expect(studio).toContain('onApplyScript: handleApplyScript,');
+    expect(studio).toContain('onDiscardScript: handleDiscardScript,');
+    expect(studio).toContain('rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip scrub playhead feed contract (G-52-9 drag-gate)', () => {
+  it('declares the optional rotoScrubFrame signal prop on the strip interface', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('rotoScrubFrame?: ReadonlySignal<number | null>;');
+  });
+
+  it('feeds the playhead bar the scrub signal and lets the armed feed win inside the bar leaf', () => {
+    const code = source();
+    // The call site passes the signal REFERENCE (the strip body never reads
+    // .value, so the strip never subscribes to per-drag-frame updates).
+    const barStart = code.indexOf('function PhysicsPaintPlayheadBar(');
+    expect(barStart).toBeGreaterThanOrEqual(0);
+    const barEnd = code.indexOf('function PhysicsPaintWorkflowLiveStatus(', barStart);
+    const bar = code.slice(barStart, barEnd);
+    expect(bar).toContain('scrubFrame?: ReadonlySignal<number | null>;');
+    expect(bar).toContain('props.scrubFrame?.value ?? props.currentFrame.value');
+    const callStart = code.indexOf('<PhysicsPaintPlayheadBar');
+    expect(callStart).toBeGreaterThanOrEqual(0);
+    const call = code.slice(callStart, code.indexOf('/>', callStart));
+    expect(call).toContain('scrubFrame={props.rotoScrubFrame}');
   });
 });

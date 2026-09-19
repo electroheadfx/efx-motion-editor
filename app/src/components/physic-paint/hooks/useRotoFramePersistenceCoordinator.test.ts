@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -6,7 +7,6 @@ import type {
   PhysicPaintRotoPhysicalRenderSource,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
-  encodeRotoPhysicalLaunchDocument,
   rejectRotoLoopPlaceholderSource,
   resolveRotoCompletedGroupPaintTarget,
   resolveRotoLivePixelIdentityKey,
@@ -32,7 +32,7 @@ const realSource: PhysicPaintRotoPhysicalRenderSource = {
   keyId: 'key-4',
   contentRevision: 'rev-1',
   cacheRevision: 'rev-1:real:key-4',
-  renderedFrame: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,cmVhbA==' },
+  renderedFrame: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('cmVhbA==') },
 };
 
 const generatedSource: PhysicPaintRotoPhysicalRenderSource = {
@@ -44,7 +44,7 @@ const generatedSource: PhysicPaintRotoPhysicalRenderSource = {
   interpolationMode: 'duplicate',
   contentRevision: 'rev-1',
   cacheRevision: 'rev-1:generated:duplicate:key-4:key-9:5',
-  renderedFrame: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVk' },
+  renderedFrame: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('Z2VuZXJhdGVk') },
 };
 
 const placeholderSource: PhysicPaintRotoPhysicalRenderSource = {
@@ -58,54 +58,14 @@ const placeholderSource: PhysicPaintRotoPhysicalRenderSource = {
 };
 
 describe('Roto frame persistence coordinator launch publication', () => {
-  it('republishes every canonical identity field without degrading the active launch', () => {
-    const record = {
-      kind: 'real-key' as const,
-      keyId: 'key-32',
-      appFrame: 32,
-      payload: {
-        frameIndex: 0,
-        appFrame: 32,
-        dataUrl: 'data:image/png;base64,',
-        width: 1,
-        height: 1,
-      },
-    };
-    const loopClips = [{
-      loopId: 'loop-1',
-      placementStart: 40,
-      sourceKeyIds: ['key-32'],
-      repeat: 2 as const,
-      mode: 'progressive' as const,
-    }];
-    const document: PhysicPaintRotoPhysicalDocument = {
-      capacity: 64,
-      realKeyRecords: [record],
-      interpolation: { enabled: true, mode: 'duplicate' },
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: 'key-32',
-      cursorAppFrame: 32,
-      revision: 'physical-complete',
-      loopClips,
-      incomingInterpolationBreakKeyIds: ['key-32'],
-    };
-
-    expect(encodeRotoPhysicalLaunchDocument(document, 40)).toEqual({
-      capacity: 64,
-      layerEndExclusive: 40,
-      records: [{ keyId: 'key-32', appFrame: 32, payload: record.payload }],
-      groupOverrideRecords: [],
-      interpolationEnabled: true,
-      interpolationMode: 'duplicate',
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: 'key-32',
-      cursorAppFrame: 32,
-      revision: 'physical-complete',
-      loopClips,
-      incomingInterpolationBreakKeyIds: ['key-32'],
-    });
+  it('publishes only the cursor through the active launch without degrading the carried document', () => {
+    // 45-06 Task 2: the launch IS the v1.0 document — publishCurrentDocument
+    // writes only startFrame; the removed envelope encoder and the
+    // cachedRotoFrames write are gone from the coordinator.
+    expect(coordinatorSource).not.toContain('encodeRotoPhysicalLaunchDocument');
+    expect(coordinatorSource).not.toContain('cachedRotoFrames: frames');
+    expect(coordinatorSource).toContain('? { ...current, startFrame: document.cursorAppFrame }');
+    expect(coordinatorSource).toContain('recordsAsRuntimeFrames(document)');
   });
 });
 
@@ -225,26 +185,26 @@ function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean }
       kind: 'real-key' as const,
       keyId: 'source-A',
       appFrame: 0,
-      payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,QQ==' },
+      payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('QQ==') },
     },
     {
       kind: 'real-key' as const,
       keyId: 'source-B',
       appFrame: 2,
-      payload: { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Qg==' },
+      payload: { frameIndex: 0, appFrame: 2, bytes: testWebpBytes('Qg==') },
     },
     {
       kind: 'real-key' as const,
       keyId: 'ordinary-8',
       appFrame: 8,
-      payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Tw==' },
+      payload: { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('Tw==') },
     },
   ];
   const groupOverrideRecords = [{
     kind: 'real-key' as const,
     keyId: 'override-5',
     appFrame: 2,
-    payload: { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Vg==' },
+    payload: { frameIndex: 0, appFrame: 2, bytes: testWebpBytes('Vg==') },
   }];
   const visibleRanges = options.gapFrame === undefined
     ? [{ start: 0, endExclusive: 6 }]
@@ -342,7 +302,7 @@ describe('Phase 43.2 production Paint target routing', () => {
   const renderedPayload = {
     frameIndex: 0,
     appFrame: 8,
-    dataUrl: 'data:image/png;base64,UEFJTlQ=',
+    bytes: testWebpBytes('UEFJTlQ='),
   };
 
   it('keeps an ordinary unique real key on the direct payload path', async () => {
@@ -530,5 +490,46 @@ describe('Roto capture robustness — no stale fallback reload (regression-refre
     // re-serves a PARTIAL render over the newer settled base. This helper is the
     // single gate that makes the stale fallback reload impossible to reach.
     expect(shouldReloadRotoFrameAfterFailedCapture()).toBe(false);
+  });
+});
+
+// 52.2-15 (D-16, sensitivity-map row 4): the delivery retry is scheduled through
+// the pilot's bounded-turn queue instead of re-entering the delivery chain
+// inline. The hook cannot be mounted here (no preact test renderer is installed
+// and no new package may be added), so the scheduler wiring is pinned by
+// contract; the retry UNIT stays what plan 10 narrowed — the per-identity
+// entry — and the queue changes only who schedules it, never what is sent.
+describe('52.2-15 delivery retry scheduler (D-16, sensitivity-map row 4)', () => {
+  const flushLivePixelsSource = (() => {
+    const start = coordinatorSource.indexOf('const flushLivePixels = useCallback(');
+    return start === -1 ? '' : coordinatorSource.slice(start, coordinatorSource.indexOf('const syncCurrentPhysicalDocument', start));
+  })();
+
+  it('schedules the retry through the pilot bounded-turn queue', () => {
+    expect(coordinatorSource).toContain("import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';");
+    expect(flushLivePixelsSource).toContain('beginFlush()');
+    expect(flushLivePixelsSource).toContain('await queue.submit({');
+    // A bare inline re-queue is the ad-hoc path this replaces: the retry work
+    // must be the queue turn's produce, not a statement in the flush loop.
+    expect(flushLivePixelsSource).not.toContain('      queueParentPayload(currentIdentity, failed.payload);\n');
+  });
+
+  it('re-schedules only the narrowed per-identity unit — never a whole document payload', () => {
+    // The turn's produce re-schedules exactly the failed entry's payload for
+    // the re-validated current identity (plan 10's narrowed unit).
+    expect(flushLivePixelsSource).toContain('produce: () => queueParentPayload(currentIdentity, failed.payload),');
+    expect(flushLivePixelsSource).toContain('failedParentPayloadRef.current.get(key)');
+    // No document-wide re-send can hide in the retry: nothing in the retry path
+    // projects the runtime frames or the live projection.
+    expect(flushLivePixelsSource).not.toContain('latestFramesRef');
+    expect(flushLivePixelsSource).not.toContain('pushLiveProjection');
+    expect(flushLivePixelsSource).not.toContain('recordsAsRuntimeFrames');
+  });
+
+  it('exposes the capture queue as the flush pipeline port (forced drain + interrupt)', () => {
+    expect(coordinatorSource).toContain('drainLivePixelQueue');
+    expect(coordinatorSource).toContain('interruptLivePixels');
+    expect(coordinatorSource).toContain('await livePixelTransactionsRef.current.flush();');
+    expect(coordinatorSource).toContain('livePixelTransactionsRef.current.interrupt();');
   });
 });

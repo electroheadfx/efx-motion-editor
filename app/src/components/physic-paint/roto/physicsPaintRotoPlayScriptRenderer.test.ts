@@ -121,14 +121,17 @@ describe('renderRotoPlayScriptFrames cleanup', () => {
     ['merge failure', () => harness.merge.mockRejectedValueOnce(new Error('merge failed')), undefined],
     ['encode failure', () => harness.encode.mockRejectedValueOnce(new Error('encode failed')), undefined],
     ['progress failure', () => undefined, () => { throw new Error('progress failed'); }],
-  ])('releases temporary canvases after %s', async (_name, configure, onProgress) => {
+  ])('releases the coverage canvas after %s (G-52-10: the merged canvas is registry-owned, never released)', async (_name, configure, onProgress) => {
     configure();
     await expect(renderRotoPlayScriptFrames(input(onProgress))).rejects.toThrow();
     expect(harness.scriptAlpha?.width).toBe(0);
     expect(harness.scriptAlpha?.height).toBe(0);
     if (_name !== 'merge failure' && harness.merged) {
-      expect(harness.merged.width).toBe(0);
-      expect(harness.merged.height).toBe(0);
+      // encodeRotoFrameFromCanvas adopts `merged` into the alpha-canvas
+      // registry (same-size path) — the renderer must never release it; GC
+      // reclaims it on the failure paths where registration never happened.
+      expect(harness.merged.width).toBe(10);
+      expect(harness.merged.height).toBe(10);
     }
   });
 });

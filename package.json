@@ -18,8 +18,8 @@
   "pnpm": {
     "overrides": {
       "@efxlab/motion-canvas-core": "4.0.0",
-      "preact": "^10.28.4",
-      "@preact/signals": "^2.8.1"
+      "preact": "^10.29.8",
+      "@preact/signals": "^2.11.2"
     },
     "onlyBuiltDependencies": [
       "esbuild"

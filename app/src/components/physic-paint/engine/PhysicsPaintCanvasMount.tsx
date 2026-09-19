@@ -1,15 +1,32 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
-import type { CompletedPaintMutation, EfxPaintEngine, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, EfxPaintEngine, InputActivityKind, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 
+/**
+ * 48-06 (N2/N3): the active track is EXCLUDED from the program monitor's
+ * composite (D-05 — the live engine stack supplies its pixels), so the track's
+ * opacity/blend (D-01) would never reach the Studio surface. The shell carries
+ * them as CSS group opacity + mix-blend-mode, the exact globalAlpha /
+ * globalCompositeOperation analogues over the monitor beneath. 'add' maps to
+ * the CSS additive 'plus-lighter' (the canvas 'lighter' equivalent).
+ */
+const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, JSX.CSSProperties['mixBlendMode']> = {
+  normal: 'normal',
+  screen: 'screen',
+  multiply: 'multiply',
+  overlay: 'overlay',
+  add: 'plus-lighter',
+};
+
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -19,6 +36,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const onNativePenInputReadyRef = useRef(props.onNativePenInputReady);
   const onCompletedMutationRef = useRef(props.onCompletedMutation);
   const onPerformanceSampleRef = useRef(props.onPerformanceSample);
+  const onInputActivityRef = useRef(props.onInputActivity);
   const beforeEngineDestroyRef = useRef(props.beforeEngineDestroy);
   const getStrokeMetadataRef = useRef(props.getStrokeMetadata);
   onEngineReadyRef.current = props.onEngineReady;
@@ -26,6 +44,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   onNativePenInputReadyRef.current = props.onNativePenInputReady;
   onCompletedMutationRef.current = props.onCompletedMutation;
   onPerformanceSampleRef.current = props.onPerformanceSample;
+  onInputActivityRef.current = props.onInputActivity;
   beforeEngineDestroyRef.current = props.beforeEngineDestroy;
   getStrokeMetadataRef.current = props.getStrokeMetadata;
 
@@ -59,13 +78,34 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     };
   }, [props.height, props.width]);
 
+  const trackOpacity = props.trackOpacity ?? 1;
+  const trackBlendMode = props.trackBlendMode ?? 'normal';
+  const trackTintActive = trackOpacity < 1 || trackBlendMode !== 'normal';
   const shellStyle = {
     aspectRatio: `${props.width} / ${props.height}`,
     '--physics-paint-paper-texture-scale': props.paperTextureScale,
     ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}),
+    // N2/N3: the tint group must keep painting ABOVE the z-0 program monitor —
+    // opacity<1 / mix-blend-mode create a stacking context that would otherwise
+    // paint in tree order (the shell precedes the monitor in the DOM) and slip
+    // BENEATH it. position+z-index pins the group at monitor 0 < shell 1 <
+    // onion 5. Applied only while non-default so the untinted path is
+    // byte-identical to before.
+    ...(trackTintActive
+      ? {
+          position: 'relative',
+          zIndex: 1,
+          opacity: trackOpacity,
+          mixBlendMode: TRACK_BLEND_TO_CSS_MIX[trackBlendMode],
+        }
+      : {}),
   } as JSX.CSSProperties;
   const handleEngineReady = useCallback((engine: EfxPaintEngine) => {
     engine.setTool('paint');
+    // 48-06: the program monitor owns the visible background (the flattened
+    // composite carries the paper fond) — the engine's canvases stay
+    // transparent so the composite stacked beneath shows through.
+    engine.setVisibleBackgroundSuppressed(true);
     setMountError(null);
     onCanvasMountedRef.current(true);
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');
@@ -79,6 +119,9 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   }, []);
   const handlePerformanceSample = useCallback((sample: PaintPerformanceSample) => {
     return onPerformanceSampleRef.current?.(sample);
+  }, []);
+  const handleInputActivity = useCallback((kind: InputActivityKind, pointerId: number) => {
+    onInputActivityRef.current?.(kind, pointerId);
   }, []);
   const handleBeforeEngineDestroy = useCallback((engine: EfxPaintEngine) => {
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.beforeDestroy');
@@ -105,6 +148,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         onNativePenInputReady={handleNativePenInputReady}
         onCompletedMutation={handleCompletedMutation}
         onPerformanceSample={handlePerformanceSample}
+        onInputActivity={handleInputActivity}
         beforeEngineDestroy={handleBeforeEngineDestroy}
         getStrokeMetadata={handleGetStrokeMetadata}
         onEngineReady={handleEngineReady}

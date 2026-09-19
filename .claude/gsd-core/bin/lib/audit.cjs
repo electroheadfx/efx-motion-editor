@@ -21,8 +21,11 @@ const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs")
 const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 const text_lines_cjs_1 = require("./text-lines.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const coreUtils = require("./core-utils.cjs");
+const { normalizeLineEndings } = coreUtils;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
-const { planningDir, quickDirFrom } = planningWorkspace;
+const { planningDir, quickDirFrom, todosDir } = planningWorkspace;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const frontmatter = require("./frontmatter.cjs");
 const { extractFrontmatter, spliceFrontmatter } = frontmatter;
@@ -31,7 +34,7 @@ const phaseIdMod = require("./phase-id.cjs");
 const { PHASE_NUMBER_TOKEN_SOURCE, scopeToPhase } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseLocator = require("./phase-locator.cjs");
-const { getArchivedPhaseDirs } = phaseLocator;
+const { getAllArchivedPhaseDirs } = phaseLocator;
 const security_cjs_1 = require("./security.cjs");
 const shell_command_projection_cjs_2 = require("./shell-command-projection.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -274,14 +277,22 @@ function scanDebugSessions(planDir) {
         const filePath = node_path_1.default.join(debugDir, entry.name);
         let safeFilePath;
         try {
-            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'debug session file', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'debug session file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         }
         catch {
             continue;
         }
-        const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-        if (content === null)
+        // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+        // document at this read boundary, same seam as `src/uat.cts`'s
+        // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+        // normalization itself, and extractFrontmatter/status-derivation below
+        // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+        // in this module treats as "not open" (fail-open, the permissive
+        // direction) rather than a real parse gap.
+        const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+        if (rawContent === null)
             continue;
+        const content = normalizeLineEndings(rawContent);
         const fm = extractFrontmatter(content, safeFilePath);
         const status = (fm.status || 'unknown').toLowerCase();
         if (status === 'resolved' || status === 'complete')
@@ -376,7 +387,7 @@ function scanQuickTasks(planDir) {
         const taskDir = node_path_1.default.join(quickDir, dirName);
         let safeTaskDir;
         try {
-            safeTaskDir = (0, security_cjs_1.requireSafePath)(taskDir, planDir, 'quick task dir', { allowAbsolute: true });
+            safeTaskDir = (0, security_cjs_1.requireSafePath)(taskDir, planDir, 'quick task dir', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         }
         catch {
             continue;
@@ -388,16 +399,20 @@ function scanQuickTasks(planDir) {
         if (summaryPath && node_fs_1.default.existsSync(summaryPath)) {
             let safeSum;
             try {
-                safeSum = (0, security_cjs_1.requireSafePath)(summaryPath, planDir, 'quick task summary', { allowAbsolute: true });
+                safeSum = (0, security_cjs_1.requireSafePath)(summaryPath, planDir, 'quick task summary', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
             }
             catch {
                 continue;
             }
-            const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeSum);
-            if (content === null) {
+            // #3078-CR MEDIUM 2: same normalize-at-read-boundary fix as the other
+            // scans in this module — see the comment above `scanDebugSessions`'s
+            // read.
+            const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeSum);
+            if (rawContent === null) {
                 status = 'unreadable';
             }
             else {
+                const content = normalizeLineEndings(rawContent);
                 fm = extractFrontmatter(content, safeSum);
                 status = (fm.status || 'unknown').toLowerCase();
             }
@@ -460,14 +475,22 @@ function scanThreads(planDir) {
         const filePath = node_path_1.default.join(threadsDir, entry.name);
         let safeFilePath;
         try {
-            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'thread file', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'thread file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         }
         catch {
             continue;
         }
-        const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-        if (content === null)
+        // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+        // document at this read boundary, same seam as `src/uat.cts`'s
+        // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+        // normalization itself, and extractFrontmatter/status-derivation below
+        // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+        // in this module treats as "not open" (fail-open, the permissive
+        // direction) rather than a real parse gap.
+        const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+        if (rawContent === null)
             continue;
+        const content = normalizeLineEndings(rawContent);
         const fm = extractFrontmatter(content, safeFilePath);
         const status = deriveThreadStatus(fm, content);
         if (!openStatuses.has(status))
@@ -499,9 +522,16 @@ function scanThreads(planDir) {
  * Scan .planning/todos/pending/ for pending todos.
  * Returns array of { filename, priority, area, summary }.
  * Display limited to first 5 + count of remainder.
+ *
+ * #4256: takes the ROOT-scoped todos base (`todosDir(cwd)`), NOT the
+ * workstream-scoped planning dir the other scans use — todos are shared
+ * project state (the migrateToWorkstreams contract keeps them at
+ * .planning/todos/), so the close gate must read the root or it clears
+ * vacuously under a workstream. The requireSafePath boundary below moves
+ * with the base.
  */
-function scanTodos(planDir) {
-    const pendingDir = node_path_1.default.join(planDir, 'todos', 'pending');
+function scanTodos(todosBase) {
+    const pendingDir = node_path_1.default.join(todosBase, 'pending');
     if (!node_fs_1.default.existsSync(pendingDir))
         return { items: [], acknowledged: 0 };
     let files;
@@ -527,14 +557,22 @@ function scanTodos(planDir) {
         const filePath = node_path_1.default.join(pendingDir, entry.name);
         let safeFilePath;
         try {
-            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'todo file', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, todosBase, 'todo file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         }
         catch {
             continue;
         }
-        const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-        if (content === null)
+        // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+        // document at this read boundary, same seam as `src/uat.cts`'s
+        // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+        // normalization itself, and extractFrontmatter/status-derivation below
+        // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+        // in this module treats as "not open" (fail-open, the permissive
+        // direction) rather than a real parse gap.
+        const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+        if (rawContent === null)
             continue;
+        const content = normalizeLineEndings(rawContent);
         const fm = extractFrontmatter(content, safeFilePath);
         // Todos carry no natural status field — presence in pending/ IS "open" by
         // definition (a resolved todo is moved out, not status-flagged). So the
@@ -591,14 +629,22 @@ function scanSeeds(planDir) {
         const filePath = node_path_1.default.join(seedsDir, entry.name);
         let safeFilePath;
         try {
-            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'seed file', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'seed file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         }
         catch {
             continue;
         }
-        const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-        if (content === null)
+        // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+        // document at this read boundary, same seam as `src/uat.cts`'s
+        // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+        // normalization itself, and extractFrontmatter/status-derivation below
+        // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+        // in this module treats as "not open" (fail-open, the permissive
+        // direction) rather than a real parse gap.
+        const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+        if (rawContent === null)
             continue;
+        const content = normalizeLineEndings(rawContent);
         const fm = extractFrontmatter(content, safeFilePath);
         const status = (fm.status || 'dormant').toLowerCase();
         if (!unimplementedStatuses.has(status))
@@ -703,8 +749,11 @@ function listAuditPhaseTargets(planDir, cwd) {
             activeUnreadable = true;
         }
     }
+    // #3804: the audit is cross-workstream by design — the shared
+    // getAllArchivedPhaseDirs helper (root + every workstream, distinct
+    // '<ws>/<version>' labels) owns that walk.
     try {
-        for (const archived of getArchivedPhaseDirs(cwd)) {
+        for (const archived of getAllArchivedPhaseDirs(cwd)) {
             targets.push({ dir: archived.name, fullPath: archived.fullPath, milestone: archived.milestone });
         }
     }
@@ -743,14 +792,22 @@ function scanUatGaps(planDir, cwd) {
             const filePath = node_path_1.default.join(target.fullPath, file);
             let safeFilePath;
             try {
-                safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'UAT file', { allowAbsolute: true });
+                safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'UAT file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
             }
             catch {
                 continue;
             }
-            const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-            if (content === null)
+            // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+            // document at this read boundary, same seam as `src/uat.cts`'s
+            // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+            // normalization itself, and extractFrontmatter/status-derivation below
+            // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+            // in this module treats as "not open" (fail-open, the permissive
+            // direction) rather than a real parse gap.
+            const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+            if (rawContent === null)
                 continue;
+            const content = normalizeLineEndings(rawContent);
             const fm = extractFrontmatter(content, safeFilePath);
             const status = (fm.status || 'unknown').toLowerCase();
             const result = (fm.result || '').toLowerCase();
@@ -808,14 +865,22 @@ function scanVerificationGaps(planDir, cwd) {
             const filePath = node_path_1.default.join(target.fullPath, file);
             let safeFilePath;
             try {
-                safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'VERIFICATION file', { allowAbsolute: true });
+                safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'VERIFICATION file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
             }
             catch {
                 continue;
             }
-            const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-            if (content === null)
+            // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+            // document at this read boundary, same seam as `src/uat.cts`'s
+            // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+            // normalization itself, and extractFrontmatter/status-derivation below
+            // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+            // in this module treats as "not open" (fail-open, the permissive
+            // direction) rather than a real parse gap.
+            const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+            if (rawContent === null)
                 continue;
+            const content = normalizeLineEndings(rawContent);
             const fm = extractFrontmatter(content, safeFilePath);
             const status = (fm.status || 'unknown').toLowerCase();
             if (status !== 'gaps_found' && status !== 'human_needed')
@@ -862,14 +927,22 @@ function scanContextQuestions(planDir, cwd) {
             const filePath = node_path_1.default.join(target.fullPath, file);
             let safeFilePath;
             try {
-                safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'CONTEXT file', { allowAbsolute: true });
+                safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'CONTEXT file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
             }
             catch {
                 continue;
             }
-            const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-            if (content === null)
+            // #3078-CR MEDIUM 2 (security review follow-up): normalize a lone-CR
+            // document at this read boundary, same seam as `src/uat.cts`'s
+            // `readNormalizedDocument` — `platformReadSync` performs no line-ending
+            // normalization itself, and extractFrontmatter/status-derivation below
+            // degrade a lone-CR file's frontmatter to `unknown`, which every scan
+            // in this module treats as "not open" (fail-open, the permissive
+            // direction) rather than a real parse gap.
+            const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+            if (rawContent === null)
                 continue;
+            const content = normalizeLineEndings(rawContent);
             const fm = extractFrontmatter(content, safeFilePath);
             const questions = deriveOpenQuestions(content, fm);
             if (questions.length === 0)
@@ -942,14 +1015,20 @@ function scanDeferredItems(planDir, cwd) {
             continue;
         let safeFilePath;
         try {
-            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'deferred items file', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'deferred items file', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         }
         catch {
             continue;
         }
-        const content = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
-        if (content === null)
+        // #3078-CR MEDIUM 2: normalize at this read boundary too —
+        // `parseDeferredItemsWithStatus` performs no normalization of its own
+        // (unlike `src/uat.cts`'s callers, which route through
+        // `readNormalizedDocument`), so a lone-CR `deferred-items.md` was read as
+        // one unbroken line and every entry in it silently vanished.
+        const rawContent = (0, shell_command_projection_cjs_1.platformReadSync)(safeFilePath);
+        if (rawContent === null)
             continue;
+        const content = normalizeLineEndings(rawContent);
         for (const item of uat.parseDeferredItemsWithStatus(content)) {
             const rawStatus = (item.status || '').toLowerCase();
             if (rawStatus === 'resolved')
@@ -1004,8 +1083,13 @@ function auditOpenArtifacts(cwd) {
         }
     })();
     const todos = (() => {
+        // #4256: the ONE root-scoped category — todos are shared project state,
+        // so the close gate reads todosDir(cwd) (the root), not the workstream-
+        // scoped planDir every other scan below receives. Reading planDir here
+        // made audit-open print "All artifact types clear. Safe to proceed."
+        // with pending todos on disk under a workstream.
         try {
-            return scanTodos(planDir);
+            return scanTodos(todosDir(cwd));
         }
         catch {
             return { items: [{ scan_error: true, filename: '', priority: '', area: '', summary: '' }], acknowledged: 0 };
@@ -1051,8 +1135,18 @@ function auditOpenArtifacts(cwd) {
             return { items: [{ scan_error: true, phase: '', file: '', text: '' }], acknowledged: 0 };
         }
     })();
-    // Count real items (not scan_error sentinels)
-    const countReal = (arr) => arr.filter(i => !i.scan_error && !i._remainder_count).length;
+    // Count real items (not scan_error sentinels). #3817: a `_remainder_count`
+    // marker is not a phantom — it RECORDS real items the detail list truncated
+    // away for display, so its value counts toward the total. Truncation limits
+    // display, never counting; only scan_error (a read failure, not an item)
+    // contributes zero.
+    const countReal = (arr) => arr.reduce((sum, i) => {
+        if (i.scan_error)
+            return sum;
+        if (typeof i._remainder_count === 'number')
+            return sum + i._remainder_count;
+        return sum + 1;
+    }, 0);
     const counts = {
         debug_sessions: countReal(debugSessions.items),
         quick_tasks: countReal(quickTasks.items),
@@ -1110,10 +1204,7 @@ function auditOpenArtifacts(cwd) {
 function formatAuditReport(auditResult) {
     const { counts, items, has_open_items, acknowledged } = auditResult;
     const lines = [];
-    const hr = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
-    lines.push(hr);
-    lines.push('  Milestone Close: Open Artifact Audit');
-    lines.push(hr);
+    lines.push('### Milestone Close: Open Artifact Audit');
     // WARNING 3 (#3458 follow-up review): the acknowledged tally previously
     // existed only in `--json` output — the human report could not tell
     // "clean because fixed" apart from "clean because silenced", which is the
@@ -1121,13 +1212,13 @@ function formatAuditReport(auditResult) {
     if (!has_open_items) {
         lines.push('');
         if (acknowledged.total > 0) {
-            lines.push(`  All artifact types clear (${acknowledged.total} previously acknowledged item${acknowledged.total !== 1 ? 's' : ''} still suppressed).`);
+            lines.push(`All artifact types clear (${acknowledged.total} previously acknowledged item${acknowledged.total !== 1 ? 's' : ''} still suppressed).`);
         }
         else {
-            lines.push('  All artifact types clear. Safe to proceed.');
+            lines.push('All artifact types clear. Safe to proceed.');
         }
         lines.push('');
-        lines.push(hr);
+        lines.push('---');
         return lines.join('\n');
     }
     // WARNING 3: per-category "N previously acknowledged" suffix, so the
@@ -1228,12 +1319,12 @@ function formatAuditReport(auditResult) {
         }
     }
     lines.push('');
-    lines.push(hr);
-    lines.push(`  ${counts.total} item${counts.total !== 1 ? 's' : ''} require decisions before close.`);
+    lines.push('---');
+    lines.push('');
+    lines.push(`**${counts.total} item${counts.total !== 1 ? 's' : ''} require decisions before close.**`);
     if (acknowledged.total > 0) {
-        lines.push(`  ${acknowledged.total} previously acknowledged item${acknowledged.total !== 1 ? 's' : ''} also suppressed above the ${counts.total} open item${counts.total !== 1 ? 's' : ''}.`);
+        lines.push(`${acknowledged.total} previously acknowledged item${acknowledged.total !== 1 ? 's' : ''} also suppressed above the ${counts.total} open item${counts.total !== 1 ? 's' : ''}.`);
     }
-    lines.push(hr);
     return lines.join('\n');
 }
 // ─── resolvePhaseTargetDir ─────────────────────────────────────────────────────
@@ -1294,18 +1385,42 @@ function resolvePhaseTargetDir(planDir, cwd, phase, archivedMilestone) {
  * any read or write is attempted.
  */
 function cmdAuditAcknowledge(cwd, args, raw) {
-    const { category, milestone, at: atFlag, phase, file, 'archived-milestone': archivedMilestone, slug, 'seed-id': seedId, dir: quickDir, filename, text, } = (0, command_arg_projection_cjs_1.parseNamedArgs)(args, [
-        'category', 'milestone', 'at',
-        'phase', 'file', 'archived-milestone',
-        'slug', 'seed-id', 'dir', 'filename', 'text',
-    ]);
+    // args already has the family + subcommand tokens stripped by the caller
+    // (audit-command-router.cts:147 passes `hubArgs.slice(2)`), so validation
+    // begins at index 0 — there is no positional this handler owns itself.
+    const { category, milestone, at: atFlag, phase, file, 'archived-milestone': archivedMilestone, slug, 'seed-id': seedId, dir: quickDir, filename, text, } = (0, command_arg_projection_cjs_1.parseNamedArgsOrExit)(args, {
+        valueFlags: [
+            'category', 'milestone', 'at',
+            'phase', 'file', 'archived-milestone',
+            'slug', 'seed-id', 'dir', 'filename', 'text',
+        ],
+        positionals: 0,
+    }, ioError);
     if (!category)
         ioError('--category is required');
     if (!milestone)
         ioError('--milestone is required');
+    // All declared flags above are value flags, so each resolves to `string |
+    // null` at runtime; the cast narrows away the `boolean` arm of
+    // ParsedNamedArgs's value type that this call site never produces.
     const at = atFlag || new Date().toISOString().slice(0, 10);
     const planDir = planningDir(cwd);
     const markerBase = { milestone: milestone, at };
+    // #3078-CR MEDIUM 2: every `fs.readFileSync` in this function (below, and
+    // in the flat-category branch further down) is DELIBERATELY left raw,
+    // unlike `auditOpenArtifacts`'s scan reads (which now route through
+    // `normalizeLineEndings`). This function splices frontmatter into the
+    // EXISTING content and writes the result back via `platformWriteSync` /
+    // `uat.acknowledgeDeferredItem` — both `spliceFrontmatter` and
+    // `acknowledgeDeferredItem` locate and rewrite a specific byte span
+    // (frontmatter block / matched deferred-item text) in the file exactly as
+    // it exists on disk. Normalizing first would rewrite the file's line
+    // endings as a side effect of an unrelated acknowledge operation, and a
+    // splice computed against normalized text can land at the wrong offset
+    // when written back over the RAW (un-normalized) original. The snapshot
+    // VALUE computed below IS normalized (on a separate in-memory copy, never
+    // the spliced one) so it agrees with the scanner's frame — see the comment
+    // at `normalizedContent` further down.
     // ── The four phase-scoped categories: --phase --file [--archived-milestone] ──
     const PHASE_SCOPED = new Set(['uat_gaps', 'verification_gaps', 'context_questions', 'deferred_items']);
     if (PHASE_SCOPED.has(category)) {
@@ -1318,7 +1433,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
             ioError(`no phase directory found for phase "${phase}"${archivedMilestone ? ` (archived-milestone "${archivedMilestone}")` : ''}`);
         }
         const filePath = node_path_1.default.join(targetDir, file);
-        const safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'audit acknowledge target', { allowAbsolute: true });
+        const safeFilePath = (0, security_cjs_1.requireSafePath)(filePath, planDir, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         if (!node_fs_1.default.existsSync(safeFilePath))
             ioError(`file not found: ${file}`);
         if (category === 'deferred_items') {
@@ -1335,7 +1450,10 @@ function cmdAuditAcknowledge(cwd, args, raw) {
             if (result.status === 'already_resolved')
                 ioError(`deferred item is already "status: resolved" — acknowledging a resolved item is a no-op`);
             if (result.status === 'unsupported_heading_shape') {
-                ioError('this deferred-items.md uses the heading-delimited (#3457) entry shape, which the CLI writer does not yet support — edit the file directly');
+                // #3781: heading-shaped entries are supported; the remaining refusal
+                // cause is a GFM table row embedded in the entry's span (non-contiguous
+                // — a write cannot be anchored safely).
+                ioError('this deferred item\'s span embeds a GFM table row, so the CLI writer cannot anchor a safe write to it — edit the file directly');
             }
             if (result.status === 'match_verification_failed') {
                 ioError(`internal error: matched span for --text "${text}" did not re-verify before write — refused rather than risk writing the wrong entry`);
@@ -1346,6 +1464,15 @@ function cmdAuditAcknowledge(cwd, args, raw) {
         }
         const content = node_fs_1.default.readFileSync(safeFilePath, 'utf-8');
         const fm = extractFrontmatter(content, safeFilePath);
+        // Mixed-frame fix (security review, 4th instance on this branch): the
+        // splice above and below stays keyed to RAW `content` (raw byte offsets
+        // must not shift), but `scanUatGaps`/`scanContextQuestions` now derive
+        // their comparison values from `normalizeLineEndings`d content. Deriving
+        // the snapshot here from raw `content` would make a lone-CR file's
+        // stored value permanently disagree with what the scanner recomputes —
+        // `audit acknowledge` would be a silent no-op for lone-CR artifacts. Feed
+        // the derive functions a normalized COPY; never splice from it.
+        const normalizedContent = normalizeLineEndings(content);
         let snapshotKey;
         let currentValue;
         if (category === 'uat_gaps') {
@@ -1353,7 +1480,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
             // pending scenarios added under the same status — snapshot the
             // composite `deriveUatGapSnapshotValue` instead (see its doc comment).
             snapshotKey = 'gap_snapshot';
-            currentValue = deriveUatGapSnapshotValue((fm.status || 'unknown').toLowerCase(), content);
+            currentValue = deriveUatGapSnapshotValue((fm.status || 'unknown').toLowerCase(), normalizedContent);
         }
         else if (category === 'verification_gaps') {
             snapshotKey = 'status';
@@ -1364,7 +1491,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
             // question set, not just its count (see `deriveOpenQuestionsDigest`'s
             // doc comment).
             snapshotKey = 'questions_digest';
-            currentValue = deriveOpenQuestionsDigest(deriveOpenQuestions(content, fm));
+            currentValue = deriveOpenQuestionsDigest(deriveOpenQuestions(normalizedContent, fm));
         }
         fm.audit_acknowledged = { ...markerBase, [snapshotKey]: currentValue };
         const newContent = spliceFrontmatter(content, fm);
@@ -1388,7 +1515,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
     if (category === 'debug_sessions') {
         if (!slug)
             ioError('--slug is required for --category debug_sessions');
-        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'debug', `${slug}.md`), planDir, 'audit acknowledge target', { allowAbsolute: true });
+        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'debug', `${slug}.md`), planDir, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         if (!node_fs_1.default.existsSync(safeFilePath))
             ioError(`file not found: debug/${slug}.md`);
         const content = node_fs_1.default.readFileSync(safeFilePath, 'utf-8');
@@ -1397,7 +1524,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
     else if (category === 'threads') {
         if (!slug)
             ioError('--slug is required for --category threads');
-        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'threads', `${slug}.md`), planDir, 'audit acknowledge target', { allowAbsolute: true });
+        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'threads', `${slug}.md`), planDir, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         if (!node_fs_1.default.existsSync(safeFilePath))
             ioError(`file not found: threads/${slug}.md`);
         const content = node_fs_1.default.readFileSync(safeFilePath, 'utf-8');
@@ -1406,7 +1533,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
     else if (category === 'seeds') {
         if (!seedId)
             ioError('--seed-id is required for --category seeds');
-        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'seeds', `${seedId}.md`), planDir, 'audit acknowledge target', { allowAbsolute: true });
+        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'seeds', `${seedId}.md`), planDir, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         if (!node_fs_1.default.existsSync(safeFilePath))
             ioError(`file not found: seeds/${seedId}.md`);
         const content = node_fs_1.default.readFileSync(safeFilePath, 'utf-8');
@@ -1415,7 +1542,12 @@ function cmdAuditAcknowledge(cwd, args, raw) {
     else if (category === 'todos') {
         if (!filename)
             ioError('--filename is required for --category todos');
-        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'todos', 'pending', filename), planDir, 'audit acknowledge target', { allowAbsolute: true });
+        // #4256: todos are root-scoped shared state — derive the todos base and
+        // pass it as BOTH the path base and the requireSafePath boundary. The
+        // old workstream-scoped planDir boundary would refuse a root todos file
+        // outright, and even a path fix alone would have thrown here.
+        const rootTodos = todosDir(cwd);
+        safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(rootTodos, 'pending', filename), rootTodos, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         if (!node_fs_1.default.existsSync(safeFilePath))
             ioError(`file not found: todos/pending/${filename}`);
         currentValue = ''; // presence-only — see scanTodos
@@ -1423,14 +1555,14 @@ function cmdAuditAcknowledge(cwd, args, raw) {
     else if (category === 'quick_tasks') {
         if (!quickDir)
             ioError('--dir is required for --category quick_tasks');
-        const taskDir = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'quick', quickDir), planDir, 'audit acknowledge target dir', { allowAbsolute: true });
+        const taskDir = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(planDir, 'quick', quickDir), planDir, 'audit acknowledge target dir', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
         if (!node_fs_1.default.existsSync(taskDir))
             ioError(`directory not found: quick/${quickDir}`);
         // Shared with scanQuickTasks (#3458 follow-up) so the reader and this
         // writer can never disagree about which file is the task's record.
         const resolvedSummaryPath = resolveQuickTaskSummaryFile(taskDir, quickDir);
         if (resolvedSummaryPath) {
-            safeFilePath = (0, security_cjs_1.requireSafePath)(resolvedSummaryPath, planDir, 'audit acknowledge target', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(resolvedSummaryPath, planDir, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
             const content = node_fs_1.default.readFileSync(safeFilePath, 'utf-8');
             currentValue = (extractFrontmatter(content, safeFilePath).status || 'unknown').toLowerCase();
         }
@@ -1441,7 +1573,7 @@ function cmdAuditAcknowledge(cwd, args, raw) {
             // acknowledgment's own snapshot of "no summary exists yet", which
             // self-invalidates the moment a real SUMMARY.md is written (the
             // scanner then reads THAT file's own status instead).
-            safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(taskDir, `${quickDir}-SUMMARY.md`), planDir, 'audit acknowledge target', { allowAbsolute: true });
+            safeFilePath = (0, security_cjs_1.requireSafePath)(node_path_1.default.join(taskDir, `${quickDir}-SUMMARY.md`), planDir, 'audit acknowledge target', security_cjs_1.PathAcceptance.AbsoluteInsideRoot);
             currentValue = 'missing';
             createIfMissing = true;
             fmForCreate = { status: 'missing' };
@@ -1465,6 +1597,13 @@ module.exports = {
     formatAuditReport,
     listAuditPhaseTargets,
     cmdAuditAcknowledge,
+    // #3805: exported so uat.cts's cmdAuditUat routes the SAME artifacts'
+    // suppression through the ONE predicate instead of hand-rolling a tenth
+    // copy outside this file's visibility (the exact defect class the
+    // predicate's own header warns about). The snapshot derivations ride
+    // along so the snapshotKeys cannot drift between the two consumers.
+    isAuditItemAcknowledged,
+    deriveUatGapSnapshotValue,
     // #2142: exported so src/milestone.cts's archiveQuickTaskDirectories README
     // index generator shares this ONE discovery rule rather than re-deriving it.
     resolveQuickTaskSummaryFile,

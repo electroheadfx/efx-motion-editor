@@ -1,5 +1,4 @@
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload, PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { RotoSessionCopiedGroupEntry } from './physicsPaintRotoSession';
@@ -305,6 +304,9 @@ export interface RotoPhysicalEditEnginePort<EngineState> {
  */
 export interface RotoPhysicalEditLaunchPort {
   getLaunchContext: () => PhysicPaintLaunchContext | null;
+  /** 47-01: resolve the DOCUMENT's current active track — the launch snapshot
+   * is stale after an in-place track switch (row click / add / duplicate). */
+  getActiveTrackId: (layerId: string) => string;
   setLaunchContextStartFrame: (frame: number) => void;
   setLaunchContextCachedFrames: (
     frames: readonly PhysicPaintRotoRealKeyRecord[],
@@ -363,7 +365,7 @@ export interface RotoPhysicalEditStatusPort {
  * owners in Task 3 without introducing an adapter module or alternate
  * transaction implementation.
  */
-export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProject> {
+export interface RotoPhysicalEditCoordinatorPorts<EngineState = EfxPaintDocument> {
   readonly engine: EfxPaintEngine | null;
   readonly records: RotoPhysicalEditRecordsPort & {
     getDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;

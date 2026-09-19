@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { describe, expect, it } from 'vitest';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -12,20 +13,19 @@ import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import {
   buildRotoRailSetCopyPayload,
   buildRotoRailSetOperationResult,
+  mapRotoRailSetPasteFailure,
   proposeRails,
   type RotoRailSetCopyPayload,
 } from './physicsPaintRotoRailSetCopy';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
-const PNG = 'data:image/png;base64,iVBORw0KGgo=';
-const CHANGED_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-function recordKey(keyId: string, appFrame: number, dataUrl = PNG): PhysicPaintRotoRealKeyRecord {
+function recordKey(keyId: string, appFrame: number, bytes = testWebpBytes('iVBORw0KGgo=')): PhysicPaintRotoRealKeyRecord {
   return Object.freeze({
     kind: 'real-key',
     keyId,
     appFrame,
-    payload: { frameIndex: 0, appFrame, dataUrl, width: 100, height: 80 },
+    payload: { frameIndex: 0, appFrame, bytes, width: 100, height: 80 },
   }) as PhysicPaintRotoRealKeyRecord;
 }
 
@@ -89,6 +89,21 @@ describe('physicsPaintRotoRailSetCopy — operation-result capsule copy (UAT-3)'
   });
 });
 
+describe('physicsPaintRotoRailSetCopy — rejection capsule copy', () => {
+  it('maps each failure class to a placement-aware user message', () => {
+    expect(mapRotoRailSetPasteFailure('paste', 'out-of-range-frame'))
+      .toBe('Paste failed — not enough space in the timeline.');
+    expect(mapRotoRailSetPasteFailure('duplicate', 'over-capacity'))
+      .toBe('Duplicate failed — not enough space in the timeline.');
+    expect(mapRotoRailSetPasteFailure('paste', 'duplicate-destination-frame'))
+      .toBe('Paste failed — a key already occupies the destination frame.');
+    expect(mapRotoRailSetPasteFailure('paste', 'stale-member'))
+      .toBe('Paste failed — the copied rail set is no longer available. Select the rails again.');
+    expect(mapRotoRailSetPasteFailure('duplicate', 'loop-source-outside-pasted-set'))
+      .toBe('Duplicate failed — a linked Hold can\'t be re-pointed to that destination.');
+  });
+});
+
 describe('physicsPaintRotoRailSetCopy — set copy payload builder (quick 260820-bjw)', () => {
   it('RED 1: builds a frozen payload with relative entries and first-key break flags', () => {
     const payload = keyRailPayload(twoKeyRailDocument().realKeyRecords);
@@ -103,7 +118,7 @@ describe('physicsPaintRotoRailSetCopy — set copy payload builder (quick 260820
     expect(railA.entries.map((entry) => entry.sourceKeyId)).toEqual(['k0', 'k2']);
     expect(railB.entries.map((entry) => entry.sourceAppFrame)).toEqual([6, 8]);
     expect(railB.entries.map((entry) => entry.sourceKeyId)).toEqual(['k6', 'k8']);
-    expect(railB.entries.map((entry) => entry.payload.dataUrl)).toEqual([PNG, PNG]);
+    expect(railB.entries.map((entry) => entry.payload.bytes)).toEqual([testWebpBytes('iVBORw0KGgo='), testWebpBytes('iVBORw0KGgo=')]);
   });
 
   it('RED 2: builds a Motion Rail payload from loop placement facts', () => {
@@ -169,6 +184,34 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     expect(pasted.impact.identities[1].id).toBe(freshBFirst);
   });
 
+  it('RED 1m: pasting a rail set BEFORE an existing rail stays isolated (right-mirror boundary law)', () => {
+    const built = buildRotoRailSetCopyPayload({
+      document: buildDocument([recordKey('s0', 0), recordKey('s1', 1)], [], []),
+      members: [{ kind: 'key-rail', firstKeyId: 's0' }],
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const document = buildDocument([recordKey('j5', 5), recordKey('j6', 6)], [], []);
+    const pasted = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 1,
+    });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
+    // The fresh rail lands at 1..2 with nothing before it, so no break lands on
+    // the fresh anchor — but the right mirror gives the following rail's first
+    // key j5 an incoming break, otherwise the segmenter would merge the pasted
+    // rail into [5,6] across the empty frames.
+    expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain('j5');
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: pasted.proposal.realKeyRecords,
+      incomingInterpolationBreakKeyIds: new Set(pasted.proposal.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds: new Set(),
+    });
+    expect(segments.map((segment) => [segment.firstKeyFrame, segment.lastKeyFrame])).toEqual([[1, 2], [5, 6]]);
+  });
+
   it('RED 2: pasting a Motion Rail duplicates the shared-source placement with relocated phase fields', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'g1',
@@ -194,20 +237,93 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const duplicated = newClips[0];
     expect(duplicated.loopId).not.toBe('g1');
     expect(duplicated.placementStart).toBe(8);
-    expect(duplicated.sourceKeyIds).toEqual(['k0']);
+    // 46 UAT: the pasted Loop Clip duplicates its source cycle — a fresh source
+    // key is created at the destination frame, not a reference to the original.
+    expect(duplicated.sourceKeyIds).toHaveLength(1);
+    expect(duplicated.sourceKeyIds[0]).not.toBe('k0');
     expect(duplicated.mode).toBe('progressive');
     expect(duplicated.repeat).toBe(3);
     expect(duplicated.phaseOrigin).toBe(8);
     expect(duplicated.originalEndExclusive).toBe(14);
     expect(duplicated.visibleRanges).toEqual([{ start: 8, endExclusive: 14 }]);
-    // Shared source cycle: identical sourceCycleId; fresh placement identity.
+    // The fresh source key lands at the destination frame (8).
+    const freshSource = pasted.proposal.realKeyRecords.find((r) => r.keyId === duplicated.sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    expect(freshSource!.appFrame).toBe(8);
+    // 46 UAT (issue 2): the loop's FIRST source key starts a new segment —
+    // break-before-first-key, exactly like a pasted key rail — so no
+    // interpolation is derived before the pasted loop. The original k0 lies to
+    // its left, so the fresh source key owns an incoming break.
+    expect(pasted.proposal.incomingInterpolationBreakKeyIds).toContain(freshSource!.keyId);
+    // The pasted Loop Clip owns a fresh source cycle (fresh keys), so its
+    // source cycle ID differs from the original's.
     expect(getPhysicsPaintRotoSourceCycleId(duplicated.sourceKeyIds))
-      .toBe(getPhysicsPaintRotoSourceCycleId(['k0']));
-    // The original group record is unchanged.
+      .not.toBe(getPhysicsPaintRotoSourceCycleId(['k0']));
+    // The original group record is unchanged; the original k0 remains and a
+    // fresh source key is added at frame 8.
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'g1')).toEqual(clip);
-    expect(pasted.proposal.realKeyRecords).toEqual(document.realKeyRecords);
+    expect(pasted.proposal.realKeyRecords).toHaveLength(2);
     expect(pasted.impact.identities).toHaveLength(1);
     expect(pasted.impact.identities[0]).toMatchObject({ kind: 'loop', id: duplicated.loopId, firstFrame: 8 });
+  });
+
+  it('RED 2reveal: pasting a reveal rail keeps railKind — the duplicate stays a reveal rail (G-52-4)', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'r1',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 3,
+      mode: 'progressive',
+      railKind: 'reveal',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const document = buildDocument([recordKey('k0', 0)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'r1' }] });
+    if (!built.ok) throw new Error('Reveal rail payload must resolve');
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 8 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Reveal rail paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'r1')!;
+    expect(duplicated.railKind).toBe('reveal');
+    expect(duplicated.scriptId).toBe('script-1');
+    // The original reveal clip is unchanged.
+    expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
+  });
+
+  it('RED 2dup: duplicating a Motion Rail also starts the fresh source key on a new segment (no interpolation before the duplicated rail)', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 3,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const document = buildDocument([recordKey('k0', 0)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error('Loop payload must resolve');
+    const duplicated = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
+    expect(duplicated.ok).toBe(true);
+    if (!duplicated.ok) throw new Error(`Loop duplicate must resolve: ${duplicated.reason}`);
+    const newClips = duplicated.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1');
+    expect(newClips).toHaveLength(1);
+    const freshSource = duplicated.proposal.realKeyRecords.find((record) => record.keyId === newClips[0]!.sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    // The duplicated rail's first source key owns a break (break-before-first-key).
+    expect(duplicated.proposal.incomingInterpolationBreakKeyIds).toContain(freshSource!.keyId);
   });
 
   it('RED 2b: paste uses the frozen payload bytes even if the source record changes after copy', () => {
@@ -215,13 +331,13 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
     if (!built.ok) throw new Error('Payload must resolve');
     // The source key's paint changes after the copy moment — the frozen payload wins.
-    const changedDocument = buildDocument([recordKey('k0', 0, CHANGED_PNG)], [], []);
+    const changedDocument = buildDocument([recordKey('k0', 0, testWebpBytes('CHANGED'))], [], []);
     const pasted = proposeRails({ document: changedDocument, payload: built.payload, placementMode: 'paste', destinationAppFrame: 8 });
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
     const fresh = pasted.proposal.realKeyRecords.find((record) => record.keyId !== 'k0');
-    expect(fresh?.payload.dataUrl).toBe(PNG);
-    expect(fresh?.payload.dataUrl).not.toBe(CHANGED_PNG);
+    expect(fresh?.payload.bytes).toEqual(testWebpBytes('iVBORw0KGgo='));
+    expect(fresh?.payload.bytes).not.toEqual(testWebpBytes('CHANGED'));
   });
 
   it('RED 3: a partially occupied destination rejects the WHOLE paste with zero mutation', () => {
@@ -291,15 +407,304 @@ describe('physicsPaintRotoRailSetCopy — proposeRails duplicate (quick 260820-b
       ],
     });
     if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
-    const duplicated = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
-    expect(duplicated.ok).toBe(true);
-    if (!duplicated.ok) throw new Error(`Duplicate must scan forward: ${duplicated.reason}`);
+    const duplicate = proposeRails({ document, payload: built.payload, placementMode: 'duplicate' });
+    expect(duplicate.ok).toBe(true);
+    if (!duplicate.ok) throw new Error(`Duplicate must scan forward: ${duplicate.reason}`);
     const sourceIds = new Set(['k0', 'k2', 'k6', 'k8', 'blocker']);
-    const freshFrames = duplicated.proposal.realKeyRecords
+    const freshFrames = duplicate.proposal.realKeyRecords
       .filter((record) => !sourceIds.has(record.keyId))
       .map((record) => record.appFrame)
       .sort((a, b) => a - b);
     // Frame 10 occupied → scan to anchor 11 → A 11/13, B 17/19.
     expect(freshFrames).toEqual([11, 13, 17, 19]);
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cross-track re-pointing (D-06)', () => {
+  it('payload builder records the source track identity when the copy supplies one', () => {
+    const document = twoKeyRailDocument();
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [{ kind: 'key-rail', firstKeyId: 'k0' }],
+      trackId: 'track-a',
+    });
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    expect(built.payload.sourceTrackId).toBe('track-a');
+    // Legacy payloads (no track context) keep the empty source identity so
+    // pre-46-03 callers never trigger cross-track re-pointing.
+    const legacy = buildRotoRailSetCopyPayload({
+      document,
+      members: [{ kind: 'key-rail', firstKeyId: 'k0' }],
+    });
+    expect(legacy.ok).toBe(true);
+    if (!legacy.ok) throw new Error(`Payload must build: ${legacy.reason}`);
+    expect(legacy.payload.sourceTrackId).toBe('');
+  });
+
+  it('cross-track paste re-points a Hold Loop Clip source onto the destination track\'s copied frames (D-06: fresh loopId, never a foreign key id)', () => {
+    const sourceDocument = buildDocument(
+      [recordKey('k0', 0)],
+      [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k0'], repeat: 1, mode: 'static' }],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document: sourceDocument,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'loop', loopId: 'hold1' },
+      ],
+      trackId: 'track-a',
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const targetDocument = buildDocument([recordKey('kb0', 0)], []);
+    const pasted = proposeRails({
+      document: targetDocument,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      targetTrackId: 'track-b',
+    });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Cross-track paste must resolve: ${pasted.reason}`);
+    const freshKeyId = pasted.proposal.realKeyRecords.find((record) => record.appFrame === 10)?.keyId;
+    expect(freshKeyId).toBeDefined();
+    expect(freshKeyId).not.toBe('k0');
+    const newClips = pasted.proposal.loopClips.filter((clip) => clip.loopId !== 'hold1');
+    expect(newClips).toHaveLength(1);
+    expect(newClips[0].loopId).not.toBe('hold1');
+    // The reference points at the destination track's copied frame — never back into the source.
+    expect(newClips[0].sourceKeyIds).toEqual([freshKeyId]);
+    expect(newClips[0].sourceKeyIds).not.toContain('k0');
+    // The source document is untouched by the proposal.
+    expect(sourceDocument.loopClips[0].sourceKeyIds).toEqual(['k0']);
+  });
+
+  it('rejects a cross-track paste whose Hold source frames are NOT part of the pasted set (ok:false, zero mutation)', () => {
+    // The loop references k9, which is not among the pasted key rails — the
+    // paste must fail closed rather than produce a dangling/foreign reference.
+    const sourceDocument = buildDocument(
+      [recordKey('k0', 0)],
+      [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k9'], repeat: 1, mode: 'static' }],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document: sourceDocument,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'loop', loopId: 'hold1' },
+      ],
+      trackId: 'track-a',
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const targetDocument = buildDocument([recordKey('kb0', 0)], []);
+    const pasted = proposeRails({
+      document: targetDocument,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      targetTrackId: 'track-b',
+    });
+    expect(pasted.ok).toBe(false);
+    if (pasted.ok) throw new Error('Un-re-pointable paste must reject');
+    expect(pasted.reason).toBe('loop-source-outside-pasted-set');
+    // Zero mutation: no proposal, target byte-identical.
+    expect((pasted as Readonly<{ proposal?: unknown }>).proposal).toBeUndefined();
+    expect(targetDocument.realKeyRecords).toEqual([recordKey('kb0', 0)]);
+    expect(targetDocument.loopClips).toEqual([]);
+  });
+
+  it('same-track paste keeps the loop source references verbatim (shared-source placement, D-07)', () => {
+    const document = buildDocument(
+      [recordKey('k0', 0)],
+      [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k0'], repeat: 1, mode: 'static' }],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'loop', loopId: 'hold1' },
+      ],
+      trackId: 'track-a',
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const pasted = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      targetTrackId: 'track-a',
+    });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Same-track paste must resolve: ${pasted.reason}`);
+    const newClips = pasted.proposal.loopClips.filter((clip) => clip.loopId !== 'hold1');
+    expect(newClips).toHaveLength(1);
+    expect(newClips[0].loopId).not.toBe('hold1');
+    // 46 UAT: the pasted Loop Clip references the fresh source key created by
+    // the key-rail member at the destination frame, not the original k0.
+    expect(newClips[0].sourceKeyIds).toHaveLength(1);
+    expect(newClips[0].sourceKeyIds[0]).not.toBe('k0');
+    const freshSource = pasted.proposal.realKeyRecords.find((r) => r.keyId === newClips[0].sourceKeyIds[0]);
+    expect(freshSource).toBeDefined();
+    expect(freshSource!.appFrame).toBe(10);
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infinity → finite freeze)', () => {
+  it('freezes an infinity-repeat source to the finite repeat it effectively had (same visible extent, no re-expansion)', () => {
+    // Source: clip g1, repeat='infinity', placement 0, source keys at frames 0 and 5
+    // (cycleLength 6). Truncated by an unowned real key at frame 24 → visible 0..24.
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k5'],
+      repeat: 'infinity',
+      mode: 'progressive',
+    };
+    const sourceDocument = buildDocument(
+      [recordKey('k0', 0), recordKey('k5', 5), recordKey('k24', 24)],
+      [clip],
+    );
+
+    // Copy: the payload captures the resolver-resolved source extent, not the
+    // raw 'infinity' repeat.
+    const built = buildRotoRailSetCopyPayload({ document: sourceDocument, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.clip.repeat).toBe('infinity');
+    expect(member.effectiveEndExclusive).toBe(24);
+    expect(member.repeat).toBe(4);
+
+    // Paste into a destination that carries the source keys (k0, k5) but no
+    // k24 to the right — the exact case that previously made the pasted loop
+    // re-resolve `naturalEnd = capacity` and expand beyond the source.
+    const destinationDocument = buildDocument([recordKey('k0', 0), recordKey('k5', 5)]);
+    const pasted = proposeRails({ document: destinationDocument, payload: built.payload, placementMode: 'paste', destinationAppFrame: 40 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Infinity-loop paste must resolve: ${pasted.reason}`);
+    const newClips = pasted.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1');
+    expect(newClips).toHaveLength(1);
+    const duplicated = newClips[0];
+    expect(duplicated.loopId).not.toBe('g1');
+    expect(duplicated.placementStart).toBe(40);
+    // Frozen finite repeat, not 'infinity' — the pasted clip no longer grows
+    // with the destination's parent end.
+    expect(duplicated.repeat).toBe(4);
+    // Same effective visible duration as the source (0..24 → 40..64, 24 frames).
+    expect(pasted.impact.identities).toHaveLength(1);
+    expect(pasted.impact.identities[0].effectiveEndExclusive).toBe(64);
+    // 46 UAT R5: the frozen clip must be lifecycle-complete so the bridge apply
+    // validator (isLifecycleCompletePhysicPaintRotoLoopClip) accepts the payload.
+    expect(duplicated.syncState).toBe('synchronized');
+    expect(duplicated.provenanceState).toBe('attached');
+    expect(duplicated.phaseOrigin).toBe(40);
+    expect(duplicated.originalEndExclusive).toBe(64);
+    expect(duplicated.visibleRanges).toEqual([{ start: 40, endExclusive: 64 }]);
+    expect(duplicated.frameOverrides).toEqual([]);
+  });
+
+  it('captures a truly-unbounded infinity source at the parent end and freezes it finite', () => {
+    // No neighbor, so the source renders to capacity 100 (0..100).
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k5'],
+      repeat: 'infinity',
+      mode: 'progressive',
+    };
+    const document = buildDocument([recordKey('k0', 0), recordKey('k5', 5)], [clip], [], 100);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.effectiveEndExclusive).toBe(100);
+    expect(member.repeat).toBe(17); // round(100 / 6)
+    const pasted = proposeRails({ document: buildDocument([recordKey('k0', 0), recordKey('k5', 5)], [], [], 200), payload: built.payload, placementMode: 'paste', destinationAppFrame: 20 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
+    expect(pasted.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1')[0].repeat).toBe(17);
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — 46 UAT R1 (finite/static extent must not regress)', () => {
+  it('keeps the v0.9 sourceKeyIds.length extent for a finite motion clip (no positions-span inflation)', () => {
+    // Source keys at frames 0 and 2: sourceKeyIds.length = 2, but the resolver
+    // cycle (positions span) = 3. The copy extent must stay length-based (6 for
+    // repeat 3), exactly as before the freeze change, so pastes near the end of
+    // the timeline are not rejected as out-of-range.
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k2'],
+      repeat: 3,
+      mode: 'progressive',
+    };
+    const document = buildDocument([recordKey('k0', 0), recordKey('k2', 2)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.clip.repeat).toBe(3);
+    expect(member.effectiveEndExclusive).toBe(0 + 2 * 3); // 6, not positions-span 9
+    expect(member.repeat).toBeUndefined(); // finite: no freeze
+    // Paste near the far end of a tight document still fits.
+    const tight = buildDocument([recordKey('k0', 0), recordKey('k2', 2)], [], [], 20);
+    const pasted = proposeRails({ document: tight, payload: built.payload, placementMode: 'paste', destinationAppFrame: 10 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Finite paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'g1')!;
+    expect(duplicated.repeat).toBe(3); // repeat preserved, not frozen
+  });
+
+  it('freezes an infinity clip but leaves a finite static hold untouched (repeat preserved verbatim)', () => {
+    const finiteHold: PhysicPaintRotoLoopClip = {
+      loopId: 'hold',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const document = buildDocument([recordKey('k0', 0)], [finiteHold]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'hold' }] });
+    if (!built.ok) throw new Error(`Hold payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.effectiveEndExclusive).toBe(0 + 1 * 2); // 2
+    expect(member.repeat).toBeUndefined();
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 5 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Hold paste must resolve: ${pasted.reason}`);
+    expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'hold')!.repeat).toBe(2);
+  });
+});
+
+describe('physicsPaintRotoRailSetCopy — 46 UAT R5 (pasted clips are lifecycle-complete)', () => {
+  it('synthesizes a complete lifecycle for a finite-repeat source with syncState undefined (no lifecycle)', () => {
+    // Repro: a finite motion rail never synchronized (no syncState/lifecycle).
+    // Pasting it previously produced a no-lifecycle clip that the bridge apply
+    // validator rejected (appliedFrameCount 0 -> timeout -> engine not ready).
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'm',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k2'],
+      repeat: 3,
+      mode: 'progressive',
+    };
+    const document = buildDocument([recordKey('k0', 0), recordKey('k2', 2)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'm' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 10 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Finite paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'm')!;
+    expect(duplicated.repeat).toBe(3);
+    expect(duplicated.placementStart).toBe(10);
+    // Lifecycle-complete so isLifecycleCompletePhysicPaintRotoLoopClip passes:
+    // originalEndExclusive = 10 + (member extent 6) = 16.
+    expect(duplicated.syncState).toBe('synchronized');
+    expect(duplicated.provenanceState).toBe('attached');
+    expect(duplicated.phaseOrigin).toBe(10);
+    expect(duplicated.originalEndExclusive).toBe(16);
+    expect(duplicated.visibleRanges).toEqual([{ start: 10, endExclusive: 16 }]);
+    expect(duplicated.frameOverrides).toEqual([]);
   });
 });

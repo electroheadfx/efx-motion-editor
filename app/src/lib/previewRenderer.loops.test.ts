@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
@@ -5,6 +6,10 @@ import {
   physicPaintStore,
   _setPhysicPaintMarkDirtyCallback,
 } from '../stores/physicPaintStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPaintStore';
+import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import { requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
@@ -25,13 +30,26 @@ vi.mock('../stores/projectStore', () => ({
 import { PreviewRenderer, getPreviewPhysicPaintFrameCacheKey } from './previewRenderer';
 import { clearProjectPaperRasterCache } from './projectPaperRaster';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
-// Phase 43 Plan 09 Task 2: D-28 preview/playback placeholder surface. A frame
-// inside an unresolvable Loop Clip range renders as a MARKED, VISIBLE
-// placeholder (the TimelineRenderer placeholder fill discipline: alternating
-// #1A1A2A/#1A2A1A plus a marker) — never a blank frame, never a crash, never
-// blocking; unrelated frames beside the loop render normally. Node env,
-// vitest run only; no jsdom, no config changes.
+function makeTrackDocument(layerId: string): EfxPaintDocument {
+  const document = createEfxPaintDocument(layerId);
+  const track = document.tracks[0];
+  return {
+    ...document,
+    activeTrackId: TEST_TRACK_ID,
+    tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+  };
+}
+
+// Phase 48 Plan 03 Task 2 (D-09/CMP-01): preview/playback delivery through the
+// flattened seam. A frame inside an unresolvable Loop Clip range renders as a
+// TRANSPARENT straight-alpha raster — the store's flattened report (D-09)
+// surfaces the missing source; the renderer surface NEVER carries marked
+// placeholder pixels (#1A1A2A/#1A2A1A fills or a marker text were excised).
+// Unrelated frames beside the loop render normally; nothing blocks or crashes.
+// Node env, vitest run only; no jsdom, no config changes.
 
 type RecordedCanvasOp =
   | { type: 'fillRect'; fillStyle: string; globalAlpha: number; args: number[] }
@@ -77,9 +95,21 @@ class TestCanvas {
   clientHeight = 0;
   offsetWidth = 0;
   offsetHeight = 0;
+  private context: RecordingCanvasContext | null = null;
 
   getContext(contextId: string): RecordingCanvasContext | null {
-    return contextId === '2d' ? new RecordingCanvasContext() : null;
+    if (contextId !== '2d') return null;
+    if (!this.context) this.context = new RecordingCanvasContext();
+    return this.context;
+  }
+
+  // 48-03 D-11: the store's getFlattenedFrame serializes the composited raster
+  // via toDataURL() — a deterministic op-log digest keeps that digest stable
+  // across identical composition calls (same seam discipline as
+  // exportEngine.loops.test.ts).
+  toDataURL(): string {
+    const operations = this.context?.operations ?? [];
+    return `data:image/png;base64,${Buffer.from(JSON.stringify(operations)).toString('base64')}`;
   }
 }
 
@@ -119,7 +149,7 @@ function payload(appFrame: number, tag = 'base'): PhysicPaintRotoRealKeyPayload 
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: `data:image/png;base64,${btoa(`loop-preview:${appFrame}:${tag}`)}`,
+    bytes: testWebpBytes(btoa(`loop-preview:${appFrame}:${tag}`)),
     width: 4,
     height: 3,
   };
@@ -178,9 +208,9 @@ function install(
   interpolation: { readonly enabled: boolean; readonly mode: 'duplicate' | 'blend' } = INTERPOLATION,
   capacity = CAPACITY,
 ): void {
-  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, interpolation, capacity);
+  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, TEST_TRACK_ID, records, interpolation, capacity);
   if (!recordsResult.ok) throw new Error(recordsResult.error);
-  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, loops);
+  const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, loops);
   if (!loopsResult.ok) throw new Error(loopsResult.error);
 }
 
@@ -200,6 +230,8 @@ function makeRotoLayer(): Layer {
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
+  resetEfxPaintStore();
+  registerDocument(makeTrackDocument(LAYER));
   clearProjectPaperRasterCache();
   vi.stubGlobal('window', { devicePixelRatio: 1 });
   vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas() : {} });
@@ -234,7 +266,11 @@ describe('preview accepted Group lifecycle parity', () => {
       [lifecycleGroup()],
       { enabled: true, mode: 'duplicate' },
     );
-    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1);
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 1);
+    // 48-03 D-09: the omitted occurrence resolves to transparent — the
+    // flattened delivery is a straight-alpha raster with an empty missing-set
+    // report (no content), and the renderer never emits placeholder marks.
+    const flattened = physicPaintStore.getFlattenedFrame(LAYER, 1);
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -242,8 +278,10 @@ describe('preview accepted Group lifecycle parity', () => {
     renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
 
     expect(source).toBeNull();
-    expect(ctx.operations.some((operation) => operation.type === 'drawImage')).toBe(false);
+    expect(flattened).not.toBeNull();
+    expect(flattened!.missing.map((entry) => entry.missingRefs)).toEqual([[]]);
     expect(ctx.operations.some((operation) => operation.type === 'fillText')).toBe(false);
+    expect(ctx.operations.some((operation) => operation.type === 'fillRect' && (operation.fillStyle === '#1A1A2A' || operation.fillStyle === '#1A2A1A'))).toBe(false);
   });
 
   it('uses an exact override only at its accepted occurrence', () => {
@@ -256,14 +294,14 @@ describe('preview accepted Group lifecycle parity', () => {
       { enabled: true, mode: 'duplicate' },
     );
 
-    const override = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 5);
-    const neighbor = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 6);
+    const override = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 5);
+    const neighbor = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 6);
 
     expect(override).toEqual(expect.objectContaining({
       kind: 'real',
       appFrame: 5,
       keyId: 'override-5',
-      renderedFrame: expect.objectContaining({ dataUrl: payload(5, 'override').dataUrl }),
+      renderedFrame: expect.objectContaining({ bytes: payload(5, 'override').bytes }),
     }));
     expect(neighbor).toEqual(expect.objectContaining({
       kind: 'generated',
@@ -271,7 +309,7 @@ describe('preview accepted Group lifecycle parity', () => {
       cycleOffset: 2,
     }));
     if (!neighbor || neighbor.kind !== 'generated') throw new Error('Expected generated Group neighbor.');
-    expect(neighbor.renderedFrame.dataUrl).not.toBe(payload(5, 'override').dataUrl);
+    expect(neighbor.renderedFrame.bytes).not.toBe(payload(5, 'override').bytes);
   });
 
   it('retains immutable phase while detached and reflects accepted regeneration immediately', () => {
@@ -284,22 +322,22 @@ describe('preview accepted Group lifecycle parity', () => {
       { enabled: true, mode: 'duplicate' },
     );
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 5)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 5)).toEqual(expect.objectContaining({
       kind: 'generated',
       cycleOffset: 1,
     }));
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 7)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 7)).toEqual(expect.objectContaining({
       kind: 'real',
       keyId: 'A1',
     }));
 
-    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [lifecycleGroup({
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID, [lifecycleGroup({
       syncState: 'synchronized',
       visibleRanges: [{ start: 0, endExclusive: 12 }],
     })]);
     if (!regenerated.ok) throw new Error(regenerated.error);
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 1)).toEqual(expect.objectContaining({
       kind: 'generated',
       cycleOffset: 1,
     }));
@@ -317,8 +355,8 @@ describe('preview accepted Group lifecycle parity', () => {
       })],
     );
 
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1)).toBeNull();
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 2)).toEqual(expect.objectContaining({
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 1)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 2)).toEqual(expect.objectContaining({
       kind: 'loop-placeholder',
       loopId: 'group-a',
       missingSourceKeyIds: ['missing-source'],
@@ -337,7 +375,7 @@ describe('preview linked-generated cache identity', () => {
       { enabled: true, mode: 'duplicate' },
       50,
     );
-    const sources = [13, 20, 31].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
+    const sources = [13, 20, 31].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame));
     for (const source of sources) {
       if (!source || source.kind !== 'generated') throw new Error('Expected linked-generated preview source.');
     }
@@ -346,7 +384,7 @@ describe('preview linked-generated cache identity', () => {
       layerId: LAYER,
       frame: source.appFrame,
       cacheKey: `physic-paint:${LAYER}:physical:${source.cacheRevision}`,
-      renderedFrame: source.renderedFrame,
+      renderedFrame: { ...source.renderedFrame, bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame) },
     });
 
     expect(first.sourceCycleId).toBe(getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']));
@@ -357,29 +395,34 @@ describe('preview linked-generated cache identity', () => {
   });
 });
 
-describe('preview loop placeholder (D-28, audit finding 3)', () => {
-  it('renders an unresolved loop frame as a marked, visible placeholder — never a blank frame', () => {
+describe('preview unresolved-loop delivery (D-09 — transparent raster, never placeholder)', () => {
+  it('renders an unresolved loop frame through the flattened delivery as a transparent raster — never a marked placeholder', () => {
     installUnresolvedLoop();
+    // D-09: the store surfaces the missing source via the flattened report —
+    // the renderer surface itself carries NO placeholder pixels.
+    const flattened = physicPaintStore.getFlattenedFrame(LAYER, 2);
+    expect(flattened).not.toBeNull();
+    expect(flattened!.missing).toContainEqual(expect.objectContaining({
+      trackId: TEST_TRACK_ID,
+      frame: 2,
+      missingRefs: ['missing-1'],
+    }));
+
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
+    // The flattened straight-alpha raster IS drawn (transparent pixels, D-02).
+    expect(ctx.operations.some((op) => op.type === 'drawImage')).toBe(true);
+    // No placeholder fill discipline, no marker text — excised per D-09.
     const fills = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'fillRect' }> => op.type === 'fillRect');
-    // The placeholder fill discipline: full-frame PLACEHOLDER_BG_A base...
-    expect(fills).toContainEqual(expect.objectContaining({
-      fillStyle: '#1A1A2A',
-      args: [0, 0, 4, 3],
-    }));
-    // ...with alternating PLACEHOLDER_BG_B marker stripes...
-    expect(fills.some((op) => op.fillStyle === '#1A2A1A')).toBe(true);
-    // ...and a visible marker text distinguishing it from an empty frame.
-    expect(ctx.operations).toContainEqual(expect.objectContaining({ type: 'fillText' }));
-    // A placeholder is never painted from a real Paint raster.
-    expect(ctx.operations.some((op) => op.type === 'drawImage')).toBe(false);
+    expect(fills.some((op) => op.fillStyle === '#1A1A2A' || op.fillStyle === '#1A2A1A')).toBe(false);
+    expect(ctx.operations.some((op) => op.type === 'fillText')).toBe(false);
   });
 
-  it('an empty frame outside every loop range renders no placeholder marks (placeholder is distinct from empty)', () => {
+  it('an empty frame outside every loop range draws nothing marked (unresolved and empty remain distinct)', () => {
     installUnresolvedLoop();
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
@@ -390,12 +433,12 @@ describe('preview loop placeholder (D-28, audit finding 3)', () => {
     expect(ctx.operations.filter((op) => op.type === 'fillText')).toEqual([]);
   });
 
-  it('playback continues past the placeholder without blocking and neighboring real frames render normally on both sides', () => {
+  it('playback continues past the unresolved range without blocking and neighboring real frames render normally on both sides', () => {
     installUnresolvedLoop();
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
-    // Scrub order: real key before the loop, two placeholder frames, then the
+    // Scrub order: real key before the loop, the unresolved span, then the
     // real boundary key after the loop — every call returns synchronously.
     renderer.renderFrame([makeRotoLayer()], 0, [], 24, true, 1, 0);
     renderer.renderFrame([makeRotoLayer()], 0, [], 24, true, 1, 0);
@@ -404,27 +447,38 @@ describe('preview loop placeholder (D-28, audit finding 3)', () => {
     renderer.renderFrame([makeRotoLayer()], 10, [], 24, true, 1, 10);
     renderer.renderFrame([makeRotoLayer()], 10, [], 24, true, 1, 10);
 
-    // The real keys on both sides of the unresolved range paint their own
-    // rasters (load-then-draw: the second pass paints from the image cache).
+    // Real keys on both sides paint their flattened rasters (load-then-draw:
+    // the second pass paints from the image cache).
     const drawn = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage').map((op) => op.source);
-    expect(drawn).toContain(payload(0).dataUrl);
-    expect(drawn).toContain(payload(10).dataUrl);
-    // Placeholder marks appear between the two real frames.
-    const firstPlaceholderFill = ctx.operations.findIndex((op) => op.type === 'fillRect' && op.fillStyle === '#1A1A2A');
-    expect(firstPlaceholderFill).toBeGreaterThan(-1);
+    expect(drawn.length).toBeGreaterThan(0);
+    // No placeholder marks anywhere on the renderer surface (D-09).
+    expect(ctx.operations.some((op) => op.type === 'fillRect' && (op.fillStyle === '#1A1A2A' || op.fillStyle === '#1A2A1A'))).toBe(false);
+    expect(ctx.operations.some((op) => op.type === 'fillText')).toBe(false);
+    // The missing source is surfaced through the flattened report.
+    expect(physicPaintStore.getFlattenedFrame(LAYER, 2)?.missing[0].missingRefs).toContain('missing-1');
   });
 
-  it('the store never returns null-as-blank inside an unresolved loop range — the typed placeholder variant drives the marked frame', () => {
+  it('the store never returns null-as-blank inside an unresolved loop range — the flattened report drives the transparent raster', () => {
     installUnresolvedLoop();
-    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 3);
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 3);
     expect(source).not.toBeNull();
     expect(source!.kind).toBe('loop-placeholder');
+
+    const flattened = physicPaintStore.getFlattenedFrame(LAYER, 3);
+    expect(flattened).not.toBeNull();
+    expect(flattened!.missing).toContainEqual(expect.objectContaining({
+      trackId: TEST_TRACK_ID,
+      frame: 3,
+      missingRefs: ['missing-1'],
+    }));
 
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
     renderer.renderFrame([makeRotoLayer()], 3, [], 24, true, 1, 3);
-    // The placeholder frame produces visible paint calls — never zero ops.
-    expect(ctx.operations.length).toBeGreaterThan(0);
-    expect(ctx.operations.some((op) => op.type === 'fillRect' && op.fillStyle === '#1A1A2A')).toBe(true);
+    renderer.renderFrame([makeRotoLayer()], 3, [], 24, true, 1, 3);
+    // The transparent flattened raster is drawn — never placeholder marks.
+    expect(ctx.operations.some((op) => op.type === 'drawImage')).toBe(true);
+    expect(ctx.operations.some((op) => op.type === 'fillRect' && op.fillStyle === '#1A1A2A')).toBe(false);
+    expect(ctx.operations.some((op) => op.type === 'fillText')).toBe(false);
   });
 });

@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+
+const harness = vi.hoisted(() => ({
+  encode: vi.fn(),
+}));
+
+vi.mock('./rotoCanvasFrames', () => ({ encodeRotoFrameFromCanvas: harness.encode }));
+
 import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge';
 
 type RecordedCanvasOp =
@@ -80,7 +88,7 @@ function makeBaseFrame(appFrame = 12): PhysicPaintRenderedFrame {
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: 'data:image/png;base64,Y2FjaGVkLXJvdG8tYWxwaGE=',
+    bytes: testWebpBytes('Y2FjaGVkLXJvdG8tYWxwaGE='),
     width: 320,
     height: 180,
   };
@@ -103,6 +111,13 @@ describe('mergeCachedRotoAlphaFrame', () => {
     operations = [];
     failContext = false;
     failImage = false;
+    harness.encode.mockReset().mockImplementation(async (canvas: HTMLCanvasElement, appFrame: number) => ({
+      frameIndex: 0,
+      appFrame,
+      bytes: testWebpBytes('bWVyZ2Vk'),
+      width: canvas.width,
+      height: canvas.height,
+    }));
     vi.stubGlobal('document', {
       createElement: (tagName: string) => {
         if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
@@ -111,6 +126,10 @@ describe('mergeCachedRotoAlphaFrame', () => {
     });
     vi.stubGlobal('Image', TestImage);
     vi.stubGlobal('FileReader', TestFileReader);
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => {
+      if (failImage) throw new Error('Could not merge cached Roto alpha frame: cached base image failed to load.');
+      return { marker: 'cached-base-image' };
+    }));
   });
 
   afterEach(() => {
@@ -118,6 +137,7 @@ describe('mergeCachedRotoAlphaFrame', () => {
     vi.stubGlobal('document', originalDocument);
     vi.stubGlobal('Image', originalImage);
     vi.stubGlobal('FileReader', originalFileReader);
+    vi.unstubAllGlobals();
   });
 
   it('D-01/D-03/36.11-ALPHA-ONLY-MERGE draws cached base first, live alpha second, and returns real-key frame metadata', async () => {
@@ -126,13 +146,13 @@ describe('mergeCachedRotoAlphaFrame', () => {
     expect(result).toEqual({
       frameIndex: 0,
       appFrame: 12,
-      dataUrl: 'data:image/png;base64,bWVyZ2Vk',
+      bytes: testWebpBytes('bWVyZ2Vk'),
       width: 320,
       height: 180,
     });
     expect(operations).toEqual([
       { type: 'clearRect', x: 0, y: 0, w: 320, h: 180 },
-      { type: 'drawImage', source: 'data:image/png;base64,Y2FjaGVkLXJvdG8tYWxwaGE=', args: [0, 0, 320, 180] },
+      { type: 'drawImage', source: 'cached-base-image', args: [0, 0, 320, 180] },
       { type: 'drawImage', source: 'live-transparent-stroke-canvas', args: [0, 0, 320, 180] },
     ]);
   });
@@ -144,7 +164,7 @@ describe('mergeCachedRotoAlphaFrame', () => {
       .filter((operation): operation is Extract<RecordedCanvasOp, { type: 'drawImage' }> => operation.type === 'drawImage')
       .map((operation) => operation.source);
     expect(drawnSources).toEqual([
-      'data:image/png;base64,Y2FjaGVkLXJvdG8tYWxwaGE=',
+      'cached-base-image',
       'live-transparent-stroke-canvas',
     ]);
     expect(drawnSources).not.toContain('paper-texture');

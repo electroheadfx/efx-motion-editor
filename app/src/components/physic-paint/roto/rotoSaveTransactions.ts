@@ -3,13 +3,12 @@ import type {
   PhysicPaintApplyPayload,
   PhysicPaintLaunchContext,
   PhysicPaintRenderedFrame,
-  PhysicPaintRotoBackgroundMetadata,
   PhysicPaintRotoCacheFrame,
   PhysicPaintRotoInterpolationSettings,
 } from '../../../types/physicPaint';
 
 export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
-export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
+export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
 export interface RotoFlushOptions {
   force?: boolean;
@@ -38,23 +37,19 @@ export function guardRotoFlush(input: {
   return { type: 'flush' };
 }
 
-export function selectRotoEditableState(input: {
-  frame: number;
-  currentFrame: number;
-  liveState: RotoEditableState;
-  storedState?: RotoEditableState;
-}): { editableState: RotoEditableState | undefined; previousState: RotoEditableState | null } {
-  return input.frame === input.currentFrame
-    ? { editableState: input.liveState, previousState: null }
-    : { editableState: input.storedState, previousState: input.liveState };
+/** Active-track engine carrier read: strokes/settings ride the active track in v1.0 documents (D-03). */
+export function readRotoActiveTrack(state: RotoEditableState) {
+  return state.tracks.find((track) => track.id === state.activeTrackId) ?? null;
 }
 
 export function shouldPersistRotoFrame(state: RotoEditableState): boolean {
-  return state.strokes.length > 0 || state.settings.bgMode !== 'transparent';
+  const track = readRotoActiveTrack(state);
+  return (track?.strokes?.length ?? 0) > 0 || (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
 }
 
 export function isBackgroundOnlyRotoFrame(state: RotoEditableState): boolean {
-  return state.strokes.length === 0 && state.settings.bgMode !== 'transparent';
+  const track = readRotoActiveTrack(state);
+  return (track?.strokes?.length ?? 0) === 0 && (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
 }
 
 export function resolveRotoSaveSourceFrame(frame: number, sourceFrameOverride: number | undefined, resolvedSourceFrame: number): number {
@@ -71,35 +66,10 @@ export function buildDeleteRotoFramePayload(input: {
     operationId: `${input.launchContext.operationId}:delete-roto:${input.frame}:${input.now}`,
     kind: 'delete-roto-frame',
     layerId: input.launchContext.layerId,
+    // 46-01: apply payloads carry the target trackId (the launch IS the document).
+    trackId: input.launchContext.document?.activeTrackId ?? '',
     startFrame: input.frame,
     sourceFrame: input.sourceFrame,
-  };
-}
-
-export function buildApplyCanvasPayload(input: {
-  launchContext: PhysicPaintLaunchContext;
-  frame: number;
-  sourceFrame: number;
-  editableState: RotoEditableState;
-  renderedFrame: RotoRenderedFrame;
-  backgroundMetadata: PhysicPaintRotoBackgroundMetadata;
-  interpolationSettings: PhysicPaintRotoInterpolationSettings;
-  backgroundOnly: boolean;
-  onionFrame: RotoRenderedFrame | null;
-  now: number;
-}): PhysicPaintApplyPayload {
-  return {
-    operationId: `${input.launchContext.operationId}:canvas:${input.frame}:${input.now}`,
-    kind: 'apply-canvas',
-    layerId: input.launchContext.layerId,
-    startFrame: input.frame,
-    sourceFrame: input.sourceFrame,
-    editableState: input.editableState,
-    renderedFrame: input.renderedFrame,
-    rotoBackground: input.backgroundMetadata,
-    rotoInterpolationSettings: input.interpolationSettings,
-    ...(input.backgroundOnly ? { backgroundOnly: true } : {}),
-    ...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {}),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'preact/hooks'
-import type { EfxPaintEngine, ToolType, BgMode } from '@efxlab/efx-physic-paint'
+import type { EfxPaintDocument, EfxPaintEngine, ToolType, BgMode } from '@efxlab/efx-physic-paint'
 
 export interface ToolbarSettings {
   tool: ToolType
@@ -28,19 +28,6 @@ const SAVE_ERROR_COPY = 'Could not save physics paint state. Choose a writable J
 const clampNumber = (value: number, min: number, max: number, fallback: number) => {
   if (!Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
-}
-
-function isSerializedProject(value: unknown): value is Parameters<EfxPaintEngine['load']>[0] {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      (value as { version?: unknown }).version === 2 &&
-      typeof (value as { width?: unknown }).width === 'number' &&
-      typeof (value as { height?: unknown }).height === 'number' &&
-      Array.isArray((value as { strokes?: unknown }).strokes) &&
-      typeof (value as { settings?: unknown }).settings === 'object' &&
-      (value as { settings?: unknown }).settings !== null,
-  )
 }
 
 function Slider(props: {
@@ -221,18 +208,23 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
 
     const reader = new FileReader()
     reader.onload = () => {
+      let parsed: unknown
       try {
-        const parsed = JSON.parse(String(reader.result ?? ''))
-        if (!isSerializedProject(parsed)) {
-          throw new Error(INVALID_STATE_COPY)
-        }
-        engine.load(parsed)
+        parsed = JSON.parse(String(reader.result ?? ''))
+      } catch {
+        setLoadError(INVALID_STATE_COPY)
+        onError?.(INVALID_STATE_COPY)
+        return
+      }
+      try {
+        engine.load(parsed as EfxPaintDocument)
         setLoadError(null)
         onError?.(null)
       } catch (err) {
         console.error('Failed to load project:', err)
-        setLoadError(INVALID_STATE_COPY)
-        onError?.(INVALID_STATE_COPY)
+        const message = err instanceof Error && err.message ? err.message : INVALID_STATE_COPY
+        setLoadError(message)
+        onError?.(message)
       }
     }
     reader.readAsText(file)

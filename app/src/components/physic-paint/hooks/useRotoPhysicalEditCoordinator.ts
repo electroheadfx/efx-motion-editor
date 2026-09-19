@@ -40,7 +40,7 @@
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { computed, useSignal, type ReadonlySignal } from '@preact/signals';
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { EfxPaintDocument } from '@efxlab/efx-physic-paint';
 import {
   isPhysicPaintRotoBackgroundMetadata,
   isPhysicPaintRotoPhysicalEditApplyResult,
@@ -66,6 +66,7 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoInterpolationState,
@@ -81,6 +82,7 @@ import {
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../roto/physicsPaintRotoGroupLifecycle';
 import {
+  mapRotoRailSetPasteFailure,
   proposeRails,
   type RotoRailSetCopyPayload,
   type RotoRailSetCopyPlacementMode,
@@ -93,7 +95,9 @@ import {
   buildCanonicalMoveGroupOverrideRecords,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../roto/physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
+import { isWebpBytes } from '../../../types/physicPaint';
+import { buildFrameBytesToken } from '../../../lib/webpBytes';
+import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
   RotoPhysicalEditAcceptedOutput,
@@ -289,6 +293,10 @@ export interface RotoPlayScriptExecuteInput extends RotoGeneratedPublicationExec
   readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** 52 UAT (AM-4): staged incoming breaks for a NEW-cycle Apply — the fresh
+   *  cycle's first key owns the leading break. Absent passes the document's
+   *  breaks through untouched. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicationExecuteInputBase {
@@ -296,6 +304,10 @@ export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicatio
   readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** Never populated on the regenerate path — present only so the generated
+   *  publication union stages the field uniformly. Regenerate retargets
+   *  EXISTING keys, so the document's breaks pass through untouched. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface RotoGroupFramePaintExecuteInput {
@@ -429,6 +441,11 @@ function createAuthorizedPhysicalEditPayload(
   }
 }
 
+function payloadBytesEqual(left: unknown, right: unknown): boolean {
+  if (!(left instanceof Uint8Array) || !(right instanceof Uint8Array)) return false;
+  return buildFrameBytesToken(left) === buildFrameBytesToken(right);
+}
+
 function semanticDeltaEquals(
   left: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
   right: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
@@ -510,7 +527,7 @@ function semanticDeltaEquals(
         || leftEntry.newKeyId !== rightEntry.newKeyId
         || leftEntry.payload.frameIndex !== rightEntry.payload.frameIndex
         || leftEntry.payload.appFrame !== rightEntry.payload.appFrame
-        || leftEntry.payload.dataUrl !== rightEntry.payload.dataUrl
+        || !payloadBytesEqual(leftEntry.payload.bytes, rightEntry.payload.bytes)
         || leftEntry.payload.width !== rightEntry.payload.width
         || leftEntry.payload.height !== rightEntry.payload.height) {
         return false;
@@ -526,7 +543,7 @@ function semanticDeltaEquals(
     && left.newKeyId === right.newKeyId
     && leftPayload.frameIndex === rightPayload.frameIndex
     && leftPayload.appFrame === rightPayload.appFrame
-    && leftPayload.dataUrl === rightPayload.dataUrl
+    && payloadBytesEqual(leftPayload.bytes, rightPayload.bytes)
     && leftPayload.width === rightPayload.width
     && leftPayload.height === rightPayload.height;
 }
@@ -582,7 +599,7 @@ function clonePayloadAtFrame(
   return {
     frameIndex: payload.frameIndex,
     appFrame,
-    dataUrl: payload.dataUrl,
+    bytes: payload.bytes,
     ...(payload.width !== undefined ? { width: payload.width } : {}),
     ...(payload.height !== undefined ? { height: payload.height } : {}),
   };
@@ -596,7 +613,7 @@ function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicP
     payload: {
       frameIndex: record.payload.frameIndex,
       appFrame: record.payload.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
@@ -607,28 +624,64 @@ function cloneIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): strin
   return [...keyIds];
 }
 
+/**
+ * 46 UAT R5: the bridge apply validator requires every loop clip in a
+ * replace-roto-physical-map payload to be lifecycle-complete
+ * (isLifecycleCompletePhysicPaintRotoLoopClip). A v1.0-created clip that was
+ * never synchronized carries no lifecycle, and an infinity clip never gets one
+ * from parse (buildDefaultPhysicPaintRotoGroupLifecycle returns null for
+ * infinity). A track containing such a clip poisons EVERY subsequent bridge
+ * payload. Normalize at the coordinator: synthesize a complete lifecycle for
+ * any clip lacking one, pinned to its effective end (finite: placementStart +
+ * sourceKeyIds.length * repeat; infinity: one cycle, which the resolver extends
+ * to capacity). The resolver renders an infinity+lifecycle clip to capacity
+ * unchanged, so this is render-neutral.
+ */
+export function normalizeLoopClipForPayload(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
+  if (clip.syncState !== undefined) return clip;
+  const originalEndExclusive = clip.placementStart
+    + clip.sourceKeyIds.length * (clip.repeat === 'infinity' ? 1 : clip.repeat);
+  return {
+    ...clip,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: clip.placementStart,
+    originalEndExclusive,
+    visibleRanges: [{ start: clip.placementStart, endExclusive: originalEndExclusive }],
+    frameOverrides: [],
+  } as PhysicPaintRotoLoopClip;
+}
+
 function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoLoopClip[] {
-  return parsePhysicPaintRotoLoopClips(loopClips).map((clip) => ({
-    loopId: clip.loopId,
-    placementStart: clip.placementStart,
-    sourceKeyIds: [...clip.sourceKeyIds],
-    repeat: clip.repeat,
-    mode: clip.mode,
-    // 43-06 provenance rides every clone.
-    ...(clip.scriptId !== undefined
-      ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
-      : {}),
-    ...(clip.syncState !== undefined
-      ? {
-          syncState: clip.syncState,
-          provenanceState: clip.provenanceState!,
-          phaseOrigin: clip.phaseOrigin!,
-          originalEndExclusive: clip.originalEndExclusive!,
-          visibleRanges: clip.visibleRanges!.map((range) => ({ ...range })),
-          frameOverrides: clip.frameOverrides!.map((override) => ({ ...override })),
-        }
-      : {}),
-  }));
+  return parsePhysicPaintRotoLoopClips(loopClips).map((clip) => {
+    const normalized = normalizeLoopClipForPayload(clip);
+    return {
+      loopId: normalized.loopId,
+      placementStart: normalized.placementStart,
+      sourceKeyIds: [...normalized.sourceKeyIds],
+      repeat: normalized.repeat,
+      mode: normalized.mode,
+      // 52-05 (G-52-4): railKind is a canonical fingerprint term — the clone MUST
+      // round-trip it, or every bridge payload on a track carrying a reveal rail
+      // fails the parent's canonical re-verification (paste/drag/spacing all
+      // reject with a document-mismatch).
+      ...(normalized.railKind !== undefined ? { railKind: normalized.railKind } : {}),
+      // 52-05 (G-52-4): railKind is a canonical fingerprint term — the clone MUST
+      // round-trip it, or every bridge payload on a track carrying a reveal rail
+      // fails the parent's canonical re-verification (paste/drag/spacing all
+      // reject with a document-mismatch).
+      // 43-06 provenance rides every clone.
+      ...(normalized.scriptId !== undefined
+        ? { scriptId: normalized.scriptId, motion: { ...normalized.motion! }, overrideColor: normalized.overrideColor ?? null }
+        : {}),
+      syncState: normalized.syncState,
+      provenanceState: normalized.provenanceState!,
+      phaseOrigin: normalized.phaseOrigin!,
+      originalEndExclusive: normalized.originalEndExclusive!,
+      visibleRanges: normalized.visibleRanges!.map((range) => ({ ...range })),
+      frameOverrides: normalized.frameOverrides!.map((override) => ({ ...override })),
+    };
+  });
 }
 
 function recordsEqual(
@@ -643,7 +696,7 @@ function recordsEqual(
       || leftRecord.appFrame !== rightRecord.appFrame
       || leftRecord.payload.frameIndex !== rightRecord.payload.frameIndex
       || leftRecord.payload.appFrame !== rightRecord.payload.appFrame
-      || leftRecord.payload.dataUrl !== rightRecord.payload.dataUrl
+      || !payloadBytesEqual(leftRecord.payload.bytes, rightRecord.payload.bytes)
       || leftRecord.payload.width !== rightRecord.payload.width
       || leftRecord.payload.height !== rightRecord.payload.height) return false;
   }
@@ -662,7 +715,7 @@ function applyPayloadRecordsEqual(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && record.payload.dataUrl === candidate.payload.dataUrl
+      && payloadBytesEqual(record.payload.bytes, candidate.payload.bytes)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -739,7 +792,7 @@ function railSetCopyKeyRailMemberEqual(
       || entry.ownsIncomingBreak !== other.ownsIncomingBreak) return false;
     return entry.payload.frameIndex === other.payload.frameIndex
       && entry.payload.appFrame === other.payload.appFrame
-      && entry.payload.dataUrl === other.payload.dataUrl
+      && payloadBytesEqual(entry.payload.bytes, other.payload.bytes)
       && entry.payload.width === other.payload.width
       && entry.payload.height === other.payload.height;
   });
@@ -879,7 +932,7 @@ function validatePlayScriptInput(
   const expectedFreshIds: string[] = [];
   for (let appFrame = delta.affectedStartAppFrame; appFrame <= delta.affectedEndAppFrame; appFrame += 1) {
     const proposed = proposedByFrame.get(appFrame);
-    if (!proposed || !isRotoPngDataUrl(proposed.payload.dataUrl)) return 'Play Script proposal is missing a valid PNG destination record.';
+    if (!proposed || !isWebpBytes(proposed.payload.bytes)) return 'Play Script proposal is missing a valid WebP destination record.';
     const current = currentByFrame.get(appFrame);
     if (current) {
       if (proposed.keyId !== current.keyId) return 'Play Script proposal changed an occupied destination identity.';
@@ -921,11 +974,38 @@ function recordsToApplyPayloadRecords(records: readonly PhysicPaintRotoRealKeyRe
     payload: {
       frameIndex: record.payload.frameIndex,
       appFrame: record.payload.appFrame,
-      dataUrl: record.payload.dataUrl,
+      bytes: record.payload.bytes,
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
   }));
+}
+
+/**
+ * 52.1 (Part 2): the wire copy of the physical-edit payload. Real-key records
+ * whose bytes are identical to the expected (parent-current) state ride the
+ * bridge as content-token refs instead of full byte payloads — the parent
+ * resolves them against its own store before validation. `beforeRecords` is
+ * the exact snapshot `expectedRevision` refers to, so a ref can never point at
+ * bytes the parent does not hold; the pending/recovery copy of the payload
+ * keeps full records.
+ */
+function compactRecordsForTransport(
+  records: PhysicPaintRotoPhysicalEditApplyPayload['records'],
+  beforeRecords: readonly PhysicPaintRotoRealKeyRecord[],
+): PhysicPaintRotoPhysicalEditApplyPayload['records'] {
+  const beforeTokens = new Map(beforeRecords.map((record) => [record.keyId, buildPhysicPaintRotoPayloadContentToken(record.payload)]));
+  let refCount = 0;
+  const compacted = records.map((record) => {
+    const token = beforeTokens.get(record.keyId);
+    if (token === undefined || token !== buildPhysicPaintRotoPayloadContentToken(record.payload)) return record;
+    refCount += 1;
+    return { keyId: record.keyId, appFrame: record.appFrame, refToken: token };
+  });
+  if (refCount === 0) return records;
+  // Wire-only shape — refs are expanded back to full records at the bridge
+  // boundary, so the in-memory payload type (full records) stays authoritative.
+  return compacted as PhysicPaintRotoPhysicalEditApplyPayload['records'];
 }
 
 function replayProposalMatchesTarget(
@@ -975,7 +1055,7 @@ function createPendingPhysicalEdit(
  * Coordinator external interface. Stable across renders; the same handle
  * is reused for the lifecycle of the owning Studio composition.
  */
-export interface RotoPhysicalEditCoordinatorHandle<EngineState = SerializedProject> {
+export interface RotoPhysicalEditCoordinatorHandle<EngineState = EfxPaintDocument> {
   /** Execute one acknowledged physical edit. Returns false if rejected before staging. */
   executePhysicalEdit: (input: RotoPhysicalEditCoordinatorExecuteInput<EngineState>) => Promise<boolean>;
   /** Consume one raw apply result from the bridge. Returns the transition classification. */
@@ -1009,7 +1089,7 @@ export interface RotoPhysicalEditCoordinatorHandle<EngineState = SerializedProje
   readonly pendingOperationKind: ReadonlySignal<PhysicPaintRotoPhysicalEditApplyPayload['operationKind'] | null>;
 }
 
-export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
+export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
   ports: RotoPhysicalEditCoordinatorPorts<EngineState>,
 ): RotoPhysicalEditCoordinatorHandle<EngineState> {
   const pendingRef = useRef<PendingPhysicalEditContext | null>(null);
@@ -1079,14 +1159,21 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       // made the parent replay target snapshot mismatch for Key Rail ops.
       if (lastAcceptedSelectionRef.current === null) {
         const document = portsRef.current.records.getDocument(launch.layerId);
-        const launchRoto = launch.rotoPhysical;
+        const launchRoto = getCarriedRotoPhysical(launch);
         lastAcceptedSelectionRef.current = {
           selectedKeyId: document?.selectedKeyId ?? launchRoto?.selectedKeyId ?? null,
           cursorAppFrame: document?.cursorAppFrame ?? launchRoto?.cursorAppFrame ?? 0,
         };
       }
       const selectedKeyId = lastAcceptedSelectionRef.current.selectedKeyId;
-      const currentAppFrame = lastAcceptedSelectionRef.current.cursorAppFrame;
+      // The cursor (unlike the selection) is read from the live selection port so
+      // a click/navigation that moved the cursor BEFORE this operation is
+      // reflected — the parent records original.before from the live document
+      // cursor, so a stale commit-anchored cursor here would diverge and reject
+      // the replay. Key-rail ops are unaffected: they never read a stale cursor
+      // and the selectedKeyId above remains commit-anchored.
+      const currentAppFrame = portsRef.current.selection.getCurrentAppFrame()
+        ?? lastAcceptedSelectionRef.current.cursorAppFrame;
       const buffer = portsRef.current.buffer;
       const reference = portsRef.current.reference.getCachedReference();
       return {
@@ -1573,7 +1660,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             && (railSetPasteInput.destinationAppFrame === undefined
               || !Number.isSafeInteger(railSetPasteInput.destinationAppFrame)
               || railSetPasteInput.destinationAppFrame < 0))) {
-          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          portsRef.current.status.setApplyStatus('error');
+          portsRef.current.status.setConciseMessage(
+            `${railSetPasteInput?.placementMode === 'duplicate' ? 'Duplicate' : 'Paste'} failed — the copied rail set is invalid. Select the rails again.`,
+          );
           return false;
         }
       } else if (!proposal) {
@@ -1806,7 +1896,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                 : {}),
             });
             if (!proposed.ok) {
-              portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+              // Surface the specific rejection in the timeline status capsule:
+              // mark the apply as an error so the `applyStatus !== 'success'`
+              // gate in the strip shows the mapped user-facing message instead
+              // of swallowing it behind the last accepted state.
+              portsRef.current.status.setApplyStatus('error');
+              portsRef.current.status.setConciseMessage(
+                mapRotoRailSetPasteFailure(railSetPasteInput.placementMode, proposed.reason),
+              );
               portsRef.current.status.logDiagnostic(`Rail-set ${railSetPasteInput.placementMode} physical proposal rejected: ${proposed.reason}`);
               clearPendingOnce();
               return false;
@@ -1860,8 +1957,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           }
         }
         if (isGeneratedPublication) {
-          const generatedValidationError = !generatedPublicationInput
-            || generatedPublicationInput.expectedRevision !== expectedRevision
+          const revisionMismatch = !generatedPublicationInput
+            || generatedPublicationInput.expectedRevision !== expectedRevision;
+          const generatedValidationError = revisionMismatch
             ? `${isRegenerateGroup ? 'Group Regenerate' : 'Play Script'} physical revision became stale before staging.`
             : isPlayScript && playScriptInput
               ? validatePlayScriptInput(playScriptInput, currentRecords, currentInterpolation, capacity)
@@ -1995,6 +2093,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             ?? groupLifecycleDeleteProposal?.incomingInterpolationBreakKeyIds
             ?? groupFramePaintProposal?.incomingInterpolationBreakKeyIds
             ?? proposal?.nextIncomingInterpolationBreakKeyIds
+            ?? generatedPublicationInput?.incomingInterpolationBreakKeyIds
             ?? currentIncomingInterpolationBreakKeyIds;
         const moveGroupOverrideRecords = input.operationKind === 'move-group'
           && intent?.kind === 'move-group'
@@ -2070,6 +2169,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           kind: 'replace-roto-physical-map',
           operationId,
           layerId: revalidatedLaunch.layerId,
+          // 46-01: the launch IS the document (D-03); commit to the DOCUMENT's
+          // current ACTIVE track so the apply path never resolves track by
+          // frame — 47-01: the live document, not the launch snapshot (an
+          // in-place track switch must target the track being edited).
+          trackId: portsRef.current.launch.getActiveTrackId(revalidatedLaunch.layerId),
           leaseToken,
           startFrame: groupFramePaintInput?.appFrame
             ?? groupLifecycleDeleteInput?.appFrame
@@ -2129,7 +2233,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.status.setLastError(null);
 
         try {
-          await portsRef.current.bridge.sendPhysicalEditPayload(payload);
+          const wirePayload: PhysicPaintRotoPhysicalEditApplyPayload = {
+            ...payload,
+            records: compactRecordsForTransport(payload.records, before.records),
+          };
+          await portsRef.current.bridge.sendPhysicalEditPayload(wirePayload);
         } catch (error) {
           finalizeFailed(pending, before, 'transport', error);
           return false;
@@ -2289,7 +2397,7 @@ function buildReplayRecords(
       payload: {
         frameIndex: record.payload.frameIndex,
         appFrame: record.payload.appFrame,
-        dataUrl: record.payload.dataUrl,
+        bytes: record.payload.bytes,
         ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
         ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
       },

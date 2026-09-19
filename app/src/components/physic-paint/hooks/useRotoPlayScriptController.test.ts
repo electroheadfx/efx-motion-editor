@@ -61,6 +61,7 @@ function ports(version: number): HookPorts {
   return {
     library: { selected: signal({ id: 'script' }), selectedId: signal('script'), busy: signal(false) } as unknown as RotoPlayScriptControllerPorts['library'],
     getLaunchContext: () => context,
+    getActiveTrackId: () => context.document?.activeTrackId ?? '',
     getSelection: () => version === 1
       ? { kind: 'real-key' as const, keyId: 'key-4', appFrame: 4 }
       : { kind: 'generated-interpolation' as const, keyId: null, appFrame: 9 },

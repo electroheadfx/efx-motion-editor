@@ -27,16 +27,18 @@
 export interface RotoCompletionPaintGuardEngine {
   getAppliedPreviewBaseDataUrl?: () => string | null;
   getAppliedPreviewBaseGeneration?: () => number | null;
-  onPreviewBaseSettled?: (listener: (dataUrl: string, outcome: 'applied' | 'dropped', generation?: number) => void) => () => void;
+  onPreviewBaseSettled?: (listener: (bytes: string, outcome: 'applied' | 'dropped', generation?: number) => void) => () => void;
 }
 
 export interface RotoCompletionPaintGuardInput {
   engine: RotoCompletionPaintGuardEngine | null;
   appFrame: number;
   intendedDataUrl: string | null;
+  /** 52.1 (D-05): the intended frame bytes — the repair re-paints THESE. */
+  intendedBytes: Uint8Array;
   intendedGeneration?: number;
   getCurrentAppFrame: () => number;
-  reload: (appFrame: number, dataUrl: string, generation: number) => void;
+  reload: (appFrame: number, bytes: Uint8Array, generation: number) => void;
   log?: (message: string) => void;
   maxAttempts?: number;
 }
@@ -89,7 +91,7 @@ export function armRotoCompletionPaintGuard(input: RotoCompletionPaintGuardInput
     // Repair applies ONLY the intended (newest) image at the intended
     // generation. The engine's generation gate turns the re-issue into a
     // no-op if a newer generation painted between arm and repair.
-    input.reload(appFrame, intendedDataUrl, intendedGeneration ?? 0);
+    input.reload(appFrame, input.intendedBytes, intendedGeneration ?? 0);
     // The repair lands synchronously on a cache hit; disarm immediately.
     if (newestLanded()) disarm();
   };

@@ -122,11 +122,11 @@ describe('Roto frame editing controller', () => {
 
     useRotoFrameEditingController({
       ...sharedInput,
-      launchContext: { layerId: 'layer-1', operationId: 'operation-1', cachedRotoFrames: [] } as never,
+      launchContext: { layerId: 'layer-1', operationId: 'operation-1' } as never,
     });
     useRotoFrameEditingController({
       ...sharedInput,
-      launchContext: { layerId: 'layer-1', operationId: 'operation-1', cachedRotoFrames: [{ appFrame: 4 }] } as never,
+      launchContext: { layerId: 'layer-1', operationId: 'operation-1' } as never,
     });
 
     expect(loadReferenceFrame).toHaveBeenCalledTimes(1);

@@ -1,0 +1,370 @@
+/**
+ * Shared pure internal composition pipeline (Phase 48-01 Task 1).
+ *
+ * CMP-01: ONE shared path resolves all participating Paint tracks plus the
+ * fixed Background track into one flattened raster per frame — consumed later
+ * by Studio preview, main preview, and export (Pitfall 8 closed by
+ * construction). This module is deliberately free of Preact imports, DOM
+ * construction, and store access: all canvas/raster/blend work arrives through
+ * injected ports (the `efxPaintDocument.ts:1-9` purity contract).
+ *
+ * Composition order (48-06 UAT-C law: the tracks blend among THEMSELVES first,
+ * then the result is placed over the background/fond — never blended against
+ * it):
+ *  1. a transparent working canvas (the cleared start);
+ *  2-3. each participating Paint track (hide/solo truth table, D-04) resolves
+ *     content via `resolveTrackContent`; opacity is applied BEFORE blend mode
+ *     (D-01, After Effects convention) as save → globalAlpha = opacity →
+ *     globalCompositeOperation = mapped blend → drawImage → restore. The FIRST
+ *     participating track establishes the stage with source-over (a blend over
+ *     transparency would erase it); a missing source contributes transparent
+ *     pixels AND a report entry (D-09, CMP-05);
+ *  4. the Background contribution (D-03, `resolveBackgroundFrame`) composites
+ *     BENEATH all Paint tracks via destination-over — it never enters the
+ *     track blend modes. A missing BACKGROUND source draws the
+ *     `EFX_PAINT_BACKGROUND_MISSING_FILL` placeholder (49-06 UAT) + a report
+ *     entry — a missing TRACK source stays transparent (D-09, CMP-05);
+ *  5. the document fallback (solid fill) composites BENEATH everything via
+ *     destination-over; transparency is the already-cleared canvas;
+ *  6. one flattened raster + missing-source report.
+ *
+ * The flattened raster carries STRAIGHT (unmultiplied) alpha at the boundary
+ * to the main editor (D-02): each track's alpha is preserved as-is and the
+ * main editor's compositor performs the alpha math — no manual alpha-channel
+ * math happens here. The parent layer's opacity/blend/transform are NEVER read
+ * or applied by this module (CMP-03, Pitfall 6).
+ *
+ * The pass is memoized per frame when the caller wires the flattened memo +
+ * key terms through the ports (D-08/CMP-04): an identical second call returns
+ * the frozen cached result with zero content queries and zero draw ops, and a
+ * per-track raster memo (D-07) keeps an unchanged track's resolved raster
+ * alive when only a sibling track changed.
+ */
+
+import type { EfxPaintBackgroundFrameResolution } from './efxPaintBackgroundResolution';
+import type { BlendMode, EfxPaintDocument } from '../document/efxPaintDocument';
+import {
+  deriveEfxPaintFlattenedCacheKey,
+  deriveEfxPaintTrackContentKey,
+} from './efxPaintCompositeCache';
+import type { EfxPaintKeyedMemo } from './efxPaintCompositeCache';
+import { backgroundParticipates, participatingPaintTracks } from './efxPaintHideSolo';
+
+/**
+ * Map the main-editor BlendMode enum to Canvas 2D globalCompositeOperation
+ * values (48-03 relocation: this single source of truth moved here from
+ * previewRenderer.ts:76-91 so the pure compositor layer owns the mapping and
+ * the store's compositeOp port imports it — the switch is NEVER duplicated,
+ * Pitfall 8, grep "case 'multiply'" finds exactly one mapping).
+ */
+export function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
+  switch (mode) {
+    case 'normal':
+      return 'source-over';
+    case 'screen':
+      return 'screen';
+    case 'multiply':
+      return 'multiply';
+    case 'overlay':
+      return 'overlay';
+    case 'add':
+      return 'lighter';
+    default:
+      return 'source-over';
+  }
+}
+
+/** Per-track content resolution surfaced by the injected port (D-10 seam). */
+export type EfxPaintTrackContentResolution =
+  | { readonly kind: 'content'; readonly raster: CanvasImageSource }
+  | { readonly kind: 'missing'; readonly missingRefs: readonly string[] };
+
+/**
+ * 49-06 UAT: the placeholder fill for a MISSING Background source. Track
+ * sources stay transparent on missing (D-09 — erasing a track would be wrong),
+ * but a missing BACKGROUND clip must stay visible so the user spots it and
+ * replaces the source from the right panel: the clip's extent (the full frame,
+ * destination-over beneath the tracks) renders this solid slate instead of
+ * revealing the fallback. Deterministic — no timing/registry read, so it never
+ * perturbs the flattened cache key.
+ */
+export const EFX_PAINT_BACKGROUND_MISSING_FILL = '#4b5563';
+
+/**
+ * The Background contribution resolved by the injected port (D-03 seam).
+ * This is the 48-02 union ({@link EfxPaintBackgroundFrameResolution}): content
+ * names the owning clip's source ref — the compositor NEVER maps FrameLoopClip
+ * records itself (Pitfall P-48-2); the raster arrives through the separate
+ * `resolveBackgroundSourceImage` decode port.
+ */
+
+/** Canvas handle produced by the injected canvas factory. */
+export interface EfxPaintCanvasHandle {
+  readonly canvas: CanvasImageSource;
+  readonly ctx: CanvasRenderingContext2D;
+}
+
+/**
+ * Injected ports keep the pure module free of Preact/DOM/store imports.
+ * The store side (48-03) implements `resolveTrackContent` with the D-10
+ * precedence (real key > generated interpolation > Hold Loop Clip > cached
+ * frame) and maps the 'loop-placeholder'/null render-source kinds to
+ * `{ kind: 'missing', ... }` (D-09), and `compositeOp` with the exported
+ * `blendModeToCompositeOp` mapping — never duplicated in this module.
+ */
+export interface EfxPaintCompositorPorts {
+  createCanvas(width: number, height: number): EfxPaintCanvasHandle;
+  resolveTrackContent(trackId: string, frame: number): EfxPaintTrackContentResolution;
+  /**
+   * The per-frame Background contribution (D-03): consumes the 48-02 resolution
+   * union — `content` names the owning clip's source ref (decoded via
+   * {@link resolveBackgroundSourceImage}), `gap` reveals the fallback, `missing`
+   * renders transparent + a report entry (D-09). The production wiring is the
+   * 48-02 adapter through the 48-03 store port.
+   */
+  resolveBackgroundFrame(frame: number): EfxPaintBackgroundFrameResolution;
+  /**
+   * Decode one Background source ref to a raster (48-03 owns the production
+   * implementation). Returns null while the decode is pending — this tick the
+   * compositor contributes transparent pixels for that frame.
+   */
+  resolveBackgroundSourceImage(sourceRef: string): CanvasImageSource | null;
+  compositeOp(blendMode: BlendMode): GlobalCompositeOperation;
+  /**
+   * Optional per-frame flattened memo wiring (D-08/CMP-04). The store side
+   * (48-03) owns the concrete memo lifetimes per layerId and supplies the
+   * key terms; supply `memo`, `trackRasterMemo`, `trackContentRevisions`, and
+   * `backgroundClipRevisions` TOGETHER. When `memo` is absent the pipeline
+   * runs uncached (Task 1 behavior).
+   */
+  memo?: EfxPaintKeyedMemo<string, EfxPaintCompositeResult>;
+  /** Per-track raster memo keyed by {@link deriveEfxPaintTrackContentKey} (D-07). */
+  trackRasterMemo?: EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>;
+  /** trackId → content revision string, the per-track key term (48-03). */
+  trackContentRevisions?: ReadonlyMap<string, string>;
+  /** Per-clip `${clip.id}:${clip.revision}` terms, the flattened-key term. */
+  backgroundClipRevisions?: readonly string[];
+  /**
+   * 48-05 (D-05): engine-supplied track ids to EXCLUDE from the participating
+   * set — the Studio editing base. The monitor threads the active track through
+   * this port (never by rewriting the document); the live engine canvas stacked
+   * above supplies that track's pixels, so including it here would double-apply
+   * semi-transparent strokes (T-48-16). Empty/absent = full participating set.
+   */
+  excludeTrackIds?: ReadonlySet<string>;
+}
+
+/** One missing-source report entry (CMP-05, D-09). */
+export interface EfxPaintMissingSourceEntry {
+  readonly trackId: string;
+  readonly frame: number;
+  readonly missingRefs: readonly string[];
+}
+
+/**
+ * The flattened composite result. `raster` carries STRAIGHT (unmultiplied)
+ * alpha at the main-editor boundary (D-02); `missing` lists every source that
+ * could not be resolved (transparent pixels were composited for it, D-09);
+ * `participates` records which tracks/background were considered.
+ */
+export interface EfxPaintCompositeResult {
+  readonly raster: CanvasImageSource;
+  readonly missing: readonly EfxPaintMissingSourceEntry[];
+  readonly participates: {
+    readonly trackIds: readonly string[];
+    readonly background: boolean;
+  };
+}
+
+/** Flattened raster dimensions — the parent project canvas (Open Question 1). */
+export interface EfxPaintCompositeSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Compose one application frame into one flattened straight-alpha raster
+ * (spec steps 1-9 for the Paint half). `size` is the parent project canvas
+ * dimensions — the same source `renderFrame` uses (previewRenderer.ts).
+ */
+export function compositeFrame(
+  document: EfxPaintDocument,
+  frame: number,
+  size: EfxPaintCompositeSize,
+  ports: EfxPaintCompositorPorts,
+): EfxPaintCompositeResult {
+  // D-08/CMP-04: when the caller wires the flattened memo, consult it FIRST
+  // by the derived key (config + per-track content + background + clips +
+  // frame). A hit returns the frozen cached result — zero content queries,
+  // zero draw ops (Pitfall P-48-6). The key terms come from the caller; the
+  // unwired compositeRevision counter is never read (Task 2 gate).
+  const flattenedKey =
+    ports.memo !== undefined
+      ? deriveEfxPaintFlattenedCacheKey({
+          document,
+          trackContentRevisions: ports.trackContentRevisions ?? EMPTY_TRACK_CONTENT_REVISIONS,
+          backgroundClipRevisions: ports.backgroundClipRevisions ?? EMPTY_BACKGROUND_CLIP_REVISIONS,
+          frame,
+          excludeTrackIds: ports.excludeTrackIds && ports.excludeTrackIds.size > 0
+            ? [...ports.excludeTrackIds].sort()
+            : undefined,
+        })
+      : null;
+  if (flattenedKey !== null) {
+    const cached = ports.memo!.get(flattenedKey);
+    if (cached) return cached;
+  }
+
+  const handle = ports.createCanvas(size.width, size.height);
+  const ctx = handle.ctx;
+  const missing: EfxPaintMissingSourceEntry[] = [];
+
+  // 1. Start from a transparent working canvas. 48-06 (UAT-C): the document
+  // fallback and the Background now composite BENEATH the tracks at the end
+  // (destination-over) — the tracks blend among THEMSELVES first and the
+  // result is placed over the background/fond, never blended against it.
+  ctx.clearRect(0, 0, size.width, size.height);
+
+  // 4-8. Participating Paint tracks in stable bottom-to-top order. Opacity is
+  // applied BEFORE blend mode (D-01, After Effects convention); the draw state
+  // is save/restore-wrapped per track. 48-05: the exclude set (engine-supplied
+  // tracks) filters the participating set here — the pure compositor enforces
+  // the D-05 editing-base exclusion regardless of how the caller built its
+  // content terms. 48-06 (UAT-C): the FIRST participating track establishes
+  // the transparent stage with source-over — a non-normal blend over
+  // transparency would erase it (multiply over transparent = transparent);
+  // every track above keeps its own blend mode, applied between tracks only.
+  const participating = participatingPaintTracks(document)
+    .filter((track) => !ports.excludeTrackIds?.has(track.id));
+  let firstTrack = true;
+  for (const track of participating) {
+    // D-07: per-track raster memo — a track's resolved raster survives when
+    // only a SIBLING track changed. The per-track key is derived from the
+    // caller-supplied content revision; the actual dataUrl→image decode lives
+    // store-side (48-03) — this pure side caches whatever resolution object
+    // the port produced.
+    const trackRevision = ports.trackContentRevisions?.get(track.id);
+    const trackKey =
+      trackRevision !== undefined && ports.trackRasterMemo !== undefined
+        ? deriveEfxPaintTrackContentKey(track.id, trackRevision, frame)
+        : null;
+    let resolution = trackKey !== null ? ports.trackRasterMemo!.get(trackKey) : undefined;
+    if (resolution === undefined) {
+      resolution = ports.resolveTrackContent(track.id, frame);
+      if (trackKey !== null) ports.trackRasterMemo!.set(trackKey, resolution);
+    }
+    if (resolution.kind === 'missing') {
+      // D-09: transparent pixels + a report entry — never a placeholder fill.
+      missing.push({ trackId: track.id, frame, missingRefs: resolution.missingRefs });
+      continue;
+    }
+    ctx.save();
+    ctx.globalAlpha = track.opacity;
+    ctx.globalCompositeOperation = firstTrack ? 'source-over' : ports.compositeOp(track.blendMode);
+    // Track rasters arrive at the engine's WORKING resolution (the Studio
+    // paints on a long-edge-capped canvas); the flattened raster is
+    // project-space, so the draw scales the raster to the composite size.
+    ctx.drawImage(resolution.raster, 0, 0, size.width, size.height);
+    ctx.restore();
+    firstTrack = false;
+  }
+
+  // 2-3. Background contribution BENEATH all Paint tracks (48-06 UAT-C).
+  // Drawn with destination-over so the track blend modes never see it — the
+  // tracks composite above it with plain source-over. Governed only by
+  // `background.visible` (D-04); a 'gap' reveals the already-clear canvas and
+  // the fallback to come. The union comes from the 48-02 adapter (D-03) —
+  // content names the clip's source ref, decoded through the port (a null
+  // decode this tick contributes transparent pixels, the 48-03 pending-decode
+  // semantics); 'missing' contributes transparent pixels AND a report entry
+  // keyed by the background track id (D-09).
+  const backgroundActive = backgroundParticipates(document);
+  if (backgroundActive) {
+    const backgroundResolution = ports.resolveBackgroundFrame(frame);
+    if (backgroundResolution.kind === 'content') {
+      const raster = ports.resolveBackgroundSourceImage(backgroundResolution.sourceRef);
+      if (raster !== null) {
+        // D-04: the Background has no opacity/blend — its draw is a plain
+        // destination-over at globalAlpha 1, never re-scaled by track opacity.
+        // 49-06 (UAT round 9): the source draws CONTAIN-FIT (preserving its
+        // aspect ratio, centered — never a stretch-to-fill deformation) at the
+        // clip's scale percentages (100 = the contain-fit base). The bars left
+        // by a mismatched ratio reveal the fallback drawn beneath.
+        const clip = document.background.clips.find((candidate) => candidate.id === backgroundResolution.clipId);
+        const scale = clip?.scale ?? { x: 100, y: 100 };
+        // CanvasImageSource has no width/height on the union type — the decoded
+        // source (an <img> or canvas) always exposes them. When they're
+        // unavailable (a test stub) fall back to the pre-49-09 stretch-to-fill.
+        const source = raster as { width: number; height: number };
+        const sourceWidth = source.width;
+        const sourceHeight = source.height;
+        let drawX = 0;
+        let drawY = 0;
+        let drawWidth = size.width;
+        let drawHeight = size.height;
+        if (Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) && sourceWidth > 0 && sourceHeight > 0) {
+          const containScale = Math.min(size.width / sourceWidth, size.height / sourceHeight);
+          const baseWidth = sourceWidth * containScale;
+          const baseHeight = sourceHeight * containScale;
+          drawWidth = baseWidth * (scale.x / 100);
+          drawHeight = baseHeight * (scale.y / 100);
+          drawX = (size.width - drawWidth) / 2;
+          drawY = (size.height - drawHeight) / 2;
+        }
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.drawImage(raster, drawX, drawY, drawWidth, drawHeight);
+        ctx.restore();
+      }
+    } else if (backgroundResolution.kind === 'missing') {
+      missing.push({
+        trackId: document.background.id,
+        frame,
+        missingRefs: backgroundResolution.missingRefs,
+      });
+      // 49-06 UAT: a missing BACKGROUND clip renders a solid placeholder fill
+      // (destination-over, beneath the tracks — the same position the content
+      // draw would occupy) instead of revealing the fallback, so the user sees
+      // the clip occupies the frame and can replace its source from the right
+      // panel. Track sources stay transparent on missing — only the background
+      // gains this fill.
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = EFX_PAINT_BACKGROUND_MISSING_FILL;
+      ctx.fillRect(0, 0, size.width, size.height);
+      ctx.restore();
+    }
+  }
+
+  // 4. Document fallback (solid) BENEATH everything (48-06 UAT-C): again
+  // destination-over so the solid paper never enters the track blends.
+  // Transparent fallback is the already-cleared canvas. A solid fill covers
+  // the whole canvas (no partial alpha), but destination-over still lets every
+  // track composite normally above it.
+  if (document.background.fallback.mode === 'solid') {
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = document.background.fallback.color;
+    ctx.fillRect(0, 0, size.width, size.height);
+    ctx.restore();
+  }
+
+  // 9. Flattened raster + report. All output is deep-frozen; the caller's
+  // memo stores the frozen result for the derived flattened key.
+  const result = Object.freeze({
+    raster: handle.canvas,
+    missing: Object.freeze(missing),
+    participates: Object.freeze({
+      trackIds: Object.freeze(participating.map((track) => track.id)),
+      background: backgroundActive,
+    }),
+  });
+  if (flattenedKey !== null) ports.memo!.set(flattenedKey, result);
+  return result;
+}
+
+const EMPTY_TRACK_CONTENT_REVISIONS: ReadonlyMap<string, string> = new Map();
+const EMPTY_BACKGROUND_CLIP_REVISIONS: readonly string[] = Object.freeze([]);

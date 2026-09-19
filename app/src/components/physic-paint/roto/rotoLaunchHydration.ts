@@ -9,11 +9,12 @@ import {
   type PhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 import { projectPhysicPaintRotoPhysicalTimeline } from './physicsPaintRotoPhysicalResolver';
-import { prepareRotoPhysicalRealKeyPngs } from './rotoCanvasFrames';
+import { prepareRotoPhysicalRealKeyFrames } from './rotoCanvasFrames';
 
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
     layerId: string,
+    trackId: string,
     value: unknown,
   ): { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string };
 }
@@ -27,42 +28,33 @@ export type RotoPhysicalLaunchHydrationResult =
   | { readonly ok: false; readonly error: string };
 
 /**
+ * Read the physical Roto model from the carried v1.0 document's ACTIVE track
+ * (D-03: the launch IS the document). The document parser already validated
+ * the track's rotoPhysical through parsePhysicPaintRotoPhysicalDocument, so
+ * the returned model is canonical; null only when the active track carries no
+ * physical state (a fresh AddFxMenu document before the parent injects one).
+ */
+export function getCarriedRotoPhysical(
+  context: PhysicPaintLaunchContext | null,
+): PhysicPaintRotoPhysicalDocument | null {
+  const document = context?.document;
+  if (!document) return null;
+  const activeTrack = document.tracks.find((track) => track.id === document.activeTrackId);
+  return activeTrack?.rotoPhysical ?? null;
+}
+
+/**
  * Validate one complete canonical launch without mutating the store or current
- * launch. The bridge payload is converted to the model's durable record shape
- * and the persisted revision is rechecked before publication.
+ * launch. The physical model is parsed from the carried document's ACTIVE
+ * track and the persisted revision is rechecked before publication.
  */
 export function prepareRotoPhysicalLaunch(
   context: PhysicPaintLaunchContext,
 ): RotoPhysicalLaunchHydrationResult {
-  const physical = context.rotoPhysical;
+  const physical = getCarriedRotoPhysical(context);
   if (!physical) return { ok: false, error: 'Launch is missing the complete physical Roto document.' };
   try {
-    const document = parsePhysicPaintRotoPhysicalDocument({
-      capacity: physical.capacity,
-      realKeyRecords: physical.records.map((record) => ({
-        kind: 'real-key' as const,
-        keyId: record.keyId,
-        appFrame: record.appFrame,
-        payload: record.payload,
-      })),
-      groupOverrideRecords: (physical.groupOverrideRecords ?? []).map((record) => ({
-        kind: 'real-key' as const,
-        keyId: record.keyId,
-        appFrame: record.appFrame,
-        payload: record.payload,
-      })),
-      interpolation: {
-        enabled: physical.interpolationEnabled,
-        mode: physical.interpolationMode,
-      },
-      scriptMotion: physical.scriptMotion,
-      background: physical.background,
-      selectedKeyId: physical.selectedKeyId,
-      cursorAppFrame: physical.cursorAppFrame,
-      revision: physical.revision,
-      loopClips: physical.loopClips,
-      incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
-    });
+    const document = parsePhysicPaintRotoPhysicalDocument(physical);
     if (context.startFrame !== document.cursorAppFrame) {
       return { ok: false, error: 'Launch cursor does not match the canonical physical document.' };
     }
@@ -79,7 +71,7 @@ export function prepareRotoPhysicalLaunch(
   }
 }
 
-/** Decode canonical PNG sources first, then install exactly one complete physical document. */
+/** Decode canonical PNG sources first, then install every carried track's physical document. */
 export async function hydrateRotoPhysicalLaunchContext(
   context: PhysicPaintLaunchContext,
   store: RotoPhysicalLaunchHydrationStore,
@@ -87,18 +79,46 @@ export async function hydrateRotoPhysicalLaunchContext(
   const prepared = prepareRotoPhysicalLaunch(context);
   if (!prepared.ok) return prepared;
 
+  // quick-260913-52r (G): the alpha-canvas preparation requires inline bytes.
+  // A reference-only record (its file was missing or refused at open, so the
+  // runtime could not materialize it) must not kill the whole launch — the
+  // structural install below still runs so keys and rails are correct, and
+  // the affected frame renders as missing content. Loud per key, never a
+  // silent drop, never an all-or-nothing refusal.
+  const allRecords = [
+    ...prepared.document.realKeyRecords,
+    ...(prepared.document.groupOverrideRecords ?? []),
+  ];
+  const bytesCarrying = allRecords.filter((record) => record.payload.bytes !== undefined);
+  for (const record of allRecords) {
+    if (record.payload.bytes === undefined) {
+      console.warn(
+        `[PhysicsPaintStudio] Roto key "${record.keyId}" has no inline bytes at launch (reference-only, its package file could not be read). Its alpha canvas is skipped; the frame renders as missing content.`,
+      );
+    }
+  }
   try {
-    await prepareRotoPhysicalRealKeyPngs([
-      ...prepared.document.realKeyRecords,
-      ...(prepared.document.groupOverrideRecords ?? []),
-    ]);
+    await prepareRotoPhysicalRealKeyFrames(bytesCarrying);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
   }
 
-  const replacement = store.replaceRotoPhysicalDocument(context.layerId, prepared.document);
-  if (!replacement.ok) return replacement;
-  return { ok: true, context, document: replacement.document };
+  // 47-01 UAT round 8: install EVERY carried track's physical document, not
+  // just the active one — the strip renders every track's cells from the
+  // child's runtime, so a non-active track with keys would otherwise show an
+  // empty row after reopen. The active track's install is the launch
+  // authority (its cursor/selection were overridden to the requested frame);
+  // the other tracks install their carried state as-is.
+  const activeTrackId = context.document?.activeTrackId ?? '';
+  let activeDocument: PhysicPaintRotoPhysicalDocument | null = null;
+  for (const track of context.document?.tracks ?? []) {
+    if (!track.rotoPhysical) continue;
+    const replacement = store.replaceRotoPhysicalDocument(context.layerId, track.id, track.rotoPhysical);
+    if (!replacement.ok) return replacement;
+    if (track.id === activeTrackId) activeDocument = replacement.document;
+  }
+  if (!activeDocument) return { ok: false, error: 'Launch is missing the complete physical Roto document.' };
+  return { ok: true, context, document: activeDocument };
 }
 
 // These signatures remain temporarily so existing pre-UAT regression sources

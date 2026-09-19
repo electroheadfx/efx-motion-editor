@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.11.0
+// gsd-hook-version: 1.14.0
 // gsd-cursor-subagent-start.js — Cursor subagentStart hook (ADR-1239 / #2089,
 // isolation guard #3045)
 //
@@ -56,13 +56,14 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { allow } = require('./lib/hook-exit.js');
 
 // Workspace resolution is shared across the Cursor hooks (#2587) — see
 // hooks/lib/cursor-workspace.js. Staged next to these scripts by
 // writeCursorHooksJson so the require always resolves post-install.
 const { resolveStatePath } = require('./lib/cursor-workspace.js');
-const { readSentinel, VALID_ISOLATION, extractDispatchIdentifiers, sentinelAppliesToDispatch } = require('./lib/isolation-sentinel.js');
-const { REASON_CODE } = require('./lib/isolation-deny-reason.js');
+const { readSentinel, VALID_ISOLATION, extractDispatchIdentifiers, sentinelAppliesToDispatch, buildSentinelDiscard } = require('./lib/isolation-sentinel.js');
+const { REASON_CODE, describeSentinelDiscard } = require('./lib/isolation-deny-reason.js');
 // #3582: gsd-core/bin/lib/*.cjs (runtime-homes.cjs, worktree-safety.cjs,
 // runtime-name-policy.cjs, capability-registry.cjs — required below, inside
 // resolveIsolationEvidence and resolveFallbackIsolation) are tsc build
@@ -342,35 +343,39 @@ function resolveIsolationDecision(data, { clock = Date, realpath = fs.realpathSy
   return { action: 'allow' };
 }
 
-// ─── #3566: per-install runtime marker ────────────────────────────────────────
-// Same contract as hooks/gsd-agent-isolation-guard.js's readInstallRuntimeMarker
-// (mirroring src/model-resolver.cts #2297): bin/install.js writes
-// `<install>/gsd-core/.gsd-runtime` beside VERSION for every runtime install;
-// this hook ships at `<install>/hooks/`, so the marker is the `gsd-core` sibling
-// of this file's own directory — the same sibling-layout assumption the
-// require('../gsd-core/bin/lib/…') calls below already make. Epic #3473 B3 owns
-// consolidating every marker reader into one shared seam.
-let _installMarkerCache; // undefined = unread; null = known absent; string = value
-
+// ─── #3897 rung 2: per-install runtime marker, single canonical owner ────────
+// bin/install.js writes `<install>/gsd-core/.gsd-runtime` beside VERSION for
+// every runtime install (#2297); this hook ships at `<install>/hooks/`, so the
+// marker is the `gsd-core` sibling of this file's own directory. Previously
+// this hook held its own private reader/cache (one of four #3897 found); it
+// now delegates to the single canonical owner, `src/runtime-slash.cts`
+// (compiled to gsd-core/bin/lib/runtime-slash.cjs), reached through
+// `ensureRuntimeBuild()` like the other compiled-lib requires in this file
+// (`scripts/lint-hooks-runtime-build-seam.cjs`).
 function readInstallRuntimeMarker() {
-  if (_installMarkerCache !== undefined) return _installMarkerCache;
   try {
-    const markerPath = path.join(__dirname, '..', 'gsd-core', '.gsd-runtime');
-    const raw = fs.readFileSync(markerPath, 'utf-8').trim();
-    _installMarkerCache = raw || null;
+    ensureRuntimeBuild();
+    const runtimeSlash = require('../gsd-core/bin/lib/runtime-slash.cjs');
+    return runtimeSlash.readInstallRuntimeMarker();
   } catch {
-    // No marker: dev/source tree, or an install predating #2297 — "no signal
-    // from this rung", never a resolution failure.
-    _installMarkerCache = null;
+    // Unbuilt runtime library, or any other failure reaching the canonical
+    // owner — "no signal from this rung", never a resolution failure.
+    return null;
   }
-  return _installMarkerCache;
 }
 
-// Test seam — same contract as model-resolver.cts's #2297 seam; the dev/source
-// tree has no marker file, so spawned-hook tests (fresh process, no marker)
-// are unaffected.
+// Test seam — forwards to the canonical owner's seam so this hook and
+// runtime-slash.cjs always share one cache (#3897 rung 2). Spawned-hook tests
+// (fresh process, no marker) are unaffected.
 function _setInstallRuntimeMarkerForTests(value) {
-  _installMarkerCache = value;
+  try {
+    ensureRuntimeBuild();
+    const runtimeSlash = require('../gsd-core/bin/lib/runtime-slash.cjs');
+    runtimeSlash._setInstallRuntimeMarkerForTests(value);
+  } catch {
+    // Test-only seam; an unbuilt library here means the test itself will fail
+    // downstream, which is a louder and more actionable signal than throwing here.
+  }
 }
 
 /**
@@ -486,18 +491,25 @@ function evaluateRootIsolation(root, subagentType, { clock = Date, dispatchIds =
         `Refusing to allow this subagent to spawn until the runtime library is built — a guard ` +
         `that cannot verify must not answer "safe" (#3050).`,
       reasonCode: REASON_CODE.RUNTIME_BUILD_FAILED,
+      sentinelDiscarded: null,
     };
   }
 
+  // #3045 BLOCKER fix: a fresh sentinel is authoritative for THIS dispatch's
+  // actual resolved isolation — see the doc comment above.
+  // #3045 SECURITY F2: a fresh sentinel that names a DIFFERENT plan/phase
+  // than this dispatch is not applicable to it — fall through to the
+  // conservative fallback exactly as a stale sentinel would.
+  // Hoisted (readSentinel never throws) so the "present, fresh, but did not
+  // apply" case (#4594 row 15) can be reported on every deny path below
+  // instead of silently discarded.
+  const sentinel = readSentinel(root, { clock });
+  const applies = sentinelAppliesToDispatch(sentinel, dispatchIds);
+  const sentinelDiscarded = buildSentinelDiscard(sentinel, dispatchIds);
+
   let declaredIsolation;
   try {
-    // #3045 BLOCKER fix: a fresh sentinel is authoritative for THIS
-    // dispatch's actual resolved isolation — see the doc comment above.
-    // #3045 SECURITY F2: a fresh sentinel that names a DIFFERENT
-    // plan/phase than this dispatch is not applicable to it — fall through
-    // to the conservative fallback exactly as a stale sentinel would.
-    const sentinel = readSentinel(root, { clock });
-    declaredIsolation = (sentinel.present && !sentinel.stale && sentinelAppliesToDispatch(sentinel, dispatchIds))
+    declaredIsolation = (sentinel.present && !sentinel.stale && applies)
       ? sentinel.isolation
       : resolveFallbackIsolation(root, configPath);
   } catch {
@@ -508,8 +520,10 @@ function evaluateRootIsolation(root, subagentType, { clock = Date, dispatchIds =
         `dispatch-isolation configuration ('.planning/config.json' exists under "${root}"). ` +
         `Refusing to allow this subagent to spawn without being able to verify whether ` +
         `isolation is required — a guard that cannot verify must not answer "safe" (#3050). ` +
-        `Retry once the project configuration is readable.`,
+        `Retry once the project configuration is readable.` +
+        (sentinelDiscarded ? describeSentinelDiscard(sentinelDiscarded) : ''),
       reasonCode: REASON_CODE.CONFIG_UNREADABLE,
+      sentinelDiscarded,
     };
   }
 
@@ -525,8 +539,10 @@ function evaluateRootIsolation(root, subagentType, { clock = Date, dispatchIds =
         `GSD subagent isolation guard: this project's dispatch isolation resolves to ` +
         `"harness-worktree", but the subagentStart payload for this dispatch carries no usable ` +
         `subagent_type. Refusing to allow it to spawn without being able to confirm whether it ` +
-        `is a GSD executor — a guard that cannot verify must not answer "safe" (#3050).`,
+        `is a GSD executor — a guard that cannot verify must not answer "safe" (#3050).` +
+        (sentinelDiscarded ? describeSentinelDiscard(sentinelDiscarded) : ''),
       reasonCode: REASON_CODE.NO_SUBAGENT_TYPE,
+      sentinelDiscarded,
     };
   }
 
@@ -542,8 +558,10 @@ function evaluateRootIsolation(root, subagentType, { clock = Date, dispatchIds =
         `"harness-worktree", but whether "${root}" is running in an isolated Cursor worktree ` +
         `could not be determined (git did not respond). Refusing to allow subagent_type=` +
         `"${subagentType}" to spawn without being able to verify isolation — a guard that ` +
-        `cannot verify must not answer "safe" (#3050). Retry once git is responsive.`,
+        `cannot verify must not answer "safe" (#3050). Retry once git is responsive.` +
+        (sentinelDiscarded ? describeSentinelDiscard(sentinelDiscarded) : ''),
       reasonCode: REASON_CODE.CANNOT_DETERMINE_ISOLATION,
+      sentinelDiscarded,
     };
   }
 
@@ -555,8 +573,10 @@ function evaluateRootIsolation(root, subagentType, { clock = Date, dispatchIds =
       `which is not an isolated Cursor worktree — it would edit the user's primary checkout ` +
       `directly, with no consent and no warning. Start an isolated session first (the ` +
       `"--worktree" CLI flag or the "/worktree" chat command; Cursor manages these worktrees ` +
-      `under "~/.cursor/worktrees/") and retry.`,
+      `under "~/.cursor/worktrees/") and retry.` +
+      (sentinelDiscarded ? describeSentinelDiscard(sentinelDiscarded) : ''),
     reasonCode: REASON_CODE.NOT_ISOLATED_WORKTREE,
+    sentinelDiscarded,
   };
 }
 
@@ -564,7 +584,7 @@ function evaluateRootIsolation(root, subagentType, { clock = Date, dispatchIds =
 function main() {
   let raw = '';
   const stdinTimeout = setTimeout(() => {
-    process.exit(0);
+    allow(undefined);
   }, 10000);
 
   process.stdin.setEncoding('utf8');
@@ -606,7 +626,12 @@ function main() {
         decision = { action: 'allow' };
       }
       if (decision.action === 'deny') {
-        const out = { permission: 'deny', user_message: decision.reason, reason_code: decision.reasonCode };
+        const out = {
+          permission: 'deny',
+          user_message: decision.reason,
+          reason_code: decision.reasonCode,
+          sentinel_discarded: decision.sentinelDiscarded ?? null,
+        };
         if (additionalContext !== null) out.additional_context = additionalContext;
         process.stdout.write(JSON.stringify(out));
         return;

@@ -2,14 +2,20 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRef, type St
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
-import { physicPaintStore } from '../../../stores/physicPaintStore';
+import {
+  physicPaintStore,
+  hydrateBackgroundSourceImagesFromLibrary,
+  hydrateReferenceSourceImagesFromLibrary,
+} from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
-import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
-import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
-import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
+import { registerDocument } from '../../../stores/efxPaintStore';
+import { imageStore } from '../../../stores/imageStore';
+import { requestImageLibrary } from '../../../lib/physicPaintBridge';
+import { readEfxPaintSessionDocumentCheckpoint } from '../bridge/physicsPaintBridgeTransport';
 import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -84,7 +90,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
   lifecycle: LaunchLifecyclePorts;
   state: LaunchStatePorts;
   peekLaunchContext: () => PhysicPaintLaunchContext | null;
-  resetPersistenceForLaunch: (frames: PhysicPaintLaunchContext['cachedRotoFrames']) => void;
+  resetPersistenceForLaunch: () => void;
   resetNavigationForLaunchRef: MutableRef<(settings: PhysicPaintRotoPlaybackSettings) => void>;
   hydratePlaybackSettingsForLaunch: (context: PhysicPaintLaunchContext, settings: PhysicPaintRotoPlaybackSettings) => void;
   resetCachedReference: () => void;
@@ -98,7 +104,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
       loop: false,
       fps: Math.max(1, Math.min(60, context.fps ?? 12)),
     };
-    input.resetPersistenceForLaunch(undefined);
+    input.resetPersistenceForLaunch();
     input.lifecycle.pendingApplyRef.current = null;
     input.resetNavigationForLaunchRef.current(playbackSettings);
     input.hydratePlaybackSettingsForLaunch(context, playbackSettings);
@@ -110,23 +116,77 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.lifecycle.completeScriptLaunchReplacement();
     input.lifecycle.cancelPhysicalEditForLaunch();
 
-    const hydration = await hydrateRotoPhysicalLaunchContext(context, physicPaintStore);
+    // Crash-recovery: after a compositor-death reload, the sessionStorage
+    // checkpoint (written on every document push) is fresher than the launch
+    // context's carried document. It is consumed only by the launch that wrote
+    // it — an earlier session's checkpoint is never substituted into a newer
+    // launch (quick-260913-52r H).
+    const sessionDocument = readEfxPaintSessionDocumentCheckpoint(context.operationId);
+    const hydrationContext = sessionDocument ? { ...context, document: sessionDocument } : context;
+    const hydration = await hydrateRotoPhysicalLaunchContext(hydrationContext, physicPaintStore);
     if (!hydration.ok) {
+      // quick-260913-52r (G): a failed launch hydration used to be state-only
+      // (zero console output) — surface it loudly; a Studio that cannot
+      // hydrate must never look like a silently dead window.
+      console.error('[PhysicsPaintStudio] Roto physical launch hydration failed:', hydration.error);
       input.state.setLastError(hydration.error);
       input.state.setApplyStatus('error');
       input.state.setApplyMessage(hydration.error);
       return;
     }
 
+    // 49-06 (UAT round 2): the child realm's imageStore is a SEPARATE instance
+    // from the main webview's — it only gains images via the picker's import.
+    // Load the project library into it BEFORE the document registration so the
+    // background source hydration (`imageStore.getById`) resolves EXISTING
+    // library refs and every reopened clip (a fresh session's imageStore is
+    // empty, so getById returned undefined and the hydration skipped every ref
+    // — the reopened clip stayed invisible).
+    const library = await requestImageLibrary();
+    if (library.ok && library.projectDir) {
+      imageStore.loadFromMceImages(library.images, library.projectDir);
+    }
+    // The carried v1.0 document IS the session: install it into the child's
+    // efxPaintStore so the session-file save path resolves the document.
+    if (hydration.context.document) {
+      registerDocument(hydration.context.document);
+      // 49-06 (UAT round 7): hydrate the background source bytes on launch —
+      // registerDocument alone leaves the runtime registry empty, so every
+      // reopened Bg clip resolves 'missing' and the canvas stays paper fond
+      // until a fresh import re-hydrates all refs (the user's round-7 report:
+      // "re-open → Bg rails did NOT render; creating a new bg rail worked for
+      // all"). The library was loaded above; run the hydration WITH the
+      // library fallback so EXISTING refs register and the render is restored.
+      const launchLibrary = library.ok && library.projectDir
+        ? { images: library.images, projectDir: library.projectDir }
+        : undefined;
+      void hydrateBackgroundSourceImagesFromLibrary(hydration.context.document, launchLibrary);
+      // 50-UAT (round-2 report): the SAME reopen gap existed for the photo
+      // reference — registerDocument alone leaves `_referenceSourceImages`
+      // empty, so every reopened reference resolves 'missing' and the ghost
+      // stays invisible until a fresh Replace re-warms the registry. Run the
+      // parallel reference hydration WITH the library fallback so reopened
+      // references render again.
+      void hydrateReferenceSourceImagesFromLibrary(hydration.context.document, launchLibrary);
+    }
     resetRotoSessionForLaunch(hydration.context);
+    // 49-04 (UAT fix): hydrate the Studio settings from the DOCUMENT FALLBACK
+    // (the single authority), not the carried per-track roto background — the
+    // selector must agree with the engine and monitor fond before the first
+    // click. The launch IS the document (D-03), so the fallback is carried.
     applyPhysicsPaintLaunchContext(hydration.context, input.state, (launch) => {
-      const background = launch.rotoPhysical?.background;
-      return background ? applyRotoBackgroundMetadataToSettings(background) : null;
+      const fallback = launch.document?.background?.fallback;
+      return fallback ? applyBackgroundFallbackToSettings(fallback) : null;
     });
-    // 41-02 (D-01): hydrate the audio preview store from the launch section
-    // through the strict newer-than revision funnel. Absent section = no audio.
+    // 41-02 (D-01): hydrate the audio preview from the launch section through
+    // the SAME single funnel the live push events use (G-52-9 silent-scrub
+    // fix): the strict revision guard AND the monitor's applyRevisionedContext
+    // — which runs prepare() (fetch+decode, sets the monitor context). The
+    // bare store guard left the monitor unprepared until the first Play, so
+    // scrubAt bailed on its !context gate and idle scrub was silent. Absent
+    // section = no audio.
     if (hydration.context.audioPreview) {
-      applyRevisionedEfxPaintAudioPreview(efxPaintAudioPreviewStore, hydration.context.audioPreview);
+      void handleEfxPaintAudioContextEvent(hydration.context.audioPreview);
     }
     const readyEngine = input.engineRef.current;
     if (readyEngine) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, readyEngine as PreviewBackgroundEngine);

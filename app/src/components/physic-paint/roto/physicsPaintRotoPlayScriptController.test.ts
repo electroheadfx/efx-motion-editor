@@ -1,3 +1,4 @@
+import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
@@ -29,10 +30,12 @@ import type {
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
+  requirePhysicPaintRotoInlineBytes,
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
 } from './physicsPaintRotoPhysicalModel';
 import {
   derivePhysicPaintRotoLoopRanges,
+  projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoPhysicalEditProposal,
@@ -57,14 +60,40 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { layerStore } from '../../../stores/layerStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import { projectStore } from '../../../stores/projectStore';
+import { registerDocument, reset as resetEfxPaintStore } from '../../../stores/efxPaintStore';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+const pngDataUrl = (label: string) => testWebpBytes(label);
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+/** JSON round-trip that preserves Uint8Array bytes (base64 marker) at any depth. */
+function jsonRoundTrip<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, v) => (v instanceof Uint8Array ? { __webpBytes: bytesToBase64(v) } : v)),
+    (_key, v) => (v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v.__webpBytes === 'string' ? base64ToBytes(v.__webpBytes) : v),
+  );
+}
 
 const physicalRecord = (keyId: string, appFrame: number, label: string) => ({
   keyId,
   appFrame,
-  payload: { frameIndex: 0, appFrame, dataUrl: pngDataUrl(label), width: 10, height: 10 },
+  payload: { frameIndex: 0, appFrame, bytes: pngDataUrl(label), width: 10, height: 10 },
 });
 
 const authority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): PhysicPaintRotoAuthorityResult => ({
@@ -72,6 +101,9 @@ const authority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): Phy
   ok: true,
   projectContextId: 'context-1',
   layerId: 'layer-1',
+  trackId: TEST_TRACK_ID,
+  trackRevision: 'track-revision-1',
+  documentRevision: 'document-revision-1',
   canonicalStart: 4,
   layerEndExclusive: 8,
   capacity: 4,
@@ -81,7 +113,7 @@ const authority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): Phy
   physicalRecords: [physicalRecord('key-1', 1, 'existing')],
   interpolationEnabled: true,
   interpolationMode: 'duplicate',
-  frames: [{ frameIndex: 0, appFrame: 1, dataUrl: pngDataUrl('existing'), width: 10, height: 10, source: 'real-key' }],
+  frames: [{ frameIndex: 0, appFrame: 1, bytes: pngDataUrl('existing'), width: 10, height: 10, source: 'real-key' }],
   interpolationSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
   ...overrides,
 });
@@ -120,7 +152,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   }));
   const stopPlayback = vi.fn(); const log = vi.fn();
   const ports: RotoPlayScriptControllerPorts = {
-    library, getLaunchContext: () => context, getSelection: () => selection, getMotion,
+    library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
     getBackgroundMetadata,
     getOperationLocked: () => false,
@@ -147,7 +179,7 @@ describe('createRotoPlayScriptController', () => {
       const frames = Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
         appFrame: canonicalStart + index,
-        dataUrl: pngDataUrl(`staged-${index}`),
+        bytes: pngDataUrl(`staged-${index}`),
         width: 10,
         height: 10,
       }));
@@ -237,7 +269,7 @@ describe('createRotoPlayScriptController', () => {
     expect(test.commit).toHaveBeenCalledOnce();
     const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
     expect(publication.records.map((record) => record.appFrame)).toEqual([1, 4, 5]);
-    expect(publication.records[0].payload.dataUrl).toBe(pngDataUrl('existing'));
+    expect(publication.records[0].payload.bytes).toEqual(pngDataUrl('existing'));
     expect(publication.records[0].keyId).toBe('key-1');
     expect(publication.semanticDelta).toMatchObject({
       kind: 'play-script',
@@ -256,6 +288,36 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.phase.value).toBe('complete');
   });
 
+  it('registers the new-cycle first key as a leading incoming-interpolation break — no generated cells bridge the gap from a prior rail (AM-4)', async () => {
+    // The default authority already carries a prior real key at frame 1, so a
+    // new Apply at frame 4 is exactly the "rail created after another rail"
+    // scenario. The new cycle's first committed key must own the leading break,
+    // and the resolver must emit NO generated cells between the prior key and it.
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
+    const firstCycleKey = publication.records.find((record) => record.appFrame === 4)!;
+    expect(publication.incomingInterpolationBreakKeyIds).toEqual([firstCycleKey.keyId]);
+
+    const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
+      identities: publication.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      capacity: 600,
+      interpolationEnabled: publication.interpolationEnabled,
+      incomingInterpolationBreakKeyIds: publication.incomingInterpolationBreakKeyIds,
+    });
+    expect(projectionResult.ok).toBe(true);
+    if (projectionResult.ok) {
+      // The strict interior [2..3] between the prior rail's last key (frame 1)
+      // and the new rail's first key (frame 4) must stay EMPTY.
+      expect(
+        projectionResult.projection.generatedCells
+          .filter((cell) => cell.appFrame >= 2 && cell.appFrame <= 3),
+      ).toHaveLength(0);
+    }
+  });
+
   it('revalidates authority and selection before commit without partial publication', async () => {
     const stale = harness({ requestAuthority: vi.fn().mockResolvedValueOnce(authority()).mockResolvedValueOnce(authority()).mockResolvedValueOnce(authority({ physicalRevision: 'revision-2' })) });
     await stale.controller.openConfirmation(); stale.controller.countText.value = '2';
@@ -268,7 +330,7 @@ describe('createRotoPlayScriptController', () => {
       releaseRender = () => resolve(Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
         appFrame: canonicalStart + index,
-        dataUrl: pngDataUrl(`staged-${index}`),
+        bytes: pngDataUrl(`staged-${index}`),
         width: 10,
         height: 10,
       })));
@@ -535,7 +597,7 @@ describe('createRotoPlayScriptController', () => {
       releaseRender = () => resolve(Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
         appFrame: canonicalStart + index,
-        dataUrl: pngDataUrl(`staged-${index}`),
+        bytes: pngDataUrl(`staged-${index}`),
         width: 10,
         height: 10,
       })));
@@ -699,7 +761,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
       const frames = Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
         appFrame: canonicalStart + index,
-        dataUrl: pngDataUrl(`staged-${index}`),
+        bytes: pngDataUrl(`staged-${index}`),
         width: 10,
         height: 10,
       }));
@@ -711,10 +773,10 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
   it('mid-stage cancellation of a static/hold generation commits zero destination keys — the document is byte-identical to before the attempt', async () => {
     // Renderer parks between staged frames so the cancellation lands mid-stage.
     rendered.mockImplementationOnce(async ({ frameCount, canonicalStart, onProgress, signal }) => {
-      const staged: Array<{ frameIndex: number; appFrame: number; dataUrl: string; width: number; height: number }> = [];
+      const staged: Array<{ frameIndex: number; appFrame: number; bytes: Uint8Array; width: number; height: number }> = [];
       for (let index = 0; index < frameCount; index += 1) {
         if (signal.aborted) throw new DOMException('cancelled', 'AbortError');
-        staged.push({ frameIndex: 0, appFrame: canonicalStart + index, dataUrl: pngDataUrl(`staged-${index}`), width: 10, height: 10 });
+        staged.push({ frameIndex: 0, appFrame: canonicalStart + index, bytes: pngDataUrl(`staged-${index}`), width: 10, height: 10 });
         onProgress?.(index + 1, frameCount);
         if (index < frameCount - 1) {
           await new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true }));
@@ -841,6 +903,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch',
         layerId: 'layer-1',
         projectContextId: 'context-1',
@@ -900,7 +963,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     // The parent accepted: a fresh authority read now reflects the committed records.
     test.requestAuthority.mockImplementation(async () => authority({
       physicalRecords: first.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
-      frames: first.records.map((record) => ({ ...record.payload, source: 'real-key' as const })),
+      frames: first.records.map((record) => ({ ...record.payload, bytes: requirePhysicPaintRotoInlineBytes(record.payload), source: 'real-key' as const })),
     }));
     await test.controller.openConfirmation();
     test.controller.countText.value = '3';
@@ -976,7 +1039,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
       const frames = Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
         appFrame: canonicalStart + index,
-        dataUrl: pngDataUrl(`staged-${index}`),
+        bytes: pngDataUrl(`staged-${index}`),
         width: 10,
         height: 10,
       }));
@@ -1116,6 +1179,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch',
         layerId: 'layer-1',
         projectContextId: 'context-1',
@@ -1312,6 +1376,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
     const history = useRotoPhysicalEditHistory({
       identity: {
+        trackId: 'track-a',
         launchOperationId: 'launch',
         layerId: 'layer-1',
         projectContextId: 'context-1',
@@ -1350,7 +1415,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const frames = Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
         appFrame: canonicalStart + index,
-        dataUrl: pngDataUrl(`staged-${index}`),
+        bytes: pngDataUrl(`staged-${index}`),
         width: 10,
         height: 10,
       }));
@@ -1652,7 +1717,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         interpolation,
         publication.loopClips ?? [],
       );
-      const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify({
+      const reopened = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip({
         capacity: 600,
         realKeyRecords: publication.records,
         groupOverrideRecords: [],
@@ -1664,7 +1729,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         loopClips: publication.loopClips ?? [],
         incomingInterpolationBreakKeyIds: [],
         revision,
-      })));
+      }));
       expect(reopened.loopClips[0]).toEqual(expectedGroup);
 
       const historyDriver = driveLoopHistory({
@@ -1794,7 +1859,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         incomingInterpolationBreakKeyIds: [],
         revision,
       });
-      const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(parsed)));
+      const reopened = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip(parsed));
       expect(reopened.revision).toBe(revision);
       expect(reopened.realKeyRecords).toEqual(records);
       expect(reopened.loopClips).toEqual(parsed.loopClips);
@@ -2021,10 +2086,10 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
           getCurrentAppFrame: () => 10,
           getLaunchContext: () => ({ operationId: 'launch', layerId: 'layer-1' }) as PhysicPaintLaunchContext,
           getIncomingInterpolationBreakKeyIds: () => [],
-          buildBlankRotoFrame: (appFrame) => ({
+          buildBlankRotoFrame: async (appFrame) => ({
             frameIndex: 0,
             appFrame,
-            dataUrl: pngDataUrl(`blank-${appFrame}`),
+            bytes: pngDataUrl(`blank-${appFrame}`),
             width: 10,
             height: 10,
             source: 'real-key',
@@ -2185,7 +2250,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       test.controller.repeatText.value = '1';
       expect(await test.controller.confirm()).toBe(false);
       expect(test.commit).not.toHaveBeenCalled();
-      expect(test.controller.error.value).toBe('Repeat cannot remove locally painted Group frames. Regenerate the Group first.');
+      expect(test.controller.error.value).toBe('Repeat cannot remove locally painted Rail frames. Regenerate the Rail first.');
     });
 
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
@@ -2958,7 +3023,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         actionRevision: 'action-revision-1',
         documentRevision: prepared.document.revision,
         initiatingGroupId: 'G1',
-        groupName: 'Group at F10',
+        groupName: 'Rail at F10',
         groupType: 'Static',
         restoredRange: 'F10–F19',
         locallyPaintedFrameCount: 1,
@@ -2967,8 +3032,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         fragmentCount: 2,
         gapRanges: 'F13',
         affectedGroups: [
-          { groupId: 'G1', name: 'Group at F10', range: 'F10–F19' },
-          { groupId: 'G2', name: 'Group at F30', range: 'F30–F39' },
+          { groupId: 'G1', name: 'Rail at F10', range: 'F10–F19' },
+          { groupId: 'G2', name: 'Rail at F30', range: 'F30–F39' },
         ],
       });
       expect(prepared.controller.regenerateImpact.value?.actionHash).toMatch(/^action-/);
@@ -2994,7 +3059,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         lifecycleGroup('G1', 10),
         lifecycleGroup('G2', 30, { sourceKeyIds: ['S1', 'S3'] }),
       ]);
-      expect((await ambiguous.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Group source sharing is ambiguous.');
+      expect((await ambiguous.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Rail source sharing is ambiguous.');
 
       const stale = regenerateHarness([lifecycleGroup('G1', 10)]);
       expect((await stale.controller.openSourceEdit('G1')).ok).toBe(true);
@@ -3051,11 +3116,26 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
   const CONTEXT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
   function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
-    return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
+    return { frameIndex: 0, appFrame, bytes: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
+  }
+
+  /** 46-04: the authority revalidates the document → track dimensions, so the
+   *  real round-trip needs a registered document whose active track is the
+   *  runtime track the suite seeds. */
+  function makeTrackDocument(layerId: string): EfxPaintDocument {
+    const document = createEfxPaintDocument(layerId);
+    const track = document.tracks[0];
+    return {
+      ...document,
+      activeTrackId: TEST_TRACK_ID,
+      tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    };
   }
 
   function seedStoreWithKeys(): void {
     physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument(LAYER_ID));
     projectStore.projectContextId.value = CONTEXT_ID;
     const layer = {
       id: LAYER_ID,
@@ -3094,7 +3174,7 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
       [],
       PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
     );
-    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, {
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID, {
       capacity: 600,
       realKeyRecords,
       interpolation: { enabled: false, mode: 'duplicate' },
@@ -3111,10 +3191,10 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
   it('stays available and opens its modal on a real key past the stale display outFrame (pre-33f4beeb behavior)', async () => {
     seedStoreWithKeys();
     const test = harness({
-      getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID),
-      getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID),
+      getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID, TEST_TRACK_ID),
+      getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID, TEST_TRACK_ID),
       requestAuthority: vi.fn(async (operationId: string, start: number) => (
-        getPhysicPaintRotoAuthority({ operationId, projectContextId: CONTEXT_ID, layerId: LAYER_ID, canonicalStart: start })
+        getPhysicPaintRotoAuthority({ operationId, projectContextId: CONTEXT_ID, layerId: LAYER_ID, canonicalStart: start, trackId: TEST_TRACK_ID })
       )),
     });
     test.setSelection({ kind: 'real-key', keyId: 'k104', appFrame: 104 });
@@ -3123,5 +3203,128 @@ describe('createRotoPlayScriptController Create Group modal availability (43.4 r
     await test.controller.openConfirmation();
     expect(test.controller.confirmationOpen.value).toBe(true);
     expect(test.controller.phase.value).toBe('idle');
+  });
+});
+
+describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)', () => {
+  it('opens on the Reveal tab with the span defaulted to the script natural duration (D-20)', async () => {
+    const test = harness({ getScriptNaturalDuration: () => 5, hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.railTab.value).toBe('reveal');
+    expect(test.controller.revealCountText.value).toBe('5');
+    expect(test.controller.canonicalStart.value).toBe(4);
+  });
+
+  it('defaults the reveal span to 3 when the natural duration is unknown', async () => {
+    const test = harness({ hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.revealCountText.value).toBe('3');
+  });
+
+  it('setRailTab re-defaults the span and runs the reference guard proactively (D-12)', async () => {
+    const openPhotoReference = vi.fn();
+    const test = harness({ hasPhotoReference: () => false, openPhotoReference, getScriptNaturalDuration: () => 2 });
+    await test.controller.openConfirmation();
+    expect(test.controller.railTab.value).toBe('paint');
+    test.controller.revealCountText.value = '7';
+    test.controller.setRailTab('reveal');
+    expect(test.controller.railTab.value).toBe('reveal');
+    expect(test.controller.revealCountText.value).toBe('2');
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirmReveal routes through the create-reveal port with the shared repeat/motion law (D-08/D-09/D-11)', async () => {
+    const createReveal = vi.fn(async (input: { onProgress?: (completed: number, total: number) => void }) => {
+      input.onProgress?.(1, 3);
+      return { ok: true as const };
+    });
+    const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.repeatText.value = '2';
+    test.controller.dialogMotion.value = { deformation: 10, position: 20 };
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal).toHaveBeenCalledTimes(1);
+    const input = createReveal.mock.calls[0][0];
+    expect(input).toMatchObject({
+      layerId: 'layer-1',
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 4,
+      frameCount: 3,
+      repeat: 2,
+      motion: { deformation: 10, position: 20 },
+    });
+    expect(test.controller.confirmationOpen.value).toBe(false);
+    expect(test.controller.status.value).toBe('Reveal Rail complete · 3 frames');
+  });
+
+  it('confirmReveal passes the Infinity repeat through as endless (D-08)', async () => {
+    const createReveal = vi.fn(async (_input: { repeat: number | 'infinity' }) => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.setInfinity(true);
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal.mock.calls[0]![0].repeat).toBe('infinity');
+  });
+
+  it('confirmReveal without a reference opens the Photo Reference modal and never creates (D-12 guard)', async () => {
+    const openPhotoReference = vi.fn();
+    const createReveal = vi.fn(async () => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => false, openPhotoReference, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(await test.controller.confirm()).toBe(false);
+    expect(createReveal).not.toHaveBeenCalled();
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+    // The dialog stays open — the user returns to the Create Rail flow.
+    expect(test.controller.confirmationOpen.value).toBe(true);
+  });
+
+  it('cancelling mid-bake writes nothing and lands in the cancelled phase (D-11)', async () => {
+    const createReveal = vi.fn((input: { signal: AbortSignal }) => new Promise<{ ok: false; reason: string }>((resolve) => {
+      input.signal.addEventListener('abort', () => resolve({ ok: false, reason: 'bake-failed' }));
+    }));
+    const test = harness({ hasPhotoReference: () => true, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    const pending = test.controller.confirm();
+    expect(test.controller.phase.value).toBe('rendering');
+    test.controller.cancel();
+    await pending;
+    expect(test.controller.phase.value).toBe('cancelled');
+    expect(test.controller.error.value).toBeNull();
+    expect(test.controller.status.value).toBe('Reveal bake cancelled');
+  });
+
+  it('rejects an invalid reveal span before calling the mutation (G-52-2c validation)', async () => {
+    const createReveal = vi.fn(async () => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.revealCountText.value = '0';
+    expect(test.controller.revealValidationError.value).toBe('Enter a positive integer.');
+    expect(await test.controller.confirm()).toBe(false);
+    test.controller.revealCountText.value = '5';
+    expect(test.controller.revealValidationError.value).toBe('Maximum available count is 4.');
+    expect(await test.controller.confirm()).toBe(false);
+    expect(createReveal).not.toHaveBeenCalled();
+  });
+
+  it('drives the Requested/Effective summary from the reveal span on the Reveal tab', async () => {
+    const test = harness({ hasPhotoReference: () => true, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.repeatText.value = '2';
+    // Cycle 3f × 2 requested against the 4f boundary (F4–F7) → shortened readout.
+    expect(test.controller.loopReadout.value).toBe('Requested: 6f (3f × 2) · Effective: 4f — shortened by the next clip');
+    // Repeat is shared across tabs (one mutation law) — only the cycle length switches.
+    test.controller.setRailTab('paint');
+    test.controller.repeatText.value = '1';
+    expect(test.controller.loopReadout.value).toBe('Requested: 3f (3f × 1) · Effective: 3f');
+  });
+
+  it('resets to the Paint tab on every plain open and on loop-edit prefill', async () => {
+    const test = harness({ hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.railTab.value).toBe('reveal');
+    await test.controller.openConfirmation();
+    expect(test.controller.railTab.value).toBe('paint');
   });
 });

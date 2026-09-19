@@ -12,9 +12,7 @@ function launch(operationId: string, startFrame: number): PhysicPaintLaunchConte
     width: 800,
     height: 520,
     fps: 24,
-    workflowMode: 'roto',
-    cachedRotoFrames: [],
-  } as PhysicPaintLaunchContext;
+  };
 }
 
 function deferred() {

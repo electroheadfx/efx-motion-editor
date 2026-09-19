@@ -8,6 +8,7 @@ import type {
   PhysicPaintScriptLibraryResult,
 } from '../../../types/physicPaint';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
+import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
 import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
@@ -222,7 +223,7 @@ function mapReferencedActionDeleteError(
 ): string {
   if (code === 'lease-unavailable') return 'Another Group operation is in progress. Nothing changed. Try again when it finishes.';
   if (code === 'stale-authority' || code === 'invalid-candidate') {
-    return 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+    return 'Action or Rail references changed. Nothing changed. Review the affected Rails and try again.';
   }
   if (code === 'commit-failed') return 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
   return 'Couldn’t delete this Action. Nothing changed. Review the affected Groups and try again.';
@@ -421,7 +422,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
           projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
           sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
           width: context.width ?? 1000, height: context.height ?? 650,
-          background: context.rotoPhysical?.background ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+          background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
         },
         thumbnail, brushes: scriptSnapshot.brushes,
       });
@@ -507,7 +508,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const currentImpact = buildRotoScriptDeleteReferenceImpact(document, row);
     const referenced = row.referenceImpact !== null;
     if (referenced && (!currentImpact || currentImpact.physicalRevision !== row.referenceImpact?.physicalRevision)) {
-      deleteError.value = 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+      deleteError.value = 'Action or Rail references changed. Nothing changed. Review the affected Rails and try again.';
       ports.log(deleteError.value, true);
       return false;
     }

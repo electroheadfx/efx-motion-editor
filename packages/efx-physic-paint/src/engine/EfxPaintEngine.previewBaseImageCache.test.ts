@@ -279,4 +279,40 @@ describe('EfxPaintEngine resetBackground skip (38.1-07)', () => {
     expect(engine.previewBaseEnabled).toBe(true);
     expect(mocks.redrawAll).toHaveBeenCalledTimes(4); // apply + resetBackground + clearPreviewBaseImage + cached apply (skipped reset adds none)
   });
+
+  it('skipRedraw=true skips the stroke replay but keeps the state writes', () => {
+    const engine = makeEngine();
+    const mocks = mockCounts(engine);
+
+    engine.resetBackground(true);
+    expect(engine.previewBackgroundRequestId, 'request id bump is unconditional').toBe(1);
+    expect(engine.bgCtx.getImageData, 'drawBg still runs').toHaveBeenCalledTimes(1);
+    expect(mocks.redrawPreviewBase, 'preview base redraw still runs').toHaveBeenCalledTimes(1);
+    // redrawAll is the sole replay entry point — its loop is the only caller of
+    // applyStrokeToEngine, so "redrawAll not called" is the applyStrokeToEngine
+    // assertion at the mock level.
+    expect(mocks.redrawAll, 'stroke replay is skipped').not.toHaveBeenCalled();
+    expect(engine.lastResetBackgroundData, 'memo write still happens').not.toBeNull();
+    expect(engine.lastResetBackgroundInputs, 'input memo write still happens').not.toBeNull();
+
+    // Default path (skipRedraw omitted) still replays — existing behavior.
+    engine.bgData = { data: new Uint8ClampedArray(4) };
+    engine.resetBackground();
+    expect(mocks.redrawAll, 'default path still replays').toHaveBeenCalledTimes(1);
+  });
+
+  it('clearPreviewBaseImage(skipRedraw=true) skips the stroke replay but keeps the state writes', () => {
+    const engine = makeEngine();
+    const mocks = mockCounts(engine);
+
+    engine.clearPreviewBaseImage(true);
+    expect(engine.previewBaseRequestId, 'request id bump is unconditional').toBe(1);
+    expect(engine.previewBaseEnabled).toBe(false);
+    expect(engine.previewBaseImage).toBeNull();
+    expect(mocks.redrawAll, 'stroke replay is skipped').not.toHaveBeenCalled();
+
+    // Default path (skipRedraw omitted) still replays.
+    engine.clearPreviewBaseImage();
+    expect(mocks.redrawAll, 'default path still replays').toHaveBeenCalledTimes(1);
+  });
 });

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { fromTransportPayload, isWebpBytes } from '../../../lib/webpBytes';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -73,10 +74,14 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
         const eventApi = await import('@tauri-apps/api/event');
         if (typeof eventApi.listen === 'function') {
           unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
-            if (isPhysicPaintLaunchContext(event.payload)) {
+            // 52.1 (D-05): the parent serialized the document's real-key bytes
+            // as base64 (invoke JSON). Decode back to Uint8Array before the
+            // launch validator so the in-memory shape matches the direct path.
+            const restored = fromTransportPayload(event.payload);
+            if (isPhysicPaintLaunchContext(restored)) {
               launchEventReceived = true;
-              console.info('[PhysicsPaintStudio] launch context received', event.payload);
-              applyIncomingLaunchContextRef.current(event.payload);
+              console.info('[PhysicsPaintStudio] launch context received', restored);
+              applyIncomingLaunchContextRef.current(restored);
             } else {
               console.warn('[PhysicsPaintStudio] invalid launch context', event.payload);
             }
@@ -89,9 +94,10 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
         const coreApi = await import('@tauri-apps/api/core');
         if (typeof coreApi.invoke === 'function') {
           const storedContext = await coreApi.invoke('get_physics_paint_launch_context');
-          if (!disposed && !launchEventReceived && isPhysicPaintLaunchContext(storedContext)) {
-            console.info('[PhysicsPaintStudio] launch context fetched', storedContext);
-            applyIncomingLaunchContextRef.current(storedContext);
+          const restored = fromTransportPayload(storedContext);
+          if (!disposed && !launchEventReceived && isPhysicPaintLaunchContext(restored)) {
+            console.info('[PhysicsPaintStudio] launch context fetched', restored);
+            applyIncomingLaunchContextRef.current(restored);
           }
         }
       } catch (error) {
@@ -169,7 +175,12 @@ export function usePhysicsPaintRotoAuthorityResultBridge(handleResult: (result: 
   const handleRef = useRef(handleResult); handleRef.current = handleResult;
   useEffect(() => {
     let disposed = false; let unlisten: (() => void) | undefined;
-    const accept = (value: unknown) => { if (value && typeof value === 'object' && typeof (value as PhysicPaintRotoAuthorityResult).operationId === 'string') handleRef.current(value as PhysicPaintRotoAuthorityResult); };
+    const accept = (value: unknown) => {
+      // 52.1 (D-05): the parent serialized physicalRecords bytes as base64
+      // (emitTo JSON). Decode back to Uint8Array before handing to the consumer.
+      const restored = fromTransportPayload(value);
+      if (restored && typeof restored === 'object' && typeof (restored as PhysicPaintRotoAuthorityResult).operationId === 'string') handleRef.current(restored as PhysicPaintRotoAuthorityResult);
+    };
     const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT) accept(event.data.payload); };
     window.addEventListener('message', message);
     void import('@tauri-apps/api/event').then(async (eventApi) => { unlisten = await eventApi.listen?.(PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, (event) => accept(event.payload)); if (disposed) unlisten?.(); }).catch(() => undefined);
@@ -209,8 +220,30 @@ export function usePhysicsPaintApplyResultBridge(
         const eventApi = await import('@tauri-apps/api/event');
         if (typeof eventApi.listen !== 'function') return;
         unlisten = await eventApi.listen(PHYSIC_PAINT_APPLY_RESULT_EVENT, (event) => {
-          if (isPhysicPaintApplyResult(event.payload)) handleApplyResult(event.payload);
-          else console.warn('[PhysicsPaintStudio] invalid Tauri apply result', event.payload);
+          // 52.1 (D-05): the parent serialized the result's semanticDelta bytes as
+          // base64 (emitTo JSON). Decode back to Uint8Array before validation so
+          // the in-memory shape matches the direct (non-transported) path.
+          const result = fromTransportPayload(event.payload);
+          if (isPhysicPaintApplyResult(result)) handleApplyResult(result);
+          else {
+            const record = result && typeof result === 'object' ? result as Record<string, unknown> : null;
+            const semanticDelta = record?.semanticDelta && typeof record.semanticDelta === 'object'
+              ? record.semanticDelta as Record<string, unknown>
+              : undefined;
+            const clipboardPayload = semanticDelta?.clipboardPayload && typeof semanticDelta.clipboardPayload === 'object'
+              ? semanticDelta.clipboardPayload as Record<string, unknown>
+              : undefined;
+            const bytes = clipboardPayload?.bytes;
+            console.warn('[PhysicsPaintStudio] invalid Tauri apply result', {
+              operationKind: record?.operationKind,
+              semanticDeltaKind: semanticDelta?.kind,
+              clipboardPayloadKeys: clipboardPayload ? Object.keys(clipboardPayload) : null,
+              bytesType: bytes instanceof Uint8Array ? 'Uint8Array' : typeof bytes,
+              bytesIsWebp: bytes instanceof Uint8Array ? isWebpBytes(bytes) : false,
+              semanticDelta,
+              raw: event.payload,
+            });
+          }
         });
         if (disposed) unlisten?.();
       } catch (error) {

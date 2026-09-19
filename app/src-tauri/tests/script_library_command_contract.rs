@@ -9,8 +9,8 @@ fn physical_document(revision: &str) -> Value {
     json!({
         "capacity": 24,
         "realKeyRecords": [
-            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}},
-            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"dataUrl":"data:image/png;base64,BBBB"}}
+            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"bytes":"AAAA","width":2,"height":2}},
+            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"bytes":"BBBB"}}
         ],
         "groupOverrideRecords": [],
         "interpolation": {"enabled":false,"mode":"duplicate"},
@@ -30,7 +30,7 @@ fn prepare_fixture(direction: &str, mode: &str) -> Value {
     let action_id = Uuid::new_v4().to_string();
     // Canonical revision for this exact fixture document (see the parity
     // vector in script_library_transaction_contract.rs).
-    let canonical_revision = "physical-292-ea77b953";
+    let canonical_revision = "physical-348-c3e91683";
     let physical_document = physical_document(canonical_revision);
     let physical_hash = canonical_physical_hash(&physical_document).unwrap();
     json!({

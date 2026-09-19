@@ -64,14 +64,27 @@ export function dryStep(
   drySpeed: number,
   paperHeight: Float32Array | null,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  bounds?: DryRegionBounds | null,
 ): void {
-  const id = measurePrimitive(observePrimitive, 'dry-step-full-frame-readback', () => ctx.getImageData(0, 0, width, height))
+  // 52.1 (2nd-stroke freeze): the 10fps drying step read back + wrote back the
+  // WHOLE full-frame dry canvas every tick. Scoped to the wet extent (the last
+  // stroke's region) a dry step uploads only the evaporating pixels instead of
+  // 8.3MB × ~15 ticks between stroke 1 and 2.
+  const bx0 = bounds ? Math.max(0, Math.min(width - 1, bounds.x0)) : 0;
+  const by0 = bounds ? Math.max(0, Math.min(height - 1, bounds.y0)) : 0;
+  const bx1 = bounds ? Math.max(bx0, Math.min(width - 1, bounds.x1)) : width - 1;
+  const by1 = bounds ? Math.max(by0, Math.min(height - 1, bounds.y1)) : height - 1;
+  const rectW = Math.max(1, bx1 - bx0 + 1);
+  const rectH = Math.max(1, by1 - by0 + 1);
+  const id = measurePrimitive(observePrimitive, 'dry-step-readback', () => ctx.getImageData(bx0, by0, rectW, rectH))
   const d = id.data
   let changed = false
-  const size = width * height
 
   measurePrimitive(observePrimitive, 'dry-step-pixel-loop', () => {
-  for (let i = 0; i < size; i++) {
+  for (let py = by0; py <= by1; py++) {
+    const rowBase = py * width
+    for (let px = bx0; px <= bx1; px++) {
+    const i = rowBase + px
     if (wet.alpha[i] < DRY_ALPHA_THRESHOLD) continue
 
     const prevPos = drying.dryPos[i]
@@ -82,7 +95,7 @@ export function dryStep(
       const densityAlpha = Math.min(1, wet.alpha[i] / 800)
       const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
       const sa = densityAlpha * pixelOpacity
-      const pi = i * 4
+      const pi = ((py - by0) * rectW + (px - bx0)) * 4
       const ma = d[pi + 3] / 255
       if (sa > 0.005) {
         const oa = Math.min(1, ma + sa * (1 - ma))
@@ -116,7 +129,7 @@ export function dryStep(
       sa *= clamp(1.4 - ph * 0.8, 0.3, 1.4)
     }
 
-    const pi = i * 4
+    const pi = ((py - by0) * rectW + (px - bx0)) * 4
     const ma = d[pi + 3] / 255
 
     if (sa > 0.005) {
@@ -138,10 +151,11 @@ export function dryStep(
       if (wet.strokeOpacity) wet.strokeOpacity[i] = 0
       drying.dryPos[i] = 0
     }
+    }
   }
   })
 
-  if (changed) measurePrimitive(observePrimitive, 'dry-step-full-frame-writeback', () => ctx.putImageData(id, 0, 0))
+  if (changed) measurePrimitive(observePrimitive, 'dry-step-writeback', () => ctx.putImageData(id, bx0, by0))
 }
 
 /**
@@ -149,6 +163,13 @@ export function dryStep(
  * Uses a=min(wetAlpha/800,1) opacity formula (the "sacred" /800).
  * From v3.html forceDryAll() line 2526
  */
+export interface DryRegionBounds {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export function forceDryAll(
   wet: WetBuffers,
   saved: SavedWetBuffers,
@@ -158,14 +179,30 @@ export function forceDryAll(
   height: number,
   observePrimitive?: PaintPrimitiveTimingObserver,
   stagePrefix: string = 'force-dry',
+  bounds?: DryRegionBounds | null,
 ): void {
-  const id = measurePrimitive(observePrimitive, `${stagePrefix}-full-frame-readback`, () => ctx.getImageData(0, 0, width, height))
+  // 52.1 (2nd-stroke freeze): the per-stroke force-dry read back + wrote back
+  // the WHOLE full-frame 1920×1080 RGBA (8.3MB each). The stroke-1 finalize
+  // queued that writeback; stroke 2's synchronous getImageData had to flush it,
+  // parking the thread on the GPU semaphore ~1s (fresh-key only — existing
+  // canvas content was already flushed). The wet pixels of one finalized stroke
+  // are bounded by the stroke bbox, so clamp every canvas op to it: the
+  // readback loops only the rect, the writeback uploads only the rect.
+  const bx0 = bounds ? Math.max(0, Math.min(width - 1, bounds.x0)) : 0;
+  const by0 = bounds ? Math.max(0, Math.min(height - 1, bounds.y0)) : 0;
+  const bx1 = bounds ? Math.max(bx0, Math.min(width - 1, bounds.x1)) : width - 1;
+  const by1 = bounds ? Math.max(by0, Math.min(height - 1, bounds.y1)) : height - 1;
+  const rectW = Math.max(1, bx1 - bx0 + 1);
+  const rectH = Math.max(1, by1 - by0 + 1);
+  const id = measurePrimitive(observePrimitive, `${stagePrefix}-readback`, () => ctx.getImageData(bx0, by0, rectW, rectH))
   const d = id.data
   let changed = false
-  const size = width * height
 
   measurePrimitive(observePrimitive, `${stagePrefix}-pixel-loop`, () => {
-  for (let i = 0; i < size; i++) {
+  for (let py = by0; py <= by1; py++) {
+    const rowBase = py * width
+    for (let px = bx0; px <= bx1; px++) {
+    const i = rowBase + px
     if (wet.alpha[i] < 1) continue
 
     // Sacred /800 divisor — calibrated for sparse paper-height deposits (D-06)
@@ -173,7 +210,7 @@ export function forceDryAll(
     const densityAlpha = Math.min(1, wet.alpha[i] / 800)
     const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
     const sa = densityAlpha * pixelOpacity
-    const pi = i * 4
+    const pi = ((py - by0) * rectW + (px - bx0)) * 4
     const ma = d[pi + 3] / 255
 
     if (sa > 0.005) {
@@ -190,8 +227,9 @@ export function forceDryAll(
     wet.r[i] = 0; wet.g[i] = 0; wet.b[i] = 0
     if (wet.strokeOpacity) wet.strokeOpacity[i] = 0
     drying.dryPos[i] = 0
+    }
   }
   })
 
-  if (changed) measurePrimitive(observePrimitive, `${stagePrefix}-full-frame-writeback`, () => ctx.putImageData(id, 0, 0))
+  if (changed) measurePrimitive(observePrimitive, `${stagePrefix}-writeback`, () => ctx.putImageData(id, bx0, by0))
 }

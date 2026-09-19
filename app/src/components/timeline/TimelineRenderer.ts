@@ -76,6 +76,28 @@ export function getTimelinePlayScriptLabel(index: number): string {
   return `Play #${index + 2}`;
 }
 
+/**
+ * Resolve a pointer x position to a timeline frame.
+ *
+ * `maxFrame` is the explicit upper ceiling: pass the live timeline end
+ * (`totalFrames - 1`) for seek / scrub / hit-test consumers, or `null` to drop
+ * the ceiling entirely. The span-drag path drops it because the timeline total
+ * is derived from the span ends — clamping a span drag to it is circular
+ * (260918-o0n).
+ */
+export function resolveTimelinePointerFrame(
+  clientX: number,
+  rectLeft: number,
+  scrollX: number,
+  zoom: number,
+  maxFrame: number | null,
+): number {
+  const x = clientX - rectLeft - TRACK_HEADER_WIDTH;
+  const frameWidth = BASE_FRAME_WIDTH * zoom;
+  const frame = Math.floor((x + scrollX) / frameWidth);
+  return Math.max(0, maxFrame !== null ? Math.min(frame, maxFrame) : frame);
+}
+
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
@@ -1323,11 +1345,15 @@ export class TimelineRenderer {
   }
 
   /** Compute frame number from a clientX position */
-  frameFromX(clientX: number, canvasRect: DOMRect, scrollX: number, zoom: number, totalFrames: number): number {
-    const x = clientX - canvasRect.left - TRACK_HEADER_WIDTH;
-    const frameWidth = BASE_FRAME_WIDTH * zoom;
-    const frame = Math.floor((x + scrollX) / frameWidth);
-    return Math.max(0, Math.min(frame, totalFrames > 0 ? totalFrames - 1 : 0));
+  frameFromX(
+    clientX: number,
+    canvasRect: DOMRect,
+    scrollX: number,
+    zoom: number,
+    totalFrames: number,
+    maxFrame: number | null = totalFrames > 0 ? totalFrames - 1 : 0,
+  ): number {
+    return resolveTimelinePointerFrame(clientX, canvasRect.left, scrollX, zoom, maxFrame);
   }
 
   /** Get the display width (CSS pixels) */

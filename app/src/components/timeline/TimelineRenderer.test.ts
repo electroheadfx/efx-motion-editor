@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { testWebpBytes } from '../../testUtils/testWebpBytes';
+// 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
+const TEST_TRACK_ID = 'track-1';
 
 vi.mock('../../lib/previewRenderer', () => ({
   createCanvasGradient: vi.fn(),
@@ -243,7 +246,7 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
       keyId,
       appFrame,
       kind: 'real-key' as const,
-      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,AAAA' },
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('AAAA') },
     };
   }
 
@@ -282,6 +285,16 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
       outFrame: 12,
     };
     sequenceStore.sequences.value = [contentSequence, fxSequence] as never;
+    const { registerDocument, reset: resetEfxPaintStore } = await import('../../stores/efxPaintStore');
+    const { createEfxPaintDocument } = await import('../../efx-paint/document/efxPaintDocument');
+    resetEfxPaintStore();
+    const document = createEfxPaintDocument(layerId);
+    const track = document.tracks[0];
+    registerDocument({
+      ...document,
+      activeTrackId: TEST_TRACK_ID,
+      tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
+    });
     return sequenceId;
   }
 
@@ -293,7 +306,7 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     // Real keys at 0, 4, 8 with interpolation enabled derive generated interiors
     // 1-3 and 5-7; rotoKeyFrames must carry real keys only (D-07).
     const seeded = physicPaintStore.replaceRotoPhysicalRecords(
-      'roto-layer',
+      'roto-layer', TEST_TRACK_ID,
       [makeRotoRecord('key-0', 0), makeRotoRecord('key-4', 4), makeRotoRecord('key-8', 8)],
       { enabled: true, mode: 'duplicate' },
       600,
@@ -311,7 +324,7 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
 
     const first = physicPaintStore.replaceRotoPhysicalRecords(
-      'roto-layer',
+      'roto-layer', TEST_TRACK_ID,
       [makeRotoRecord('key-0', 0), makeRotoRecord('key-4', 4), makeRotoRecord('key-8', 8)],
       { enabled: false, mode: 'duplicate' },
       600,
@@ -320,7 +333,7 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames).toEqual([0, 4, 8]);
 
     const second = physicPaintStore.replaceRotoPhysicalRecords(
-      'roto-layer',
+      'roto-layer', TEST_TRACK_ID,
       [makeRotoRecord('key-a', 2), makeRotoRecord('key-b', 7)],
       { enabled: false, mode: 'duplicate' },
       600,
@@ -361,5 +374,39 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     const layout = fxTrackLayouts.value.find((track) => track.sequenceId === 'fx-grain');
     expect(layout?.layerType).toBe('generator-grain');
     expect(layout?.rotoKeyFrames).toBeUndefined();
+  });
+});
+
+describe('timeline pointer frame resolution (260918-o0n)', () => {
+  it('resolves past the derived end when no ceiling is passed', async () => {
+    const { BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, resolveTimelinePointerFrame } =
+      await import('./TimelineRenderer');
+
+    // zoom 1 => 60px frames; the x sits on frame 137, far past a 60-frame timeline.
+    expect(resolveTimelinePointerFrame(TRACK_HEADER_WIDTH + 137 * BASE_FRAME_WIDTH, 0, 0, 1, null)).toBe(137);
+  });
+
+  it('applies the ceiling when one is given', async () => {
+    const { BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, resolveTimelinePointerFrame } =
+      await import('./TimelineRenderer');
+
+    expect(resolveTimelinePointerFrame(TRACK_HEADER_WIDTH + 137 * BASE_FRAME_WIDTH, 0, 0, 1, 59)).toBe(59);
+  });
+
+  it('never returns a negative frame', async () => {
+    const { TRACK_HEADER_WIDTH, resolveTimelinePointerFrame } = await import('./TimelineRenderer');
+
+    // An x left of the track header resolves to frame 0, not to a negative frame.
+    expect(resolveTimelinePointerFrame(TRACK_HEADER_WIDTH - 40, 0, 0, 1, null)).toBe(0);
+  });
+
+  it('delegates frameFromX to it and keeps the live-timeline default ceiling', () => {
+    const code = source();
+    const frameFromXIndex = code.indexOf('frameFromX(');
+    expect(frameFromXIndex).toBeGreaterThan(-1);
+    const frameFromXSource = code.slice(frameFromXIndex, frameFromXIndex + 400);
+
+    expect(frameFromXSource).toContain('resolveTimelinePointerFrame(');
+    expect(frameFromXSource).toContain('totalFrames > 0 ? totalFrames - 1 : 0');
   });
 });

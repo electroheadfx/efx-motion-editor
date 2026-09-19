@@ -1,9 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useComputed, useSignal } from '@preact/signals';
-import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
+import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { BlendMode, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
+import type { MceImageRef } from '../../types/project';
+import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import {
+  _setEfxPaintRevealScriptLoader,
+  addBackgroundClip,
+  addTrack,
+  commitDeleteTrack,
+  createRevealRail,
+  duplicateTrack,
+  efxPaintVersion,
+  getDocument as getEfxPaintDocument,
+  renameTrack,
+  reorderTrack,
+  requestDeleteTrack,
+  serializeRuntimeIntoDocument,
+  setActiveTrackId,
+  setBackgroundClipRepeat,
+  setBackgroundClipScale,
+  setBackgroundClipSource,
+  setBackgroundFallback,
+  setPhotoReferenceSource,
+  setPhotoReferenceVisible,
+  setPhotoReferenceOpacity,
+  setPhotoReferenceTransformLocked,
+  clearPhotoReference,
+  setTrackBlend,
+  setTrackOpacity,
+  setTrackSolo,
+  setTrackVisible,
+  deleteBackgroundClip,
+  type TrackMutationResult,
+} from '../../stores/efxPaintStore';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
@@ -32,18 +66,23 @@ import {
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
+import { mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
+import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
+import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
-import { deriveSoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
+import { deriveSoloContentStart, deriveSoloPlaybackWindow, type SoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
-import { resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { getFrameBlobUrl } from './hooks/useRotoReferenceController';
+import { recordsAsRuntimeFrames, resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { getCarriedRotoPhysical } from './roto/rotoLaunchHydration';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput, type RotoRailSetPasteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
@@ -55,9 +94,13 @@ import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from
 import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
 import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
-import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
+import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
+import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
+import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
+import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
+import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
@@ -75,7 +118,6 @@ import {
   type RotoRailSetPasteIdentity,
 } from './roto/physicsPaintRotoRailSetCopy';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
-import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
@@ -84,6 +126,11 @@ import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryCont
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
+import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
+import { encodeSourceBytesForDocumentSync, requestImageLibrary } from '../../lib/physicPaintBridge';
+import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
+import { imageStore } from '../../stores/imageStore';
+import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -94,7 +141,34 @@ type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 
 type SoleOccurrenceDeleteTarget = Readonly<GroupLifecycleDeleteTarget & {
   operationKind: 'delete-group-frame';
 }>;
-type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
+type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: (skipRedraw?: boolean) => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: (skipRedraw?: boolean) => void };
+
+/**
+ * 49-03 (D-11 consumption half): bridge the store's resolved fond instruction
+ * (the document-fallback authority) to the view's `PhysicPaintRotoBackgroundMetadata`
+ * fond-layer prop. The round-trip is lossless for the two fallback arms: a solid
+ * fallback maps to the White metadata (the selector's only solid arm, color
+ * carried), a paper fallback maps to its texture with the grain controls. The
+ * view re-resolves the metadata through `subscribeRotoPlaybackBackground` and
+ * draws the same pixels the flattened path draws.
+ */
+function fondInstructionToFondMetadata(
+  instruction: Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }>,
+): PhysicPaintRotoBackgroundMetadata {
+  if (instruction.paperTexture) {
+    return {
+      background: instruction.paperTexture as PhysicPaintRotoBackgroundMetadata['background'],
+      paperGrain: instruction.paperGrain ?? '',
+      grainStrength: instruction.grainStrength ?? 0,
+    };
+  }
+  return {
+    background: 'white',
+    paperGrain: '',
+    grainStrength: 0,
+    color: instruction.color,
+  };
+}
 
 function getLinkedRotoGroupsForAction(
   loopClips: readonly PhysicPaintRotoLoopClip[],
@@ -208,12 +282,101 @@ function resolveDeleteOperationIntervals(
   return intervals;
 }
 
+/**
+ * 47-01 UAT round 8: collapse a burst of source revisions into ONE trailing
+ * flush. The Studio's strip subscriptions re-render the whole component on
+ * every paint event (physicPaintVersion bumps per stroke mutation, and the
+ * strip rebuilds 600+ cell class strings per render) — the start-paint
+ * stutter the user reported. A trailing throttle freezes the chrome while a
+ * stroke is in flight and refreshes it shortly after the burst ends.
+ */
+function useTrailingThrottledRevision(source: ReadonlySignal<number>, delayMs: number): ReadonlySignal<number> {
+  const throttled = useRef(signal(source.peek()));
+  const timerRef = useRef<number | null>(null);
+  const latestRef = useRef(source.peek());
+  useEffect(() => {
+    const flush = () => {
+      timerRef.current = null;
+      // 52.1: the chrome rebuild (600+ strip cells — the JS commit is ~130ms
+      // but the layer rasterization storm it queues chokes the shared GPU
+      // process for ~600ms) must never fire inside a paint cadence. Require
+      // 1s of REAL quiet, not merely "idle at timer expiry": an inter-stroke
+      // gap of 400ms+ flips interactionIdle while the user is about to press
+      // the next stroke.
+      const quietFor = performance.now() - readLastInteractionAt();
+      if (!readInteractionIdle() || quietFor < delayMs) {
+        timerRef.current = window.setTimeout(flush, 300);
+        return;
+      }
+      throttled.current.value = latestRef.current;
+    };
+    const unsubscribe = effect(() => {
+      const next = source.value;
+      if (next === latestRef.current) return;
+      latestRef.current = next;
+      if (timerRef.current === null) {
+        // 52.1: idle changes (e.g. a +Key click) must show promptly; only a
+        // change arriving mid-gesture (paste-key at stroke start on a virgin
+        // frame) waits for the long quiet window.
+        const idleDelay = readInteractionIdle() && performance.now() - readLastInteractionAt() >= delayMs ? 150 : delayMs;
+        timerRef.current = window.setTimeout(flush, idleDelay);
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
+  return throttled.current;
+}
+
+/**
+ * 47 leak fix: module-level (identity-stable) active-track reader for the
+ * background-metadata sync effect. An inline arrow here got a new identity
+ * every Studio render, re-firing the effect every render — combined with the
+ * store's unconditional revision bump that formed a self-sustaining ~65/s
+ * render loop.
+ */
+function readDocumentActiveTrackId(layerId: string): string {
+  return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
+}
+
+// 52.1: the gesture-path documentSync flush must wait for real quiet, not the
+// 400ms idle flip (which lands between two strokes). The full-document push
+// (4.4MB) + main-window decode re-saturates the shared GPU process; at 1s of
+// quiet that still fired inside a ~1.5s inter-stroke gap and froze the very
+// next stroke ("always the 2nd stroke" on a fresh key). 2500ms puts the push +
+// decode at a genuine stop. Matches CAPTURE_PRODUCE_QUIET_MS.
+const DOCUMENT_SYNC_GESTURE_QUIET_MS = 2500;
+
+// 52.1 (fresh-frame first-paint freeze): a newly-activated frame's canvas
+// surfaces are cold — the first paint's synchronous readback flushes them
+// mid-stroke (the ~380ms rAF gaps on the fast-chained 2nd stroke). The
+// user-validated recipe is "+key then wait ~1s"; this gate holds the pen that
+// long (in idle) so the GPU settles before the first stroke, with a visible cue.
+const FRESH_FRAME_WARM_MS = 1000;
+
+/**
+ * 49-04 (Task 2): merges the main-webview library (authoritative imageStore)
+ * with the Studio realm's own imageStore (which gains newly imported images via
+ * importFiles) so the picker grid shows both after an in-picker import. The
+ * main webview is the save-path authority; the Studio realm's copy is the
+ * immediate post-import source. Dedupe by asset id — the same file imported
+ * once is never duplicated.
+ */
+function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceImageRef[]): MceImageRef[] {
+  const byId = new Map<string, MceImageRef>();
+  for (const image of [...main, ...studio]) byId.set(image.id, image);
+  return [...byId.values()];
+}
+
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
-  const recordEnginePerformance = profilePerformance
-    ? (sample: PaintPerformanceSample) => recordPhysicsPaintPerformance(sample)
-    : undefined;
+  const recordEnginePerformance = (sample: PaintPerformanceSample) => {
+    if (profilePerformance) recordPhysicsPaintPerformance(sample);
+  };
   const [isPlaying, setIsPlaying] = useState(false);
   // 38.1-D-01/D-08: the playback per-tick surface is signal-backed — written
   // by onStart/onFrame per tick and read ONLY via .peek() (statusMessage) or
@@ -222,9 +385,53 @@ export function PhysicsPaintStudio() {
   // the view-model literal: that would re-subscribe the whole Studio per tick.
   const rotoPlaybackFrameIndex = useSignal(0);
   const rotoPlaybackFrameCount = useSignal(0);
+  // 49-05 Task 2 (S4): the selected Background clip — a click on a Bg clip rail
+  // routes here; the right-panel `Background Clip` section (49-06) consumes it.
+  const selectedBackgroundClipId = useSignal<string | null>(null);
+  // 49-06 (UAT round 7): the Replace-image target clip — set when the section's
+  // Replace button opens the picker; the confirm path swaps that clip's source
+  // instead of adding a new clip. Cleared on confirm/cancel.
+  const backgroundReplaceTargetClipId = useSignal<string | null>(null);
+  // 49-06 (UAT round 2): the placement-target frame — clicking an empty Bg row
+  // cell selects it; the Import control then lands the new clip AT that frame
+  // (import-at-playhead alone was undiscoverable — the frame click is the
+  // placement gesture).
+  const backgroundPlacementFrame = useSignal<number | null>(null);
+  // 49-06 (UAT round 2): the right-panel tool tab. The Studio owns it so a Paint
+  // track selection returns the panel to Track option and a Bg rail selection
+  // opens the Background option tab (selection-driven, never stuck on the clip).
+  const rightPanelToolTab = useSignal<'paint' | 'track' | 'background'>('paint');
+  // 50-UAT (modal redesign): the floating Photo Reference dialog — a Studio-owned
+  // signal so the strip camera icon opens it and the dialog self-closes. The
+  // dialog stays open behind the full-area reference picker so an Import/
+  // Replace confirm updates it in place.
+  const referenceDialogOpen = useSignal(false);
+  // AM-3 (52 UAT, revised): the Create Rail script picker — the strip's
+  // "+ Rail" flow ALWAYS opens this picker (one uniform, always-visible flow),
+  // listing the library Actions with the current selection highlighted. Picking
+  // sets the library selection and opens the Create Rail dialog on the
+  // menu-chosen tab/kind; cancelling closes only the picker. When the
+  // PlayScript controller is blocked the picker shows the reason live.
+  const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
+  // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
+  // Studio on every paint event; a trailing throttle collapses a stroke
+  // burst into one flush so the chrome freezes while painting (the user's
+  // start-paint stutter). 52.1: delay raised 150ms → 1000ms and the flush is
+  // idle-gated — the strip only rebuilds after a real pause, so a paint cadence
+  // with sub-second gaps never lands a rebuild between strokes. The canvas and
+  // the push effect keep the RAW physicPaintVersion — only the strip chrome
+  // reads the throttled revision.
+  const throttledPaintRevision = useTrailingThrottledRevision(physicPaintVersion, 1000);
+  // 52.1: key creation on a virgin frame bumps efxPaintVersion (structural)
+  // mid-stroke — the raw subscription above rebuilt the 626-cell strip DURING
+  // stroke 1 (measured 131ms) and flooded the shared GPU process right before
+  // stroke 2 landed. The strip data memos read a throttled copy instead;
+  // engine-facing effects (canvasMount/canvasStack/documentSync) keep the raw
+  // signal. When idle (a +Key click), the flush below still lands in ~150ms.
+  const throttledEfxRevision = useTrailingThrottledRevision(efxPaintVersion, 1000);
   // regression-refresh-multi-paint Layer 2: the completion reconcile paints at
   // the ACCEPTED document's CONTENT token (monotonic, content-derived) instead
   // of a content-agnostic session generation. The reconcile ceiling keeps the
@@ -234,8 +441,30 @@ export function PhysicsPaintStudio() {
   // Navigation still supersedes by clearing the base first, and the reconcile
   // itself always paints: max(acceptedToken, applied) is never below the applied
   // gate, and the accepted token is the newest content-derived token assigned.
-  const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '');
-  const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
+  // 46-01: the ACTIVE track identity for a launch (the launch IS the document —
+  // D-03 — so the carried activeTrackId is the identity authority). The
+  // document field is typed optional for legacy parsing tolerance; at runtime
+  // every v1.0 launch carries it, and the store rejects writes to unknown
+  // tracks, so a missing document fails closed.
+  const trackIdOfLaunch = (lc: PhysicPaintLaunchContext | null | undefined): string => lc?.document?.activeTrackId ?? '';
+  // 47-01 (TML-03): the routing authority follows the DOCUMENT's current active
+  // track — row click / addTrack / duplicateTrack switch it through
+  // setActiveTrackId, and every mutation, lane read, and canvas token
+  // re-resolves the live id. The launch snapshot is only the fallback for
+  // legacy parsing tolerance.
+  const studioActiveTrackId = (): string => {
+    const lc = launchContextRef.current;
+    if (!lc?.layerId) return '';
+    return getEfxPaintDocument(lc.layerId)?.activeTrackId ?? trackIdOfLaunch(lc);
+  };
+  const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '', studioActiveTrackId());
+  const selectedKeyId = useSignal<string | null>(getCarriedRotoPhysical(launchContext)?.selectedKeyId ?? null);
+  // 47 close-out: a one-click cross-track selection is applied SYNCHRONOUSLY
+  // in the click handler — the deferred seam effect ran after the paint, so
+  // the first click's selection was never visible (the 2-click bug). This ref
+  // is a "don't reseed" guard for the track-switch reset effect: the click
+  // handler sets it, and the reset effect consumes it on the switch commit.
+  const crossTrackSelectionPendingRef = useRef(false);
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
   // Session-local Key Rail selection: exact first-key plus ordered members,
@@ -275,14 +504,18 @@ export function PhysicsPaintStudio() {
   }>) => Promise<boolean>>(async () => false);
   const railSetClipboardReadRef = useRef<() => RotoRailSetCopyPayload | null>(() => null);
   const railSetClipboardWriteRef = useRef<(payload: RotoRailSetCopyPayload | null) => void>(() => {});
-  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
+  const initialCarried = launchContext ? getCarriedRotoPhysical(launchContext) : null;
+  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFrames(initialCarried) : []);
+  // 47 close-out UAT round 9: which track latestRotoFramesRef currently holds.
+  const latestRotoFramesTrackRef = useRef<string>(trackIdOfLaunch(launchContext));
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
       const next = typeof update === 'function' ? update(current) : update;
       launchContextRef.current = next;
-      if (next?.cachedRotoFrames !== current?.cachedRotoFrames) latestRotoFramesRef.current = next?.cachedRotoFrames ?? [];
       if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {
-        selectedKeyId.value = next?.rotoPhysical?.selectedKeyId ?? null;
+        const carried = next ? getCarriedRotoPhysical(next) : null;
+        latestRotoFramesRef.current = carried ? recordsAsRuntimeFrames(carried) : [];
+        selectedKeyId.value = carried?.selectedKeyId ?? null;
         // Launch replacement resets the multi-selection exactly like the
         // single selection (Pattern 5): a replaced launch never inherits a
         // stale set or anchor.
@@ -302,8 +535,16 @@ export function PhysicsPaintStudio() {
         loopSelectionAnchorId.value = null;
         activeLinkedLoopClipId.value = null;
       } else if (next && next.startFrame !== current?.startFrame) {
-        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, next.startFrame)?.keyId ?? null;
-        physicPaintStore.setRotoPhysicalSelection(next.layerId, selectedKeyId.value, next.startFrame);
+        // 48-06 (R-2click): reseed against the LIVE document's active track —
+        // the launch snapshot's activeTrackId still points at the track that
+        // was active at the last launch replacement, so after a track switch
+        // the rAF startFrame propagation looked up the key on the WRONG track,
+        // found nothing, and cleared the synchronous click selection (the
+        // first click selected, the reseed cleared, only the second click on
+        // the same frame survived — startFrame unchanged, no reseed branch).
+        const liveTrackId = getEfxPaintDocument(next.layerId)?.activeTrackId ?? trackIdOfLaunch(next);
+        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
+        physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
         const spacingSelection = rotoSpacingSelection.peek();
         selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
           ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
@@ -336,11 +577,17 @@ export function PhysicsPaintStudio() {
   const toolRailPropsMemo = useRef(createIdentityMemo()).current;
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
   const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
+  const referenceDialogPropsMemo = useRef(createIdentityMemo()).current;
+  const scriptPickerDialogPropsMemo = useRef(createIdentityMemo()).current;
   const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
+      const propagationStartedAtMs = performance.now();
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+      requestAnimationFrame(() => {
+        recordPhysicsPaintPerformance({ stage: 'studio.startFramePropagation', category: 'async-elapsed', durationMs: performance.now() - propagationStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
+      });
     });
   }, [rotoUiFlushScheduler, setLaunchContext]);
   const handleRequestSoleOccurrenceDeleteWarning = useCallback((target: SoleOccurrenceDeleteTarget) => {
@@ -383,7 +630,7 @@ export function PhysicsPaintStudio() {
     setSoleOccurrenceDeleteError(null);
     const accepted = await groupLifecycleDeleteExecuteRef.current(soleOccurrenceDeleteTarget);
     if (!accepted) {
-      setSoleOccurrenceDeleteError('Delete rejected because the Group changed. Review the current frame and try again.');
+      setSoleOccurrenceDeleteError('Delete rejected because the Rail changed. Review the current frame and try again.');
       return;
     }
     closeSoleOccurrenceDeleteDialog();
@@ -414,13 +661,18 @@ export function PhysicsPaintStudio() {
   // Physical selection state (D-01/D-10): selectedKeyId is the stable real-key
   // identity, rotoKeyRecords and rotoInterpolationState are derived from the
   // store's validated physical records and canonical interpolation state.
-  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [], [launchContext?.layerId, physicPaintVersion.value]);
+  // 47-01 (TML-03): the active-track reads resolve the LIVE document id and
+  // subscribe to efxPaintVersion too — setActiveTrackId bumps only the
+  // document clock, so a row click / add / duplicate must re-resolve these
+  // residuals against the newly active track ("the Studio re-reads on
+  // efxPaintVersion").
+  const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [], [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
   const rotoIncomingInterpolationBreakKeyIds = useMemo(
-    () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId) : [],
-    [launchContext?.layerId, physicPaintVersion.value],
+    () => launchContext ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId()) : [],
+    [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value],
   );
-  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
-  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
+  const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
   const keyRailGroupOwnedKeyIds = useMemo(() => {
     const owned = new Set<string>();
     for (const clip of rotoLoopClips) {
@@ -469,7 +721,7 @@ export function PhysicsPaintStudio() {
   // above — the store getter returns a fresh clone per call, and an unstable
   // identity here defeats the useRotoTimelineModel structural memo, forcing a
   // full signal-graph rebuild on every Studio render.
-  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
+  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : undefined, [launchContext?.layerId, throttledPaintRevision.value, throttledEfxRevision.value]);
   const currentFrame = launchContext?.startFrame ?? 0;
   // UAT-3: persisted operation-result capsule line. An operation publishes its
   // outcome here (survives the operation's own selection aftermath); only a NEW
@@ -489,6 +741,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
+        trackIdOfLaunch(launchContext),
         null,
         currentFrame,
       );
@@ -518,7 +771,19 @@ export function PhysicsPaintStudio() {
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
-  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
+  // 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen
+  // (FRESH_FRAME_WARM_MS); the capsule renders a thin bar so the artist knows
+  // when the canvas is released. 0 = idle, 100 = released.
+  const warmProgress = useSignal(0);
+  // 49-04 (UAT fix): the document fallback is the single authority on open —
+  // hydrate the selector mode (and the paper arm's grain controls) from it so
+  // the selector, engine, and monitor fond agree before the first click. The
+  // launch context carries the document (D-03), so the fallback is available at
+  // init time.
+  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => {
+    const fallback = launchContext?.document?.background?.fallback;
+    return fallback ? applyBackgroundFallbackToSettings(fallback) : makeInitialPhysicsPaintStudioSettings();
+  });
   const workflowMode = 'roto' as const;
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const handleSetRightPanelCollapsed = useCallback((collapsed: boolean) => {
@@ -545,14 +810,21 @@ export function PhysicsPaintStudio() {
     launchContext,
     latestFramesRef: latestRotoFramesRef,
     setLaunchContext,
+    // 47-01: the coordinator resolves the DOCUMENT's live active track — the
+    // launch snapshot is stale after an in-place track switch (row click /
+    // add / duplicate), and every paint capture/identity check must target the
+    // track the user is actually editing.
+    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
     store: {
-      getRotoPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
-      getRotoPhysicalContentRevision: (layerId) => physicPaintStore.getRotoPhysicalContentRevision(layerId),
+      // 46-01: the persistence port is track-scoped; the coordinator resolves
+      // the launch's ACTIVE track itself, so the port passes it straight through.
+      getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),
+      getRotoPhysicalContentRevision: (layerId, trackId) => physicPaintStore.getRotoPhysicalContentRevision(layerId, trackId),
       resolveContentToken: (contentRevision) => resolveContentToken(contentRevision),
-      getRotoRealKeyRecord: (layerId, keyId) => physicPaintStore.getRotoRealKeyRecord(layerId, keyId),
-      getRotoRealKeyRecordByAppFrame: (layerId, appFrame) => physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, appFrame),
-      getRotoPhysicalRenderSource: (layerId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame),
-      updateRotoPhysicalRealKeyPayload: (layerId, keyId, revision, payload, diagnostics) => physicPaintStore.updateRotoPhysicalRealKeyPayload(layerId, keyId, revision, payload, diagnostics),
+      getRotoRealKeyRecord: (layerId, trackId, keyId) => physicPaintStore.getRotoRealKeyRecord(layerId, trackId, keyId),
+      getRotoRealKeyRecordByAppFrame: (layerId, trackId, appFrame) => physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, appFrame),
+      getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),
+      updateRotoPhysicalRealKeyPayload: (layerId, trackId, keyId, revision, payload, diagnostics) => physicPaintStore.updateRotoPhysicalRealKeyPayload(layerId, trackId, keyId, revision, payload, diagnostics),
     },
     syncPending: () => resetRotoKeySessionRef.current(),
     getBackgroundMetadata: () => buildRotoBackgroundMetadata(settings),
@@ -571,6 +843,27 @@ export function PhysicsPaintStudio() {
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const pendingRotoKeyActionMessageRef = useRef<string | null>(null);
   const pendingFrameSyncRef = useRef<number | null>(null);
+  // D-02 amendment (audible scrub): true while the ruler scrub gesture is armed
+  // (past the 4px threshold). navigateToSyncedPhysicalFrame routes the audio
+  // funnel to scrub (audible snippet) vs seek (silent re-anchor) by this flag.
+  const scrubActiveRef = useRef(false);
+  // G-52-9 drag-gate: non-null ONLY while the ruler scrub gesture is armed.
+  // The strip's playhead bar subscribes to this feed as a narrow leaf — during
+  // a drag it is the ONLY UI that moves. No startFrame propagation, no flush,
+  // no canvas repaint, no selection reseed, and no main-window frame sync run
+  // mid-drag; the full settle navigation fires once on release (onScrubEnd).
+  const rotoScrubFrameSignal = useSignal<number | null>(null);
+  // Release settle catch-up: the scrub feed stays sticky at the final dragged
+  // frame so the playhead never jumps back to the drag origin while the
+  // release navigation's startFrame propagation is in flight. Once the
+  // propagated startFrame matches the feed they render identically, and the
+  // feed clears here with zero visual change.
+  useEffect(() => {
+    const scrubFrame = rotoScrubFrameSignal.peek();
+    if (scrubFrame !== null && launchContext?.startFrame === scrubFrame) {
+      rotoScrubFrameSignal.value = null;
+    }
+  }, [launchContext?.startFrame, rotoScrubFrameSignal]);
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
@@ -626,7 +919,22 @@ export function PhysicsPaintStudio() {
     loop: false,
     fps: Math.max(1, Math.min(60, previewFps)),
   };
-  const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1;
+  const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1;
+  // 47 close-out UAT round 9: the lane's cached-frame fills are track-scoped —
+  // reseed the ref SYNCHRONOUSLY when the active track changes, before the
+  // model below reads it. The post-render reseed effect let the previous
+  // track's cells paint for one render (the stale-keys flash the user saw).
+  // Guarded compare-then-write; refs never notify.
+  if (launchContext?.layerId) {
+    const activeTrackIdNow = studioActiveTrackId();
+    if (latestRotoFramesTrackRef.current !== activeTrackIdNow) {
+      const physicalDocument = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, activeTrackIdNow);
+      if (physicalDocument) {
+        latestRotoFramesRef.current = recordsAsRuntimeFrames(physicalDocument);
+        latestRotoFramesTrackRef.current = activeTrackIdNow;
+      }
+    }
+  }
   const rotoTimelineModel = useRotoTimelineModel({
     cachedRotoFrames: latestRotoFramesRef.current,
     interpolationSettings: rotoLegacyInterpolationSettings,
@@ -637,7 +945,7 @@ export function PhysicsPaintStudio() {
     selectedKeyId: selectedKeyId.value,
     incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
-    rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,
+    rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 0,
   });
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   // The single canonical cross-type rail ordering authority (D-01): gestures,
@@ -718,8 +1026,8 @@ export function PhysicsPaintStudio() {
       appFrame: currentFrame,
     }),
     getMotion: () => ({
-      deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform : 0,
-      position: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position : 0,
+      deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).deform : 0,
+      position: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).position : 0,
     }),
     getPublicationIdentity: () => launchContext ? {
       operationId: launchContext.operationId,
@@ -756,14 +1064,26 @@ export function PhysicsPaintStudio() {
     getLaunchContext: () => launchContext,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
+  // 52-04 (D-10): the reveal bake loads the library script snapshot by id — the
+  // rail references the library script, never a copy. Wire the store's reveal
+  // script loader to the SCRIPTS library's loadSnapshot so createRevealRail
+  // (Plan 01) can resolve the script for the bake.
+  useEffect(() => {
+    _setEfxPaintRevealScriptLoader((scriptId) => rotoScriptLibrary.loadSnapshot(scriptId));
+    return () => _setEfxPaintRevealScriptLoader(null);
+  }, [rotoScriptLibrary]);
   const physicalMutationAvailable = useComputed(() => {
     physicPaintRotoPhysicalOperationLeaseVersion.value;
+    // 47-01: re-resolve the lease for the currently active track — the active
+    // track can change without any lease activity (row click / add / dup).
+    efxPaintVersion.value;
     const projectContextId = launchContext?.project?.contextId;
     return !launchContext || (
       !!projectContextId
       && physicPaintStore.isRotoPhysicalOperationAvailable(
         projectContextId,
         launchContext.layerId,
+        studioActiveTrackId(),
       )
     );
   });
@@ -822,7 +1142,27 @@ export function PhysicsPaintStudio() {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
   }, [rotoScript, rotoScriptLibrary]);
-  const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
+  // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
+  // useCallbacks wired into the workflow memo (the Tools popover Actions
+  // section). Bodies moved verbatim from the rightPanel scripts props.
+  const handleApplyScript = useCallback(() => {
+    void (async () => {
+      const success = await rotoScript.applyScript();
+      if (success) setLastError(null);
+      else {
+        const message = rotoScript.error.peek()?.message;
+        if (message) setLastError(message);
+      }
+    })();
+  }, [rotoScript, setLastError]);
+  const handleDiscardScript = useCallback(() => {
+    rotoScript.discardScript();
+    setLastError(null);
+  }, [rotoScript, setLastError]);
+  // 52.1 (user directive): empty (key-less) frames reject painting — the artist
+  // must first create a key (+ ). This both teaches the workflow and avoids the
+  // cold fresh-frame first-paint path that broke a fast-chained 2nd stroke.
+  const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked || currentFrameSelectionKind === 'empty';
   const {
     selectTool,
     setBrushColor,
@@ -839,15 +1179,28 @@ export function PhysicsPaintStudio() {
     startPhysics,
     stopPhysics,
   } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });
+  // 49-04 UAT fix: the swatch click must ALSO write the document fallback so
+  // the monitor fond layer resolves the paper/solid/transparent record. The
+  // 49-03 S6 write-through helper (backgroundModeToFallback) existed but the
+  // click path never invoked it — the document fallback stayed transparent and
+  // the monitor showed black. 'photo' is reserved for Phase 50 and has no
+  // fallback record, so it is excluded from the write-through.
+  const handleBackgroundChange = (mode: BgMode) => {
+    setBackground(mode);
+    const layerId = launchContext?.layerId;
+    if (layerId && mode !== 'photo') {
+      setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));
+    }
+  };
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
     records: readonly PhysicPaintRotoRealKeyRecord[],
     interpolation: PhysicPaintRotoInterpolationState,
   ) => {
-    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId);
-    const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId);
-    const currentIncomingBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId);
-    const currentGroupOverrides = physicPaintStore.getRotoGroupOverrideRecords(layerId);
+    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId());
+    const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId());
+    const currentIncomingBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId());
+    const currentGroupOverrides = physicPaintStore.getRotoGroupOverrideRecords(layerId, studioActiveTrackId());
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(
       records,
       interpolation,
@@ -857,12 +1210,12 @@ export function PhysicsPaintStudio() {
     );
     if (buildPhysicPaintRotoPhysicalRevision(
       beforeRecords,
-      physicPaintStore.getRotoPhysicalInterpolationState(layerId),
+      physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
       currentLoopClips,
       currentIncomingBreaks,
       currentGroupOverrides,
     ) === nextRevision) {
-      return physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
+      return physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     }
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
     const realKeyOwnedReference = repaintBase && beforeRecords.some((record) => record.appFrame === repaintBase.appFrame)
@@ -884,7 +1237,7 @@ export function PhysicsPaintStudio() {
       },
     });
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
-    const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
+    const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     if (!result.ok) return result;
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
@@ -906,8 +1259,8 @@ export function PhysicsPaintStudio() {
     document: PhysicPaintRotoPhysicalDocument,
     leaseToken: PhysicPaintRotoPhysicalOperationLeaseToken,
   ) => {
-    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layerId);
-    const beforeRecords = beforeDocument?.realKeyRecords ?? physicPaintStore.getRotoRealKeyRecords(layerId);
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layerId, studioActiveTrackId());
+    const beforeRecords = beforeDocument?.realKeyRecords ?? physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId());
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
     const realKeyOwnedReference = repaintBase && beforeRecords.some((record) => record.appFrame === repaintBase.appFrame)
       ? { url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: repaintBase }
@@ -945,7 +1298,7 @@ export function PhysicsPaintStudio() {
       },
     });
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
-    const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, document, leaseToken);
+    const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, studioActiveTrackId(), document, leaseToken);
     if (!result.ok) return result;
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
@@ -962,20 +1315,20 @@ export function PhysicsPaintStudio() {
     setCachedRotoRepaintBaseFrame(next.reference.cachedRepaintBase);
     return result;
   };
-  const physicalEditCoordinator = useRotoPhysicalEditCoordinator<SerializedProject>({
+  const physicalEditCoordinator = useRotoPhysicalEditCoordinator<EfxPaintDocument>({
     engine,
     records: {
-      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
-      getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
+      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()),
+      getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId, studioActiveTrackId()),
       replaceDocument: replacePhysicalDocumentWithOwnership,
-      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
-      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
-      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
-      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
+      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()),
+      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
+      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
-        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, keyIds)
+        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId(), keyIds)
       ),
-      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
+      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, studioActiveTrackId(), loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
     buffer: {
@@ -986,7 +1339,7 @@ export function PhysicsPaintStudio() {
       get dirtyFrames() { return rotoEditBuffer.bufferRef.current.dirtyFrames; },
       get liveOverlayActionCounts() { return rotoEditBuffer.bufferRef.current.liveOverlayActionCounts; },
       get editableFrames() { return rotoEditableFramesRef.current; },
-      replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, SerializedProject>); },
+      replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, EfxPaintDocument>); },
       replacePreviewFrames: (frames) => { rotoEditBuffer.replacePreviewFrames(frames as Map<number, RenderedFramePayload>); },
       replaceCapturedFrames: (frames) => { rotoEditBuffer.bufferRef.current.capturedFrames = new Map(frames) as Map<number, RenderedFramePayload>; },
       replaceConfirmedFrames: (frames) => { rotoPersistence.confirmedFramesRef.current = new Map(frames) as Map<number, RenderedFramePayload>; },
@@ -1013,7 +1366,7 @@ export function PhysicsPaintStudio() {
       getCurrentAppFrame: () => currentFrame,
       setCurrentAppFrame: (frame) => {
         const launch = launchContextRef.current;
-        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, selectedKeyId.value, frame);
+        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
         setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
       },
     },
@@ -1043,6 +1396,13 @@ export function PhysicsPaintStudio() {
         const acceptedContentToken = rotoPreviewBaseContentToken();
         const currentAppliedGeneration = engineRef.current?.getAppliedPreviewBaseContentToken?.() ?? null;
         const generation = Math.max(acceptedContentToken, currentAppliedGeneration ?? 0);
+        // Synchronous on purpose (52.1): the reconcile is ALSO what refreshes
+        // cachedRotoRepaintBaseFrame, which the next stroke's live-pixel
+        // capture needs as its merge base. Deferring it left the base stale and
+        // every fresh-key stroke re-encoded the full frame (base=no, 390-511ms)
+        // instead of a ~4ms merge. The GPU-heavy engine upload is bounded by the
+        // base apply once; the mid-train capture/encode floods are held out by
+        // the capture+documentSync quiet windows instead.
         loadCachedRotoReferenceFrame(
           appFrame,
           engineRef.current as PreviewBackgroundEngine | null,
@@ -1050,18 +1410,20 @@ export function PhysicsPaintStudio() {
           true,
           generation,
         );
+        const intendedFrame = findAcceptedRotoReferenceFrame(appFrame);
         armRotoCompletionPaintGuard({
           engine: engineRef.current as PreviewBackgroundEngine | null,
           appFrame,
-          intendedDataUrl: findAcceptedRotoReferenceFrame(appFrame)?.dataUrl ?? null,
+          intendedDataUrl: intendedFrame ? getFrameBlobUrl(intendedFrame.bytes) : null,
+          intendedBytes: intendedFrame?.bytes ?? new Uint8Array(0),
           intendedGeneration: generation,
           getCurrentAppFrame: () => launchContextRef.current?.startFrame ?? 0,
-          reload: (frame, dataUrl, paintGeneration) => {
+          reload: (frame, bytes, paintGeneration) => {
             // Repair re-applies ONLY the intended (newest) image at its own
             // generation — never whatever the frame lookup resolves to later.
             // The engine generation gate turns this into a no-op if a newer
             // generation painted between arm and repair.
-            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true, paintGeneration, dataUrl);
+            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true, paintGeneration, bytes);
           },
           log: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
         });
@@ -1073,6 +1435,7 @@ export function PhysicsPaintStudio() {
     },
     launch: {
       getLaunchContext: () => launchContextRef.current,
+      getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
       setLaunchContextStartFrame: (frame) => { setLaunchContext((current) => current ? { ...current, startFrame: frame } : current); },
       setLaunchContextCachedFrames: (_frames, options) => {
         rotoPersistence.syncCurrentPhysicalDocument(options);
@@ -1084,7 +1447,7 @@ export function PhysicsPaintStudio() {
     },
     lease: {
       acquire: (projectContextId, layerId) => (
-        physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId)
+        physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId, studioActiveTrackId())
       ),
       release: (token) => physicPaintStore.releaseRotoPhysicalOperationLease(token),
       transferToRecovery: (token) => (
@@ -1107,7 +1470,7 @@ export function PhysicsPaintStudio() {
     },
   });
   groupFramePaintExecuteRef.current = (executeInput) => (
-    physicalEditCoordinator.executePhysicalEdit(executeInput as unknown as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>)
+    physicalEditCoordinator.executePhysicalEdit(executeInput as unknown as RotoPhysicalEditCoordinatorExecuteInput<EfxPaintDocument>)
   );
   groupLifecycleDeleteExecuteRef.current = async (target) => {
     const launch = launchContextRef.current;
@@ -1138,7 +1501,7 @@ export function PhysicsPaintStudio() {
       ? deletedGroupMode === 'static'
         ? `Deleted Static Rail at F${target.phaseOrigin}.`
         : `Deleted Motion Rail at F${target.phaseOrigin}.`
-      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`);
+      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`);
     return accepted !== null;
   };
   railSetDeleteExecuteRef.current = async (target) => {
@@ -1190,17 +1553,17 @@ export function PhysicsPaintStudio() {
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
     getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
-    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
     setInterpolationSettings: (settings) => {
       if (!launchContext) return settings;
-      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings);
-      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
+      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId(), settings);
+      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId());
     },
-    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : [],
-    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null,
+    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId, studioActiveTrackId()) : [],
+    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId, studioActiveTrackId()) : null,
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
-    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : [],
+    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
@@ -1218,31 +1581,27 @@ export function PhysicsPaintStudio() {
     },
     getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
       rotoSpacingSelection.peek(),
-      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId) : [])
+      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId, studioActiveTrackId()) : [])
         .filter((loopClip) => {
-          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId).map((record) => record.keyId) : []);
+          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId, studioActiveTrackId()).map((record) => record.keyId) : []);
           return loopClip.sourceKeyIds.every((keyId) => currentKeyIds.has(keyId));
         })
         .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
     ),
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
-    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
-    getParentEndExclusive: () => {
-      const parentEndExclusive = launchContextRef.current?.rotoPhysical?.layerEndExclusive;
-      if (parentEndExclusive === undefined) {
-        throw new Error('Physics Paint launch has no authoritative parent timeline end.');
-      }
-      return parentEndExclusive;
-    },
+    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,
+    getParentEndExclusive: () => launchContext
+      ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())
+      : 0,
     getIncomingInterpolationBreakKeyIds: () => launchContext
-      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId)
+      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())
       : [],
-    buildBlankRotoFrame: (frame) => ({
-      ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
+    buildBlankRotoFrame: async (frame) => ({
+      ...(await buildBlankRotoFrame(canvasWidth, canvasHeight, frame)),
       source: 'real-key',
     }),
-    executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>),
+    executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<EfxPaintDocument>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     executeGroupLifecycleDelete: (target) => groupLifecycleDeleteExecuteRef.current(target),
     executeRailSetDelete: (target) => railSetDeleteExecuteRef.current(target),
@@ -1251,6 +1610,7 @@ export function PhysicsPaintStudio() {
     executeRailSetPaste: (input) => railSetPasteExecuteRef.current(input),
     requestSoleOccurrenceDeleteWarning: handleRequestSoleOccurrenceDeleteWarning,
     publishStatus: (message) => { setApplyMessage(message); },
+    setApplyStatus,
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
   });
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;
@@ -1265,14 +1625,14 @@ export function PhysicsPaintStudio() {
 
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
-      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, source.keyId);
+      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);
       return record?.appFrame === source.appFrame
         ? { keyId: record.keyId, appFrame: record.appFrame }
         : null;
     }
     if (source.keyId !== null) return null;
 
-    const blank = buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
+    const blank = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
     const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
       physicalEditCoordinator.pendingOperationId,
       physicalEditCoordinator.acceptedOutput,
@@ -1284,7 +1644,7 @@ export function PhysicsPaintStudio() {
         {
           frameIndex: blank.frameIndex,
           appFrame: source.appFrame,
-          dataUrl: blank.dataUrl,
+          bytes: blank.bytes,
           ...(blank.width !== undefined ? { width: blank.width } : {}),
           ...(blank.height !== undefined ? { height: blank.height } : {}),
         },
@@ -1296,72 +1656,121 @@ export function PhysicsPaintStudio() {
       || accepted.after.selectedAppFrame !== source.appFrame
       || !accepted.after.selectedKeyId
     ) return null;
-    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, accepted.after.selectedKeyId);
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);
     return record?.appFrame === source.appFrame
       ? { keyId: record.keyId, appFrame: record.appFrame }
       : null;
+  };
+
+  // 43.6-06 (D-19) / 52.2-04 (D-20/D-21): the session pill's solo window. One
+  // derivation serves both the playback enumeration filter (getSoloWindow) and
+  // the D-21 solo content start (getSoloContentStart) — the pill's window start
+  // IS the isolated content start by construction. Disarmed returns null before
+  // any member derivation so the enumeration stays byte-identical to pre-solo
+  // playback even when a rail is selected. Wiring only: no derivation logic
+  // lives in the Studio body.
+  const resolveSessionSoloWindow = (): SoloPlaybackWindow | null => {
+    if (!isSoloArmed()) return null;
+    const members: RailSetIdentity[] = [];
+    for (const member of effectiveRailSetSelection?.members ?? []) members.push(member);
+    if (members.length === 0) {
+      if (effectiveSelectedRotoKeyRail) {
+        members.push({ kind: 'key-rail', firstKeyId: effectiveSelectedRotoKeyRail.firstKeyId });
+      }
+      for (const loopId of effectiveSelectedLoopClipIds) members.push({ kind: 'loop', loopId });
+    }
+    if (members.length === 0) return null;
+    const cells = rotoTimelineModel.physicalCells.value;
+    return deriveSoloPlaybackWindow({
+      members,
+      keyRailSegments,
+      loopRanges: loopResolutionContext?.ranges ?? [],
+      cells,
+      capacity: cells.length,
+    });
   };
 
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
     afterNavigation: rotoScript.completeNavigation,
+    // 52.1-04 (D-10): neighbor prewarm on playhead advance — decode N+1, N+2,
+    // N-1 into the single 512 MB LRU so scrub cold-misses are covered (D-03).
+    prefetchNeighbors: (appFrame) => {
+      if (!launchContext) return;
+      const prefetchStartedAtMs = performance.now();
+      prefetchNeighborFrames(launchContext.layerId, appFrame);
+      recordPhysicsPaintPerformance({ stage: 'nav.prefetchNeighbors', category: 'sync-cpu', durationMs: performance.now() - prefetchStartedAtMs, timestamp: performance.now(), sourceFrame: appFrame });
+    },
     keyUtilities: {
       currentFrame,
       currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       physicalKeyUtilities: rotoTimelineActions.physicalKeyUtilities,
       getSelectedKeyIds: () => selectedKeyIds.value,
-      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [],
+      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [],
       canvasSize: { width: canvasWidth, height: canvasHeight },
       realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
         ...record.payload,
+        // 52.2-02 (D-07): a runtime cache frame needs pixels; the inline raster
+        // carrier is asserted here (a reference-only payload is a persisted shape).
+        bytes: requirePhysicPaintRotoInlineBytes(record.payload),
         source: 'real-key',
       })),
       cachedRotoFrames: latestRotoFramesRef.current,
       dirtyFrames: dirtyRotoFramesRef.current,
       applyStatus,
       flushInFlight: false,
-      buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
+      buildBlankRotoFrame: async (frame): Promise<PhysicPaintRotoCacheFrame> => ({ ...(await buildBlankRotoFrame(canvasWidth, canvasHeight, frame)), source: 'real-key' }),
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
-      showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),
-      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, frame, 1); },
-      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, frame); },
+      showCachedReference: (frame) => setCachedRotoReferenceUrl(getFrameBlobUrl(frame.bytes)),
+      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, studioActiveTrackId(), frame, 1); },
+      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, studioActiveTrackId(), frame); },
       setApplyMessage,
       setApplyStatus,
       setLastError,
     },
     playback: {
       initialSettings: initialRotoPlaybackSettings,
-      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId) : null,
+      // 48-06 (UAT-D): the playback range is the COMPOSITE's content extent —
+      // the max end across every Paint track, never the launch track's alone
+      // (a sibling track's longer rail must play in full).
+      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalCompositeEndFrame(launchContext.layerId) : null,
       getFrame: findCachedRotoDisplayFrame,
-      // 43.6-06 (D-19): the solo window derives from the Plan 01 set, or the
-      // single-rail selection as a set of one (D-15), through the Task 1 pure
-      // derivation — the ONLY solo filter seam (the getFrames enumeration).
-      // Wiring only: no derivation logic lives in the Studio body.
-      getSoloWindow: () => {
-        // 43.6-09 (D-14/D-17): the solo filter is active ONLY while armed.
-        // Disarmed must return null before any member derivation so the
-        // playback enumeration stays byte-identical to pre-solo playback even
-        // when a rail is selected — otherwise selecting a rail after disarm
-        // plays only that rail, as if solo were still active.
-        if (!isSoloArmed()) return null;
-        const members: RailSetIdentity[] = [];
-        for (const member of effectiveRailSetSelection?.members ?? []) members.push(member);
-        if (members.length === 0) {
-          if (effectiveSelectedRotoKeyRail) {
-            members.push({ kind: 'key-rail', firstKeyId: effectiveSelectedRotoKeyRail.firstKeyId });
+      // D-01 (260902-cfa amendment): Play re-anchors at the shared
+      // application-frame cursor — an idle seek to frame N resumes there, never
+      // the range start.
+      getCurrentAppFrame: () => currentFrame,
+      // 43.6-06 (D-19) / 43.6-09 (D-14/D-17): the solo filter seam — see
+      // resolveSessionSoloWindow above.
+      getSoloWindow: () => resolveSessionSoloWindow(),
+      // 52.2-04 (D-20/D-21): the solo content start at Play press time,
+      // evaluated lazily like every other playback getter. Null = no solo
+      // active (neither the session pill nor a persisted row-S solo) → the
+      // hook keeps the Phase 51 play-from-cursor law. Non-null = the index the
+      // hook anchors BOTH the frame and loop refs at, so every loop wrap
+      // returns to the isolated content start (D-22). Precedence: the session
+      // window's own start, else the first painted key across the persisted
+      // row-S soloed tracks, else project frame 0 (D-21).
+      getSoloContentStart: () => {
+        const layerId = launchContext?.layerId;
+        if (!layerId) return null;
+        const sessionWindow = resolveSessionSoloWindow();
+        const documentSoloTrackIds = (getEfxPaintDocument(layerId)?.tracks ?? [])
+          .filter((track) => track.solo)
+          .map((track) => track.id);
+        if (sessionWindow === null && documentSoloTrackIds.length === 0) return null;
+        const paintedKeyFrames: number[] = [];
+        for (const trackId of documentSoloTrackIds) {
+          for (const record of physicPaintStore.getRotoRealKeyRecords(layerId, trackId)) {
+            paintedKeyFrames.push(record.appFrame);
           }
-          for (const loopId of effectiveSelectedLoopClipIds) members.push({ kind: 'loop', loopId });
         }
-        if (members.length === 0) return null;
-        const cells = rotoTimelineModel.physicalCells.value;
-        return deriveSoloPlaybackWindow({
-          members,
-          keyRailSegments,
-          loopRanges: loopResolutionContext?.ranges ?? [],
-          cells,
-          capacity: cells.length,
+        return deriveSoloContentStart({
+          sessionWindow,
+          documentSoloTrackIds,
+          paintedKeyFrames,
+          capacity: physicPaintStore.getRotoPhysicalCompositeEndFrame(layerId) ?? 0,
         });
       },
       onStart: (frameCount) => { rotoPlaybackFrameCount.value = frameCount; },
@@ -1463,13 +1872,51 @@ export function PhysicsPaintStudio() {
     rotoCachedPlayback.updateFps(fps);
     rotoPlaybackSettingsController.enqueue(rotoCachedPlayback.getSettings());
   }, [rotoCachedPlayback, rotoPlaybackSettingsController]);
+  // 52.1 (background sync on close): the documentSync push is idle-gated, so a
+  // non-stroke change (e.g. a background select) can be pending when the window
+  // closes. The close flush used to gate on strokes/pixels/playback only — a
+  // bare document change was dropped and the main window kept the old document.
+  // These refs are assigned after documentSyncDirty/pushLiveProjection are built.
+  const pendingDocumentSyncRef = useRef<() => boolean>(() => false);
+  const flushDocumentSyncRef = useRef<() => Promise<void>>(async () => {});
+  // 52.2-15 (D-16, sensitivity-map rows 2 and 4): ONE flush pipeline owns both
+  // Studio flush paths. The requested-flush listener and the close block hand
+  // it their existing step sequences, so a close landing while a requested
+  // flush is in flight JOINS that drain instead of starting a second sequence
+  // and pushing the document twice (T-52.2-54). The queue port dereferences the
+  // live coordinator through a ref — the hook's closures are rebuilt per render.
+  const rotoPersistenceRef = useRef(rotoPersistence);
+  rotoPersistenceRef.current = rotoPersistence;
+  const flushPipelineRef = useRef<FlushPipeline | null>(null);
+  if (flushPipelineRef.current === null) {
+    flushPipelineRef.current = createFlushPipeline({
+      queue: {
+        drain: () => rotoPersistenceRef.current.drainLivePixelQueue(),
+        interrupt: () => rotoPersistenceRef.current.interruptLivePixels(),
+      },
+    });
+  }
+  const flushPipeline = flushPipelineRef.current;
+  // The pipeline never rejects (a failed drain is an outcome), so the shared
+  // runner rethrows for the callers whose contract is a rejection: the facade's
+  // fail-closed catch and the close hook's error path both depend on it.
+  const runStudioFlush = async (steps: ReadonlyArray<FlushStep>): Promise<void> => {
+    const outcome = await flushPipeline.flush({ steps });
+    if (outcome.status === 'flushed') return;
+    throw outcome.error ?? new Error(`Physics Paint flush did not complete (${outcome.status})`);
+  };
   usePhysicsPaintCloseFlush(
-    () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels() || rotoPlaybackSettingsController.hasPending()),
+    () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels() || rotoPlaybackSettingsController.hasPending() || pendingDocumentSyncRef.current()),
     async () => {
       if (workflowMode !== 'roto') return;
-      engineRef.current?.flushPendingStrokeFinalizations();
-      await rotoPersistence.flushLivePixels(currentFrame);
-      await rotoPlaybackSettingsController.flush();
+      // The four steps and their order are unchanged; the pipeline now owns the
+      // drain they run inside and the outcome-to-rejection translation.
+      await runStudioFlush([
+        () => { engineRef.current?.flushPendingStrokeFinalizations(); },
+        () => rotoPersistence.flushLivePixels(currentFrame),
+        () => rotoPlaybackSettingsController.flush(),
+        () => flushDocumentSyncRef.current(),
+      ]);
     },
     // 41-05 (D-08): audio engine release runs unconditionally on close,
     // before the hasPending gate — closing the window always stops and
@@ -1491,14 +1938,15 @@ export function PhysicsPaintStudio() {
   const rotoPlayScript = useRotoPlayScriptController({
     library: rotoScriptLibrary,
     getLaunchContext: () => launchContext,
+    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
     getSelection: () => ({
       kind: currentFrameSelectionKind,
       keyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       appFrame: currentFrame,
     }),
     getMotion: () => launchContext ? {
-      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform,
-      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position,
+      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).deform,
+      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).position,
     } : { deformation: 0, position: 0 },
     // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
     // the controller only observes and snapshots settings.color at confirm time.
@@ -1508,18 +1956,17 @@ export function PhysicsPaintStudio() {
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
     // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
     // and the atomic loop ops operate on (43-05 port, wired here).
-    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
+    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
     // 43-11: opening Loop Edit reads the already-accepted child document
     // synchronously. Mutation commits still request fresh parent authority.
     getLoopEditSnapshot: (placementStart) => {
       if (!launchContext) return null;
-      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
-      const layerEndExclusive = launchContext.rotoPhysical?.layerEndExclusive;
-      if (!document || layerEndExclusive === undefined) return null;
-      const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);
+      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
+      const layerEndExclusive = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId());
+      if (!document) return null;
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
-        physicalCapacity,
+        physicalCapacity: layerEndExclusive,
         layerEndExclusive,
         remainingCapacity: Math.max(0, layerEndExclusive - placementStart),
         interpolationEnabled: document.interpolation.enabled,
@@ -1527,9 +1974,33 @@ export function PhysicsPaintStudio() {
     },
     getPhysicalDocument: () => (
       launchContext
-        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)
+        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())
         : null
     ),
+    // 52-05 (G-52-3): the Reveal Photo Rail tab ports. The D-12 guard is
+    // proactive — no reference → the Photo Reference modal opens directly so the
+    // user places a source and returns to the Create Rail dialog. The create
+    // port routes through the SAME create-reveal-rail mutation as every reveal
+    // path (creation IS the first bake — D-11) and records the unified-ledger
+    // undo entry by reference (CR-01).
+    hasPhotoReference: () => {
+      const document = launchContext ? getEfxPaintDocument(launchContext.layerId) : undefined;
+      const reference = document?.photoReference;
+      return Boolean(reference && reference.sourceFrameRefs.length > 0);
+    },
+    photoReferenceRevision: efxPaintVersion,
+    openPhotoReference: () => { referenceDialogOpen.value = true; },
+    createReveal: async (input) => {
+      const result = await createRevealRail(input.layerId, input);
+      if (result.ok) {
+        if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+        return { ok: true };
+      }
+      return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
+    },
+    // D-20: the script's natural duration — the progressive schedule builds the
+    // drawing stroke by stroke, so one frame per brush is the natural span.
+    getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,
@@ -1585,6 +2056,7 @@ export function PhysicsPaintStudio() {
       if (launchContext) {
         physicPaintStore.setRotoPhysicalSelection(
           launchContext.layerId,
+          trackIdOfLaunch(launchContext),
           null,
           currentFrame,
         );
@@ -1602,6 +2074,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
+        trackIdOfLaunch(launchContext),
         null,
         currentFrame,
       );
@@ -1652,6 +2125,7 @@ export function PhysicsPaintStudio() {
       if (launchContext) {
         physicPaintStore.setRotoPhysicalSelection(
           launchContext.layerId,
+          trackIdOfLaunch(launchContext),
           null,
           currentFrame,
         );
@@ -1693,6 +2167,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
+        trackIdOfLaunch(launchContext),
         null,
         currentFrame,
       );
@@ -1719,15 +2194,23 @@ export function PhysicsPaintStudio() {
   const loopPresentations = useMemo(() => {
     const clipsById = new Map(rotoLoopClips.map((clip) => [clip.loopId, clip]));
     const scriptsById = new Map(loopScriptRows.map((row) => [row.id, row]));
+    // 52-03 (D-12/D-13/D-24): the reveal rail's Replay disabled reason needs
+    // the reference + script state the presentation cannot see on its own.
+    const referencePlaced = launchContext
+      ? (getEfxPaintDocument(launchContext.layerId)?.photoReference !== null)
+      : undefined;
     return new Map((loopResolutionContext?.ranges ?? []).map((range) => {
       const clip = clipsById.get(range.loopId);
       const sourceScriptName = clip?.scriptId ? scriptsById.get(clip.scriptId)?.name ?? null : null;
       return [
         range.loopId,
-        projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName),
+        projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName, {
+          referencePlaced,
+          scriptExists: clip?.scriptId ? scriptsById.has(clip.scriptId) : undefined,
+        }),
       ] as const;
     }));
-  }, [loopResolutionContext, loopScriptRows, rotoLoopClips]);
+  }, [loopResolutionContext, loopScriptRows, rotoLoopClips, launchContext, efxPaintVersion.value]);
   const selectedActionId = rotoScriptLibrary.selectedId.value;
   const selectedAction = selectedActionId === null
     ? null
@@ -1777,7 +2260,7 @@ export function PhysicsPaintStudio() {
   const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
   beginRotoFrameEditImplRef.current = () => {
     const launch = launchContextRef.current;
-    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId) : null;
+    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;
     const paintTarget = document
       ? resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)
       : null;
@@ -1786,32 +2269,14 @@ export function PhysicsPaintStudio() {
       rotoFrameEditing.beginFrameEdit();
       return;
     }
-    if (pendingFirstPaintTargetRef.current) return;
-
-    const request = prepareRotoScriptTargetRef.current({
-      selectionKind: 'empty',
-      layerId: launch.layerId,
-      keyId: null,
-      appFrame: currentFrame,
-    });
-    const pending = {
-      launchOperationId: launch.operationId,
-      layerId: launch.layerId,
-      appFrame: currentFrame,
-      promise: request,
-    };
-    pendingFirstPaintTargetRef.current = pending;
-    void request.then((target) => {
-      if (pendingFirstPaintTargetRef.current !== pending) return;
-      if (!target) {
-        pendingFirstPaintTargetRef.current = null;
-        return;
-      }
-      rotoFrameEditing.beginFrameEdit();
-    }).catch((error) => {
-      if (pendingFirstPaintTargetRef.current === pending) pendingFirstPaintTargetRef.current = null;
-      console.error('[PhysicsPaintStudio] Could not create the first Roto key', error);
-    });
+    // 52.1 (user directive): painting directly on an EMPTY frame is disabled.
+    // Silently auto-promoting to a new key ran the promotion inside the first
+    // stroke's path and its cold fresh surfaces broke a fast-chained 2nd stroke
+    // (WKWebView commit stall). Requiring the explicit "+key" action teaches the
+    // workflow and lets the key's surfaces settle at creation time — the
+    // artist knows a key must exist before the first paint stroke.
+    pendingFirstPaintTargetRef.current = null;
+    setLastError('Créez une key (+) avant de peindre sur ce frame.');
   };
   const beginRotoFrameEdit = useCallback(() => {
     beginRotoFrameEditImplRef.current();
@@ -1822,39 +2287,32 @@ export function PhysicsPaintStudio() {
   // stay referentially stable reach it through a ref instead of a hook dep.
   const rotoFrameEditingRef = useRef(rotoFrameEditing);
   rotoFrameEditingRef.current = rotoFrameEditing;
-  useRotoBackgroundMetadataSync({ launchContext, settings });
+  useRotoBackgroundMetadataSync({
+    launchContext,
+    settings,
+    getActiveTrackId: readDocumentActiveTrackId,
+  });
   // 38.1 D-08 link 3: playback availability without a per-render O(N) array
   // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
   // no launch -> false; empty list -> false; all-missing -> false; mixed ->
-  // true iff any frame resolves — the physical-input branch reads the same
-  // getRenderSource truth loadCachedRotoReferenceFrame and findCachedRotoDisplayFrame
-  // consult, so availability cannot diverge from the frames the canvas would
-  // actually paint. Recomputes only when the structural frame list or launch
-  // identity changes, never on a pure Studio render.
+  // true iff any frame resolves.
+  // G-52-8 (FIX 2): availability is STRUCTURAL, not pixel-level. The 48-05
+  // version flattened EVERY playback frame to answer it — each flatten
+  // composites (and, pre-FIX-4, PNG-encoded) a photo-weight raster — 15
+  // photo-weight encode storms at every Studio mount and every frame-list
+  // change. The flattened raster always exists when the layer document does,
+  // so document-presence over the structural frame list answers the same
+  // question with zero compositing; the per-tick playback draw still flattens
+  // the one frame it shows (program monitor), so no surface loses anything.
+  // The memo's return shape and the selectRotoPlaybackAvailable consumer
+  // contract are unchanged; recomputes only when the structural frame list or
+  // launch identity changes, never on a pure Studio render.
   const rotoPlaybackFrameNumbers = rotoSession.playbackFrameNumbers.value;
   const rotoPlaybackLayerId = launchContext?.layerId ?? null;
   const rotoCachedPlaybackAvailableFrames = useMemo(() => {
     if (rotoPlaybackLayerId === null) return [];
-    return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
-      const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, appFrame);
-      if (!source) return [];
-      // Phase 43 (D-28, audit finding 6): the loop placeholder never
-      // contributes playback payload — the preview surface renders it as the
-      // marked placeholder and Studio playback continues past it without
-      // blocking. A future render-source variant is a compile-time error at
-      // this consumer (Pitfall 7 never-fallback convention).
-      switch (source.kind) {
-        case 'loop-placeholder':
-          return [];
-        case 'real':
-        case 'generated':
-          return [{ appFrame, frame: source.renderedFrame }];
-        default: {
-          const exhaustive: never = source;
-          throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
-        }
-      }
-    });
+    if (!getEfxPaintDocument(rotoPlaybackLayerId)) return [];
+    return rotoPlaybackFrameNumbers.map((appFrame) => ({ appFrame, frame: true }));
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({
     engineReady: Boolean(engine),
@@ -1880,30 +2338,59 @@ export function PhysicsPaintStudio() {
   }, [engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
-    rotoCachedPlayback.stop();
+    const navigationSyncStartedAtMs = performance.now();
+    const destinationKind = launchContext
+      ? physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind ?? 'none'
+      : 'no-launch';
+    // A new navigation resets the status capsule: the previous operation's
+    // rejection/success text no longer applies once the playhead moves, so the
+    // capsule falls back to the ambient frame context ("Empty frame • Frame N").
+    setApplyStatus('idle');
+    setApplyMessage(null);
+    // 260902-cfa (D-02): a seek-while-playing navigation keeps the playback
+    // timer running through the flush and re-anchors audio at the new cursor
+    // (rotoCachedPlayback.seek below); an idle seek keeps the current no-op
+    // stop (the monitor stop funnel is idempotent).
+    const wasPlaying = rotoCachedPlayback.isActive;
+    if (!wasPlaying) {
+      rotoCachedPlayback.stop();
+    }
     // 38.1 D-05: begin the navigation generation BEFORE any await so a newer
     // navigation started during the flush supersedes this one.
     const generation = rotoNavigationGeneration.begin();
     if (launchContext) {
+      // 47 close-out: set the primary key selection SYNCHRONOUSLY, before the
+      // flush — the post-flush write ran after the paint, so the first click's
+      // selection was never visible (the 2-click bug) and a second click
+      // superseded the first navigation. The store read is synchronous; a
+      // superseded navigation re-sets it for the newer frame.
+      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
+      const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+      if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
+      const flushFinalizationsStartedAtMs = performance.now();
       engine?.flushPendingStrokeFinalizations();
-      // 38.1-07 D-03 (strengthened): INITIATE the save-before-leave flush
-      // WITHOUT awaiting. The flush operates on ALREADY-CAPTURED live-pixel
-      // transaction buffers and parent deliveries — it captures no engine
-      // pixels at await time, so the engine.clear() below cannot corrupt it.
-      // The flush is always initiated and always awaited afterward with the
-      // verbatim error path — never skipped, never weakened (save-before-leave,
-      // RESEARCH Pitfall 5).
+      recordPhysicsPaintPerformance({ stage: 'nav.flushStrokeFinalizations', category: 'sync-cpu', durationMs: performance.now() - flushFinalizationsStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
+      // 52.1 (paint-loss fix + scrub regression): snapshot the live canvas
+      // SYNCHRONOUSLY before engine.clear() so the flush's produce (which runs
+      // on the microtask) reuses this copy instead of re-reading the cleared
+      // canvas. The canvas paint below stays in the navigation intent tick —
+      // it must NOT block on the flush's encode + parent push, or the scrub
+      // release settle stalls (the "image scrub no work" regression).
+      const snapshotStartedAtMs = performance.now();
+      rotoPersistence.snapshotLivePixels(currentFrame);
+      recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
-      // 38.1 D-03 canvas-first: the engine paint issues NOW, in the navigation
-      // intent tick — zero intervening awaits since begin(), so the generation
-      // cannot be superseded before this paint (no pre-paint isLatest recheck).
       setCachedRotoReferenceUrl(null);
+      const clearAndLoadStartedAtMs = performance.now();
       if (engine) {
-        engine.clearPreviewBaseImage();
-        (engine as PreviewBackgroundEngine).resetBackground();
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       }
+      recordPhysicsPaintPerformance({ stage: 'nav.engineClearLoad', category: 'sync-cpu', durationMs: performance.now() - clearAndLoadStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
+      recordPhysicsPaintPerformance({ stage: 'nav.preAwait', category: 'sync-cpu', durationMs: performance.now() - navigationSyncStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
       try {
         await flushPromise;
       } catch {
@@ -1912,64 +2399,187 @@ export function PhysicsPaintStudio() {
         return false;
       }
       // 38.1 D-05: superseded navigation — a newer intent owns the canvas. The
-      // same-tick paint above already happened (the approved D-03 trade), but
-      // a superseded navigation never propagates and never repaints.
+      // paint above already happened, but a superseded navigation never
+      // propagates and never repaints.
       if (!rotoNavigationGeneration.isLatest(generation)) return false;
       // 38.1-07: post-flush neighbor pickup — a generated destination repaints
       // once so it picks up the just-flushed neighbor key pixels. The kind
       // check reads the O(1) cached projection — never
       // getRotoPhysicalRenderSource, which would run the interpolation render.
-      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId)?.cells[frame]?.kind === 'generated') {
+      // 47 close-out UAT round 9: read the LIVE active track — after a track
+      // switch the launch snapshot still points at the previous track.
+      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind === 'generated') {
+        const postFlushRepaintStartedAtMs = performance.now();
         setCachedRotoReferenceUrl(null);
-        engine.clearPreviewBaseImage();
-        (engine as PreviewBackgroundEngine).resetBackground();
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
         loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        recordPhysicsPaintPerformance({ stage: 'nav.postFlushRepaint', category: 'sync-cpu', durationMs: performance.now() - postFlushRepaintStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       }
-    }
-    if (launchContext) {
-      const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, frame);
-      const nextSelectedKeyId = selectedRecord?.keyId ?? null;
-      if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
-      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, selectedKeyId.value, frame);
     }
     // 38.1 D-04: the startFrame update — the full-Studio-render driver via
     // currentFrame — is rAF-batched so a click burst coalesces to at most one
     // Studio render per animation frame showing the LATEST frame.
     scheduleRotoStartFramePropagation(frame);
     pendingFrameSyncRef.current = frame;
+    const frameSyncStartedAtMs = performance.now();
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
+    recordPhysicsPaintPerformance({ stage: 'nav.frameSync', category: 'async-elapsed', durationMs: performance.now() - frameSyncStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
+    // 260902-cfa (D-02): the single audio funnel for the seek path — active →
+    // re-anchor + playAtCursor full audio seek-restart at the new cursor;
+    // idle → positionedAt silent re-anchor. D-02 amendment: while the ruler
+    // scrub gesture is armed, the idle case routes to scrub (audible snippet
+    // through the monitor) instead of the silent seek. No other audio wiring
+    // lives here.
+    if (scrubActiveRef.current) {
+      rotoCachedPlayback.scrub(frame);
+    } else {
+      rotoCachedPlayback.seek(frame);
+    }
     return true;
   }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
+  // active track can change with no runtime content mutation (row click,
+  // addTrack, duplicateTrack) and its visibility can flip through
+  // setTrackVisible — both change the displayed frame without touching the
+  // runtime content revisions. This effect re-resolves the reference for the
+  // new display state (active track + hide/solo truth table); plain store
+  // mutations (rename, opacity) hit the same clock but keep the display state
+  // and no-op. The mount run no-ops on the engine: the engine-ready path loads
+  // the current frame through the live active track.
+  const lastReferenceDisplayStateRef = useRef<string | null>(null);
+  // 48-06 (UAT-A): the last track the frame-indexed edit state was built for.
+  const lastEditStateTrackIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const lc = launchContextRef.current;
+    if (!lc?.layerId) return;
+    const trackId = studioActiveTrackId();
+    if (!trackId) return;
+    const visible = resolvePhysicPaintTrackVisibility(lc.layerId, trackId);
+    const displayState = `${trackId}:${visible ? 'visible' : 'hidden'}`;
+    if (displayState === lastReferenceDisplayStateRef.current) return;
+    lastReferenceDisplayStateRef.current = displayState;
+    // 48-06 (UAT-A): the frame-indexed edit state (frameStates, preview/captured/
+    // confirmed frames, dirty/editable sets, live-overlay counts, cached repaint
+    // base) holds TRACK-scoped content in studio-wide buffers. An in-place
+    // active-track switch (row click, cross-track click, add, duplicate) must
+    // reset it exactly like a launch replacement does — otherwise the next
+    // physical edit's ownership rebuild reads the previous track's frames as
+    // unowned and fails closed ("Frame-indexed child state is not completely
+    // owned by the pre-state real-key identities"), and the failed edit's
+    // recovery lease then disables every paint tool. A visibility flip of the
+    // SAME track keeps the buffers (same content authority, same track).
+    if (lastEditStateTrackIdRef.current !== trackId) {
+      const hadPreviousTrack = lastEditStateTrackIdRef.current !== null;
+      lastEditStateTrackIdRef.current = trackId;
+      if (hadPreviousTrack) {
+        rotoEditBuffer.resetForLaunch();
+        rotoPersistence.confirmedFramesRef.current = new Map();
+        rotoEditableFramesRef.current = [];
+        cachedRotoReferenceUrlRef.current = null;
+        cachedRotoRepaintBaseFrameRef.current = null;
+        setCachedRotoRepaintBaseFrame(null);
+      }
+    }
+    const engine = engineRef.current as PreviewBackgroundEngine | null;
+    setCachedRotoReferenceUrl(null);
+    if (engine) {
+      (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+      engine.resetBackground(true);
+      engine.clear();
+    }
+    // A hidden active track stays a blank canvas (hide/solo truth table); any
+    // other switch reloads the current frame through the newly active track.
+    if (visible) {
+      loadCachedRotoReferenceFrame(currentFrame, engine);
+    }
+    // Re-seed the studio selection on the newly active track at the cursor —
+    // the same resets the launch-replacement path applies, for an in-place
+    // track switch (a stale key/rail selection must never leak across tracks).
+    // 47 close-out: a cross-track click applied its selection synchronously in
+    // the click handler — reseeding to the OLD cursor would overwrite it, so
+    // the ref guard skips the reseed for exactly this switch commit.
+    if (crossTrackSelectionPendingRef.current) {
+      crossTrackSelectionPendingRef.current = false;
+      return;
+    }
+    const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(lc.layerId, trackId, currentFrame);
+    const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+    if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
+    physicPaintStore.setRotoPhysicalSelection(lc.layerId, trackId, selectedKeyId.value, currentFrame);
+    selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
+    selectionAnchorKeyId.value = selectedKeyId.value;
+    rotoSpacingSelection.value = null;
+    railSetSelection.value = null;
+    selectedLoopClipId.value = null;
+    selectedLoopClipIds.value = [];
+    selectedRotoKeyRail.value = null;
+    loopSelectionAnchorId.value = null;
+    activeLinkedLoopClipId.value = null;
+    // The lane's cached-frame fills are track-scoped too: the synchronous
+    // guard above useRotoTimelineModel owns latestRotoFramesRef on the switch
+    // render (47 close-out UAT round 9 — no one-render stale paint).
+  }, [efxPaintVersion.value, currentFrame, loadCachedRotoReferenceFrame, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
     restoreFrame: (effect) => {
       const frame = effect.restore.frame;
       // 38.1 D-03/D-04: canvas paint first within this flow; the startFrame
       // update propagates through the same rAF scheduler as navigation.
-      if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+      if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) {
+        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        // 52.1 fresh-frame warm: after the applied base's decode+drawImage lands,
+        // drain the cold surface upload in the idle so the first stroke never
+        // flushes it mid-paint (the fast-chained 2nd-stroke ~380ms freeze).
+        const warmThenUnlock = async () => {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          (engine as unknown as { warmCanvasSurfaces?: () => void }).warmCanvasSurfaces?.();
+          // Blank (just-activated) keys are cold — hold the pen so the first
+          // stroke doesn't flush the fresh surfaces mid-paint (user's "+key then
+          // wait" recipe for the paint-without-wait case).
+          if (effect.restore.kind === 'blank-real-key') {
+            setApplyMessage('Préparation du canevas…');
+            warmProgress.value = 0;
+            const warmStartedAt = performance.now();
+            const warmTick = () => {
+              const elapsed = performance.now() - warmStartedAt;
+              const next = Math.min(100, Math.round((elapsed / FRESH_FRAME_WARM_MS) * 100));
+              warmProgress.value = next;
+              if (next < 100) requestAnimationFrame(warmTick);
+            };
+            requestAnimationFrame(warmTick);
+            await (engine as unknown as { lockInputForWarm?: (ms: number) => Promise<void> }).lockInputForWarm?.(FRESH_FRAME_WARM_MS);
+            warmProgress.value = 100;
+            setApplyMessage(null);
+            window.setTimeout(() => { if (warmProgress.peek() === 100) warmProgress.value = 0; }, 300);
+          }
+        };
+        void warmThenUnlock();
+      }
       else if (engine && effect.restore.kind === 'clear-blank') {
-        engine.clearPreviewBaseImage();
-        (engine as PreviewBackgroundEngine).resetBackground();
+        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+        (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
       }
       scheduleRotoStartFramePropagation(frame);
     },
     clearCanvas: (frame) => {
       if (!engine || frame !== currentFrame) return;
-      engine.clearPreviewBaseImage();
-      (engine as PreviewBackgroundEngine).resetBackground();
+      (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
+      (engine as PreviewBackgroundEngine).resetBackground(true);
       engine.clear();
     },
     navigate: navigateToSyncedPhysicalFrame,
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
   });
-  const rotoMoveHistory = useRotoPhysicalEditHistory<SerializedProject>({
+  const rotoMoveHistory = useRotoPhysicalEditHistory<EfxPaintDocument>({
     identity: launchContext ? {
       launchOperationId: launchContext.operationId,
       layerId: launchContext.layerId,
       projectContextId: launchContext.project?.contextId ?? null,
       capacity: rotoPhysicalCapacity,
+      trackId: studioActiveTrackId(),
     } : null,
     availability: historyAvailability,
     coordinator: {
@@ -1978,21 +2588,21 @@ export function PhysicsPaintStudio() {
       acceptedOutput: physicalEditCoordinator.acceptedOutput,
     },
     recordsPort: {
-      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
-      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
-      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
-      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
-      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()),
+      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
+      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()),
+      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
+      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
-        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, keyIds)
+        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId(), keyIds)
       ),
-      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
+      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, studioActiveTrackId(), loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
     getLiveSourceSnapshot: () => {
       const liveLaunch = launchContextRef.current;
       const layerId = liveLaunch?.layerId ?? '';
-      const records = layerId ? physicPaintStore.getRotoRealKeyRecords(layerId) : [];
+      const records = layerId ? physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()) : [];
       const liveSelectedKeyId = selectedKeyId.peek();
       const selectedRecord = liveSelectedKeyId === null
         ? null
@@ -2003,18 +2613,18 @@ export function PhysicsPaintStudio() {
         projectContextId: liveLaunch?.project?.contextId ?? null,
         records,
         groupOverrideRecords: layerId
-          ? physicPaintStore.getRotoGroupOverrideRecords(layerId)
+          ? physicPaintStore.getRotoGroupOverrideRecords(layerId, studioActiveTrackId())
           : [],
         interpolation: layerId
-          ? physicPaintStore.getRotoPhysicalInterpolationState(layerId)
+          ? physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId())
           : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
         loopClips: layerId
-          ? physicPaintStore.getRotoPhysicalLoopClips(layerId)
+          ? physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId())
           : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
         incomingInterpolationBreakKeyIds: layerId
-          ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)
+          ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId())
           : [],
-        capacity: layerId ? physicPaintStore.getRotoPhysicalCapacity(layerId) : 0,
+        capacity: layerId ? physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()) : 0,
         selectedKeyId: selectedRecord?.keyId ?? null,
         selectedAppFrame: selectedRecord?.appFrame ?? null,
         currentAppFrame: liveLaunch?.startFrame ?? 0,
@@ -2042,6 +2652,39 @@ export function PhysicsPaintStudio() {
     if (changed) rotoScript.notifySourceRevision();
     return changed;
   }, [rotoMoveHistoryRedo, rotoScript]);
+
+  // 52.1 (undo/redo shortcut): Cmd+Z / Cmd+Shift+Z are intercepted by the native
+  // macOS menu at the Cocoa layer and emitted as menu:undo / menu:redo events —
+  // the Studio's onKeyDown never sees them. Listen for those events and route to
+  // the Studio's own undo/redo, gated on document.hasFocus() so the main window's
+  // listener (which also receives the broadcast) never double-fires.
+  useEffect(() => {
+    let disposed = false;
+    let unlistenUndo: (() => void) | undefined;
+    let unlistenRedo: (() => void) | undefined;
+    const cleanup = () => {
+      unlistenUndo?.();
+      unlistenRedo?.();
+      unlistenUndo = undefined;
+      unlistenRedo = undefined;
+    };
+    const install = async () => {
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        if (typeof eventApi.listen !== 'function') return;
+        unlistenUndo = await eventApi.listen('menu:undo', () => { if (document.hasFocus()) void undo(); });
+        unlistenRedo = await eventApi.listen('menu:redo', () => { if (document.hasFocus()) void redo(); });
+        if (disposed) cleanup();
+      } catch {
+        // menu events are macOS-only; ignore elsewhere
+      }
+    };
+    void install();
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [undo, redo]);
 
   const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
   const { getStrokeMetadata } = usePhysicsPaintLaunchIntegration({
@@ -2193,6 +2836,9 @@ export function PhysicsPaintStudio() {
         && currentLaunch.startFrame === acceptedSelectedAppFrame
         && currentEngine
       ) {
+        // Synchronous (52.1): this reload is also what refreshes the cached
+        // repaint base the next stroke's capture merges onto — deferring it
+        // stranded the base and forced a full-frame re-encode per stroke.
         loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, currentEngine as PreviewBackgroundEngine);
       }
       if (transition === 'accepted' && accepted && accepted.operationId === detail?.operationId) {
@@ -2201,6 +2847,48 @@ export function PhysicsPaintStudio() {
       return transition;
     },
   };
+  // 47-03 Task 2: track CRUD handlers the keyboard shortcuts share with the
+  // pointer paths (strip '+' button / duplicate icon). Each routes through its
+  // store op fail-closed on the layer; refusals publish to the status capsule
+  // (47-02 publishStatus channel) so the user sees why the timeline did not
+  // change. Newly added / duplicated tracks become active so they are
+  // immediately visible in the preview.
+  const handleAddTrack = useCallback(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = addTrack(layerId);
+    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    // 47-03 Task 2: the keyboard shortcut path (Cmd/Ctrl+Shift+N) routes
+    // through the same handle — failures must reach the status capsule just
+    // like the strip's rename/delete rejections (47-02 publishStatus channel).
+    else setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleDuplicateTrack = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = duplicateTrack(layerId, trackId);
+    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    else setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  // 49-06 UAT: the timeline delete path for a selected Background clip — the
+  // Delete/Backspace shortcut AND the selected-rail trash button route here.
+  // Mirrors the section's dialog-free D-08 delete: call the store op, clear
+  // the selection on success so the Track section is reachable again.
+  const handleDeleteSelectedBackgroundClip = useCallback(() => {
+    const layerId = launchContext?.layerId;
+    const clipId = selectedBackgroundClipId.peek();
+    if (!layerId || clipId === null) return;
+    const result = deleteBackgroundClip(layerId, clipId);
+    if (result.ok) {
+      // 49-06 UAT: the delete is one unified-ledger undo step (BKG-08, D-08) —
+      // Cmd/Ctrl+Z restores the clip by reference, Cmd/Ctrl+Shift+Z re-deletes.
+      if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+      selectedBackgroundClipId.value = null;
+      rightPanelToolTab.value = 'track';
+    } else {
+      setApplyMessage(result.reason === 'clip-not-found' ? "Couldn't delete the clip." : result.reason);
+    }
+  }, [launchContext?.layerId]);
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
     state: {
       currentFrame,
@@ -2209,19 +2897,31 @@ export function PhysicsPaintStudio() {
       // 43.4 defect 9: selection-gated real-key cycling activates only when a
       // real key is in the primary selection.
       hasSelectedRotoKey: selectedKeyId.value !== null,
+      // 49-06 UAT: a selected Bg rail owns Delete/Backspace (selection-driven).
+      hasSelectedBackgroundClip: selectedBackgroundClipId.value !== null,
     },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
       undo,
       redo,
+      // 47-03 Task 2: guarded track CRUD shortcuts — addTrack is the shared
+      // pointer-path handler; duplicateTrack reads the ACTIVE track from the
+      // document (the shortcut carries no trackId) and reuses the pointer-path
+      // handler so both surfaces publish identically.
+      addTrack: handleAddTrack,
+      duplicateTrack: () => {
+        const layerId = launchContext?.layerId;
+        const trackId = layerId ? getEfxPaintDocument(layerId)?.activeTrackId : undefined;
+        if (layerId && trackId) handleDuplicateTrack(trackId);
+      },
       selectAdjacentRotoKey: (direction) => {
         const layerId = launchContext?.layerId;
         const currentKeyId = selectedKeyId.peek();
         if (!layerId || currentKeyId === null) return;
-        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, currentKeyId);
+        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, studioActiveTrackId(), currentKeyId);
         if (!currentRecord) return;
         const adjacent = findAdjacentRealKeyFrame(
-          physicPaintStore.getRotoRealKeyRecords(layerId).map((record) => record.appFrame),
+          physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()).map((record) => record.appFrame),
           currentRecord.appFrame,
           direction,
         );
@@ -2231,11 +2931,25 @@ export function PhysicsPaintStudio() {
       cutRotoKey: cutRotoFrame,
       pasteRotoKey: pasteRotoFrame,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
+      // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
+      deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
       selectAllRotoKeys,
       disarmPushTool,
       // 43.6-06 (D-04): the solo disarm layer sits between the push disarm
       // layer and selection collapse in the Escape chain.
       disarmSolo,
+      // 50-05 (Task 3, D-13): Escape re-locks the reference transform from
+      // anywhere in reference-transform mode. Returns true ONLY when the
+      // transform was actually unlocked (one Escape handles at most one layer).
+      relockReferenceTransform: () => {
+        const layerId = launchContext?.layerId;
+        if (!layerId) return false;
+        const document = getEfxPaintDocument(layerId);
+        const track = document?.photoReference;
+        if (!track || track.transformLocked) return false;
+        setPhotoReferenceTransformLocked(layerId, true);
+        return true;
+      },
       collapseRotoSelection: () => {
         // 43.6 D-04: the rail-set is the top selection layer — one Escape
         // collapses the set without touching the key selection (Pitfall 2).
@@ -2272,7 +2986,7 @@ export function PhysicsPaintStudio() {
     isPlaying,
     onion,
     realKeyRecords: rotoKeyRecords,
-    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, appFrame) : null,
+    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,
     previewFrames: rotoOnionPreviewFrames,
     dirtyFrames: rotoOnionDirtyFrames,
   }), [currentFrame, isPlaying, onion, rotoKeyRecords, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
@@ -2281,28 +2995,30 @@ export function PhysicsPaintStudio() {
     hasLaunchContext: Boolean(launchContext),
     frames: rotoCachedPlaybackAvailableFrames,
   });
-  const { updateRotoInterpolationSettings } = useRotoInterpolationController({
-    launchContext,
-    interpolation: rotoInterpolationState,
-    records: rotoKeyRecords,
-    selectedKeyId: selectedKeyId.value,
-    selectedAppFrame: selectedKeyId.value === null ? null : currentFrame,
-    pendingOperationId: physicalEditCoordinator.pendingOperationId,
-    executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
-    isMutationLocked: isPhysicalMutationLocked,
-  });
-  const updateRotoInterpolationSettingsRef = useRef(updateRotoInterpolationSettings);
-  updateRotoInterpolationSettingsRef.current = updateRotoInterpolationSettings;
   const requestRotoFrameNavigationRef = useRef(requestRotoFrameNavigation);
   requestRotoFrameNavigationRef.current = requestRotoFrameNavigation;
   const rotoKeyRecordsRef = useRef(rotoKeyRecords);
   rotoKeyRecordsRef.current = rotoKeyRecords;
-  const handleRotoInterpolationEnabledChange = useCallback((enabled: boolean) => {
-    void updateRotoInterpolationSettingsRef.current({ enabled });
-  }, []);
+  // 260911-s1j: the Tools popover's mode dropdown writes every track's
+  // physical interpolation state (each track's own enabled flag preserved)
+  // through the same direct store op the per-row blend button uses; the old
+  // active-track coordinator path and the popover's on/off toggle are retired
+  // (the row button owns on/off). 260911-s1j follow-up: the dropdown itself is
+  // REMOVED from the Tools popover (mode fixed on Frame duplicate — the store
+  // coerces every blend state to duplicate); this handler and its wiring stay
+  // retained for the re-introduction.
   const handleRotoInterpolationModeChange = useCallback((mode: PhysicPaintRotoInterpolationState['mode']) => {
-    void updateRotoInterpolationSettingsRef.current({ mode });
-  }, []);
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    if (physicalEditCoordinator.pendingOperationId.value !== null) return;
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return;
+    for (const track of document.tracks) {
+      const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id);
+      if (current.mode === mode) continue;
+      physicPaintStore.setRotoPhysicalInterpolationState(layerId, track.id, { enabled: current.enabled, mode });
+    }
+  }, [launchContext?.layerId]);
   const handleSelectRotoSpacingProxy = useCallback((
     proxy: PhysicsPaintRotoSpacingProxy,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
@@ -2388,10 +3104,79 @@ export function PhysicsPaintStudio() {
     setApplyMessage(message);
     console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
   }, []);
+  const rotoCachedScrub = rotoCachedPlayback.scrub;
   const handleNavigateToSyncedFrame = useCallback((frame: number) => {
+    // G-52-9 scrub drag-gate: while the ruler scrub gesture is armed, a seek
+    // moves ONLY the playhead feed (the strip's playhead bar leaf) plus the
+    // audible scrub snippet. The flush, canvas repaint, startFrame propagation
+    // (the full-Studio render), selection reseed, and the main-window frame
+    // sync all wait for the release settle in onScrubEnd — a mid-drag seek
+    // never re-renders the Studio/strip and never touches the main timeline.
+    if (scrubActiveRef.current) {
+      rotoScrubFrameSignal.value = frame;
+      rotoCachedScrub(frame);
+      // Realtime image preview: paint the cached frame for the scrubbed cell
+      // WITHOUT the save-before-leave flush (that stays on the release settle).
+      // The pointer-down seek already snapshotted + flushed the origin frame's
+      // paint, so this clear cannot drop it.
+      loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null);
+      return;
+    }
+    // Non-scrub navigation clears any settled scrub feed left sticky while the
+    // release-settle propagation caught up (see the startFrame effect below).
+    if (rotoScrubFrameSignal.peek() !== null) rotoScrubFrameSignal.value = null;
     publishOperationResult(null);
     void requestRotoFrameNavigationRef.current(frame);
-  }, [publishOperationResult]);
+  }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame]);
+  // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
+  // or a rail on a NON-active row activates the track and selects the target
+  // in the SAME click. The selection is applied SYNCHRONOUSLY in the click
+  // handler — the deferred seam effect ran after the paint, so the first
+  // click's selection was never visible (the 2-click bug). The ref guard
+  // keeps the track-switch reset effect from reseeding over it.
+  const handleSelectTrackFrame = useCallback((trackId: string, frame: number) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    setActiveTrackId(layerId, trackId);
+    crossTrackSelectionPendingRef.current = true;
+    handleNavigateToSyncedFrame(frame);
+    railSetSelection.value = null;
+    clearRotoLoopSelection();
+    selectedRotoKeyRail.value = null;
+    rotoSpacingSelection.value = null;
+    const key = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
+    selectedKeyId.value = key?.keyId ?? null;
+    selectedKeyIds.value = key ? [key.keyId] : [];
+    selectionAnchorKeyId.value = key?.keyId ?? null;
+    physicPaintStore.setRotoPhysicalSelection(layerId, trackId, key?.keyId ?? null, frame);
+  }, [clearRotoLoopSelection, handleNavigateToSyncedFrame, launchContext?.layerId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedRotoKeyRail, selectionAnchorKeyId]);
+  const handleSelectTrackRail = useCallback((trackId: string, rail: TrackRowRailSelection) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    setActiveTrackId(layerId, trackId);
+    crossTrackSelectionPendingRef.current = true;
+    if (rail.kind === 'key') {
+      handleSelectRotoKeyRail({ firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }, 'plain');
+      return;
+    }
+    // Loop rail: apply the plain single-rail selection directly. The canonical
+    // handler validates the loopId against the ACTIVE track's loop clips, but
+    // the click just switched the track — the loopId comes from this row's own
+    // loop line, so it is guaranteed present on the newly active track.
+    railSetSelection.value = null;
+    disarmSolo();
+    selectedRotoKeyRail.value = null;
+    selectedKeyId.value = null;
+    selectedKeyIds.value = [];
+    selectionAnchorKeyId.value = null;
+    rotoSpacingSelection.value = null;
+    if (launchContext) {
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackIdOfLaunch(launchContext), null, currentFrame);
+    }
+    selectedLoopClipIds.value = [rail.loopId];
+    loopSelectionAnchorId.value = rail.loopId;
+    selectedLoopClipId.value = rail.loopId;
+  }, [clearRotoLoopSelection, disarmSolo, handleSelectRotoKeyRail, launchContext?.layerId, loopSelectionAnchorId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedLoopClipId, selectedLoopClipIds, selectedRotoKeyRail, selectionAnchorKeyId]);
   const navigateLinkedGroup = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
     const target = linkedRotoGroups[targetIndex];
@@ -2428,15 +3213,15 @@ export function PhysicsPaintStudio() {
   const updatePanelMotion = useCallback((motion: { strokeDeformation: number; strokePosition: number }) => {
     const launch = launchContextRef.current;
     if (!launch) return;
-    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId);
-    physicPaintStore.setRotoInterpolationSettings(launch.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
+    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId, studioActiveTrackId());
+    physicPaintStore.setRotoInterpolationSettings(launch.layerId, studioActiveTrackId(), { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   }, []);
   const layout = layoutPropsMemo.resolve([rightPanelCollapsed, handlePhysicsPaintKeyDown, handleSetRightPanelCollapsed], () => ({
     rightPanelCollapsed,
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, setBackground, setPaperGrain, setGrainStrength], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, setPaperGrain, setGrainStrength], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     background: settings.background,
@@ -2446,7 +3231,7 @@ export function PhysicsPaintStudio() {
     disabled: staticControlsLocked,
     onBrushSizeChange: setBrushSize,
     onOpacityChange: setBrushOpacity,
-    onBackgroundChange: setBackground,
+    onBackgroundChange: handleBackgroundChange,
     onPaperGrainChange: setPaperGrain,
     onGrainStrengthChange: setGrainStrength,
   }));
@@ -2479,7 +3264,60 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  // 49-06 (S5): the Background Clip section ports are identity-stable — the
+  // store ops and the imageStore resolver never change, so the ref is created
+  // once and the memo deps only need the selection signal (a rail click flips
+  // the section through the 38-11 signal-bypasses-memo subscription).
+  const backgroundClipSectionPortsRef = useRef({
+    getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
+    setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),
+    // 49-06 (UAT round 9): the resize % control — contain-fit scale percentages.
+    setScale: (layerId: string, clipId: string, scale: FrameLoopClipScale) => setBackgroundClipScale(layerId, clipId, scale),
+    deleteClip: (layerId: string, clipId: string) => {
+      // 49-06 UAT: the sidebar trash delete rides the same unified-ledger
+      // undo step as the Delete/Backspace shortcut (BKG-08, D-08).
+      const result = deleteBackgroundClip(layerId, clipId);
+      if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+      return result;
+    },
+    // 49-06 (UAT round 7): Replace opens the picker targeting the selected clip.
+    replaceSource: (_layerId: string, clipId: string) => {
+      backgroundReplaceTargetClipId.value = clipId;
+      void backgroundPicker.openPicker();
+    },
+    resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
+  });
+  // 50-UAT (modal redesign): the Photo Reference dialog ports are identity-
+  // stable — the store ops and the imageStore resolver never change, so the ref
+  // is created once and the dialog memo deps stay small (the dialog re-resolves
+  // through efxPaintVersion on every document mutation).
+  const photoReferenceSectionPortsRef = useRef({
+    getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
+    setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity),
+    setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked),
+    setVisible: (layerId: string, visible: boolean) => setPhotoReferenceVisible(layerId, visible),
+    clearReference: (layerId: string) => {
+      const result = clearPhotoReference(layerId);
+      if (result.ok && result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+      return result;
+    },
+    resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
+  });
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
+    // 47-03 TML-04: the Track section always shows the ACTIVE track — the
+    // document's activeTrackId authority (not the launch track) — so a
+    // row-header click re-resolves the memo through efxPaintVersion and the
+    // panel re-renders to the new track's name/opacity/blend.
+    const document = launchContext?.layerId ? getEfxPaintDocument(launchContext.layerId) : undefined;
+    const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
+    const commitTrackDisplay = (mutate: (layerId: string, trackId: string) => TrackMutationResult) => {
+      const layerId = launchContext?.layerId;
+      const trackId = layerId ? getEfxPaintDocument(layerId)?.activeTrackId : undefined;
+      if (!layerId || !trackId) return;
+      const result = mutate(layerId, trackId);
+      if (!result.ok) setApplyMessage(result.error);
+    };
+    return {
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -2495,6 +3333,21 @@ export function PhysicsPaintStudio() {
     playWiggle: rotoLegacyInterpolationSettings
       ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position }
       : { strokeDeformation: 0, strokePosition: 0 },
+    trackName: activeTrack?.name ?? 'Paint 1',
+    trackOpacity: activeTrack?.opacity ?? 1,
+    trackBlendMode: activeTrack?.blendMode ?? 'normal',
+    onTrackOpacityChange: (opacity: number) => commitTrackDisplay((layerId, trackId) => setTrackOpacity(layerId, trackId, opacity)),
+    onTrackBlendChange: (mode: BlendMode) => commitTrackDisplay((layerId, trackId) => setTrackBlend(layerId, trackId, mode)),
+    // 49-06 (S5): the Background Clip section props — the selection signal is
+    // read by the right panel (38-11 signal-bypasses-memo) to flip the Track
+    // tab; the ports are identity-stable so the memo stays cacheable.
+    backgroundClipSection: launchContext?.layerId
+      ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
+      : undefined,
+    // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
+    // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
+    // to Track option and a Bg rail selection opens the Background option tab.
+    toolTab: rightPanelToolTab,
     onColorChange: setBrushColor,
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,
@@ -2523,12 +3376,11 @@ export function PhysicsPaintStudio() {
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
-      onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); },
       onCopyScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
-      onApplyScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
-  }));
+    };
+  });
   const playScriptConfirmationOpen = rotoPlayScript.confirmationOpen.value;
   const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playScriptConfirmationOpen, playButtonRef, settings.color], () => ({
     playScript: rotoPlayScript,
@@ -2566,7 +3418,7 @@ export function PhysicsPaintStudio() {
     if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
     if (acceptedTarget && !acceptedTarget.publishPixels) return;
     const appFrame = acceptedTarget?.appFrame ?? currentFrame;
-    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
+    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
     const completedTarget = acceptedTarget?.keyId
       ? { kind: 'ordinary-key' as const, keyId: acceptedTarget.keyId, appFrame }
       : document
@@ -2579,7 +3431,13 @@ export function PhysicsPaintStudio() {
         ? completedTarget.expectedKeyId
         : null;
     const pendingFirstPaintTarget = pendingFirstPaintTargetRef.current;
-    const liveAlphaCanvas = isEmpty ? null : mutationEngine.copyLiveAlphaCanvas();
+    // 52.1 (2nd-stroke freeze): do NOT snapshot the engine canvas here — the
+    // eager copyLiveAlphaCanvas() synchronously flushes every pending stroke
+    // finalization (~500-1900ms full-raster drain) at the very moment the user
+    // starts the next stroke. Pass a factory instead; the capture resolve it
+    // inside its settled/idle produce, where the bounded rAF finalize loop has
+    // already applied the pending rasters (queue empty -> fast).
+    const liveAlphaCanvas = isEmpty ? null : (() => mutationEngine.copyLiveAlphaCanvas());
     void (async () => {
       let keyId = initialKeyId;
       if (!keyId && completedTarget.kind === 'empty') {
@@ -2652,43 +3510,208 @@ export function PhysicsPaintStudio() {
   const handleCanvasCompletedMutation = useCallback((mutation: CompletedPaintMutation, mutationEngine: EfxPaintEngine) => {
     canvasCompletedMutationImplRef.current(mutation, mutationEngine);
   }, []);
+  const handleCanvasInputActivity = useCallback((kind: 'down' | 'move' | 'up' | 'cancel', pointerId: number) => {
+    if (kind === 'down') beginInteraction(pointerId);
+    else if (kind === 'move') markInteractionActive();
+    else endInteraction(pointerId);
+  }, []);
   const cachedRotoPlaybackComposition = useMemo(() => launchContext ? {
     width: projectCanvasWidth,
     height: projectCanvasHeight,
     background: buildRotoBackgroundMetadata(settings),
   } : null, [launchContext?.operationId, projectCanvasWidth, projectCanvasHeight, settings.background, settings.paperGrain, settings.grainStrength]);
-  const onionOverlay = useMemo(() => onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
-    <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={frame.dataUrl} style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }} alt="" />
-  )) : null, [onion.enabled, onion.opacity, onionPreviewFrames]);
+  const onionOverlayUrlsRef = useRef<string[]>([]);
+  const onionOverlay = useMemo(() => {
+    onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    onionOverlayUrlsRef.current = [];
+    if (!onion.enabled || onionPreviewFrames.length === 0) return null;
+    return onionPreviewFrames.map((frame) => {
+      const url = URL.createObjectURL(new Blob([frame.bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }));
+      onionOverlayUrlsRef.current.push(url);
+      return (
+        <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={url} style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }} alt="" />
+      );
+    });
+  }, [onion.enabled, onion.opacity, onionPreviewFrames]);
+  useEffect(() => () => {
+    onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    onionOverlayUrlsRef.current = [];
+  }, []);
   const rotoInputDisabledMessage = currentFrameIsGeneratedRoto
     ? `Generated frame ${currentFrame} is render-only.`
-    : mutationLocked
-      ? 'Finish the current Roto script operation.'
+    : currentFrameSelectionKind === 'empty'
+      ? 'Créez une key (+) avant de peindre sur ce frame.'
+      : mutationLocked
+        ? 'Finish the current Roto script operation.'
+        : undefined;
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value], () => {
+    // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
+    // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
+    // active track out of the monitor's composite, so without this the Studio
+    // never shows the edited track's display properties. efxPaintVersion in
+    // the deps re-resolves the memo on setTrackOpacity/setTrackBlend.
+    const mountLayerId = launchContext?.layerId;
+    const mountDocument = mountLayerId ? getEfxPaintDocument(mountLayerId) : null;
+    const mountActiveTrack = mountDocument?.tracks.find((track) => track.id === mountDocument.activeTrackId);
+    return {
+      width: canvasWidth,
+      height: canvasHeight,
+      paperTextureScale,
+      onEngineReady: handleCanvasEngineReady,
+      onCanvasMounted: setCanvasMounted,
+      onNativePenInputReady: handleNativePenInputReady,
+      onCompletedMutation: handleCanvasCompletedMutation,
+      onPerformanceSample: recordEnginePerformance,
+      onInputActivity: handleCanvasInputActivity,
+      beforeEngineDestroy: rotoScript.prepareEngineDisposal,
+      getStrokeMetadata,
+      trackOpacity: mountActiveTrack?.opacity ?? 1,
+      trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',
+    };
+  });
+  // 48-05 (D-09): the missing-source capsule publication handler — maps the
+  // program monitor's compare-then-write summary to the existing red-warning
+  // status-capsule surface (the statusMessage/statusIsError bundle), naming the
+  // document track when resolvable and the id otherwise. A null summary restores
+  // the idle capsule. 48-06 (UAT-E): the monitor only ever publishes GENUINE
+  // dangling sources (non-empty missingRefs) — a track that merely has no
+  // content at the frame (normal end of rail) never raises the capsule. The
+  // monitor already dedupes steady/cleared state, so every call here is a
+  // genuine state transition (idempotent setter law; never a render-body write).
+  // Identity-stable per launch context — navigation re-runs the monitor's
+  // publish effect against the new document, which is a no-op when the missing
+  // state is unchanged.
+  const handleProgramMonitorMissingChange = useCallback((summary: EfxPaintProgramMonitorMissingSummary | null) => {
+    if (summary === null) {
+      setApplyStatus('idle');
+      setApplyMessage(null);
+      return;
+    }
+    const layerId = launchContext?.layerId ?? null;
+    const trackName = layerId
+      ? getEfxPaintDocument(layerId)?.tracks.find((track) => track.id === summary.firstTrackId)?.name
       : undefined;
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata], () => ({
-    width: canvasWidth,
-    height: canvasHeight,
-    paperTextureScale,
-    onEngineReady: handleCanvasEngineReady,
-    onCanvasMounted: setCanvasMounted,
-    onNativePenInputReady: handleNativePenInputReady,
-    onCompletedMutation: handleCanvasCompletedMutation,
-    onPerformanceSample: recordEnginePerformance,
-    beforeEngineDestroy: rotoScript.prepareEngineDisposal,
-    getStrokeMetadata,
-  }));
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount], () => ({
-    cachedRotoReferenceUrl,
-    cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
-    cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
-    cachedRotoPlaybackComposition,
-    inputDisabled: rotoInputDisabled,
-    inputDisabledMessage: rotoInputDisabledMessage,
-    onInputIntent: beginRotoFrameEdit,
-    onionOverlay,
-    canvasKey,
-    mount: canvasMount,
-  }));
+    setApplyStatus('error');
+    setApplyMessage(`Missing source on ${summary.missingCount} track(s) — first: ${trackName ?? summary.firstTrackId}`);
+  }, [launchContext, setApplyStatus, setApplyMessage]);
+  // 50-04 (S3): the reference missing-source capsule publication handler — maps
+  // the ghost layer's compare-then-write boolean to the existing red-warning
+  // status-capsule surface (D-04, Phase 48 D-09 family). A missing reference
+  // source (a track exists but the resolved source frame is null) raises the
+  // fixed copy; a resolved source or no track restores the idle capsule. The
+  // report is INDEPENDENT of the visibility preference — fail-closed reporting
+  // fires even when the overlay toggle is off. The ghost layer already dedupes
+  // steady/cleared state, so every call here is a genuine state transition
+  // (idempotent setter law; never a render-body write).
+  const handleReferenceMissingSourceChange = useCallback((missing: boolean) => {
+    if (missing) {
+      setApplyStatus('error');
+      setApplyMessage('Missing reference source — use Replace source to re-link.');
+    } else {
+      setApplyStatus('idle');
+      setApplyMessage(null);
+    }
+  }, [setApplyStatus, setApplyMessage]);
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
+    // 48-05 (D-05): the program monitor config — concrete values only. The
+    // monitor subscribes to the store version clocks in its OWN effect; this
+    // memo re-resolves on document changes (efxPaintVersion.value) so a
+    // row-click active-track switch re-targets the editing base promptly.
+    // 49-04 (UAT fix): settings.background is a dep so the checkerboard verdict
+    // re-resolves when the engine-side background mode changes.
+    const programMonitorLayerId = launchContext?.layerId ?? null;
+    const programMonitorActiveTrackId = programMonitorLayerId
+      ? getEfxPaintDocument(programMonitorLayerId)?.activeTrackId ?? null
+      : null;
+    // 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks
+    // the engine canvas by law, but the cleared engine surface can still carry
+    // the engine's own background paint and would occlude the program monitor
+    // beneath — the monitor owns the remaining visible tracks + the document
+    // fond. The flag mirrors the cached-roto-playback treatment: the engine
+    // canvases step aside (visibility: hidden) so the monitor owns the surface.
+    const engineSurfaceHidden = programMonitorLayerId !== null
+      && programMonitorActiveTrackId !== null
+      && !resolvePhysicPaintTrackVisibility(programMonitorLayerId, programMonitorActiveTrackId);
+    // 49-03 (D-11 consumption half): the monitor fond is the DOCUMENT FALLBACK —
+    // the same resolved instruction the flattened path uses (one authority, two
+    // consumers, Pitfall 1). The per-track roto background metadata fond walk is
+    // gone; the store resolves the fallback record to the fond instruction and
+    // this memo bridges it to the fond-layer metadata. The monitor reads the
+    // fond-LESS composite; this layer draws the paper beneath the isolated
+    // tracks group so the active track's CSS blend never meets it.
+    const fondInstruction = programMonitorLayerId
+      ? physicPaintStore.getDocumentFondInstruction(programMonitorLayerId)
+      : null;
+    const fondBackground = fondInstruction ? fondInstructionToFondMetadata(fondInstruction) : null;
+    // 49-03 (D-12): the transparency checkerboard shows ONLY when the effective
+    // fond is fully transparent for the current frame — transparent fallback
+    // (no fond instruction) AND the engine-side active background mode is
+    // transparent (settings.background — the fond=fallback mapping is not fully
+    // wired yet, so a paper/solid engine mode must suppress the checkerboard
+    // even while the document fallback is still transparent) AND no clip
+    // covering the frame (the gap verdict, consumed from the store's
+    // already-resolved background-frame plumbing, not a re-resolution). With a
+    // solid or paper fallback active the fond shows as today and the
+    // checkerboard layer is absent.
+    const showTransparencyCheckerboard = programMonitorLayerId !== null
+      && fondInstruction === null
+      && settings.background === 'transparent'
+      && physicPaintStore.getBackgroundFrameVerdict(programMonitorLayerId, currentFrame) === 'gap';
+    return {
+      cachedRotoReferenceUrl,
+      cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
+      cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
+      cachedRotoPlaybackComposition,
+      inputDisabled: rotoInputDisabled,
+      inputDisabledMessage: rotoInputDisabledMessage,
+      onInputIntent: beginRotoFrameEdit,
+      onionOverlay,
+      canvasKey,
+      mount: canvasMount,
+      engineSurfaceHidden,
+      fondBackground,
+      showTransparencyCheckerboard,
+      programMonitor: programMonitorLayerId ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying,
+        activeTrackId: programMonitorActiveTrackId,
+        width: canvasWidth,
+        height: canvasHeight,
+        playbackTick: rotoCachedPlayback.playbackTick,
+        onMissingSourcesChange: handleProgramMonitorMissingChange,
+      } : null,
+      // 50-04 (S3): the reference ghost monitor-paint layer — concrete values
+      // only. The ghost layer subscribes to the store version clocks in its OWN
+      // effect; this memo re-resolves on document changes (efxPaintVersion.value)
+      // so a source/opacity/transform/visibility change re-targets the draw. The
+      // zoom is the project→working scale (paperTextureScale) so the reference
+      // image (project resolution) fits the working canvas.
+      referenceGhost: programMonitorLayerId ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying,
+        width: canvasWidth,
+        height: canvasHeight,
+        zoom: paperTextureScale,
+        onMissingSourceChange: handleReferenceMissingSourceChange,
+      } : null,
+      // 50-05 (Task 2, S4): the reference transform handles overlay — concrete
+      // values only. The handles component subscribes to the store version
+      // clocks in its OWN effect; this memo re-resolves on document changes
+      // (efxPaintVersion.value) so a transform/lock change re-targets the
+      // overlay. The zoom is the project→working scale (paperTextureScale) so
+      // the handles overlay the ghost exactly (D-13).
+      referenceTransformHandles: programMonitorLayerId ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying,
+        width: canvasWidth,
+        height: canvasHeight,
+        zoom: paperTextureScale,
+      } : null,
+    };
+  });
   // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active
   // rail set the strip's Copy/Duplicate/Paste buttons reflect SET scope —
   // Copy and Duplicate enable on the EFFECTIVE rail-set scope (a single rail is
@@ -2710,6 +3733,600 @@ export function PhysicsPaintStudio() {
         hasCopiedRotoKey: rotoSession.copiedKey.value !== null,
       }
     : { actionAvailability: sessionKeyAvailability, hasCopiedRotoKey: rotoSession.copiedKey.value !== null };
+  // 47-01 mockup redesign: track CRUD + visibility intents (the add/duplicate
+  // handlers moved up to the keyboard wiring — the pointer paths and the
+  // guarded shortcuts share them). Each routes through its store op
+  // fail-closed on the layer; refusals publish to the status capsule so the
+  // user sees why the timeline did not change.
+  const handleToggleTrackVisible = useCallback((trackId: string, visible: boolean) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = setTrackVisible(layerId, trackId, visible);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleRenameTrack = useCallback((trackId: string, name: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = renameTrack(layerId, trackId, name);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  const handleDeleteTrack = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const preview = requestDeleteTrack(layerId, trackId);
+    if (!preview) { setApplyMessage('Could not delete track.'); return; }
+    if (preview.isLastTrack) {
+      setApplyMessage('A document must always have at least one Paint track.');
+      return;
+    }
+    const result = commitDeleteTrack(layerId, trackId, true);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  // 47-02 Task 2: 'S' solo toggle and header-drag reorder routing — both write
+  // the child document through the 47-01 store ops (setTrackSolo writes the
+  // solo display property; reorderTrack writes ONLY the order field, never the
+  // stable UUID — Pitfall 1).
+  const handleToggleSolo = useCallback((trackId: string, solo: boolean) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = setTrackSolo(layerId, trackId, solo);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  // 47 UAT + quick-260913-52r (D): the per-row frame-blending toggle flips the
+  // track's canonical interpolation state THROUGH THE PHYSICAL COORDINATOR —
+  // the only path that reaches the parent runtime (the apply/save authority)
+  // and therefore the save. The old direct physicPaint-store write shipped
+  // nowhere: the 52.1 push keys on efxPaintVersion (document structure), and
+  // the doc-sync mirror refuses the reference-shaped wire document (canonical
+  // revision mismatch). The interpolation op is active-track-scoped, so a
+  // non-active row's toggle focuses that row first (one synchronous store
+  // switch). Skipped while a physical edit is pending, like the toolbox
+  // toggle.
+  const handleToggleBlend = useCallback((trackId: string) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    if (physicalEditCoordinator.pendingOperationId.value !== null) return;
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return;
+    if (document.activeTrackId !== trackId) setActiveTrackId(layerId, trackId);
+    const trackDocument = physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
+    const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
+    const selectedKeyId = trackDocument?.selectedKeyId ?? null;
+    void physicalEditCoordinator.executePhysicalEdit({
+      operationKind: 'set-interpolation-enabled',
+      expectedLaunch: { operationId: launchContext.operationId, layerId },
+      records: physicPaintStore.getRotoRealKeyRecords(layerId, trackId),
+      targetInterpolation: { enabled: !current.enabled, mode: current.mode },
+      selectedKeyId,
+      selectedAppFrame: selectedKeyId === null ? null : (trackDocument?.cursorAppFrame ?? null),
+    });
+  }, [launchContext, physicalEditCoordinator]);
+  const handleReorderTrack = useCallback((trackId: string, newOrder: number) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = reorderTrack(layerId, trackId, newOrder);
+    if (!result.ok) setApplyMessage(result.error);
+  }, [launchContext?.layerId]);
+  // 47-01: the multi-track row bundle is document-derived. Reading
+  // `efxPaintVersion.value` subscribes the bundle to every store mutation
+  // (setActiveTrackId included) so a row-header click flips the active row.
+  const multiTrackRowBundle = useMemo(() => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return {
+      layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined, photoReference: undefined,
+      onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
+      onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
+      onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onSelectBackgroundFrame: undefined,
+      selectedBackgroundClipId: null, backgroundPlacementFrame: null,
+    };
+    const document = getEfxPaintDocument(layerId);
+    if (!document) return {
+      layerId, tracks: undefined, activeTrackId: undefined, background: undefined, photoReference: undefined,
+      onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
+      onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
+      onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
+      onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onSelectBackgroundFrame: undefined,
+      selectedBackgroundClipId: null, backgroundPlacementFrame: null,
+    };
+    return {
+      layerId,
+      tracks: document.tracks,
+      activeTrackId: document.activeTrackId,
+      background: document.background,
+      photoReference: document.photoReference,
+      // 49-06 (UAT round 2): selecting a Paint track returns the right panel to
+      // Track option — it clears any selected Bg clip (the Background tab
+      // disappears) and switches the tool tab to Track.
+      onSelectTrack: (trackId: string) => {
+        setActiveTrackId(layerId, trackId);
+        selectedBackgroundClipId.value = null;
+        rightPanelToolTab.value = 'track';
+      },
+      onSelectTrackFrame: handleSelectTrackFrame,
+      onSelectTrackRail: handleSelectTrackRail,
+      // 49-06 (UAT round 2): a Bg rail click opens the Background option tab
+      // (a THIRD tab — it never replaces Track option). Same-clip re-click
+      // toggles the selection off and returns to Track option.
+      onSelectBackgroundClip: (clipId: string) => {
+        const next = selectedBackgroundClipId.value === clipId ? null : clipId;
+        selectedBackgroundClipId.value = next;
+        rightPanelToolTab.value = next === null ? 'track' : 'background';
+      },
+      // 49-06 (UAT round 2): the placement gesture — clicking an empty Bg cell
+      // selects the target frame (the Import control lands there) and clears
+      // any selected clip so the Track section stays reachable.
+      onSelectBackgroundFrame: (frame: number) => {
+        backgroundPlacementFrame.value = frame;
+        selectedBackgroundClipId.value = null;
+        rightPanelToolTab.value = 'track';
+      },
+      selectedBackgroundClipId: selectedBackgroundClipId.value,
+      backgroundPlacementFrame: backgroundPlacementFrame.value,
+      onAddTrack: handleAddTrack,
+      onToggleTrackVisible: handleToggleTrackVisible,
+      onToggleSolo: handleToggleSolo,
+      onToggleBlend: handleToggleBlend,
+      onRenameTrack: handleRenameTrack,
+      onDuplicateTrack: handleDuplicateTrack,
+      onDeleteTrack: handleDeleteTrack,
+      onReorderTrack: handleReorderTrack,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchContext?.layerId, efxPaintVersion.value, selectedBackgroundClipId.value, backgroundPlacementFrame.value]);
+  // 47-01: the Studio window owns its own efxPaintStore instance — track CRUD
+  // mutates the CHILD document only. Push it to the main window on every
+  // document mutation so the main window's save path serializes the same
+  // track list (idempotency is guarded by document revision on the main
+  // side). The push fires for the launch registration too — both windows
+  // already hold that document, so it is a revision no-op.
+  // 47-01 UAT round 7: push the LIVE runtime projection (serializeRuntimeIntoDocument)
+  // instead of the raw document — the raw document never re-projects the
+  // child's runtime, so Track 1's rotoPhysical stayed at launch state and the
+  // main window's runtime mirror + save path diverged from the child's live
+  // records (delete rejections, keys lost on save).
+  // 52.1 (Part 1): the push fires ONLY on document-structure changes
+  // (efxPaintVersion). Physical edits (drag/paint) are excluded — they ship
+  // their result via the applyPayload bridge, and the main window's save path
+  // re-projects frames/rotoPhysical from its own runtime (updated by
+  // applyPayload), so a document sync on every paint event was redundant (the
+  // 52.1 slowdown: a full 10MB document re-serialized + base64-encoded twice
+  // per action). The round-8 physicPaintVersion debounce is retired.
+  // 52.1 (Fix A): the push's serialize bumps efxPaintVersion, which re-fires
+  // the immediate push effect — the same document would cross the bridge twice
+  // per gesture. The guard skips the duplicate; its hasPushed latch keeps the
+  // launch/crash-recovery mount push alive.
+  const documentSyncPushGuardRef = useRef<DocumentSyncPushGuard | null>(null);
+  if (documentSyncPushGuardRef.current === null) {
+    documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
+  }
+  const documentSyncPushGuard = documentSyncPushGuardRef.current;
+  const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback'): Promise<void> | null => {
+    const pushStartedAtMs = performance.now();
+    const document = documentSyncPushGuard.evaluate(
+      () => {
+        try {
+          return serializeRuntimeIntoDocument(layerId);
+        } catch {
+          return getEfxPaintDocument(layerId);
+        }
+      },
+      () => efxPaintVersion.peek(),
+    );
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.docSyncSerialize',
+      category: 'sync-cpu',
+      durationMs: performance.now() - pushStartedAtMs,
+      timestamp: performance.now(),
+    });
+    if (!document) return null;
+    // 49-06 (UAT round 11): carry the runtime background source bytes to the
+    // main window — ITS registry is only hydrated at project load, so a clip
+    // added during the child session (the Bg-picker import) resolves 'missing'
+    // in the main composite without this transfer. Only the refs this
+    // document's clips use, and only those with registered bytes.
+    const backgroundSources: Record<string, string> = {};
+    for (const clip of document.background.clips) {
+      for (const ref of clip.sourceFrameRefs) {
+        if (backgroundSources[ref]) continue;
+        const bytes = physicPaintStore.getBackgroundSourceImageBytes(ref);
+        if (bytes !== null) backgroundSources[ref] = encodeSourceBytesForDocumentSync(bytes);
+      }
+    }
+    // Crash-recovery checkpoint: the compositor-death watchdog reloads the
+    // child when the window goes black. sessionStorage survives the reload, so
+    // the Studio rehydrates from THIS document instead of the stale launch
+    // context — the session survives (bounded by the push debounce). The
+    // checkpoint is bound to this launch's operationId (quick-260913-52r H):
+    // a checkpoint left by an earlier Studio session is never substituted.
+    const checkpointStartedAtMs = performance.now();
+    const checkpointOperationId = launchContextRef.current?.operationId;
+    if (checkpointOperationId) writeEfxPaintSessionDocumentCheckpoint(checkpointOperationId, document);
+    recordPhysicsPaintPerformance({
+      stage: 'bridge.docSyncCheckpoint',
+      category: 'sync-cpu',
+      durationMs: performance.now() - checkpointStartedAtMs,
+      timestamp: performance.now(),
+    });
+    return sendEfxPaintDocumentSync(
+      document,
+      mode,
+      Object.keys(backgroundSources).length > 0 ? backgroundSources : undefined,
+    ).catch((error) => {
+      console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
+    }).finally(() => {
+      recordPhysicsPaintPerformance({
+        stage: 'bridge.docSyncTotal',
+        category: 'async-elapsed',
+        durationMs: performance.now() - pushStartedAtMs,
+        timestamp: performance.now(),
+      });
+    });
+  };
+  // 52.1 (gesture-idle scheduler): STRUCTURAL mutations only SET a dirty flag;
+  // the serialize + documentSync runs ONCE on the idle transition (gesture
+  // path) or on a 2s debounce (non-gesture edits while already idle). Physical
+  // edits are excluded (see Part 1 above) — they ship via applyPayload.
+  const documentSyncDirtyRef = useRef(signal(false));
+  const documentSyncDirty = documentSyncDirtyRef.current;
+  useEffect(() => {
+    documentSyncDirty.value = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [efxPaintVersion.value]);
+  // 52.1 (background sync on close): wire the close-flush refs to the live dirty
+  // flag + push so a bare non-stroke document change survives window close.
+  pendingDocumentSyncRef.current = () => documentSyncDirty.peek();
+  flushDocumentSyncRef.current = async () => {
+    if (!documentSyncDirty.peek()) return;
+    documentSyncDirty.value = false;
+    const layerId = launchContext?.layerId;
+    const mode = bridgeModeRef.current;
+    if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+      await pushLiveProjection(layerId, mode);
+    }
+  };
+  // Non-gesture path: a mutation while already idle flushes on a 2s debounce.
+  // 52.1: also require 1s of real quiet at fire time — a 2s timer can still
+  // land inside a short pause mid-train (idle flips after 400ms of silence).
+  useEffect(() => {
+    if (!documentSyncDirty.value) return;
+    let timer: number | null = null;
+    const tryFlush = () => {
+      timer = null;
+      if (!readInteractionIdle() || !documentSyncDirty.peek()) return;
+      const quietMs = performance.now() - readLastInteractionAt();
+      if (quietMs < DOCUMENT_SYNC_GESTURE_QUIET_MS) {
+        timer = window.setTimeout(tryFlush, DOCUMENT_SYNC_GESTURE_QUIET_MS - quietMs);
+        return;
+      }
+      documentSyncDirty.value = false;
+      const layerId = launchContext?.layerId;
+      const mode = bridgeModeRef.current;
+      if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+        void pushLiveProjection(layerId, mode);
+      }
+    };
+    timer = window.setTimeout(tryFlush, 2000);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentSyncDirty.value, launchContext?.layerId]);
+  // Gesture path: the idle transition flushes any pending dirty state once.
+  // 52.1: the gesture flush must wait for 1s of REAL quiet, not the 400ms
+  // idle flip — that flip lands in the gap between two strokes, and on a
+  // virgin frame the full-document serialize + push + main-window cold decode
+  // saturate the shared GPU process exactly there (the felt 2nd-stroke
+  // glitch). Re-arm until the gesture train has been silent for a full second.
+  useEffect(() => {
+    if (!interactionIdle.value) return;
+    if (!documentSyncDirty.peek()) return;
+    let timer: number | null = null;
+    const tryFlush = () => {
+      timer = null;
+      if (!readInteractionIdle() || !documentSyncDirty.peek()) return;
+      const quietMs = performance.now() - readLastInteractionAt();
+      if (quietMs < DOCUMENT_SYNC_GESTURE_QUIET_MS) {
+        timer = window.setTimeout(tryFlush, DOCUMENT_SYNC_GESTURE_QUIET_MS - quietMs);
+        return;
+      }
+      documentSyncDirty.value = false;
+      const layerId = launchContext?.layerId;
+      const mode = bridgeModeRef.current;
+      if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+        void pushLiveProjection(layerId, mode);
+      }
+    };
+    tryFlush();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interactionIdle.value, launchContext?.layerId]);
+  // 52.1 (flush-before-save/export): the main window requests a synchronous
+  // drain of the Studio's queued post-gesture work before it serializes the
+  // project. The flush settles the engine, drains the Roto capture queue, and
+  // pushes the document ONLY when a structural change is pending
+  // (documentSyncDirty) — physical edits already ship via applyPayload, so a
+  // document push on every auto-save was redundant (the 52.1 slowdown: the
+  // auto-save → flush → documentSync path re-serialized the full document on
+  // every paint/drag).
+  const flushStudioStateRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  flushStudioStateRef.current = async () => {
+    // 52.1: mid-gesture the unbounded finalize drain synchronously rasters the
+    // previous stroke (~1.3s at 1080p) inside the user's current stroke — the
+    // 2nd-stroke freeze. Completed strokes already carry their pixels through
+    // the capture queue (copied at stroke end), and the interactive finalizer
+    // drains the queue cooperatively once the gesture ends, so skip the drain
+    // whenever a gesture is in flight; idle flushes keep the full contract.
+    //
+    // 52.2-15 (D-16): the steps below are unchanged; they now run inside the
+    // Studio's one flush pipeline, which first waits out the gesture's queued
+    // captures (the drain cannot race a capture still producing) and hands the
+    // same drain to a concurrent close instead of running a second sequence.
+    await runStudioFlush([
+      () => {
+        if (readInteractionIdle()) engineRef.current?.flushPendingStrokeFinalizations();
+      },
+      () => rotoPersistence.flushLivePixels(),
+      async () => {
+        if (!documentSyncDirty.peek()) return;
+        const layerId = launchContext?.layerId;
+        const mode = bridgeModeRef.current;
+        if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+          await pushLiveProjection(layerId, mode);
+        }
+      },
+    ]);
+  };
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void installPhysicPaintFlushRequestListener(() => flushStudioStateRef.current()).then((unsub) => {
+      unlisten = unsub;
+    });
+    return () => unlisten?.();
+  }, []);
+  // 49-04 (Task 2): the scoped full-area asset picker (S2). The Studio realm's
+  // imageStore is empty (Pitfall 2), so the picker populates its grid from the
+  // main webview via the image-library bridge pair and imports new images
+  // through the native dialog (capability dialog:allow-open, Task 1). The
+  // controller is signal-driven (no useState — efx-preact-reactivity).
+  // 50-03 (S2): the reference picker reuses the SAME controller + view as the
+  // Bg picker (D-01) — only the title and the Confirm handler differ. The four
+  // bridge/imageStore ports are shared; each controller keeps its own
+  // refreshLibrary closure so the self-referencing projectDir peek stays
+  // instance-local.
+  const sharedPickerPorts = {
+    requestLibrary: () => requestImageLibrary(),
+    importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir),
+    openDialog: async () => {
+      const selected = await openNativeImageDialog({
+        multiple: true,
+        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'] }],
+      });
+      if (!selected) return null;
+      return Array.isArray(selected) ? selected : [selected];
+    },
+    sortImages: (images: readonly MceImageRef[]) => sortImagesByOriginalFilename(images, (image) => image.original_filename),
+  };
+  const backgroundPicker = useBackgroundAssetPickerController({
+    ...sharedPickerPorts,
+    refreshLibrary: async () => {
+      const result = await requestImageLibrary();
+      const dir = backgroundPicker.projectDir.peek();
+      const studioImages = dir ? imageStore.toMceImages(dir) : [];
+      return mergeImageLibraries(result.ok ? result.images : [], studioImages);
+    },
+  });
+  const referencePicker = useBackgroundAssetPickerController({
+    ...sharedPickerPorts,
+    refreshLibrary: async () => {
+      const result = await requestImageLibrary();
+      const dir = referencePicker.projectDir.peek();
+      const studioImages = dir ? imageStore.toMceImages(dir) : [];
+      return mergeImageLibraries(result.ok ? result.images : [], studioImages);
+    },
+  });
+  // 49-04 (Task 2): temporary dev hook for the native checkpoint (Task 3) —
+  // the S1 Import control lands in 49-05 and becomes the real opener. Exposed
+  // as window.__openBackgroundPicker() so the user can invoke the picker from
+  // the Studio console during UAT.
+  const backgroundPickerOpenHookRef = useRef<(() => Promise<void>) | null>(null);
+  backgroundPickerOpenHookRef.current = () => backgroundPicker.openPicker();
+  useEffect(() => {
+    (window as unknown as { __openBackgroundPicker?: () => void }).__openBackgroundPicker = () => {
+      void backgroundPickerOpenHookRef.current?.();
+    };
+    return () => {
+      delete (window as unknown as { __openBackgroundPicker?: () => void }).__openBackgroundPicker;
+    };
+  }, []);
+  // 49-05 (Task 1): Confirm creates the Background clip at the CURRENT playhead
+  // frame — read at Confirm time from the live cursor position (launchContext
+  // startFrame updates on every navigation), never cached at picker-open time
+  // (BKG-02/D-03). The natural-sorted reference order is the clip's source-frame
+  // cycle order (D-02); the repeat defaults to finite 1. A playhead strictly
+  // inside an existing clip rejects through the capsule with the locked import
+  // copy (BKG-03/D-04) and the picker STAYS open so the selection survives;
+  // success closes the picker and the rail reflects the accepted state via the
+  // existing reactive plumbing.
+  const handleConfirmBackgroundPicker = (sortedIds: string[]) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId || sortedIds.length === 0) return;
+    // 49-06 (UAT round 7): Replace mode — the section's Replace button set the
+    // target clip; the confirmed refs swap that clip's source instead of adding
+    // a new clip. The clip keeps its id/startFrame/repeat; only the source
+    // cycle changes.
+    const replaceTarget = backgroundReplaceTargetClipId.value;
+    const landingFrame = backgroundPlacementFrame.value ?? currentFrame;
+    const result = replaceTarget
+      ? setBackgroundClipSource(layerId, replaceTarget, sortedIds)
+      : addBackgroundClip(layerId, {
+          startFrame: landingFrame,
+          sourceFrameRefs: sortedIds,
+          repeat: { mode: 'finite', count: 1 },
+        });
+    if (!result.ok) {
+      if (result.reason === 'start-collision') {
+        setApplyStatus('error');
+        setApplyMessage("Couldn't place the clip here. The playhead is inside an existing clip. Nothing changed.");
+      }
+      return;
+    }
+    // 49-06 (UAT): the compositor only renders a clip once its source bytes are
+    // in the runtime registry (`_backgroundSourceImages` → knownSources) — the
+    // reopened-path hydration (49-02 BKG-09) is the SOLE production writer of
+    // that registry, and the freshly imported clip was never passed through it.
+    // Run it on the accepted document so the rail's cover frames resolve
+    // 'content' instead of 'missing' (the monitor paper fond symptom). For a
+    // replace, this re-hydrates the NEW refs (the document now carries them).
+    const accepted = getEfxPaintDocument(layerId);
+    if (accepted) {
+      // 49-06 (UAT round 3): resolve the confirmed refs from the picker's OWN
+      // image list as a fallback — the launch-time library load can miss a
+      // freshly imported image (it only reaches the Studio realm's imageStore
+      // on the next launch), and the picker's merged list is authoritative for
+      // exactly the ids being confirmed.
+      const pickerImages = backgroundPicker.images.peek();
+      const pickerDir = backgroundPicker.projectDir.peek();
+      void hydrateBackgroundSourceImagesFromLibrary(
+        accepted,
+        pickerDir ? { images: pickerImages, projectDir: pickerDir } : undefined,
+      ).then((result) => {
+        // 49-06 (UAT round 4/5): surface the hydration outcome — a clip whose
+        // source bytes never reached the runtime registry stays paper fond, and
+        // the reason (asset miss vs decode failure) is the diagnostic the user
+        // reports back. When the hydration SUCCEEDED but the composite is still
+        // paper, probe the render path so the exact failure point is named.
+        if (result.missing.length > 0) {
+          const first = result.missing[0];
+          setApplyStatus('error');
+          setApplyMessage(
+            first.reason === 'asset-not-found'
+              ? `Background source not found in the library (${first.ref}). The clip can't render.`
+              : `Background source failed to load (${first.ref}). The clip can't render.`,
+          );
+          return;
+        }
+        const record = physicPaintStore.getFlattenedFrame(layerId, landingFrame, false);
+        if (!record) {
+          setApplyStatus('error');
+          setApplyMessage('Background source decoded, but the composite is still pending. If this persists, the image may be too large to decode.');
+          return;
+        }
+        const bgMissing = record.missing.find((entry) => entry.trackId === accepted.background.id);
+        if (bgMissing) {
+          setApplyStatus('error');
+          setApplyMessage(`Background still missing at frame ${landingFrame}: ${bgMissing.missingRefs.join(', ')}.`);
+        }
+      });
+    }
+    // The placement marker is consumed — a stale target would collide with the
+    // just-created clip on the next import. The replace target is consumed too.
+    backgroundPlacementFrame.value = null;
+    backgroundReplaceTargetClipId.value = null;
+    backgroundPicker.cancel();
+  };
+  // 49-06 (UAT round 7): cancelling the picker must also clear the replace
+  // target — a stale target would swap the wrong clip on the next confirm.
+  const handleCancelBackgroundPicker = () => {
+    backgroundReplaceTargetClipId.value = null;
+    backgroundPicker.cancel();
+  };
+  // 50-03 (S2): Confirm REPLACES the reference source in one undoable operation
+  // (D-03). The confirmed ids are already natural-sorted by the picker's
+  // buildConfirmedImageIds (D-02 — never asset UUID or click order); the store
+  // call bumps the source revision (REF-04) and records one undo entry. The
+  // reference source bytes hydrate through the library path so the ghost draw
+  // (Plan 50-04) resolves them. Success announces the replacement capsule note.
+  const handleConfirmReferencePicker = (sortedIds: string[]) => {
+    const layerId = launchContext?.layerId;
+    if (!layerId || sortedIds.length === 0) return;
+    const result = setPhotoReferenceSource(layerId, sortedIds);
+    if (!result.ok) {
+      setApplyStatus('error');
+      setApplyMessage(result.reason === 'invalid-source-refs'
+        ? "Couldn't set the reference source. The selection is invalid."
+        : "Couldn't set the reference source.");
+      return;
+    }
+    // G-52-5: record the unified-ledger undo entry the 50-03 contract promises
+    // (one undoable operation, D-03). Dropping the descriptor left an
+    // unrecorded document replacement in the chain — every entry recorded
+    // BEFORE a reference placement/replacement failed the live-authority guard
+    // forever, killing undo/redo for the session.
+    if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+    // Warm the reference registry with the freshly confirmed refs (mirrors the
+    // Bg picker's hydration — the reopened path is the sole production writer,
+    // and a fresh import never passed through it).
+    const accepted = getEfxPaintDocument(layerId);
+    if (accepted) {
+      const pickerImages = referencePicker.images.peek();
+      const pickerDir = referencePicker.projectDir.peek();
+      void hydrateReferenceSourceImagesFromLibrary(
+        accepted,
+        pickerDir ? { images: pickerImages, projectDir: pickerDir } : undefined,
+      );
+    }
+    publishOperationResult('Reference source replaced.');
+    referencePicker.cancel();
+  };
+  // 50-03 (S2): Cancel returns to the Studio untouched — no source change, no
+  // document mutation.
+  const handleCancelReferencePicker = () => {
+    referencePicker.cancel();
+  };
+  // 50-UAT (modal redesign): the floating Photo Reference dialog bundle — the
+  // dialog reads the document through the SAME identity-stable store ports and
+  // re-resolves on every document mutation (efxPaintVersion) so its controls
+  // always reflect accepted state. The camera icon opens it; Escape/X close it;
+  // the Import/Replace source button opens the reference picker behind it.
+  const referenceDialog = referenceDialogPropsMemo.resolve(
+    [referenceDialogOpen.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
+    () => ({
+      open: referenceDialogOpen.value,
+      layerId: launchContext?.layerId ?? null,
+      ports: photoReferenceSectionPortsRef.current,
+      onClose: () => { referenceDialogOpen.value = false; },
+      onImportSource: () => referencePicker.openPicker(),
+    }),
+  );
+  // AM-3 (revised): the Create Rail script picker props — rows and the current
+  // selection ride the library controller's live signals. A pick sets the
+  // library selection and opens the Create Rail dialog on the menu-chosen
+  // tab/kind (Reveal → Reveal Photo Rail tab); cancel closes ONLY the picker.
+  // When the PlayScript controller is blocked (generated frame, unsaved
+  // project, busy), the picker stays open and shows the reason live — no click
+  // path in the flow can silently no-op.
+  const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(
+    [scriptPickerIntent.value, rotoScriptLibrary.rows.value, rotoScriptLibrary.selectedId.value, rotoPlayScript.disabledReason.value],
+    () => ({
+      open: scriptPickerIntent.value !== null,
+      intent: scriptPickerIntent.value,
+      rows: rotoScriptLibrary.rows.value,
+      selectedId: rotoScriptLibrary.selectedId.value,
+      blockedReason: (() => {
+        const reason = rotoPlayScript.disabledReason.value;
+        // The no-selection reason is not a block: the pick SETS the selection.
+        return reason === 'Select a project script first.' ? null : reason;
+      })(),
+      onPick: (id: string) => {
+        const intent = scriptPickerIntent.peek();
+        rotoScriptLibrary.select(id);
+        // Blocked (generated frame, unsaved project, busy): keep the picker
+        // open — the blockedReason notice updates live from disabledReason.
+        if (rotoPlayScript.disabledReason.peek()) return;
+        scriptPickerIntent.value = null;
+        if (intent?.kind === 'paint') {
+          rotoPlayScript.mode.value = intent.mode;
+          void rotoPlayScript.openConfirmation();
+        } else if (intent?.kind === 'reveal') {
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+        }
+      },
+      onClose: () => { scriptPickerIntent.value = null; },
+    }),
+  );
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -2717,7 +4334,60 @@ export function PhysicsPaintStudio() {
     canvas: canvasStack,
     rightPanel,
     playScriptDialog,
+    referenceDialog,
+    scriptPickerDialog,
     workflow: {
+        layerId: multiTrackRowBundle.layerId,
+        tracks: multiTrackRowBundle.tracks,
+        activeTrackId: multiTrackRowBundle.activeTrackId,
+        background: multiTrackRowBundle.background,
+        // 50-UAT (modal redesign): the photo/reference camera icon opens the
+        // floating Photo Reference dialog (the dialog owns Import/Replace/
+        // Remove and every setting — no X badge on the icon, 50-UAT round 2).
+        photoReference: multiTrackRowBundle.photoReference,
+        onOpenReference: () => { referenceDialogOpen.value = true; },
+        // 52-05 (G-52-3): the track rail-creation flow — Motion/Static open the
+        // Create Rail dialog on the Paint tab; Reveal opens the SAME dialog on
+        // the Reveal Photo Rail tab (one model, two entry points, the SAME
+        // create-reveal-rail mutation). The reference guard lives INSIDE the
+        // dialog (proactive Photo Reference modal open — never a disabled menu).
+        onCreatePlayScriptRail: (mode) => {
+          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
+          // always-visible flow regardless of the library selection.
+          scriptPickerIntent.value = { kind: 'paint', mode };
+        },
+        onCreateRevealRail: () => {
+          scriptPickerIntent.value = { kind: 'reveal' };
+        },
+        onSelectTrack: multiTrackRowBundle.onSelectTrack,
+        onAddTrack: multiTrackRowBundle.onAddTrack,
+        onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
+        onToggleSolo: multiTrackRowBundle.onToggleSolo,
+        onToggleBlend: multiTrackRowBundle.onToggleBlend,
+        onRenameTrack: multiTrackRowBundle.onRenameTrack,
+        onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,
+        onDeleteTrack: multiTrackRowBundle.onDeleteTrack,
+        onReorderTrack: multiTrackRowBundle.onReorderTrack,
+        // 49-05 (Task 1, S1): the locked Bg row's Import control opens the
+        // 49-04 picker swap — the engine canvas stays mounted underneath.
+        onImportBackground: () => backgroundPicker.openPicker(),
+        // 49-05 (Task 2, S4): a click on a Bg clip rail routes clip selection
+        // to the right-panel `Background Clip` section (consumed by 49-06).
+        onSelectBackgroundClip: multiTrackRowBundle.onSelectBackgroundClip,
+        // 49-06 (UAT round 9): the selected Bg clip id + placement frame MUST
+        // be forwarded here too — the strip/row read them to paint the orange
+        // selected rail and the placement marker. Dropping them (as rounds 1-8
+        // did) makes the rail never render selected no matter how the user
+        // clicks, drags, or resizes.
+        onSelectBackgroundFrame: multiTrackRowBundle.onSelectBackgroundFrame,
+        selectedBackgroundClipId: multiTrackRowBundle.selectedBackgroundClipId,
+        backgroundPlacementFrame: multiTrackRowBundle.backgroundPlacementFrame,
+        // 47 close-out UAT round 7: the one-click cross-track selection intents
+        // — an EXPLICIT field list, so a bundle field that isn't forwarded here
+        // silently dies (rounds 5-7's intents were computed but dropped, and
+        // rail clicks were swallowed by the wrapper's stopPropagation).
+        onSelectTrackFrame: multiTrackRowBundle.onSelectTrackFrame,
+        onSelectTrackRail: multiTrackRowBundle.onSelectTrackRail,
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
@@ -2730,12 +4400,12 @@ export function PhysicsPaintStudio() {
         // read subscribes this bundle like the sibling signal reads above; the
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
-        onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
+        onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
@@ -2767,10 +4437,59 @@ export function PhysicsPaintStudio() {
         onRotoRailSetMoveRejected: handleRotoRailSetMoveRejected,
         railSetMoveMembers,
         rotoScript,
-        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
+        // 260905-dso: the relocated buffer Apply/Clear ports — identity-stable
+        // useCallbacks plus the library mutation-lock signal reference (the
+        // strip reads .value in render, so the memo stays cacheable).
+        onApplyScript: handleApplyScript,
+        onDiscardScript: handleDiscardScript,
+        rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,
+        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), warmProgress, onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
+        // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
+        // routes the navigation audio funnel to scrub; release stops the
+        // snippet and re-anchors at the final frame. G-52-9 drag-gate: the
+        // release ALSO runs the single settle navigation (flush, canvas
+        // repaint, startFrame propagation, selection, one main-window frame
+        // sync) that mid-drag seeks deliberately skip. The scrub feed stays
+        // sticky at the final frame (no playhead jump-back) until the
+        // startFrame catch-up effect below clears it.
+        onScrubStart: () => { scrubActiveRef.current = true; rotoScrubFrameSignal.value = null; },
+        onScrubEnd: (frame) => {
+          scrubActiveRef.current = false;
+          rotoCachedPlayback.scrubEnd(frame);
+          publishOperationResult(null);
+          void requestRotoFrameNavigationRef.current(frame);
+        },
+        rotoScrubFrame: rotoScrubFrameSignal,
       },
     status: { shortcutsVisible },
+    backgroundPicker: {
+      open: backgroundPicker.open.value,
+      images: backgroundPicker.images.value,
+      projectDir: backgroundPicker.projectDir.value,
+      selectedIds: backgroundPicker.selectedIds.value,
+      status: backgroundPicker.status.value,
+      importing: backgroundPicker.importing.value,
+      onToggleSelect: backgroundPicker.toggleSelect,
+      onConfirm: handleConfirmBackgroundPicker,
+      onCancel: handleCancelBackgroundPicker,
+      onImport: backgroundPicker.importImages,
+    },
+    // 50-03 (S2): the reference picker reuses the same full-area region swap
+    // (D-01) with reference-specific copy and a replace-on-confirm handler.
+    referencePicker: {
+      open: referencePicker.open.value,
+      images: referencePicker.images.value,
+      projectDir: referencePicker.projectDir.value,
+      selectedIds: referencePicker.selectedIds.value,
+      status: referencePicker.status.value,
+      importing: referencePicker.importing.value,
+      onToggleSelect: referencePicker.toggleSelect,
+      onConfirm: handleConfirmReferencePicker,
+      onCancel: handleCancelReferencePicker,
+      onImport: referencePicker.importImages,
+      title: 'Import reference images',
+    },
   });
   const soleOccurrenceDeleteDialog = soleOccurrenceDeleteTarget === null
     ? null
@@ -2793,7 +4512,7 @@ export function PhysicsPaintStudio() {
           >
             <header class="physics-paint-group-delete-header">
               <h2 id="physics-paint-group-delete-title">Delete the only frame in “{soleOccurrenceDeleteDialog.groupName}”?</h2>
-              <p>This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data. The Action is kept.</p>
+              <p>This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Action is kept.</p>
             </header>
             {soleOccurrenceDeleteError ? <p class="physics-paint-group-delete-error" role="alert">{soleOccurrenceDeleteError}</p> : null}
             <footer class="physics-paint-group-delete-footer">

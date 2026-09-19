@@ -1,311 +1,423 @@
 # Pitfalls Research
 
-**Domain:** Milestone v0.9.0 — adding hydration fix, macOS icon refresh, build hygiene, cross-window audio preview, and PlayScript static/hold + linked Loop Clips to the shipped EFX Motion Editor (Tauri 2.0 + Preact Signals monorepo)
-**Researched:** 2026-08-03
-**Confidence:** HIGH — grounded in the milestone spec risk register, the confirmed hydration root-cause diagnosis, the v0.7.0/v0.8.0 post-mortems in PROJECT.md, and direct inspection of the affected code seams (`usePhysicsPaintLaunchIntegration.ts`, `physicsPaintRotoPlayScriptRenderer.ts`, `physicsPaintRotoScriptClipboard.ts`, `audioEngine.ts`, `playbackEngine.ts`, `vite.config.ts`)
+**Domain:** Milestone v1.0.0 — adding multi-track internal Paint frame documents, track-local state/caches, a deterministic internal compositor, a fixed Background track with looping clips, a photo/reference track, a Reveal mask compositor, and read-only audio preview to the shipped EFX Motion Editor (Tauri 2.0 + Preact Signals monorepo)
+**Researched:** 2026-08-23
+**Confidence:** HIGH — grounded in the locked milestone spec risk register, required truth tables, and forbidden sequence-level assumptions; the v0.7.0/v0.8.0/v0.9.0 post-mortems in PROJECT.md; direct inspection of the affected code seams (`paintStore.ts`, `physicPaintStore.ts`, `rotoCoordinatorPorts.ts`, `efxPaintAudioPreviewContext.ts`, `previewRenderer.ts`, `history.ts`, `physicsPaintRotoPhysicalModel.ts`); and cross-referenced against the parallel ecosystem research (multi-track compositing, loop/background, mask/reveal, audio sync). Spec/codebase-derived claims are HIGH; web-derived patterns are tagged LOW and used only to confirm prevention strategies.
 
-This document verifies and extends the spec's risk register. Every pitfall below is specific to adding THESE features to THIS system; generic advice is intentionally omitted.
+This document verifies and extends the spec's risk register. Every pitfall below is specific to adding THESE features to THIS system; generic advice is intentionally omitted. The clean-break boundary and the forbidden sequence-level assumptions are respected throughout.
 
 ## Critical Pitfalls
 
-### Pitfall 1: Rereading a stale launch-context getter instead of consuming the event payload
+### Pitfall 1: Track identity via array position or order field
 
 **What goes wrong:**
-The Scripts panel mount observes `project.saved === false`, clears rows, and skips the scan. When the later project-context event arrives with `saved=true`, `PhysicsPaintStudio.tsx:945` calls `rotoScriptLibrary.updateProjectContext()` with NO argument, so the controller rereads `getLaunchContext()` through hook ports that have not yet committed the new value. Rows clear a second time; the scan never runs. Manual Refresh "works" only because it runs after the committed render. This is the confirmed shipping regression (`usePhysicsPaintLaunchIntegration.ts:159-166`, `physicsPaintRotoScriptLibrary.ts:111-130`).
+Reorder, undo/redo, cache invalidation, and Reveal mask references silently retarget to the wrong track. A track moved from index 2 to index 0 suddenly owns the wrong frames; a cache keyed by `tracks[i]` returns another track's raster; a Reveal mask that referenced "track 3" now masks "track 1". This is the spec's risk #2 and the exact failure family that forced the 36.14 canonical physical-frame cutover (stable keyId, direct appFrame).
 
 **Why it happens:**
-The project-context bridge callback wraps the handoff in `setLaunchContext((current) => { ... queueMicrotask(() => onSettledLaunchContext?.(updated)); return updated; })`. The updated context IS available in the closure, but the consumer discards it and re-derives state from a getter whose freshness depends on render commit timing. A "fix" that only retries the getter (another effect, a delay) reintroduces the same race one layer down.
+Every current store is keyed by `layerId` only — `paintStore._frames = Map<layerId, Map<frame, PaintFrame>>`, `physicPaintStore._rotoPhysicalLoopClips = Map<layerId, ...>`. The milestone adds a track dimension, and the path of least resistance is to address tracks by their position in the `tracks` array (or by a mutable `order` field). Position is not identity: reorder rewrites it, undo/redo replays against a different array, and the compositor's stable order becomes ambiguous.
 
 **How to avoid:**
-- Pass the exact `updated` `PhysicPaintLaunchContext` payload from the bridge callback into the script-library update path (explicit-context handoff). Keep manual `refresh()` reading the current context.
-- If a committed-state effect is used instead, it must key on stable context identity + saved state and prove it cannot double-scan or miss rapid replacements.
-- Guard scans by context identity/generation so a stale event for a replaced project/layer cannot populate rows.
-- Assert exactly one automatic scan per authoritative context in the owned regression test.
+- Stable `trackId` strings allocated at creation, never reused, never rewritten by reorder (spec identity rules). Duplicate creates fresh track, frame-key, cache, and revision identities where required.
+- All store maps become `Map<layerId, Map<trackId, ...>>`; every cache key embeds `trackId` (see Pitfall 4).
+- Reorder mutates only a persisted `order` field while `trackId` stays constant; the compositor sorts by `order` but never uses it as identity.
+- Bridge messages carry `parentLayerId + documentRevision + trackId` (spec identity rules); async operations revalidate all three before commit (Pitfall 3).
+- Fail loudly on duplicate track IDs or malformed track references (Phase 1 acceptance).
 
 **Warning signs:**
-Contradictory UI (Copy/Apply work while Save Script is disabled); a scan-count spy called 0 times automatically but succeeding manually; tests that only pass with `await new Promise(r => setTimeout(r, ...))` before assertions — that is the race wearing a disguise.
+A track's frames appearing on a different row after reorder; undo restoring the wrong track's content; a Reveal mask revealing the wrong track; cache hits returning another track's pixels.
 
-**Phase to address:** Phase 0 (blocking hydration fix)
+**Phase to address:** Phase 1 (identity model locked) and Phase 2 (all store addressing)
 
 ---
 
-### Pitfall 2: Timing-hack "fixes" that mask the race instead of fixing it
+### Pitfall 2: Legacy one-track schema or renderer remains reachable
 
 **What goes wrong:**
-A `setTimeout`, `requestAnimationFrame`, retry loop, or poll makes the panel appear hydrated on a fast dev machine but flakes on a packaged app, a slow disk, or a project-switch. The spec explicitly forbids this; the release stop condition still triggers in native UAT.
+A pre-v1.0 Paint project is silently loaded, partially converted, or routed through a legacy renderer instead of failing explicitly. The project carries a documented rule — "No backward compat for old projects: clean break on format changes; no legacy migration code" — and the spec's clean-break section is explicit: no legacy one-track schema reader, no converter, no compatibility shim, no old-project renderer, no second cache/history path. The failure mode is a "temporary" compat branch that becomes permanent dual maintenance (spec risk #3).
 
 **Why it happens:**
-The race is timing-dependent, so any delay statistically favors the committed context. It feels fixed because the failure window shrinks, not because it closed. Note the irony: `queueMicrotask` inside the state updater is already a micro-timing hack and is part of the root cause.
+`paintStore` and `physicPaintStore` are live, working, single-track paths. Deleting or making them unreachable feels destructive, so teams keep them behind a version check "just in case." The schema-evolution research confirms the worst failure is silent: a field that changes meaning while keeping its name/type passes every validator, and a partial-loading path returns "the subset that happens to be done" — a correctness bug that looks like a relevance problem.
 
 **How to avoid:**
-- Treat any added timer/poll in the Phase 0 diff as an automatic review rejection.
-- The regression test must fail deterministically before the fix (the SPECS prototype repro fails in ~260-330 ms across three runs — convert it into an owned test seam under `app/src/` with the existing Vitest config; per project memory, do not create one-off test configs).
-- Also verify no duplicate scan/listener after close/reopen — Tauri `listen()` returns an unlisten promise that must actually be invoked on unmount.
+- Delete or make unreachable the old one-track renderer and old Paint persistence path (Phase 1 requirement). Grep for reachable legacy entry points as a contract test.
+- Reject pre-v1.0 Paint data explicitly at the load boundary: fail loudly, no partial mutation, no fallback rendering (Phase 1 acceptance + UAT step 2).
+- No "temporary" second cache/history path for legacy data — the spec forbids it and the project's clean-break rule forbids it.
+- The rejection must be loud and testable: a fixture that asserts the explicit failure, not a silent no-op.
 
 **Warning signs:**
-New tests containing `setTimeout`/`vi.advanceTimersByTime` around the hydration path; "it passed on the second run"; UAT steps that say "wait a moment before checking."
-
-**Phase to address:** Phase 0
-
----
-
-### Pitfall 3: Two audio engines audible at once (main window + EFX Paint window)
-
-**What goes wrong:**
-Each Tauri window is a separate WebView with its own JS realm and its own `AudioContext`. The main editor's `playbackEngine.ts` starts audio via `audioEngine.play(...)`/`playDelayed(...)` per track and — critically — RESTARTS audio on every seek when playing (`playbackEngine.ts:99-102, 254-303`: `audioEngine.stopAll(); this.startAudioPlayback()`). The `physic-paint:seek-frame` bridge (G-01, quick 260801-azb) means timeline seeks propagate while EFX Paint is open. If the main-window playback engine and the new EFX Paint preview engine are both live, the user hears doubled, phase-shifted audio.
-
-**Why it happens:**
-The main editor's audio subsystem was built single-window; nothing today suppresses it when a child window monitors. Adding a second engine without defining a single preview authority re-creates the classic "two `<audio>` elements" bug in a cross-window form.
-
-**How to avoid:**
-- Declare exactly one audible authority at any moment: while EFX Paint audio monitoring is On and Paint playback is active, the main-window preview engine must not be simultaneously playing (the main window is typically paused while the user works in EFX Paint, but do not rely on "typically" — gate it).
-- Single owner for the EFX Paint preview engine lifecycle: create on first monitored play, `stop()` all sources + release buffers + close/suspend the `AudioContext` on window close (AUDIO-06). Add a cleanup regression test: close EFX Paint mid-playback, assert silence and zero leaked sources.
-- The session-local monitoring toggle (AUDIO-05) must only gate the local engine — never write to `audioStore` (main-editor authority, per the locked ownership boundary and the "Play globals must not overwrite per-stroke props" lesson).
-
-**Warning signs:**
-UAT step "seek, play, pause, loop, stop without drift or doubled audio" failing only when the main window was left playing; audio continuing after the EFX Paint window closes; two `AudioContext` instances visible in the same monitoring session inside the child window.
-
-**Phase to address:** Phase 2 (audio preview)
-
----
-
-### Pitfall 4: Audio/frame drift from mixing clocks and mis-mapped frame domains
-
-**What goes wrong:**
-Sustained playback drifts audible-vs-cursor, or a seek lands on the wrong audio time. Two independent causes compound here:
-1. **Clock mixing.** The main editor's playback clock is `performance.now()` delta accumulation; `audioEngine` schedules on `ctx.currentTime` (`source.start(0, clampedOffset, remainingDuration)`). In the child window these are DIFFERENT time origins in a DIFFERENT realm. Driving audio position from the frame cursor every frame (or vice versa with `setInterval`) accumulates drift.
-2. **Frame-domain confusion.** Four domains must be mapped: EFX Paint app frame → parent Paint layer frame → sequence-local frame → main-editor global frame, then through per-track `timelineOffset`, `trimStart/End`, `slipOffset`. This is the same source/display ambiguity class that caused the recurring Roto timing bugs before the 36.14 canonical physical-frame cutover.
-
-**Why it happens:**
-The mapping looks like "just multiply by fps," and each offset individually is small enough that off-by-one-domain bugs survive casual testing. Drift only becomes audible over sustained playback, so quick UAT scrubs pass.
-
-**How to avoid:**
-- Before implementation, write the frame/time truth table (per the project's proven "truth table before patches" rule): for each of the four domains, given cursor frame F, what audio time T plays, for a track with each offset/trim/slip combination. Lock it in the phase discussion; test every row.
-- Anchor sustained playback to ONE clock: start sources at the computed offset and let the `AudioContext` clock run free; resync only on discrete events (play, seek, pause, loop wrap, stop) using the same stopAll+start-at-offset pattern the main engine already uses.
-- Loop playback: on loop wrap, restart sources at the loop-start audio offset — never try to "rewind" a running `AudioBufferSourceNode` (one-shot nodes; `audioEngine.ts` already documents this as pitfall 2 in its header comments).
-- Autoplay policy: the child window's `AudioContext` starts suspended until a user gesture; resume it inside the Play button handler, not at bridge-setup time, or the first playback is silently silent.
-- Asset transport: audio files must reach the child window via the existing secure asset transport; a missing/unloadable asset is a non-blocking warning (AUDIO-06), never a paint-blocking error. Remember the v0.8.1 CSP precedent — new resource loads in the child window may need explicit CSP grants guarded by a contract test.
-
-**Warning signs:**
-Sync that is correct at frame 0 but late after 30+ seconds of playback; seek landing one track-offset early/late; first Play click producing no audio; loop wrap restarting from the track's beginning instead of the loop start.
-
-**Phase to address:** Phase 2 — the truth table is a Phase 2 entry artifact, not an implementation afterthought
-
----
-
-### Pitfall 5: Stale revisioned bridge updates overwriting newer audio context
-
-**What goes wrong:**
-The main editor edits audio (mute, trim, reorder) while EFX Paint is open. Updates arrive over the bridge out of order or a queued older revision lands after a newer one; the child window regresses to stale track state. This is the SAME defect class as Pitfall 1 (stale context wins over fresh), one subsystem over.
-
-**Why it happens:**
-Event delivery order across windows plus async decode (`audioEngine.decode` is async) creates interleavings where "last applied" ≠ "latest sent."
-
-**How to avoid:**
-- Carry the `revision` field from the `EfxPaintAudioPreviewContext` sketch (AUDIO-02/AUDIO-04) end-to-end; apply updates only when `incoming.revision > applied.revision`; discard otherwise.
-- Reuse the identity/generation-guard pattern from the Phase 0 fix rather than inventing a second mechanism — one staleness idiom for the whole milestone.
-- Apply track-list changes atomically (swap the whole revisioned context), not per-track patches that can tear mid-update.
-
-**Warning signs:**
-Muting a track in the main editor while EFX Paint plays, and the mute arriving late or reverting; a quick sequence of edits leaving the child window showing a middle state.
-
-**Phase to address:** Phase 2 (design the guard in Phase 2; the pattern is proven in Phase 0)
-
----
-
-### Pitfall 6: Off-by-one and overlap in half-open Loop Clip intervals
-
-**What goes wrong:**
-A finite loop of `cycleLength × repeatCount` overlaps the next clip by one frame, leaves a one-frame gap, or a partial-cycle interruption renders the wrong source frame. Adjacent clips flicker or double-render at the seam; save/reopen shifts boundaries by one.
-
-**Why it happens:**
-Loop effective duration is computed in at least three places (resolution, timeline filmstrip, boundary recalculation on next-clip move/remove). If any site mixes inclusive ends with exclusive ends — or computes `start + cycleLength * count` and then compares with `<=` against the next clip start — the seam frame is wrong. Partial-cycle truncation (`effectiveLength % cycleLength`) is where modulo indexing mistakes hide: occurrence `i` must resolve `sourceFrameRefs[(startOffset + i) % cycleLength]` with the offset applied BEFORE the modulo.
-
-**How to avoid:**
-- Lock the convention once: all loop regions are half-open `[startFrame, startFrame + effectiveDuration)` on canonical physical frames; the next clip's start is its first owned frame and has priority; a loop's last resolved frame is `min(nextClipStart, parentEnd, start + requestedDuration) - 1`.
-- Truth-table tests before implementation (same discipline as the Roto timing fix): full cycles exactly meeting the next clip, interruption mid-cycle (partial final cycle), interruption at the exact boundary (zero partial), infinite loop to parent end, next-clip removal re-extending to requested/infinity, single-frame cycle (`cycleLength = 1`).
-- One resolver function owns effective-duration computation; the filmstrip badge (`Cycle 5f × 5 = 25f`) and the interruption label (`Boucle raccourcie par le clip suivant`) both DERIVE from it — never compute display duration separately from resolution duration.
-
-**Warning signs:**
-UAT step 12 (partial-cycle interruption) passing but a one-frame gap visible when scrubbing the seam; badge showing 25f while resolution produces 24 or 26 frames; overlap only when `cycleLength` does not divide the interruption offset.
-
-**Phase to address:** Phase 4 (convention locked at Phase 3 UI design so the filmstrip and resolver share it)
-
----
-
-### Pitfall 7: Color override mutating (or appearing to mutate) the reusable source script
-
-**What goes wrong:**
-Applying a color override recolors the durable library script itself; the thumbnail and every future application of that script come out in the override color. Library data loss — a release stop condition.
-
-**Why it happens:**
-Two concrete shared-reference seams exist in the current code:
-1. Scripts are deep-frozen on copy/save (`deepFreezeScript` in `physicsPaintRotoScriptClipboard.ts:890-909` — `Object.freeze` on strokes, params, continuations). In strict mode, mutating frozen params throws; in a sloppy path it silently no-ops, producing "override ignored" bugs instead of corruption — BOTH failure modes ship as user-visible defects.
-2. The renderer's progressive path PASSES THROUGH the original stroke reference when `stroke.points.length === 0` (`physicsPaintRotoPlayScriptRenderer.ts:56-58`: `stroke.points.length === 0 ? stroke : transformRecordedStrokeForHeldPose(...)`). Any override applied downstream of that passthrough touches the scheduled clone or — if a schedule was ever built over unfrozen references — the source stroke.
-
-**How to avoid:**
-- Recolor at clone time: extend `flattenScriptStrokes`/`cloneStroke` so the override rewrites `params` color on the per-application clones, before scheduling. The frozen source is never in the mutation path.
-- Erase strokes must retain erase behavior (PLAY-02): recolor only strokes whose params mark them as paint strokes; add a regression test mixing paint + erase strokes under an override.
-- Keep the override strictly application-time: it must NOT be persisted into the script document (spec excludes persisted default overrides) and must not flow into the thumbnail pipeline.
-- The override behaves identically in progressive and static/hold modes — one recolor function shared by both paths, not two implementations that can drift.
-
-**Warning signs:**
-Thumbnail changes after an overridden application; a second application with "no override" rendering in the last override color; a frozen-object TypeError in console during application.
-
-**Phase to address:** Phase 3
-
----
-
-### Pitfall 8: Non-determinism in static/hold output across save/reopen and cache regeneration
-
-**What goes wrong:**
-A held cycle looks different after reopen, or regeneration of the same script+destination+options produces different pixels. Release stop condition: "Static output changes after reopen/regeneration."
-
-**Why it happens:**
-Four candidate leaks, all present in this codebase's history:
-1. **Seed drift.** Existing Script Motion determinism comes from `transformRecordedStrokeForHeldPose(stroke, { destinationSourceFrame, strokeIndex, ... })` — seeds derive from destination frame + stroke index. If static mode seeds per-occurrence (repeat index) or per-render-invocation instead, repeats differ from each other and from regeneration.
-2. **Engine state bleed.** p5.brush has module-scoped internal state (the reason `vite.config.ts` excludes it from `optimizeDeps`). The current renderer already creates a fresh `EfxPaintEngine` per render and destroys it in `finally` — any static-mode optimization that reuses an engine across renders or across cycles inherits residual state.
-3. **Merge-order dependence.** Static mode merges over `existingFrames` (`mergeRotoAlphaCanvases`); regenerating with a different existing-frame baseline yields different pixels — the merge baseline must be part of the deterministic contract.
-4. **PNG roundtrip.** Cached frames persist as PNG alpha encodings; any lossy step (premultiplied alpha mishandling, color-space conversion) changes pixels on reopen. The Roto cache path already encodes PNG alpha; reuse it unchanged — do not add a "smaller/faster" encoding for loop sources (cache-footprint compression is explicitly deferred debt, not v0.9.0 scope).
-
-**How to avoid:**
-- Repeat occurrences NEVER re-render: they resolve to the linked source-frame references by modulo. Only the source cycle is rendered, once. This makes repeat determinism structural rather than tested-for.
-- Source-cycle render must be a pure function of (script, destination start, motion params, size, existing-frame baseline): golden-pixel regression test — render twice, save/reopen, render again, assert identical bytes/alpha.
-- Zero-motion static mode must produce byte-identical frames across the cycle (stable held drawing, HOLD-02).
-
-**Warning signs:**
-Golden-pixel test passing locally but failing after a cache clear; cycle frame 2 differing from cycle frame 7 when motion is zero; "fixing" a flicker by adding randomness-reducing averaging (treats the symptom).
-
-**Phase to address:** Phase 4
-
----
-
-### Pitfall 9: Reopening the dual-model seam with a third frame model for Loop Clips
-
-**What goes wrong:**
-Loop Clips are persisted and resolved against a new frame coordinate space (or against the legacy source/display seam) instead of the canonical physical-frame model. The project carries explicit debt here: "Legacy source/display model still feeds useRotoTimelineActions.getModel (inert dual-model seam)". Adding a loop-region model beside it converts inert debt into active corruption — the exact failure family that forced the 36.14 cutover and, before that, the Phase 36.2 failure.
-
-**Why it happens:**
-Loop clips touch both the EFX Paint Roto timeline (physical frames, `finalizeProposal` authority) and the main-editor timeline visualization (filmstrip capsule). It is tempting to define the loop in display/timeline coordinates because that is where the filmstrip renders.
-
-**How to avoid:**
-- Persist the `FrameLoopClip` region in canonical physical frames (`startFrame` = appFrame semantics), resolved through the same authority path as key operations; the filmstrip is a VIEW PROJECTION of the region, never a second source of truth.
-- Repeat-count and infinity edits mutate loop metadata only — they must flow through the existing revision/authority guards and one Undo/Redo action (Phase 37/38 group-op precedent: atomic transaction, single pushAction).
-- Do not "temporarily" route loop reads through the legacy seam with a cleanup ticket — that is precisely how the current inert seam was born.
-
-**Warning signs:**
-A loop boundary that is correct in EFX Paint but off in the main-editor filmstrip; repeat-count edits requiring source regeneration (means the region is not metadata-only); Undo needing two steps to remove one loop application.
-
-**Phase to address:** Phases 3-4 (model decision locked in Phase 3, enforced in Phase 4)
-
----
-
-### Pitfall 10: Icon pipeline regressions — upscale blur, opaque corners, SPECS-dependent preflight, macOS icon cache fooling UAT
-
-**What goes wrong:**
-1. Tauri icon tooling upscales the 794×794 source to the 1024×1024 ICNS representation and the result is soft/blurry — or someone "fixes" it by manually upscaling the source first (spec explicitly forbids), baking in the blur.
-2. The rounded-square silhouette loses its alpha (flattened onto white/black during a resize step) → opaque corners on the Dock.
-3. Release preflight reads the ignored `SPECS/efxmotioneditor-icon-2.png`, so the build is non-reproducible on any machine without that file (SPECS/ is git-ignored).
-4. UAT "passes" or "fails" falsely because macOS caches icons aggressively — Finder/Dock show the OLD icon after replacement (or keep showing the new one after a bad rebuild).
-
-**Why it happens:**
-`tauri icon` regenerates the full platform set from one source; intermediate resizing is opaque. Icon caches (`com.apple.dock.iconcache`, IconServices) survive app replacement, especially for same-bundle-ID reinstalls.
-
-**How to avoid:**
-- Use the 794×794 alpha source directly; let the tooling generate sizes; verify legibility at 16/32/64/128/256/512 BEFORE packaging (spec checklist).
-- Preflight validates only the tracked generated artifacts under `app/src-tauri/icons/` (existence, non-empty, ICNS signature, packaged `.app` icon resource) — grep the release script for `SPECS` as a contract test (currently clean; keep it that way).
-- For UAT: flush icon caches or verify on the downloaded artifact (the release already requires downloaded-artifact verification — extend it to icon checks per release-contract memory: generated Tauri icons stay canonical and SPECS-independent).
-
-**Warning signs:**
-`scripts/macos-release.sh` (or a preflight helper) referencing `SPECS/`; the 1024 representation visibly softer than the 512; UAT screenshot showing the old icon on a freshly built bundle.
-
-**Phase to address:** Phase 1 (caches/UAT verification in Phase 5)
-
----
-
-### Pitfall 11: Build-hygiene cleanup breaking runtime guards, lazy chunks, or the fail-closed bundle guard
-
-**What goes wrong:**
-Mixed static/dynamic import "cleanup" converts a cycle-breaking dynamic import (stores/bridge modules) into a static one → import cycle → startup failure or undefined-at-init bindings in the packaged app. Or a Tauri/browser runtime guard (`eventApi.listen?.(...)` optional-chaining pattern from G-01) gets "simplified" and the browser fallback path dies. Or a genuine lazy chunk collapses into the entry bundle, inflating startup. Historical landmine: v0.8.0 shipped a bundle with NO `index.html` because of a plugin input interaction — `vite.config.ts` now carries the fail-closed `assertProductionBundle` guard; any build-config edit must keep that guard green and exercised.
-
-**Why it happens:**
-Vite's mixed-import warning is a reporter heuristic, not a correctness diagnosis. Mechanically converting every warned import treats a symptom list as a todo list.
-
-**How to avoid:**
-- Reproduce and snapshot the exact production warning set BEFORE changes (BUILD-02 requirement) so "fixed" and "regressed" are both measurable.
-- Convert an import ONLY when provably ineffective: same module already eagerly imported AND no cycle AND no initialization-timing dependence. Prove each with a targeted build + startup test.
-- BUILD-03 contract: resolved `chunkSizeWarningLimit === 1100` exactly; guard against silent re-raises; tests must not depend on content hashes or exact chunk counts.
-- Never raise 1100 without measurement; never add `manualChunks`/warning filters to massage reporter output (spec explicit).
-
-**Warning signs:**
-Packaged app failing at startup while dev server works (classic cycle symptom); `pnpm build` warning count changing in BOTH directions after cleanup; the bundle guard being edited in the same commit as import changes.
+A version check that routes old data to a "compat" branch; a legacy file still referenced by the renderer; a test that loads old project data and "works"; a `// TODO: remove legacy` comment in the load path.
 
 **Phase to address:** Phase 1
 
 ---
 
-### Pitfall 12: Scope creep via adapter over-reach (project-history pattern)
+### Pitfall 3: Stale async commit to wrong track
 
 **What goes wrong:**
-Phase 2 grows into "an audio player inside EFX Paint" (its own persistence, volume UI, track list); Phase 4 grows into "a general clip/loop system" (multi-track paint, arbitrary clip linking); the hydration fix grows into a launch-integration refactor. This is the documented project failure pattern: Phases 27-32 died of adapter over-reach; Phase 36.2 died of unbounded ambition and was superseded by the smallest trustworthy path (36.3).
+An async PlayScript/Reveal/Background-import operation started against track A completes after the user has switched to track B (or deleted/reordered A) and commits its result to B — or to a deleted track, orphaning accepted assets. Data corruption, spec risk #4, and a release stop condition ("Stale work commits to the wrong track").
 
 **Why it happens:**
-Each feature legitimately touches a deep seam (audio engine, frame resolver, launch bridge), and "while we're in here" refactors present themselves. The spec's Excluded list exists precisely because these temptations are predictable.
+The current async authority model is layer-scoped: the ownership/lease model and the Phase 41 revision guard (`applyRevisionedEfxPaintAudioPreview` — strict newer-than revision, single application funnel) guard against stale *layer* context. The milestone adds a *track* dimension; an async job that captures `layerId` but not `trackId + documentRevision` at launch time commits against whatever track is active when it lands.
 
 **How to avoid:**
-- Enforce the locked ownership boundaries as review gates: EFX Paint must not import/remove/move/trim/mix/persist/export audio (read-only monitoring); no multi-track paint; no combined progressive-plus-hold scheduler (user applies two operations to adjacent ranges); no Reveal masks; no broad store-cycle refactors.
-- Read-only audio transport reuses existing audio types (AUDIO-02 note) rather than defining a parallel schema "for later."
-- Any dependency inversion discovered during BUILD-02 is REPORTED as separately scoped architecture work, not absorbed (spec explicit).
-- Small surface, deep reuse: the milestone's wins come from reusing the deterministic Script Motion model, the atomic commit path, the finalizeProposal authority, and the audio engine scheduling — new code should be thin adapters over proven paths, which is the inverse of the 27-32 mistake.
+- Async authority checks include parent, document, AND track revision (Phase 2 requirement). Reuse the proven generation-guard idiom from Phase 41 rather than inventing a second mechanism — one staleness idiom for the whole milestone.
+- Bridge messages carry `parentLayerId + documentRevision + trackId`; apply updates only when `incoming.revision > applied.revision` AND the track still exists and is still the target.
+- Track deletion must fail-closed: an in-flight job targeting a deleted track is rejected, never silently redirected to the active track.
+- The spec's "Async PlayScript/Reveal operations revalidate both document and track revision before commit" is a Phase 2 entry artifact, not an implementation afterthought.
+
+**Warning signs:**
+A PlayScript application landing on the wrong row after a quick track switch; a Reveal result appearing on a track the user never selected; an undo that removes content from a track the user wasn't editing.
+
+**Phase to address:** Phase 2
+
+---
+
+### Pitfall 4: Track-local cache keys missing trackId (and a single global paintVersion)
+
+**What goes wrong:**
+Cross-track cache pollution: editing track A invalidates or returns track B's cached raster. The current `_frameFxCache` is keyed `"layerId:frame"` and `paintVersion` is a single global counter. With multiple tracks, a key that omits `trackId` returns the wrong track's pixels, and a single global `paintVersion` either over-invalidates (correct but wasteful — every row re-renders on any track edit) or, worse, a consumer that assumes "the" track changed misses the real change.
+
+**Why it happens:**
+The single-track model has no track dimension, so every key and every reactivity signal is implicitly "the one track." Adding tracks without threading `trackId` through every key and every invalidation path is the natural first draft.
+
+**How to avoid:**
+- Every cache key embeds `trackId`: `"layerId:trackId:frame"` for paint frames, `"layerId:trackId:frame:real:<keyId>"` for Roto caches (the physical model already scopes cache revision as `${contentRevision}:real:${sourceKeyId}` — extend the same discipline with trackId).
+- Track cache key includes track revision AND composition dependencies (Phase 4 requirement): the flattened parent cache invalidates when any participating internal track, Background clip, source image, or fallback changes.
+- Track-aware invalidation: editing one track never changes another track's real keys or caches (Phase 2 acceptance). The `paintVersion` counter must be bumped per-track (or the reactivity model made track-aware) so Studio re-renders the right row.
+- Follow the project's proven rule — "Always bump AND subscribe to paintVersion" — but now per-track, and subscribe in render effects keyed to the active track.
+
+**Warning signs:**
+Editing track A causing track B's thumbnail to flicker or clear; a cache hit returning another track's pixels; a render effect that re-renders all rows on any track edit.
+
+**Phase to address:** Phase 2 (keys and reactivity), Phase 4 (composition cache)
+
+---
+
+### Pitfall 5: Undo/redo targeting the wrong track (per-track stacks)
+
+**What goes wrong:**
+Ctrl+Z undoes the last thing on the *selected* track instead of the last thing the user did. The project's `history.ts` is a global command-pattern stack (pushAction/undo/redo with coalescing) — the correct model. The pitfall is introducing per-track undo stacks "so each track has its own history," which breaks the user's mental model and the existing 100+ level global undo.
+
+**Why it happens:**
+With multiple tracks, it feels natural to give each track its own undo history. The undo research is explicit: "One stack, not one per layer — Ctrl+Z must undo the last thing the user did, not the last thing on the selected layer." Per-track stacks also misread the spec's "Undo/redo targets the exact internal track" acceptance — that means the *snapshot* must capture the exact track, not that each track owns a stack.
+
+**How to avoid:**
+- Keep ONE global undo stack. Each entry's undo/redo closure captures the exact `layerId + trackId + documentRevision` it mutated (reference-based, not raster bytes — see Pitfall 17).
+- Undo snapshots metadata and asset references, not large PNG bytes (spec asset/history rules). The existing snapshot/restore with structuredClone pattern extends to track-scoped state.
+- Track CRUD (add/rename/duplicate/delete/reorder) is one atomic history command with exact pre-op selection restore on Undo/Redo — the Phase 43.6 batch-op precedent.
+- Deleting a track must not orphan accepted assets silently (Phase 2 acceptance): the delete command's undo restores the track and its references.
+
+**Warning signs:**
+Undo requiring two steps to remove one operation; undo restoring a different track's content; a per-track undo button appearing in the UI.
+
+**Phase to address:** Phase 2
+
+---
+
+### Pitfall 6: Parent opacity/blend double-applied (and opacity/blend order divergence)
+
+**What goes wrong:**
+The internal compositor applies the parent Paint layer's opacity/blend, and then the main editor's PreviewRenderer applies it again — a double visual effect. The spec is explicit: "Internal track opacity/blend is applied once inside EFX Paint. Parent Paint layer opacity/blend is applied once by the main editor after flattening. Parent opacity/blend must never be copied into internal tracks." Release stop condition: "Parent opacity/blend is double-applied."
+
+**Why it happens:**
+The PreviewRenderer composites each outer layer with `globalCompositeOperation = blendModeToCompositeOp(layer.blendMode)` and `globalAlpha = effectiveOpacity` (previewRenderer.ts:457-459, 477-478, etc.). If the internal compositor "helpfully" bakes the parent's opacity/blend into the flattened raster, the parent layer's own opacity/blend is applied a second time downstream. The NLE research confirms the order-of-operations trap: FCP applies opacity before composite mode, Resolve after — the same grade looks different on conform. The internal compositor must lock its opacity/blend order once and never let parent properties leak in.
+
+**How to avoid:**
+- The internal compositor produces a FLAT raster with internal track opacity/blend applied once, in a locked order (decide: opacity before blend, AE convention, and document it). Parent opacity/blend/transform are applied by the unchanged main-editor compositor exactly once.
+- Contract test: parent 50% opacity + internal track 50% opacity must produce 25% effective — not 12.5% (parent applied internally too) and not 50% (internal opacity lost). The pixel acceptance matrix includes "Parent Paint opacity/blend over other outer main-editor layers."
+- Never copy parent properties into internal tracks; the internal compositor reads only document-owned state.
+
+**Warning signs:**
+A parent layer whose opacity/blend visibly changes when internal track settings change; a multiply-blend parent that looks squared; a parent at 50% + internal at 50% rendering at ~12.5%.
+
+**Phase to address:** Phase 4
+
+---
+
+### Pitfall 7: Premultiplied alpha double-application (dark halos)
+
+**What goes wrong:**
+The flattened parent raster is premultiplied twice (or straight alpha is treated as premultiplied), producing dark halos around semi-transparent edges. The DaVinci Resolve manual calls this "Double Premultiplied RGBA Means Double Trouble" — multiplying gray semi-transparent pixels twice darkens edges. This corrupts the flattened output, transparent gaps, and Reveal soft edges.
+
+**Why it happens:**
+The pipeline has multiple alpha-bearing surfaces: per-track caches (PNG alpha encodings), the flattened parent raster, and the outer compositor. Each stage may premultiply or un-premultiply; a mismatch at any seam double-applies the alpha.
+
+**How to avoid:**
+- Define the alpha convention once (straight vs premultiplied) at the flattened-raster boundary and enforce it with a pixel test: a 50%-alpha white pixel must composite as 50% white, not a dark gray.
+- Reuse the existing Roto PNG alpha encoding unchanged — do not add a "smaller/faster" encoding for loop sources (cache-footprint compression is explicitly deferred debt, not v1.0.0 scope).
+- The internal compositor and the outer PreviewRenderer must agree on the alpha state of the flattened raster.
+
+**Warning signs:**
+Dark fringes around semi-transparent strokes, gaps, or Reveal soft edges; a 50%-alpha pixel rendering darker than expected; differences between Studio and export at alpha boundaries.
+
+**Phase to address:** Phase 4
+
+---
+
+### Pitfall 8: Studio/main/export divergence (one composition authority)
+
+**What goes wrong:**
+The Studio flattened preview, the main-editor preview, and the export produce different pixels. Release stop conditions: "Studio and parent flattened output differ," "Background gaps/fallback differ between Studio, main preview, and export," "Reveal differs between Studio, main preview, and export."
+
+**Why it happens:**
+The milestone touches three surfaces (Studio, main preview, export) that historically have separate render paths. If the internal compositor is re-implemented per surface (or the Background resolver is duplicated), the surfaces drift — the exact failure family that forced the "one flattened composition authority" rule.
+
+**How to avoid:**
+- One shared internal composition path for Studio preview and flattened output (Phase 4 requirement). No direct internal-track iteration in the main renderer.
+- One resolver owns Background effective-duration computation; the filmstrip badge, the interruption label, and the flattened output all DERIVE from it — never compute display duration separately from resolution duration (the v0.9.0 Pitfall 6 lesson, carried forward).
+- The pixel acceptance matrix is the gate: Studio flattened pixels, main preview, and export must satisfy the existing pixel tolerance policy for every row of the matrix.
+
+**Warning signs:**
+A gap that shows solid fallback in Studio but transparency in export; a Reveal that looks different in the main preview; a Background clip that resolves different source frames on later repeats.
+
+**Phase to address:** Phase 4 (compositor), Phase 5 (Background), Phase 8 (Reveal)
+
+---
+
+### Pitfall 9: Loop repetitions expand into duplicate assets
+
+**What goes wrong:**
+A 5-image cycle repeated 3 times stores 15 durable images instead of 5 linked references; editing one source frame updates only some occurrences. Storage growth and broken linked edits — spec risk #6, release stop condition ("Hold or Background repetitions duplicate durable source assets or resolve different source frames on later repeats").
+
+**Why it happens:**
+The Phase 43 Hold Loop Clip model already solved this for Hold clips: "one compact derived interval record, lazy per-frame query, no virtual occurrence is ever materialized." The Background track reuses the same linked source-frame reference + modulo resolver. The pitfall is re-implementing Background loops as expanded frame lists "because Background is simpler."
+
+**How to avoid:**
+- Repetitions reuse linked source-frame references and never duplicate durable images (spec Background rules). `sourceIndex = (applicationFrame - startFrame) mod cycleLength` with the offset applied BEFORE the modulo.
+- Editing one Hold/Background source frame updates every linked occurrence without duplicating assets (Phase 2 acceptance).
+- The filmstrip renders the source cycle + a hatched repetition band; expand linked cells only at high zoom and only within the viewport (v0.9.0 M1 lesson).
+
+**Warning signs:**
+Disk usage growing with repeat count; a source-frame edit not propagating to all occurrences; the filmstrip materializing per-occurrence cells.
+
+**Phase to address:** Phase 2 (shared Loop Clip resolver), Phase 5 (Background)
+
+---
+
+### Pitfall 10: Next-clip interruption off-by-one
+
+**What goes wrong:**
+A finite loop of `cycleLength × repeatCount` overlaps the next clip by one frame, leaves a one-frame gap, or a partial-cycle interruption renders the wrong source frame. Adjacent clips flicker or double-render at the seam; save/reopen shifts boundaries by one. Spec risk #7, release stop condition ("Background clips overlap, ignore the next-clip boundary, mishandle partial cycles").
+
+**Why it happens:**
+Loop effective duration is computed in multiple places (resolution, filmstrip, boundary recalculation on next-clip move/remove). If any site mixes inclusive ends with exclusive ends — or computes `start + cycleLength * count` and then compares with `<=` against the next clip start — the seam frame is wrong. The loop research confirms the seam class: Harmony's Transform-Loop skips the first frame on repeat to avoid two identical consecutive frames; Unity requires start/end pose match for smooth next-clip transitions.
+
+**How to avoid:**
+- Lock the convention once: all loop regions are half-open `[startFrame, startFrame + effectiveDuration)`; the next clip's start is its first owned frame and has priority; a loop's last resolved frame is `min(nextClipStart, parentEnd, start + requestedDuration) - 1` (spec Background rules).
+- Truth-table tests before implementation (the project's proven "truth table before patches" rule): full cycles exactly meeting the next clip, interruption mid-cycle (partial final cycle), interruption at the exact boundary (zero partial), infinite loop to parent end, next-clip removal re-extending to requested/infinity, single-frame cycle (`cycleLength = 1`).
+- One resolver function owns effective-duration computation; the filmstrip badge and the interruption label both derive from it.
+
+**Warning signs:**
+A one-frame gap visible when scrubbing the seam; a badge showing 15f while resolution produces 14 or 16 frames; overlap only when `cycleLength` does not divide the interruption offset.
+
+**Phase to address:** Phase 5 (convention locked at Phase 3 UI design so the filmstrip and resolver share it)
+
+---
+
+### Pitfall 11: Infinite loop stored as a huge expanded range
+
+**What goes wrong:**
+An infinite loop (or a 10,000-frame finite loop) is materialized as an expanded frame range, causing unbounded data, slow saves, and filmstrip blowup. Spec risk #8, release stop condition ("lose requested repeat count after reopen").
+
+**Why it happens:**
+The Phase 43 model already stores infinity as metadata and derives effective end — "Requested repeat count is authoritative. Effective end/duration/cycle count are derived from the next clip and parent end rather than stored as independent truth." The pitfall is storing the derived effective range as durable state, which then goes stale when the next clip moves.
+
+**How to avoid:**
+- Store `repeat: { mode: 'infinite' }` (or finite count) as metadata; derive effective duration at resolve/render time from `min(nextClipStart, parentEnd, start + requestedDuration)`.
+- Moving the next clip later lets the previous loop expand again up to its requested count or indefinitely; deleting the next clip lets an infinite loop continue to parent end — all by re-derivation, never by stored range.
+- Requested repeat count remains stored even while effective duration is shortened (spec Background rules).
+
+**Warning signs:**
+A save file growing with repeat count; a filmstrip rendering cells for an ∞ loop; a "recalculate effective range" code path that writes back to the document.
+
+**Phase to address:** Phase 5
+
+---
+
+### Pitfall 12: Background track overlaps or moves above Paint
+
+**What goes wrong:**
+Background clips overlap (silently stacking instead of rejecting), or the Background track is reordered above Paint tracks, producing ambiguous composition. Spec risk #9, release stop conditions ("Background clips overlap," "Background can be reordered above Paint tracks or is confused with the photo/reference track").
+
+**Why it happens:**
+The Background track is "just another track" in the first draft, so it inherits the Paint track reorder/overlap rules. The spec is explicit: exactly one Background track at a fixed position beneath all internal Paint tracks; clips never overlap; move/insert operations reject or snap collisions rather than silently stacking.
+
+**How to avoid:**
+- One fixed bottom row with collision rejection (spec Background rules). Move/insert operations reject or snap collisions; never silently stack clips.
+- The Background track cannot be reordered above Paint tracks — enforce at the model level, not just the UI.
+- Keep Background visually distinct from Paint rows and from the photo/reference track (Phase 3 requirement).
+
+**Warning signs:**
+Two clips rendering on top of each other; a Background row that can be dragged above a Paint row; a user confusing Background with the photo/reference track.
+
+**Phase to address:** Phase 3 (timeline), Phase 5 (model)
+
+---
+
+### Pitfall 13: Background gaps differ across outputs
+
+**What goes wrong:**
+A gap shows solid fallback in Studio but transparency in export (or vice versa). Spec risk #10, release stop condition ("Background gaps/fallback differ between Studio, main preview, and export").
+
+**Why it happens:**
+The fallback (solid color or transparency) is resolved in multiple places. The compositing research confirms the hidden-black-layer trap: multi-track compositors that introduce an implicit opaque black layer make transparency unexportable. If the internal compositor defaults to an opaque background when the fallback is transparent, gaps render black in export.
+
+**How to avoid:**
+- One compositor path resolves the document fallback (solid or transparent) and the Background contribution; gaps reveal the fallback consistently across Studio, flattened parent output, main preview, and export (spec Background rules).
+- Transparent gaps use a checkerboard in the UI; solid fallback gaps use the configured color swatch — both are VIEW projections of the same fallback state, never a second source of truth.
+- The pixel acceptance matrix includes "Background gap over solid fallback and transparency."
+
+**Warning signs:**
+A gap that shows checkerboard in Studio but black in export; a fallback color that renders differently across surfaces; a "transparent" gap that exports as opaque.
+
+**Phase to address:** Phase 4 (compositor), Phase 5 (Background)
+
+---
+
+### Pitfall 14: Reference photo leaks into output
+
+**What goes wrong:**
+The photo/reference track, visible as a painting reference, accidentally enters the flattened parent output. Spec risk #12, release stop conditions ("Reference-only photo pixels leak into output," "Photo reference visibility alone never leaks into output").
+
+**Why it happens:**
+The track-matte research confirms the classic leak: the matte/reference layer's visibility is auto-disabled when used as a source, and re-enabling it (or forgetting to disable it) leaks it into preview AND final render. The spec is explicit: "The photo/reference track must not automatically become visible in the parent output merely because it is visible as a painting reference."
+
+**How to avoid:**
+- Explicit source mode (`reference-only` / `reveal-source` / `masked-transform-source`) and exclusion tests (spec Phase 6 requirements). Toggling reference visibility does not alter ordinary flattened output.
+- The reference track has separate reference/source visibility semantics from Paint tracks; it never enters the flattened output except through an explicit Reveal result.
+- The Reveal mask compositor uses the source BEFORE the mask is applied; the Reveal result is written to an internal Paint/result track, and the source itself stays out of the flattened output.
+
+**Warning signs:**
+A reference photo appearing in the main preview or export; toggling reference visibility changing the flattened output; a Reveal that includes the reference overlay.
+
+**Phase to address:** Phase 6 (reference track), Phase 8 (Reveal)
+
+---
+
+### Pitfall 15: Audio preview drift or mutation
+
+**What goes wrong:**
+Multi-track Paint playback drifts from main-editor audio, or the read-only audio preview mutates main-editor audio state. Spec risk #14, release stop conditions ("Audio preview mutates main-editor audio or drifts").
+
+**Why it happens:**
+The Phase 41 audio preview already solved the single-track case: read-only revisioned context, anchor model, silent scrub, loop-wrap re-seek, 40ms drift correction, doubled-audio ownership guard. The multi-track milestone must not regress it. The audio research confirms the root cause: each AudioContext runs its own clock (currentTime advances per render quantum and falls behind permanently under CPU contention/GC/backgrounding); two contexts in separate WebViews drift apart. The pitfall is re-introducing a second clock or a second engine.
+
+**How to avoid:**
+- Reuse the Phase 41 anchor model unchanged: main-editor audio remains authoritative and read-only; EFX Paint receives read-only synchronized preview context; internal track playback and audio preview share the same application-frame cursor.
+- On loop wrap, restart sources at the loop-start audio offset — never "rewind" a running AudioBufferSourceNode (the Godot audio self-overlap lesson: a looping animation with an audio track self-overlaps unless the sound is stopped at the end offset).
+- Track hide/solo does not alter audio unless a separately explicit monitor rule is locked (Phase 7 requirement).
+- Closing Studio releases audio resources; no doubled playback engine (Phase 7 requirement).
+
+**Warning signs:**
+Sync correct at frame 0 but late after 30+ seconds; audio continuing after the EFX Paint window closes; a hide/solo change altering audio; two AudioContext instances in the same monitoring session.
+
+**Phase to address:** Phase 7
+
+---
+
+### Pitfall 16: Reveal includes preview overlays (mask source isolation)
+
+**What goes wrong:**
+The Reveal mask compositor reads the reference overlay (onion skin, reference visibility, preview base) instead of the isolated source, so the flattened output includes preview-only pixels. Spec risk #16, release stop condition ("Reveal differs between Studio, main preview, and export").
+
+**Why it happens:**
+The track-matte research confirms the render-order trap: effects on the matte layer may be computed before the matte is created, and the matte source layer's visibility state leaks into the matte. The spec is explicit: "Preview base/reference overlays remain distinct from durable output" and "Mask source isolation and truth-table tests."
+
+**How to avoid:**
+- One offscreen source-plus-mask compositor shared by Studio and flattened output (Phase 8 requirement). The mask reads the isolated source frame, never the composited preview.
+- Explicit alpha versus luma interpretation; optional inversion; deterministic feather only if preview/export parity is maintained.
+- Stable source-track and mask-track references; revision invalidation; missing source/mask recovery.
+- Undo/redo by reference, not raster-byte snapshots (Pitfall 17).
+- Truth-table tests: empty mask reveals nothing; full mask reveals the entire source; partial alpha produces expected soft edges; eraser removes revealed coverage; progressive/static behavior matches PlayScript semantics.
+
+**Warning signs:**
+A Reveal that includes the onion-skin or reference overlay; a Reveal that changes when reference visibility toggles; soft edges that differ between Studio and export.
+
+**Phase to address:** Phase 8
+
+---
+
+### Pitfall 17: Raster bytes copied into undo
+
+**What goes wrong:**
+Undo snapshots store large PNG/canvas bytes instead of references, causing memory growth and slow undo/redo. Spec risk #15, spec asset/history rules: "Undo snapshots metadata and asset references, not large PNG bytes."
+
+**Why it happens:**
+The existing history.ts uses snapshot/restore with structuredClone. With multiple tracks and caches, the temptation is to snapshot the flattened raster or the per-track caches "for safety." The undo research confirms the byte-budget lesson: deltas, not snapshots, keep undo memory bounded.
+
+**How to avoid:**
+- Undo entries capture metadata and asset references (trackId, frame, element IDs, revisions), not raster bytes. The existing command-pattern undo extends to track-scoped state.
+- Track deletion's undo restores the track and its references, not its cached rasters (caches are rebuildable).
+- Generated interpolation/caches are rebuildable; durable real keys and accepted local assets are authoritative (spec asset/history rules).
+
+**Warning signs:**
+Memory growing with undo depth; undo/redo visibly slow on large frames; a snapshot containing `HTMLCanvasElement` or PNG bytes.
+
+**Phase to address:** Phase 2
+
+---
+
+### Pitfall 18: Scope creep via forbidden sequence-level assumptions
+
+**What goes wrong:**
+The milestone grows into a main-editor rewrite: internal tracks appear as main-editor timeline rows, `Sequence.frameTracks` is introduced, multiple key-photo streams appear, internal track offsets determine sequence duration, or the photo/reference/Background tracks become main-editor content tracks. This is the documented project failure pattern: Phases 27-32 died of adapter over-reach; Phase 36.2 died of unbounded ambition.
+
+**Why it happens:**
+Each feature legitimately touches a deep seam (paint store, Roto store, compositor, audio bridge), and "while we're in here" refactors present themselves. The spec's Forbidden sequence-level assumptions list exists precisely because these temptations are predictable.
+
+**How to avoid:**
+- Enforce the locked ownership boundaries as review gates: the main editor owns sequences/layers/audio and stays unchanged; multi-track means internal Paint frame tracks inside one opened EFX Paint document; all internal tracks share the parent application-frame axis and never change main-editor sequence duration.
+- No `Sequence.frameTracks`, no multiple key-photo streams, no main-editor rows for internal tracks, no direct main-renderer iteration over internal Paint tracks, no Reveal result as a new main-editor sequence track.
+- Small surface, deep reuse: the milestone's wins come from reusing the deterministic physical-frame model, the atomic commit path, the finalizeProposal authority, the Loop Clip resolver, and the Phase 41 audio anchor model — new code should be thin adapters over proven paths.
 
 **Warning signs:**
 Phase plans whose file lists span more than two subsystems; new persisted fields without a spec line; "temporary" parallel implementations flagged for later cleanup; a phase UAT script longer than the feature's user stories.
 
-**Phase to address:** All phases (roadmap-level guard); Phase 5 stop conditions are the enforcement backstop
+**Phase to address:** All phases (roadmap-level guard); Phase 9 stop conditions are the enforcement backstop
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall M1: Infinite-loop filmstrip rendering blowup
-**What goes wrong:** Timeline tries to render cells for an ∞ loop or a 10,000-frame finite loop; virtualization chokes.
-**Prevention:** Filmstrip renders the source cycle + a hatched repetition band; expand linked cells only at high zoom and only within the viewport. Never materialize occurrence data per repeated frame — modulo resolution is computed, not stored.
+### Pitfall M1: Duplicate track orphaning Reveal/mask relationships
+**What goes wrong:** Duplicating a track that is a Reveal mask source leaves an invisible orphaned mask that changes whatever lands beneath it (the AE "duplication time bomb").
+**Prevention:** Duplicate creates fresh track, frame-key, cache, and revision identities (spec identity rules); Reveal source/mask references are re-pointed or explicitly broken on duplicate, never silently inherited.
+**Phase:** 2
+
+### Pitfall M2: Active-track routing gaps
+**What goes wrong:** Paint, Roto, PlayScript, Cut/Copy/Paste, and drag operations read "the" track instead of the active track, mutating the wrong row.
+**Prevention:** Route all operations through the active track ID; the active track is always visually unambiguous (Phase 3 acceptance); timeline interactions never mutate another row accidentally.
 **Phase:** 3
 
-### Pitfall M2: Static-mode staged-render memory mis-budget
-**What goes wrong:** Static/hold renders the complete stroke set per cycle frame; someone sizes the budget by requested duration (cycle × repeat) instead of cycle length, tripping `MAX_AGGREGATE_RGBA_BYTES` (512 MB) or — worse — raising the cap.
-**Prevention:** Only the source cycle is staged; the existing capacity validation applies to `cycleLength` frames. Do not raise the renderer caps for loops.
+### Pitfall M3: Compositor order determinism after save/reopen
+**What goes wrong:** The internal composition order changes after save/reopen because it was derived from array position or an unpersisted field.
+**Prevention:** Persist the order field; reorder changes compositor order but not track identity (Phase 3 acceptance); internal composition order is deterministic and stable after save/reopen (spec opacity/blend rules).
+**Phase:** 3-4
+
+### Pitfall M4: Background source-frame revision not invalidating caches
+**What goes wrong:** Editing a Background source image (or a Hold source frame) does not invalidate the Background cache, so repeats resolve stale pixels.
+**Prevention:** Background resolution cache includes track revision, active clip revision, source-frame revision, fallback, next-clip boundary, and parent end (Phase 4 requirement); source revision invalidates dependent Reveal/transformation results (Phase 6 requirement).
+**Phase:** 4-5
+
+### Pitfall M5: Photo/reference frame-aligned source resolution
+**What goes wrong:** The reference changes over time but the source frame is resolved once at import, so Reveal uses the wrong frame.
+**Prevention:** Frame-aligned source resolution where the reference changes over time (Phase 6 requirement); Reveal uses the exact referenced source frame.
+**Phase:** 6
+
+### Pitfall M6: Missing source/asset treated as silent transparency
+**What goes wrong:** A missing durable asset renders as transparent instead of an explicit recoverable error, hiding the failure.
+**Prevention:** A missing durable asset is an explicit recoverable error, not silent transparency (spec empty-frames rules); missing source/asset states are explicit and recoverable (Phase 4 requirement).
 **Phase:** 4
 
-### Pitfall M3: Cancellation leaving partial loop metadata
-**What goes wrong:** Abort mid-apply commits the staged source cycle but not the loop region (or vice versa) → orphaned assets or a loop resolving missing frames.
-**Prevention:** Reuse the existing staged-then-atomic-commit path (HOLD-03): nothing durable until the whole operation commits; cancel/failure leaves the document unchanged; the current renderer already zeroes `staged` on error — keep that discipline through the loop-metadata write.
-**Phase:** 4
-
-### Pitfall M4: Audio decode duplication and buffer leaks in the child window
-**What goes wrong:** `decodeAudioData` cannot share `AudioBuffer`s across WebViews; the child decodes its own copies (memory doubled per track), and repeated open/close cycles accumulate contexts (browsers cap concurrent AudioContexts).
-**Prevention:** Decode lazily only for audible unmuted tracks in range; release buffers and close the context on window close; regression-test open/play/close × N without context-count growth.
+### Pitfall M7: Generated interpolation/cache absence confused with missing real key
+**What goes wrong:** A track with no generated interpolation at a frame is treated as a missing real key (or vice versa), producing wrong empty/error states.
+**Prevention:** Generated interpolation/cache absence must not be confused with a missing real key (spec empty-frames rules); preserve the real-key/cache boundary per track (spec risk #5).
 **Phase:** 2
 
-### Pitfall M5: Revision-guarded audio updates racing in-flight decodes
-**What goes wrong:** A newer context revision is applied while an older track's async decode completes late and starts playback with stale parameters.
-**Prevention:** Tag decode jobs with the revision that requested them; on completion, discard if the applied revision has moved on (same generation-guard idiom as Pitfalls 1/5).
-**Phase:** 2
-
-### Pitfall M6: Next-clip move/remove not re-resolving loops
-**What goes wrong:** Moving the next clip later leaves the loop visually truncated at the old boundary until some unrelated refresh.
-**Prevention:** Effective duration is derived (computed from clip positions at resolve/render time), never cached as mutable state; moving/removing the next clip only bumps revision and the loop re-derives. Test: move → expand, remove → extend to parent end, WITHOUT source regeneration.
-**Phase:** 4
-
-### Pitfall M7: Monitoring toggle leaking into project data
-**What goes wrong:** The session-local Audio Preview On/Off gets persisted into the `.mce` or mutates main-editor mute state.
-**Prevention:** Follow the `soloStore` precedent (session-only state, zero persistence); toggle gates only the child-window engine; contract test that main-editor `audioStore` snapshots are byte-identical before/after toggling.
-**Phase:** 2
-
-### Pitfall M8: Shortcut conflicts in the new controls
-**What goes wrong:** New PlayScript/audio-toggle keybindings fire while typing in inputs or clash with paint-mode keys.
-**Prevention:** Project rule — global shortcuts must check `isPaintEditMode()` and guard input focus (documented S-key debt exists from v0.6.0; do not add a second instance).
-**Phase:** 3
+### Pitfall M8: Hide/solo truth table drift
+**What goes wrong:** Studio preview and flattened output apply different hide/solo rules (e.g., hide wins over solo in one, not the other).
+**Prevention:** Lock the truth table once (no solo → all visible; one or more solo → only visible+soloed; hide wins over solo) and use it in both Studio and flattened output (spec hide/solo rules).
+**Phase:** 3-4
 
 ## Minor Pitfalls
 
@@ -314,61 +426,62 @@ Phase plans whose file lists span more than two subsystems; new persisted fields
 **Phase:** 3
 
 ### Pitfall m2: Requested vs effective duration hidden from the user
-**Prevention:** Badge always shows requested (`Cycle 5f × 5 = 25f` or `× ∞`); the shortened state is a distinct visual + label. Both derive from the single resolver (Pitfall 6).
+**Prevention:** Badge always shows requested (`Cycle 5f × 3 = 15f` or `× ∞`); the shortened state is a distinct visual + label. Both derive from the single resolver (Pitfall 10).
 **Phase:** 3
 
-### Pitfall m3: ICNS validated only by existence
-**Prevention:** Preflight checks the ICNS magic signature and packaged `.app` icon metadata, not just non-zero file size (BUILD/ICON contract tests already pattern this via the bundle guard).
-**Phase:** 1, 5
+### Pitfall m3: Background/photo-reference visual confusion
+**Prevention:** Keep photo/reference, Background, and audio-preview surfaces visually distinct from editable Paint rows (Phase 3 requirement); the Background row is fixed and labeled.
+**Phase:** 3
 
-### Pitfall m4: Budget documentation drift
-**Prevention:** The 1100 rationale (packaged desktop app, local assets, not a performance claim) lives next to the config value as a comment AND in the build docs; a test pins the resolved value.
-**Phase:** 1
+### Pitfall m4: Shortcut conflicts in the new controls
+**Prevention:** Project rule — global shortcuts must check `isPaintEditMode()` and guard input focus (documented S-key debt exists from v0.6.0; do not add a second instance).
+**Phase:** 3
 
 ## Technical Debt Patterns
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `setTimeout`/rAF retry on hydration | Panel "works" in dev | Flaky packaged behavior; release stop condition | Never (spec-locked) |
-| Rereading `getLaunchContext()` "just once more" | No signature changes | Same stale-read class persists; next consumer repeats the bug | Never — fix the handoff |
-| Raising `chunkSizeWarningLimit` past 1100 | Warning silenced | Silent bundle growth | Only with measurement attached |
-| Global suppression of mixed-import warnings | Clean reporter output | Real cycle-breaking regressions hidden | Never (spec-locked) |
-| Persisting the audio monitoring toggle | Survives restart "for free" | Session-local preview state becomes project data; ownership boundary breached | Never — session-local by spec |
-| Materializing loop repetitions as durable frames | Simpler resolver | Asset duplication, inconsistent edits across occurrences, cache bloat | Never — linked references are the feature |
-| Raising PlayScript renderer memory caps for static mode | Big cycles succeed | OOM on real projects; masks a sizing bug | Never — budget by cycle length |
-| Routing loop reads through the legacy source/display seam | Faster Phase 4 | Third model; repeats the 36.2/36.14 pain | Never — extend canonical model |
-| Reusing one EfxPaintEngine across static renders | Faster render | p5.brush module-state bleed → non-determinism | Never — fresh engine per render (current contract) |
+| Track identity via array index | No ID allocation | Reorder/history/cache corruption | Never (spec-locked) |
+| Legacy one-track path behind a version check | Old projects "still work" | Permanent dual maintenance; silent partial loads | Never (clean-break spec) |
+| Per-track undo stacks | "Each track has its own history" | Breaks global undo; wrong-track undo | Never — one global stack |
+| Materializing loop repetitions as durable frames | Simpler resolver | Asset duplication, broken linked edits, cache bloat | Never — linked references are the feature |
+| Storing derived effective loop range | Faster filmstrip | Goes stale on next-clip move; unbounded data | Never — derive at resolve time |
+| Baking parent opacity/blend into the flattened raster | "Simpler" compositor | Double visual effect | Never (spec-locked) |
+| Re-implementing the compositor per surface | Faster Studio iteration | Studio/main/export divergence | Never — one composition authority |
+| Snapshotting raster bytes in undo | "Safe" undo | Memory growth; slow undo/redo | Never — reference-based history |
+| Reusing one EfxPaintEngine across track renders | Faster render | p5.brush module-state bleed → non-determinism | Never — fresh engine per render (current contract) |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Tauri cross-window events (`physic-paint:*`) | Fire-and-forget emits; unawaited unlisten on unmount | Revisioned payloads, identity guards, awaited unlisten; native `listen` branch + browser fallback both preserved (G-01 pattern) |
-| Asset transport to child window (audio files) | Assuming the main window's asset protocol/CSP grants apply | Explicit secure transport; CSP grant guarded by contract test (v0.8.1 `img-src data:` precedent) |
-| Web Audio in second WebView | One `AudioContext` assumption; gesture-less autoplay | Per-window context, resume inside user-gesture handler, close on window close |
-| `audioEngine` one-shot sources | Seeking by rewinding a running source | stopAll + `play(trackId, offset, ...)` restart (existing `playbackEngine` pattern) |
-| Deep-frozen script documents | Mutating frozen `params` for overrides | Clone-then-recolor at application time; erase strokes exempt |
-| `finalizeProposal` authority | Loop ops bypassing the single mutation path | Loop region edits are atomic acknowledged transactions like Phase 37 group ops |
-| `.mce` persistence | Writing migration shims for old projects | Clean break per project rule (no legacy migration code) — but reopen determinism is mandatory |
-| Tauri icon tooling | Manual 1024 upscale of the 794 source | Use source as-is; verify generated sizes visually |
+| Tauri cross-window events (`physic-paint:*`) | Fire-and-forget emits; unawaited unlisten on unmount | Revisioned payloads carrying `parentLayerId + documentRevision + trackId`; identity guards; awaited unlisten (G-01 pattern) |
+| Asset transport to child window (Background/photo sources) | Assuming the main window's asset protocol/CSP grants apply | Explicit secure transport; CSP grant guarded by contract test (v0.8.1 `img-src data:` precedent) |
+| Web Audio in second WebView | One AudioContext assumption; gesture-less autoplay | Per-window context, resume inside user-gesture handler, close on window close (Phase 41 anchor model) |
+| `audioEngine` one-shot sources | Seeking by rewinding a running source | stopAll + restart at offset (existing `playbackEngine` pattern); loop-wrap re-seek |
+| `finalizeProposal` authority | Track/Background ops bypassing the single mutation path | Track CRUD and Background clip ops are atomic acknowledged transactions like Phase 37/43.6 group ops |
+| `.mce` persistence | Writing migration shims for old projects | Clean break per project rule — but reopen determinism is mandatory |
+| PreviewRenderer outer compositing | Internal compositor baking parent opacity/blend | Internal compositor produces a flat raster; parent applies opacity/blend exactly once |
+| Loop Clip resolver | Background loops re-implemented separately from Hold loops | One shared resolver for Hold and Background sources (spec: shared linked Loop Clip semantics) |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
 | Per-frame filmstrip cells for long/∞ loops | Timeline jank at high repeat counts | Hatched band + viewport-windowed expansion | Loop beyond a few hundred frames |
-| Decoding all audio tracks eagerly in child window | Slow EFX Paint open with audio-heavy projects | Lazy decode of audible in-range tracks only | Projects with many/long tracks |
-| Audio seek-restart churn during scrub | Clicking/garbled audio while dragging the cursor | Throttle/coalesce seek-restart; single pending restart (main engine already restarts per seek — do not worsen it) | Rapid scrubbing |
-| Static-mode staging sized by requested duration | RangeError or OOM on long loops | Stage cycle length only; repetitions are references | `cycleLength × repeat` ≫ cycle |
-| Bundle guard weakening during import cleanup | Incomplete bundle ships (v0.8.0 repeat) | `assertProductionBundle` untouched; BUILD-03 tests extended not replaced | Any vite.config edit |
+| Flattened parent cache invalidated on any track edit | Playback stutter on multi-track documents | Track cache key includes track revision + composition dependencies; per-track invalidation | 3+ tracks with heavy content |
+| Single global `paintVersion` over-invalidation | All rows re-render on any track edit | Track-aware reactivity; subscribe keyed to active track | 3+ tracks |
+| Raster bytes in undo snapshots | Memory growth with undo depth | Reference-based history | Large frames, deep undo |
+| Background source decode per repeat | Slow playback on repeated sequences | Decode source cycle once; repetitions are references | Long sequences |
+| Re-rendering the source cycle per occurrence | Flicker and CPU spikes | Only the source cycle is rendered once; repeats resolve by modulo | Any repeat > 1 |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Loosening CSP in the child window to load audio "quickly" | Packaged-app XSS surface; repeats the v0.8.1 CSP scramble | Explicit minimal grant + contract test (img-src data: precedent) |
-| New IPC/transport command without payload validation | Malformed audio context crashes the child window | Validate revisioned payload at the bridge boundary; reject stale/unknown revisions |
-| Preflight reading user-controlled SPECS path | Non-reproducible/tampered release input | Tracked generated icons are the only release authority |
+| Loosening CSP in the child window to load Background/photo sources "quickly" | Packaged-app XSS surface; repeats the v0.8.1 CSP scramble | Explicit minimal grant + contract test (img-src data: precedent) |
+| New IPC/transport command without payload validation | Malformed track/Background payload crashes the child window | Validate revisioned payload at the bridge boundary; reject stale/unknown revisions |
+| Background/photo source resolution without provenance checks | Loading arbitrary paths as sources | Secure asset resolution (Phase 6 requirement); provenance-locked transport |
 
 ## UX Pitfalls
 
@@ -376,61 +489,72 @@ Phase plans whose file lists span more than two subsystems; new persisted fields
 |---------|-------------|-----------------|
 | `clip bloquant` wording | User thinks a clip is an error/obstacle | `clip suivant — interrompt la boucle` explains the mechanism |
 | Loop silently shortened | User exports fewer frames than requested | `Boucle raccourcie par le clip suivant` label + diagonal end cap |
-| Monitoring toggle indistinguishable from track mute | User fears muting the project | Label it "Audio Preview: On/Off", local scope stated in tooltip |
-| Contradictory Scripts panel (Copy/Apply work, Save disabled) | User distrusts the whole panel | Phase 0 fix; contradictory-state regression test |
-| Icon legibility only checked at 512px | Unreadable Dock/Finder icon ships again | Multi-size review (16→512) BEFORE packaging |
+| Active track ambiguous | User paints on the wrong row | Active track always visually unambiguous; ensure-active-track visibility on scroll (Phase 3) |
+| Background/photo-reference confusion | User thinks the reference is the background | Distinct visual surfaces; fixed labeled Background row |
+| Hide/solo behavior inconsistent with expectations | User can't isolate a track | Locked truth table; hide wins over solo; solo is an isolation filter |
+| Reference photo leaking into output | User exports a composite with the reference baked in | Explicit source mode; exclusion tests; reference visibility never alters flattened output |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Hydration:** Works on first open — but is the scan-count exactly one after close/reopen × 3, and does a stale replaced-project event leave rows empty? Verify with the generation-guard test, not just the happy path.
-- [ ] **Audio sync:** Correct at frame 0 — verify at 30s+ sustained playback, after a mid-play seek, and across a loop wrap. All three are separate failure modes.
-- [ ] **Audio cleanup:** Playback stops on pause — verify sources are released and the context closed on WINDOW close (leak test with repeated open/play/close).
-- [ ] **Color override:** Override renders correctly — verify the source script JSON on disk is byte-identical before/after, and erase strokes still erase.
-- [ ] **Loop clips:** Badge says 25f — verify the resolver produces exactly 25 frames, only 5 durable assets exist, repeat-count edit regenerates nothing, and save/reopen preserves all of it.
+- [ ] **Track identity:** Reorder works — verify track IDs are unchanged after reorder, undo/redo restores the exact track, and Reveal mask references still point at the same track.
+- [ ] **Clean break:** New v1.0 document works — verify a pre-v1.0 Paint fixture fails explicitly with no partial mutation and no reachable legacy renderer (grep contract test).
+- [ ] **Stale async:** PlayScript/Reveal works on the active track — verify a job started on track A cannot commit to track B after a quick switch (revision + trackId guard test).
+- [ ] **Cache isolation:** Editing track A — verify track B's caches and thumbnails are untouched (per-track cache key test).
+- [ ] **Parent opacity/blend:** Parent at 50% opacity + internal track at 50% — verify 25% effective, not double-applied (pixel matrix).
+- [ ] **Loop seams:** Badge says 15f — verify the resolver produces exactly 15 frames, only 5 durable assets exist, repeat-count edit regenerates nothing, and save/reopen preserves all of it.
 - [ ] **Partial-cycle interruption:** Boundary case interrupts mid-cycle — also verify interruption exactly AT a cycle boundary (zero partial) and a 1-frame cycle.
-- [ ] **Determinism:** Two renders match — also verify after cache clear and after save/reopen (three comparisons, not one).
-- [ ] **Icon:** New icon in the built bundle — verify in Finder, Dock, App Switcher, DMG on the DOWNLOADED artifact (icon caches lie on dev machines).
-- [ ] **Import cleanup:** Warnings gone — verify the packaged app starts (cycles only fail at runtime) and the bundle guard test suite is green unchanged.
-- [ ] **Monitoring toggle:** Silences preview — verify main-editor `audioStore` snapshot is untouched and export is unchanged.
+- [ ] **Infinite loop:** Set to ∞ — verify no expanded range is stored, the filmstrip doesn't materialize cells, and moving/deleting the next clip re-derives deterministically.
+- [ ] **Background gaps:** Transparent gap — verify checkerboard in Studio AND transparency in export (no hidden black layer).
+- [ ] **Reference exclusion:** Reference visible while painting — verify the flattened output is unchanged when reference visibility toggles.
+- [ ] **Audio sync:** Correct at frame 0 — verify at 30s+ sustained playback, after a mid-play seek, and across a loop wrap. All three are separate failure modes.
+- [ ] **Reveal isolation:** Reveal renders correctly — verify the onion-skin/reference overlay is not in the mask, and Studio/main/export match.
+- [ ] **Undo memory:** Undo works — verify no raster bytes in snapshots and memory is bounded with depth.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Timing-hack hydration merged | MEDIUM | Revert to explicit-payload handoff; the owned regression test (fail-before-fix) makes the revert safe |
-| Doubled audio in the field | MEDIUM | Hot-gate: force main-window engine stop while child monitoring active; proper single-authority fix in patch |
-| Loop interval off-by-one post-release | HIGH | Resolver is pure/derived — fix the one function; persisted regions are physical-frame based so no data migration |
-| Source script mutated by override | HIGH (data loss) | Deep-freeze already throws in strict paths; restore script from project scripts folder backups; ship clone-time recolor fix |
-| Non-deterministic static output | HIGH | Re-derive determinism at the seed (destination+strokeIndex); invalidate affected caches; golden-pixel gate before re-release |
-| Icon regression after release | MEDIUM | Generated icons are tracked — revert the icon directory, re-run preflight, re-sign (release pipeline already handles this) |
-| Import cleanup cycle in packaged app | MEDIUM | Revert the specific import conversion; the pre-change warning snapshot identifies exactly which conversions were made |
+| Track identity corruption post-release | HIGH | Stable IDs are structural — revert to ID-based addressing; persisted regions are trackId-based so no data migration if caught early |
+| Legacy path re-enabled | MEDIUM | Re-delete the legacy path; the grep contract test makes the revert safe |
+| Stale async commit | HIGH (data corruption) | Revalidate document+track revision before commit; fail-closed on deleted track; restore from undo if the corruption is recent |
+| Double-applied parent opacity/blend | MEDIUM | Remove parent-property baking from the internal compositor; pixel-matrix regression gate |
+| Loop off-by-one post-release | HIGH | Resolver is pure/derived — fix the one function; persisted regions are physical-frame based so no data migration |
+| Reference leak into output | MEDIUM | Explicit source-mode exclusion; the exclusion test catches it before release |
+| Audio drift | MEDIUM | Reuse the Phase 41 anchor model; loop-wrap re-seek; drift correction |
+| Reveal overlay leak | MEDIUM | Mask source isolation; truth-table tests |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| 1. Stale getter reread | Phase 0 | Owned regression: exact-payload handoff, one scan, rows populate, `canSave === true` |
-| 2. Timing hacks | Phase 0 | Diff review rejects timers; test fails deterministically pre-fix |
-| 3. Doubled audio engines | Phase 2 | Single-authority gate + close-cleanup leak test; native UAT step 6 |
-| 4. Drift / frame-domain mapping | Phase 2 | Locked truth table; sustained-playback, seek, loop-wrap sync tests |
-| 5. Stale audio revisions | Phase 2 | Revision-guard tests incl. in-flight decode race (M5) |
-| 6. Half-open interval off-by-one | Phase 4 (convention locked Phase 3) | Boundary truth-table tests incl. exact-boundary and 1-frame cycle |
-| 7. Source-script mutation via override | Phase 3 | Byte-identical source script assertion; erase-preservation test |
-| 8. Static/hold non-determinism | Phase 4 | Golden-pixel × 3 comparisons (rerender, cache-clear, save/reopen) |
-| 9. Third frame model | Phases 3-4 | Loop regions in canonical physical frames; one Undo per operation |
-| 10. Icon pipeline | Phase 1 (UAT Phase 5) | Multi-size review; preflight greps clean of SPECS; downloaded-artifact check |
-| 11. Build hygiene regressions | Phase 1 | Pre-change warning snapshot; packaged-startup test; budget pinned at 1100 |
-| 12. Scope creep / adapter over-reach | All (roadmap guard) | Phase file-list review; Phase 5 stop conditions |
-| M1-M8 moderate pitfalls | Per pitfall (mostly 2/3/4) | Per-pitfall tests listed above |
+| 1. Track identity via array position | Phase 1 (model), Phase 2 (addressing) | Stable-ID tests; reorder preserves identity; duplicate-track-ID fail-loud test |
+| 2. Legacy schema reachable | Phase 1 | Grep contract test; pre-v1.0 fixture fails explicitly (UAT step 2) |
+| 3. Stale async commit | Phase 2 | Revision+trackId guard tests incl. track-switch and track-delete races |
+| 4. Cache key missing trackId | Phase 2 (keys), Phase 4 (composition cache) | Per-track cache isolation test; track-aware paintVersion test |
+| 5. Undo targeting wrong track | Phase 2 | One global stack; undo restores exact track; track CRUD one-undo test |
+| 6. Parent opacity/blend double-applied | Phase 4 | Pixel matrix: parent 50% + internal 50% = 25% |
+| 7. Premultiplied alpha | Phase 4 | 50%-alpha pixel test; no dark halos |
+| 8. Studio/main/export divergence | Phase 4 (compositor), 5 (Background), 8 (Reveal) | Pixel tolerance across all three surfaces |
+| 9. Loop asset duplication | Phase 2 (resolver), Phase 5 (Background) | 5-image × 3 repeat = 5 durable assets test |
+| 10. Next-clip off-by-one | Phase 5 (convention locked Phase 3) | Boundary truth-table tests incl. exact-boundary and 1-frame cycle |
+| 11. Infinite loop expanded range | Phase 5 | No expanded range stored; re-derivation on next-clip move/delete |
+| 12. Background overlap/reorder | Phase 3 (timeline), Phase 5 (model) | Collision rejection test; fixed bottom row test |
+| 13. Background gaps differ | Phase 4 (compositor), Phase 5 (Background) | Solid/transparent gap matrix across surfaces |
+| 14. Reference leak | Phase 6 | Reference visibility toggle does not alter flattened output |
+| 15. Audio drift/mutation | Phase 7 | Sustained-playback, seek, loop-wrap sync tests; read-only authority test |
+| 16. Reveal overlay leak | Phase 8 | Mask source isolation; alpha/luma truth table |
+| 17. Raster bytes in undo | Phase 2 | Reference-based history; memory-bounded undo test |
+| 18. Scope creep | All (roadmap guard) | Phase file-list review; Phase 9 stop conditions |
+| M1-M8 moderate pitfalls | Per pitfall (mostly 2/3/4/5) | Per-pitfall tests listed above |
 
 ## Sources
 
-- `SPECS/milestone-v0.9.0-plan.md` — risk register (verified and extended here), locked ownership boundaries, stop conditions (HIGH confidence — user-approved spec)
-- `SPECS/quick-prompts/fix-efx-paint-script-library-auto-hydration.md` — confirmed root-cause diagnosis with file/line references and deterministic repro (HIGH)
-- `.planning/PROJECT.md` — Key Decisions and post-mortems: Phases 27-32 adapter failure, Phase 36.2 superseded, 36.14 canonical physical-frame cutover, G-01 Tauri listen branch, v0.8.1 CSP fix, Phase 38.1 canvas-first navigation (HIGH)
-- Code inspection: `app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts:154-166` (queueMicrotask-in-updater handoff), `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.ts:50-107` (clone discipline, empty-points passthrough, engine lifecycle, memory caps), `app/src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.ts:890-909` (deep-freeze), `app/src/lib/audioEngine.ts` (one-shot sources, ctx.currentTime scheduling), `app/src/lib/playbackEngine.ts:99-102,254-303` (seek-restart pattern), `app/vite.config.ts` (fail-closed bundle guard, p5.brush optimizeDeps exclusion rationale) (HIGH)
-- User memory: truth-table-before-patches rule, no backward-compat migrations, no test-config hacks, session-local soloStore precedent, release icon contract, incremental engine integration rule (HIGH)
+- `SPECS/milestone-v1.0.0-plan.md` — risk register (verified and extended here), locked ownership boundaries, required truth tables, forbidden sequence-level assumptions, stop conditions (HIGH confidence — user-approved spec)
+- `.planning/PROJECT.md` — Key Decisions and post-mortems: Phases 27-32 adapter failure, Phase 36.2 superseded, 36.14 canonical physical-frame cutover, Phase 41 audio anchor model, Phase 43 Loop Clip resolver, Phase 43.6 batch ops, v0.8.1 CSP fix (HIGH)
+- Code inspection: `app/src/stores/paintStore.ts` (single-track `Map<layerId, Map<frame, PaintFrame>>`, global `paintVersion`), `app/src/stores/physicPaintStore.ts` (`Map<layerId, ...>` loop clips, ownership/lease model), `app/src/components/physic-paint/roto/rotoCoordinatorPorts.ts` (Loop Clip snapshot), `app/src/components/physic-paint/audio/efxPaintAudioPreviewContext.ts` (revision guard, frame-to-audio truth table), `app/src/lib/previewRenderer.ts` (per-layer opacity/blend compositing), `app/src/lib/history.ts` (global command-pattern undo), `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts` (stable keyId + appFrame) (HIGH)
+- User memory: no-backward-compat clean-break rule, truth-table-before-patches rule, always-bump-and-subscribe paintVersion, guard-shortcuts-in-paint-mode, session-local soloStore precedent, incremental engine integration rule, no-test-config-hacks (HIGH)
+- Web research (LOW confidence — cross-referenced patterns only): NLE opacity/blend order divergence (FCP vs Resolve) — https://creativecow.net/forums/thread/composite-mode-and-opacity-interaction/ ; double-premultiplied alpha dark halos — https://www.steakunderwater.com/VFXPedia/__man/Resolve18-6/DaVinciResolve18_Manual_files/part1931.htm ; hidden black V0 layer in multi-track timelines — https://forum.shotcut.org/t/what-is-the-order-of-operations-when-applying-filters-on-both-the-track-and-the-clip/23391 ; AE track-matte leak and duplication time bomb — https://flylib.com/books/en/2.104.1/track_mattes.html ; Harmony Transform-Loop seam handling — https://docs.toonboom.com/help/harmony-24/premium/reference/node/move/transform-loop-node.html ; Godot audio self-overlap on loop — https://github.com/godotengine/godot/issues/75197 ; AudioContext clock drift across WebViews — https://github.com/WebAudio/web-audio-api/issues/2409 ; undo byte-budget/one-stack lesson — https://docs.rs/oxigis-ui/latest/oxigis_ui/edit/stack/index.html ; schema-evolution silent-breakage and partial-loading traps — https://dataengineerhub.blog/articles/data-contracts-schema-brekage-guide
 
 ---
-*Pitfalls research for: EFX Motion Editor milestone v0.9.0 (feature-addition pitfalls on a shipped Tauri 2.0 + Preact Signals desktop app)*
-*Researched: 2026-08-03*
+*Pitfalls research for: EFX Motion Editor milestone v1.0.0 (multi-track internal Paint frame documents, internal compositor, Background track, photo/reference track, Reveal mask compositor, read-only audio preview)*
+*Researched: 2026-08-23*

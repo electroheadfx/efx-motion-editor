@@ -27,10 +27,11 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('renders the Brush color and Tool sections with no tab chrome and keeps the lower Actions/Onion/Motion tab group', () => {
-    // Chrome-less sections (36.15-12, UAT Gap H-1/H-2): the single-tab header
-    // strips from 36.15-11 are gone — each section starts directly with its
-    // content. Only the lower [Actions, Onion, Motion] group keeps tabs.
+  it('renders the Brush color section chrome-less and the Tool pane behind Paint option/Track option tabs, keeping the lower Actions/Onion/Motion tab group (47 UAT)', () => {
+    // The brush color section stays chrome-less (36.15-12, UAT Gap H-1/H-2).
+    // 47 UAT: the tool pane gained its own two-tab group — 'Paint option'
+    // (default-open) and 'Track option' — so the active track's options live
+    // in a pane section of their own instead of mixing with the brush tools.
     expect(rightPanel).not.toContain('aria-label="Brush color panel"');
     expect(rightPanel).not.toContain('aria-label="Tool panel"');
     expect(rightPanel).not.toContain('physics-paint-tab-brush');
@@ -39,20 +40,32 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
     expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
 
+    // The tool pane's own tablist: Paint option FIRST and default-open, Track
+    // option second, and the conditional Background option tab (49-06 UAT round
+    // 2 — shown only while a Bg clip is selected, never replacing Track).
+    const toolTabStart = rightPanel.indexOf('aria-label="Physics Paint tool option panels"');
+    const toolTabs = rightPanel.slice(toolTabStart, rightPanel.indexOf('</div>', toolTabStart));
+    expectInOrder(toolTabs, ['Paint option', 'Track option', 'Background option']);
+    // 49-06 (UAT round 2): the tab is a Studio-owned signal — the panel reads
+    // it (the 38-11 signal-bypasses-memo pattern) so a Paint track selection
+    // returns to Track option and a Bg rail selection opens Background option.
+    expect(rightPanel).toContain("toolTabSignal?.value ?? 'paint'");
+
     const lowerStart = rightPanel.indexOf('aria-label="Physics Paint option panels"');
     const lowerEnd = rightPanel.indexOf('</div>', lowerStart);
     const lower = rightPanel.slice(lowerStart, lowerEnd);
     // Actions is FIRST in its group and default-open (36.15-11, UAT Gap G-4).
     expectInOrder(lower, ['Actions', 'Onion', 'Motion']);
-    expect(lower).not.toContain('Tool');
+    expect(lower).not.toContain('Track');
 
     // The LOG tab is gone (36.15-11, UAT Gap G-6).
     expect(rightPanel).not.toContain('physics-paint-tab-log');
     expect(rightPanel).not.toMatch(/>\s*LOG\s*</);
 
-    // Exactly one tablist with three tabs remains (the lower group).
-    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(1);
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(3);
+    // Two tablists remain: the tool pane's tabs (Paint/Track + the conditional
+    // Background option) + the lower group's three.
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
 
     for (const label of ['Actions', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));
@@ -141,13 +154,13 @@ describe('native-approved Physics Paint right sidebar', () => {
   });
 
   it('keeps full-row load-only activation and contextual Actions behavior', () => {
-    expectInOrder(scriptsPanel, ['label="Save Action"', 'label="Load + Apply to Frame"', 'label="Create Group…"', 'label="Delete Action"', 'label="Refresh Actions"']);
+    expectInOrder(scriptsPanel, ['label="Save Action"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Delete Action"', 'label="Refresh Actions"']);
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
-    expect(scriptsPanel).toContain('aria-label={`Edit Group — ${selectedLoopClip.displayName}`}');
-    expect(scriptsPanel).toContain("label=\"Create Group…\" title={`Create Group… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action')}`}");
-    expect(scriptsPanel).toMatch(/label="Create Group…"[^>]*onClick=/);
+    expect(scriptsPanel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
+    expect(scriptsPanel).toContain("label=\"Create Rail…\" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action')}`}");
+    expect(scriptsPanel).toMatch(/label="Create Rail…"[^>]*onClick=/);
     expect(scriptsPanel).not.toContain('label="Rename Action"');
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');
