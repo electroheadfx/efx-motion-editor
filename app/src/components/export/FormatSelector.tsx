@@ -4,6 +4,7 @@ import {projectStore} from '../../stores/projectStore';
 import {audioStore} from '../../stores/audioStore';
 import {motionBlurStore} from '../../stores/motionBlurStore';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {frameMap} from '../../lib/frameMap';
 import type {ExportFormat, ExportResolution} from '../../types/export';
 
 const FORMATS: {value: ExportFormat; label: string; ext: string}[] = [
@@ -39,6 +40,12 @@ export function FormatSelector() {
   const activeSeq = sequenceStore.sequences.value.find(
     s => s.id === sequenceStore.activeSequenceId.value
   );
+  // D-09 (52.3-02): the info line shows the exact filtered-entry count the
+  // export filter at exportEngine.ts:148 will process — sourced from the same
+  // frameMap it reads. The old hold-frames summation over activeSeq.keyPhotos
+  // was always 0 for fx sequences (they carry no keyPhotos) — the UI lie this
+  // kills. Narrow .value read in the body, same discipline as the reads above.
+  const activeSeqFrameCount = activeSeq ? frameMap.value.filter(e => e.sequenceId === activeSeq.id).length : 0;
 
   // Default export shutter angle to project preview value (per D-11)
   useEffect(() => {
@@ -87,7 +94,7 @@ export function FormatSelector() {
         </label>
         {selectedSeqOnly && activeSeq && (
           <div class="text-xs text-(--color-text-muted)">
-            Exporting: <span class="font-semibold">{activeSeq.name || 'Sequence'}</span> ({activeSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)} frames)
+            Exporting: <span class="font-semibold">{activeSeq.name || 'Sequence'}</span> ({activeSeqFrameCount} frames)
           </div>
         )}
         {selectedSeqOnly && !activeSeq && (

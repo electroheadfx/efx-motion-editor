@@ -1,6 +1,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {AudioTrack} from '../types/audio';
+import type {FrameEntry} from '../types/timeline';
 import {audioStore} from '../stores/audioStore';
+import {sequenceStore} from '../stores/sequenceStore';
 import {timelineStore} from '../stores/timelineStore';
 import {audioEngine} from './audioEngine';
 import {isPhysicPaintChildAudioClaimed, publishPhysicPaintAudioPlaybackState} from './physicPaintBridge';
@@ -248,5 +250,56 @@ describe('playbackEngine audible scrub (TIME-03)', () => {
     audioStore.tracks.value = [makeMainAudioTrack({muted: true})];
     playbackEngine.scrubToFrame(48);
     expect(mockedAudio.play).not.toHaveBeenCalled();
+  });
+});
+
+describe('playbackEngine paint-frame activation (52.3-02, Pitfall 3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedClaimed.mockReturnValue(false);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    sequenceStore.reset();
+    // Singleton scrub state reset (throttle timestamp + snippet flag).
+    playbackEngine.scrubAudioEnd();
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    playbackEngine.scrubAudioEnd();
+    playbackEngine.stop();
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    sequenceStore.reset();
+    // Restore the frameMap mock to empty so no paint entries leak into other
+    // describes (the mock module is shared file-wide).
+    const {frameMap} = await import('./frameMap');
+    (frameMap as unknown as {value: FrameEntry[]}).value = [];
+    vi.unstubAllGlobals();
+  });
+
+  it('playback into a paint frame activates the owning fx sequence', async () => {
+    // Pitfall 3 (52.3): the dense frameMap makes paint frames activatable —
+    // playhead entry into one fires sequenceStore.setActive(fxId) through the
+    // same syncActiveSequence path the AUDIO cases drive. Deliberate,
+    // D-08-consistent behavior. (setActive also clears selectedKeyPhotoId —
+    // that is setActive's own tested behavior, out of scope here.)
+    const {frameMap} = await import('./frameMap');
+    const paintEntries: FrameEntry[] = Array.from({length: 10}, (_, globalFrame) => ({
+      kind: 'paint' as const,
+      globalFrame,
+      sequenceId: 'fx-p',
+      layerId: 'roto-layer',
+    }));
+    (frameMap as unknown as {value: FrameEntry[]}).value = paintEntries;
+    const setActive = vi.spyOn(sequenceStore, 'setActive');
+
+    playbackEngine.scrubToFrame(4);
+
+    expect(setActive).toHaveBeenCalledWith('fx-p');
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-p');
   });
 });
