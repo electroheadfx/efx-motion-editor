@@ -83,10 +83,20 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
 
   for (const seq of sequences) {
     if (seq.kind === 'content' || seq.visible === false) continue;
-    const start = Math.max(0, seq.inFrame ?? 0);
-    const end = Math.max(start, Math.min(fm.length, getTimelineOverlaySequenceOutFrame(seq, fm.length)));
-    for (let globalFrame = start; globalFrame < end; globalFrame += 1) {
-      const localFrame = globalFrame - start;
+    // 52.3 CR-01: share the render gate's predicate — drive the overlay window
+    // from entry.globalFrame, never the positional fm length. A selected
+    // (rebased, exportEngine.ts:148) export of an fx at inFrame > 0 must preload
+    // the same frames the render loop will draw; clamping on fm.length computed
+    // an empty window and exported silently transparent paint. Full exports stay
+    // byte-identical: dense enumeration covers [inFrame, outFrame) exactly.
+    const inFrame = seq.inFrame ?? 0;
+    const outFrame = getTimelineOverlaySequenceOutFrame(seq, fm.length);
+    for (const entry of fm) {
+      if (!entry) continue;
+      const overlayGlobalFrame = entry.globalFrame;
+      if (overlayGlobalFrame < inFrame) continue;
+      if (overlayGlobalFrame >= outFrame) continue;
+      const localFrame = overlayGlobalFrame - inFrame;
       addSources(interpolateLayers(seq, localFrame), localFrame);
     }
   }
