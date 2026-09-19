@@ -758,6 +758,61 @@ describe('exportRenderer', () => {
       ]);
     });
 
+    it('preloads fx overlay Physics Paint frames for a selected export with fx inFrame > 0 (CR-01)', async () => {
+      // 52.3 code-review CR-01: the export preload leg must share the render
+      // gate's entry.globalFrame predicate — a selected (rebased, positional)
+      // export of an fx sequence at inFrame > 0 must still kick + collect the
+      // fx-local decodes, or the render loop cold-misses into transparent paint.
+      const fxSequence = {
+        ...makeSequence(makeRotoLayer()),
+        id: 'fx-1',
+        kind: 'fx' as const,
+        keyPhotos: [],
+        inFrame: 5,
+        outFrame: 10,
+      };
+      seedPhysicalRoto([
+        { keyId: 'key-0', appFrame: 0, bytes: testWebpBytes('bG9jYWwtMA==') },
+        { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('bG9jYWwtMQ==') },
+        { keyId: 'key-2', appFrame: 2, bytes: testWebpBytes('bG9jYWwtMg==') },
+        { keyId: 'key-3', appFrame: 3, bytes: testWebpBytes('bG9jYWwtMw==') },
+        { keyId: 'key-4', appFrame: 4, bytes: testWebpBytes('bG9jYWwtNA==') },
+      ]);
+      const collectedFrames: number[] = [];
+      const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
+      const renderer = {
+        onImageLoaded: null,
+        collectRotoPaperTextures: vi.fn(() => []),
+        collectPhysicPaintFrameSources: vi.fn((layers: readonly Layer[], frame: number) => {
+          collectedFrames.push(frame);
+          return collectPhysicalFrameSources(layers, frame);
+        }),
+        preloadImages: vi.fn(),
+        preloadPaperTextures: vi.fn(),
+        preloadPhysicPaintFrames: vi.fn((frames: readonly PreviewPhysicPaintFrameSource[]) => {
+          preloadedFrames.push(...frames);
+        }),
+        getImageSource: vi.fn(() => ({ naturalWidth: 1, naturalHeight: 1 })),
+        isImageFailed: vi.fn(() => false),
+        isPaperTextureResolved: vi.fn(() => true),
+        isPhysicPaintFrameResolved: vi.fn((source: PreviewPhysicPaintFrameSource) => preloadedFrames.includes(source)),
+      awaitPhysicPaintDecodes: vi.fn(async () => {}),
+      } as unknown as PreviewRenderer;
+      // Selected export re-bases fm positionally (exportEngine.ts:148): 5
+      // entries, true global frames 5..9 owned by the fx.
+      const frames: FrameEntry[] = Array.from({ length: 5 }, (_, index) => ({
+        kind: 'paint' as const,
+        globalFrame: 5 + index,
+        sequenceId: 'fx-1',
+        layerId: 'roto-layer',
+      }));
+
+      await preloadExportImages(renderer, frames, undefined, [fxSequence]);
+
+      expect([...new Set(collectedFrames)].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+      expect(preloadedFrames.map((source) => source.frame).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+    });
+
     it.todo('resolves when all images are loaded');
     it.todo('resolves immediately if all images already cached');
   });
