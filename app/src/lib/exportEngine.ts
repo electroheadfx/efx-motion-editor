@@ -135,6 +135,9 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     return;
   }
 
+  exportStore.resetProgress();
+  exportStore.updateProgress({ status: 'preparing' });
+
   // 52.1: drain the Studio's queued post-gesture work before reading the frame
   // map, so an export never renders a stale document/sidecar set.
   await requestPhysicPaintFlush();
@@ -180,9 +183,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
   const exportWidth = Math.round(projectWidth * settings.resolution);
   const exportHeight = Math.round(projectHeight * settings.resolution);
 
-  exportStore.resetProgress();
   exportStore.updateProgress({
-    status: 'preparing',
     totalFrames: total,
     currentFrame: startFromFrame,
   });
