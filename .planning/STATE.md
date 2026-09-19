@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 Phase: 53 (Integrated v1.0.0 Acceptance) — PLANNING
 Plan: — (not started)
 Status: Phase 52.2 complete + verified (12/12) — ready to plan Phase 53
-Last activity: 2026-09-18 — Closed quick task 260918-ovi: canvas size + orientation at project creation, native UAT passed 8/8 (always-visible W×H amendment included; paint-export enumeration carved out to the pre-53 quick)
+Last activity: 2026-09-19 - Completed quick task 260919-azh: paint content never reaches export — verdict NEVER-WIRED (escalation clause fired; paint-only enumeration parked as Phase 53 contracts)
 
 Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
 
@@ -361,6 +361,7 @@ None yet.
 | 260913-05k | P0 fix: route .mce package file IO through Rust commands (layer write/read + staging discard; plugin-fs restriction on package paths) + blocking save/open failure modal. Native UAT OWED | 2026-09-13 | 99aa5f2d | [260913-05k-p0-fix-route-mce-package-file-io-through](./quick/260913-05k-p0-fix-route-mce-package-file-io-through/) |
 | 260918-o0n | Regression fix: main-editor timeline FX layer span cannot re-extend after shrinking (derived-total clamp removed from the span-drag path; RED-first tests). Native UAT passed 2026-09-18 | 2026-09-18 | da3b9851 | [260918-o0n-regression-main-app-timeline-layer-span-](./quick/260918-o0n-regression-main-app-timeline-layer-span-/) |
 | 260918-ovi | Canvas size + orientation choice at project creation — 4 presets (HD / HD Vertical / Portrait / Square) + Custom… steppers clamped 16–1920, dims threaded dialog→store→IPC→Rust, sequenceStore provider injection, SettingsView 4K dropped, dialog reopen resets format (WR-01), always-visible W×H fields greyed/seeded (amendment). Verified 6/6 must-haves; native UAT passed 2026-09-18 (8/8; paint-export enumeration carved out to the pre-53 quick) | 2026-09-18 | 955d1999 | [260918-ovi-canvas-size-orientation-choice-at-projec](./quick/260918-ovi-canvas-size-orientation-choice-at-projec/) |
+| 260919-azh | Paint content never reaches export — RED discrimination matrix + trace. Verdict NEVER-WIRED: frameMap enumerates content keyPhotos only, paint-only branch never designed (52.2 reference-only carriers EXONERATED in-test). Cases C/D parked as it.todo Phase 53 contracts per escalation clause; zero production-code changes | 2026-09-19 | a5900f7c | [260919-azh-paint-content-never-reaches-export-accep](./quick/260919-azh-paint-content-never-reaches-export-accep/) |
 
 ### Roadmap Evolution
 
