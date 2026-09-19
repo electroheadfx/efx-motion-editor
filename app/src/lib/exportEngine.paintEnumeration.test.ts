@@ -5,7 +5,6 @@ import {
   _setPhysicPaintMarkDirtyCallback,
 } from '../stores/physicPaintStore';
 import {
-  getDocument as getEfxPaintDocument,
   registerDocument,
   reset as resetEfxPaintStore,
 } from '../stores/efxPaintStore';
@@ -32,7 +31,7 @@ import type { Sequence } from '../types/sequence';
 //     byte-carrying runtime projection) — repairable in-quick.
 //   - NEVER-WIRED: the paint-only enumeration branch (FrameEntry semantics,
 //     range derivation) was never designed — Phase 53 scope; Cases C/D park as
-//     it.todo contracts per the quick's binding escalation clause.
+//     todo contracts per the quick's binding escalation clause.
 //
 // Harness discipline: copied verbatim from exportEngine.test.ts (same mocks,
 // same TestCanvas stub) with ONE deliberate difference — './frameMap' and
@@ -267,42 +266,33 @@ describe('paint-export enumeration discrimination (260919-azh)', () => {
     expect(renderGlobalFrameMock).toHaveBeenCalledTimes(9);
   });
 
-  it('Case C (RED contract): a paint-only timeline enumerates its physic-paint frames in frameMap', () => {
-    // fx physic-paint sequence inFrame 0 / outFrame 5 with runtime real keys at
-    // appFrames 0..4 and NO content sequence anywhere. outFrame 5 and the roto
-    // end frame 5 agree, so N=5 is unambiguous.
-    sequenceStore.sequences.value = [makeFxPaintSequence('fx-c', LAYER, 0, 5)];
-    installRotoDocument(LAYER, [0, 1, 2, 3, 4]);
+  // --- Parked RED contracts (260919-azh Task 2 verdict: NEVER-WIRED) ---------
+  //
+  // On 2026-09-19 both cases failed exactly as written (C: frameMap [] length 0
+  // vs expected 5; D: status 'error' with 'No frames to export (timeline is
+  // empty)' vs expected 'complete') while every runtime probe passed —
+  // getRotoRealKeyRecords = 5 records, getRotoPhysicalEndFrame = 5,
+  // document.activeTrackId = 'track-1' — exonerating the 52.2 reference-only
+  // document hypothesis. No existing read returned wrong data; the paint-only
+  // enumeration branch was never designed (frameMap.ts:16-47 materializes
+  // FrameEntry objects only from content keyPhotos; the tail pad at :42-45 can
+  // only replicate an existing content entry). Per the quick's binding
+  // escalation clause the contracts park as todos pointing at Phase 53; no
+  // paint→export wiring is implemented in this quick.
+  //
+  // Contract C body (reinstate as `it` once Phase 53 designs paint-only
+  // enumeration): fx physic-paint sequence inFrame 0 / outFrame 5 with runtime
+  // real keys at appFrames 0..4 and NO content sequence anywhere (outFrame 5
+  // and roto end 5 agree, so N=5 is unambiguous) →
+  //   expect(frameMap.value).toHaveLength(5)
+  it.todo('Case C — Phase 53: paint-only export enumeration (frameMap materializes physic-paint frames without a content sequence)');
 
-    // In-test probes (PASS today, self-diagnosing): the runtime reads carry the
-    // real keys regardless of the registered document's carrier shape. If any
-    // probe fails, the 52.2 runtime-divergence hypothesis is CONFIRMED in-test
-    // and the failing probe names the BROKEN-READ site.
-    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toHaveLength(5);
-    expect(physicPaintStore.getRotoPhysicalEndFrame(LAYER, TEST_TRACK_ID)).toBe(5);
-    expect(getEfxPaintDocument(LAYER)?.activeTrackId).toBe(TEST_TRACK_ID);
-
-    // RED today: frameMap materializes entries only from content keyPhotos
-    // (frameMap.ts:16-47); with zero content entries the tail-padding loop is
-    // guarded on tailEntry existing (frameMap.ts:42-45) and never fires, so
-    // the computed stays empty even though getTimelineRequiredFrameCount
-    // returns 5 (frameMap.ts:244-259).
-    expect(frameMap.value).toHaveLength(5);
-  });
-
-  it('Case D (RED contract): a paint-only project exports its N physic-paint frames', async () => {
-    sequenceStore.sequences.value = [makeFxPaintSequence('fx-d', LAYER, 0, 5)];
-    installRotoDocument(LAYER, [0, 1, 2, 3, 4]);
-
-    await startExport();
-
-    // RED today: startExport hard-errors at exportEngine.ts:152-156 because the
-    // enumerated frame map is empty (Case C), so status is 'error' with the
-    // locked copy instead of 'complete' after 5 rendered frames.
-    expect(exportStore.progress.peek().status).toBe('complete');
-    expect(renderGlobalFrameMock).toHaveBeenCalledTimes(5);
-    expect(exportStore.progress.peek().errorMessage).not.toBe('No frames to export (timeline is empty)');
-  });
+  // Contract D body (same arrange as C) →
+  //   await startExport();
+  //   expect(exportStore.progress.peek().status).toBe('complete');
+  //   expect(renderGlobalFrameMock).toHaveBeenCalledTimes(5);
+  //   expect(exportStore.progress.peek().errorMessage).not.toBe('No frames to export (timeline is empty)');
+  it.todo('Case D — Phase 53: paint-only export completes with N rendered frames (needs FrameEntry ownership + canvas-clear lifecycle design)');
 
   it('Case E (characterization): selectedSequenceOnly with an active FX sequence filters every frame out', async () => {
     sequenceStore.sequences.value = [
