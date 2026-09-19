@@ -469,7 +469,7 @@ Plans:
 **Goal:** Any project containing paint exports its painted frames — PNG sequence, paint-only and mixed projects alike, both canvas orientations. Exporting a paint-only project renders every frame of the export range through the compositor; the "No frames to export (timeline is empty)" refusal becomes unreachable for paint content. (User-driven insert; every step gated: discuss → context → plan → execute.)
 **Requirements**: TBD (de-facto contracts: AC-C/AC-D/AC-E/AC-CLEAR/AC-MIX/AC-UAT + D-01..D-10 per 52.3-CONTEXT.md)
 **Depends on:** Phase 52
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 
@@ -479,7 +479,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 52.3-02-PLAN.md — Overlay leg gates on entry.globalFrame (Pitfall 1) + D-09 info-line count + playback activation pin (Pitfall 3)
+- [x] 52.3-02-PLAN.md — Overlay leg gates on entry.globalFrame (Pitfall 1) + D-09 info-line count + playback activation pin (Pitfall 3)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

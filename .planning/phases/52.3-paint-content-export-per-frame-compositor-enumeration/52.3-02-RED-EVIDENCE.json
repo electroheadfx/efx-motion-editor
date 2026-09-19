@@ -1,0 +1,10 @@
+{
+  "command": "cd app && pnpm exec vitest run src/lib/exportRenderer.test.ts",
+  "exitCode": 1,
+  "targetTest": "fx overlay gates on entry.globalFrame (Pitfall 1)",
+  "targetFile": "app/src/lib/exportRenderer.test.ts",
+  "expected": "stub renderer.renderFrame receives the fx layers with fxLocalFrame 0 when positional index 0 maps to entry.globalFrame 2 (fx inFrame 2 / outFrame 7) — the overlay leg gates on the entry's own globalFrame, not the positional frameIndex",
+  "actual": "AssertionError: expected undefined to be defined (exportRenderer.test.ts:534) — pre-fix the positional 0 < inFrame 2 gate skips the overlay, so renderFrame is never called with the fx layers; second pin 'selected export keeps later-sequence overlays riding' fails identically at :579 (content-selected later sequence, overlay spanning 5..10 dropped)",
+  "output": "FAIL src/lib/exportRenderer.test.ts > exportRenderer > renderGlobalFrame > fx overlay gates on entry.globalFrame (Pitfall 1)\nAssertionError: expected undefined to be defined\n ❯ src/lib/exportRenderer.test.ts:534:20\n\nFAIL src/lib/exportRenderer.test.ts > exportRenderer > renderGlobalFrame > selected export keeps later-sequence overlays riding\nAssertionError: expected undefined to be defined\n ❯ src/lib/exportRenderer.test.ts:579:20\n\nTest Files  1 failed (1)\n      Tests  2 failed | 19 passed | 19 todo (40)",
+  "note": "RED is intentional: exactly the two TARGET tests named by the plan fail, both on the planned behavior assertion (the fx-overlay renderFrame call never happens pre-fix), while all 19 other tests in the file pass and 19 todo stay parked — zero collateral. The machine classifier parses node --test TAP summaries which vitest does not emit (documented 52.2-01 / 260919-azh tooling limitation, tdd.md NOTE in this plan) — INVALID_RED expected on parser grounds alone; verbatim pre-implementation failing run recorded here per the 52.3-01 precedent."
+}
