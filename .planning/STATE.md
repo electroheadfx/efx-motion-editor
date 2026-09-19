@@ -3,19 +3,19 @@ gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.3"
-current_phase_name: paint-content-export-per-frame-compositor-enumeration
-status: Phase 52.3 inserted (urgent, blocks Phase 53) — ready to discuss
-stopped_at: Phase 52.3 context gathered
-last_updated: "2026-09-19T11:08:19.654Z"
+current_phase_name: Paint content export — per-frame compositor enumeration (INSERTED)
+status: executing
+stopped_at: Completed 52.3-01-PLAN.md
+last_updated: "2026-09-19T14:43:06.172Z"
 last_activity: 2026-09-19
-last_activity_desc: "Inserted urgent Phase 52.3: paint content export enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance)"
-state_head: e7ab9e2a98223d1a85d04b36ef412406368e4e4e
+last_activity_desc: Phase 52.3 execution started
+state_head: b6f6b1175e9a317e79686d11f5223be73c7fc9ea
 progress:
   total_phases: 12
   completed_phases: 19
   total_plans: 68
-  completed_plans: 65
-  percent: 96
+  completed_plans: 66
+  percent: 97
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.2 — Project package format — references only
+**Current focus:** Phase 52.3 — Paint content export — per-frame compositor enumeration (INSERTED)
 
 ## Current Position
 
-Phase: 52.3 (paint-content-export-per-frame-compositor-enumeration) — READY TO EXECUTE
-Plan: — (not started)
-Status: Phase 52.3 inserted (urgent, blocks Phase 53) — ready to discuss
-Last activity: 2026-09-19 - Inserted urgent Phase 52.3: paint content export enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance)
+Phase: 52.3 (Paint content export — per-frame compositor enumeration (INSERTED)) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-09-19 — Phase 52.3 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 96%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 97%)
 
 ## Performance Metrics
 
@@ -123,6 +123,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P13 | 7 | 4 tasks | 35 files |
 | Phase 52.2 P14 | 46 min | 2 tasks | 15 files |
 | Phase 52.2 P15 | 10min | 2 tasks | 6 files |
+| Phase 52.3 P01 | 22min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -328,6 +329,7 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-16 pilot verdict — ADMITTED on T4/T5 + inspectability (numbers axis void-not-waived; the D-01 miss, T3-unmet and T4's unrun 10-minute leg recorded honestly); skill .claude/skills/efx-async-orchestration/SKILL.md written (D-17 contract earned); close-out chores committed: 33a92f3d (52r E/H diagnostic cluster removed) + 8e5f219d (body background into the bundled stylesheet — packaged-CSP fix); the next bundle carries both, no behavior change
 - [Phase 52.2]: 52.2-16 carried to phase close — re-enable ui.safety_gate; delete the superseded SPECS/phase-52.3-async-conventions.md draft (user-owned); save progress-modal UX idea stays a registered candidate; the sequence-extension bug is routed as a later quick; the branch merge decision is the user's
 - [Phase 52.2]: PHASE CLOSED 2026-09-18 — verification PASSED (`52.2-VERIFICATION.md`: 12/12 must-haves, 0 behavior-unverified; real-package digest check 32/32, zero-base64 scan 0 matches, bundled plist verified); Nyquist validation clean (0 gaps; `52.2-VALIDATION.md` status: validated, nyquist_compliant: true); close-out chores done (ui.safety_gate re-enabled, superseded SPECS/phase-52.3 draft deleted); next: Phase 53
+- [Phase 52.3]: [Phase 52.3 P01]: FrameEntry is now a discriminated union (ContentFrameEntry | PaintFrameEntry | GapFrameEntry) — fail-closed by type per D-01; PaintFrameEntry carries the owning fx sequenceId + layerId and never keyPhotoId/imageId; GapFrameEntry is ownerless (sequenceId ''). Paint enumeration in frameMap fires only in content-empty projects (entries.length === 0 guard, Finding F1) with coverage via the shared getTimelineOverlaySequenceOutFrame predicate (anti-drift lock with the overlay leg); D-06 top-level identity clearRect gated on !hasContentEntry; efxPaintVersion consciously subscribed (Pitfall 2); D-08 pinned: paint-only fx-active selectedSequenceOnly completes, mixed fx-active refuses with the locked copy (Case E2)
 
 ### Pending Todos
 
@@ -385,6 +387,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-19T08:30:06.677Z
-Stopped at: Phase 52.3 context gathered
-Resume file: .planning/phases/52.3-paint-content-export-per-frame-compositor-enumeration/52.3-CONTEXT.md
+Last session: 2026-09-19T14:42:51.899Z
+Stopped at: Completed 52.3-01-PLAN.md
+Resume file: None
