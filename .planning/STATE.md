@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: "53"
-current_phase_name: Integrated v1.0.0 Acceptance
-status: planning
-stopped_at: Phase 52.2 complete, ready to plan Phase 53
-last_updated: "2026-09-18T14:52:36.000Z"
-last_activity: 2026-09-18
-last_activity_desc: Phase 52.2 complete, transitioned to Phase 53
-state_head: 43679a0238bfcf14abf96f7cb9726ddf52b03c38
+current_phase: "52.3"
+current_phase_name: INSERTED, NOT PLANNED
+status: Phase 52.3 inserted (urgent, blocks Phase 53) — ready to discuss
+stopped_at: Phase 52.3 context gathered
+last_updated: "2026-09-19T08:30:08.255Z"
+last_activity: 2026-09-19
+last_activity_desc: "Inserted urgent Phase 52.3: paint content export enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance)"
+state_head: 09a6795c0b080945262139b1a3584f92a14a3750
 progress:
-  total_phases: 11
-  completed_phases: 7
+  total_phases: 12
+  completed_phases: 19
   total_plans: 65
   completed_plans: 65
-  percent: 64
+  percent: 100
 ---
 
 # Project State
@@ -29,12 +29,12 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 ## Current Position
 
-Phase: 53 (Integrated v1.0.0 Acceptance) — PLANNING
+Phase: 52.3 (Paint content export — per-frame compositor enumeration) — INSERTED, NOT PLANNED
 Plan: — (not started)
-Status: Phase 52.2 complete + verified (12/12) — ready to plan Phase 53
-Last activity: 2026-09-19 - Completed quick task 260919-azh: paint content never reaches export — verdict NEVER-WIRED (escalation clause fired; paint-only enumeration parked as Phase 53 contracts)
+Status: Phase 52.3 inserted (urgent, blocks Phase 53) — ready to discuss
+Last activity: 2026-09-19 - Inserted urgent Phase 52.3: paint content export enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance)
 
-Progress: [████████████████████] 49/49 plans ([██████░░░░] 55%)
+Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
 ## Performance Metrics
 
@@ -368,6 +368,7 @@ None yet.
 - Phase 51 edited: marked delivered via quicks 260902-cfa + 260902-cfa-amendments (no full phase cycle)
 - Phase 52.1 inserted after Phase 52: Modern frame runtime + native HD paint (URGENT)
 - Phase 52.2 inserted after Phase 52: Project package format — references only: sidecar .webp media files + per-layer manifests; absorbs and cancels the autosave quick (URGENT)
+- Phase 52.3 inserted after Phase 52: Paint content export — per-frame compositor enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance) (URGENT)
 
 ## Deferred Items
 
@@ -384,6 +385,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T00:32:00.000Z
-Stopped at: Completed quick 260913-05k (P0 package-IO reroute + failure modal); native UAT owed by the user
-Resume file: .planning/quick/260913-05k-p0-fix-route-mce-package-file-io-through/260913-05k-SUMMARY.md
+Last session: 2026-09-19T08:30:06.677Z
+Stopped at: Phase 52.3 context gathered
+Resume file: .planning/phases/52.3-paint-content-export-per-frame-compositor-enumeration/52.3-CONTEXT.md
