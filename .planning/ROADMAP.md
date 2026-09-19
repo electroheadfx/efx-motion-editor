@@ -464,6 +464,54 @@ Plans:
 - [x] 52-04-PLAN.md — "Reveal with script…" modal entry
 - [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
+### Phase 52.3: Paint content export — per-frame compositor enumeration (INSERTED)
+
+**Goal:** Any project containing paint exports its painted frames — PNG sequence, paint-only and mixed projects alike, both canvas orientations. Exporting a paint-only project renders every frame of the export range through the compositor; the "No frames to export (timeline is empty)" refusal becomes unreachable for paint content. (User-driven insert; every step gated: discuss → context → plan → execute.)
+**Requirements**: TBD (de-facto contracts: AC-C/AC-D/AC-E/AC-CLEAR/AC-MIX/AC-UAT + D-01..D-10 per 52.3-CONTEXT.md)
+**Depends on:** Phase 52
+**Plans:** 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 52.3-01-PLAN.md — Tracer: FrameEntry discriminated union (D-01) + paint enumeration branch (D-04/D-05) + D-06 canvas clear; parked Cases C/D green, Case E re-pinned (D-08/D-10)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 52.3-02-PLAN.md — Overlay leg gates on entry.globalFrame (Pitfall 1) + D-09 info-line count + playback activation pin (Pitfall 3)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 52.3-03-PLAN.md — Full automated gates (suite/tsc/cargo/chunk 1340) + blocking native UAT (AC-UAT: §7-pair 31 keys, paint-only × 2 orientations, mixed, visual match)
+
+**Evidence / Why** (fully diagnosed — quick 260919-azh, 2026-09-19):
+
+- `frameMap.ts:16-47` materializes FrameEntry only from `kind === 'content'` keyPhotos; the tail pad (`:42-45`) can only replicate an existing content entry. The paint-only enumeration branch was never DESIGNED — missing, not broken (all runtime probes green: `getRotoRealKeyRecords`, `getPhysicPaintRotoDisplayEndFrame`, `activeTrackId`).
+- `renderGlobalFrame` has NO top-level canvas clear — only the content branch passes `clearCanvas=true`; paint-only frames would composite onto uncleared pixels.
+- Honest history: paint-only export was an explicit non-goal in August (260813-ibo); the 52.1 runtime and 52.2 persist modernizations moved the frame carrier without ever re-auditing the export-render connection.
+- Blocking: paint export is the v1.0.0 milestone's core promise — Phase 53 acceptance cannot pass without it.
+- RED matrix + 2 parked `it.todo` contracts already committed (`app/src/lib/exportEngine.paintEnumeration.test.ts`) — they are this phase's acceptance tests.
+
+**Discuss agenda** — the four design questions (verbatim from 260919-azh-SUMMARY):
+
+1. Paint-only FrameEntry ownership/transparency — what sequenceId/keyPhotoId/imageId does a paint-carrying FrameEntry own, and what does the content branch render (or skip) for it?
+2. N derivation from fx span vs key extent — is the paint-only export length the fx sequence span (inFrame..outFrame), the roto key extent (getPhysicPaintRotoDisplayEndFrame), or their max, and who owns the clamp?
+3. Canvas clear lifecycle on no-content frames — where does the export canvas get cleared when a frame has no content entry?
+4. selectedSequenceOnly semantics when the active sequence is an fx sequence — filter by fx id (today: always empty → hard error, user-reachable) or bypass/redesign the filter for fx actives?
+
+**Scope:**
+
+- IN: designed answers to Q1–Q4; per-frame compositor enumeration for paint content in the export path; the canvas-clear fix; the parked RED contracts turned green; the native UAT below.
+- OUT: resolution-policy changes — the format-free architecture from 260918-ovi stands as shipped (1920 long-edge clamp included); raising the clamp for larger-than-HD experimentation is a separate measured decision, kept for v1.2.0. Also out: fx-sequence work beyond Q4, new export pipelines (ProRes/H.264), platform safe-zone overlays.
+
+**Acceptance:**
+
+- The 2 parked `it.todo` contracts and the RED matrix go green.
+- A paint-only project exports exactly the Q2-decided range of frames; a mixed project (clip + paint) composites both sources; vertical and horizontal projects both export; no-content frames carry clean pixels (Q3 regression pin — no uncleared-canvas ghosts).
+- Native UAT rows: the §7-pair (31 keys) exports its full PNG range; a fresh paint-only project in EACH orientation exports; a mixed project exports; exported frames visually match the on-canvas composite.
+- Gates: suite green (vitest run, never watch), tsc clean, cargo clean, chunk budget holds.
+
 ### Phase 52.2: Project package format — references only (INSERTED)
 
 **Goal:** Make `Name.mce` a macOS document package that stores images as REFERENCES ONLY — a light manifest plus per-layer sub-files and `frames/` media, machine-local derived cache, per-file change tokens behind a multi-file save transaction — with the async foundations (XState v6 + Effect v4 pilot on stroke finalization and the flush pipeline) proven on measured telemetry rather than adopted on reputation.
