@@ -266,7 +266,7 @@ describe('paint-export enumeration discrimination (260919-azh)', () => {
     expect(renderGlobalFrameMock).toHaveBeenCalledTimes(9);
   });
 
-  // --- Parked RED contracts (260919-azh Task 2 verdict: NEVER-WIRED) ---------
+  // --- Reinstated RED contracts (260919-azh verdict: NEVER-WIRED) ------------
   //
   // On 2026-09-19 both cases failed exactly as written (C: frameMap [] length 0
   // vs expected 5; D: status 'error' with 'No frames to export (timeline is
@@ -276,23 +276,32 @@ describe('paint-export enumeration discrimination (260919-azh)', () => {
   // document hypothesis. No existing read returned wrong data; the paint-only
   // enumeration branch was never designed (frameMap.ts:16-47 materializes
   // FrameEntry objects only from content keyPhotos; the tail pad at :42-45 can
-  // only replicate an existing content entry). Per the quick's binding
-  // escalation clause the contracts park as todos pointing at Phase 53; no
-  // paint→export wiring is implemented in this quick.
+  // only replicate an existing content entry).
   //
-  // Contract C body (reinstate as `it` once Phase 53 designs paint-only
-  // enumeration): fx physic-paint sequence inFrame 0 / outFrame 5 with runtime
-  // real keys at appFrames 0..4 and NO content sequence anywhere (outFrame 5
-  // and roto end 5 agree, so N=5 is unambiguous) →
-  //   expect(frameMap.value).toHaveLength(5)
-  it.todo('Case C — Phase 53: paint-only export enumeration (frameMap materializes physic-paint frames without a content sequence)');
+  // 2026-09-19: reinstated as active `it` contracts under Phase 52.3 plan 01
+  // per D-01..D-10 — the FrameEntry discriminated union (D-01), the paint
+  // enumeration branch (D-04/D-05), and the D-06 canvas clear turn them green.
+  it('Case C — paint-only export enumeration (frameMap materializes physic-paint frames without a content sequence)', () => {
+    // fx physic-paint sequence inFrame 0 / outFrame 5 with runtime real keys at
+    // appFrames 0..4 and NO content sequence anywhere (outFrame 5 and roto end
+    // 5 agree, so N=5 is unambiguous).
+    sequenceStore.sequences.value = [makeFxPaintSequence('fx-c', LAYER, 0, 5)];
+    installRotoDocument(LAYER, [0, 1, 2, 3, 4]);
 
-  // Contract D body (same arrange as C) →
-  //   await startExport();
-  //   expect(exportStore.progress.peek().status).toBe('complete');
-  //   expect(renderGlobalFrameMock).toHaveBeenCalledTimes(5);
-  //   expect(exportStore.progress.peek().errorMessage).not.toBe('No frames to export (timeline is empty)');
-  it.todo('Case D — Phase 53: paint-only export completes with N rendered frames (needs FrameEntry ownership + canvas-clear lifecycle design)');
+    expect(frameMap.value).toHaveLength(5);
+  });
+
+  it('Case D — paint-only export completes with N rendered frames (FrameEntry ownership + canvas-clear lifecycle)', async () => {
+    // Same arrange as Case C.
+    sequenceStore.sequences.value = [makeFxPaintSequence('fx-d', LAYER, 0, 5)];
+    installRotoDocument(LAYER, [0, 1, 2, 3, 4]);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('complete');
+    expect(renderGlobalFrameMock).toHaveBeenCalledTimes(5);
+    expect(exportStore.progress.peek().errorMessage).not.toBe('No frames to export (timeline is empty)');
+  });
 
   it('Case E (characterization): selectedSequenceOnly with an active FX sequence filters every frame out', async () => {
     sequenceStore.sequences.value = [

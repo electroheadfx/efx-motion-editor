@@ -14,6 +14,7 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PreviewPhysicPaintFrameSource, PreviewRenderer } from './previewRenderer';
+import type { FrameEntry } from '../types/timeline';
 import { preloadExportImages, renderGlobalFrame } from './exportRenderer';
 import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
@@ -419,7 +420,19 @@ describe('exportRenderer', () => {
     });
 
     const makeRendererStub = () => ({ renderFrame: vi.fn() }) as unknown as PreviewRenderer;
-    const makeCanvasStub = () => ({ width: 1000, height: 650 }) as unknown as HTMLCanvasElement;
+    // 52.3-01 Task 1: minimal no-op 2d context (save/restore/setTransform/
+    // clearRect; the willReadFrequently options arg is accepted and ignored) so
+    // the D-06 top-level clear — gated on !hasContentEntry — can fire on the
+    // empty-fm cases below without a TypeError. Inert pre-GREEN: nothing calls
+    // canvas.getContext on these paths today.
+    const makeCanvasStub = () => ({
+      width: 1000,
+      height: 650,
+      getContext: (contextId: string, _options?: unknown) =>
+        contextId === '2d'
+          ? { save() {}, restore() {}, setTransform() {}, clearRect() {} }
+          : null,
+    }) as unknown as HTMLCanvasElement;
 
     it('composites a physic-paint overlay with an empty frameMap (no Timeline key photos)', () => {
       const layer = makeRotoLayer();
@@ -495,6 +508,103 @@ describe('exportRenderer', () => {
     it.todo('renders FX overlay sequences with keyframe interpolation');
     it.todo('renders content-overlay sequences with fade opacity');
     it.todo('handles solid fade overlay with computed alpha');
+  });
+
+  describe('canvas clear lifecycle (D-06, AC-CLEAR)', () => {
+    // Op-recording 2d context (model: exportEngine.paintEnumeration.test.ts
+    // RecordingCanvasContext) behind a canvas stub whose getContext('2d')
+    // returns the recorder, so the D-06 top-level clear is observable.
+    class RecordingCanvasContext {
+      operations: Array<{ type: string }> = [];
+      save(): void { this.operations.push({ type: 'save' }); }
+      restore(): void { this.operations.push({ type: 'restore' }); }
+      setTransform(): void { /* recorded paths never assert transforms */ }
+      clearRect(): void { this.operations.push({ type: 'clearRect' }); }
+      drawImage(..._args: unknown[]): void { this.operations.push({ type: 'drawImage' }); }
+      fillRect(..._args: number[]): void { this.operations.push({ type: 'fillRect' }); }
+    }
+
+    const makeRecordingCanvasStub = (recorder: RecordingCanvasContext) => ({
+      width: 1000,
+      height: 650,
+      getContext: (contextId: string, _options?: unknown) =>
+        contextId === '2d' ? recorder : null,
+    }) as unknown as HTMLCanvasElement;
+
+    const makeRendererStub = () => ({ renderFrame: vi.fn() }) as unknown as PreviewRenderer;
+
+    // Same shape as the renderGlobalFrame describe's helper (scoped copy —
+    // describe closures do not share consts).
+    const makeFxPaintSequence = (layer: Layer): Sequence => ({
+      id: 'fx-paint',
+      kind: 'fx',
+      name: 'Paint',
+      fps: 24,
+      width: 1000,
+      height: 650,
+      keyPhotos: [],
+      inFrame: 0,
+      outFrame: 100,
+      layers: [layer],
+    });
+
+    const expectClearBeforeAnyDraw = (recorder: RecordingCanvasContext) => {
+      const firstClear = recorder.operations.findIndex((op) => op.type === 'clearRect');
+      const firstDraw = recorder.operations.findIndex(
+        (op) => op.type === 'drawImage' || op.type === 'fillRect',
+      );
+      expect(firstClear).toBeGreaterThanOrEqual(0);
+      expect(firstDraw === -1 || firstClear < firstDraw).toBe(true);
+    };
+
+    it('records a clearRect before any draw op on an fx-owned (paint) frame', () => {
+      const layer = makeRotoLayer();
+      const fxSeq = makeFxPaintSequence(layer);
+      sequenceStore.sequences.value = [fxSeq];
+      const renderer = makeRendererStub();
+      const recorder = new RecordingCanvasContext();
+      // Post-D-01 union shape: a paint-kind entry owned by the fx sequence id
+      // (no keyPhotoId/imageId — sentinel ids are the banned anti-pattern).
+      const fm: FrameEntry[] = [
+        { kind: 'paint', globalFrame: 0, sequenceId: fxSeq.id, layerId: 'roto-layer' },
+      ];
+
+      renderGlobalFrame(renderer, makeRecordingCanvasStub(recorder), 0, fm, [fxSeq], [], false);
+
+      expectClearBeforeAnyDraw(recorder);
+    });
+
+    it('records a clearRect before any draw op on an empty frame map', () => {
+      const layer = makeRotoLayer();
+      const fxSeq = makeFxPaintSequence(layer);
+      sequenceStore.sequences.value = [fxSeq];
+      const renderer = makeRendererStub();
+      const recorder = new RecordingCanvasContext();
+
+      renderGlobalFrame(renderer, makeRecordingCanvasStub(recorder), 41, [], [fxSeq], [], false);
+
+      expectClearBeforeAnyDraw(recorder);
+    });
+
+    it('content-owned entry: no additional top-level clearRect ahead of the content render path (byte-identical guard)', () => {
+      const layer = makeRotoLayer();
+      const contentSeq = makeSequence(layer);
+      const fxSeq = makeFxPaintSequence(makeRotoLayer());
+      sequenceStore.sequences.value = [contentSeq, fxSeq];
+      seedPhysicalRoto([
+        { keyId: 'key-0', appFrame: 0, bytes: testWebpBytes('cGFpbnQtMA==') },
+      ]);
+      const fm: FrameEntry[] = [
+        { kind: 'content', globalFrame: 0, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
+        { kind: 'content', globalFrame: 1, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
+      ];
+      const renderer = makeRendererStub();
+      const recorder = new RecordingCanvasContext();
+
+      renderGlobalFrame(renderer, makeRecordingCanvasStub(recorder), 0, fm, [contentSeq, fxSeq], [], false);
+
+      expect(recorder.operations.filter((op) => op.type === 'clearRect')).toHaveLength(0);
+    });
   });
 
   describe('preloadExportImages', () => {
