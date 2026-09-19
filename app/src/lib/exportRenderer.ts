@@ -20,6 +20,7 @@ function buildSequenceFrames(seq: Sequence): FrameEntry[] {
   for (const kp of seq.keyPhotos) {
     for (let f = 0; f < kp.holdFrames; f++) {
       frames.push({
+        kind: 'content',
         globalFrame: lf,
         sequenceId: seq.id,
         keyPhotoId: kp.id,
@@ -138,6 +139,18 @@ export function renderGlobalFrame(
   const entry = fm[frameIndex];
   const seq = entry ? allSeqs.find((s) => s.id === entry.sequenceId) : undefined;
   const hasContentEntry = !!seq && seq.kind !== 'fx';
+
+  // D-06 (52.3-01): every no-content frame starts from clean pixels — one
+  // top-level identity-transform clear, same shape as the GL transition path
+  // below. Content frames keep byte-identical behavior (this gate stays
+  // !hasContentEntry; the content branch's own clears are untouched).
+  if (!hasContentEntry) {
+    const clearCtx = canvas.getContext('2d', { willReadFrequently: true })!;
+    clearCtx.save();
+    clearCtx.setTransform(1, 0, 0, 1, 0, 0);
+    clearCtx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCtx.restore();
+  }
 
   // Compute sequence start frame and local frame from frameMap (content only)
   let seqStart = frameIndex;
@@ -441,7 +454,8 @@ export async function preloadExportImages(
   signal?: AbortSignal,
   sequences: readonly Sequence[] = [],
 ): Promise<void> {
-  const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
+  // 52.3-01 (D-01): only content entries carry imageId — paint/gap entries have none.
+  const imageIds = [...new Set(fm.flatMap(f => f.kind === 'content' ? [f.imageId] : []).filter(id => id !== ''))];
   const paperTextures = renderer.collectRotoPaperTextures(sequences);
   // 52.1-05 (D-13): trigger the decode for every physic-paint frame in the
   // export range (getFlattenedFrame returns null on a cold miss but still kicks

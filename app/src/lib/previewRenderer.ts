@@ -330,7 +330,8 @@ export class PreviewRenderer {
           // Content layer: check if current frame is a gradient/solid/transparent entry
           if (frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
             const entry = frames[frameIdx];
-            if (entry && (entry.gradient || entry.solidColor || entry.isTransparent)) {
+            // 52.3-01 (D-01): gradient/solidColor/isTransparent exist only on content entries.
+            if (entry && entry.kind === 'content' && (entry.gradient || entry.solidColor || entry.isTransparent)) {
               hasDrawable = true;
               break;
             }
@@ -478,7 +479,9 @@ export class PreviewRenderer {
         // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)
         let handledAsSolid = false;
         if (layer.isBase && frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
-          const entry = frames[frameIdx];
+          // 52.3-01 (D-01): narrow once — paint/gap entries carry no fill fields.
+          const rawEntry = frames[frameIdx];
+          const entry = rawEntry && rawEntry.kind === 'content' ? rawEntry : undefined;
           if (entry?.gradient && !entry?.isTransparent) {
             // D-12: Gradient fill (check before solidColor)
             ctx.save();
@@ -626,7 +629,9 @@ export class PreviewRenderer {
             return null;
           }
           const entry = frames[fi];
-          if (!entry) return null;
+          // 52.3-01 (D-01): only content entries carry imageId (this path only
+          // ever receives content seqFrames today — the guard makes it explicit).
+          if (!entry || entry.kind !== 'content') return null;
           return this.getImageSource(entry.imageId);
         }
 

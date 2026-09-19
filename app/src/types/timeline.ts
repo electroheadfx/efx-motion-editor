@@ -22,8 +22,12 @@ export interface TimelineState {
   scrollX: number;
 }
 
-/** A single frame in the flattened frame array */
-export interface FrameEntry {
+/** A single frame in the flattened frame array — discriminated union (D-01,
+ *  52.3-01), mirroring the EfxPaintBackgroundFrameResolution house style.
+ *  Fail-closed by type: every consumer compiles only after confronting the
+ *  variant. */
+export interface ContentFrameEntry {
+  readonly kind: 'content';
   globalFrame: number;
   sequenceId: string;
   keyPhotoId: string;
@@ -33,6 +37,27 @@ export interface FrameEntry {
   isTransparent?: boolean;   // true for transparent frames
   gradient?: GradientData;   // Gradient fill data for rendering
 }
+
+/** Paint-carrying frame (52.3-01, D-01): owned by an fx sequence's physic-paint
+ *  layer. Deliberately NO keyPhotoId/imageId — sentinel ids are the banned
+ *  anti-pattern; paint pixels arrive via the CMP-01 flattened seam. */
+export interface PaintFrameEntry {
+  readonly kind: 'paint';
+  globalFrame: number;
+  sequenceId: string; // the owning fx sequence id (D-08 filter target)
+  layerId: string;    // paint layer identity: the fx sequence's first physic-paint layer
+}
+
+/** Gap frame (52.3-01, D-07): inside [0, N) but outside every content/fx span.
+ *  Exports transparent. sequenceId is always '' — ownerless, mirroring the
+ *  precedent union's gap arm. */
+export interface GapFrameEntry {
+  readonly kind: 'gap';
+  globalFrame: number;
+  sequenceId: string;
+}
+
+export type FrameEntry = ContentFrameEntry | PaintFrameEntry | GapFrameEntry;
 
 /** Layout info for a sequence track row in the timeline */
 export interface TrackLayout {

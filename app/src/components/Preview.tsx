@@ -85,7 +85,7 @@ export function Preview() {
       void frameMapLength.value;
       const frames = frameMap.peek();
       const sequences = sequenceStore.sequences.value;
-      const imageIds = [...new Set(frames.map((f) => f.imageId))];
+      const imageIds = [...new Set(frames.flatMap((f) => f.kind === 'content' ? [f.imageId] : []))];
       renderer.preloadImages(imageIds);
       renderer.preloadPaperTextures(renderer.collectRotoPaperTextures(sequences));
     });

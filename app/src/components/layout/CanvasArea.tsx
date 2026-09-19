@@ -51,7 +51,9 @@ function getSourceDimensionsForLayer(layer: Layer): {w: number; h: number} | nul
     const frames = activeSequenceFrames.peek();
     if (frames.length > 0) {
       const frame = frames[timelineStore.currentFrame.peek()] ?? frames[0];
-      if (frame) {
+      // 52.3-01 (D-01): activeSequenceFrames is kind-agnostic and can return
+      // paint entries when an fx sequence is active — only content carries imageId.
+      if (frame && frame.kind === 'content') {
         const img = imageStore.getById(frame.imageId);
         if (img) return {w: img.width, h: img.height};
       }

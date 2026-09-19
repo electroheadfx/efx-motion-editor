@@ -2,7 +2,7 @@ import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
-import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
+import {getDocument as getEfxPaintDocument, efxPaintVersion} from '../stores/efxPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
 import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange, TimelineRepeatDurationMarker} from '../types/timeline';
 import type {GlTransition, Sequence} from '../types/sequence';
@@ -15,6 +15,10 @@ import type {PhysicPaintRotoLoopResolutionContext} from '../components/physic-pa
  *  The overlap is handled visually in Preview via crossDissolveOverlaps. */
 export const frameMap = computed<FrameEntry[]>(() => {
   void physicPaintVersion.value;
+  // Pitfall 2 (52.3-01): enumeration reads getActiveTrackId -> getEfxPaintDocument;
+  // document-only mutations bump only efxPaintVersion — conscious defensive
+  // subscription, not a drive-by.
+  void efxPaintVersion.value;
   const entries: FrameEntry[] = [];
   let globalFrame = 0;
   const sequences = sequenceStore.sequences.value;
@@ -24,6 +28,7 @@ export const frameMap = computed<FrameEntry[]>(() => {
     for (const kp of seq.keyPhotos) {
       for (let f = 0; f < kp.holdFrames; f++) {
         entries.push({
+          kind: 'content',
           globalFrame,
           sequenceId: seq.id,
           keyPhotoId: kp.id,
@@ -42,6 +47,27 @@ export const frameMap = computed<FrameEntry[]>(() => {
   const tailEntry = entries[entries.length - 1];
   while (tailEntry && entries.length < targetLength) {
     entries.push({ ...tailEntry, globalFrame: entries.length });
+  }
+
+  // Paint enumeration branch (52.3-01, D-04/D-05): fires only in content-empty
+  // projects — with any content the tail pad above already fills [0, N)
+  // (RESEARCH Finding F1), so D-02 content-wins and D-03 tail-hold hold
+  // structurally. Coverage uses the SAME getTimelineOverlaySequenceOutFrame
+  // predicate the overlay leg gates on — enumeration and render gating can
+  // never drift. N law (getTimelineRequiredFrameCount) reused unchanged (D-04).
+  if (entries.length === 0) {
+    const fxSeqs = sequences.filter(s =>
+      s.kind === 'fx' && s.visible !== false && s.layers.some(l => l.type === 'physic-paint'));
+    for (let f = 0; f < targetLength; f++) {
+      const owner = fxSeqs.find(seq =>
+        f >= (seq.inFrame ?? 0) && f < getTimelineOverlaySequenceOutFrame(seq, targetLength));
+      if (owner) {
+        const paintLayer = owner.layers.find(l => l.type === 'physic-paint')!;
+        entries.push({ kind: 'paint', globalFrame: f, sequenceId: owner.id, layerId: getLayerId(paintLayer) });
+      } else {
+        entries.push({ kind: 'gap', globalFrame: f, sequenceId: '' });
+      }
+    }
   }
   return entries;
 });
