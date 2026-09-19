@@ -209,8 +209,8 @@ describe('physics paint cache-first preview/export contract', () => {
     } as unknown as PreviewRenderer;
 
     await preloadExportImages(renderer, [
-      { globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
-      { globalFrame: 1, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
+      { kind: 'content' as const, globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
+      { kind: 'content' as const, globalFrame: 1, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
     ], undefined, [sequence]);
 
     expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 1);
@@ -259,6 +259,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     // The 2 -> 6 span derives gap interiors at direct physical appFrames 3, 4, 5.
     const frameMap = Array.from({ length: 9 }, (_, globalFrame) => ({
+      kind: 'content' as const,
       globalFrame,
       sequenceId: globalFrame === 8 ? sequence.id : 'content-seq',
       keyPhotoId: 'kp-1',
@@ -371,8 +372,8 @@ describe('physics paint cache-first preview/export contract', () => {
     } as unknown as PreviewRenderer;
 
     await preloadExportImages(renderer, [
-      { globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
-      { globalFrame: 1, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
+      { kind: 'content' as const, globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
+      { kind: 'content' as const, globalFrame: 1, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
     ], undefined, [sequence]);
 
     expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith(expect.arrayContaining([
@@ -490,8 +491,8 @@ describe('exportRenderer', () => {
         { keyId: 'key-0', appFrame: 0, bytes: testWebpBytes('cGFpbnQtMA==') },
       ]);
       const fm = [
-        { globalFrame: 0, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
-        { globalFrame: 1, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
+        { kind: 'content' as const, globalFrame: 0, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
+        { kind: 'content' as const, globalFrame: 1, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
       ];
       const renderer = makeRendererStub();
 
@@ -632,7 +633,7 @@ describe('exportRenderer', () => {
       } as unknown as PreviewRenderer;
       const sequence = makeSequence(makeRotoLayer());
 
-      await preloadExportImages(renderer, [{ globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 }], undefined, [sequence]);
+      await preloadExportImages(renderer, [{ kind: 'content' as const, globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 }], undefined, [sequence]);
 
       expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 0);
       expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith([frameSource]);
@@ -661,6 +662,7 @@ describe('exportRenderer', () => {
       awaitPhysicPaintDecodes: vi.fn(async () => {}),
       } as unknown as PreviewRenderer;
       const frames = Array.from({ length: 101 }, (_, globalFrame) => ({
+        kind: 'content' as const,
         globalFrame,
         sequenceId: globalFrame === 100 ? sequence.id : 'earlier-content',
         keyPhotoId: globalFrame === 100 ? 'kp-local-0' : 'kp-earlier',

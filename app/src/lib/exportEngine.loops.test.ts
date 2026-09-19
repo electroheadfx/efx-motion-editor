@@ -301,6 +301,7 @@ function makeSequence(layers: Layer[]): Sequence {
 
 function makeFm(count: number): FrameEntry[] {
   return Array.from({ length: count }, (_, index) => ({
+    kind: 'content' as const,
     globalFrame: index,
     sequenceId: 'seq-1',
     keyPhotoId: 'kp',

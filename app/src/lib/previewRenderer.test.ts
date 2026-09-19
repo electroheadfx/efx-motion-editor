@@ -524,6 +524,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
       layers: [makeRotoLayer(), paintLayer],
     };
     const frames = Array.from({ length: 101 }, (_, globalFrame) => ({
+      kind: 'content' as const,
       globalFrame,
       sequenceId: globalFrame === 100 ? sequence.id : 'earlier-content',
       keyPhotoId: globalFrame === 100 ? 'kp-local-0' : 'kp-earlier',

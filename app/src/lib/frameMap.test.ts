@@ -10,8 +10,18 @@ import {buildPhysicPaintRotoPhysicalRevision} from '../components/physic-paint/r
 import type {Sequence} from '../types/sequence';
 import type {PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
+import type {ContentFrameEntry, FrameEntry} from '../types/timeline';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
+
+/** 52.3-01 (D-01): narrow a FrameEntry to its content arm — throws unless
+ *  e.kind === 'content'. Preferred over scattering `as any` for the file's
+ *  keyPhotoId/imageId assertions (the `as any` escape stays the accepted idiom
+ *  for the optional solidColor/isTransparent fields). */
+function asContent(e: FrameEntry): ContentFrameEntry {
+  if (e.kind !== 'content') throw new Error(`expected content entry, got kind '${e.kind}'`);
+  return e;
+}
 
 function makeTrackDocument(layerId: string): EfxPaintDocument {
   const document = createEfxPaintDocument(layerId);
@@ -233,7 +243,7 @@ describe('frameMap solid/transparent entries', () => {
     const entries = frameMap.value;
     expect(entries).toHaveLength(2);
     expect((entries[0] as any).solidColor).toBe('#FF0000');
-    expect(entries[0].imageId).toBe('');
+    expect(asContent(entries[0]).imageId).toBe('');
     expect((entries[1] as any).solidColor).toBe('#FF0000');
   });
 
@@ -260,7 +270,7 @@ describe('frameMap solid/transparent entries', () => {
     expect(entries).toHaveLength(1);
     expect((entries[0] as any).solidColor).toBeUndefined();
     expect((entries[0] as any).isTransparent).toBeUndefined();
-    expect(entries[0].imageId).toBe('img-1');
+    expect(asContent(entries[0]).imageId).toBe('img-1');
   });
 
   it('interleaves solid and photo FrameEntry correctly', () => {
@@ -274,11 +284,11 @@ describe('frameMap solid/transparent entries', () => {
 
     const entries = frameMap.value;
     expect(entries).toHaveLength(4);
-    expect(entries[0].imageId).toBe('img-1');
+    expect(asContent(entries[0]).imageId).toBe('img-1');
     expect((entries[0] as any).solidColor).toBeUndefined();
     expect((entries[1] as any).solidColor).toBe('#0000FF');
     expect((entries[2] as any).solidColor).toBe('#0000FF');
-    expect(entries[3].imageId).toBe('img-2');
+    expect(asContent(entries[3]).imageId).toBe('img-2');
     expect((entries[3] as any).solidColor).toBeUndefined();
   });
 
@@ -340,8 +350,8 @@ describe('frameMap solid/transparent entries', () => {
 
     const entries = frameMap.value;
     expect(entries).toHaveLength(9);
-    expect(entries.slice(0, 3).map((entry) => entry.imageId)).toEqual(['circle', 'square', 'crossed']);
-    expect(entries.slice(3).every((entry) => entry.imageId === 'crossed')).toBe(true);
+    expect(entries.slice(0, 3).map((entry) => asContent(entry).imageId)).toEqual(['circle', 'square', 'crossed']);
+    expect(entries.slice(3).every((entry) => asContent(entry).imageId === 'crossed')).toBe(true);
     expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-roto', inFrame: 0, outFrame: 9 }));
   });
 
@@ -407,6 +417,97 @@ describe('frameMap solid/transparent entries', () => {
       { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
       { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #2' },
     ]);
+  });
+});
+
+describe('paint enumeration (D-04/D-05)', () => {
+  beforeEach(() => {
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+  });
+
+  it('enumerates one dense paint entry per frame for a paint-only fx sequence at inFrame 0', () => {
+    sequenceStore.sequences.value = [
+      { ...makeFxSequence('fx-paint-only', 'Paint Only', makePhysicPaintLayer('paint-only-layer')), inFrame: 0, outFrame: 5 },
+    ];
+    installRotoDocument('paint-only-layer', [0, 1, 2, 3, 4], []);
+
+    const entries = frameMap.value;
+    expect(entries).toHaveLength(5);
+    for (let f = 0; f < 5; f++) {
+      expect(entries[f]).toEqual({
+        kind: 'paint',
+        globalFrame: f,
+        sequenceId: 'fx-paint-only',
+        layerId: 'paint-only-layer',
+      });
+    }
+  });
+
+  it('fills frames before the fx inFrame with ownerless gap entries', () => {
+    sequenceStore.sequences.value = [
+      { ...makeFxSequence('fx-offset', 'Offset Paint', makePhysicPaintLayer('offset-layer')), inFrame: 3, outFrame: 8 },
+    ];
+    installRotoDocument('offset-layer', [0, 1, 2, 3, 4], []);
+
+    const entries = frameMap.value;
+    expect(entries).toHaveLength(8);
+    expect(entries[0]).toEqual({ kind: 'gap', globalFrame: 0, sequenceId: '' });
+    expect(entries[1]).toEqual({ kind: 'gap', globalFrame: 1, sequenceId: '' });
+    expect(entries[2]).toEqual({ kind: 'gap', globalFrame: 2, sequenceId: '' });
+    expect(entries[3]).toEqual({ kind: 'paint', globalFrame: 3, sequenceId: 'fx-offset', layerId: 'offset-layer' });
+    expect(entries[7]).toEqual({ kind: 'paint', globalFrame: 7, sequenceId: 'fx-offset', layerId: 'offset-layer' });
+  });
+
+  it('skips a hidden fx sequence entirely (visible: false -> no enumeration)', () => {
+    sequenceStore.sequences.value = [
+      { ...makeFxSequence('fx-hidden', 'Hidden Paint', makePhysicPaintLayer('hidden-layer')), visible: false },
+    ];
+    installRotoDocument('hidden-layer', [0, 1, 2, 3, 4], []);
+
+    // The N law skips hidden sequences (frameMap.ts getTimelineRequiredFrameCount),
+    // so targetLength is 0 and the enumeration branch produces nothing.
+    expect(frameMap.value).toHaveLength(0);
+  });
+
+  it('extends N through a loop clip reaching beyond the last real key', () => {
+    sequenceStore.sequences.value = [
+      { ...makeFxSequence('fx-loop', 'Loop Paint', makePhysicPaintLayer('loop-layer')), inFrame: 0, outFrame: 5 },
+    ];
+    // Real keys 0..4 (end 5) plus a loop at placementStart 10, 5 source frames,
+    // repeat 3 -> effectiveEnd 25. N must follow the loop extent (D-04).
+    installRotoDocument('loop-layer', [0, 1, 2, 3, 4], [makeLoopClip('loop-hold', 10, 3)]);
+
+    const entries = frameMap.value;
+    expect(entries).toHaveLength(25);
+    expect(entries[24]).toEqual({ kind: 'paint', globalFrame: 24, sequenceId: 'fx-loop', layerId: 'loop-layer' });
+  });
+
+  it('produces gap entries across the authored span of an fx sequence with no physic-paint layer (side-effect pin)', () => {
+    const grainLayer: Layer = {
+      id: 'grain-layer',
+      name: 'Film Grain',
+      type: 'generator-grain',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'generator-grain', density: 0.3, size: 1, intensity: 0.5, lockSeed: true, seed: 42 },
+    };
+    sequenceStore.sequences.value = [makeFxSequence('fx-grain', 'Grain', grainLayer)];
+
+    // N law includes the authored span (0..24); no paint owner exists, so every
+    // frame is an ownerless gap entry. Documented side effect of the dense fill.
+    const entries = frameMap.value;
+    expect(entries).toHaveLength(24);
+    expect(entries.every((entry) => entry.kind === 'gap' && entry.sequenceId === '')).toBe(true);
+  });
+
+  it('enumerates nothing for an empty timeline', () => {
+    sequenceStore.sequences.value = [];
+
+    expect(frameMap.value).toHaveLength(0);
   });
 });
 

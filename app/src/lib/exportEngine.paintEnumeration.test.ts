@@ -73,7 +73,10 @@ vi.mock('./exportRenderer', () => ({
 
 import { startExport } from './exportEngine';
 import { frameMap } from './frameMap';
-import { renderGlobalFrame as renderGlobalFrameMock } from './exportRenderer';
+import {
+  renderGlobalFrame as renderGlobalFrameMock,
+  renderFrameWithMotionBlur as renderFrameWithMotionBlurMock,
+} from './exportRenderer';
 
 // --- Minimal canvas harness (copied verbatim from exportEngine.test.ts) ---
 
@@ -303,7 +306,28 @@ describe('paint-export enumeration discrimination (260919-azh)', () => {
     expect(exportStore.progress.peek().errorMessage).not.toBe('No frames to export (timeline is empty)');
   });
 
-  it('Case E (characterization): selectedSequenceOnly with an active FX sequence filters every frame out', async () => {
+  it('Case E (D-08): selectedSequenceOnly with an active FX sequence exports that sequence’s paint entries to completion', async () => {
+    // Re-pinned under Phase 52.3 (D-08): paint-only arrange — the fx sequence’s
+    // paint-kind entries carry its sequenceId, so the existing
+    // fm.filter(e => e.sequenceId === activeId) predicate now matches them.
+    sequenceStore.sequences.value = [makeFxPaintSequence('fx-e', LAYER, 0, 5)];
+    installRotoDocument(LAYER, [0, 1, 2, 3, 4]);
+    sequenceStore.activeSequenceId.value = 'fx-e';
+    exportStore.setSelectedSequenceOnly(true);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('complete');
+    expect(renderGlobalFrameMock).toHaveBeenCalledTimes(5);
+    expect(frameMap.value.filter((e) => e.sequenceId === 'fx-e')).toHaveLength(5);
+  });
+
+  it('Case E2 (D-02/D-03 characterization): a mixed project with fx active + selectedSequenceOnly still refuses with the locked copy', async () => {
+    // ORIGINAL mixed arrange preserved (Pitfall 4: amend, never delete). D-02
+    // keeps content winning per frame and D-03 keeps the tail-pad hold, so in a
+    // mixed project every entry is content-owned by content-e and the D-08
+    // filter (the existing sequenceId predicate, unchanged) matches zero
+    // entries for fx-e — the refusal stays reachable here by design.
     sequenceStore.sequences.value = [
       makeContentSequence('content-e', [
         { id: 'kp-e0', imageId: 'img-e0', holdFrames: 1 },
@@ -318,12 +342,32 @@ describe('paint-export enumeration discrimination (260919-azh)', () => {
 
     await startExport();
 
-    // PASSES today: no FrameEntry ever carries the fx sequence id, so the
-    // selectedSequenceOnly filter (exportEngine.ts:145-150) empties the map and
-    // startExport hard-errors with the locked copy. Characterizes the filter
-    // gap without designing its fix (Phase 53).
     expect(exportStore.progress.peek().status).toBe('error');
     expect(exportStore.progress.peek().errorMessage).toBe('No frames to export (timeline is empty)');
     expect(renderGlobalFrameMock).not.toHaveBeenCalled();
+  });
+
+  it('D-10 negative: a genuinely empty timeline (no content AND no paint) still refuses with the locked copy', async () => {
+    sequenceStore.sequences.value = [];
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('error');
+    expect(exportStore.progress.peek().errorMessage).toBe('No frames to export (timeline is empty)');
+    expect(renderGlobalFrameMock).not.toHaveBeenCalled();
+  });
+
+  it('Case D (motion-blur variant): paint-only export completes through the motion-blur render path', async () => {
+    // Pitfall 6 pin: motion blur sub-frames floor to the same dense entry and
+    // the D-06 clear stays gated on !hasContentEntry, so a blurred paint-only
+    // export completes with one motion-blur call per frame.
+    sequenceStore.sequences.value = [makeFxPaintSequence('fx-d-mb', LAYER, 0, 5)];
+    installRotoDocument(LAYER, [0, 1, 2, 3, 4]);
+    exportStore.motionBlurEnabled.value = true;
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('complete');
+    expect(renderFrameWithMotionBlurMock).toHaveBeenCalledTimes(5);
   });
 });
