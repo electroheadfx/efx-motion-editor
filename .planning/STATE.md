@@ -4,18 +4,18 @@ milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.3"
 current_phase_name: Paint content export — per-frame compositor enumeration (INSERTED)
-status: executing
-stopped_at: Completed 52.3-02-PLAN.md
-last_updated: "2026-09-19T15:06:39.290Z"
+status: verifying
+stopped_at: Completed 52.3-03-PLAN.md
+last_updated: "2026-09-19T17:42:18.837Z"
 last_activity: 2026-09-19
 last_activity_desc: Phase 52.3 execution started
-state_head: 0d1125e3f8f95c1b3189da34620dd31dada4fd26
+state_head: 6f38f92e7dcf4bc43dd22c6c734991773a4bd890
 progress:
   total_phases: 12
   completed_phases: 19
   total_plans: 68
-  completed_plans: 67
-  percent: 99
+  completed_plans: 68
+  percent: 100
 ---
 
 # Project State
@@ -31,10 +31,10 @@ See: .planning/PROJECT.md (updated 2026-08-23 after v1.0.0 milestone start)
 
 Phase: 52.3 (Paint content export — per-frame compositor enumeration (INSERTED)) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-19 — Phase 52.3 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 99%)
+Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
 ## Performance Metrics
 
@@ -125,6 +125,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.2 P15 | 10min | 2 tasks | 6 files |
 | Phase 52.3 P01 | 22min | 3 tasks | 12 files |
 | Phase 52.3 P02 | 13min | 2 tasks | 4 files |
+| Phase 52.3 P03 | ~15 min + UAT | 2 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -331,6 +332,8 @@ Recent decisions affecting current work:
 - [Phase 52.2]: 52.2-16 carried to phase close — re-enable ui.safety_gate; delete the superseded SPECS/phase-52.3-async-conventions.md draft (user-owned); save progress-modal UX idea stays a registered candidate; the sequence-extension bug is routed as a later quick; the branch merge decision is the user's
 - [Phase 52.2]: PHASE CLOSED 2026-09-18 — verification PASSED (`52.2-VERIFICATION.md`: 12/12 must-haves, 0 behavior-unverified; real-package digest check 32/32, zero-base64 scan 0 matches, bundled plist verified); Nyquist validation clean (0 gaps; `52.2-VALIDATION.md` status: validated, nyquist_compliant: true); close-out chores done (ui.safety_gate re-enabled, superseded SPECS/phase-52.3 draft deleted); next: Phase 53
 - [Phase 52.3]: [Phase 52.3 P01]: FrameEntry is now a discriminated union (ContentFrameEntry | PaintFrameEntry | GapFrameEntry) — fail-closed by type per D-01; PaintFrameEntry carries the owning fx sequenceId + layerId and never keyPhotoId/imageId; GapFrameEntry is ownerless (sequenceId ''). Paint enumeration in frameMap fires only in content-empty projects (entries.length === 0 guard, Finding F1) with coverage via the shared getTimelineOverlaySequenceOutFrame predicate (anti-drift lock with the overlay leg); D-06 top-level identity clearRect gated on !hasContentEntry; efxPaintVersion consciously subscribed (Pitfall 2); D-08 pinned: paint-only fx-active selectedSequenceOnly completes, mixed fx-active refuses with the locked copy (Case E2)
+- [Phase 52.3]: [Phase 52.3 P03]: 7/7 native UAT rows pass across formats, resolutions, and 0.5x/1x/2x scales — the WYSIWYG law (D-05) holds on the real surface; Phase 53 unblocked
+- [Phase 52.3]: [Phase 52.3 P03]: Playback activation callout (UAT Row 7) confirmed deliberate and D-08-consistent — sidebar activating the fx row as the playhead enters paint frames is intended, not a bug
 
 ### Pending Todos
 
@@ -388,6 +391,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-19T15:06:37.823Z
-Stopped at: Completed 52.3-02-PLAN.md
+Last session: 2026-09-19T17:41:56.804Z
+Stopped at: Completed 52.3-03-PLAN.md
 Resume file: None
