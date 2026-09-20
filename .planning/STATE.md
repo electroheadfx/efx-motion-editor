@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-19 - Completed quick task 260919-sns: Export click gives no feedback for several seconds before progress appears
+Last activity: 2026-09-20 - Completed quick task 260920-j5r: WR-01 52.3 gap entries must not deselect the active sequence on scrub
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
@@ -370,6 +370,7 @@ None yet.
 | 260918-ovi | Canvas size + orientation choice at project creation — 4 presets (HD / HD Vertical / Portrait / Square) + Custom… steppers clamped 16–1920, dims threaded dialog→store→IPC→Rust, sequenceStore provider injection, SettingsView 4K dropped, dialog reopen resets format (WR-01), always-visible W×H fields greyed/seeded (amendment). Verified 6/6 must-haves; native UAT passed 2026-09-18 (8/8; paint-export enumeration carved out to the pre-53 quick) | 2026-09-18 | 955d1999 | [260918-ovi-canvas-size-orientation-choice-at-projec](./quick/260918-ovi-canvas-size-orientation-choice-at-projec/) |
 | 260919-azh | Paint content never reaches export — RED discrimination matrix + trace. Verdict NEVER-WIRED: frameMap enumerates content keyPhotos only, paint-only branch never designed (52.2 reference-only carriers EXONERATED in-test). Cases C/D parked as it.todo Phase 53 contracts per escalation clause; zero production-code changes | 2026-09-19 | a5900f7c | [260919-azh-paint-content-never-reaches-export-accep](./quick/260919-azh-paint-content-never-reaches-export-accep/) |
 | 260919-sns | Export click gives no feedback for several seconds before progress appears — 'preparing' write hoisted ahead of the Studio flush await (5 s timeout leg when Studio closed); latent cancel-during-flush resetProgress wipe repaired by the same hoist. RED-first tests; full suite green. Native UAT passed 2026-09-19 | 2026-09-19 | c10c6e9e | [260919-sns-export-click-gives-no-feedback-for-sever](./quick/260919-sns-export-click-gives-no-feedback-for-sever/) |
+| 260920-j5r | WR-01 52.3 (guard scrub): gap entries must not deselect the active sequence on scrub — syncActiveSequence guarded to activate on real owner ids only (pre-52.3 contract restored for leading/inter-fx gaps); RED-first preservation pins + anti-over-suppression leg. Native UAT pending | 2026-09-20 | 8f178095 | [260920-j5r-wr-01-52-3-guard-scrub-gap-entries-must-](./quick/260920-j5r-wr-01-52-3-guard-scrub-gap-entries-must-/) |
 
 ### Roadmap Evolution
 
