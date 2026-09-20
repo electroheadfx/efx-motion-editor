@@ -726,7 +726,7 @@ describe('physicPaintBridge', async () => {
     expect(carriedRotoPhysical(later)).toMatchObject({ cursorAppFrame: 12, capacity: 30 });
   });
 
-  it('bounds a non-first content Sequence local end by physical capacity', async () => {
+  it('authorizes a non-first content Sequence local end over a stale stored capacity', async () => {
     const layer = physicLayer();
     const interpolation = { enabled: false, mode: 'duplicate' as const };
     const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
@@ -762,8 +762,11 @@ describe('physicPaintBridge', async () => {
 
     const context = createPhysicPaintLaunchContext(layer, 125);
 
-    expect(context).toMatchObject({ startFrame: 19 });
-    expect(carriedRotoPhysical(context)).toMatchObject({ capacity: 20, cursorAppFrame: 19 });
+    // 260920-ji7: the live content Sequence end (30) authorizes the bound. The
+    // stored 20 is a previously written launch value, never its own ceiling —
+    // read as 20 it froze the extent and refused every later extension.
+    expect(context).toMatchObject({ startFrame: 25 });
+    expect(carriedRotoPhysical(context)).toMatchObject({ capacity: 30, cursorAppFrame: 25 });
   });
 
   it('fails closed when content timing cannot validate its matching track layout', async () => {

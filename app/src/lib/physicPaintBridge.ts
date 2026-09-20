@@ -3280,12 +3280,28 @@ export function createPhysicPaintLaunchContext(
   // 46-01: the launch IS the document (D-03) — the launch is created against
   // the document's ACTIVE track, and every runtime read below is track-scoped.
   const trackId = getEfxPaintDocument(layerId)?.activeTrackId ?? '';
-  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, trackId);
   const timelineRange = getLayerLocalTimelineRange(layer);
   if (timelineRange === null) {
     throw new Error('Physics Paint layer has no authoritative parent timeline range.');
   }
-  const layerEndExclusive = Math.min(timelineRange.localEndExclusive, capacity);
+  // 260920-ji7 (D-08 CLAMP verdict): the bound is authorized by the LIVE parent
+  // end, never by its own previous write-back. min(localEndExclusive, stored)
+  // made the first launch freeze the extent (min(80, 40) = 40), so every later
+  // sequence extension was refused with 'No remaining Physics Paint sequence
+  // capacity is available.' The stored-content floor keeps a parent span that
+  // shrinks below stored keys from making those records unparseable — content
+  // is never dropped to fit the bound — and PHYSIC_PAINT_MAX_APPLY_FRAMES stays
+  // the only ceiling.
+  const storedRealKeyRecords = physicPaintStore.getRotoRealKeyRecords(layerId, trackId);
+  const storedGroupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(layerId, trackId);
+  const lastStoredAppFrame = Math.max(
+    storedRealKeyRecords[storedRealKeyRecords.length - 1]?.appFrame ?? -1,
+    storedGroupOverrideRecords[storedGroupOverrideRecords.length - 1]?.appFrame ?? -1,
+  );
+  const layerEndExclusive = Math.min(
+    PHYSIC_PAINT_MAX_APPLY_FRAMES,
+    Math.max(timelineRange.localEndExclusive, lastStoredAppFrame + 1),
+  );
   // D-25/Q4 fold: the parent store capacity is the same parent-end bound the
   // carried document carries, so the parent authority and the child document
   // agree on one capacity for semantic-delta validation.
