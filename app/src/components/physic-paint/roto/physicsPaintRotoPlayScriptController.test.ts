@@ -3327,4 +3327,79 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     await test.controller.openConfirmation();
     expect(test.controller.railTab.value).toBe('paint');
   });
+
+  // --- WR-03 lock (260920-kov): "a reveal-creation entry never hijacks a
+  // later legitimate action". The 52-REVIEW warning described a sticky
+  // `revealCreationRequested` flag whose consumer was the reveal-creation
+  // surface inside the photo reference dialog. That surface is GONE — the
+  // flag does not exist anywhere in app/src (grep: zero matches) and reveal
+  // creation moved into the Create Rail dialog in 1b11e1c0. The replacement
+  // one-shot (`scriptPickerIntent` in the Studio, cleared on both exits) and
+  // the open-entry `railTab` argument (re-assigned on every open) are what
+  // these legs lock. They are a REGRESSION LOCK, expected GREEN at the plan
+  // base; a RED leg means the hijack is live again.
+
+  it('WR-03: a reveal entry closed by Cancel leaves the next plain open on the Paint tab', async () => {
+    const test = harness({ hasPhotoReference: () => true, getScriptNaturalDuration: () => 5 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.railTab.value).toBe('reveal');
+
+    test.controller.cancel();
+    expect(test.controller.confirmationOpen.value).toBe(false);
+
+    await test.controller.openConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.railTab.value).toBe('paint');
+  });
+
+  it('WR-03: a COMPLETED reveal flow leaves nothing sticky for the next plain open', async () => {
+    const createReveal = vi.fn(async () => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.revealCountText.value = '3';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal).toHaveBeenCalledTimes(1);
+    expect(test.controller.confirmationOpen.value).toBe(false);
+
+    await test.controller.openConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.railTab.value).toBe('paint');
+  });
+
+  it('WR-03: the D-12 guard path (no reference → photo dialog) does not change the next plain open', async () => {
+    const openPhotoReference = vi.fn();
+    const test = harness({ hasPhotoReference: () => false, openPhotoReference, getScriptNaturalDuration: () => 2 });
+    await test.controller.openConfirmation();
+    expect(test.controller.railTab.value).toBe('paint');
+
+    test.controller.setRailTab('reveal');
+    expect(test.controller.railTab.value).toBe('reveal');
+    // The guard opens the photo dialog ON PURPOSE (D-12) — intended, not a hijack.
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+
+    test.controller.cancel();
+    expect(test.controller.confirmationOpen.value).toBe(false);
+
+    await test.controller.openConfirmation();
+    expect(test.controller.railTab.value).toBe('paint');
+    // The guard fires from the tab switch only — never from a plain open.
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+  });
+
+  it('WR-03: a plain photo-reference request after a reveal open opens the photo dialog once and never reopens the Create Rail dialog', async () => {
+    const openPhotoReference = vi.fn();
+    const test = harness({ hasPhotoReference: () => true, openPhotoReference });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.closeConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(false);
+    expect(openPhotoReference).not.toHaveBeenCalled();
+
+    test.controller.requestPhotoReference();
+    expect(openPhotoReference).toHaveBeenCalledTimes(1);
+    // The Create Rail dialog does not reopen itself, and the request does not
+    // move the tab.
+    expect(test.controller.confirmationOpen.value).toBe(false);
+    expect(test.controller.railTab.value).toBe('reveal');
+  });
 });

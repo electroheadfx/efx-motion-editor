@@ -16,6 +16,7 @@ const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightP
 const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const photoReferenceDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPhotoReferenceDialog.tsx', import.meta.url)), 'utf8');
 const launchIntegration = readFileSync(fileURLToPath(new URL('./hooks/usePhysicsPaintLaunchIntegration.ts', import.meta.url)), 'utf8');
 const navigationCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoNavigationCoordinator.ts', import.meta.url)), 'utf8');
 const physicalEditCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditCoordinator.ts', import.meta.url)), 'utf8');
@@ -1970,6 +1971,69 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
   it('mounts the picker dialog in the Studio view next to the Photo Reference dialog', () => {
     expect(studio).toContain('const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(');
     expect(studioView).toContain('<PhysicsPaintScriptPickerDialog {...scriptPickerDialog} />');
+  });
+
+  // WR-03 structural lock (260920-kov): the reveal-creation entry can reach the
+  // Create Rail dialog (via the picker's one-shot intent) and NOTHING else. The
+  // photo reference dialog stays a pure reference control surface — its props
+  // carry no reveal member, so it cannot receive reveal state without this test
+  // failing. Pairs with the behavioural legs in
+  // physicsPaintRotoPlayScriptController.test.ts.
+  it('feeds the photo reference dialog from a memo whose input list carries no reveal term', () => {
+    expect(studio).toContain(`const referenceDialog = referenceDialogPropsMemo.resolve(
+    [referenceDialogOpen.value, launchContext?.layerId, efxPaintVersion.value, photoReferenceSectionPortsRef.current, referencePicker],
+    () => ({
+      open: referenceDialogOpen.value,
+      layerId: launchContext?.layerId ?? null,
+      ports: photoReferenceSectionPortsRef.current,
+      onClose: () => { referenceDialogOpen.value = false; },
+      onImportSource: () => referencePicker.openPicker(),
+    }),`);
+    // The dialog's prop surface is exactly { open, layerId, ports, onClose,
+    // onImportSource } — there is no reveal input to receive reveal state.
+    expect(photoReferenceDialog).toContain(`export interface PhysicsPaintPhotoReferenceDialogProps {
+  /** Dialog visibility (owned by the Studio — set from the strip camera icon). */
+  open: boolean;
+  /** The launch layer; null means no Studio target (dialog renders nothing). */
+  layerId: string | null;
+  /** Store ports — production defaults hit the real store. */
+  ports?: Partial<PhysicsPaintPhotoReferencePorts>;
+  /** Close intent (Escape, header X). */
+  onClose: () => void;
+  /** Import/Replace source intent — opens the full-area reference picker. */
+  onImportSource: () => void;
+}`);
+    // The dialog's receipt surface — the destructured props — carries no reveal
+    // member either, so no call site can hand it reveal state.
+    expect(photoReferenceDialog).toContain(`export function PhysicsPaintPhotoReferenceDialog({
+  open,
+  layerId,
+  ports,
+  onClose,
+  onImportSource,
+}: PhysicsPaintPhotoReferenceDialogProps) {`);
+    // Every reference to "reveal" in this file is prose asserting the ABSENCE
+    // of the flow (the 52-05 comment), never code.
+    expect(photoReferenceDialog.toLowerCase().match(/reveal/g)).toHaveLength(2);
+    // The dialog is fed ONLY from the bundle above — a direct prop spread would
+    // escape the memo-input lock.
+    expect(studioView).toContain('{referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}');
+  });
+
+  it('routes the reveal creation entry through the picker one-shot only, cleared on both exits', () => {
+    // The ONLY reveal-tab open in the Studio lives inside the picker's onPick.
+    expect(studio.match(/railTab: 'reveal'/g)).toHaveLength(1);
+    expect(studio).toContain(`        } else if (intent?.kind === 'reveal') {
+          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
+        }`);
+    // Both exits clear the one-shot: a pick (above) and a close.
+    expect(studio).toContain(`onClose: () => { scriptPickerIntent.value = null; },`);
+    // The reveal menu entry sets the intent; it cannot open the Create Rail
+    // dialog directly (a direct open would bypass the picker and could leave
+    // the surface the review described reachable without a script pick).
+    expect(studio).toContain(`onCreateRevealRail: () => {
+          scriptPickerIntent.value = { kind: 'reveal' };
+        },`);
   });
 });
 
