@@ -38,6 +38,7 @@ import {
   serializeRuntimeIntoDocument,
 } from '../stores/efxPaintStore';
 import { timelineStore } from '../stores/timelineStore';
+import { getTimelineOverlaySequenceOutFrame, totalFrames } from './frameMap';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
   buildFrameBytesToken,
@@ -491,6 +492,121 @@ describe('physicPaintBridge', async () => {
     expect(carriedRotoPhysical(context)).toMatchObject({
       capacity: 40,
     });
+  });
+
+  // 260920-ji7 Task 1 (temporary diagnosis probe): reproduce the sequence-
+  // extension refusal end-to-end against the REAL stores. Deleted on a
+  // STRUCTURAL verdict; promoted to the permanent regression cases on a CLAMP
+  // verdict.
+  it('PROBE 260920-ji7: parent-span extension vs the launch capacity', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], 40);
+
+    const firstLaunch = createPhysicPaintLaunchContext(layer, 10);
+    console.log('[PROBE ji7] A. first launch (parent span end 40):', JSON.stringify({
+      carriedCapacity: carriedRotoPhysical(firstLaunch).capacity,
+      storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
+    }));
+
+    // The user extends the sequence: span end 40 -> 80 (post-o0n the span-drag
+    // path carries no timeline ceiling).
+    sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 80);
+    const extendedSpan = sequenceStore.sequences.peek().find((candidate) => candidate.id === 'bridge-test-parent-sequence');
+    console.log('[PROBE ji7] B. parent span after extension:', JSON.stringify({
+      inFrame: extendedSpan?.inFrame,
+      outFrame: extendedSpan?.outFrame,
+    }));
+
+    const secondLaunch = createPhysicPaintLaunchContext(layer, 10);
+    const second = {
+      carriedCapacity: carriedRotoPhysical(secondLaunch).capacity,
+      storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
+    };
+    console.log('[PROBE ji7] C. second launch (parent span end 80):', JSON.stringify(second));
+
+    const authorityAt = (canonicalStart: number) => getPhysicPaintRotoAuthority({
+      operationId: `probe-ji7-${canonicalStart}`,
+      projectContextId: projectStore.projectContextId.peek(),
+      layerId: layer.id,
+      canonicalStart,
+      trackId: TEST_TRACK_ID,
+    });
+    for (const canonicalStart of [39, 40, 60]) {
+      const authority = authorityAt(canonicalStart);
+      console.log(`[PROBE ji7] D. authority canonicalStart ${canonicalStart}:`, JSON.stringify({
+        ok: authority.ok,
+        error: authority.error,
+        physicalCapacity: authority.physicalCapacity,
+        capacity: authority.capacity,
+      }));
+    }
+
+    // Loop-bearing layer: an infinity loop's natural end IS the capacity.
+    const loopRecords = [makePhysicalRecord('loop-a', 0), makePhysicalRecord('loop-b', 4)];
+    const loopClips = [{ loopId: 'probe-loop', placementStart: 10, sourceKeyIds: ['loop-a', 'loop-b'], repeat: 'infinity' as const, mode: 'progressive' as const }];
+    const loopSeed = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity: second.storeCapacity,
+      realKeyRecords: loopRecords,
+      interpolation: { enabled: false, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(loopRecords, { enabled: false, mode: 'duplicate' }, loopClips, []),
+      loopClips,
+    });
+    console.log('[PROBE ji7] E. infinity-loop seed:', JSON.stringify({ ok: loopSeed.ok, error: loopSeed.ok ? null : loopSeed.error }));
+    console.log('[PROBE ji7] F. derived ends (parent span now 80):', JSON.stringify({
+      storeEndFrame: physicPaintStore.getRotoPhysicalEndFrame(layer.id, TEST_TRACK_ID),
+      timelineTotalFrames: totalFrames.peek(),
+      overlaySequenceOutFrame: extendedSpan ? getTimelineOverlaySequenceOutFrame(extendedSpan, 100) : null,
+    }));
+
+    // Counterpart: the same layer under a capacity that follows the span (80).
+    physicPaintStore.setRotoPhysicalCapacity(layer.id, TEST_TRACK_ID, 80);
+    console.log('[PROBE ji7] G. same layer at capacity 80:', JSON.stringify({
+      storeEndFrame: physicPaintStore.getRotoPhysicalEndFrame(layer.id, TEST_TRACK_ID),
+    }));
+
+    expect(second.carriedCapacity).toBe(40);
+  });
+
+  // 260920-ji7 Task 1 (temporary diagnosis probe): the SHRINK direction — does
+  // a parent span that shrinks below stored keys still launch?
+  it('PROBE 260920-ji7: parent-span shrink below stored keys', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], 60);
+    const records = [makePhysicalRecord('shrink-a', 0), makePhysicalRecord('shrink-b', 50)];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity: 60,
+      realKeyRecords: records,
+      interpolation: { enabled: false, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, { enabled: false, mode: 'duplicate' }, []),
+    });
+    console.log('[PROBE ji7] H. shrink seed:', JSON.stringify({ ok: seeded.ok }));
+    const launchAt60 = createPhysicPaintLaunchContext(layer, 10);
+    console.log('[PROBE ji7] I. launch at parent end 60:', JSON.stringify({
+      carriedCapacity: carriedRotoPhysical(launchAt60).capacity,
+    }));
+
+    sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 30);
+    try {
+      const shrunk = createPhysicPaintLaunchContext(layer, 10);
+      console.log('[PROBE ji7] J. launch after shrink to 30:', JSON.stringify({
+        carriedCapacity: carriedRotoPhysical(shrunk).capacity,
+        storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
+        realKeys: carriedRotoPhysical(shrunk).realKeyRecords.map((record) => record.appFrame),
+      }));
+    } catch (error) {
+      console.log('[PROBE ji7] J. launch after shrink to 30 THREW:', JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+        storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
+      }));
+    }
   });
 
   it('launches a nonzero-inFrame sequence at its layer-local origin', async () => {
